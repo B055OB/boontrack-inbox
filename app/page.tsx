@@ -1,53 +1,49 @@
 'use client';
+
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
-export default function InboxPage() {
-  const [conversations, setConversations] = useState<any[]>([]);
-  const [selectedChat, setSelectedChat] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+interface Message {
+  id: string;
+  created_at: string;
+  sender: string;
+  text: string;
+  phone_number?: string;
+  status?: string;
+}
 
-  // 1. Ambil riwayat percakapan dari Supabase
+export default function Home() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    fetchConversations();
-  }, []);
+    async function fetchMessages() {
+      try {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-  async function fetchConversations() {
-    const { data } = await supabase
-      .from('conversations')
-      .select('*')
-      .order('updated_at', { ascending: false });
-    if (data) setConversations(data);
-  }
-
-  // 2. Ambil detail pesan & pasang Supabase Realtime
-  useEffect(() => {
-    if (!selectedChat) return;
-
-    async function loadMessages() {
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', selectedChat.id)
-        .order('created_at', { ascending: true });
-      if (data) setMessages(data);
+        if (error) throw error;
+        if (data) setMessages(data);
+      } catch (err) {
+        console.error('Error fetching messages:', err);
+      } finally {
+        setLoading(false);
+      }
     }
 
-    loadMessages();
+    fetchMessages();
 
-    // Supabase Realtime Listener
     const channel = supabase
-      .channel('realtime_messages')
+      .channel('messages-live')
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${selectedChat.id}`,
-        },
+        { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
+          setMessages((prev) => [payload.new as Message, ...prev]);
         }
       )
       .subscribe();
@@ -55,67 +51,40 @@ export default function InboxPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedChat]);
+  }, []);
 
   return (
-    <div className="flex h-screen bg-slate-900 text-slate-100 font-sans">
-      {/* Sidebar Daftar Kontak */}
-      <div className="w-1/3 border-r border-slate-800 flex flex-col">
-        <div className="p-4 border-b border-slate-800 font-bold text-lg text-emerald-400">
-          BoonTrack Live Inbox
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {conversations.length === 0 ? (
-            <div className="p-4 text-xs text-slate-500">Belum ada percakapan masuk</div>
-          ) : (
-            conversations.map((chat) => (
-              <div
-                key={chat.id}
-                onClick={() => setSelectedChat(chat)}
-                className={`p-4 border-b border-slate-800 cursor-pointer hover:bg-slate-800 transition ${
-                  selectedChat?.id === chat.id ? 'bg-slate-800' : ''
-                }`}
-              >
-                <div className="font-semibold">{chat.contact_name || chat.phone_number}</div>
-                <div className="text-xs text-slate-400">{chat.phone_number}</div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+    <main className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6">
+        <header className="border-b pb-4 mb-6 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">BoonTrack Live Inbox</h1>
+            <p className="text-sm text-gray-500">Realtime Incoming WhatsApp & Bot Activity</p>
+          </div>
+          <span className="flex h-3 w-3 relative">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+          </span>
+        </header>
 
-      {/* Panel Percakapan */}
-      <div className="flex-1 flex flex-col bg-slate-950">
-        {selectedChat ? (
-          <>
-            <div className="p-4 border-b border-slate-800 font-semibold text-emerald-400">
-              {selectedChat.contact_name || selectedChat.phone_number}
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.sender === 'user' ? 'justify-start' : 'justify-end'}`}
-                >
-                  <div
-                    className={`max-w-[70%] p-3 rounded-lg text-sm ${
-                      msg.sender === 'user'
-                        ? 'bg-slate-800 text-white rounded-bl-none'
-                        : 'bg-emerald-600 text-white rounded-br-none'
-                    }`}
-                  >
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
+        {loading ? (
+          <div className="py-12 text-center text-gray-400">Loading messages...</div>
+        ) : messages.length === 0 ? (
+          <div className="py-12 text-center text-gray-400">Belum ada pesan masuk.</div>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-slate-500">
-            Pilih kontak di sebelah kiri untuk melihat pesan
+          <div className="divide-y">
+            {messages.map((msg) => (
+              <div key={msg.id} className="py-4 flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs text-gray-400">
+                  <span className="font-semibold text-gray-700">{msg.sender || msg.phone_number || 'Unknown'}</span>
+                  <span>{new Date(msg.created_at).toLocaleTimeString()}</span>
+                </div>
+                <p className="text-gray-800 text-sm">{msg.text}</p>
+              </div>
+            ))}
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }
