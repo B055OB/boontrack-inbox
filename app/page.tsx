@@ -17,61 +17,85 @@ interface Message {
 
 function InboxContent() {
   const searchParams = useSearchParams();
-  const tenantParam = searchParams.get('tenant'); // Mengambil nilai dari ?tenant=...
+  const tenantSlug = searchParams.get('tenant');
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [tenantName, setTenantName] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const supabase = getSupabase();
 
-    async function fetchMessages() {
+    async function loadData() {
       try {
         setLoading(true);
-        let query = supabase.from('messages').select('*');
+        let resolvedTenantId: string | null = null;
 
-        // Filter otomatis jika parameter tenant ada di URL
-        if (tenantParam) {
-          query = query.eq('tenant_id', tenantParam);
+        // 1. Resolve slug ke tenant_id UUID & Nama Tenant
+        if (tenantSlug) {
+          const { data: tenantData } = await supabase
+            .from('tenants')
+            .select('id, name, slug')
+            .or(`slug.eq.${tenantSlug},id.eq.${tenantSlug}`)
+            .maybeSingle();
+
+          if (tenantData) {
+            resolvedTenantId = tenantData.id;
+            setTenantName(tenantData.name);
+          } else {
+            setTenantName(tenantSlug);
+          }
+        }
+
+        // 2. Fetch Messages
+        let query = supabase.from('messages').select('*');
+        if (resolvedTenantId || tenantSlug) {
+          const filterVal = resolvedTenantId || tenantSlug;
+          query = query.or(`tenant_id.eq.${filterVal},tenant_id.eq.${tenantSlug}`);
         }
 
         const { data, error } = await query;
         if (error) throw error;
 
         if (data) {
-          const sorted = [...data].reverse();
-          setMessages(sorted);
+          setMessages([...data].reverse());
         }
+
+        // 3. Realtime Listener
+        const channel = supabase
+          .channel(`messages-live-${tenantSlug || 'all'}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'messages',
+            },
+            (payload) => {
+              const newMsg = payload.new as Message;
+              if (
+                !tenantSlug ||
+                newMsg.tenant_id === resolvedTenantId ||
+                newMsg.tenant_id === tenantSlug
+              ) {
+                setMessages((prev) => [newMsg, ...prev]);
+              }
+            }
+          )
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
+        };
       } catch (err) {
-        console.error('Error fetching messages:', err);
+        console.error('Error loading inbox:', err);
       } finally {
         setLoading(false);
       }
     }
 
-    fetchMessages();
-
-    // Listen realtime event
-    const channel = supabase
-      .channel(`messages-${tenantParam || 'all'}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          ...(tenantParam ? { filter: `tenant_id=eq.${tenantParam}` } : {}),
-        },
-        (payload) => {
-          setMessages((prev) => [payload.new as Message, ...prev]);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [tenantParam]);
+    loadData();
+  }, [tenantSlug]);
 
   return (
     <main className="min-h-screen bg-gray-50 p-6">
@@ -79,7 +103,7 @@ function InboxContent() {
         <header className="border-b pb-4 mb-6 flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">
-              {tenantParam ? `Inbox: ${tenantParam}` : 'BoonTrack Live Inbox'}
+              {tenantName ? `Inbox: ${tenantName}` : 'BoonTrack Live Inbox'}
             </h1>
             <p className="text-sm text-gray-500">Realtime Incoming WhatsApp & Bot Activity</p>
           </div>
@@ -93,7 +117,7 @@ function InboxContent() {
           <div className="py-12 text-center text-gray-400">Loading messages...</div>
         ) : messages.length === 0 ? (
           <div className="py-12 text-center text-gray-400">
-            Belum ada pesan masuk {tenantParam ? `untuk tenant ${tenantParam}` : ''}.
+            Belum ada pesan masuk untuk {tenantName || 'tenant ini'}.
           </div>
         ) : (
           <div className="divide-y">
