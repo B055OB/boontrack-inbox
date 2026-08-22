@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react';
 import { getSupabase } from '@/lib/supabaseClient';
 
 interface Message {
-  id: string;
-  created_at: string;
-  sender: string;
-  text: string;
+  id?: string;
+  created_at?: string;
+  sender?: string;
+  text?: string;
   phone_number?: string;
-  status?: string;
+  message?: string;
+  [key: string]: any;
 }
 
 export default function Home() {
@@ -23,11 +24,13 @@ export default function Home() {
       try {
         const { data, error } = await supabase
           .from('messages')
-          .select('*')
-          .order('created_at', { ascending: false });
+          .select('*');
 
         if (error) throw error;
-        if (data) setMessages(data || []);
+        if (data) {
+          const sorted = [...data].reverse();
+          setMessages(sorted);
+        }
       } catch (err) {
         console.error('Error fetching messages:', err);
       } finally {
@@ -73,13 +76,17 @@ export default function Home() {
           <div className="py-12 text-center text-gray-400">Belum ada pesan masuk.</div>
         ) : (
           <div className="divide-y">
-            {messages.map((msg) => (
-              <div key={msg.id} className="py-4 flex flex-col gap-1">
+            {messages.map((msg, idx) => (
+              <div key={msg.id || idx} className="py-4 flex flex-col gap-1">
                 <div className="flex justify-between items-center text-xs text-gray-400">
-                  <span className="font-semibold text-gray-700">{msg.sender || msg.phone_number || 'Unknown'}</span>
-                  <span>{new Date(msg.created_at).toLocaleTimeString()}</span>
+                  <span className="font-semibold text-gray-700">
+                    {msg.sender || msg.phone_number || 'Pengirim Anonim'}
+                  </span>
+                  <span>
+                    {msg.created_at ? new Date(msg.created_at).toLocaleTimeString() : 'Baru saja'}
+                  </span>
                 </div>
-                <p className="text-gray-800 text-sm">{msg.text}</p>
+                <p className="text-gray-800 text-sm">{msg.text || msg.message || '(Pesan kosong)'}</p>
               </div>
             ))}
           </div>
