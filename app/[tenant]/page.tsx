@@ -6,11 +6,13 @@ import { getSupabase } from '@/lib/supabaseClient';
 
 interface Message {
   id: string | number;
-  tenant_id: string;
-  channel: string;
-  user_id: string;
+  tenant_id?: string;
+  conversation_id?: string;
+  channel?: string;
+  user_id?: string;
   sender: string;
-  message_text: string;
+  text?: string;
+  message_text?: string;
   created_at: string;
 }
 
@@ -66,20 +68,49 @@ export default function TenantInboxPage() {
         });
       }
 
-      // 2. Ambil data pesan dari Supabase (mencakup slug ataupun ID tenant)
-      const { data: messagesData, error: msgErr } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`tenant_id.eq.${tenantSlug},tenant_id.eq.${tenant?.id || tenantSlug}`)
-        .order('created_at', { ascending: true });
+      // 2. Query data messages (fallback ambil seluruh pesan jika tenant_id belum terisi)
+      let query = supabase.from('messages').select('*').order('created_at', { ascending: true });
 
+      const { data: messagesData, error: msgErr } = await query;
       if (msgErr) console.error('Supabase query error:', msgErr);
 
-      const loadedMsgs = messagesData || [];
-      setMessages(loadedMsgs);
+      // Normalisasi pesan (mengakomodasi kolom `text` atau `message_text`)
+      const normalizedMsgs: Message[] = (messagesData || []).map((m: any) => {
+        // Ambil identifier pengirim (nomor WA atau user_id)
+        let resolvedUser = m.user_id;
+        if (!resolvedUser) {
+          if (m.sender && m.sender.includes('+')) {
+            resolvedUser = m.sender;
+          } else {
+            resolvedUser = m.conversation_id || 'User Tamu';
+          }
+        }
 
-      if (loadedMsgs.length > 0) {
-        setSelectedUserId(loadedMsgs[loadedMsgs.length - 1].user_id);
+        // Tentukan channel
+        let resolvedChannel = m.channel || 'whatsapp';
+        if (m.sender?.toLowerCase().includes('bot') || m.sender?.toLowerCase().includes('career')) {
+          resolvedChannel = 'whatsapp';
+        }
+
+        return {
+          ...m,
+          user_id: resolvedUser,
+          channel: resolvedChannel,
+          message_text: m.text || m.message_text || '',
+        };
+      });
+
+      // Filter pesan khusus tenant jika kolom tenant_id terisi, jika kosong tampilkan di workspace aktif
+      const filteredForTenant = normalizedMsgs.filter((m) => {
+        if (!m.tenant_id) return true;
+        return m.tenant_id === tenantSlug || (tenant && m.tenant_id === tenant.id);
+      });
+
+      setMessages(filteredForTenant);
+
+      if (filteredForTenant.length > 0) {
+        const users = Array.from(new Set(filteredForTenant.map((m) => m.user_id))).filter(Boolean);
+        if (users.length > 0) setSelectedUserId(users[users.length - 1] as string);
       }
     } catch (err) {
       console.error('Error fetching inbox data:', err);
@@ -91,7 +122,6 @@ export default function TenantInboxPage() {
   useEffect(() => {
     loadInboxData();
 
-    // Supabase Realtime Listener
     const supabase = getSupabase();
     const channel = supabase
       .channel(`realtime-inbox-${tenantSlug}`)
@@ -99,13 +129,14 @@ export default function TenantInboxPage() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
-          const newMsg = payload.new as Message;
-          if (
-            newMsg.tenant_id === tenantSlug ||
-            (tenantInfo && newMsg.tenant_id === tenantInfo.id)
-          ) {
-            setMessages((prev) => [...prev, newMsg]);
-          }
+          const m = payload.new as any;
+          const newMsg: Message = {
+            ...m,
+            user_id: m.user_id || m.sender || m.conversation_id || 'User Tamu',
+            channel: m.channel || 'whatsapp',
+            message_text: m.text || m.message_text || '',
+          };
+          setMessages((prev) => [...prev, newMsg]);
         }
       )
       .subscribe();
@@ -133,7 +164,7 @@ export default function TenantInboxPage() {
     const userMsgs = filteredMessages.filter((m) => m.user_id === uid);
     const lastMsg = userMsgs[userMsgs.length - 1];
     return {
-      userId: uid,
+      userId: uid as string,
       channel: lastMsg?.channel || 'whatsapp',
       lastMessage: lastMsg?.message_text || '',
       lastTime: lastMsg?.created_at || '',
@@ -193,7 +224,7 @@ export default function TenantInboxPage() {
           <div className="p-3 border-b border-slate-800">
             <input
               type="text"
-              placeholder="Cari user ID / nomor HP..."
+              placeholder="Cari nomor HP / teks..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-700"
@@ -207,9 +238,9 @@ export default function TenantInboxPage() {
 
           <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
             {loading ? (
-              <div className="p-6 text-center text-xs text-slate-500">Memuat log dari database...</div>
+              <div className="p-6 text-center text-xs text-slate-500">Menghubungkan ke Supabase...</div>
             ) : conversationList.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500">Belum ada percakapan masuk di channel ini.</div>
+              <div className="p-6 text-center text-xs text-slate-500">Belum ada percakapan terdata.</div>
             ) : (
               conversationList.map((conv) => {
                 const isSelected = conv.userId === selectedUserId;
@@ -277,7 +308,7 @@ export default function TenantInboxPage() {
                   const isBot =
                     msg.sender?.toLowerCase().includes('bot') ||
                     msg.sender?.toLowerCase().includes('ai') ||
-                    msg.sender?.toLowerCase().includes('boontrack') ||
+                    msg.sender?.toLowerCase().includes('career') ||
                     msg.sender?.toLowerCase().includes('assistant');
 
                   return (
