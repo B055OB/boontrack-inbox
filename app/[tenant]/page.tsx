@@ -19,11 +19,6 @@ interface TenantInfo {
   name: string;
   slug: string;
   status: string;
-  category?: string;
-  access_username?: string;
-  access_password?: string;
-  monthly_fee?: number;
-  due_date?: string | null;
 }
 
 export default function TenantInboxPage() {
@@ -37,15 +32,8 @@ export default function TenantInboxPage() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
-  // Auth Client Login State
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [usernameInput, setUsernameInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [authError, setAuthError] = useState('');
-
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto scroll ke bawah pesan terbaru
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -54,133 +42,99 @@ export default function TenantInboxPage() {
     scrollToBottom();
   }, [messages, selectedUserId]);
 
-  // Cek sesi login klien di sessionStorage
-  useEffect(() => {
-    if (tenantSlug) {
-      const sessionAuth = sessionStorage.getItem(`auth_${tenantSlug}`);
-      const isMaster = sessionStorage.getItem('super_admin_auth') === 'true';
-      if (sessionAuth === 'true' || isMaster) {
-        setIsAuthenticated(true);
-      }
-    }
-  }, [tenantSlug]);
-
-  const fetchTenantData = async () => {
+  const loadInboxData = async () => {
     if (!tenantSlug) return;
     try {
       setLoading(true);
       const supabase = getSupabase();
 
-      // Gunakan camelCase maybeSingle()
-      const { data: tenant, error: tenantErr } = await supabase
+      // 1. Ambil info tenant
+      const { data: tenant } = await supabase
         .from('tenants')
         .select('*')
         .eq('slug', tenantSlug)
         .maybeSingle();
 
-      if (tenantErr) throw tenantErr;
-
       if (tenant) {
         setTenantInfo(tenant);
       } else {
-        // Fallback info jika tenant baru dibuat atau query by slug
         setTenantInfo({
           id: tenantSlug,
           name: tenantSlug.replace(/-/g, ' ').toUpperCase(),
           slug: tenantSlug,
           status: 'active',
-          category: tenantSlug.startsWith('boontrack-') ? 'internal' : 'external',
         });
       }
 
-      // Ambil seluruh pesan terkait tenant
+      // 2. Ambil data pesan dari Supabase (mencakup slug ataupun ID tenant)
       const { data: messagesData, error: msgErr } = await supabase
         .from('messages')
         .select('*')
         .or(`tenant_id.eq.${tenantSlug},tenant_id.eq.${tenant?.id || tenantSlug}`)
         .order('created_at', { ascending: true });
 
-      if (msgErr) throw msgErr;
+      if (msgErr) console.error('Supabase query error:', msgErr);
 
-      setMessages(messagesData || []);
+      const loadedMsgs = messagesData || [];
+      setMessages(loadedMsgs);
 
-      if (messagesData && messagesData.length > 0 && !selectedUserId) {
-        setSelectedUserId(messagesData[messagesData.length - 1].user_id);
+      if (loadedMsgs.length > 0) {
+        setSelectedUserId(loadedMsgs[loadedMsgs.length - 1].user_id);
       }
     } catch (err) {
-      console.error('Error fetching tenant inbox:', err);
+      console.error('Error fetching inbox data:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchTenantData();
+    loadInboxData();
 
-      // Realtime listener Supabase
-      const supabase = getSupabase();
-      const channel = supabase
-        .channel(`inbox-realtime-${tenantSlug}`)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'messages' },
-          (payload) => {
-            const newMsg = payload.new as Message;
-            if (
-              newMsg.tenant_id === tenantSlug ||
-              (tenantInfo && newMsg.tenant_id === tenantInfo.id)
-            ) {
-              setMessages((prev) => [...prev, newMsg]);
-            }
+    // Supabase Realtime Listener
+    const supabase = getSupabase();
+    const channel = supabase
+      .channel(`realtime-inbox-${tenantSlug}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const newMsg = payload.new as Message;
+          if (
+            newMsg.tenant_id === tenantSlug ||
+            (tenantInfo && newMsg.tenant_id === tenantInfo.id)
+          ) {
+            setMessages((prev) => [...prev, newMsg]);
           }
-        )
-        .subscribe();
+        }
+      )
+      .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
-  }, [tenantSlug, isAuthenticated]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tenantSlug]);
 
-  // Handle Login Klien
-  const handleClientLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tenantInfo) return;
+  // Filter List Percakapan
+  const filteredMessages = messages.filter((m) => {
+    const matchChannel =
+      selectedChannel === 'all' ||
+      m.channel?.toLowerCase() === selectedChannel.toLowerCase();
+    const matchQuery = searchQuery
+      ? m.user_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.message_text?.toLowerCase().includes(searchQuery.toLowerCase())
+      : true;
+    return matchChannel && matchQuery;
+  });
 
-    const validUser = tenantInfo.access_username || 'admin';
-    const validPass = tenantInfo.access_password || '123456';
-
-    if (usernameInput === validUser && passwordInput === validPass) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem(`auth_${tenantSlug}`, 'true');
-      setAuthError('');
-    } else {
-      setAuthError('Username atau password klien salah!');
-    }
-  };
-
-  // Filter percakapan per user
-  const uniqueUsers = Array.from(
-    new Set(
-      messages
-        .filter((m) => selectedChannel === 'all' || m.channel === selectedChannel)
-        .filter((m) =>
-          searchQuery
-            ? m.user_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              m.message_text.toLowerCase().includes(searchQuery.toLowerCase())
-            : true
-        )
-        .map((m) => m.user_id)
-    )
-  );
+  const uniqueUsers = Array.from(new Set(filteredMessages.map((m) => m.user_id))).filter(Boolean);
 
   const conversationList = uniqueUsers.map((uid) => {
-    const userMsgs = messages.filter((m) => m.user_id === uid);
+    const userMsgs = filteredMessages.filter((m) => m.user_id === uid);
     const lastMsg = userMsgs[userMsgs.length - 1];
     return {
       userId: uid,
-      channel: lastMsg?.channel || 'webchat',
+      channel: lastMsg?.channel || 'whatsapp',
       lastMessage: lastMsg?.message_text || '',
       lastTime: lastMsg?.created_at || '',
       total: userMsgs.length,
@@ -188,47 +142,6 @@ export default function TenantInboxPage() {
   });
 
   const activeMessages = messages.filter((m) => m.user_id === selectedUserId);
-
-  // Jika belum login & bukan super admin
-  if (!isAuthenticated && tenantInfo && tenantInfo.access_password) {
-    return (
-      <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div className="w-12 h-12 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-3 font-bold text-lg">
-            💬
-          </div>
-          <h1 className="text-lg font-bold text-white mb-1">{tenantInfo.name || tenantSlug}</h1>
-          <p className="text-xs text-slate-400 mb-5">Login ke panel live chat & monitoring komunikasi.</p>
-
-          <form onSubmit={handleClientLogin} className="space-y-3">
-            <input
-              type="text"
-              placeholder="Username"
-              value={usernameInput}
-              onChange={(e) => setUsernameInput(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
-              required
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
-              required
-            />
-            {authError && <p className="text-[11px] text-rose-400">{authError}</p>}
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition"
-            >
-              Masuk ke Inbox
-            </button>
-          </form>
-        </div>
-      </main>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
@@ -248,11 +161,11 @@ export default function TenantInboxPage() {
                 {tenantSlug}
               </span>
             </div>
-            <p className="text-[10px] text-slate-400">Multi-Channel Monitoring: Webchat, WhatsApp & Telegram</p>
+            <p className="text-[10px] text-slate-400">Live Stream Supabase: Webchat, WhatsApp & Telegram</p>
           </div>
         </div>
 
-        {/* Channel Filter Pills */}
+        {/* Filter Channel */}
         <div className="flex items-center gap-1.5 bg-slate-950 p-1 border border-slate-800 rounded-xl text-xs">
           {['all', 'webchat', 'whatsapp', 'telegram'].map((ch) => {
             const isSelected = selectedChannel === ch;
@@ -273,15 +186,14 @@ export default function TenantInboxPage() {
         </div>
       </header>
 
-      {/* Main Container */}
+      {/* Konten Utama */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar: Conversation Users List */}
+        {/* Sidebar Sesi Chat */}
         <aside className="w-80 md:w-96 border-r border-slate-800 bg-slate-900/40 flex flex-col">
-          {/* Search bar */}
           <div className="p-3 border-b border-slate-800">
             <input
               type="text"
-              placeholder="Cari user ID atau teks..."
+              placeholder="Cari user ID / nomor HP..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-700"
@@ -293,12 +205,11 @@ export default function TenantInboxPage() {
             <span>Total: {messages.length} Pesan</span>
           </div>
 
-          {/* User List */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
             {loading ? (
-              <div className="p-6 text-center text-xs text-slate-500">Memuat riwayat chat...</div>
+              <div className="p-6 text-center text-xs text-slate-500">Memuat log dari database...</div>
             ) : conversationList.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500">Belum ada percakapan.</div>
+              <div className="p-6 text-center text-xs text-slate-500">Belum ada percakapan masuk di channel ini.</div>
             ) : (
               conversationList.map((conv) => {
                 const isSelected = conv.userId === selectedUserId;
@@ -347,11 +258,10 @@ export default function TenantInboxPage() {
           </div>
         </aside>
 
-        {/* Chat Conversation Window */}
+        {/* Area Dialog Chat */}
         <section className="flex-1 bg-slate-950 flex flex-col justify-between">
           {selectedUserId ? (
             <>
-              {/* Active User Header */}
               <div className="px-6 py-3.5 border-b border-slate-800 bg-slate-900/30 flex items-center justify-between">
                 <div>
                   <h2 className="text-xs font-bold text-white font-mono flex items-center gap-2">
@@ -362,13 +272,13 @@ export default function TenantInboxPage() {
                 </div>
               </div>
 
-              {/* Chat Feed */}
               <div className="flex-1 p-6 overflow-y-auto space-y-4">
                 {activeMessages.map((msg, idx) => {
                   const isBot =
-                    msg.sender.toLowerCase().includes('bot') ||
-                    msg.sender.toLowerCase().includes('ai') ||
-                    msg.sender.toLowerCase().includes('boontrack');
+                    msg.sender?.toLowerCase().includes('bot') ||
+                    msg.sender?.toLowerCase().includes('ai') ||
+                    msg.sender?.toLowerCase().includes('boontrack') ||
+                    msg.sender?.toLowerCase().includes('assistant');
 
                   return (
                     <div
@@ -388,7 +298,7 @@ export default function TenantInboxPage() {
                         className={`max-w-xl p-3.5 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap ${
                           isBot
                             ? 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-sm shadow-sm'
-                            : 'bg-blue-600 text-white rounded-tr-sm font-medium shadow-md shadow-blue-900/20'
+                            : 'bg-emerald-600 text-white rounded-tr-sm font-medium shadow-md shadow-emerald-900/20'
                         }`}
                       >
                         {msg.message_text}
