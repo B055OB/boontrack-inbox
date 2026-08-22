@@ -1,287 +1,407 @@
 'use client';
 
-import { useEffect, useState, useMemo, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { getSupabase } from '@/lib/supabaseClient';
 
-interface Message {
-  id?: string;
-  created_at?: string;
-  sender?: string;
-  text?: string;
-  phone_number?: string;
-  message?: string;
-  tenant_id?: string | null;
-  [key: string]: any;
+interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  start_date: string | null;
+  due_date: string | null;
+  access_username?: string;
+  access_password?: string;
+  monthly_fee?: number;
+  message_count?: number;
 }
 
-function InboxContent() {
-  const searchParams = useSearchParams();
-  const tenantSlug = searchParams.get('tenant');
+export default function SuperAdminDashboard() {
+  const [isAdminAuth, setIsAdminAuth] = useState(false);
+  const [adminPin, setAdminPin] = useState('');
+  const [pinError, setPinError] = useState('');
 
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [tenantName, setTenantName] = useState<string>('');
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+
+  // Form Tambah Tenant
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newSlug, setNewSlug] = useState('');
+  const [newUser, setNewUser] = useState('admin');
+  const [newPass, setNewPass] = useState('');
+  const [newDueDate, setNewDueDate] = useState('');
+  const [newFee, setNewFee] = useState(0);
+
+  // PIN Admin Master (Default: 998877)
+  const MASTER_PIN = '998877';
 
   useEffect(() => {
+    if (sessionStorage.getItem('super_admin_auth') === 'true') {
+      setIsAdminAuth(true);
+    }
+  }, []);
+
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminPin === MASTER_PIN) {
+      setIsAdminAuth(true);
+      sessionStorage.setItem('super_admin_auth', 'true');
+      setPinError('');
+    } else {
+      setPinError('PIN Super Admin salah!');
+    }
+  };
+
+  const fetchTenants = async () => {
+    try {
+      setLoading(true);
+      const supabase = getSupabase();
+      
+      const { data: tenantsData, error } = await supabase
+        .from('tenants')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Hitung pemakaian pesan per tenant
+      const { data: messagesData } = await supabase
+        .from('messages')
+        .select('tenant_id');
+
+      const countMap: { [key: string]: number } = {};
+      messagesData?.forEach((m) => {
+        if (m.tenant_id) {
+          countMap[m.tenant_id] = (countMap[m.tenant_id] || 0) + 1;
+        }
+      });
+
+      const mapped = (tenantsData || []).map((t) => ({
+        ...t,
+        message_count: countMap[t.id] || countMap[t.slug] || 0,
+      }));
+
+      setTenants(mapped);
+    } catch (err) {
+      console.error('Error fetching tenants:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdminAuth) {
+      fetchTenants();
+    }
+  }, [isAdminAuth]);
+
+  // Toggle ON / OFF Status Layanan
+  const toggleTenantStatus = async (tenant: Tenant) => {
+    const nextStatus = tenant.status === 'active' ? 'suspended' : 'active';
     const supabase = getSupabase();
 
-    async function loadData() {
-      try {
-        setLoading(true);
-        let resolvedTenantId: string | null = null;
+    const { error } = await supabase
+      .from('tenants')
+      .update({ status: nextStatus })
+      .eq('id', tenant.id);
 
-        if (tenantSlug) {
-          const { data: tenantData } = await supabase
-            .from('tenants')
-            .select('id, name')
-            .eq('slug', tenantSlug)
-            .maybeSingle();
-
-          if (tenantData) {
-            resolvedTenantId = tenantData.id;
-            setTenantName(tenantData.name);
-          } else {
-            setTenantName(tenantSlug);
-          }
-        }
-
-        // Fetch Messages
-        const { data, error } = await supabase
-          .from('messages')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        if (error) throw error;
-
-        if (data) {
-          const filtered = data.filter((m: Message) => {
-            if (!tenantSlug) return true;
-            return (
-              m.tenant_id === resolvedTenantId ||
-              m.tenant_id === tenantSlug ||
-              m.tenant_id === null ||
-              m.tenant_id === '00000000-0000-0000-0000-000000000000'
-            );
-          });
-          setMessages(filtered);
-        }
-
-        // Realtime Subscription
-        const channel = supabase
-          .channel(`messages-live-${tenantSlug || 'all'}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'messages',
-            },
-            (payload) => {
-              const newMsg = payload.new as Message;
-              if (
-                !tenantSlug ||
-                newMsg.tenant_id === resolvedTenantId ||
-                newMsg.tenant_id === tenantSlug ||
-                newMsg.tenant_id === null ||
-                newMsg.tenant_id === '00000000-0000-0000-0000-000000000000'
-              ) {
-                setMessages((prev) => [...prev, newMsg]);
-              }
-            }
-          )
-          .subscribe();
-
-        return () => {
-          supabase.removeChannel(channel);
-        };
-      } catch (err) {
-        console.error('Error loading inbox:', err);
-      } finally {
-        setLoading(false);
-      }
+    if (!error) {
+      setTenants((prev) =>
+        prev.map((t) => (t.id === tenant.id ? { ...t, status: nextStatus } : t))
+      );
     }
+  };
 
-    loadData();
-  }, [tenantSlug]);
-
-  // Kelompokkan obrolan berdasarkan customer / nomor telepon
-  const conversations = useMemo(() => {
-    const map = new Map<string, { lastMessage: Message; count: number; name: string }>();
-
-    for (const msg of messages) {
-      const sender = msg.sender || msg.phone_number || 'Unknown Customer';
-      const isBot = sender.toLowerCase().includes('bot') || sender.toLowerCase().includes('assistant');
-      
-      // Jika bot, kelompokkan ke user aktif atau tandai thread bot
-      const key = isBot ? 'Chat Activity' : sender;
-
-      const existing = map.get(key);
-      map.set(key, {
-        name: key,
-        lastMessage: msg,
-        count: (existing?.count || 0) + 1,
+  // Tambah Tenant Baru
+  const handleCreateTenant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const supabase = getSupabase();
+      const { error } = await supabase.from('tenants').insert({
+        name: newName,
+        slug: newSlug.toLowerCase().trim().replace(/\s+/g, '-'),
+        access_username: newUser,
+        access_password: newPass,
+        due_date: newDueDate || null,
+        monthly_fee: newFee,
+        status: 'active',
       });
+
+      if (error) throw error;
+
+      setShowAddModal(false);
+      setNewName('');
+      setNewSlug('');
+      setNewPass('');
+      fetchTenants();
+    } catch (err: any) {
+      alert('Gagal menambah tenant: ' + err.message);
     }
+  };
 
-    return Array.from(map.values());
-  }, [messages]);
+  // Modal Login PIN Super Admin
+  if (!isAdminAuth) {
+    return (
+      <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
+          <div className="w-12 h-12 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-3 font-bold text-xl">
+            ⚡
+          </div>
+          <h1 className="text-lg font-bold text-white mb-1">BoonTrack Super Admin</h1>
+          <p className="text-xs text-slate-400 mb-5">Masukkan PIN Master untuk mengelola tagihan dan status tenant.</p>
 
-  // Set default selected user jika belum ada yang dipilih
-  useEffect(() => {
-    if (!selectedUser && conversations.length > 0) {
-      setSelectedUser(conversations[0].name);
-    }
-  }, [conversations, selectedUser]);
-
-  // Filter pesan sesuai kontak yang sedang diklik (atau tampilkan semua jika "Semua Percakapan")
-  const activeChatMessages = useMemo(() => {
-    if (!selectedUser || selectedUser === '__ALL__') return messages;
-    if (selectedUser === 'Chat Activity') return messages;
-    return messages.filter((m) => {
-      const sender = m.sender || m.phone_number || '';
-      return sender === selectedUser || sender.toLowerCase().includes('bot');
-    });
-  }, [messages, selectedUser]);
+          <form onSubmit={handleAdminLogin} className="space-y-4">
+            <input
+              type="password"
+              placeholder="PIN Super Admin (default: 998877)"
+              value={adminPin}
+              onChange={(e) => setAdminPin(e.target.value)}
+              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-rose-500"
+              required
+            />
+            {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
+            <button
+              type="submit"
+              className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-xl transition"
+            >
+              Buka Master Control
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="h-screen bg-gray-100 flex flex-col p-4 md:p-6 overflow-hidden">
-      <div className="max-w-6xl w-full mx-auto bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col flex-1 overflow-hidden">
-        {/* Top Header */}
-        <header className="px-6 py-4 border-b flex justify-between items-center bg-white">
+    <main className="min-h-screen bg-slate-900 text-slate-100 p-6 md:p-10">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* Header Super Admin */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-800/60 border border-slate-700/60 p-6 rounded-2xl backdrop-blur-sm">
           <div>
-            <h1 className="text-xl font-bold text-gray-800">
-              {tenantName ? `Inbox: ${tenantName}` : 'BoonTrack Live Inbox'}
-            </h1>
-            <p className="text-xs text-gray-500">Live Multi-User WhatsApp Stream</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded">
+                Master Control
+              </span>
+              <h1 className="text-xl font-bold text-white">BoonTrack B2B Tenant Manager</h1>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Kontrol billing, siklus jatuh tempo langganan, dan kill-switch akses klien.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            <span className="text-xs font-semibold text-emerald-600">Connected</span>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-xs font-semibold rounded-xl transition shadow-lg shadow-blue-600/30"
+            >
+              + Tambah Klien Baru
+            </button>
+            <button
+              onClick={() => {
+                sessionStorage.removeItem('super_admin_auth');
+                setIsAdminAuth(false);
+              }}
+              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-xs text-slate-300 rounded-xl transition"
+            >
+              Kunci
+            </button>
           </div>
-        </header>
-
-        {/* 2-Column WhatsApp Web Layout */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar Daftar Kontak */}
-          <aside className="w-1/3 border-r bg-gray-50 flex flex-col overflow-y-auto">
-            <div className="p-3 border-b bg-white">
-              <button
-                onClick={() => setSelectedUser('__ALL__')}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition ${
-                  selectedUser === '__ALL__'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                📋 Tampilkan Semua Pesan ({messages.length})
-              </button>
-            </div>
-
-            {loading ? (
-              <div className="p-6 text-center text-xs text-gray-400">Memuat kontak...</div>
-            ) : conversations.length === 0 ? (
-              <div className="p-6 text-center text-xs text-gray-400">Belum ada kontak aktif.</div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {conversations.map((item) => {
-                  const isSelected = selectedUser === item.name;
-                  return (
-                    <button
-                      key={item.name}
-                      onClick={() => setSelectedUser(item.name)}
-                      className={`w-full text-left p-3.5 transition flex flex-col gap-1 border-l-4 ${
-                        isSelected
-                          ? 'bg-white border-blue-600 shadow-sm'
-                          : 'border-transparent hover:bg-gray-100/80'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-semibold text-xs text-gray-800 truncate max-w-[140px]">
-                          {item.name}
-                        </span>
-                        <span className="text-[10px] text-gray-400">
-                          {item.lastMessage.created_at
-                            ? new Date(item.lastMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                            : ''}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-gray-500 truncate">
-                        {item.lastMessage.text || item.lastMessage.message || '(Pesan)'}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </aside>
-
-          {/* Kolom Percakapan Aktif */}
-          <section className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
-            {/* Active Contact Header */}
-            <div className="px-5 py-3 border-b bg-white flex justify-between items-center shadow-sm">
-              <div>
-                <h2 className="text-sm font-bold text-gray-800">
-                  {selectedUser === '__ALL__' ? 'Semua Obrolan Masuk' : selectedUser || 'Pilih Kontak'}
-                </h2>
-                <span className="text-[11px] text-gray-400">
-                  {activeChatMessages.length} total bubble interaksi
-                </span>
-              </div>
-            </div>
-
-            {/* Chat Messages Body */}
-            <div className="flex-1 p-5 overflow-y-auto space-y-3">
-              {loading ? (
-                <div className="h-full flex items-center justify-center text-xs text-gray-400">
-                  Memuat obrolan...
-                </div>
-              ) : activeChatMessages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-xs text-gray-400">
-                  Belum ada pesan pada obrolan ini.
-                </div>
-              ) : (
-                activeChatMessages.map((msg, idx) => {
-                  const sender = msg.sender || msg.phone_number || '';
-                  const isBot = sender.toLowerCase().includes('bot') || sender.toLowerCase().includes('assistant');
-
-                  return (
-                    <div
-                      key={msg.id || idx}
-                      className={`flex flex-col ${isBot ? 'items-start' : 'items-end'}`}
-                    >
-                      <span className="text-[10px] text-gray-400 mb-1 px-1">
-                        {sender} • {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                      </span>
-                      <div
-                        className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-xs shadow-sm whitespace-pre-wrap leading-relaxed ${
-                          isBot
-                            ? 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
-                            : 'bg-blue-600 text-white rounded-tr-none'
-                        }`}
-                      >
-                        {msg.text || msg.message || '(Pesan kosong)'}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
         </div>
+
+        {/* Tabel Tenant */}
+        <div className="bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden shadow-xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-950/60 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-700">
+                <tr>
+                  <th className="px-6 py-4">Klien / Workspace</th>
+                  <th className="px-6 py-4">Kredensial Login</th>
+                  <th className="px-6 py-4">Periode Langganan</th>
+                  <th className="px-6 py-4">Tagihan (Bln)</th>
+                  <th className="px-6 py-4">Volume Chat</th>
+                  <th className="px-6 py-4 text-center">Status / Switch</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/50">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                      Memuat daftar klien...
+                    </td>
+                  </tr>
+                ) : tenants.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
+                      Belum ada klien terdaftar.
+                    </td>
+                  </tr>
+                ) : (
+                  tenants.map((t) => {
+                    const isActive = t.status === 'active';
+                    const isOverdue = t.due_date && new Date(t.due_date) < new Date();
+
+                    return (
+                      <tr key={t.id} className="hover:bg-slate-700/20 transition">
+                        <td className="px-6 py-4">
+                          <p className="font-semibold text-white text-sm">{t.name}</p>
+                          <a
+                            href={`https://chat.boontrack.com/${t.slug}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-400 hover:underline text-[11px]"
+                          >
+                            /{t.slug} ↗
+                          </a>
+                        </td>
+
+                        <td className="px-6 py-4 text-slate-300 font-mono text-[11px]">
+                          <div>User: <span className="text-white">{t.access_username || 'admin'}</span></div>
+                          <div>Pass: <span className="text-white">{t.access_password || '-'}</span></div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div className="text-slate-300">
+                            Mulai: {t.start_date || '-'}
+                          </div>
+                          <div className={`mt-0.5 font-medium ${isOverdue ? 'text-rose-400' : 'text-slate-400'}`}>
+                            Tempo: {t.due_date || '-'} {isOverdue && '(Lewat Tempo)'}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 font-semibold text-slate-200">
+                          {t.monthly_fee ? `Rp ${Number(t.monthly_fee).toLocaleString('id-ID')}` : 'Trial / Gratis'}
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-1 bg-slate-900 border border-slate-700 rounded-md font-mono text-slate-300">
+                            {t.message_count || 0} pesan
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            onClick={() => toggleTenantStatus(t)}
+                            className={`px-3 py-1.5 rounded-lg font-bold text-[11px] transition inline-flex items-center gap-1.5 ${
+                              isActive
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/30'
+                                : 'bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/30'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+                            {isActive ? 'AKTIF (Klik utk OFF)' : 'MATI (Klik utk ON)'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Modal Tambah Klien */}
+        {showAddModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+              <h2 className="text-base font-bold text-white mb-1">Daftarkan Klien B2B Baru</h2>
+              <p className="text-xs text-slate-400 mb-4">Lengkapi profil bisnis, kredensial, dan billing jatuh tempo.</p>
+
+              <form onSubmit={handleCreateTenant} className="space-y-3">
+                <div>
+                  <label className="text-[11px] text-slate-300 block mb-1">Nama Bisnis / Toko</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Digicorn Shoes"
+                    value={newName}
+                    onChange={(e) => {
+                      setNewName(e.target.value);
+                      if (!newSlug) setNewSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'));
+                    }}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-300 block mb-1">URL Slug Workspace</label>
+                  <input
+                    type="text"
+                    placeholder="digicorn-shoes"
+                    value={newSlug}
+                    onChange={(e) => setNewSlug(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-mono"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] text-slate-300 block mb-1">Username Login</label>
+                    <input
+                      type="text"
+                      value={newUser}
+                      onChange={(e) => setNewUser(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-300 block mb-1">Password Login</label>
+                    <input
+                      type="text"
+                      placeholder="pass123"
+                      value={newPass}
+                      onChange={(e) => setNewPass(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] text-slate-300 block mb-1">Jatuh Tempo Tagihan</label>
+                    <input
+                      type="date"
+                      value={newDueDate}
+                      onChange={(e) => setNewDueDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-300 block mb-1">Biaya / Bulan (Rp)</label>
+                    <input
+                      type="number"
+                      placeholder="500000"
+                      value={newFee}
+                      onChange={(e) => setNewFee(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="flex-1 py-2 bg-slate-700 text-xs text-slate-300 rounded-lg hover:bg-slate-600 transition"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2 bg-blue-600 text-xs font-semibold text-white rounded-lg hover:bg-blue-500 transition shadow-lg shadow-blue-600/30"
+                  >
+                    Simpan Klien
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </main>
-  );
-}
-
-export default function Home() {
-  return (
-    <Suspense fallback={<div className="p-6 text-center text-gray-400">Loading inbox...</div>}>
-      <InboxContent />
-    </Suspense>
   );
 }
