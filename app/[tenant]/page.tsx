@@ -19,35 +19,86 @@ export default function TenantInboxPage() {
   const params = useParams();
   const tenantSlug = typeof params?.tenant === 'string' ? params.tenant : '';
 
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState('');
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [tenantName, setTenantName] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
 
+  // Cek apakah sudah pernah login di browser ini
   useEffect(() => {
     if (!tenantSlug) return;
+    const sessionAuth = sessionStorage.getItem(`auth_${tenantSlug}`);
+    if (sessionAuth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, [tenantSlug]);
+
+  // Handler Login
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setLoading(true);
+
+    try {
+      const supabase = getSupabase();
+      const { data: tenantData, error } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('slug', tenantSlug)
+        .maybeSingle();
+
+      if (error || !tenantData) {
+        setAuthError('Tenant workspace tidak ditemukan.');
+        return;
+      }
+
+      // Verifikasi Username & Password
+      const validUser = tenantData.access_username || 'admin';
+      const validPass = tenantData.access_password || '123456';
+
+      if (usernameInput.trim() === validUser && passwordInput.trim() === validPass) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem(`auth_${tenantSlug}`, 'true');
+      } else {
+        setAuthError('Username atau Password salah!');
+      }
+    } catch (err) {
+      setAuthError('Gagal memverifikasi kredensial.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem(`auth_${tenantSlug}`);
+    setIsAuthenticated(false);
+    setMessages([]);
+  };
+
+  // Muat Pesan Hanya Jika Sudah Terotentikasi
+  useEffect(() => {
+    if (!isAuthenticated || !tenantSlug) return;
+
     const supabase = getSupabase();
 
     async function loadData() {
       try {
         setLoading(true);
-        let resolvedTenantId: string | null = null;
-
-        // 1. Resolve slug ke tenant_id UUID & Nama Tenant
         const { data: tenantData } = await supabase
           .from('tenants')
           .select('id, name')
           .eq('slug', tenantSlug)
           .maybeSingle();
 
-        if (tenantData) {
-          resolvedTenantId = tenantData.id;
-          setTenantName(tenantData.name);
-        } else {
-          setTenantName(tenantSlug);
-        }
+        const resolvedTenantId = tenantData ? tenantData.id : null;
+        setTenantName(tenantData ? tenantData.name : tenantSlug);
 
-        // 2. Fetch Messages
+        // Fetch Messages
         const { data, error } = await supabase
           .from('messages')
           .select('*')
@@ -67,7 +118,7 @@ export default function TenantInboxPage() {
           setMessages(filtered);
         }
 
-        // 3. Realtime Subscription
+        // Realtime Subscription
         const channel = supabase
           .channel(`messages-live-${tenantSlug}`)
           .on(
@@ -102,9 +153,8 @@ export default function TenantInboxPage() {
     }
 
     loadData();
-  }, [tenantSlug]);
+  }, [isAuthenticated, tenantSlug]);
 
-  // Kelompokkan per kontak
   const conversations = useMemo(() => {
     const map = new Map<string, { lastMessage: Message; count: number; name: string }>();
 
@@ -139,6 +189,62 @@ export default function TenantInboxPage() {
     });
   }, [messages, selectedUser]);
 
+  // JIKA BELUM LOGIN: TAMPILKAN FORM LOGIN
+  if (!isAuthenticated) {
+    return (
+      <main className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-sm w-full bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600/20 text-blue-400 mb-3 font-bold text-lg">
+            🔒
+          </div>
+          <h1 className="text-lg font-bold text-white mb-1">Akses Workspace</h1>
+          <p className="text-xs text-slate-400 mb-5">
+            Silakan masukkan kredensial untuk membuka inbox <b>{tenantSlug}</b>.
+          </p>
+
+          <form onSubmit={handleLogin} className="space-y-3 text-left">
+            <div>
+              <label className="text-[11px] font-medium text-slate-300 mb-1 block">Username</label>
+              <input
+                type="text"
+                placeholder="Username"
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-medium text-slate-300 mb-1 block">Password</label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                required
+              />
+            </div>
+
+            {authError && (
+              <p className="text-[11px] text-rose-400 text-center">{authError}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full mt-2 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition disabled:opacity-50"
+            >
+              {loading ? 'Memverifikasi...' : 'Masuk ke Workspace'}
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
+
+  // JIKA SUDAH LOGIN: TAMPILKAN LIVE INBOX
   return (
     <main className="h-screen bg-gray-100 flex flex-col p-4 md:p-6 overflow-hidden">
       <div className="max-w-6xl w-full mx-auto bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col flex-1 overflow-hidden">
@@ -148,20 +254,27 @@ export default function TenantInboxPage() {
             <h1 className="text-xl font-bold text-gray-800">
               {tenantName ? `Inbox: ${tenantName}` : 'BoonTrack Live Inbox'}
             </h1>
-            <p className="text-xs text-gray-500">Live Multi-User WhatsApp Stream</p>
+            <p className="text-xs text-gray-500">Workspace: {tenantSlug}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            <span className="text-xs font-semibold text-emerald-600">Connected</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-semibold text-emerald-600">Connected</span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="text-xs text-slate-500 hover:text-rose-600 border border-slate-200 hover:border-rose-300 px-2.5 py-1 rounded-lg transition"
+            >
+              Keluar
+            </button>
           </div>
         </header>
 
-        {/* 2 Kolom WhatsApp Web */}
+        {/* 2 Kolom WhatsApp Web Layout */}
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar Kontak */}
           <aside className="w-1/3 border-r bg-gray-50 flex flex-col overflow-y-auto">
             <div className="p-3 border-b bg-white">
               <button
@@ -214,7 +327,6 @@ export default function TenantInboxPage() {
             )}
           </aside>
 
-          {/* Kolom Chat */}
           <section className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
             <div className="px-5 py-3 border-b bg-white flex justify-between items-center shadow-sm">
               <div>
