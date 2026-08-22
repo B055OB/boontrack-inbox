@@ -35,9 +35,9 @@ function InboxContent() {
         if (tenantSlug) {
           const { data: tenantData } = await supabase
             .from('tenants')
-            .select('id, name, slug')
-            .or(`slug.eq.${tenantSlug},id.eq.${tenantSlug}`)
-            .maybeSingle();
+            .select('id, name')
+            .eq('slug', tenantSlug)
+            .single();
 
           if (tenantData) {
             resolvedTenantId = tenantData.id;
