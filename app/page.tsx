@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -22,6 +22,7 @@ function InboxContent() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [tenantName, setTenantName] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -46,10 +47,12 @@ function InboxContent() {
           }
         }
 
-        // Fetch Messages (Ambil pesan yang cocok dengan tenant ATAU tenant_id is NULL)
-        let query = supabase.from('messages').select('*').order('created_at', { ascending: false });
-        
-        const { data, error } = await query;
+        // Fetch Messages
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .order('created_at', { ascending: true });
+
         if (error) throw error;
 
         if (data) {
@@ -84,7 +87,7 @@ function InboxContent() {
                 newMsg.tenant_id === null ||
                 newMsg.tenant_id === '00000000-0000-0000-0000-000000000000'
               ) {
-                setMessages((prev) => [newMsg, ...prev]);
+                setMessages((prev) => [...prev, newMsg]);
               }
             }
           )
@@ -103,45 +106,173 @@ function InboxContent() {
     loadData();
   }, [tenantSlug]);
 
+  // Kelompokkan obrolan berdasarkan customer / nomor telepon
+  const conversations = useMemo(() => {
+    const map = new Map<string, { lastMessage: Message; count: number; name: string }>();
+
+    for (const msg of messages) {
+      const sender = msg.sender || msg.phone_number || 'Unknown Customer';
+      const isBot = sender.toLowerCase().includes('bot') || sender.toLowerCase().includes('assistant');
+      
+      // Jika bot, kelompokkan ke user aktif atau tandai thread bot
+      const key = isBot ? 'Chat Activity' : sender;
+
+      const existing = map.get(key);
+      map.set(key, {
+        name: key,
+        lastMessage: msg,
+        count: (existing?.count || 0) + 1,
+      });
+    }
+
+    return Array.from(map.values());
+  }, [messages]);
+
+  // Set default selected user jika belum ada yang dipilih
+  useEffect(() => {
+    if (!selectedUser && conversations.length > 0) {
+      setSelectedUser(conversations[0].name);
+    }
+  }, [conversations, selectedUser]);
+
+  // Filter pesan sesuai kontak yang sedang diklik (atau tampilkan semua jika "Semua Percakapan")
+  const activeChatMessages = useMemo(() => {
+    if (!selectedUser || selectedUser === '__ALL__') return messages;
+    if (selectedUser === 'Chat Activity') return messages;
+    return messages.filter((m) => {
+      const sender = m.sender || m.phone_number || '';
+      return sender === selectedUser || sender.toLowerCase().includes('bot');
+    });
+  }, [messages, selectedUser]);
+
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow p-6">
-        <header className="border-b pb-4 mb-6 flex justify-between items-center">
+    <main className="h-screen bg-gray-100 flex flex-col p-4 md:p-6 overflow-hidden">
+      <div className="max-w-6xl w-full mx-auto bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col flex-1 overflow-hidden">
+        {/* Top Header */}
+        <header className="px-6 py-4 border-b flex justify-between items-center bg-white">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">
+            <h1 className="text-xl font-bold text-gray-800">
               {tenantName ? `Inbox: ${tenantName}` : 'BoonTrack Live Inbox'}
             </h1>
-            <p className="text-sm text-gray-500">Realtime Incoming WhatsApp & Bot Activity</p>
+            <p className="text-xs text-gray-500">Live Multi-User WhatsApp Stream</p>
           </div>
-          <span className="flex h-3 w-3 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="flex h-2.5 w-2.5 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <span className="text-xs font-semibold text-emerald-600">Connected</span>
+          </div>
         </header>
 
-        {loading ? (
-          <div className="py-12 text-center text-gray-400">Loading messages...</div>
-        ) : messages.length === 0 ? (
-          <div className="py-12 text-center text-gray-400">
-            Belum ada pesan masuk untuk {tenantName || 'tenant ini'}.
-          </div>
-        ) : (
-          <div className="divide-y">
-            {messages.map((msg, idx) => (
-              <div key={msg.id || idx} className="py-4 flex flex-col gap-1">
-                <div className="flex justify-between items-center text-xs text-gray-400">
-                  <span className="font-semibold text-gray-700">
-                    {msg.sender || msg.phone_number || 'Customer'}
-                  </span>
-                  <span>
-                    {msg.created_at ? new Date(msg.created_at).toLocaleTimeString() : 'Baru saja'}
-                  </span>
-                </div>
-                <p className="text-gray-800 text-sm whitespace-pre-wrap">{msg.text || msg.message || '(Pesan kosong)'}</p>
+        {/* 2-Column WhatsApp Web Layout */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar Daftar Kontak */}
+          <aside className="w-1/3 border-r bg-gray-50 flex flex-col overflow-y-auto">
+            <div className="p-3 border-b bg-white">
+              <button
+                onClick={() => setSelectedUser('__ALL__')}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition ${
+                  selectedUser === '__ALL__'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                📋 Tampilkan Semua Pesan ({messages.length})
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="p-6 text-center text-xs text-gray-400">Memuat kontak...</div>
+            ) : conversations.length === 0 ? (
+              <div className="p-6 text-center text-xs text-gray-400">Belum ada kontak aktif.</div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {conversations.map((item) => {
+                  const isSelected = selectedUser === item.name;
+                  return (
+                    <button
+                      key={item.name}
+                      onClick={() => setSelectedUser(item.name)}
+                      className={`w-full text-left p-3.5 transition flex flex-col gap-1 border-l-4 ${
+                        isSelected
+                          ? 'bg-white border-blue-600 shadow-sm'
+                          : 'border-transparent hover:bg-gray-100/80'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-xs text-gray-800 truncate max-w-[140px]">
+                          {item.name}
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          {item.lastMessage.created_at
+                            ? new Date(item.lastMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            : ''}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 truncate">
+                        {item.lastMessage.text || item.lastMessage.message || '(Pesan)'}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
-            ))}
-          </div>
-        )}
+            )}
+          </aside>
+
+          {/* Kolom Percakapan Aktif */}
+          <section className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
+            {/* Active Contact Header */}
+            <div className="px-5 py-3 border-b bg-white flex justify-between items-center shadow-sm">
+              <div>
+                <h2 className="text-sm font-bold text-gray-800">
+                  {selectedUser === '__ALL__' ? 'Semua Obrolan Masuk' : selectedUser || 'Pilih Kontak'}
+                </h2>
+                <span className="text-[11px] text-gray-400">
+                  {activeChatMessages.length} total bubble interaksi
+                </span>
+              </div>
+            </div>
+
+            {/* Chat Messages Body */}
+            <div className="flex-1 p-5 overflow-y-auto space-y-3">
+              {loading ? (
+                <div className="h-full flex items-center justify-center text-xs text-gray-400">
+                  Memuat obrolan...
+                </div>
+              ) : activeChatMessages.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-gray-400">
+                  Belum ada pesan pada obrolan ini.
+                </div>
+              ) : (
+                activeChatMessages.map((msg, idx) => {
+                  const sender = msg.sender || msg.phone_number || '';
+                  const isBot = sender.toLowerCase().includes('bot') || sender.toLowerCase().includes('assistant');
+
+                  return (
+                    <div
+                      key={msg.id || idx}
+                      className={`flex flex-col ${isBot ? 'items-start' : 'items-end'}`}
+                    >
+                      <span className="text-[10px] text-gray-400 mb-1 px-1">
+                        {sender} • {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
+                      <div
+                        className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-xs shadow-sm whitespace-pre-wrap leading-relaxed ${
+                          isBot
+                            ? 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
+                            : 'bg-blue-600 text-white rounded-tr-none'
+                        }`}
+                      >
+                        {msg.text || msg.message || '(Pesan kosong)'}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        </div>
       </div>
     </main>
   );
