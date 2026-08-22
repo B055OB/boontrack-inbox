@@ -1,9 +1,7 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { getSupabase } from '@/lib/supabaseClient';
 
 interface Message {
   id: string;
@@ -19,6 +17,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const supabase = getSupabase();
+
     async function fetchMessages() {
       try {
         const { data, error } = await supabase
@@ -27,7 +27,7 @@ export default function Home() {
           .order('created_at', { ascending: false });
 
         if (error) throw error;
-        if (data) setMessages(data);
+        if (data) setMessages(data || []);
       } catch (err) {
         console.error('Error fetching messages:', err);
       } finally {
