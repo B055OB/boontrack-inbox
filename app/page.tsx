@@ -11,7 +11,7 @@ interface Message {
   text?: string;
   phone_number?: string;
   message?: string;
-  tenant_id?: string;
+  tenant_id?: string | null;
   [key: string]: any;
 }
 
@@ -31,13 +31,12 @@ function InboxContent() {
         setLoading(true);
         let resolvedTenantId: string | null = null;
 
-        // 1. Resolve slug ke tenant_id UUID & Nama Tenant
         if (tenantSlug) {
           const { data: tenantData } = await supabase
             .from('tenants')
             .select('id, name')
             .eq('slug', tenantSlug)
-            .single();
+            .maybeSingle();
 
           if (tenantData) {
             resolvedTenantId = tenantData.id;
@@ -47,21 +46,26 @@ function InboxContent() {
           }
         }
 
-        // 2. Fetch Messages
-        let query = supabase.from('messages').select('*');
-        if (resolvedTenantId || tenantSlug) {
-          const filterVal = resolvedTenantId || tenantSlug;
-          query = query.or(`tenant_id.eq.${filterVal},tenant_id.eq.${tenantSlug}`);
-        }
-
+        // Fetch Messages (Ambil pesan yang cocok dengan tenant ATAU tenant_id is NULL)
+        let query = supabase.from('messages').select('*').order('created_at', { ascending: false });
+        
         const { data, error } = await query;
         if (error) throw error;
 
         if (data) {
-          setMessages([...data].reverse());
+          const filtered = data.filter((m: Message) => {
+            if (!tenantSlug) return true;
+            return (
+              m.tenant_id === resolvedTenantId ||
+              m.tenant_id === tenantSlug ||
+              m.tenant_id === null ||
+              m.tenant_id === '00000000-0000-0000-0000-000000000000'
+            );
+          });
+          setMessages(filtered);
         }
 
-        // 3. Realtime Listener
+        // Realtime Subscription
         const channel = supabase
           .channel(`messages-live-${tenantSlug || 'all'}`)
           .on(
@@ -76,7 +80,9 @@ function InboxContent() {
               if (
                 !tenantSlug ||
                 newMsg.tenant_id === resolvedTenantId ||
-                newMsg.tenant_id === tenantSlug
+                newMsg.tenant_id === tenantSlug ||
+                newMsg.tenant_id === null ||
+                newMsg.tenant_id === '00000000-0000-0000-0000-000000000000'
               ) {
                 setMessages((prev) => [newMsg, ...prev]);
               }
@@ -131,7 +137,7 @@ function InboxContent() {
                     {msg.created_at ? new Date(msg.created_at).toLocaleTimeString() : 'Baru saja'}
                   </span>
                 </div>
-                <p className="text-gray-800 text-sm">{msg.text || msg.message || '(Pesan kosong)'}</p>
+                <p className="text-gray-800 text-sm whitespace-pre-wrap">{msg.text || msg.message || '(Pesan kosong)'}</p>
               </div>
             ))}
           </div>
