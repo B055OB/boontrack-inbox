@@ -25,6 +25,23 @@ const INTERNAL_SLUGS = [
   'boontrack-bola',
   'boontrack-loker',
   'boontrack-digicorn',
+  'om-budi',
+];
+
+// Default internal workspaces fallback
+const DEFAULT_INTERNAL_TENANTS: Tenant[] = [
+  {
+    id: 'om-budi',
+    name: 'Om Budi Channel',
+    slug: 'om-budi',
+    category: 'internal',
+    status: 'active',
+    start_date: '2025-01-01',
+    due_date: null,
+    access_username: 'admin',
+    access_password: '••••••••',
+    monthly_fee: 0,
+  },
 ];
 
 // PIN Admin Master (Default: 998877)
@@ -97,7 +114,13 @@ export default function SuperAdminDashboard() {
         });
 
         const rawTenants = (tenantsData || []) as Tenant[];
-        const mapped = rawTenants.map((t) => {
+        const existingSlugs = new Set(rawTenants.map((t) => t.slug));
+        const combinedTenants = [
+          ...rawTenants,
+          ...DEFAULT_INTERNAL_TENANTS.filter((dt) => !existingSlugs.has(dt.slug)),
+        ];
+
+        const mapped = combinedTenants.map((t) => {
           // Fallback otomatis kategori internal/external jika kolom category di db belum terisi
           const isInternal = t.category === 'internal' || INTERNAL_SLUGS.includes(t.slug) || t.slug.startsWith('boontrack-');
           return {

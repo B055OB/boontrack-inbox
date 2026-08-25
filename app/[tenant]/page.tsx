@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { getSupabase } from '@/lib/supabaseClient';
 
 interface Message {
@@ -103,9 +104,10 @@ export default function TenantInboxPage() {
         if (tenant) {
           setTenantInfo(tenant as TenantInfo);
         } else {
+          const fallbackName = tenantSlug === 'om-budi' ? 'Om Budi Channel' : tenantSlug.replace(/-/g, ' ').toUpperCase();
           setTenantInfo({
             id: tenantSlug,
-            name: tenantSlug.replace(/-/g, ' ').toUpperCase(),
+            name: fallbackName,
             slug: tenantSlug,
             status: 'active',
           });
@@ -126,7 +128,11 @@ export default function TenantInboxPage() {
         // Filter pesan khusus tenant jika kolom tenant_id terisi, jika kosong tampilkan di workspace aktif
         const filteredForTenant = normalizedMsgs.filter((m) => {
           if (!m.tenant_id) return true;
-          return m.tenant_id === tenantSlug || (tenant && m.tenant_id === tenant.id);
+          return (
+            m.tenant_id === tenantSlug ||
+            (tenant && m.tenant_id === tenant.id) ||
+            (tenantSlug === 'om-budi' && (m.tenant_id === 'om-budi' || m.tenant_id === 'om_budi'))
+          );
         });
 
         setMessages(filteredForTenant);
@@ -154,8 +160,16 @@ export default function TenantInboxPage() {
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
           const m = payload.new as DatabaseMessage;
-          const newMsg = normalizeMessage(m);
-          setMessages((prev) => [...prev, newMsg]);
+          const isMatch =
+            !m.tenant_id ||
+            m.tenant_id === tenantSlug ||
+            (tenantInfo && m.tenant_id === tenantInfo.id) ||
+            (tenantSlug === 'om-budi' && (m.tenant_id === 'om-budi' || m.tenant_id === 'om_budi'));
+
+          if (isMatch) {
+            const newMsg = normalizeMessage(m);
+            setMessages((prev) => [...prev, newMsg]);
+          }
         }
       )
       .subscribe();
@@ -164,7 +178,7 @@ export default function TenantInboxPage() {
       ignore = true;
       supabase.removeChannel(channel);
     };
-  }, [tenantSlug]);
+  }, [tenantSlug, tenantInfo]);
 
   // Filter List Percakapan
   const filteredMessages = messages.filter((m) => {
@@ -199,12 +213,12 @@ export default function TenantInboxPage() {
       {/* Top Navbar */}
       <header className="bg-slate-900/90 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <a
-            href="https://boss.boontrack.com/admin"
+          <Link
+            href="/admin"
             className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition border border-slate-700/60"
           >
             &larr; Super Admin
-          </a>
+          </Link>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold text-white">{tenantInfo?.name || tenantSlug}</h1>
