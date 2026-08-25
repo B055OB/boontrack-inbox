@@ -143,6 +143,98 @@ function normalizeMessage(m: DatabaseMessage): Message {
   };
 }
 
+function extractInteractiveButtons(msg: Message): string[] {
+  const buttons: string[] = [];
+
+  if (msg.payload) {
+    let p = msg.payload;
+    if (typeof p === 'string') {
+      try {
+        p = JSON.parse(p);
+      } catch {
+        // ignore
+      }
+    }
+
+    if (typeof p === 'object' && p !== null) {
+      // 1. WhatsApp Cloud API / Generic interactive buttons
+      const rawButtons =
+        p.interactive?.action?.buttons ||
+        p.action?.buttons ||
+        p.buttons ||
+        p.quick_replies;
+
+      if (Array.isArray(rawButtons)) {
+        for (const btn of rawButtons) {
+          if (typeof btn === 'string' && btn.trim()) {
+            buttons.push(btn.trim());
+          } else if (btn?.reply?.title) {
+            buttons.push(btn.reply.title);
+          } else if (btn?.buttonText?.displayText) {
+            buttons.push(btn.buttonText.displayText);
+          } else if (btn?.title) {
+            buttons.push(btn.title);
+          } else if (btn?.text) {
+            buttons.push(btn.text);
+          } else if (btn?.label) {
+            buttons.push(btn.label);
+          }
+        }
+      }
+
+      // 2. WhatsApp Interactive List / Sections
+      const sections =
+        p.interactive?.action?.sections ||
+        p.action?.sections ||
+        p.listMessage?.sections ||
+        p.sections;
+
+      if (Array.isArray(sections)) {
+        for (const sec of sections) {
+          if (Array.isArray(sec?.rows)) {
+            for (const row of sec.rows) {
+              if (row?.title) {
+                buttons.push(row.title);
+              } else if (typeof row === 'string' && row.trim()) {
+                buttons.push(row.trim());
+              }
+            }
+          }
+        }
+      }
+
+      // 3. Direct rows array
+      if (Array.isArray(p.rows)) {
+        for (const row of p.rows) {
+          if (row?.title) {
+            buttons.push(row.title);
+          } else if (typeof row === 'string' && row.trim()) {
+            buttons.push(row.trim());
+          }
+        }
+      }
+    }
+  }
+
+  const isBot =
+    msg.sender?.toLowerCase().includes('bot') ||
+    msg.sender?.toLowerCase().includes('ai') ||
+    msg.sender?.toLowerCase().includes('career') ||
+    msg.sender?.toLowerCase().includes('assistant');
+
+  const isWhatsapp =
+    msg.channel?.toLowerCase() === 'whatsapp' ||
+    msg.sender?.toLowerCase().includes('whatsapp') ||
+    (msg.user_id && /^\d+$/.test(msg.user_id));
+
+  // If no buttons extracted from payload and sender is WhatsApp Bot, provide default choices
+  if (buttons.length === 0 && isBot && isWhatsapp) {
+    buttons.push('Job Matcher AI', 'Simulasi HR', 'Negosiasi Gaji');
+  }
+
+  return Array.from(new Set(buttons));
+}
+
 export default function TenantInboxPage() {
   const params = useParams();
   const tenantSlug = Array.isArray(params?.tenant) ? params.tenant[0] : (params?.tenant as string);
@@ -456,6 +548,8 @@ export default function TenantInboxPage() {
                     msg.sender?.toLowerCase().includes('career') ||
                     msg.sender?.toLowerCase().includes('assistant');
 
+                  const interactiveButtons = isBot ? extractInteractiveButtons(msg) : [];
+
                   return (
                     <div
                       key={idx}
@@ -477,7 +571,28 @@ export default function TenantInboxPage() {
                             : 'bg-emerald-600 text-white rounded-tr-sm font-medium shadow-md shadow-emerald-900/20'
                         }`}
                       >
-                        {msg.message_text}
+                        <div>{msg.message_text}</div>
+
+                        {/* Interactive Buttons / WhatsApp List Options */}
+                        {isBot && interactiveButtons.length > 0 && (
+                          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-col gap-2">
+                            <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 flex items-center gap-1.5">
+                              <span className="text-xs">⚡</span>
+                              <span>Pilihan Interaktif WhatsApp:</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {interactiveButtons.map((btnText, bIdx) => (
+                                <div
+                                  key={bIdx}
+                                  className="inline-flex items-center gap-1.5 bg-slate-950/80 hover:bg-blue-950/70 border border-slate-700/80 hover:border-blue-500/50 text-slate-200 hover:text-blue-300 text-[11px] font-medium px-3 py-1.5 rounded-xl transition shadow-sm select-none"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                  <span>{btnText}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
