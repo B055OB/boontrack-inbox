@@ -16,11 +16,50 @@ interface Message {
   created_at: string;
 }
 
+interface DatabaseMessage {
+  id: string | number;
+  tenant_id?: string | null;
+  conversation_id?: string | null;
+  channel?: string | null;
+  user_id?: string | null;
+  sender?: string | null;
+  text?: string | null;
+  message_text?: string | null;
+  created_at: string;
+}
+
 interface TenantInfo {
   id: string;
   name: string;
   slug: string;
   status: string;
+}
+
+function normalizeMessage(m: DatabaseMessage): Message {
+  let resolvedUser = m.user_id;
+  if (!resolvedUser) {
+    if (m.sender && m.sender.includes('+')) {
+      resolvedUser = m.sender;
+    } else {
+      resolvedUser = m.conversation_id || 'User Tamu';
+    }
+  }
+
+  let resolvedChannel = m.channel || 'whatsapp';
+  if (m.sender?.toLowerCase().includes('bot') || m.sender?.toLowerCase().includes('career')) {
+    resolvedChannel = 'whatsapp';
+  }
+
+  return {
+    ...m,
+    user_id: resolvedUser,
+    channel: resolvedChannel,
+    sender: m.sender || 'Unknown',
+    message_text: m.text || m.message_text || '',
+    tenant_id: m.tenant_id ?? undefined,
+    conversation_id: m.conversation_id ?? undefined,
+    text: m.text ?? undefined,
+  };
 }
 
 export default function TenantInboxPage() {
@@ -44,83 +83,68 @@ export default function TenantInboxPage() {
     scrollToBottom();
   }, [messages, selectedUserId]);
 
-  const loadInboxData = async () => {
-    if (!tenantSlug) return;
-    try {
-      setLoading(true);
-      const supabase = getSupabase();
-
-      // 1. Ambil info tenant
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('slug', tenantSlug)
-        .maybeSingle();
-
-      if (tenant) {
-        setTenantInfo(tenant);
-      } else {
-        setTenantInfo({
-          id: tenantSlug,
-          name: tenantSlug.replace(/-/g, ' ').toUpperCase(),
-          slug: tenantSlug,
-          status: 'active',
-        });
-      }
-
-      // 2. Query data messages (fallback ambil seluruh pesan jika tenant_id belum terisi)
-      let query = supabase.from('messages').select('*').order('created_at', { ascending: true });
-
-      const { data: messagesData, error: msgErr } = await query;
-      if (msgErr) console.error('Supabase query error:', msgErr);
-
-      // Normalisasi pesan (mengakomodasi kolom `text` atau `message_text`)
-      const normalizedMsgs: Message[] = (messagesData || []).map((m: any) => {
-        // Ambil identifier pengirim (nomor WA atau user_id)
-        let resolvedUser = m.user_id;
-        if (!resolvedUser) {
-          if (m.sender && m.sender.includes('+')) {
-            resolvedUser = m.sender;
-          } else {
-            resolvedUser = m.conversation_id || 'User Tamu';
-          }
-        }
-
-        // Tentukan channel
-        let resolvedChannel = m.channel || 'whatsapp';
-        if (m.sender?.toLowerCase().includes('bot') || m.sender?.toLowerCase().includes('career')) {
-          resolvedChannel = 'whatsapp';
-        }
-
-        return {
-          ...m,
-          user_id: resolvedUser,
-          channel: resolvedChannel,
-          message_text: m.text || m.message_text || '',
-        };
-      });
-
-      // Filter pesan khusus tenant jika kolom tenant_id terisi, jika kosong tampilkan di workspace aktif
-      const filteredForTenant = normalizedMsgs.filter((m) => {
-        if (!m.tenant_id) return true;
-        return m.tenant_id === tenantSlug || (tenant && m.tenant_id === tenant.id);
-      });
-
-      setMessages(filteredForTenant);
-
-      if (filteredForTenant.length > 0) {
-        const users = Array.from(new Set(filteredForTenant.map((m) => m.user_id))).filter(Boolean);
-        if (users.length > 0) setSelectedUserId(users[users.length - 1] as string);
-      }
-    } catch (err) {
-      console.error('Error fetching inbox data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadInboxData();
+    let ignore = false;
+
+    async function loadInboxData() {
+      if (!tenantSlug) return;
+      try {
+        const supabase = getSupabase();
+
+        // 1. Ambil info tenant
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        if (ignore) return;
+
+        if (tenant) {
+          setTenantInfo(tenant as TenantInfo);
+        } else {
+          setTenantInfo({
+            id: tenantSlug,
+            name: tenantSlug.replace(/-/g, ' ').toUpperCase(),
+            slug: tenantSlug,
+            status: 'active',
+          });
+        }
+
+        // 2. Query data messages (fallback ambil seluruh pesan jika tenant_id belum terisi)
+        const query = supabase.from('messages').select('*').order('created_at', { ascending: true });
+
+        const { data: messagesData, error: msgErr } = await query;
+        if (msgErr) console.error('Supabase query error:', msgErr);
+
+        if (ignore) return;
+
+        // Normalisasi pesan (mengakomodasi kolom `text` atau `message_text`)
+        const rawMessages = (messagesData || []) as DatabaseMessage[];
+        const normalizedMsgs: Message[] = rawMessages.map(normalizeMessage);
+
+        // Filter pesan khusus tenant jika kolom tenant_id terisi, jika kosong tampilkan di workspace aktif
+        const filteredForTenant = normalizedMsgs.filter((m) => {
+          if (!m.tenant_id) return true;
+          return m.tenant_id === tenantSlug || (tenant && m.tenant_id === tenant.id);
+        });
+
+        setMessages(filteredForTenant);
+
+        if (filteredForTenant.length > 0) {
+          const users = Array.from(new Set(filteredForTenant.map((m) => m.user_id))).filter(Boolean);
+          if (users.length > 0) setSelectedUserId(users[users.length - 1] as string);
+        }
+      } catch (err: unknown) {
+        console.error('Error fetching inbox data:', err);
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadInboxData();
 
     const supabase = getSupabase();
     const channel = supabase
@@ -129,19 +153,15 @@ export default function TenantInboxPage() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
-          const m = payload.new as any;
-          const newMsg: Message = {
-            ...m,
-            user_id: m.user_id || m.sender || m.conversation_id || 'User Tamu',
-            channel: m.channel || 'whatsapp',
-            message_text: m.text || m.message_text || '',
-          };
+          const m = payload.new as DatabaseMessage;
+          const newMsg = normalizeMessage(m);
           setMessages((prev) => [...prev, newMsg]);
         }
       )
       .subscribe();
 
     return () => {
+      ignore = true;
       supabase.removeChannel(channel);
     };
   }, [tenantSlug]);

@@ -17,14 +17,33 @@ interface Tenant {
   message_count?: number;
 }
 
+// Default slug internal BoonTrack
+const INTERNAL_SLUGS = [
+  'boontrack-holding',
+  'boontrack-career',
+  'boontrack-kurir',
+  'boontrack-bola',
+  'boontrack-loker',
+  'boontrack-digicorn',
+];
+
+// PIN Admin Master (Default: 998877)
+const MASTER_PIN = '998877';
+
 export default function SuperAdminDashboard() {
-  const [isAdminAuth, setIsAdminAuth] = useState(false);
+  const [isAdminAuth, setIsAdminAuth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('super_admin_auth') === 'true';
+    }
+    return false;
+  });
   const [adminPin, setAdminPin] = useState('');
   const [pinError, setPinError] = useState('');
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'internal' | 'external'>('all');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Form Tambah Tenant
   const [showAddModal, setShowAddModal] = useState(false);
@@ -35,25 +54,6 @@ export default function SuperAdminDashboard() {
   const [newPass, setNewPass] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
   const [newFee, setNewFee] = useState(0);
-
-  // Default slug internal BoonTrack
-  const INTERNAL_SLUGS = [
-    'boontrack-holding',
-    'boontrack-career',
-    'boontrack-kurir',
-    'boontrack-bola',
-    'boontrack-loker',
-    'boontrack-digicorn'
-  ];
-
-  // PIN Admin Master (Default: 998877)
-  const MASTER_PIN = '998877';
-
-  useEffect(() => {
-    if (sessionStorage.getItem('super_admin_auth') === 'true') {
-      setIsAdminAuth(true);
-    }
-  }, []);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,53 +66,63 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  const fetchTenants = async () => {
-    try {
-      setLoading(true);
-      const supabase = getSupabase();
-      
-      const { data: tenantsData, error } = await supabase
-        .from('tenants')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Hitung pemakaian pesan per tenant
-      const { data: messagesData } = await supabase
-        .from('messages')
-        .select('tenant_id');
-
-      const countMap: { [key: string]: number } = {};
-      messagesData?.forEach((m) => {
-        if (m.tenant_id) {
-          countMap[m.tenant_id] = (countMap[m.tenant_id] || 0) + 1;
-        }
-      });
-
-      const mapped = (tenantsData || []).map((t) => {
-        // Fallback otomatis kategori internal/external jika kolom category di db belum terisi
-        const isInternal = t.category === 'internal' || INTERNAL_SLUGS.includes(t.slug) || t.slug.startsWith('boontrack-');
-        return {
-          ...t,
-          category: isInternal ? 'internal' : 'external',
-          message_count: countMap[t.id] || countMap[t.slug] || 0,
-        };
-      });
-
-      setTenants(mapped);
-    } catch (err) {
-      console.error('Error fetching tenants:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (isAdminAuth) {
-      fetchTenants();
+    let ignore = false;
+
+    async function loadTenants() {
+      if (!isAdminAuth) return;
+      try {
+        const supabase = getSupabase();
+
+        const { data: tenantsData, error } = await supabase
+          .from('tenants')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        if (ignore) return;
+
+        // Hitung pemakaian pesan per tenant
+        const { data: messagesData } = await supabase
+          .from('messages')
+          .select('tenant_id');
+
+        if (ignore) return;
+
+        const countMap: Record<string, number> = {};
+        messagesData?.forEach((m: { tenant_id?: string | null }) => {
+          if (m.tenant_id) {
+            countMap[m.tenant_id] = (countMap[m.tenant_id] || 0) + 1;
+          }
+        });
+
+        const rawTenants = (tenantsData || []) as Tenant[];
+        const mapped = rawTenants.map((t) => {
+          // Fallback otomatis kategori internal/external jika kolom category di db belum terisi
+          const isInternal = t.category === 'internal' || INTERNAL_SLUGS.includes(t.slug) || t.slug.startsWith('boontrack-');
+          return {
+            ...t,
+            category: isInternal ? 'internal' : 'external',
+            message_count: countMap[t.id] || countMap[t.slug] || 0,
+          };
+        });
+
+        setTenants(mapped);
+      } catch (err: unknown) {
+        console.error('Error fetching tenants:', err);
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
     }
-  }, [isAdminAuth]);
+
+    void loadTenants();
+
+    return () => {
+      ignore = true;
+    };
+  }, [isAdminAuth, refreshKey]);
 
   // Toggle ON / OFF Status Layanan
   const toggleTenantStatus = async (tenant: Tenant) => {
@@ -153,9 +163,10 @@ export default function SuperAdminDashboard() {
       setNewName('');
       setNewSlug('');
       setNewPass('');
-      fetchTenants();
-    } catch (err: any) {
-      alert('Gagal menambah tenant: ' + err.message);
+      setRefreshKey((k) => k + 1);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert('Gagal menambah tenant: ' + errorMsg);
     }
   };
 
