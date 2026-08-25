@@ -15,6 +15,8 @@ interface Message {
   sender: string;
   text?: string;
   message_text?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload?: any | null;
   created_at: string;
 }
 
@@ -30,6 +32,8 @@ interface DatabaseMessage {
   sender?: string | null;
   text?: string | null;
   message_text?: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload?: any | null;
   created_at: string;
 }
 
@@ -40,8 +44,72 @@ interface TenantInfo {
   status: string;
 }
 
+function extractMessageText(m: DatabaseMessage): string {
+  if (m.text && typeof m.text === 'string' && m.text.trim().length > 0) {
+    return m.text;
+  }
+  if (m.message_text && typeof m.message_text === 'string' && m.message_text.trim().length > 0) {
+    return m.message_text;
+  }
+
+  if (m.payload) {
+    let p = m.payload;
+    if (typeof p === 'string') {
+      try {
+        p = JSON.parse(p);
+      } catch {
+        return p;
+      }
+    }
+
+    if (typeof p === 'object' && p !== null) {
+      if (typeof p.text === 'string' && p.text.trim()) return p.text;
+      if (typeof p.message === 'string' && p.message.trim()) return p.message;
+      if (typeof p.message_text === 'string' && p.message_text.trim()) return p.message_text;
+      if (typeof p.body === 'string' && p.body.trim()) return p.body;
+      if (typeof p.conversation === 'string' && p.conversation.trim()) return p.conversation;
+      if (typeof p.caption === 'string' && p.caption.trim()) return p.caption;
+
+      // WhatsApp Cloud API / Baileys payload formats
+      if (p.text?.body && typeof p.text.body === 'string') return p.text.body;
+      if (p.extendedTextMessage?.text && typeof p.extendedTextMessage.text === 'string') return p.extendedTextMessage.text;
+      if (p.conversationMessage?.conversation && typeof p.conversationMessage.conversation === 'string') return p.conversationMessage.conversation;
+      if (p.messages?.[0]?.text?.body && typeof p.messages[0].text.body === 'string') return p.messages[0].text.body;
+      if (p.messages?.[0]?.body && typeof p.messages[0].body === 'string') return p.messages[0].body;
+      if (p.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body) {
+        return p.entry[0].changes[0].value.messages[0].text.body;
+      }
+    }
+  }
+
+  return m.text || m.message_text || '';
+}
+
 function normalizeMessage(m: DatabaseMessage): Message {
   let resolvedUser = m.user_id || m.user_phone;
+
+  if (!resolvedUser && m.payload) {
+    let p = m.payload;
+    if (typeof p === 'string') {
+      try {
+        p = JSON.parse(p);
+      } catch {
+        // ignore
+      }
+    }
+    if (typeof p === 'object' && p !== null) {
+      resolvedUser =
+        p.from ||
+        p.sender ||
+        p.phone ||
+        p.user_phone ||
+        p.user_id ||
+        p.messages?.[0]?.from ||
+        p.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.wa_id ||
+        p.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
+    }
+  }
+
   if (!resolvedUser) {
     if (m.sender && (m.sender.includes('+') || /\d{8,}/.test(m.sender))) {
       resolvedUser = m.sender;
@@ -59,16 +127,19 @@ function normalizeMessage(m: DatabaseMessage): Message {
     resolvedChannel = 'whatsapp';
   }
 
+  const msgText = extractMessageText(m);
+
   return {
     ...m,
     user_id: resolvedUser,
     channel: resolvedChannel,
     sender: m.sender || 'Unknown',
-    message_text: m.text || m.message_text || '',
+    message_text: msgText,
+    text: m.text ?? (msgText || undefined),
+    payload: m.payload ?? null,
     tenant_id: m.tenant_id ?? undefined,
     tenant_slug: m.tenant_slug ?? undefined,
     conversation_id: m.conversation_id ?? undefined,
-    text: m.text ?? undefined,
   };
 }
 
