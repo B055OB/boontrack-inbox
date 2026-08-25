@@ -8,6 +8,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 interface Message {
   id: string | number;
   tenant_id?: string;
+  tenant_slug?: string;
   conversation_id?: string;
   channel?: string;
   user_id?: string;
@@ -20,9 +21,12 @@ interface Message {
 interface DatabaseMessage {
   id: string | number;
   tenant_id?: string | null;
+  tenant_slug?: string | null;
   conversation_id?: string | null;
   channel?: string | null;
   user_id?: string | null;
+  user_phone?: string | null;
+  user_name?: string | null;
   sender?: string | null;
   text?: string | null;
   message_text?: string | null;
@@ -37,9 +41,9 @@ interface TenantInfo {
 }
 
 function normalizeMessage(m: DatabaseMessage): Message {
-  let resolvedUser = m.user_id;
+  let resolvedUser = m.user_id || m.user_phone;
   if (!resolvedUser) {
-    if (m.sender && m.sender.includes('+')) {
+    if (m.sender && (m.sender.includes('+') || /\d{8,}/.test(m.sender))) {
       resolvedUser = m.sender;
     } else {
       resolvedUser = m.conversation_id || 'User Tamu';
@@ -47,7 +51,11 @@ function normalizeMessage(m: DatabaseMessage): Message {
   }
 
   let resolvedChannel = m.channel || 'whatsapp';
-  if (m.sender?.toLowerCase().includes('bot') || m.sender?.toLowerCase().includes('career')) {
+  if (
+    m.sender?.toLowerCase().includes('bot') ||
+    m.sender?.toLowerCase().includes('career') ||
+    m.sender?.toLowerCase().includes('budi')
+  ) {
     resolvedChannel = 'whatsapp';
   }
 
@@ -58,6 +66,7 @@ function normalizeMessage(m: DatabaseMessage): Message {
     sender: m.sender || 'Unknown',
     message_text: m.text || m.message_text || '',
     tenant_id: m.tenant_id ?? undefined,
+    tenant_slug: m.tenant_slug ?? undefined,
     conversation_id: m.conversation_id ?? undefined,
     text: m.text ?? undefined,
   };
@@ -87,59 +96,81 @@ export default function TenantInboxPage() {
   useEffect(() => {
     let ignore = false;
 
-    async function loadInboxData() {
-      if (!tenantSlug) return;
+    async function fetchInitialMessages() {
+      if (!tenantSlug) {
+        setLoading(false);
+        return;
+      }
+
       try {
+        setLoading(true);
         const supabase = getSupabase();
 
         // 1. Ambil info tenant
-        const { data: tenant } = await supabase
+        const { data: tenant, error: tErr } = await supabase
           .from('tenants')
           .select('*')
           .eq('slug', tenantSlug)
           .maybeSingle();
 
-        if (ignore) return;
+        if (tErr) console.warn('Supabase tenant query error:', tErr);
 
-        if (tenant) {
-          setTenantInfo(tenant as TenantInfo);
-        } else {
-          const fallbackName = tenantSlug === 'om-budi' ? 'Om Budi Channel' : tenantSlug.replace(/-/g, ' ').toUpperCase();
-          setTenantInfo({
-            id: tenantSlug,
-            name: fallbackName,
-            slug: tenantSlug,
-            status: 'active',
-          });
+        if (!ignore) {
+          if (tenant) {
+            setTenantInfo(tenant as TenantInfo);
+          } else {
+            const fallbackName =
+              tenantSlug === 'om-budi'
+                ? 'Om Budi Channel'
+                : tenantSlug.replace(/-/g, ' ').toUpperCase();
+            setTenantInfo({
+              id: tenantSlug,
+              name: fallbackName,
+              slug: tenantSlug,
+              status: 'active',
+            });
+          }
         }
 
-        // 2. Query data messages (fallback ambil seluruh pesan jika tenant_id belum terisi)
-        const query = supabase.from('messages').select('*').order('created_at', { ascending: true });
+        // 2. Query data messages
+        const query = supabase
+          .from('messages')
+          .select('*')
+          .order('created_at', { ascending: true });
 
         const { data: messagesData, error: msgErr } = await query;
-        if (msgErr) console.error('Supabase query error:', msgErr);
+        if (msgErr) console.error('Supabase messages query error:', msgErr);
 
-        if (ignore) return;
+        if (!ignore) {
+          const rawMessages = (messagesData || []) as DatabaseMessage[];
+          const normalizedMsgs: Message[] = rawMessages.map(normalizeMessage);
 
-        // Normalisasi pesan (mengakomodasi kolom `text` atau `message_text`)
-        const rawMessages = (messagesData || []) as DatabaseMessage[];
-        const normalizedMsgs: Message[] = rawMessages.map(normalizeMessage);
+          // Filter pesan khusus tenant sesuai slug / tenant_id
+          const filteredForTenant = normalizedMsgs.filter((m) => {
+            if (m.tenant_slug === tenantSlug) return true;
+            if (m.tenant_id === tenantSlug) return true;
+            if (tenant && m.tenant_id === tenant.id) return true;
+            if (
+              tenantSlug === 'om-budi' &&
+              (m.tenant_id === 'om-budi' ||
+                m.tenant_id === 'om_budi' ||
+                m.tenant_slug === 'om-budi' ||
+                m.tenant_slug === 'om_budi')
+            ) {
+              return true;
+            }
+            if (!m.tenant_id && !m.tenant_slug) return true;
+            return false;
+          });
 
-        // Filter pesan khusus tenant jika kolom tenant_id terisi, jika kosong tampilkan di workspace aktif
-        const filteredForTenant = normalizedMsgs.filter((m) => {
-          if (!m.tenant_id) return true;
-          return (
-            m.tenant_id === tenantSlug ||
-            (tenant && m.tenant_id === tenant.id) ||
-            (tenantSlug === 'om-budi' && (m.tenant_id === 'om-budi' || m.tenant_id === 'om_budi'))
-          );
-        });
+          setMessages(filteredForTenant);
 
-        setMessages(filteredForTenant);
-
-        if (filteredForTenant.length > 0) {
-          const users = Array.from(new Set(filteredForTenant.map((m) => m.user_id))).filter(Boolean);
-          if (users.length > 0) setSelectedUserId(users[users.length - 1] as string);
+          if (filteredForTenant.length > 0) {
+            const users = Array.from(
+              new Set(filteredForTenant.map((m) => m.user_id))
+            ).filter(Boolean);
+            if (users.length > 0) setSelectedUserId(users[users.length - 1] as string);
+          }
         }
       } catch (err: unknown) {
         console.error('Error fetching inbox data:', err);
@@ -150,7 +181,7 @@ export default function TenantInboxPage() {
       }
     }
 
-    void loadInboxData();
+    void fetchInitialMessages();
 
     const supabase = getSupabase();
     const channel = supabase
@@ -161,14 +192,23 @@ export default function TenantInboxPage() {
         (payload) => {
           const m = payload.new as DatabaseMessage;
           const isMatch =
-            !m.tenant_id ||
+            m.tenant_slug === tenantSlug ||
             m.tenant_id === tenantSlug ||
-            (tenantInfo && m.tenant_id === tenantInfo.id) ||
-            (tenantSlug === 'om-budi' && (m.tenant_id === 'om-budi' || m.tenant_id === 'om_budi'));
+            (!m.tenant_id && !m.tenant_slug) ||
+            (tenantSlug === 'om-budi' &&
+              (m.tenant_id === 'om-budi' ||
+                m.tenant_id === 'om_budi' ||
+                m.tenant_slug === 'om-budi' ||
+                m.tenant_slug === 'om_budi'));
 
           if (isMatch) {
             const newMsg = normalizeMessage(m);
-            setMessages((prev) => [...prev, newMsg]);
+            setMessages((prev) => {
+              if (prev.some((p) => String(p.id) === String(newMsg.id))) {
+                return prev;
+              }
+              return [...prev, newMsg];
+            });
           }
         }
       )
@@ -178,7 +218,7 @@ export default function TenantInboxPage() {
       ignore = true;
       supabase.removeChannel(channel);
     };
-  }, [tenantSlug, tenantInfo]);
+  }, [tenantSlug]);
 
   // Filter List Percakapan
   const filteredMessages = messages.filter((m) => {
