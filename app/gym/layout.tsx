@@ -6,11 +6,13 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   Users,
-  CreditCard,
-  Cpu,
+  CalendarCheck,
+  Receipt,
+  ShoppingCart,
   ShieldCheck,
-  DoorOpen,
-  Activity,
+  Cpu,
+  BarChart3,
+  Settings,
   Menu,
   X,
   Dumbbell,
@@ -18,6 +20,7 @@ import {
   Building2,
   ExternalLink,
   Zap,
+  Activity,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -32,19 +35,43 @@ const NAV_ITEMS = [
     name: 'Members & NFC',
     href: '/gym/members',
     icon: Users,
-    subIcon: CreditCard,
   },
   {
-    name: 'Access Logs',
+    name: 'Zumba Studio Lt 2',
+    href: '/gym/classes',
+    icon: CalendarCheck,
+    badge: 'Jadwal',
+  },
+  {
+    name: 'Tagihan & Invoice',
+    href: '/gym/invoices',
+    icon: Receipt,
+  },
+  {
+    name: 'POS Cway / Cafe',
+    href: '/gym/pos',
+    icon: ShoppingCart,
+    badge: 'Kasir',
+  },
+  {
+    name: 'Gate Audit Logs',
     href: '/gym/access-logs',
     icon: ShieldCheck,
-    badge: 'Audit',
   },
   {
     name: 'Gate Controllers',
     href: '/gym/controllers',
     icon: Cpu,
-    subIcon: DoorOpen,
+  },
+  {
+    name: 'Laporan & Omzet',
+    href: '/gym/reports',
+    icon: BarChart3,
+  },
+  {
+    name: 'Pengaturan Gym',
+    href: '/gym/settings',
+    icon: Settings,
   },
 ];
 
@@ -191,8 +218,8 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Navigation Links */}
-          <nav className="p-4 space-y-1.5 flex-1">
-            <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-300">
+          <nav className="p-4 space-y-1 flex-1">
+            <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Menu Vertikal Gym
             </div>
 
@@ -204,23 +231,23 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all group ${
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group ${
                     active
                       ? 'bg-gradient-to-r from-emerald-600/90 to-teal-600/80 text-white shadow-lg shadow-emerald-900/30 font-semibold'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <Icon
-                      className={`w-4 h-4 transition-colors ${
+                      className={`w-4 h-4 transition-colors shrink-0 ${
                         active ? 'text-white' : 'text-slate-400 group-hover:text-emerald-400'
                       }`}
                     />
-                    <span>{item.name}</span>
+                    <span className="truncate">{item.name}</span>
                   </div>
                   {item.badge && (
                     <span
-                      className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                      className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${
                         active
                           ? 'bg-white/20 text-white'
                           : 'bg-slate-800 text-slate-400 group-hover:text-emerald-300 group-hover:bg-emerald-500/10'
@@ -233,11 +260,11 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
               );
             })}
 
-            <div className="pt-6 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-300">
+            <div className="pt-4 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
               Integrasi & Sistem
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-2.5">
+            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400 flex items-center gap-1.5">
                   <Zap className="w-3.5 h-3.5 text-amber-400" />
@@ -287,11 +314,11 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
                 <h2 className="text-lg font-bold text-white tracking-tight">Atmosfitnes Gym Control Hub</h2>
                 <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  GATE LIVE
+                  GATE & POS LIVE
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Tenant: <span className="text-slate-200 font-medium">atmosfitnes</span> &bull; RFID / NFC Gate Access Management
+                Tenant: <span className="text-slate-200 font-medium">atmosfitnes</span> &bull; RFID Gate &bull; Zumba Lt 2 &bull; POS Cafe &bull; Billing
               </p>
             </div>
           </div>
