@@ -555,16 +555,18 @@ const MOCK_INVOICES: GymInvoice[] = [
   },
 ];
 
-// Mock POS Products (Specified in directive)
+// Mock POS Products (Exact specification)
 const MOCK_POS_PRODUCTS: POSProduct[] = [
-  { id: 'pos-01', code: 'CW-01', name: 'Cway Lemon 250ml', category: 'Cway', price: 12000, stock: 48, is_active: true },
-  { id: 'pos-02', code: 'CW-02', name: 'Cway Original 250ml', category: 'Cway', price: 10000, stock: 55, is_active: true },
-  { id: 'pos-03', code: 'CF-01', name: 'Kentang Goreng Crispy', category: 'Cafe', price: 15000, stock: 30, is_active: true },
-  { id: 'pos-04', code: 'CF-02', name: 'Nasi Goreng Spesial Atmos', category: 'Cafe', price: 22000, stock: 25, is_active: true },
-  { id: 'pos-05', code: 'CO-01', name: 'Cappuccino Ice Blend', category: 'Coffee', price: 18000, stock: 60, is_active: true },
-  { id: 'pos-06', code: 'CO-02', name: 'Espresso Double Shot', category: 'Coffee', price: 14000, stock: 40, is_active: true },
-  { id: 'pos-07', code: 'RK-01', name: 'Marlboro Red / Filter', category: 'Rokok', price: 45000, stock: 20, is_active: true },
-  { id: 'pos-08', code: 'RK-02', name: 'Sampoerna Mild 16', category: 'Rokok', price: 35000, stock: 22, is_active: true },
+  { id: 'pos-01', code: 'CW-01', name: 'Cway Lemon', category: 'Cway', price: 10000, stock: 100, is_active: true },
+  { id: 'pos-02', code: 'CW-02', name: 'Cway Original', category: 'Cway', price: 8000, stock: 100, is_active: true },
+  { id: 'pos-03', code: 'CF-01', name: 'Kentang Goreng', category: 'Cafe', price: 15000, stock: 40, is_active: true },
+  { id: 'pos-04', code: 'CF-02', name: 'Mie Goreng', category: 'Cafe', price: 22000, stock: 30, is_active: true },
+  { id: 'pos-05', code: 'CF-03', name: 'Nasi Goreng', category: 'Cafe', price: 25000, stock: 30, is_active: true },
+  { id: 'pos-06', code: 'RK-01', name: 'Marlboro', category: 'Rokok', price: 35000, stock: 20, is_active: true },
+  { id: 'pos-07', code: 'RK-02', name: 'Sampoerna', category: 'Rokok', price: 25000, stock: 20, is_active: true },
+  { id: 'pos-08', code: 'CO-01', name: 'Cappuccino', category: 'Coffee', price: 20000, stock: 50, is_active: true },
+  { id: 'pos-09', code: 'CO-02', name: 'Espresso', category: 'Coffee', price: 15000, stock: 50, is_active: true },
+  { id: 'pos-10', code: 'CO-03', name: 'Latte', category: 'Coffee', price: 22000, stock: 50, is_active: true },
 ];
 
 const MOCK_POS_TRANSACTIONS: POSTransaction[] = [
@@ -1037,13 +1039,13 @@ export async function checkoutPOS(
 
 export async function getPOSTransactions(tenantId: string = DEFAULT_TENANT_ID): Promise<POSTransaction[]> {
   try {
-    const res = await fetch(`${DEFAULT_CORE_API_URL}/api/v1/gym/admin/pos/transactions`, {
+    const res = await fetch(`${DEFAULT_CORE_API_URL}/api/v1/gym/admin/pos/orders/today`, {
       headers: getGymApiHeaders(tenantId),
       cache: 'no-store',
     });
     if (res.ok) {
       const data = await res.json();
-      return Array.isArray(data) ? data : data.transactions || [];
+      return Array.isArray(data) ? data : data.orders || data.transactions || [];
     }
   } catch (error) {
     console.warn('[GymAPI] Fallback POS transactions:', error);

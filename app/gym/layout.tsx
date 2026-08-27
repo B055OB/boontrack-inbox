@@ -48,7 +48,7 @@ const NAV_ITEMS = [
     icon: Receipt,
   },
   {
-    name: 'POS Cway / Cafe',
+    name: 'POS (Cway/Cafe)',
     href: '/gym/pos',
     icon: ShoppingCart,
     badge: 'Kasir',
