@@ -15,12 +15,21 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check if request comes from Gym Subdomain (e.g., gym.boontrack.com or gym.localhost:3000)
+  const hostLower = host.toLowerCase();
+
+  // 1. Gym Subdomain Routing (e.g., gym.boontrack.com or gym.localhost:3000)
   const isGymSubdomain =
-    host.toLowerCase() === 'gym.boontrack.com' ||
-    host.toLowerCase().startsWith('gym.');
+    hostLower === 'gym.boontrack.com' ||
+    hostLower.startsWith('gym.');
 
   if (isGymSubdomain) {
+    // If accessing chat or inbox on gym subdomain, rewrite directly to dynamic tenant atmosfitnes shell
+    if (pathname === '/inbox' || pathname === '/chat' || pathname === '/atmosfitnes') {
+      const url = req.nextUrl.clone();
+      url.pathname = '/atmosfitnes';
+      return NextResponse.rewrite(url);
+    }
+
     // If the path already has /gym prefix, proceed normally
     if (pathname.startsWith('/gym')) {
       return NextResponse.next();
@@ -34,6 +43,16 @@ export function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = `/gym${pathname === '/' ? '' : pathname}`;
     return NextResponse.rewrite(url);
+  }
+
+  // 2. App Subdomain Routing (e.g., app.boontrack.com or app.localhost:3000)
+  // Request path app.boontrack.com/[tenant] langsung merender shell app/[tenant]/
+  const isAppSubdomain =
+    hostLower === 'app.boontrack.com' ||
+    hostLower.startsWith('app.');
+
+  if (isAppSubdomain) {
+    return NextResponse.next();
   }
 
   // Other hostnames (e.g., bossob.boontrack.com, chat.boontrack.com, etc.) continue standard routing

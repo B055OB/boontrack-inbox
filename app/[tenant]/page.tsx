@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { Dumbbell } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
 interface Message {
@@ -42,6 +43,91 @@ interface TenantInfo {
   name: string;
   slug: string;
   status: string;
+  category?: 'internal' | 'external' | string;
+  description?: string;
+}
+
+interface TenantMeta {
+  name: string;
+  category: 'internal' | 'external';
+  description: string;
+  defaultButtons: string[];
+  aliases: string[];
+  verticalHref?: string;
+  verticalLabel?: string;
+}
+
+export const KNOWN_TENANTS: Record<string, TenantMeta> = {
+  'atmosfitnes': {
+    name: 'Atmosfitnes Gym Hub',
+    category: 'external',
+    description: 'Atmosfitnes Gym Member & Guest Support, Gate RFID & POS Cafe',
+    defaultButtons: ['Info Membership', 'Jadwal Zumba', 'Cek Gate & NFC', 'POS Cafe'],
+    aliases: ['atmosfitnes', 'gym', 'atmosfitnes-south', 'atmosfitnes-hub'],
+    verticalHref: '/gym',
+    verticalLabel: 'Buka Gym Control Hub',
+  },
+  'om-budi': {
+    name: 'Om Budi Channel',
+    category: 'internal',
+    description: 'BoonTrack Ecosystem Internal AI Assistant & Multi-Channel Routing',
+    defaultButtons: ['Tanya Om Budi', 'Info Layanan', 'Status Bot'],
+    aliases: ['om-budi', 'om_budi'],
+  },
+  'indra-public': {
+    name: 'Kelurahan Indra Public Service',
+    category: 'external',
+    description: 'Layanan Aspirasi, Administrasi Surat & Pengaduan Warga Digital',
+    defaultButtons: ['Layanan Surat', 'Pengaduan Warga', 'Info Kelurahan', 'Kontak Petugas'],
+    aliases: ['indra-public', 'indra_public', 'kelurahan-indra', 'indra'],
+  },
+  'bale-pananggeuhan': {
+    name: 'Bale Pananggeuhan',
+    category: 'external',
+    description: 'Reservasi Tempat, Informasi Menu & Layanan Pelanggan Bale Pananggeuhan',
+    defaultButtons: ['Reservasi Tempat', 'Katalog Menu', 'Jam Buka', 'Kontak CS'],
+    aliases: ['bale-pananggeuhan', 'bale_pananggeuhan', 'bale'],
+  },
+  'career': {
+    name: 'BoonTrack Career AI',
+    category: 'internal',
+    description: 'Portal Konsultasi Karir, Analisis ATS CV & Simulasi Wawancara HR',
+    defaultButtons: ['Job Matcher AI', 'Simulasi HR', 'Negosiasi Gaji', 'Review CV ATS'],
+    aliases: ['career', 'boontrack-career', 'career-ai', 'career_service'],
+  },
+};
+
+function isMessageForTenant(
+  m: DatabaseMessage | Message,
+  slug: string,
+  tenantDbId?: string
+): boolean {
+  if (!slug) return false;
+  const lowerSlug = slug.toLowerCase();
+
+  const msgTenantId = (m.tenant_id || '').toLowerCase();
+  const msgTenantSlug = (m.tenant_slug || '').toLowerCase();
+
+  // Direct match with active slug or tenant ID from DB
+  if (msgTenantSlug === lowerSlug || msgTenantId === lowerSlug) return true;
+  if (tenantDbId && (msgTenantId === tenantDbId.toLowerCase() || msgTenantSlug === tenantDbId.toLowerCase())) {
+    return true;
+  }
+
+  // Check known aliases
+  const known = KNOWN_TENANTS[lowerSlug];
+  if (known?.aliases) {
+    if (known.aliases.some((alias) => alias.toLowerCase() === msgTenantSlug || alias.toLowerCase() === msgTenantId)) {
+      return true;
+    }
+  }
+
+  // If message has no tenant assigned at all, fallback to display
+  if (!m.tenant_id && !m.tenant_slug) {
+    return true;
+  }
+
+  return false;
 }
 
 function extractMessageText(m: DatabaseMessage): string {
@@ -143,7 +229,7 @@ function normalizeMessage(m: DatabaseMessage): Message {
   };
 }
 
-function extractInteractiveButtons(msg: Message): string[] {
+function extractInteractiveButtons(msg: Message, tenantSlug?: string): string[] {
   const buttons: string[] = [];
 
   if (msg.payload) {
@@ -227,9 +313,14 @@ function extractInteractiveButtons(msg: Message): string[] {
     msg.sender?.toLowerCase().includes('whatsapp') ||
     (msg.user_id && /^\d+$/.test(msg.user_id));
 
-  // If no buttons extracted from payload and sender is WhatsApp Bot, provide default choices
+  // If no buttons extracted from payload and sender is WhatsApp Bot, provide tenant default choices
   if (buttons.length === 0 && isBot && isWhatsapp) {
-    buttons.push('Job Matcher AI', 'Simulasi HR', 'Negosiasi Gaji');
+    const defaultBtns = tenantSlug && KNOWN_TENANTS[tenantSlug.toLowerCase()]?.defaultButtons;
+    if (defaultBtns && defaultBtns.length > 0) {
+      buttons.push(...defaultBtns);
+    } else {
+      buttons.push('Job Matcher AI', 'Simulasi HR', 'Negosiasi Gaji');
+    }
   }
 
   return Array.from(new Set(buttons));
@@ -238,6 +329,7 @@ function extractInteractiveButtons(msg: Message): string[] {
 export default function TenantInboxPage() {
   const params = useParams();
   const tenantSlug = Array.isArray(params?.tenant) ? params.tenant[0] : (params?.tenant as string);
+  const meta = tenantSlug ? KNOWN_TENANTS[tenantSlug.toLowerCase()] : undefined;
 
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -258,6 +350,8 @@ export default function TenantInboxPage() {
 
   useEffect(() => {
     let ignore = false;
+    const currentMeta = tenantSlug ? KNOWN_TENANTS[tenantSlug.toLowerCase()] : undefined;
+    let currentTenantId: string | undefined;
 
     async function fetchInitialMessages() {
       if (!tenantSlug) {
@@ -280,17 +374,25 @@ export default function TenantInboxPage() {
 
         if (!ignore) {
           if (tenant) {
-            setTenantInfo(tenant as TenantInfo);
+            currentTenantId = tenant.id;
+            setTenantInfo({
+              ...tenant,
+              category: tenant.category || currentMeta?.category || 'external',
+              description: currentMeta?.description,
+            } as TenantInfo);
           } else {
             const fallbackName =
-              tenantSlug === 'om-budi'
+              currentMeta?.name ||
+              (tenantSlug === 'om-budi'
                 ? 'Om Budi Channel'
-                : tenantSlug.replace(/-/g, ' ').toUpperCase();
+                : tenantSlug.replace(/-/g, ' ').toUpperCase());
             setTenantInfo({
               id: tenantSlug,
               name: fallbackName,
               slug: tenantSlug,
               status: 'active',
+              category: currentMeta?.category || 'external',
+              description: currentMeta?.description,
             });
           }
         }
@@ -309,22 +411,9 @@ export default function TenantInboxPage() {
           const normalizedMsgs: Message[] = rawMessages.map(normalizeMessage);
 
           // Filter pesan khusus tenant sesuai slug / tenant_id
-          const filteredForTenant = normalizedMsgs.filter((m) => {
-            if (m.tenant_slug === tenantSlug) return true;
-            if (m.tenant_id === tenantSlug) return true;
-            if (tenant && m.tenant_id === tenant.id) return true;
-            if (
-              tenantSlug === 'om-budi' &&
-              (m.tenant_id === 'om-budi' ||
-                m.tenant_id === 'om_budi' ||
-                m.tenant_slug === 'om-budi' ||
-                m.tenant_slug === 'om_budi')
-            ) {
-              return true;
-            }
-            if (!m.tenant_id && !m.tenant_slug) return true;
-            return false;
-          });
+          const filteredForTenant = normalizedMsgs.filter((m) =>
+            isMessageForTenant(m, tenantSlug, tenant?.id)
+          );
 
           setMessages(filteredForTenant);
 
@@ -354,15 +443,7 @@ export default function TenantInboxPage() {
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
           const m = payload.new as DatabaseMessage;
-          const isMatch =
-            m.tenant_slug === tenantSlug ||
-            m.tenant_id === tenantSlug ||
-            (!m.tenant_id && !m.tenant_slug) ||
-            (tenantSlug === 'om-budi' &&
-              (m.tenant_id === 'om-budi' ||
-                m.tenant_id === 'om_budi' ||
-                m.tenant_slug === 'om-budi' ||
-                m.tenant_slug === 'om_budi'));
+          const isMatch = isMessageForTenant(m, tenantSlug, currentTenantId);
 
           if (isMatch) {
             const newMsg = normalizeMessage(m);
@@ -422,14 +503,36 @@ export default function TenantInboxPage() {
           >
             &larr; Super Admin
           </Link>
+          {meta?.verticalHref && (
+            <Link
+              href={meta.verticalHref}
+              className="text-xs bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5 font-semibold shadow-sm shadow-emerald-950"
+            >
+              <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{meta.verticalLabel || 'Buka Vertical Hub'} &rarr;</span>
+            </Link>
+          )}
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-white">{tenantInfo?.name || tenantSlug}</h1>
+              <h1 className="text-sm font-bold text-white">{tenantInfo?.name || meta?.name || tenantSlug}</h1>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
                 {tenantSlug}
               </span>
+              {(tenantInfo?.category || meta?.category) && (
+                <span
+                  className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                    (tenantInfo?.category || meta?.category) === 'internal'
+                      ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
+                      : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                  }`}
+                >
+                  {(tenantInfo?.category || meta?.category) === 'internal' ? 'Internal' : 'Client B2B'}
+                </span>
+              )}
             </div>
-            <p className="text-[10px] text-slate-400">Live Stream Supabase: Webchat, WhatsApp & Telegram</p>
+            <p className="text-[10px] text-slate-400">
+              {tenantInfo?.description || meta?.description || 'Live Stream Supabase: Webchat, WhatsApp & Telegram'}
+            </p>
           </div>
         </div>
 
@@ -548,7 +651,7 @@ export default function TenantInboxPage() {
                     msg.sender?.toLowerCase().includes('career') ||
                     msg.sender?.toLowerCase().includes('assistant');
 
-                  const interactiveButtons = isBot ? extractInteractiveButtons(msg) : [];
+                  const interactiveButtons = isBot ? extractInteractiveButtons(msg, tenantSlug) : [];
 
                   return (
                     <div

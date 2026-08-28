@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { getSupabase } from '@/lib/supabaseClient';
 
 interface Tenant {
@@ -21,6 +22,7 @@ interface Tenant {
 const INTERNAL_SLUGS = [
   'boontrack-holding',
   'boontrack-career',
+  'career',
   'boontrack-kurir',
   'boontrack-bola',
   'boontrack-loker',
@@ -28,8 +30,8 @@ const INTERNAL_SLUGS = [
   'om-budi',
 ];
 
-// Default internal workspaces fallback
-const DEFAULT_INTERNAL_TENANTS: Tenant[] = [
+// Default core workspaces fallback (5 core dynamic tenants)
+const DEFAULT_CORE_TENANTS: Tenant[] = [
   {
     id: 'om-budi',
     name: 'Om Budi Channel',
@@ -41,6 +43,54 @@ const DEFAULT_INTERNAL_TENANTS: Tenant[] = [
     access_username: 'admin',
     access_password: '••••••••',
     monthly_fee: 0,
+  },
+  {
+    id: 'career',
+    name: 'BoonTrack Career AI',
+    slug: 'career',
+    category: 'internal',
+    status: 'active',
+    start_date: '2025-01-01',
+    due_date: null,
+    access_username: 'admin',
+    access_password: '••••••••',
+    monthly_fee: 0,
+  },
+  {
+    id: 'atmosfitnes',
+    name: 'Atmosfitnes Gym Hub',
+    slug: 'atmosfitnes',
+    category: 'external',
+    status: 'active',
+    start_date: '2025-01-01',
+    due_date: null,
+    access_username: 'admin',
+    access_password: '••••••••',
+    monthly_fee: 1500000,
+  },
+  {
+    id: 'indra-public',
+    name: 'Kelurahan Indra Public Service',
+    slug: 'indra-public',
+    category: 'external',
+    status: 'active',
+    start_date: '2025-01-01',
+    due_date: null,
+    access_username: 'admin',
+    access_password: '••••••••',
+    monthly_fee: 500000,
+  },
+  {
+    id: 'bale-pananggeuhan',
+    name: 'Bale Pananggeuhan',
+    slug: 'bale-pananggeuhan',
+    category: 'external',
+    status: 'active',
+    start_date: '2025-01-01',
+    due_date: null,
+    access_username: 'admin',
+    access_password: '••••••••',
+    monthly_fee: 750000,
   },
 ];
 
@@ -117,7 +167,7 @@ export default function SuperAdminDashboard() {
         const existingSlugs = new Set(rawTenants.map((t) => t.slug));
         const combinedTenants = [
           ...rawTenants,
-          ...DEFAULT_INTERNAL_TENANTS.filter((dt) => !existingSlugs.has(dt.slug)),
+          ...DEFAULT_CORE_TENANTS.filter((dt) => !existingSlugs.has(dt.slug)),
         ];
 
         const mapped = combinedTenants.map((t) => {
@@ -356,14 +406,22 @@ export default function SuperAdminDashboard() {
                             </span>
                             <p className="font-semibold text-white text-sm">{t.name}</p>
                           </div>
-                          <a
-                            href={`https://chat.boontrack.com/${t.slug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-400 hover:underline text-[11px] inline-flex items-center gap-1"
-                          >
-                            Buka Monitoring Chat (/{t.slug}) ↗
-                          </a>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Link
+                              href={`/${t.slug}`}
+                              className="text-blue-400 hover:underline text-[11px] inline-flex items-center gap-1 font-medium"
+                            >
+                              Buka Monitoring Chat (/{t.slug}) &rarr;
+                            </Link>
+                            {t.slug === 'atmosfitnes' && (
+                              <Link
+                                href="/gym"
+                                className="text-[10px] bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 px-2 py-0.5 rounded border border-emerald-500/40 inline-flex items-center gap-1 font-semibold transition"
+                              >
+                                Gym Control Hub &rarr;
+                              </Link>
+                            )}
+                          </div>
                         </td>
 
                         <td className="px-6 py-4 text-slate-300 font-mono text-[11px]">
