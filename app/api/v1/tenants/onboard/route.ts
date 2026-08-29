@@ -12,10 +12,12 @@ export async function POST(req: NextRequest) {
       waNumber,
       category,
       referralCode,
+      productType,
       productName,
       productPrice,
       promoBundle,
       variants,
+      downloadUrl,
       aiTone,
       bankName,
       bankAccountNumber,
@@ -53,6 +55,7 @@ export async function POST(req: NextRequest) {
     const botNumber = process.env.NEXT_PUBLIC_BOT_WA_NUMBER || '6281298877665';
 
     // Prepare welcome/activation message for WhatsApp
+    const isDigital = productType === 'digital' || category === 'digital';
     const waText =
       `Halo Admin BoonTrack AI, saya baru saja menyelesaikan Onboarding Toko:\n\n` +
       `🏪 *Toko:* ${storeName}\n` +
@@ -60,9 +63,12 @@ export async function POST(req: NextRequest) {
       `📱 *WhatsApp:* +${formattedWa}\n` +
       `🏷 *Kategori:* ${category}\n` +
       (referralCode ? `🎁 *Referral:* ${referralCode}\n` : '') +
-      (productName ? `📦 *Produk Sampel:* ${productName} (Rp ${Number(productPrice || 0).toLocaleString('id-ID')})\n` : '') +
+      (productName
+        ? `📦 *Produk Sampel:* ${productName} (Rp ${Number(productPrice || 0).toLocaleString('id-ID')}) [${isDigital ? 'DIGITAL' : 'FISIK'}]\n`
+        : '') +
       (promoBundle ? `🎉 *Promo:* ${promoBundle}\n` : '') +
-      (variants ? `🎨 *Varian:* ${variants}\n` : '') +
+      (variants ? `🎨 *Format/Varian:* ${variants}\n` : '') +
+      (downloadUrl ? `🔗 *Akses/Download Link:* ${downloadUrl}\n` : '') +
       (aiTone ? `🤖 *Tone AI:* ${aiTone}\n` : '') +
       (bankName ? `💳 *Rekening:* ${bankName} - ${bankAccountNumber} a.n ${bankAccountHolder}\n` : '') +
       `\nMohon segera aktivasi WhatsApp Gateway & AI Assistant untuk toko saya. Terima kasih!`;
@@ -81,10 +87,12 @@ export async function POST(req: NextRequest) {
             wa_number: formattedWa,
             referral_code: referralCode || null,
             product: {
+              type: isDigital ? 'digital' : 'physical',
               name: productName,
               price: productPrice,
               promo: promoBundle,
               variants,
+              download_url: downloadUrl || null,
               tone: aiTone,
             },
             bank: {

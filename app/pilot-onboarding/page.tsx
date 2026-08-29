@@ -18,13 +18,14 @@ import {
   Send,
   ExternalLink,
   ShieldCheck,
-  Zap,
   ShoppingBag,
   CreditCard,
   Copy,
   Check,
   MessageSquare,
   BadgeCheck,
+  GraduationCap,
+  Link2,
 } from 'lucide-react';
 
 interface FormData {
@@ -36,10 +37,12 @@ interface FormData {
   referralCode: string;
 
   // Step 2: Produk & AI
+  productType: 'digital' | 'physical';
   productName: string;
   productPrice: string;
   promoBundle: string;
   variants: string;
+  downloadUrl: string;
   aiTone: string;
 
   // Step 3: Rekening & WhatsApp
@@ -51,15 +54,45 @@ interface FormData {
 }
 
 const CATEGORIES = [
-  { id: 'fashion', label: 'Fashion & Hijab Modest Wear', icon: ShoppingBag },
-  { id: 'fnb', label: 'F&B, Cafe, Resto & Kuliner', icon: Store },
-  { id: 'fitness', label: 'Fitness, Studio & Gym Hub', icon: Zap },
-  { id: 'beauty', label: 'Klinik & Salon Kecantikan', icon: Sparkles },
-  { id: 'retail', label: 'Retail, Minimarket & Sembako', icon: Package },
-  { id: 'services', label: 'Jasa Profesional & Konsultan', icon: Building2 },
+  {
+    id: 'digital',
+    label: 'Produk Digital & Edukasi',
+    sub: 'E-Book, Course, Template, Webinar',
+    icon: GraduationCap,
+  },
+  {
+    id: 'fashion',
+    label: 'Fashion & Modest Wear',
+    sub: 'Pakaian, Hijab, Apparel',
+    icon: ShoppingBag,
+  },
+  {
+    id: 'beauty',
+    label: 'Kecantikan & Herbal',
+    sub: 'Skincare, Kosmetik, Suplemen',
+    icon: Sparkles,
+  },
+  {
+    id: 'fnb',
+    label: 'F&B & Kuliner',
+    sub: 'Makanan, Minuman, Frozen Food',
+    icon: Store,
+  },
+  {
+    id: 'services',
+    label: 'Jasa & Konsultasi',
+    sub: 'Layanan, Booking, Jasa',
+    icon: Building2,
+  },
 ];
 
 const AI_TONES = [
+  {
+    id: 'edukatif',
+    name: 'Edukatif & Expert',
+    desc: 'Menjelaskan materi silabus, manfaat e-book/course, dan panduan download secara jelas.',
+    sample: 'Halo! Selamat datang di program pembelajaran kami 📚 Ada silabus materi atau preview e-book yang ingin Anda pelajari sebelum memulai?',
+  },
   {
     id: 'casual_modest',
     name: 'Ramah & Santun (Casual Modest)',
@@ -130,13 +163,15 @@ function PilotOnboardingWizard() {
     storeName: '',
     slug: '',
     waNumber: '628',
-    category: 'fashion',
+    category: 'digital',
     referralCode: rawRef || '',
+    productType: 'digital',
     productName: '',
     productPrice: '',
     promoBundle: '',
     variants: '',
-    aiTone: 'casual_modest',
+    downloadUrl: '',
+    aiTone: 'edukatif',
     bankName: 'BCA (Bank Central Asia)',
     bankAccountNumber: '',
     bankAccountHolder: '',
@@ -168,6 +203,18 @@ function PilotOnboardingWizard() {
     const raw = e.target.value;
     const sanitized = sanitizeWaNumber(raw);
     setFormData((prev) => ({ ...prev, waNumber: sanitized }));
+  };
+
+  const handleCategorySelect = (catId: string) => {
+    setFormData((prev) => {
+      const isDig = catId === 'digital';
+      return {
+        ...prev,
+        category: catId,
+        productType: isDig ? 'digital' : 'physical',
+        aiTone: isDig ? 'edukatif' : prev.aiTone === 'edukatif' ? 'casual_modest' : prev.aiTone,
+      };
+    });
   };
 
   // Form field validations per step
@@ -240,10 +287,12 @@ function PilotOnboardingWizard() {
         waNumber: formData.waNumber.trim(),
         category: formData.category,
         referralCode: formData.referralCode.trim(),
+        productType: formData.productType,
         productName: formData.productName.trim(),
         productPrice: cleanPrice,
         promoBundle: formData.promoBundle.trim(),
         variants: formData.variants.trim(),
+        downloadUrl: formData.downloadUrl.trim(),
         aiTone: formData.aiTone,
         bankName: formData.bankName,
         bankAccountNumber: formData.bankAccountNumber.trim(),
@@ -288,6 +337,8 @@ function PilotOnboardingWizard() {
     }
   };
 
+  const isDigital = formData.productType === 'digital' || formData.category === 'digital';
+
   const storeNameId = useId();
   const slugId = useId();
   const waNumberId = useId();
@@ -297,6 +348,7 @@ function PilotOnboardingWizard() {
   const productPriceId = useId();
   const promoBundleId = useId();
   const variantsId = useId();
+  const downloadUrlId = useId();
   const bankNameId = useId();
   const bankAccountNumId = useId();
   const bankAccountHolderId = useId();
@@ -409,7 +461,7 @@ function PilotOnboardingWizard() {
         )}
 
         {/* ========================================================================= */}
-        {/* STEP 1: Identitas Toko, WhatsApp 628, Kategori & Referral                 */}
+        {/* STEP 1: Identitas Toko, WhatsApp 628, 5 Kategori Fokus & Referral         */}
         {/* ========================================================================= */}
         {step === 1 && (
           <div className="bg-slate-900/70 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-6">
@@ -437,7 +489,7 @@ function PilotOnboardingWizard() {
                     required
                     value={formData.storeName}
                     onChange={handleStoreNameChange}
-                    placeholder="Contoh: Butik Nyka Hijab / Kopi Janji Kita"
+                    placeholder="Contoh: Akademi Creator Pro / Butik Nyka Hijab"
                     className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition"
                   />
                 </div>
@@ -489,7 +541,7 @@ function PilotOnboardingWizard() {
                   />
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Masukkan nomor WhatsApp CS/Owner yang akan menerima notifikasi order dan pesan dari pelanggan.
+                  Nomor WhatsApp CS/Owner yang akan menerima notifikasi order dan pesan dari pelanggan.
                 </p>
               </div>
 
@@ -522,12 +574,16 @@ function PilotOnboardingWizard() {
                 </p>
               </div>
 
-              {/* Kategori Industri */}
-              <div className="space-y-1.5 sm:col-span-2">
-                <label htmlFor={categoryId} className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                  Kategori Industri Bisnis <span className="text-rose-400">*</span>
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {/* 5 Kategori Industri Fokus */}
+              <div className="space-y-2 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label htmlFor={categoryId} className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Kategori Industri Bisnis <span className="text-rose-400">*</span>
+                  </label>
+                  <span className="text-[10px] text-slate-500">5 Kategori Unggulan</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {CATEGORIES.map((cat) => {
                     const Icon = cat.icon;
                     const isSelected = formData.category === cat.id;
@@ -535,15 +591,26 @@ function PilotOnboardingWizard() {
                       <button
                         key={cat.id}
                         type="button"
-                        onClick={() => setFormData({ ...formData, category: cat.id })}
-                        className={`p-3 rounded-xl border text-left transition flex flex-col gap-2 ${
+                        onClick={() => handleCategorySelect(cat.id)}
+                        className={`p-3.5 rounded-2xl border text-left transition flex items-start gap-3 ${
                           isSelected
-                            ? 'bg-blue-600/15 border-blue-500 text-blue-300 ring-1 ring-blue-500/50'
+                            ? 'bg-blue-600/15 border-blue-500 text-blue-300 ring-1 ring-blue-500/50 shadow-md shadow-blue-950'
                             : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-300'
                         }`}
                       >
-                        <Icon className={`w-4 h-4 ${isSelected ? 'text-blue-400' : 'text-slate-500'}`} />
-                        <span className="text-xs font-semibold leading-tight">{cat.label}</span>
+                        <div
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                            isSelected ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-900 text-slate-500'
+                          }`}
+                        >
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                            {cat.label}
+                          </p>
+                          <p className="text-[11px] text-slate-400 truncate mt-0.5">{cat.sub}</p>
+                        </div>
                       </button>
                     );
                   })}
@@ -566,7 +633,7 @@ function PilotOnboardingWizard() {
         )}
 
         {/* ========================================================================= */}
-        {/* STEP 2: Input 1 Produk Sampel & Tone of Voice AI                         */}
+        {/* STEP 2: Input 1 Produk Sampel, Opsi Digital/Fisik & Tone of Voice AI      */}
         {/* ========================================================================= */}
         {step === 2 && (
           <div className="bg-slate-900/70 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-6">
@@ -578,6 +645,64 @@ function PilotOnboardingWizard() {
               <p className="text-xs sm:text-sm text-slate-400 mt-1">
                 Masukkan 1 produk unggulan Anda. AI Assistant akan mempelajari deskripsi produk ini untuk menjawab pelanggan Anda.
               </p>
+            </div>
+
+            {/* Toggle Tipe Produk: Digital vs Fisik */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center font-bold text-xs border border-indigo-500/30">
+                  {isDigital ? <GraduationCap className="w-4 h-4" /> : <Package className="w-4 h-4" />}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white">
+                    Tipe Produk: {isDigital ? 'Produk Digital & Edukasi' : 'Produk Fisik / Barang'}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    {isDigital
+                      ? 'Format file download, akses web/member area, e-book, video materi, atau webinar.'
+                      : 'Barang fisik yang dikirimkan melalui jasa kurir ekspedisi.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 p-1 bg-slate-900 rounded-xl border border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      productType: 'digital',
+                      aiTone: formData.aiTone === 'casual_modest' ? 'edukatif' : formData.aiTone,
+                    })
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                    formData.productType === 'digital'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  <span>Digital</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      productType: 'physical',
+                      aiTone: formData.aiTone === 'edukatif' ? 'casual_modest' : formData.aiTone,
+                    })
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                    formData.productType === 'physical'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  <span>Fisik</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -594,7 +719,11 @@ function PilotOnboardingWizard() {
                     required
                     value={formData.productName}
                     onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                    placeholder="Contoh: Pashmina Silk Plisket / Kopi Susu Creamy 500ml"
+                    placeholder={
+                      isDigital
+                        ? 'Contoh: E-Book Panduan Promosi AI 2026 / Masterclass Reels Canva'
+                        : 'Contoh: Pashmina Silk Plisket / Kopi Susu Creamy 500ml'
+                    }
                     className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition"
                   />
                 </div>
@@ -616,7 +745,7 @@ function PilotOnboardingWizard() {
                       const num = e.target.value.replace(/\D/g, '');
                       setFormData({ ...formData, productPrice: num ? Number(num).toLocaleString('id-ID') : '' });
                     }}
-                    placeholder="75.000"
+                    placeholder={isDigital ? '49.000' : '75.000'}
                     className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-11 pr-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition"
                   />
                 </div>
@@ -632,25 +761,56 @@ function PilotOnboardingWizard() {
                   type="text"
                   value={formData.promoBundle}
                   onChange={(e) => setFormData({ ...formData, promoBundle: e.target.value })}
-                  placeholder="Contoh: Beli 2 Diskon 10% / Free Ongkir"
+                  placeholder={isDigital ? 'Contoh: Bonus 50 Prompt ChatGPT / Akses Grup VIP' : 'Contoh: Beli 2 Diskon 10% / Free Ongkir'}
                   className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
 
-              {/* Varian Produk */}
+              {/* Varian Produk / Format Akses */}
               <div className="space-y-1.5 sm:col-span-2">
                 <label htmlFor={variantsId} className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                  Pilihan Varian (Warna / Ukuran / Rasa)
+                  {isDigital ? 'Format File & Akses Materi' : 'Pilihan Varian (Warna / Ukuran / Rasa)'}
                 </label>
                 <input
                   id={variantsId}
                   type="text"
                   value={formData.variants}
                   onChange={(e) => setFormData({ ...formData, variants: e.target.value })}
-                  placeholder="Contoh: Hitam, Sage Green, Mocca, Broken White (Ukuran All Size)"
+                  placeholder={
+                    isDigital
+                      ? 'Contoh: PDF + Video HD / Canva Template Link / Akses Member Area Web'
+                      : 'Contoh: Hitam, Sage Green, Mocca, Broken White (Ukuran All Size)'
+                  }
                   className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
+
+              {/* Akses Link / Download URL for Digital Products */}
+              {isDigital && (
+                <div className="space-y-1.5 sm:col-span-2 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor={downloadUrlId} className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                      <Link2 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Akses Link / Download URL (Opsional)</span>
+                    </label>
+                    <span className="text-[10px] text-cyan-400 font-medium">Kirim Otomatis Pasca Bayar</span>
+                  </div>
+                  <div className="relative">
+                    <Link2 className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                    <input
+                      id={downloadUrlId}
+                      type="url"
+                      value={formData.downloadUrl}
+                      onChange={(e) => setFormData({ ...formData, downloadUrl: e.target.value })}
+                      placeholder="https://drive.google.com/... atau https://member.tokosaya.com/..."
+                      className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white font-mono placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Link materi atau file download ini akan otomatis dikirimkan oleh Bot WhatsApp kepada pembeli segera setelah pembayaran QRIS terverifikasi sukses.
+                  </p>
+                </div>
+              )}
 
               {/* Tone of Voice AI */}
               <div className="space-y-2 sm:col-span-2 pt-2">
@@ -673,7 +833,14 @@ function PilotOnboardingWizard() {
                             : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
                         }`}
                       >
-                        <p className="text-xs font-bold text-indigo-300">{tone.name}</p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-indigo-300">{tone.name}</p>
+                          {tone.id === 'edukatif' && (
+                            <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                              Digital Ready
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[11px] text-slate-400">{tone.desc}</p>
                         <div className="mt-2 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 italic">
                           &ldquo;{tone.sample}&rdquo;
@@ -785,7 +952,7 @@ function PilotOnboardingWizard() {
               <ul className="text-xs text-slate-300 space-y-2">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                  <span><strong>AI Customer Service 24/7</strong>: Menjawab stok, bahan, dan cara order secara instan.</span>
+                  <span><strong>AI Customer Service 24/7</strong>: Menjawab silabus, stok, dan panduan order secara instan.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
@@ -793,7 +960,7 @@ function PilotOnboardingWizard() {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                  <span><strong>Dashboard CS Real-Time</strong>: Pantau seluruh chat pelanggan di dashboard omnichannel.</span>
+                  <span><strong>Instant Link Delivery</strong>: Kirim otomatis link download file atau akses materi pasca pembayaran.</span>
                 </li>
               </ul>
             </div>
@@ -887,6 +1054,12 @@ function PilotOnboardingWizard() {
               <div className="flex justify-between py-1 border-b border-slate-800/60">
                 <span className="text-slate-400">Nama Toko:</span>
                 <span className="font-bold text-white">{onboardedResult.storeName}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <span className="text-slate-400">Kategori / Tipe:</span>
+                <span className="font-bold text-indigo-400 capitalize">
+                  {formData.category} ({isDigital ? 'Digital' : 'Fisik'})
+                </span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-800/60">
                 <span className="text-slate-400">Domain URL Toko:</span>
