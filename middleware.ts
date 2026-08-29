@@ -2,21 +2,64 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 /**
- * Known B2B Retail / UMKM / Public Tenant Slugs.
+ * Known B2B Retail / UMKM / Digital / Public Tenant Slugs.
  * Subdomains matching these slugs will be dispatched to the B2B Multi-Tenant engine (/[tenant]),
  * NOT to the Career/Resume template.
+ *
+ * NOTE: Must be kept in sync with KNOWN_TENANTS in app/[tenant]/page.tsx
+ * (cannot import from there because middleware runs on Edge runtime)
  */
 const B2B_TENANT_SLUGS = new Set([
-  'nyka',
+  // Gym / Fitness
   'atmosfitnes',
+  'gym',
+  // Retail / Modest Wear
+  'nyka',
+  'nyka-hijab',
+  'nyka-modest',
+  'nyka-store',
+  // Digital Education
+  'suhu-ads',
+  'suhu-ads-masterclass',
+  'suhuads',
+  'masterclass',
+  'digital-marketing',
+  // Food & Beverage
   'bale-pananggeuhan',
+  'bale-pananggeuhan',
+  'bale',
+  // Public Service
   'pelayanan-publik',
-  'indra-public',
   'pelayanan-publik-dummy',
+  'indra-public',
+  'indra-public',
+  'indra',
+  'kelurahan-indra',
+  // Internal / Demo
   'om-budi',
+  'om_budi',
   'boontrack-demo',
-  'holding',
   'boontrack-holding',
+  'holding',
+  'shop',
+  // Additional B2B tenants onboarded via wizard
+  // (add new slugs here as tenants are onboarded)
+]);
+
+/**
+ * Known Career/Jobseeker Profile subdomains.
+ * ONLY these subdomains will be dispatched to the Career/Resume template.
+ * Any other unknown subdomain is treated as a dynamic B2B tenant.
+ */
+const CAREER_KNOWN_SLUGS = new Set([
+  'cv',
+  'career',
+  'resume',
+  'profile',
+  'bossob',
+  'rayi-gemilang',
+  'rayi',
+  // Add jobseeker profile subdomains here
 ]);
 
 /**
@@ -59,7 +102,7 @@ function extractSubdomain(hostWithPort: string): string | null {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 0. Ignore static assets, internal Next.js paths, and API endpoints
+  // 0. Always pass through: static assets, internal Next.js paths, and API endpoints
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
@@ -70,6 +113,11 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/enterprise/') ||
     pathname.includes('.')
   ) {
+    return NextResponse.next();
+  }
+
+  // 0b. Always pass through /admin path — never rewrite to career or tenant page
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
     return NextResponse.next();
   }
 
@@ -165,7 +213,7 @@ export function middleware(req: NextRequest) {
   }
 
   // ---------------------------------------------------------------------------
-  // 3. B2B Tenant Subdomain (Retail / Hijab / UMKM e.g. nyka, bale-pananggeuhan)
+  // 3. B2B Tenant Subdomain (Retail / Digital / UMKM e.g. nyka, suhu-ads-masterclass)
   // ---------------------------------------------------------------------------
   if (B2B_TENANT_SLUGS.has(subdomain)) {
     const url = req.nextUrl.clone();
@@ -200,48 +248,83 @@ export function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // Allow /admin paths to pass through
-    if (pathname.startsWith('/admin')) {
-      return NextResponse.next();
-    }
-
     // Fallback for other subpaths on this B2B tenant domain
     url.pathname = `/${subdomain}${pathname}`;
     return NextResponse.rewrite(url);
   }
 
   // ---------------------------------------------------------------------------
-  // 4. Career Fallback: Jobseeker Profile Subdomains (e.g. cv, rayi-gemilang)
+  // 4. Career Fallback: Jobseeker Profile Subdomains (EXPLICIT list only)
+  //    e.g. cv.boontrack.com, bossob.boontrack.com, rayi-gemilang.boontrack.com
   // ---------------------------------------------------------------------------
-  const url = req.nextUrl.clone();
+  if (CAREER_KNOWN_SLUGS.has(subdomain)) {
+    const url = req.nextUrl.clone();
 
-  // Clean URL enforcement: strip internal /career/${subdomain} prefix
-  if (
-    pathname === `/career/${subdomain}` ||
-    pathname === `/career/${subdomain}/`
-  ) {
-    url.pathname = '/';
-    return NextResponse.redirect(url, 307);
-  }
-  if (pathname.startsWith(`/career/${subdomain}/`)) {
-    url.pathname = pathname.replace(`/career/${subdomain}`, '') || '/';
-    return NextResponse.redirect(url, 307);
-  }
+    // Clean URL enforcement: strip internal /career/${subdomain} prefix
+    if (
+      pathname === `/career/${subdomain}` ||
+      pathname === `/career/${subdomain}/`
+    ) {
+      url.pathname = '/';
+      return NextResponse.redirect(url, 307);
+    }
+    if (pathname.startsWith(`/career/${subdomain}/`)) {
+      url.pathname = pathname.replace(`/career/${subdomain}`, '') || '/';
+      return NextResponse.redirect(url, 307);
+    }
 
-  // Root -> Candidate's Public Career Profile & ATS Resume
-  if (pathname === '/') {
-    url.pathname = `/career/${subdomain}`;
+    // Root -> Candidate's Public Career Profile & ATS Resume
+    if (pathname === '/') {
+      url.pathname = `/career/${subdomain}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // Fallback for candidate profile subpaths (e.g. /portfolio, /resume)
+    url.pathname = `/career/${subdomain}${pathname}`;
     return NextResponse.rewrite(url);
   }
 
-  // Allow /admin paths to pass through
-  if (pathname.startsWith('/admin')) {
-    return NextResponse.next();
-  }
+  // ---------------------------------------------------------------------------
+  // 5. Dynamic B2B Tenant Fallback: Unknown subdomain treated as dynamic tenant
+  //    (for tenants onboarded via wizard that aren't explicitly listed above)
+  // ---------------------------------------------------------------------------
+  {
+    const url = req.nextUrl.clone();
 
-  // Fallback for candidate profile subpaths (e.g. /portfolio, /resume)
-  url.pathname = `/career/${subdomain}${pathname}`;
-  return NextResponse.rewrite(url);
+    // Clean URL enforcement
+    if (pathname === `/${subdomain}` || pathname === `/${subdomain}/`) {
+      url.pathname = '/';
+      return NextResponse.redirect(url, 307);
+    }
+    if (pathname === `/${subdomain}/dashboard`) {
+      url.pathname = '/dashboard';
+      return NextResponse.redirect(url, 307);
+    }
+    if (pathname.startsWith(`/${subdomain}/`)) {
+      url.pathname = pathname.replace(`/${subdomain}`, '') || '/';
+      return NextResponse.redirect(url, 307);
+    }
+
+    // Root -> Public Webchat Demo for dynamic tenant
+    if (pathname === '/') {
+      url.pathname = `/${subdomain}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // Dashboard / Inbox for dynamic tenant
+    if (
+      pathname === '/dashboard' ||
+      pathname === '/inbox' ||
+      pathname === '/chat'
+    ) {
+      url.pathname = `/${subdomain}/dashboard`;
+      return NextResponse.rewrite(url);
+    }
+
+    // Fallback subpaths
+    url.pathname = `/${subdomain}${pathname}`;
+    return NextResponse.rewrite(url);
+  }
 }
 
 export const config = {
