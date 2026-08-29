@@ -21,6 +21,8 @@ import {
   Users,
   Compass,
   ShoppingBag,
+  GraduationCap,
+  Store,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import {
@@ -93,6 +95,16 @@ export const KNOWN_TENANTS: Record<string, TenantMeta> = {
   },
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  digital: 'Produk Digital & Edukasi',
+  fashion: 'Fashion & Modest Wear',
+  beauty: 'Kecantikan & Herbal',
+  fnb: 'F&B & Kuliner',
+  services: 'Jasa & Konsultasi',
+  fitness: 'Fitness & Gym Hub',
+  retail: 'Retail & Belanja',
+};
+
 interface ChatMessage {
   id: string;
   sender: 'user' | 'bot';
@@ -103,6 +115,37 @@ interface ChatMessage {
     packageName: string;
     amount: number;
     invoiceId: string;
+  };
+}
+
+export interface DynamicProduct {
+  type?: 'digital' | 'physical';
+  name?: string;
+  price?: number | string;
+  promo?: string;
+  variants?: string;
+  download_url?: string;
+  tone?: string;
+}
+
+export interface DynamicTenantData {
+  slug: string;
+  name: string;
+  category: string;
+  packages: Array<{
+    id: string;
+    name: string;
+    price: number;
+    description: string;
+  }>;
+  metadata?: {
+    wa_number?: string;
+    product?: DynamicProduct;
+  };
+  persona?: {
+    ai_name?: string;
+    greeting_message?: string;
+    system_prompt?: string;
   };
 }
 
@@ -130,6 +173,9 @@ export default function TenantPublicWebchatPage() {
   const [config, setConfig] = useState<TenantConfig | null>(() =>
     tenantSlug ? getTenantConfig(tenantSlug) : null
   );
+
+  const [dynamicTenant, setDynamicTenant] = useState<DynamicTenantData | null>(null);
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     if (!tenantSlug) return [];
     const cfg = getTenantConfig(tenantSlug);
@@ -143,15 +189,16 @@ export default function TenantPublicWebchatPage() {
         timestamp: '09:00',
         actionButtons:
           KNOWN_TENANTS[tenantSlug.toLowerCase()]?.defaultButtons || [
-            'Info Layanan',
-            'Katalog Paket',
-            'Jam Buka',
-            'Simulasi QRIS',
+            'Info Produk',
+            'Harga & Varian',
+            'Promo Spesial',
+            'Bayar QRIS',
           ],
       },
     ];
   });
 
+  // Sync state if slug changes
   if (tenantSlug !== prevSlug) {
     setPrevSlug(tenantSlug);
     const cfg = tenantSlug ? getTenantConfig(tenantSlug) : null;
@@ -167,15 +214,65 @@ export default function TenantPublicWebchatPage() {
           timestamp: '09:00',
           actionButtons:
             KNOWN_TENANTS[tenantSlug.toLowerCase()]?.defaultButtons || [
-              'Info Layanan',
-              'Katalog Paket',
-              'Jam Buka',
-              'Simulasi QRIS',
+              'Info Produk',
+              'Harga & Varian',
+              'Promo Spesial',
+              'Bayar QRIS',
             ],
         },
       ]);
     }
   }
+
+  // Fetch dynamic tenant and catalog data from GET /api/v1/tenants/[slug]
+  useEffect(() => {
+    if (!tenantSlug) return;
+    let isCancelled = false;
+
+    async function loadTenantData() {
+      try {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!isCancelled && data.success && data.tenant) {
+            setDynamicTenant(data.tenant);
+
+            if (data.tenant.persona?.greeting_message) {
+              setMessages((prev) => {
+                if (prev.length === 1 && prev[0].id === 'bot-init-0') {
+                  const defaultBtns =
+                    data.tenant.metadata?.product?.name
+                      ? ['Info Produk', 'Harga & Varian', 'Promo Spesial', 'Bayar QRIS']
+                      : KNOWN_TENANTS[tenantSlug.toLowerCase()]?.defaultButtons || [
+                          'Info Layanan',
+                          'Katalog Paket',
+                          'Jam Buka',
+                          'Bayar QRIS',
+                        ];
+
+                  return [
+                    {
+                      ...prev[0],
+                      text: data.tenant.persona.greeting_message,
+                      actionButtons: defaultBtns,
+                    },
+                  ];
+                }
+                return prev;
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load dynamic tenant catalog:', err);
+      }
+    }
+
+    loadTenantData();
+    return () => {
+      isCancelled = true;
+    };
+  }, [tenantSlug]);
 
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -206,46 +303,98 @@ export default function TenantPublicWebchatPage() {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  // Intelligent Response Simulator
-  const generateBotReply = (userQuery: string, currentConfig: TenantConfig): string => {
+  // Intelligent Response Simulator (scoped strictly to current tenant)
+  const generateBotReply = (
+    userQuery: string,
+    currentConfig: TenantConfig,
+    tenantInfo?: DynamicTenantData | null
+  ): string => {
     const q = userQuery.toLowerCase();
+    const product = tenantInfo?.metadata?.product;
+    const isDigital = product?.type === 'digital' || tenantInfo?.category === 'digital';
+    const storeTitle = tenantInfo?.name || currentConfig.name;
 
-    if (q.includes('qris') || q.includes('bayar') || q.includes('tagihan') || q.includes('beli') || q.includes('paket')) {
-      const firstPkg = currentConfig.pricing.custom_packages[0];
-      const amountStr = firstPkg ? `Rp ${firstPkg.price.toLocaleString('id-ID')}` : 'Rp 250.000';
+    if (
+      q.includes('qris') ||
+      q.includes('bayar') ||
+      q.includes('tagihan') ||
+      q.includes('beli') ||
+      q.includes('paket') ||
+      q.includes('order')
+    ) {
+      if (product?.name) {
+        const amt = Number(product.price || 0).toLocaleString('id-ID');
+        return `Tentu! Anda dapat memesan "${product.name}" seharga Rp ${amt}. Pembayaran diproses otomatis melalui QRIS Real-time Dynamic. Silakan klik tombol "Bayar QRIS" di panel katalog samping.`;
+      }
+      const firstPkg = tenantInfo?.packages?.[0] || currentConfig.pricing.custom_packages[0];
+      const amountStr = firstPkg ? `Rp ${firstPkg.price.toLocaleString('id-ID')}` : 'Rp 50.000';
       const nameStr = firstPkg ? firstPkg.name : 'Paket Standar';
-      return `Tentu! Untuk pembayaran dapat langsung diproses melalui QRIS Real-time Dynamic. Anda dapat memilih paket di katalog samping atau langsung klik tombol QRIS di bawah ini untuk paket ${nameStr} (${amountStr}).`;
+      return `Tentu! Untuk pembayaran dapat langsung diproses melalui QRIS Real-time Dynamic. Anda dapat memilih paket di katalog samping atau langsung klik tombol QRIS untuk paket ${nameStr} (${amountStr}).`;
     }
 
-    if (q.includes('membership') || q.includes('member') || q.includes('daftar') || q.includes('langganan')) {
-      if (tenantSlug === 'atmosfitnes') {
+    if (
+      product?.name &&
+      (q.includes(product.name.toLowerCase()) ||
+        q.includes('produk') ||
+        q.includes('katalog') ||
+        q.includes('jual') ||
+        q.includes('menu'))
+    ) {
+      let desc = `Produk unggulan kami adalah "${product.name}" seharga Rp ${Number(product.price || 0).toLocaleString('id-ID')}.`;
+      if (product.variants) desc += ` Varian/format: ${product.variants}.`;
+      if (product.promo) desc += ` Promo spesial: ${product.promo}!`;
+      return desc;
+    }
+
+    if (q.includes('varian') || q.includes('format') || q.includes('warna') || q.includes('ukuran')) {
+      if (product?.variants) {
+        return `Varian & format yang tersedia untuk ${product.name || 'produk kami'}: ${product.variants}. Anda bisa pesan langsung via QRIS.`;
+      }
+    }
+
+    if (q.includes('promo') || q.includes('diskon') || q.includes('bundling')) {
+      if (product?.promo) {
+        return `Kabar gembira! Sedang ada penawaran promo: "${product.promo}" untuk ${product.name || 'produk kami'}. Silakan pilih paket bundling di katalog samping!`;
+      }
+    }
+
+    if (
+      isDigital &&
+      (q.includes('download') ||
+        q.includes('akses') ||
+        q.includes('file') ||
+        q.includes('materi') ||
+        q.includes('link'))
+    ) {
+      return `Produk ini merupakan materi digital. Segera setelah pembayaran QRIS Anda terverifikasi sukses, link materi/download akan otomatis dikirimkan ke WhatsApp Anda.`;
+    }
+
+    // Only respond with gym zumba/gate if tenant is atmosfitnes
+    if (tenantSlug === 'atmosfitnes') {
+      if (q.includes('membership') || q.includes('member') || q.includes('daftar') || q.includes('langganan')) {
         return `Pendaftaran membership di Atmosfitnes Gym Hub sangat mudah! Paket bulanan kami Rp 250.000 sudah termasuk akses All Access gym floor, fasilitas locker gratis, dan integrasi kartu akses RFID gate. Mau saya buatkan QRIS pembayarannya sekarang?`;
       }
-      return `Kami menyediakan pilihan paket ${currentConfig.pricing.tier} dengan alokasi kuota hingga ${currentConfig.pricing.max_monthly_messages.toLocaleString()} chat per bulan. Silakan pilih paket yang sesuai kebutuhan Anda!`;
+      if (q.includes('zumba') || q.includes('aerobik') || q.includes('kelas') || q.includes('studio')) {
+        return `Jadwal kelas Zumba & Aerobik di Studio Lt 2 Atmosfitnes tersedia setiap Selasa, Kamis, dan Sabtu pukul 16:30 & 19:00 WIB bersama instruktur bersertifikasi. Biaya per sesi hanya Rp 35.000.`;
+      }
+      if (q.includes('gate') || q.includes('rfid') || q.includes('nfc') || q.includes('akses')) {
+        return `Akses barrier gate Atmosfitnes menggunakan tap kartu RFID atau NFC smartphone. Member aktif yang sudah membayar otomatis dapat membuka gate masuk secara instan.`;
+      }
+      if (q.includes('cafe') || q.includes('minuman') || q.includes('lemon') || q.includes('cway') || q.includes('pos')) {
+        return `Di area cafe POS Atmosfitnes tersedia Cway Lemon Energy Drink dingin (Rp 15.000) dan whey protein shaker untuk memulihkan ion tubuh setelah latihan. Pembayaran bisa langsung via QRIS kasir.`;
+      }
     }
 
-    if (q.includes('zumba') || q.includes('aerobik') || q.includes('kelas') || q.includes('studio')) {
-      return `Jadwal kelas Zumba & Aerobik di Studio Lt 2 Atmosfitnes tersedia setiap Selasa, Kamis, dan Sabtu pukul 16:30 & 19:00 WIB bersama instruktur bersertifikasi. Biaya per sesi hanya Rp 35.000.`;
+    if (tenantSlug === 'pelayanan-publik' || tenantSlug === 'indra-public') {
+      if (q.includes('surat') || q.includes('rt') || q.includes('kelurahan') || q.includes('aduan')) {
+        return `Untuk pelayanan surat pengantar atau pengaduan warga Kelurahan Indra, Anda dapat melampirkan foto KTP/KK dan memilih jenis surat. Pengajuan Anda diproses dalam 1x24 jam kerja.`;
+      }
     }
 
-    if (q.includes('gate') || q.includes('rfid') || q.includes('nfc') || q.includes('akses')) {
-      return `Akses barrier gate Atmosfitnes menggunakan tap kartu RFID atau NFC smartphone. Member aktif yang sudah membayar otomatis dapat membuka gate masuk secara instan.`;
-    }
-
-    if (q.includes('cafe') || q.includes('minuman') || q.includes('lemon') || q.includes('cway') || q.includes('pos')) {
-      return `Di area cafe POS Atmosfitnes tersedia Cway Lemon Energy Drink dingin (Rp 15.000) dan whey protein shaker untuk memulihkan ion tubuh setelah latihan. Pembayaran bisa langsung via QRIS kasir.`;
-    }
-
-    if (q.includes('surat') || q.includes('rt') || q.includes('kelurahan') || q.includes('aduan')) {
-      return `Untuk pelayanan surat pengantar atau pengaduan warga Kelurahan Indra, Anda dapat melampirkan foto KTP/KK dan memilih jenis surat. Pengajuan Anda diproses dalam 1x24 jam kerja.`;
-    }
-
-    if (q.includes('cv') || q.includes('karir') || q.includes('ats') || q.includes('interview')) {
-      return `Di BoonTrack Career AI, kami menyediakan audit ATS Score untuk resume Anda, optimasi keyword kata kerja aksi STAR, dan simulasi wawancara HR interaktif. Paket scan mendalam mulai dari Rp 49.000.`;
-    }
-
-    if (q.includes('hijab') || q.includes('gamis') || q.includes('pashmina') || q.includes('voal') || q.includes('baju')) {
-      return `Koleksi Nyka Hijab & Modest Wear menggunakan bahan Paris Voal Premium & Silk lembut yang tidak licin, tegak sempurna di dahi, serta adem dipakai harian maupun acara formal. Silakan cek katalog paket di panel sebelah kanan untuk order instan via QRIS!`;
+    if (tenantSlug === 'career') {
+      if (q.includes('cv') || q.includes('karir') || q.includes('ats') || q.includes('interview')) {
+        return `Di BoonTrack Career AI, kami menyediakan audit ATS Score untuk resume Anda, optimasi keyword kata kerja aksi STAR, dan simulasi wawancara HR interaktif. Paket scan mendalam mulai dari Rp 49.000.`;
+      }
     }
 
     if (q.includes('jam') || q.includes('buka') || q.includes('tutup') || q.includes('waktu')) {
@@ -254,10 +403,14 @@ export default function TenantPublicWebchatPage() {
       const is24 = currentConfig.operational_hours.is_24_hours;
       return is24
         ? `Layanan kami beroperasi 24/7 nonstop.`
-        : `Jam operasional ${currentConfig.name} adalah pukul ${open} - ${close} WIB (${currentConfig.operational_hours.days.join(', ')}).`;
+        : `Jam operasional ${storeTitle} adalah pukul ${open} - ${close} WIB.`;
     }
 
-    return `Terima kasih atas pertanyaan Anda. Sebagai ${currentConfig.persona.ai_name}, saya siap membantu Anda terkait ${currentConfig.name}. Anda juga dapat memilih menu cepat atau mengecek katalog paket di panel sebelah kanan.`;
+    if (product?.name) {
+      return `Halo! Kami dari ${storeTitle}. Produk unggulan kami adalah ${product.name} (Rp ${Number(product.price || 0).toLocaleString('id-ID')}). Silakan cek katalog di samping atau tanyakan varian dan cara order!`;
+    }
+
+    return `Terima kasih atas pertanyaan Anda. Sebagai AI Assistant resmi untuk ${storeTitle}, saya siap membantu seputar produk dan layanan kami. Silakan cek katalog di samping untuk info lebih lengkap.`;
   };
 
   const handleSendMessage = async (textToSend?: string) => {
@@ -276,44 +429,73 @@ export default function TenantPublicWebchatPage() {
     setMessages((prev) => [...prev, userMessage]);
     setIsTyping(true);
 
-    // Sync to Supabase so it appears in the CS Dashboard
+    const storeTitle = dynamicTenant?.name || config.name;
+
+    // 1. Try calling backend chat API with tenant_id / slug context
     try {
-      const supabase = getSupabase();
-      await supabase.from('messages').insert({
-        tenant_slug: tenantSlug,
-        conversation_id: 'webchat-demo-visitor',
-        sender: 'Pengunjung Web Demo',
-        channel: 'webchat',
-        text,
-        message_text: text,
+      const res = await fetch('/api/v1/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantSlug,
+          slug: tenantSlug,
+          message: text,
+          context: {
+            storeName: storeTitle,
+            category: dynamicTenant?.category || config.category,
+            product: dynamicTenant?.metadata?.product,
+            packages: dynamicTenant?.packages || config.pricing.custom_packages,
+          },
+        }),
       });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.reply) {
+          const isQris = text.toLowerCase().includes('qris') || text.toLowerCase().includes('bayar');
+          const botMessage: ChatMessage = {
+            id: createMessageId('bot'),
+            sender: 'bot',
+            text: data.reply,
+            timestamp: getCurrentTimeStr(),
+            actionButtons: isQris
+              ? ['Bayar via QRIS', 'Katalog Paket', 'Tanya Produk Lain']
+              : ['Info Produk', 'Harga & Varian', 'Bayar QRIS'],
+          };
+          setMessages((prev) => [...prev, botMessage]);
+          setIsTyping(false);
+          return;
+        }
+      }
     } catch {
-      // ignore
+      // fallback to local generator
     }
 
+    // 2. Fallback to local intelligent simulator
     setTimeout(async () => {
-      const reply = generateBotReply(text, config);
-      const isQrisRelated = text.toLowerCase().includes('qris') || text.toLowerCase().includes('bayar');
+      const reply = generateBotReply(text, config, dynamicTenant);
+      const isQris = text.toLowerCase().includes('qris') || text.toLowerCase().includes('bayar');
 
       const botMessage: ChatMessage = {
         id: createMessageId('bot'),
         sender: 'bot',
         text: reply,
         timestamp: getCurrentTimeStr(),
-        actionButtons: isQrisRelated
-          ? ['Buka QRIS Sekarang', 'Katalog Paket', 'Tanya Layanan Lain']
-          : ['Info Membership', 'Lihat Jadwal', 'Bayar QRIS'],
+        actionButtons: isQris
+          ? ['Bayar via QRIS', 'Katalog Paket', 'Tanya Lainnya']
+          : ['Info Produk', 'Harga & Varian', 'Bayar QRIS'],
       };
 
       setMessages((prev) => [...prev, botMessage]);
       setIsTyping(false);
 
+      // Record to Supabase
       try {
         const supabase = getSupabase();
         await supabase.from('messages').insert({
           tenant_slug: tenantSlug,
           conversation_id: 'webchat-demo-visitor',
-          sender: config.persona.ai_name || 'AI Assistant',
+          sender: dynamicTenant?.persona?.ai_name || config.persona.ai_name || 'AI Assistant',
           channel: 'webchat',
           text: reply,
           message_text: reply,
@@ -321,13 +503,25 @@ export default function TenantPublicWebchatPage() {
       } catch {
         // ignore
       }
-    }, 850);
+    }, 650);
   };
 
-  const handleOpenQris = (pkg?: CustomPackage) => {
+  const handleOpenQris = (pkg?: { name: string; price: number; description?: string }) => {
     const inv = createInvoiceId(tenantSlug || 'BOON');
-    const name = pkg?.name || config?.pricing.custom_packages[0]?.name || 'Paket Membership All Access';
-    const price = pkg?.price || config?.pricing.custom_packages[0]?.price || 250000;
+    const dynamicProd = dynamicTenant?.metadata?.product;
+    const firstPkg = dynamicTenant?.packages?.[0] || config?.pricing.custom_packages[0];
+
+    const name =
+      pkg?.name ||
+      dynamicProd?.name ||
+      firstPkg?.name ||
+      'Paket Produk Toko';
+
+    const price =
+      pkg?.price ||
+      Number(dynamicProd?.price || 0) ||
+      firstPkg?.price ||
+      50000;
 
     setQrisModal({
       isOpen: true,
@@ -343,7 +537,7 @@ export default function TenantPublicWebchatPage() {
 
     const confirmText = `✅ Pembayaran Rp ${qrisModal.amount.toLocaleString(
       'id-ID'
-    )} via QRIS untuk "${qrisModal.packageName}" berhasil diverifikasi! Invoice: ${qrisModal.invoiceId}. Akses otomatis aktif.`;
+    )} via QRIS untuk "${qrisModal.packageName}" berhasil diverifikasi! Invoice: ${qrisModal.invoiceId}. Layanan / produk otomatis aktif.`;
 
     setTimeout(async () => {
       const botConfirm: ChatMessage = {
@@ -351,7 +545,7 @@ export default function TenantPublicWebchatPage() {
         sender: 'bot',
         text: confirmText,
         timestamp: getCurrentTimeStr(),
-        actionButtons: ['Lihat Bukti Bayar', 'Mulai Menggunakan', 'Tanya Lainnya'],
+        actionButtons: ['Lihat Bukti Bayar', 'Tanya Produk Lain'],
       };
       setMessages((prev) => [...prev, botConfirm]);
 
@@ -376,11 +570,16 @@ export default function TenantPublicWebchatPage() {
   };
 
   const meta = KNOWN_TENANTS[tenantSlug?.toLowerCase() || ''];
+  const displayTitle = dynamicTenant?.name || config?.name || meta?.name || tenantSlug;
+  const currentCategory = dynamicTenant?.category || config?.category || 'retail';
 
   const getTenantIcon = () => {
+    if (currentCategory === 'digital') return <GraduationCap className="w-5 h-5 text-indigo-400" />;
+    if (currentCategory === 'beauty') return <Sparkles className="w-5 h-5 text-pink-400" />;
+    if (currentCategory === 'fnb') return <Store className="w-5 h-5 text-amber-400" />;
     if (tenantSlug === 'atmosfitnes') return <Dumbbell className="w-5 h-5 text-emerald-400" />;
     if (tenantSlug === 'career') return <Briefcase className="w-5 h-5 text-indigo-400" />;
-    if (tenantSlug === 'nyka') return <ShoppingBag className="w-5 h-5 text-rose-400" />;
+    if (tenantSlug === 'nyka' || currentCategory === 'fashion') return <ShoppingBag className="w-5 h-5 text-rose-400" />;
     if (tenantSlug === 'pelayanan-publik' || tenantSlug === 'indra-public') return <Building2 className="w-5 h-5 text-sky-400" />;
     if (tenantSlug === 'bale-pananggeuhan') return <Compass className="w-5 h-5 text-amber-400" />;
     return <Bot className="w-5 h-5 text-blue-400" />;
@@ -398,7 +597,7 @@ export default function TenantPublicWebchatPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-sm font-bold text-white tracking-tight">
-                  {config?.name || meta?.name || tenantSlug}
+                  {displayTitle}
                 </h1>
                 <span className="text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -406,7 +605,7 @@ export default function TenantPublicWebchatPage() {
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                {config?.persona.ai_name} &bull; Powered by BoonTrack Omnichannel
+                {dynamicTenant?.persona?.ai_name || config?.persona.ai_name || 'AI Assistant'} &bull; Powered by BoonTrack Omnichannel
               </p>
             </div>
           </div>
@@ -463,10 +662,10 @@ export default function TenantPublicWebchatPage() {
               </div>
               <div>
                 <span className="text-xs font-bold text-white block">
-                  {config?.persona.ai_name || 'Virtual Assistant'}
+                  {dynamicTenant?.persona?.ai_name || config?.persona.ai_name || 'Virtual Assistant'}
                 </span>
                 <span className="text-[10px] text-slate-400">
-                  Respon instan 24/7 &bull; Sinkron ke CS Inbox
+                  Respon instan 24/7 &bull; Terhubung ke Toko
                 </span>
               </div>
             </div>
@@ -490,7 +689,7 @@ export default function TenantPublicWebchatPage() {
                   className={`flex flex-col ${isBot ? 'items-start' : 'items-end'}`}
                 >
                   <div className="flex items-center gap-1.5 mb-1 px-1 text-[10px] text-slate-400 font-medium">
-                    <span>{isBot ? config?.persona.ai_name || 'AI' : 'Anda'}</span>
+                    <span>{isBot ? dynamicTenant?.persona?.ai_name || config?.persona.ai_name || 'AI' : 'Anda'}</span>
                     <span>&bull;</span>
                     <span>{msg.timestamp}</span>
                   </div>
@@ -511,7 +710,7 @@ export default function TenantPublicWebchatPage() {
                           <button
                             key={bIdx}
                             onClick={() => {
-                              if (btn.toLowerCase().includes('qris')) {
+                              if (btn.toLowerCase().includes('qris') || btn.toLowerCase().includes('bayar')) {
                                 handleOpenQris();
                               } else {
                                 handleSendMessage(btn);
@@ -546,11 +745,15 @@ export default function TenantPublicWebchatPage() {
               <Sparkles className="w-3 h-3 text-blue-400" />
               <span>Contoh:</span>
             </span>
-            {(KNOWN_TENANTS[tenantSlug?.toLowerCase() || '']?.defaultButtons || [
-              'Info Membership',
-              'Jadwal Zumba',
-              'Bayar QRIS',
-            ]).map((q, idx) => (
+            {(
+              dynamicTenant?.metadata?.product?.name
+                ? ['Info Produk', 'Berapa Harganya?', 'Ada Promo?', 'Bayar via QRIS']
+                : KNOWN_TENANTS[tenantSlug?.toLowerCase() || '']?.defaultButtons || [
+                    'Info Produk',
+                    'Harga & Varian',
+                    'Bayar QRIS',
+                  ]
+            ).map((q, idx) => (
               <button
                 key={idx}
                 onClick={() => handleSendMessage(q)}
@@ -571,7 +774,7 @@ export default function TenantPublicWebchatPage() {
           >
             <input
               type="text"
-              placeholder={`Tanya ${config?.persona.ai_name || 'AI'} seputar fasilitas, jam buka, harga...`}
+              placeholder={`Tanya ${dynamicTenant?.persona?.ai_name || config?.persona.ai_name || 'AI'} seputar produk, varian, harga...`}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
@@ -587,21 +790,28 @@ export default function TenantPublicWebchatPage() {
           </form>
         </div>
 
-        {/* Right Column: Katalog Layanan / Produk & QRIS Dummy Card (5 Cols) */}
+        {/* Right Column: Katalog Layanan / Produk & QRIS Card (5 Cols) */}
         <div className="lg:col-span-5 space-y-5">
           {/* Tenant Profile Card */}
           <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
-                Profil Layanan
+                Profil Toko Resmi
               </span>
               <span className="text-xs text-slate-400 font-mono">/{tenantSlug}</span>
             </div>
 
             <div>
-              <h2 className="text-base font-bold text-white">{config?.name || meta?.name}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white">{displayTitle}</h2>
+                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  {CATEGORY_LABELS[currentCategory] || currentCategory}
+                </span>
+              </div>
               <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                {meta?.description || config?.persona.system_prompt.slice(0, 120) + '...'}
+                {dynamicTenant?.metadata?.product?.name
+                  ? `Penyedia ${dynamicTenant.metadata.product.name} resmi & terverifikasi dengan layanan otomatisasi AI CS 24/7.`
+                  : meta?.description || config?.persona.system_prompt.slice(0, 120) + '...'}
               </p>
             </div>
 
@@ -611,7 +821,7 @@ export default function TenantPublicWebchatPage() {
                 <span className="font-semibold text-slate-200">
                   {config?.operational_hours.is_24_hours
                     ? '24 Jam Nonstop'
-                    : `${config?.operational_hours.open_time} - ${config?.operational_hours.close_time} WIB`}
+                    : `${config?.operational_hours.open_time || '08:00'} - ${config?.operational_hours.close_time || '21:00'} WIB`}
                 </span>
               </div>
               <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
@@ -633,42 +843,89 @@ export default function TenantPublicWebchatPage() {
                   <span>Katalog Paket & Layanan</span>
                 </h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Pilih paket dan bayar langsung menggunakan simulasi QRIS.
+                  Pilih produk dan bayar langsung menggunakan simulasi QRIS.
                 </p>
               </div>
             </div>
 
-            <div className="space-y-3">
-              {config?.pricing.custom_packages && config.pricing.custom_packages.length > 0 ? (
-                config.pricing.custom_packages.map((pkg) => (
-                  <div
-                    key={pkg.id}
-                    className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between gap-3 group"
-                  >
-                    <div className="space-y-0.5 flex-1">
-                      <h4 className="text-xs font-bold text-white group-hover:text-blue-400 transition">
-                        {pkg.name}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 leading-snug">{pkg.description}</p>
-                      <span className="text-xs font-mono font-bold text-emerald-400 block pt-1">
-                        Rp {pkg.price.toLocaleString('id-ID')}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => handleOpenQris(pkg)}
-                      className="px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold transition shrink-0 inline-flex items-center gap-1.5"
-                    >
-                      <QrCode className="w-3.5 h-3.5" />
-                      <span>Bayar QRIS</span>
-                    </button>
+            {/* If dynamic product sample is registered */}
+            {dynamicTenant?.metadata?.product?.name && (
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-950/40 to-slate-950 border border-indigo-500/30 space-y-2.5 shadow-md">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      Produk Unggulan Toko
+                    </span>
+                    <h4 className="text-sm font-black text-white mt-1">
+                      {dynamicTenant.metadata.product.name}
+                    </h4>
                   </div>
-                ))
-              ) : (
-                <div className="p-4 text-center text-xs text-slate-500 bg-slate-950 rounded-xl border border-slate-800">
-                  Tidak ada paket terdaftar.
+                  <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20 shrink-0">
+                    Rp {Number(dynamicTenant.metadata.product.price || 0).toLocaleString('id-ID')}
+                  </span>
                 </div>
-              )}
+
+                {dynamicTenant.metadata.product.variants && (
+                  <div className="text-xs text-slate-300 flex items-center gap-1.5">
+                    <span className="text-slate-500 text-[11px]">Format / Varian:</span>
+                    <span className="font-medium text-slate-200">{dynamicTenant.metadata.product.variants}</span>
+                  </div>
+                )}
+
+                {dynamicTenant.metadata.product.promo && (
+                  <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                    <span><strong>Promo:</strong> {dynamicTenant.metadata.product.promo}</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={() =>
+                    handleOpenQris({
+                      name: dynamicTenant.metadata!.product!.name!,
+                      price: Number(dynamicTenant.metadata!.product!.price || 0),
+                      description: dynamicTenant.metadata!.product!.variants || 'Produk Unggulan',
+                    })
+                  }
+                  className="w-full mt-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>Beli & Bayar QRIS Instan</span>
+                </button>
+              </div>
+            )}
+
+            {/* List of custom packages */}
+            <div className="space-y-3">
+              {(dynamicTenant?.packages && dynamicTenant.packages.length > 0
+                ? dynamicTenant.packages
+                : config?.pricing.custom_packages && config.pricing.custom_packages.length > 0
+                ? config.pricing.custom_packages
+                : []
+              ).map((pkg: CustomPackage) => (
+                <div
+                  key={pkg.id}
+                  className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between gap-3 group"
+                >
+                  <div className="space-y-0.5 flex-1">
+                    <h4 className="text-xs font-bold text-white group-hover:text-blue-400 transition">
+                      {pkg.name}
+                    </h4>
+                    <p className="text-[11px] text-slate-400 leading-snug">{pkg.description}</p>
+                    <span className="text-xs font-mono font-bold text-emerald-400 block pt-1">
+                      Rp {pkg.price.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => handleOpenQris(pkg)}
+                    className="px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold transition shrink-0 inline-flex items-center gap-1.5"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>Bayar QRIS</span>
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -706,7 +963,7 @@ export default function TenantPublicWebchatPage() {
             <div className="bg-white p-6 rounded-2xl text-slate-950 flex flex-col items-center justify-center space-y-3 shadow-inner">
               <div className="text-center">
                 <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
-                  {config?.name || 'ATMOSFITNES GYM HUB'}
+                  {displayTitle}
                 </span>
                 <span className="text-[9px] text-slate-400 font-mono">NMID: ID102026889910283</span>
               </div>
@@ -768,22 +1025,28 @@ export default function TenantPublicWebchatPage() {
               </div>
             </div>
 
-            {/* Actions */}
+            {/* Simulation CTA */}
             <div className="pt-2">
-              {qrisModal.isPaid ? (
-                <div className="w-full py-3 bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 rounded-xl text-center text-xs font-bold flex items-center justify-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Pembayaran Berhasil Dikonfirmasi!</span>
-                </div>
-              ) : (
-                <button
-                  onClick={handleSimulatePaymentSuccess}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Simulasikan Bayar Sukses (Instant Ping)</span>
-                </button>
-              )}
+              <button
+                onClick={handleSimulatePaymentSuccess}
+                disabled={qrisModal.isPaid}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 disabled:opacity-50"
+              >
+                {qrisModal.isPaid ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 animate-bounce" />
+                    <span>Pembayaran Berhasil! Mengaktifkan...</span>
+                  </>
+                ) : (
+                  <>
+                    <QrCode className="w-4 h-4" />
+                    <span>Simulasikan Scan & Sukses Bayar</span>
+                  </>
+                )}
+              </button>
+              <p className="text-[10px] text-center text-slate-500 mt-2">
+                Simulasi pembayaran QRIS otomatis terhubung ke sistem gateway.
+              </p>
             </div>
           </div>
         </div>

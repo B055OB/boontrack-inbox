@@ -312,12 +312,15 @@ function PilotOnboardingWizard() {
         throw new Error(data.error || 'Gagal menyimpan data onboarding.');
       }
 
+      const metaBotNumber = process.env.NEXT_PUBLIC_META_BOT_NUMBER || '15556769563';
+      const fallbackRedirectUrl = `https://wa.me/${metaBotNumber}?text=Halo%20Admin%20BoonTrack%2C%20saya%20baru%20saja%20mendaftar%20toko%20${encodeURIComponent(data.tenant.slug)}`;
+
       setOnboardedResult({
         slug: data.tenant.slug,
         storeName: data.tenant.storeName,
         waNumber: data.tenant.waNumber,
-        botNumber: data.tenant.botNumber || '6281298877665',
-        redirectWaUrl: data.redirectWaUrl,
+        botNumber: metaBotNumber,
+        redirectWaUrl: data.redirectWaUrl || fallbackRedirectUrl,
       });
 
       setStep(4);

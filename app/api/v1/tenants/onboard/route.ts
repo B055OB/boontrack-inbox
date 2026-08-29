@@ -45,37 +45,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate unique slug
-    const generatedSlug = (
-      rawSlug ||
-      storeName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '')
-    ) || `tenant-${Date.now().toString().slice(-6)}`;
+    const generatedSlug =
+      (
+        rawSlug ||
+        storeName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '')
+      ) || `tenant-${Date.now().toString().slice(-6)}`;
 
-    // Default BoonTrack Gateway AI Bot number
-    const botNumber = process.env.NEXT_PUBLIC_BOT_WA_NUMBER || '6281298877665';
-
-    // Prepare welcome/activation message for WhatsApp
     const isDigital = productType === 'digital' || category === 'digital';
-    const waText =
-      `Halo Admin BoonTrack AI, saya baru saja menyelesaikan Onboarding Toko:\n\n` +
-      `🏪 *Toko:* ${storeName}\n` +
-      `🔗 *Slug:* ${generatedSlug}\n` +
-      `📱 *WhatsApp:* +${formattedWa}\n` +
-      `🏷 *Kategori:* ${category}\n` +
-      (referralCode ? `🎁 *Referral:* ${referralCode}\n` : '') +
-      (productName
-        ? `📦 *Produk Sampel:* ${productName} (Rp ${Number(productPrice || 0).toLocaleString('id-ID')}) [${isDigital ? 'DIGITAL' : 'FISIK'}]\n`
-        : '') +
-      (promoBundle ? `🎉 *Promo:* ${promoBundle}\n` : '') +
-      (variants ? `🎨 *Format/Varian:* ${variants}\n` : '') +
-      (downloadUrl ? `🔗 *Akses/Download Link:* ${downloadUrl}\n` : '') +
-      (aiTone ? `🤖 *Tone AI:* ${aiTone}\n` : '') +
-      (bankName ? `💳 *Rekening:* ${bankName} - ${bankAccountNumber} a.n ${bankAccountHolder}\n` : '') +
-      `\nMohon segera aktivasi WhatsApp Gateway & AI Assistant untuk toko saya. Terima kasih!`;
 
-    const redirectWaUrl = `https://wa.me/${botNumber}?text=${encodeURIComponent(waText)}`;
+    // Meta WhatsApp Sandbox Bot Number
+    const botNumber = process.env.NEXT_PUBLIC_META_BOT_NUMBER || '15556769563';
+
+    // Format activation redirect URL: https://wa.me/15556769563?text=Halo%20Admin%20BoonTrack%2C%20saya%20baru%20saja%20mendaftar%20toko%20{slug}
+    const redirectWaUrl = `https://wa.me/${botNumber}?text=Halo%20Admin%20BoonTrack%2C%20saya%20baru%20saja%20mendaftar%20toko%20${encodeURIComponent(generatedSlug)}`;
 
     // Try to record into Supabase if accessible
     try {
