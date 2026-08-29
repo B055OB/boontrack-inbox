@@ -332,6 +332,22 @@ export default function TenantPublicWebchatPage() {
       return `Tentu! Untuk pembayaran dapat langsung diproses melalui QRIS Real-time Dynamic. Anda dapat memilih paket di katalog samping atau langsung klik tombol QRIS untuk paket ${nameStr} (${amountStr}).`;
     }
 
+    if (q.includes('silabus') || q.includes('materi') || q.includes('modul') || q.includes('kurikulum')) {
+      const prodName = product?.name || 'Materi Pembelajaran';
+      if (isDigital) {
+        return (
+          `📚 Silabus & Materi Utama untuk "${prodName}":\n\n` +
+          `1️⃣ Modul 1: Konsep Dasar & Strategi Fundamental\n` +
+          `2️⃣ Modul 2: Praktik Langkah demi Langkah (Hands-on Walkthrough)\n` +
+          `3️⃣ Modul 3: Template Siap Pakai & Resource Download\n` +
+          `4️⃣ Modul 4: Optimasi & Evaluasi Hasil Nyata\n\n` +
+          (product?.variants ? `Format Akses: ${product.variants}.\n` : '') +
+          `Materi dapat langsung diakses secara instan setelah pembayaran QRIS terverifikasi sukses!`
+        );
+      }
+      return `Rincian spesifikasi & materi untuk ${prodName}: ${product?.variants || 'Standar resmi berkualitas tinggi'}. Produk siap dikirimkan segera setelah transaksi Anda selesai.`;
+    }
+
     if (
       product?.name &&
       (q.includes(product.name.toLowerCase()) ||
@@ -413,6 +429,59 @@ export default function TenantPublicWebchatPage() {
     return `Terima kasih atas pertanyaan Anda. Sebagai AI Assistant resmi untuk ${storeTitle}, saya siap membantu seputar produk dan layanan kami. Silakan cek katalog di samping untuk info lebih lengkap.`;
   };
 
+  const getPromptForButton = (label: string): string => {
+    const l = label.toLowerCase();
+    if (l === 'info produk' || l.includes('detail produk') || l.includes('info layanan')) {
+      return 'Boleh jelaskan detail dan materi produk ini?';
+    }
+    if (l === 'detail silabus' || l.includes('silabus') || l.includes('modul')) {
+      return 'Boleh minta rincian silabus atau modul materi yang dipelajari?';
+    }
+    if (l === 'tanya promo' || l.includes('promo') || l.includes('diskon')) {
+      return 'Apakah sedang ada promo diskon atau paket bundling untuk produk ini?';
+    }
+    if (l === 'harga & varian' || l.includes('harga') || l.includes('varian')) {
+      return 'Berapa harga dan apa saja pilihan varian atau format yang tersedia?';
+    }
+    if (l.includes('membership')) {
+      return 'Boleh info lengkap paket membership dan fasilitas yang didapatkan?';
+    }
+    if (l.includes('zumba') || l.includes('aerobik') || l.includes('jadwal')) {
+      return 'Boleh minta jadwal kelas Zumba & Aerobik terbaru?';
+    }
+    if (l.includes('gate') || l.includes('rfid')) {
+      return 'Bagaimana cara akses barrier gate dengan RFID/NFC?';
+    }
+    if (l.includes('pos') || l.includes('cafe')) {
+      return 'Menu minuman dan suplemen apa saja yang tersedia di POS Cafe?';
+    }
+    if (l.includes('surat')) {
+      return 'Bagaimana alur dan syarat pengajuan surat pengantar warga?';
+    }
+    if (l.includes('aduan') || l.includes('warga')) {
+      return 'Bagaimana cara menyampaikan aspirasi atau pengaduan warga?';
+    }
+    if (l.includes('cv') || l.includes('ats')) {
+      return 'Bagaimana alur scan ATS dan optimasi resume CV?';
+    }
+    return label;
+  };
+
+  const handleQuickReplyClick = async (buttonLabel: string) => {
+    if (
+      buttonLabel.toLowerCase().includes('bayar qris') ||
+      buttonLabel.toLowerCase() === 'bayar via qris' ||
+      buttonLabel.toLowerCase() === 'buka qris sekarang' ||
+      buttonLabel.toLowerCase() === 'coba bayar qris'
+    ) {
+      handleOpenQris();
+      return;
+    }
+
+    const queryText = getPromptForButton(buttonLabel);
+    await handleSendMessage(queryText);
+  };
+
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
     if (!text || !config || !tenantSlug) return;
@@ -430,20 +499,26 @@ export default function TenantPublicWebchatPage() {
     setIsTyping(true);
 
     const storeTitle = dynamicTenant?.name || config.name;
+    const productContext = dynamicTenant?.metadata?.product || {
+      name: dynamicTenant?.name,
+      category: dynamicTenant?.category,
+    };
 
-    // 1. Try calling backend chat API with tenant_id / slug context
+    // 1. Send request POST /api/v1/chat with payload { tenant_slug, message, product_context }
     try {
       const res = await fetch('/api/v1/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tenant_slug: tenantSlug,
           tenant_id: tenantSlug,
           slug: tenantSlug,
           message: text,
+          product_context: productContext,
           context: {
             storeName: storeTitle,
             category: dynamicTenant?.category || config.category,
-            product: dynamicTenant?.metadata?.product,
+            product: productContext,
             packages: dynamicTenant?.packages || config.pricing.custom_packages,
           },
         }),
@@ -460,7 +535,7 @@ export default function TenantPublicWebchatPage() {
             timestamp: getCurrentTimeStr(),
             actionButtons: isQris
               ? ['Bayar via QRIS', 'Katalog Paket', 'Tanya Produk Lain']
-              : ['Info Produk', 'Harga & Varian', 'Bayar QRIS'],
+              : ['Info Produk', 'Detail Silabus', 'Tanya Promo', 'Bayar QRIS'],
           };
           setMessages((prev) => [...prev, botMessage]);
           setIsTyping(false);
@@ -483,7 +558,7 @@ export default function TenantPublicWebchatPage() {
         timestamp: getCurrentTimeStr(),
         actionButtons: isQris
           ? ['Bayar via QRIS', 'Katalog Paket', 'Tanya Lainnya']
-          : ['Info Produk', 'Harga & Varian', 'Bayar QRIS'],
+          : ['Info Produk', 'Detail Silabus', 'Tanya Promo', 'Bayar QRIS'],
       };
 
       setMessages((prev) => [...prev, botMessage]);
@@ -709,13 +784,7 @@ export default function TenantPublicWebchatPage() {
                         {msg.actionButtons.map((btn, bIdx) => (
                           <button
                             key={bIdx}
-                            onClick={() => {
-                              if (btn.toLowerCase().includes('qris') || btn.toLowerCase().includes('bayar')) {
-                                handleOpenQris();
-                              } else {
-                                handleSendMessage(btn);
-                              }
-                            }}
+                            onClick={() => handleQuickReplyClick(btn)}
                             className="bg-slate-900 hover:bg-blue-600/30 text-blue-300 hover:text-white border border-slate-800 hover:border-blue-500/40 text-[11px] font-medium px-2.5 py-1 rounded-lg transition"
                           >
                             {btn}
@@ -747,16 +816,17 @@ export default function TenantPublicWebchatPage() {
             </span>
             {(
               dynamicTenant?.metadata?.product?.name
-                ? ['Info Produk', 'Berapa Harganya?', 'Ada Promo?', 'Bayar via QRIS']
+                ? ['Info Produk', 'Detail Silabus', 'Tanya Promo', 'Bayar QRIS']
                 : KNOWN_TENANTS[tenantSlug?.toLowerCase() || '']?.defaultButtons || [
                     'Info Produk',
-                    'Harga & Varian',
+                    'Detail Silabus',
+                    'Tanya Promo',
                     'Bayar QRIS',
                   ]
             ).map((q, idx) => (
               <button
                 key={idx}
-                onClick={() => handleSendMessage(q)}
+                onClick={() => handleQuickReplyClick(q)}
                 className="px-2.5 py-0.5 rounded-full bg-slate-800/70 hover:bg-slate-800 text-slate-300 text-[10px] shrink-0 transition"
               >
                 {q}
