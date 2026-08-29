@@ -445,6 +445,75 @@ export const DEFAULT_TENANT_CONFIGS: Record<string, TenantConfig> = {
     },
     updated_at: new Date().toISOString(),
   },
+
+  'suhu-ads': {
+    slug: 'suhu-ads',
+    name: 'Suhu Ads Masterclass',
+    category: 'external',
+    health: {
+      status: 'HEALTHY',
+      wa_gateway: 'CONNECTED',
+      last_payment_ping: '2 menit lalu',
+      last_activity_ping: 'Baru saja',
+      response_time_ms: 110,
+      uptime_pct: 99.9,
+    },
+    persona: {
+      ai_name: 'Suhu Ads AI Consultant',
+      system_prompt: 'Anda adalah asisten konsultan resmi Suhu Ads Masterclass. Berikan informasi silabus, materi video, akses Google Drive materi, dan proses pembayaran instan QRIS.',
+      tone: 'casual',
+      greeting_message: 'Halo! Selamat datang di Suhu Ads Masterclass ✨ Siap scale-up bisnis Anda dengan strategi Meta Ads teruji? Tanyakan materi, silabus, atau promo hari ini!',
+      fallback_message: 'Admin Suhu Ads sedang melayani peserta lain, kami akan segera merespons pertanyaan Anda.',
+      human_handoff_enabled: true,
+      human_handoff_number: '+6281288990011',
+    },
+    operational_hours: {
+      days: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'],
+      open_time: '00:00',
+      close_time: '23:59',
+      timezone: 'WIB',
+      is_24_hours: true,
+      closed_auto_reply: 'Layanan digital Suhu Ads beroperasi 24/7.',
+      emergency_contact: '+6281288990011',
+    },
+    pricing: {
+      tier: 'PRO',
+      monthly_fee: 1000000,
+      max_monthly_messages: 10000,
+      currency: 'IDR',
+      custom_packages: [
+        {
+          id: 'suhu-pkg-1',
+          name: 'Suhu Ads Masterclass 2026 - Full Lifetime Access',
+          price: 99000,
+          description: 'Format Digital • Video HD + Template Canva + Akses Komunitas Eksklusif',
+        },
+        {
+          id: 'suhu-pkg-2',
+          name: 'Paket Bundling: Suhu Ads Masterclass + Copywriting Toolkit',
+          price: 149000,
+          description: 'Akses lengkap masterclass ditambah 50+ swipe file copywriting iklan high-converting',
+        },
+      ],
+    },
+    features: {
+      whatsapp_gateway: true,
+      telegram_bot: false,
+      webchat_widget: true,
+      auto_ai_reply: true,
+      qris_billing: true,
+      gate_iot_sync: false,
+      cv_ats_scanner: false,
+      rate_limiting: true,
+    },
+    secrets: {
+      wa_api_token: 'EAAU9910ZaBC290Kkl8890...',
+      webhook_verify_token: 'suhu_ads_meta_verify_token_2026',
+      payment_api_key: 'qris_live_sk_suhu_ads_9902',
+      admin_password: 'suhu_ads_pass2026',
+    },
+    updated_at: new Date().toISOString(),
+  },
 };
 
 // Aliases lookup
@@ -455,6 +524,9 @@ export function normalizeTenantSlug(slug: string): string {
   }
   if (s === 'boontrack-career' || s === 'career-ai') {
     return 'career';
+  }
+  if (s === 'suhu-ads-masterclass' || s === 'suhuads' || s === 'masterclass') {
+    return 'suhu-ads';
   }
   return s;
 }

@@ -94,10 +94,17 @@ export const KNOWN_TENANTS: Record<string, TenantMeta> = {
     defaultButtons: ['Katalog Hijab', 'Pashmina Silk', 'Rekomendasi Gamis', 'Bayar via QRIS'],
     aliases: ['nyka', 'nyka-hijab', 'nyka-modest', 'nyka-store'],
   },
+  'suhu-ads': {
+    name: 'Suhu Ads Masterclass',
+    category: 'external',
+    description: 'Pusat pelatihan Meta Ads praktis untuk media buyer & pebisnis online. Dapatkan strategi scale-up campaign, riset audience, dan optimasi konversi terbukti.',
+    defaultButtons: ['Info Silabus', 'Harga Promo', 'Varian Akses', 'Bayar QRIS'],
+    aliases: ['suhu-ads', 'suhu-ads-masterclass', 'suhuads', 'masterclass'],
+  },
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
-  digital: 'Produk Digital & Edukasi',
+  digital: 'Edukasi Digital Marketing & Business Course',
   fashion: 'Fashion & Modest Wear',
   beauty: 'Kecantikan & Herbal',
   fnb: 'F&B & Kuliner',
@@ -112,6 +119,10 @@ interface ChatMessage {
   text: string;
   timestamp: string;
   actionButtons?: string[];
+  actionLink?: {
+    label: string;
+    url: string;
+  };
   qrisData?: {
     packageName: string;
     amount: number;
@@ -123,9 +134,11 @@ export interface DynamicProduct {
   type?: 'digital' | 'physical';
   name?: string;
   price?: number | string;
+  promo_price?: number | string;
   promo?: string;
   variants?: string;
   download_url?: string;
+  description?: string;
   tone?: string;
 }
 
@@ -281,9 +294,20 @@ export default function TenantPublicWebchatPage() {
     };
   }, [tenantSlug]);
 
+  const isSuhu = Boolean(
+    tenantSlug &&
+      (tenantSlug.toLowerCase().includes('suhu') ||
+        tenantSlug.toLowerCase() === 'masterclass' ||
+        tenantSlug.toLowerCase() === 'digital-marketing')
+  );
+
   const meta = KNOWN_TENANTS[tenantSlug?.toLowerCase() || ''];
-  const displayTitle = dynamicTenant?.name || config?.name || meta?.name || tenantSlug;
-  const currentCategory = dynamicTenant?.category || config?.category || 'retail';
+  const displayTitle = isSuhu
+    ? 'Suhu Ads Masterclass'
+    : dynamicTenant?.name || config?.name || meta?.name || tenantSlug;
+  const currentCategory = isSuhu
+    ? 'digital'
+    : dynamicTenant?.category || config?.category || 'retail';
 
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -315,9 +339,13 @@ export default function TenantPublicWebchatPage() {
 
   const handleSimulatePaymentSuccess = useCallback(() => {
     setQrisModal((prev) => {
+      const driveUrl =
+        dynamicTenant?.metadata?.product?.download_url ||
+        'https://drive.google.com/drive/folders/suhu-ads-masterclass-2026';
+
       const confirmText = `✅ Pembayaran Rp ${prev.amount.toLocaleString(
         'id-ID'
-      )} via QRIS untuk "${prev.packageName}" berhasil diverifikasi! Invoice: ${prev.invoiceId}. Layanan / produk otomatis aktif.`;
+      )} via QRIS untuk "${prev.packageName}" berhasil diverifikasi! Invoice: ${prev.invoiceId}. Layanan & akses materi digital otomatis aktif. Silakan klik tombol di bawah untuk membuka materi langsung.`;
 
       setTimeout(async () => {
         const botConfirm: ChatMessage = {
@@ -326,6 +354,10 @@ export default function TenantPublicWebchatPage() {
           text: confirmText,
           timestamp: getCurrentTimeStr(),
           actionButtons: ['Lihat Bukti Bayar', 'Tanya Produk Lain'],
+          actionLink: {
+            label: '📂 Buka Materi Drive',
+            url: driveUrl,
+          },
         };
         setMessages((msgs) => [...msgs, botConfirm]);
 
@@ -346,11 +378,11 @@ export default function TenantPublicWebchatPage() {
 
       setTimeout(() => {
         setQrisModal((p) => ({ ...p, isOpen: false }));
-      }, 2200);
+      }, 3500);
 
       return { ...prev, isPaid: true, isPolling: false };
     });
-  }, [tenantSlug]);
+  }, [tenantSlug, dynamicTenant]);
 
   const handleOpenQris = useCallback(
     (pkg?: { name: string; price: number; description?: string; qr_code_url?: string }) => {
@@ -873,6 +905,21 @@ export default function TenantPublicWebchatPage() {
                   >
                     <div>{msg.text}</div>
 
+                    {/* Digital Delivery Direct Link */}
+                    {isBot && msg.actionLink && (
+                      <div className="mt-3 pt-2.5 border-t border-emerald-500/30">
+                        <a
+                          href={msg.actionLink.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-md shadow-emerald-600/30 group"
+                        >
+                          <span>{msg.actionLink.label}</span>
+                          <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition" />
+                        </a>
+                      </div>
+                    )}
+
                     {/* Action Chips */}
                     {isBot && msg.actionButtons && msg.actionButtons.length > 0 && (
                       <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-wrap gap-1.5">
@@ -973,11 +1020,28 @@ export default function TenantPublicWebchatPage() {
                   {CATEGORY_LABELS[currentCategory] || currentCategory}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                {dynamicTenant?.metadata?.product?.name
-                  ? `Penyedia ${dynamicTenant.metadata.product.name} resmi & terverifikasi dengan layanan otomatisasi AI CS 24/7.`
-                  : meta?.description || config?.persona.system_prompt.slice(0, 120) + '...'}
+              <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                {isSuhu
+                  ? 'Pusat pelatihan Meta Ads praktis untuk media buyer & pebisnis online. Dapatkan strategi scale-up campaign, riset audience, dan optimasi konversi terbukti.'
+                  : dynamicTenant?.metadata?.product?.description ||
+                    (dynamicTenant?.metadata?.product?.name
+                      ? `Penyedia ${dynamicTenant.metadata.product.name} resmi & terverifikasi dengan layanan otomatisasi AI CS 24/7.`
+                      : meta?.description ||
+                        `Pusat layanan dan katalog resmi ${displayTitle} terverifikasi dengan otomatisasi AI CS 24/7.`)}
               </p>
+
+              {/* Trust Badges UI */}
+              <div className="flex flex-wrap gap-1.5 pt-2.5">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[11px] font-semibold">
+                  ✅ Akses Materi Selamanya
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-300 text-[11px] font-semibold">
+                  ⚡ Instant QRIS Access
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-300 text-[11px] font-semibold">
+                  💬 Diskusi Eksklusif
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-xs">
@@ -1208,8 +1272,35 @@ export default function TenantPublicWebchatPage() {
               </div>
             </div>
 
-            {/* Simulation CTA */}
-            <div className="pt-2">
+            {/* Simulation CTA & Digital Delivery */}
+            <div className="pt-2 space-y-2.5">
+              {qrisModal.isPaid && (
+                <div className="p-3.5 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl space-y-2 text-left animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>Verifikasi Berhasil!</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">Status: PAID</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">
+                    Akses materi Google Drive resmi telah dibuka. Anda dapat mengunduh atau menonton langsung materi:
+                  </p>
+                  <a
+                    href={
+                      dynamicTenant?.metadata?.product?.download_url ||
+                      'https://drive.google.com/drive/folders/suhu-ads-masterclass-2026'
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 group"
+                  >
+                    <span>📂 Buka Materi Drive</span>
+                    <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition" />
+                  </a>
+                </div>
+              )}
+
               <button
                 onClick={handleSimulatePaymentSuccess}
                 disabled={qrisModal.isPaid}
@@ -1218,7 +1309,7 @@ export default function TenantPublicWebchatPage() {
                 {qrisModal.isPaid ? (
                   <>
                     <CheckCircle2 className="w-4 h-4 animate-bounce" />
-                    <span>Pembayaran Berhasil! Mengaktifkan...</span>
+                    <span>Layanan & Akses Materi Aktif</span>
                   </>
                 ) : (
                   <>
