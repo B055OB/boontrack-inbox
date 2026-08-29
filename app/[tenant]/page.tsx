@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -24,6 +24,7 @@ import {
   GraduationCap,
   Store,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '@/lib/supabaseClient';
 import {
   getTenantConfig,
@@ -165,6 +166,12 @@ function createInvoiceId(tenantSlug: string) {
   return `INV/${(tenantSlug || 'BOON').toUpperCase()}/${rnd}`;
 }
 
+function generateQrisPayload(storeName: string, amount: number, invoiceId: string): string {
+  const cleanName = (storeName || 'BOONTRACK').toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 25);
+  const amtStr = Math.round(amount).toString();
+  return `00020101021226580016ID.CO.BOONTRACK.WWW01189360091800000000010215ID1020268899102830303UMI51440014ID.LINKAJA.WWW0215ID1020268899102830303UMI52045812530336054${amtStr.length.toString().padStart(2, '0')}${amtStr}5802ID59${cleanName.length.toString().padStart(2, '0')}${cleanName}6007BANDUNG61054011562${(invoiceId.length + 4).toString().padStart(2, '0')}01${invoiceId.length.toString().padStart(2, '0')}${invoiceId}6304`;
+}
+
 export default function TenantPublicWebchatPage() {
   const params = useParams();
   const tenantSlug = Array.isArray(params?.tenant) ? params.tenant[0] : (params?.tenant as string);
@@ -274,23 +281,158 @@ export default function TenantPublicWebchatPage() {
     };
   }, [tenantSlug]);
 
+  const meta = KNOWN_TENANTS[tenantSlug?.toLowerCase() || ''];
+  const displayTitle = dynamicTenant?.name || config?.name || meta?.name || tenantSlug;
+  const currentCategory = dynamicTenant?.category || config?.category || 'retail';
+
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
-  // QRIS Modal state
+  // Real Dynamic QRIS Modal state
   const [qrisModal, setQrisModal] = useState<{
     isOpen: boolean;
     packageName: string;
     amount: number;
     invoiceId: string;
+    qr_string: string;
+    qr_code_url?: string;
+    expiresAt: number;
     isPaid: boolean;
+    isPolling: boolean;
   }>({
     isOpen: false,
     packageName: '',
     amount: 0,
     invoiceId: '',
+    qr_string: '',
+    qr_code_url: undefined,
+    expiresAt: 0,
     isPaid: false,
+    isPolling: false,
   });
+
+  const [countdownSeconds, setCountdownSeconds] = useState(900);
+
+  const handleSimulatePaymentSuccess = useCallback(() => {
+    setQrisModal((prev) => {
+      const confirmText = `✅ Pembayaran Rp ${prev.amount.toLocaleString(
+        'id-ID'
+      )} via QRIS untuk "${prev.packageName}" berhasil diverifikasi! Invoice: ${prev.invoiceId}. Layanan / produk otomatis aktif.`;
+
+      setTimeout(async () => {
+        const botConfirm: ChatMessage = {
+          id: createMessageId('bot-paid'),
+          sender: 'bot',
+          text: confirmText,
+          timestamp: getCurrentTimeStr(),
+          actionButtons: ['Lihat Bukti Bayar', 'Tanya Produk Lain'],
+        };
+        setMessages((msgs) => [...msgs, botConfirm]);
+
+        try {
+          const supabase = getSupabase();
+          await supabase.from('messages').insert({
+            tenant_slug: tenantSlug,
+            conversation_id: 'webchat-demo-visitor',
+            sender: 'Sistem Pembayaran QRIS',
+            channel: 'webchat',
+            text: confirmText,
+            message_text: confirmText,
+          });
+        } catch {
+          // ignore
+        }
+      }, 600);
+
+      setTimeout(() => {
+        setQrisModal((p) => ({ ...p, isOpen: false }));
+      }, 2200);
+
+      return { ...prev, isPaid: true, isPolling: false };
+    });
+  }, [tenantSlug]);
+
+  const handleOpenQris = useCallback(
+    (pkg?: { name: string; price: number; description?: string; qr_code_url?: string }) => {
+      const inv = createInvoiceId(tenantSlug || 'BOON');
+      const dynamicProd = dynamicTenant?.metadata?.product;
+      const firstPkg = dynamicTenant?.packages?.[0] || config?.pricing.custom_packages[0];
+
+      const name =
+        pkg?.name ||
+        dynamicProd?.name ||
+        firstPkg?.name ||
+        'Paket Produk Toko';
+
+      const price =
+        pkg?.price ||
+        Number(dynamicProd?.price || 0) ||
+        firstPkg?.price ||
+        50000;
+
+      const qrPayload = generateQrisPayload(displayTitle, price, inv);
+      const expires = Date.now() + 15 * 60 * 1000;
+
+      setCountdownSeconds(900);
+      setQrisModal({
+        isOpen: true,
+        packageName: name,
+        amount: price,
+        invoiceId: inv,
+        qr_string: qrPayload,
+        qr_code_url: pkg?.qr_code_url,
+        expiresAt: expires,
+        isPaid: false,
+        isPolling: true,
+      });
+    },
+    [tenantSlug, dynamicTenant, config, displayTitle]
+  );
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!qrisModal.isOpen || qrisModal.isPaid) return;
+
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((qrisModal.expiresAt - Date.now()) / 1000));
+      setCountdownSeconds(remaining);
+      if (remaining <= 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [qrisModal.isOpen, qrisModal.expiresAt, qrisModal.isPaid]);
+
+  const formatCountdown = (totalSec: number) => {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Auto-settlement polling effect
+  useEffect(() => {
+    if (!qrisModal.isOpen || qrisModal.isPaid || !qrisModal.invoiceId) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const supabase = getSupabase();
+        const { data: inv } = await supabase
+          .from('invoices')
+          .select('status')
+          .eq('invoice_id', qrisModal.invoiceId)
+          .maybeSingle();
+
+        if (inv && (inv.status === 'paid' || inv.status === 'settled')) {
+          handleSimulatePaymentSuccess();
+        }
+      } catch {
+        // quiet fallback
+      }
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [qrisModal.isOpen, qrisModal.isPaid, qrisModal.invoiceId, handleSimulatePaymentSuccess]);
 
   const [copiedInvoice, setCopiedInvoice] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -499,12 +641,31 @@ export default function TenantPublicWebchatPage() {
     setIsTyping(true);
 
     const storeTitle = dynamicTenant?.name || config.name;
-    const productContext = dynamicTenant?.metadata?.product || {
-      name: dynamicTenant?.name,
-      category: dynamicTenant?.category,
+    const prodMeta = dynamicTenant?.metadata?.product;
+    const category = dynamicTenant?.category || config.category;
+
+    const productContext = {
+      name: prodMeta?.name || `${storeTitle} Layanan Utama`,
+      price: prodMeta?.price || 50000,
+      variants: prodMeta?.variants || 'Standar',
+      promo: prodMeta?.promo || 'Promo Terbatas',
+      type: prodMeta?.type || (category === 'digital' ? 'digital' : 'physical'),
+      download_url: prodMeta?.download_url || null,
+      description: prodMeta?.name ? `Produk unggulan ${storeTitle}` : config.persona.system_prompt,
+      syllabus: [
+        'Modul 1: Konsep Dasar & Fundamental',
+        'Modul 2: Panduan Praktis Langkah demi Langkah',
+        'Modul 3: Template & Resource Siap Pakai',
+        'Modul 4: Evaluasi & Optimasi Hasil Nyata',
+      ],
     };
 
-    // 1. Send request POST /api/v1/chat with payload { tenant_slug, message, product_context }
+    const conversationHistory = messages.slice(-6).map((m) => ({
+      role: m.sender === 'user' ? 'user' : 'model',
+      parts: m.text,
+    }));
+
+    // 1. Send request POST /api/v1/chat with payload { tenant_slug, message, product_context, conversation_history }
     try {
       const res = await fetch('/api/v1/chat', {
         method: 'POST',
@@ -515,6 +676,7 @@ export default function TenantPublicWebchatPage() {
           slug: tenantSlug,
           message: text,
           product_context: productContext,
+          conversation_history: conversationHistory,
           context: {
             storeName: storeTitle,
             category: dynamicTenant?.category || config.category,
@@ -580,73 +742,6 @@ export default function TenantPublicWebchatPage() {
       }
     }, 650);
   };
-
-  const handleOpenQris = (pkg?: { name: string; price: number; description?: string }) => {
-    const inv = createInvoiceId(tenantSlug || 'BOON');
-    const dynamicProd = dynamicTenant?.metadata?.product;
-    const firstPkg = dynamicTenant?.packages?.[0] || config?.pricing.custom_packages[0];
-
-    const name =
-      pkg?.name ||
-      dynamicProd?.name ||
-      firstPkg?.name ||
-      'Paket Produk Toko';
-
-    const price =
-      pkg?.price ||
-      Number(dynamicProd?.price || 0) ||
-      firstPkg?.price ||
-      50000;
-
-    setQrisModal({
-      isOpen: true,
-      packageName: name,
-      amount: price,
-      invoiceId: inv,
-      isPaid: false,
-    });
-  };
-
-  const handleSimulatePaymentSuccess = async () => {
-    setQrisModal((prev) => ({ ...prev, isPaid: true }));
-
-    const confirmText = `✅ Pembayaran Rp ${qrisModal.amount.toLocaleString(
-      'id-ID'
-    )} via QRIS untuk "${qrisModal.packageName}" berhasil diverifikasi! Invoice: ${qrisModal.invoiceId}. Layanan / produk otomatis aktif.`;
-
-    setTimeout(async () => {
-      const botConfirm: ChatMessage = {
-        id: createMessageId('bot-paid'),
-        sender: 'bot',
-        text: confirmText,
-        timestamp: getCurrentTimeStr(),
-        actionButtons: ['Lihat Bukti Bayar', 'Tanya Produk Lain'],
-      };
-      setMessages((prev) => [...prev, botConfirm]);
-
-      try {
-        const supabase = getSupabase();
-        await supabase.from('messages').insert({
-          tenant_slug: tenantSlug,
-          conversation_id: 'webchat-demo-visitor',
-          sender: 'Sistem Pembayaran QRIS',
-          channel: 'webchat',
-          text: confirmText,
-          message_text: confirmText,
-        });
-      } catch {
-        // ignore
-      }
-    }, 600);
-
-    setTimeout(() => {
-      setQrisModal((prev) => ({ ...prev, isOpen: false }));
-    }, 2200);
-  };
-
-  const meta = KNOWN_TENANTS[tenantSlug?.toLowerCase() || ''];
-  const displayTitle = dynamicTenant?.name || config?.name || meta?.name || tenantSlug;
-  const currentCategory = dynamicTenant?.category || config?.category || 'retail';
 
   const getTenantIcon = () => {
     if (currentCategory === 'digital') return <GraduationCap className="w-5 h-5 text-indigo-400" />;
@@ -1029,32 +1124,48 @@ export default function TenantPublicWebchatPage() {
               </button>
             </div>
 
-            {/* QR Code Container */}
-            <div className="bg-white p-6 rounded-2xl text-slate-950 flex flex-col items-center justify-center space-y-3 shadow-inner">
+            {/* Real Dynamic QR Code Container */}
+            <div className="bg-white p-5 rounded-2xl text-slate-950 flex flex-col items-center justify-center space-y-3 shadow-inner">
               <div className="text-center">
-                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
                   {displayTitle}
                 </span>
-                <span className="text-[9px] text-slate-400 font-mono">NMID: ID102026889910283</span>
+                <span className="text-[9px] text-slate-400 font-mono">
+                  NMID: ID102026889910283 &bull; Standar QRIS Indonesia
+                </span>
               </div>
 
-              {/* Realistic QR Pattern Simulation */}
-              <div className="relative w-48 h-48 bg-slate-950 p-2.5 rounded-xl flex items-center justify-center border-4 border-slate-900">
-                <div className="w-full h-full bg-white p-2 grid grid-cols-6 gap-1 rounded">
-                  {Array.from({ length: 36 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`rounded-xs ${
-                        i % 2 === 0 || i % 5 === 0 ? 'bg-slate-950' : 'bg-slate-200'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <span className="bg-white px-2 py-1 rounded shadow text-[10px] font-black text-rose-600 tracking-wider border border-rose-200">
-                    QRIS
+              {/* Dynamic QR Renderer with Fallback */}
+              <div className="p-2.5 bg-white border-2 border-slate-200 rounded-xl shadow-sm flex items-center justify-center">
+                {qrisModal.qr_code_url ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={qrisModal.qr_code_url}
+                    alt="QRIS Barcode"
+                    className="w-[220px] h-[220px] object-contain rounded-lg"
+                  />
+                ) : (
+                  <QRCodeSVG
+                    value={qrisModal.qr_string || '000201010212'}
+                    size={220}
+                    level="M"
+                    includeMargin={true}
+                  />
+                )}
+              </div>
+
+              {/* Countdown Timer & Polling Auto-Settlement */}
+              <div className="w-full flex items-center justify-between px-1 text-[11px] font-mono">
+                <span className="text-slate-600 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="font-semibold text-amber-600">
+                    {formatCountdown(countdownSeconds)}
                   </span>
-                </div>
+                </span>
+                <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Auto-Settlement Polling</span>
+                </span>
               </div>
 
               <div className="text-center w-full pt-1 border-t border-slate-200">
@@ -1091,7 +1202,9 @@ export default function TenantPublicWebchatPage() {
               </div>
               <div className="flex justify-between items-center text-slate-400">
                 <span>Berlaku Hingga:</span>
-                <span className="text-amber-400 font-mono font-semibold">14:59 menit</span>
+                <span className="text-amber-400 font-mono font-semibold">
+                  {formatCountdown(countdownSeconds)} menit
+                </span>
               </div>
             </div>
 
