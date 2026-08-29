@@ -7,6 +7,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     const {
+      template = 'COMMERCE_TEMPLATE',
+      onboardingMode = 'SELF_SERVICE',
       storeName,
       slug: rawSlug,
       waNumber,
@@ -84,6 +86,8 @@ export async function POST(req: NextRequest) {
           name: storeName,
           category,
           metadata: {
+            template: template || 'COMMERCE_TEMPLATE',
+            onboarding_mode: onboardingMode || 'SELF_SERVICE',
             wa_number: formattedWa,
             referral_code: referralCode || null,
             product: {

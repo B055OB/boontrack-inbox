@@ -23,7 +23,6 @@ import {
   Copy,
   Check,
   MessageSquare,
-  BadgeCheck,
   GraduationCap,
   Link2,
 } from 'lucide-react';
@@ -282,6 +281,8 @@ function PilotOnboardingWizard() {
     try {
       const cleanPrice = Number(formData.productPrice.replace(/\D/g, ''));
       const payload = {
+        template: 'COMMERCE_TEMPLATE',
+        onboardingMode: 'SELF_SERVICE',
         storeName: formData.storeName.trim(),
         slug: formData.slug.trim() || generateSlugFromName(formData.storeName),
         waNumber: formData.waNumber.trim(),
@@ -618,6 +619,20 @@ function PilotOnboardingWizard() {
               </div>
             </div>
 
+            {/* Enterprise Routing Note in Step 1 */}
+            <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <span className="text-slate-400 text-center sm:text-left">
+                Butuh integrasi hardware, IoT, sistem pemerintahan, atau integrasi khusus?
+              </span>
+              <Link
+                href="/enterprise"
+                className="text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 transition shrink-0"
+              >
+                <span>Hubungi BoonTrack Enterprise</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
             {/* Step 1 Actions */}
             <div className="pt-4 border-t border-slate-800 flex justify-end">
               <button
@@ -943,13 +958,16 @@ function PilotOnboardingWizard() {
               </div>
             </div>
 
-            {/* WhatsApp Integration Preview & Benefits */}
-            <div className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-500/25 space-y-3">
-              <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
-                <BadgeCheck className="w-4 h-4" />
-                <span>Paket Fitur Pilot Otomatis Aktif</span>
+            {/* WhatsApp Integration Preview & Meta Compliance Banner */}
+            <div className="p-4 rounded-2xl bg-blue-950/20 border border-blue-500/30 space-y-3">
+              <div className="flex items-center gap-2 text-blue-400 text-xs font-bold">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>WhatsApp Business Platform Resmi</span>
               </div>
-              <ul className="text-xs text-slate-300 space-y-2">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Terintegrasi melalui WhatsApp Business Platform resmi, dengan konfigurasi bisnis mengikuti kebijakan dan persyaratan Meta.
+              </p>
+              <ul className="text-xs text-slate-400 space-y-1.5 pt-1 border-t border-slate-800/80">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
                   <span><strong>AI Customer Service 24/7</strong>: Menjawab silabus, stok, dan panduan order secara instan.</span>
@@ -976,7 +994,7 @@ function PilotOnboardingWizard() {
                   className="mt-1 rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-blue-500 w-4 h-4"
                 />
                 <span className="text-xs text-slate-300 leading-relaxed">
-                  Saya menyetujui aktivasi auto-reply AI Bot pada nomor WhatsApp toko dengan data produk yang telah saya isi.
+                  Terintegrasi melalui WhatsApp Business Platform resmi, dengan konfigurasi bisnis mengikuti kebijakan dan persyaratan Meta.
                 </span>
               </label>
 
@@ -1115,6 +1133,25 @@ function PilotOnboardingWizard() {
           </div>
         )}
       </main>
+
+      {/* Enterprise Routing Footnote */}
+      <aside aria-label="Enterprise Solutions" className="max-w-4xl mx-auto w-full px-6 pb-6">
+        <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-md">
+          <div className="flex items-center gap-2.5 text-slate-300 text-center sm:text-left">
+            <Building2 className="w-4 h-4 text-blue-400 shrink-0 hidden sm:block" />
+            <span>
+              Butuh integrasi hardware, IoT, sistem pemerintahan, atau integrasi khusus?
+            </span>
+          </div>
+          <Link
+            href="/enterprise"
+            className="text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1.5 transition shrink-0 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-xl border border-blue-500/25"
+          >
+            <span>Hubungi BoonTrack Enterprise</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      </aside>
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 py-4 px-6 text-center text-xs text-slate-500 bg-slate-950">
