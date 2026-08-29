@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Dumbbell,
-  Sliders,
   Send,
   RefreshCw,
   Search,
@@ -482,22 +481,21 @@ export default function TenantDashboardInboxPage() {
 
   const activeMessages = messages.filter((m) => m.user_id === selectedUserId);
 
+  const isGymPresentation =
+    tenantSlug === 'atmosfitnes' ||
+    (typeof window !== 'undefined' && window.location.host.toLowerCase().includes('gym.'));
+
+  const publicDemoHref = isGymPresentation ? '/' : `/${tenantSlug}`;
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
       {/* Top Navbar */}
       <header className="bg-slate-900/90 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-4 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-3">
           <Link
-            href="/admin"
-            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition border border-slate-700/60"
-          >
-            &larr; Super Admin
-          </Link>
-
-          <Link
-            href={`/${tenantSlug}`}
-            className="text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5 font-semibold"
-            title="Lihat Halaman Publik & Webchat Demo"
+            href={publicDemoHref}
+            className="text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 px-3.5 py-1.5 rounded-lg transition inline-flex items-center gap-1.5 font-semibold shadow-sm"
+            title="Buka Halaman Publik & Webchat Demo"
           >
             <Sparkles className="w-3.5 h-3.5 text-blue-400" />
             <span>Webchat Demo Publik</span>
@@ -507,27 +505,18 @@ export default function TenantDashboardInboxPage() {
           {tenantSlug === 'atmosfitnes' && (
             <Link
               href="/gym"
-              className="text-xs bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5 font-semibold shadow-sm shadow-emerald-950"
+              className="text-xs bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/40 px-3.5 py-1.5 rounded-lg transition inline-flex items-center gap-1.5 font-semibold shadow-sm shadow-emerald-950"
             >
               <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
               <span>Gym Control Hub &rarr;</span>
             </Link>
           )}
 
-          <Link
-            href={`/admin/${tenantSlug}/config`}
-            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5"
-            title="Konfigurasi AI Persona, Jam Operasional & Secrets"
-          >
-            <Sliders className="w-3.5 h-3.5 text-slate-400" />
-            <span>Config Editor</span>
-          </Link>
-
-          <div className="hidden sm:block border-l border-slate-800 pl-3">
+          <div className="border-l border-slate-800 pl-3">
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold text-white">{tenantInfo?.name || meta?.name || tenantSlug}</h1>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                Dashboard Inbox
+                CS Inbox
               </span>
             </div>
           </div>

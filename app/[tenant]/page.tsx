@@ -421,7 +421,12 @@ export default function TenantPublicWebchatPage() {
 
             {/* Direct Link to Dashboard Inbox */}
             <Link
-              href={`/${tenantSlug}/dashboard`}
+              href={
+                tenantSlug === 'atmosfitnes' ||
+                (typeof window !== 'undefined' && window.location.host.toLowerCase().includes('gym.'))
+                  ? '/dashboard'
+                  : `/${tenantSlug}/dashboard`
+              }
               className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition inline-flex items-center gap-1.5"
             >
               <span>Dashboard CS / Admin</span>

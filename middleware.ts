@@ -25,13 +25,30 @@ export function middleware(req: NextRequest) {
   if (isGymSubdomain) {
     const url = req.nextUrl.clone();
 
-    // Root -> Public Webchat Demo & Dummy QRIS for Atmosfitnes
+    // 1. Clean URL enforcement: Strip internal /atmosfitnes from browser address bar
+    if (pathname === '/atmosfitnes' || pathname === '/atmosfitnes/') {
+      url.pathname = '/';
+      return NextResponse.redirect(url, 307);
+    }
+
+    if (pathname === '/atmosfitnes/dashboard') {
+      url.pathname = '/dashboard';
+      return NextResponse.redirect(url, 307);
+    }
+
+    if (pathname.startsWith('/atmosfitnes/')) {
+      const clean = pathname.replace('/atmosfitnes', '') || '/';
+      url.pathname = clean;
+      return NextResponse.redirect(url, 307);
+    }
+
+    // 2. Root -> Public Webchat Demo & Dummy QRIS for Atmosfitnes
     if (pathname === '/') {
       url.pathname = '/atmosfitnes';
       return NextResponse.rewrite(url);
     }
 
-    // CS / Admin Inbox Dashboard
+    // 3. CS / Admin Inbox Dashboard
     if (
       pathname === '/dashboard' ||
       pathname === '/inbox' ||
@@ -41,7 +58,7 @@ export function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // Gym Operational Hub subroutes (RFID Gate, Members, POS, Invoices)
+    // 4. Gym Operational Hub subroutes (RFID Gate, Members, POS, Invoices)
     const gymSubroutes = [
       '/members',
       '/access-logs',
@@ -58,16 +75,12 @@ export function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // If path already targets /gym or /atmosfitnes or /admin, pass through
-    if (
-      pathname.startsWith('/gym') ||
-      pathname.startsWith('/atmosfitnes') ||
-      pathname.startsWith('/admin')
-    ) {
+    // 5. If path already targets /gym or /admin, pass through
+    if (pathname.startsWith('/gym') || pathname.startsWith('/admin')) {
       return NextResponse.next();
     }
 
-    // Default fallback for any other subpath on gym.boontrack.com -> rewrite to /atmosfitnes/subpath
+    // Default fallback: rewrite any other subpath to /atmosfitnes${pathname}
     url.pathname = `/atmosfitnes${pathname}`;
     return NextResponse.rewrite(url);
   }

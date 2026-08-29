@@ -289,25 +289,25 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
             </div>
           </nav>
 
-          {/* Footer & Admin Switch */}
+          {/* Footer Navigation: CS Inbox & Webchat Demo */}
           <div className="p-4 border-t border-slate-800/80 bg-slate-950/40 space-y-2">
             <Link
-              href="/atmosfitnes"
+              href="/dashboard"
               className="flex items-center justify-between w-full px-3 py-2 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 hover:text-white transition text-xs border border-emerald-500/30 group"
             >
               <span className="flex items-center gap-2">
                 <MessageSquare className="w-3.5 h-3.5 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
-                Live Chat Inbox (/atmosfitnes)
+                Live CS Inbox
               </span>
               <ExternalLink className="w-3 h-3 text-emerald-400" />
             </Link>
             <Link
-              href="/admin"
+              href="/"
               className="flex items-center justify-between w-full px-3 py-2 rounded-lg bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white transition text-xs border border-slate-700/50 group"
             >
               <span className="flex items-center gap-2">
                 <Dumbbell className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-400 transition-colors" />
-                BoonTrack Super Admin
+                Webchat Demo Publik
               </span>
               <ExternalLink className="w-3 h-3 text-slate-400" />
             </Link>
