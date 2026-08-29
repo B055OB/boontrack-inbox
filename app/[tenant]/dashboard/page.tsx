@@ -481,11 +481,13 @@ export default function TenantDashboardInboxPage() {
 
   const activeMessages = messages.filter((m) => m.user_id === selectedUserId);
 
-  const isGymPresentation =
+  const isSubdomainMode =
     tenantSlug === 'atmosfitnes' ||
-    (typeof window !== 'undefined' && window.location.host.toLowerCase().includes('gym.'));
+    (typeof window !== 'undefined' &&
+      (window.location.host.toLowerCase().includes('gym.') ||
+        (tenantSlug && window.location.host.toLowerCase().startsWith(`${tenantSlug.toLowerCase()}.`))));
 
-  const publicDemoHref = isGymPresentation ? '/' : `/${tenantSlug}`;
+  const publicDemoHref = isSubdomainMode ? '/' : `/${tenantSlug}`;
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">

@@ -91,6 +91,65 @@ export interface TenantConfigHistory {
 }
 
 export const DEFAULT_TENANT_CONFIGS: Record<string, TenantConfig> = {
+  'nyka': {
+    slug: 'nyka',
+    name: 'Nyka Hijab & Modest Wear',
+    category: 'external',
+    health: {
+      status: 'HEALTHY',
+      wa_gateway: 'CONNECTED',
+      last_payment_ping: '5 menit lalu',
+      last_activity_ping: 'Baru saja',
+      response_time_ms: 130,
+      uptime_pct: 99.9,
+    },
+    persona: {
+      ai_name: 'Nyka Fashion Consultant AI',
+      system_prompt: 'Anda adalah asisten belanja resmi Nyka Hijab & Modest Wear. Bantu pelanggan mengecek stok warna hijab, pilihan bahan voal & silk, rekomendasi padu-padan gamis, dan panduan pembayaran instan QRIS.',
+      tone: 'casual',
+      greeting_message: 'Halo dear! Selamat datang di Nyka Hijab & Modest Wear ✨ Ada koleksi hijab, pashmina, atau gamis yang sedang dicari hari ini?',
+      fallback_message: 'Admin CS Nyka sedang menyiapkan detail katalog untuk kamu, tunggu sebentar ya dear!',
+      human_handoff_enabled: true,
+      human_handoff_number: '+6281233445566',
+    },
+    operational_hours: {
+      days: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'],
+      open_time: '08:00',
+      close_time: '21:00',
+      timezone: 'WIB',
+      is_24_hours: false,
+      closed_auto_reply: 'Terima kasih telah menghubungi Nyka. Butik kami buka setiap hari pukul 08:00 - 21:00 WIB. Pesanan kamu akan kami proses besok pagi.',
+      emergency_contact: '+6281233445566',
+    },
+    pricing: {
+      tier: 'PRO',
+      monthly_fee: 1000000,
+      max_monthly_messages: 5000,
+      currency: 'IDR',
+      custom_packages: [
+        { id: 'nyka-pkg-1', name: 'Hijab Paris Voal Premium Series', price: 45000, description: 'Bahan lembut, tegak di dahi, tidak mudah kusut' },
+        { id: 'nyka-pkg-2', name: 'Pashmina Silk Plisket Exclusive', price: 85000, description: 'Tampilan mewah elegan untuk acara formal' },
+        { id: 'nyka-pkg-3', name: 'Gamis Set Modest Ramadan Series', price: 225000, description: 'Lengkap dengan outer satin & tali serut' },
+      ],
+    },
+    features: {
+      whatsapp_gateway: true,
+      telegram_bot: false,
+      webchat_widget: true,
+      auto_ai_reply: true,
+      qris_billing: true,
+      gate_iot_sync: false,
+      cv_ats_scanner: false,
+      rate_limiting: true,
+    },
+    secrets: {
+      wa_api_token: 'EAAQ88910ZaBC290Kkl8890...',
+      webhook_verify_token: 'nyka_retail_verify_token_2026',
+      payment_api_key: 'qris_live_sk_nyka_hijab_retail_99',
+      admin_password: 'nyka_boutique_pass2026',
+    },
+    updated_at: new Date().toISOString(),
+  },
   'atmosfitnes': {
     slug: 'atmosfitnes',
     name: 'Atmosfitnes Gym Hub',

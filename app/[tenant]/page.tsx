@@ -20,6 +20,7 @@ import {
   Briefcase,
   Users,
   Compass,
+  ShoppingBag,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import {
@@ -82,6 +83,13 @@ export const KNOWN_TENANTS: Record<string, TenantMeta> = {
     description: 'Portal Konsultasi Karir, Analisis ATS CV & Simulasi Wawancara HR',
     defaultButtons: ['Review CV ATS', 'Simulasi HR', 'Konsultasi Gaji', 'Paket Karir QRIS'],
     aliases: ['career', 'boontrack-career', 'career-ai', 'career_service'],
+  },
+  'nyka': {
+    name: 'Nyka Hijab & Modest Wear',
+    category: 'external',
+    description: 'Katalog Koleksi Hijab Premium, Gamis Modern & Asisten Belanja Instan',
+    defaultButtons: ['Katalog Hijab', 'Pashmina Silk', 'Rekomendasi Gamis', 'Bayar via QRIS'],
+    aliases: ['nyka', 'nyka-hijab', 'nyka-modest', 'nyka-store'],
   },
 };
 
@@ -236,6 +244,10 @@ export default function TenantPublicWebchatPage() {
       return `Di BoonTrack Career AI, kami menyediakan audit ATS Score untuk resume Anda, optimasi keyword kata kerja aksi STAR, dan simulasi wawancara HR interaktif. Paket scan mendalam mulai dari Rp 49.000.`;
     }
 
+    if (q.includes('hijab') || q.includes('gamis') || q.includes('pashmina') || q.includes('voal') || q.includes('baju')) {
+      return `Koleksi Nyka Hijab & Modest Wear menggunakan bahan Paris Voal Premium & Silk lembut yang tidak licin, tegak sempurna di dahi, serta adem dipakai harian maupun acara formal. Silakan cek katalog paket di panel sebelah kanan untuk order instan via QRIS!`;
+    }
+
     if (q.includes('jam') || q.includes('buka') || q.includes('tutup') || q.includes('waktu')) {
       const open = currentConfig.operational_hours.open_time;
       const close = currentConfig.operational_hours.close_time;
@@ -368,6 +380,7 @@ export default function TenantPublicWebchatPage() {
   const getTenantIcon = () => {
     if (tenantSlug === 'atmosfitnes') return <Dumbbell className="w-5 h-5 text-emerald-400" />;
     if (tenantSlug === 'career') return <Briefcase className="w-5 h-5 text-indigo-400" />;
+    if (tenantSlug === 'nyka') return <ShoppingBag className="w-5 h-5 text-rose-400" />;
     if (tenantSlug === 'pelayanan-publik' || tenantSlug === 'indra-public') return <Building2 className="w-5 h-5 text-sky-400" />;
     if (tenantSlug === 'bale-pananggeuhan') return <Compass className="w-5 h-5 text-amber-400" />;
     return <Bot className="w-5 h-5 text-blue-400" />;
@@ -423,7 +436,9 @@ export default function TenantPublicWebchatPage() {
             <Link
               href={
                 tenantSlug === 'atmosfitnes' ||
-                (typeof window !== 'undefined' && window.location.host.toLowerCase().includes('gym.'))
+                (typeof window !== 'undefined' &&
+                  (window.location.host.toLowerCase().includes('gym.') ||
+                    (tenantSlug && window.location.host.toLowerCase().startsWith(`${tenantSlug.toLowerCase()}.`))))
                   ? '/dashboard'
                   : `/${tenantSlug}/dashboard`
               }

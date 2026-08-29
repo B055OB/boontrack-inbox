@@ -1,11 +1,65 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+/**
+ * Known B2B Retail / UMKM / Public Tenant Slugs.
+ * Subdomains matching these slugs will be dispatched to the B2B Multi-Tenant engine (/[tenant]),
+ * NOT to the Career/Resume template.
+ */
+const B2B_TENANT_SLUGS = new Set([
+  'nyka',
+  'atmosfitnes',
+  'bale-pananggeuhan',
+  'pelayanan-publik',
+  'indra-public',
+  'pelayanan-publik-dummy',
+  'om-budi',
+  'boontrack-demo',
+  'holding',
+  'boontrack-holding',
+]);
+
+/**
+ * Extract subdomain from incoming request hostname.
+ * Handles *.boontrack.com, *.localhost, and multi-segment hostnames.
+ */
+function extractSubdomain(hostWithPort: string): string | null {
+  const hostClean = hostWithPort.split(':')[0].toLowerCase().trim();
+
+  // Root localhost or direct IP -> no subdomain
+  if (
+    hostClean === 'localhost' ||
+    hostClean === '127.0.0.1' ||
+    /^\d+\.\d+\.\d+\.\d+$/.test(hostClean)
+  ) {
+    return null;
+  }
+
+  // Handle *.localhost (e.g., gym.localhost, nyka.localhost)
+  if (hostClean.endsWith('.localhost')) {
+    const parts = hostClean.replace('.localhost', '').split('.');
+    return parts[parts.length - 1] || null;
+  }
+
+  // Handle *.boontrack.com (e.g., gym.boontrack.com, nyka.boontrack.com, cv.boontrack.com)
+  if (hostClean.endsWith('.boontrack.com')) {
+    const parts = hostClean.replace('.boontrack.com', '').split('.');
+    return parts[parts.length - 1] || null;
+  }
+
+  // General fallback for sub.domain.com
+  const parts = hostClean.split('.');
+  if (parts.length > 2) {
+    return parts[0] || null;
+  }
+
+  return null;
+}
+
 export function middleware(req: NextRequest) {
-  const host = req.headers.get('host') || '';
   const { pathname } = req.nextUrl;
 
-  // Ignore static assets, internal Next.js routes, and API endpoints
+  // 0. Ignore static assets, internal Next.js paths, and API endpoints
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
@@ -15,40 +69,61 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const hostLower = host.toLowerCase();
+  const host = req.headers.get('host') || '';
+  const hostClean = host.split(':')[0].toLowerCase().trim();
 
-  // 1. Gym Subdomain Routing (e.g., gym.boontrack.com or gym.localhost:3000)
-  const isGymSubdomain =
-    hostLower === 'gym.boontrack.com' ||
-    hostLower.startsWith('gym.');
+  // 1. Bypass Root & Admin hostnames (localhost, boontrack.com, admin.boontrack.com, app.boontrack.com)
+  if (
+    hostClean === 'localhost' ||
+    hostClean === 'boontrack.com' ||
+    hostClean === 'www.boontrack.com' ||
+    hostClean === 'admin.boontrack.com' ||
+    hostClean === 'app.boontrack.com' ||
+    hostClean.startsWith('admin.') ||
+    hostClean.startsWith('app.')
+  ) {
+    return NextResponse.next();
+  }
 
-  if (isGymSubdomain) {
+  const subdomain = extractSubdomain(host);
+
+  // If no subdomain detected or system subdomains, continue standard routing
+  if (
+    !subdomain ||
+    subdomain === 'www' ||
+    subdomain === 'admin' ||
+    subdomain === 'app'
+  ) {
+    return NextResponse.next();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. Gym Subdomain (gym.* or atmosfitnes.*)
+  // ---------------------------------------------------------------------------
+  if (subdomain === 'gym' || subdomain === 'atmosfitnes') {
     const url = req.nextUrl.clone();
 
-    // 1. Clean URL enforcement: Strip internal /atmosfitnes from browser address bar
+    // Clean URL enforcement: strip internal /atmosfitnes prefix from browser address bar
     if (pathname === '/atmosfitnes' || pathname === '/atmosfitnes/') {
       url.pathname = '/';
       return NextResponse.redirect(url, 307);
     }
-
     if (pathname === '/atmosfitnes/dashboard') {
       url.pathname = '/dashboard';
       return NextResponse.redirect(url, 307);
     }
-
     if (pathname.startsWith('/atmosfitnes/')) {
-      const clean = pathname.replace('/atmosfitnes', '') || '/';
-      url.pathname = clean;
+      url.pathname = pathname.replace('/atmosfitnes', '') || '/';
       return NextResponse.redirect(url, 307);
     }
 
-    // 2. Root -> Public Webchat Demo & Dummy QRIS for Atmosfitnes
+    // Root -> Public Webchat Demo & Dummy QRIS for Atmosfitnes
     if (pathname === '/') {
       url.pathname = '/atmosfitnes';
       return NextResponse.rewrite(url);
     }
 
-    // 3. CS / Admin Inbox Dashboard
+    // CS / Admin Inbox Dashboard
     if (
       pathname === '/dashboard' ||
       pathname === '/inbox' ||
@@ -58,7 +133,7 @@ export function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // 4. Gym Operational Hub subroutes (RFID Gate, Members, POS, Invoices)
+    // Gym Operational Hub subroutes (RFID Gate, Members, POS, Invoices)
     const gymSubroutes = [
       '/members',
       '/access-logs',
@@ -75,28 +150,94 @@ export function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // 5. If path already targets /gym or /admin, pass through
+    // If path already targets /gym or /admin, pass through
     if (pathname.startsWith('/gym') || pathname.startsWith('/admin')) {
       return NextResponse.next();
     }
 
-    // Default fallback: rewrite any other subpath to /atmosfitnes${pathname}
+    // Fallback for other paths on gym subdomain
     url.pathname = `/atmosfitnes${pathname}`;
     return NextResponse.rewrite(url);
   }
 
-  // 2. App Subdomain Routing (e.g., app.boontrack.com or app.localhost:3000)
-  // Request path app.boontrack.com/[tenant] renders app/[tenant]/ directly
-  const isAppSubdomain =
-    hostLower === 'app.boontrack.com' ||
-    hostLower.startsWith('app.');
+  // ---------------------------------------------------------------------------
+  // 3. B2B Tenant Subdomain (Retail / Hijab / UMKM e.g. nyka, bale-pananggeuhan)
+  // ---------------------------------------------------------------------------
+  if (B2B_TENANT_SLUGS.has(subdomain)) {
+    const url = req.nextUrl.clone();
 
-  if (isAppSubdomain) {
+    // Clean URL enforcement: strip internal /${subdomain} prefix from browser address bar
+    if (pathname === `/${subdomain}` || pathname === `/${subdomain}/`) {
+      url.pathname = '/';
+      return NextResponse.redirect(url, 307);
+    }
+    if (pathname === `/${subdomain}/dashboard`) {
+      url.pathname = '/dashboard';
+      return NextResponse.redirect(url, 307);
+    }
+    if (pathname.startsWith(`/${subdomain}/`)) {
+      url.pathname = pathname.replace(`/${subdomain}`, '') || '/';
+      return NextResponse.redirect(url, 307);
+    }
+
+    // Root -> Webchat Demo Publik for this B2B tenant
+    if (pathname === '/') {
+      url.pathname = `/${subdomain}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // CS / Admin Inbox Dashboard for this B2B tenant
+    if (
+      pathname === '/dashboard' ||
+      pathname === '/inbox' ||
+      pathname === '/chat'
+    ) {
+      url.pathname = `/${subdomain}/dashboard`;
+      return NextResponse.rewrite(url);
+    }
+
+    // Allow /admin paths to pass through
+    if (pathname.startsWith('/admin')) {
+      return NextResponse.next();
+    }
+
+    // Fallback for other subpaths on this B2B tenant domain
+    url.pathname = `/${subdomain}${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. Career Fallback: Jobseeker Profile Subdomains (e.g. cv, rayi-gemilang)
+  // ---------------------------------------------------------------------------
+  const url = req.nextUrl.clone();
+
+  // Clean URL enforcement: strip internal /career/${subdomain} prefix
+  if (
+    pathname === `/career/${subdomain}` ||
+    pathname === `/career/${subdomain}/`
+  ) {
+    url.pathname = '/';
+    return NextResponse.redirect(url, 307);
+  }
+  if (pathname.startsWith(`/career/${subdomain}/`)) {
+    url.pathname = pathname.replace(`/career/${subdomain}`, '') || '/';
+    return NextResponse.redirect(url, 307);
+  }
+
+  // Root -> Candidate's Public Career Profile & ATS Resume
+  if (pathname === '/') {
+    url.pathname = `/career/${subdomain}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // Allow /admin paths to pass through
+  if (pathname.startsWith('/admin')) {
     return NextResponse.next();
   }
 
-  // Other hostnames continue standard Next.js routing
-  return NextResponse.next();
+  // Fallback for candidate profile subpaths (e.g. /portfolio, /resume)
+  url.pathname = `/career/${subdomain}${pathname}`;
+  return NextResponse.rewrite(url);
 }
 
 export const config = {
