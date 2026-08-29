@@ -23,32 +23,38 @@ export async function GET(
       if (tenantRow) {
         const metadata = tenantRow.metadata || {};
         const product = metadata.product || {};
-        const isDigital = product.type === 'digital' || tenantRow.category === 'digital';
 
-        const packages = [];
-        if (product.name) {
-          packages.push({
-            id: `${slug}-main`,
-            name: product.name,
-            price: Number(product.price || 0),
-            description:
-              [
-                product.variants ? `Varian: ${product.variants}` : '',
-                product.promo ? `Promo: ${product.promo}` : '',
-                isDigital ? 'Format Digital' : 'Barang Fisik',
-              ]
-                .filter(Boolean)
-                .join(' • ') || 'Produk Unggulan',
-          });
+        const productsList =
+          Array.isArray(metadata.products) && metadata.products.length > 0
+            ? metadata.products
+            : product.name
+            ? [product]
+            : [];
 
-          if (product.promo) {
+        const packages: Array<{
+          id: string;
+          name: string;
+          price: number;
+          description: string;
+        }> = [];
+        if (productsList.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          productsList.forEach((prod: any, idx: number) => {
+            const isProdDigital = prod.type === 'digital' || tenantRow.category === 'digital';
             packages.push({
-              id: `${slug}-bundle`,
-              name: `Paket Bundling: ${product.name}`,
-              price: Math.round(Number(product.price || 0) * 1.8),
-              description: product.promo,
+              id: prod.id || `${slug}-prod-${idx}`,
+              name: prod.name,
+              price: Number(prod.price || 0),
+              description:
+                [
+                  prod.variants ? `Varian: ${prod.variants}` : '',
+                  prod.promo ? `Promo: ${prod.promo}` : '',
+                  isProdDigital ? 'Format Digital' : 'Barang Fisik',
+                ]
+                  .filter(Boolean)
+                  .join(' • ') || 'Produk Unggulan',
             });
-          }
+          });
         }
 
         return NextResponse.json({

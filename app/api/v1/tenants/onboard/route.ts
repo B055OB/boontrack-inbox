@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getBackendApiUrl } from '@/lib/api-config';
 
 export async function POST(req: NextRequest) {
   try {
@@ -97,6 +98,18 @@ export async function POST(req: NextRequest) {
     } catch (dbErr) {
       // Supabase is optional / fallback enabled for pilot
       console.warn('Supabase tenant upsert skipped or offline:', dbErr);
+    }
+
+    // Forward/Sync to Railway Production Core Backend
+    try {
+      await fetch(getBackendApiUrl('/api/v1/tenants/onboard'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        cache: 'no-store',
+      });
+    } catch (railwayErr) {
+      console.warn('Railway backend onboard sync note:', railwayErr);
     }
 
     return NextResponse.json({

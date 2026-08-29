@@ -1,6 +1,8 @@
 // lib/gym-api.ts
 // Client helper for BoonTrack Core Gym Vertical API
 
+import { BACKEND_API_URL } from './api-config';
+
 export interface GymMember {
   id: string;
   name: string;
@@ -181,7 +183,7 @@ export interface GymSettings {
   };
 }
 
-const DEFAULT_CORE_API_URL = process.env.NEXT_PUBLIC_CORE_API_URL || 'http://localhost:8080';
+const DEFAULT_CORE_API_URL = BACKEND_API_URL;
 const DEFAULT_TENANT_ID = 'atmosfitnes';
 
 // ==========================================

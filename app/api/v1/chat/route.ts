@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getBackendApiUrl } from '@/lib/api-config';
 
 interface ProductContext {
   name?: string;
@@ -35,8 +36,36 @@ export async function POST(req: NextRequest) {
 
     let reply = '';
 
-    // If GEMINI_API_KEY is configured, call Gemini API
-    if (process.env.GEMINI_API_KEY) {
+    // 1. Try calling BoonTrack Core Backend on Railway
+    try {
+      const coreRes = await fetch(getBackendApiUrl('/api/v1/chat'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-ID': slug,
+        },
+        body: JSON.stringify({
+          tenant_slug: slug,
+          message,
+          product_context: product,
+          conversation_history,
+          context,
+        }),
+        cache: 'no-store',
+      });
+
+      if (coreRes.ok) {
+        const coreData = await coreRes.json();
+        if (coreData.reply || coreData.response || coreData.message) {
+          reply = coreData.reply || coreData.response || coreData.message;
+        }
+      }
+    } catch {
+      // fallback to Gemini / local conversational engine
+    }
+
+    // 2. If GEMINI_API_KEY is configured, call Gemini API
+    if (!reply && process.env.GEMINI_API_KEY) {
       try {
         const systemPrompt = `Anda adalah asisten AI customer service resmi untuk toko "${storeName}" (Kategori: ${category}).
 Detail Produk & Layanan:

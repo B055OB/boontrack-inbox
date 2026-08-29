@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { DEFAULT_TENANT_CONFIGS, normalizeTenantSlug } from '@/lib/tenant-config';
+import { getBackendApiUrl } from '@/lib/api-config';
 
 export async function GET(
   _req: NextRequest,
@@ -10,6 +11,25 @@ export async function GET(
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    // Try Railway Production Core Backend
+    try {
+      const railwayRes = await fetch(
+        getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/settings`),
+        {
+          headers: { 'X-Tenant-ID': slug },
+          cache: 'no-store',
+        }
+      );
+      if (railwayRes.ok) {
+        const rData = await railwayRes.json();
+        if (rData && rData.settings) {
+          return NextResponse.json(rData);
+        }
+      }
+    } catch {
+      // fallback to Supabase / defaults
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let dbMetadata: Record<string, any> = {};
@@ -71,6 +91,81 @@ export async function GET(
       type: dbMetadata.product?.type || (category === 'digital' ? 'digital' : 'physical'),
     };
 
+    const defaultProducts = isSuhu
+      ? [
+          {
+            id: 'suhu-prod-1',
+            name: 'Suhu Ads Masterclass 2026 - Full Lifetime Access',
+            category: 'course',
+            price: 99000,
+            promo_price: 149000,
+            variants: 'Format Digital • Video HD + Template Canva',
+            promo: 'Diskon 35% Bulan Ini',
+            description:
+              'Pusat pelatihan Meta Ads praktis untuk media buyer & pebisnis online. Dapatkan strategi scale-up campaign, riset audience, dan optimasi konversi terbukti.',
+            download_url: 'https://drive.google.com/drive/folders/suhu-ads-masterclass-2026',
+            type: 'digital',
+          },
+          {
+            id: 'suhu-prod-2',
+            name: '50+ High-Converting Copywriting Swipe File Toolkit',
+            category: 'template',
+            price: 49000,
+            promo_price: 75000,
+            variants: 'Notion Database + PDF Cheat Sheet',
+            promo: 'Best Seller Add-On',
+            description:
+              'Kumpulan 50+ formula headline, angle penawaran, dan skrip copywriting iklan teruji tembus ROAS 4x.',
+            download_url: 'https://drive.google.com/drive/folders/suhu-ads-toolkit-2026',
+            type: 'digital',
+          },
+          {
+            id: 'suhu-prod-3',
+            name: 'E-Book Blueprint Riset Winning Audience 2026',
+            category: 'ebook',
+            price: 35000,
+            promo_price: 50000,
+            variants: 'E-Book PDF 85 Halaman',
+            promo: 'Flash Sale',
+            description:
+              'Panduan langkah demi langkah membedah interest, broad targeting, dan custom audience Meta tanpa boncos.',
+            download_url: 'https://drive.google.com/drive/folders/suhu-ads-ebook-blueprint',
+            type: 'digital',
+          },
+          {
+            id: 'suhu-prod-4',
+            name: 'Private 1-on-1 Meta Ads Mentoring & Audit Campaign',
+            category: 'membership',
+            price: 299000,
+            promo_price: 450000,
+            variants: '1 Jam Sesi Zoom + Recording + Audit Ads Manager',
+            promo: 'Slot Terbatas 5 Peserta/Bulan',
+            description:
+              'Bedah langsung dashboard Ads Manager Anda bersama praktisi senior untuk menemukan kebocoran budget iklan.',
+            download_url: 'https://cal.com/suhu-ads/mentoring-session',
+            type: 'digital',
+          },
+        ]
+      : [
+          {
+            id: `${slug}-prod-1`,
+            name: product.name,
+            category: category === 'digital' ? 'course' : 'physical',
+            price: product.price,
+            promo_price: product.promo_price,
+            variants: product.variants,
+            promo: product.promo,
+            description: product.description,
+            download_url: product.download_url,
+            type: product.type,
+          },
+        ];
+
+    const products =
+      Array.isArray(dbMetadata.products) && dbMetadata.products.length > 0
+        ? dbMetadata.products
+        : defaultProducts;
+
     const aiKnowledge = {
       ai_name:
         dbMetadata.ai_knowledge?.ai_name ||
@@ -124,7 +219,8 @@ export async function GET(
         slug,
         name: defaultName,
         category: category || (isSuhu ? 'digital' : 'retail'),
-        product,
+        product: products[0] || product,
+        products,
         ai_knowledge: aiKnowledge,
         bank,
         integration,
@@ -149,6 +245,7 @@ export async function PUT(
       name,
       category,
       product,
+      products,
       ai_knowledge,
       bank,
       integration,
@@ -169,6 +266,7 @@ export async function PUT(
           ...(existing?.metadata?.product || {}),
           ...(product || {}),
         },
+        products: products !== undefined ? products : existing?.metadata?.products,
         ai_knowledge: {
           ...(existing?.metadata?.ai_knowledge || {}),
           ...(ai_knowledge || {}),
@@ -192,6 +290,24 @@ export async function PUT(
       });
     } catch (dbErr) {
       console.warn('Supabase update tenant settings error:', dbErr);
+    }
+
+    // Forward/Sync to Railway Production Core Backend
+    try {
+      await fetch(
+        getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/settings`),
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-ID': slug,
+          },
+          body: JSON.stringify(body),
+          cache: 'no-store',
+        }
+      );
+    } catch (railwayErr) {
+      console.warn('Railway backend update settings sync note:', railwayErr);
     }
 
     return NextResponse.json({
