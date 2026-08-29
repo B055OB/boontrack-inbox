@@ -23,30 +23,57 @@ export function middleware(req: NextRequest) {
     hostLower.startsWith('gym.');
 
   if (isGymSubdomain) {
-    // If accessing chat or inbox on gym subdomain, rewrite directly to dynamic tenant atmosfitnes shell
-    if (pathname === '/inbox' || pathname === '/chat' || pathname === '/atmosfitnes') {
-      const url = req.nextUrl.clone();
+    const url = req.nextUrl.clone();
+
+    // Root -> Public Webchat Demo & Dummy QRIS for Atmosfitnes
+    if (pathname === '/') {
       url.pathname = '/atmosfitnes';
       return NextResponse.rewrite(url);
     }
 
-    // If the path already has /gym prefix, proceed normally
-    if (pathname.startsWith('/gym')) {
+    // CS / Admin Inbox Dashboard
+    if (
+      pathname === '/dashboard' ||
+      pathname === '/inbox' ||
+      pathname === '/chat'
+    ) {
+      url.pathname = '/atmosfitnes/dashboard';
+      return NextResponse.rewrite(url);
+    }
+
+    // Gym Operational Hub subroutes (RFID Gate, Members, POS, Invoices)
+    const gymSubroutes = [
+      '/members',
+      '/access-logs',
+      '/controllers',
+      '/invoices',
+      '/pos',
+      '/classes',
+      '/reports',
+      '/settings',
+    ];
+
+    if (gymSubroutes.some((r) => pathname === r || pathname.startsWith(`${r}/`))) {
+      url.pathname = `/gym${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // If path already targets /gym or /atmosfitnes or /admin, pass through
+    if (
+      pathname.startsWith('/gym') ||
+      pathname.startsWith('/atmosfitnes') ||
+      pathname.startsWith('/admin')
+    ) {
       return NextResponse.next();
     }
 
-    // Rewrite root and subpaths:
-    // gym.boontrack.com/ -> /gym
-    // gym.boontrack.com/members -> /gym/members
-    // gym.boontrack.com/access-logs -> /gym/access-logs
-    // gym.boontrack.com/controllers -> /gym/controllers
-    const url = req.nextUrl.clone();
-    url.pathname = `/gym${pathname === '/' ? '' : pathname}`;
+    // Default fallback for any other subpath on gym.boontrack.com -> rewrite to /atmosfitnes/subpath
+    url.pathname = `/atmosfitnes${pathname}`;
     return NextResponse.rewrite(url);
   }
 
   // 2. App Subdomain Routing (e.g., app.boontrack.com or app.localhost:3000)
-  // Request path app.boontrack.com/[tenant] langsung merender shell app/[tenant]/
+  // Request path app.boontrack.com/[tenant] renders app/[tenant]/ directly
   const isAppSubdomain =
     hostLower === 'app.boontrack.com' ||
     hostLower.startsWith('app.');
@@ -55,14 +82,14 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Other hostnames (e.g., bossob.boontrack.com, chat.boontrack.com, etc.) continue standard routing
+  // Other hostnames continue standard Next.js routing
   return NextResponse.next();
 }
 
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
+     * Match all request paths except for:
      * - api (API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)

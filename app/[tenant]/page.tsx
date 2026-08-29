@@ -1,53 +1,34 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Dumbbell } from 'lucide-react';
+import {
+  Send,
+  Sparkles,
+  Dumbbell,
+  CreditCard,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  Bot,
+  QrCode,
+  X,
+  Copy,
+  Check,
+  Building2,
+  Briefcase,
+  Users,
+  Compass,
+} from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import {
+  getTenantConfig,
+  TenantConfig,
+  CustomPackage,
+} from '@/lib/tenant-config';
 
-interface Message {
-  id: string | number;
-  tenant_id?: string;
-  tenant_slug?: string;
-  conversation_id?: string;
-  channel?: string;
-  user_id?: string;
-  sender: string;
-  text?: string;
-  message_text?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload?: any | null;
-  created_at: string;
-}
-
-interface DatabaseMessage {
-  id: string | number;
-  tenant_id?: string | null;
-  tenant_slug?: string | null;
-  conversation_id?: string | null;
-  channel?: string | null;
-  user_id?: string | null;
-  user_phone?: string | null;
-  user_name?: string | null;
-  sender?: string | null;
-  text?: string | null;
-  message_text?: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload?: any | null;
-  created_at: string;
-}
-
-interface TenantInfo {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
-  category?: 'internal' | 'external' | string;
-  description?: string;
-}
-
-interface TenantMeta {
+export interface TenantMeta {
   name: string;
   category: 'internal' | 'external';
   description: string;
@@ -62,7 +43,7 @@ export const KNOWN_TENANTS: Record<string, TenantMeta> = {
     name: 'Atmosfitnes Gym Hub',
     category: 'external',
     description: 'Atmosfitnes Gym Member & Guest Support, Gate RFID & POS Cafe',
-    defaultButtons: ['Info Membership', 'Jadwal Zumba', 'Cek Gate & NFC', 'POS Cafe'],
+    defaultButtons: ['Info Membership', 'Jadwal Zumba & Aerobik', 'Cek Gate RFID', 'Menu POS Cafe', 'Bayar QRIS'],
     aliases: ['atmosfitnes', 'gym', 'atmosfitnes-south', 'atmosfitnes-hub'],
     verticalHref: '/gym',
     verticalLabel: 'Buka Gym Control Hub',
@@ -71,280 +52,142 @@ export const KNOWN_TENANTS: Record<string, TenantMeta> = {
     name: 'Om Budi Channel',
     category: 'internal',
     description: 'BoonTrack Ecosystem Internal AI Assistant & Multi-Channel Routing',
-    defaultButtons: ['Tanya Om Budi', 'Info Layanan', 'Status Bot'],
+    defaultButtons: ['Tanya Om Budi', 'Info Layanan', 'Status Bot', 'Simulasi Routing'],
     aliases: ['om-budi', 'om_budi'],
   },
   'pelayanan-publik': {
     name: 'Pelayanan Publik (Kelurahan Indra)',
     category: 'external',
     description: 'Layanan Aspirasi, Administrasi Surat & Pengaduan Warga Digital',
-    defaultButtons: ['Layanan Surat', 'Pengaduan Warga', 'Info Kelurahan', 'Kontak Petugas'],
+    defaultButtons: ['Layanan Surat', 'Pengaduan Warga', 'Info Kelurahan', 'Retribusi QRIS'],
     aliases: ['pelayanan-publik', 'pelayanan-publik-dummy', 'indra-public', 'indra_public', 'kelurahan-indra', 'indra'],
   },
   'indra-public': {
     name: 'Pelayanan Publik (Kelurahan Indra)',
     category: 'external',
     description: 'Layanan Aspirasi, Administrasi Surat & Pengaduan Warga Digital',
-    defaultButtons: ['Layanan Surat', 'Pengaduan Warga', 'Info Kelurahan', 'Kontak Petugas'],
+    defaultButtons: ['Layanan Surat', 'Pengaduan Warga', 'Info Kelurahan', 'Retribusi QRIS'],
     aliases: ['pelayanan-publik', 'pelayanan-publik-dummy', 'indra-public', 'indra_public', 'kelurahan-indra', 'indra'],
   },
   'bale-pananggeuhan': {
     name: 'Bale Pananggeuhan',
     category: 'external',
     description: 'Reservasi Tempat, Informasi Menu & Layanan Pelanggan Bale Pananggeuhan',
-    defaultButtons: ['Reservasi Tempat', 'Katalog Menu', 'Jam Buka', 'Kontak CS'],
+    defaultButtons: ['Reservasi Tempat', 'Katalog Menu', 'Jam Buka', 'DP via QRIS'],
     aliases: ['bale-pananggeuhan', 'bale_pananggeuhan', 'bale'],
   },
   'career': {
     name: 'BoonTrack Career AI',
     category: 'internal',
     description: 'Portal Konsultasi Karir, Analisis ATS CV & Simulasi Wawancara HR',
-    defaultButtons: ['Job Matcher AI', 'Simulasi HR', 'Negosiasi Gaji', 'Review CV ATS'],
+    defaultButtons: ['Review CV ATS', 'Simulasi HR', 'Konsultasi Gaji', 'Paket Karir QRIS'],
     aliases: ['career', 'boontrack-career', 'career-ai', 'career_service'],
   },
 };
 
-function isMessageForTenant(
-  m: DatabaseMessage | Message,
-  slug: string,
-  tenantDbId?: string
-): boolean {
-  if (!slug) return false;
-  const lowerSlug = slug.toLowerCase();
-
-  const msgTenantId = (m.tenant_id || '').toLowerCase();
-  const msgTenantSlug = (m.tenant_slug || '').toLowerCase();
-
-  // Direct match with active slug or tenant ID from DB
-  if (msgTenantSlug === lowerSlug || msgTenantId === lowerSlug) return true;
-  if (tenantDbId && (msgTenantId === tenantDbId.toLowerCase() || msgTenantSlug === tenantDbId.toLowerCase())) {
-    return true;
-  }
-
-  // Check known aliases
-  const known = KNOWN_TENANTS[lowerSlug];
-  if (known?.aliases) {
-    if (known.aliases.some((alias) => alias.toLowerCase() === msgTenantSlug || alias.toLowerCase() === msgTenantId)) {
-      return true;
-    }
-  }
-
-  // If message has no tenant assigned at all, fallback to display
-  if (!m.tenant_id && !m.tenant_slug) {
-    return true;
-  }
-
-  return false;
-}
-
-function extractMessageText(m: DatabaseMessage): string {
-  if (m.text && typeof m.text === 'string' && m.text.trim().length > 0) {
-    return m.text;
-  }
-  if (m.message_text && typeof m.message_text === 'string' && m.message_text.trim().length > 0) {
-    return m.message_text;
-  }
-
-  if (m.payload) {
-    let p = m.payload;
-    if (typeof p === 'string') {
-      try {
-        p = JSON.parse(p);
-      } catch {
-        return p;
-      }
-    }
-
-    if (typeof p === 'object' && p !== null) {
-      if (typeof p.text === 'string' && p.text.trim()) return p.text;
-      if (typeof p.message === 'string' && p.message.trim()) return p.message;
-      if (typeof p.message_text === 'string' && p.message_text.trim()) return p.message_text;
-      if (typeof p.body === 'string' && p.body.trim()) return p.body;
-      if (typeof p.conversation === 'string' && p.conversation.trim()) return p.conversation;
-      if (typeof p.caption === 'string' && p.caption.trim()) return p.caption;
-
-      // WhatsApp Cloud API / Baileys payload formats
-      if (p.text?.body && typeof p.text.body === 'string') return p.text.body;
-      if (p.extendedTextMessage?.text && typeof p.extendedTextMessage.text === 'string') return p.extendedTextMessage.text;
-      if (p.conversationMessage?.conversation && typeof p.conversationMessage.conversation === 'string') return p.conversationMessage.conversation;
-      if (p.messages?.[0]?.text?.body && typeof p.messages[0].text.body === 'string') return p.messages[0].text.body;
-      if (p.messages?.[0]?.body && typeof p.messages[0].body === 'string') return p.messages[0].body;
-      if (p.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body) {
-        return p.entry[0].changes[0].value.messages[0].text.body;
-      }
-    }
-  }
-
-  return m.text || m.message_text || '';
-}
-
-function normalizeMessage(m: DatabaseMessage): Message {
-  let resolvedUser = m.user_id || m.user_phone;
-
-  if (!resolvedUser && m.payload) {
-    let p = m.payload;
-    if (typeof p === 'string') {
-      try {
-        p = JSON.parse(p);
-      } catch {
-        // ignore
-      }
-    }
-    if (typeof p === 'object' && p !== null) {
-      resolvedUser =
-        p.from ||
-        p.sender ||
-        p.phone ||
-        p.user_phone ||
-        p.user_id ||
-        p.messages?.[0]?.from ||
-        p.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.wa_id ||
-        p.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
-    }
-  }
-
-  if (!resolvedUser) {
-    if (m.sender && (m.sender.includes('+') || /\d{8,}/.test(m.sender))) {
-      resolvedUser = m.sender;
-    } else {
-      resolvedUser = m.conversation_id || 'User Tamu';
-    }
-  }
-
-  let resolvedChannel = m.channel || 'whatsapp';
-  if (
-    m.sender?.toLowerCase().includes('bot') ||
-    m.sender?.toLowerCase().includes('career') ||
-    m.sender?.toLowerCase().includes('budi')
-  ) {
-    resolvedChannel = 'whatsapp';
-  }
-
-  const msgText = extractMessageText(m);
-
-  return {
-    ...m,
-    user_id: resolvedUser,
-    channel: resolvedChannel,
-    sender: m.sender || 'Unknown',
-    message_text: msgText,
-    text: m.text ?? (msgText || undefined),
-    payload: m.payload ?? null,
-    tenant_id: m.tenant_id ?? undefined,
-    tenant_slug: m.tenant_slug ?? undefined,
-    conversation_id: m.conversation_id ?? undefined,
+interface ChatMessage {
+  id: string;
+  sender: 'user' | 'bot';
+  text: string;
+  timestamp: string;
+  actionButtons?: string[];
+  qrisData?: {
+    packageName: string;
+    amount: number;
+    invoiceId: string;
   };
 }
 
-function extractInteractiveButtons(msg: Message, tenantSlug?: string): string[] {
-  const buttons: string[] = [];
-
-  if (msg.payload) {
-    let p = msg.payload;
-    if (typeof p === 'string') {
-      try {
-        p = JSON.parse(p);
-      } catch {
-        // ignore
-      }
-    }
-
-    if (typeof p === 'object' && p !== null) {
-      // 1. WhatsApp Cloud API / Generic interactive buttons
-      const rawButtons =
-        p.interactive?.action?.buttons ||
-        p.action?.buttons ||
-        p.buttons ||
-        p.quick_replies;
-
-      if (Array.isArray(rawButtons)) {
-        for (const btn of rawButtons) {
-          if (typeof btn === 'string' && btn.trim()) {
-            buttons.push(btn.trim());
-          } else if (btn?.reply?.title) {
-            buttons.push(btn.reply.title);
-          } else if (btn?.buttonText?.displayText) {
-            buttons.push(btn.buttonText.displayText);
-          } else if (btn?.title) {
-            buttons.push(btn.title);
-          } else if (btn?.text) {
-            buttons.push(btn.text);
-          } else if (btn?.label) {
-            buttons.push(btn.label);
-          }
-        }
-      }
-
-      // 2. WhatsApp Interactive List / Sections
-      const sections =
-        p.interactive?.action?.sections ||
-        p.action?.sections ||
-        p.listMessage?.sections ||
-        p.sections;
-
-      if (Array.isArray(sections)) {
-        for (const sec of sections) {
-          if (Array.isArray(sec?.rows)) {
-            for (const row of sec.rows) {
-              if (row?.title) {
-                buttons.push(row.title);
-              } else if (typeof row === 'string' && row.trim()) {
-                buttons.push(row.trim());
-              }
-            }
-          }
-        }
-      }
-
-      // 3. Direct rows array
-      if (Array.isArray(p.rows)) {
-        for (const row of p.rows) {
-          if (row?.title) {
-            buttons.push(row.title);
-          } else if (typeof row === 'string' && row.trim()) {
-            buttons.push(row.trim());
-          }
-        }
-      }
-    }
-  }
-
-  const isBot =
-    msg.sender?.toLowerCase().includes('bot') ||
-    msg.sender?.toLowerCase().includes('ai') ||
-    msg.sender?.toLowerCase().includes('career') ||
-    msg.sender?.toLowerCase().includes('assistant');
-
-  const isWhatsapp =
-    msg.channel?.toLowerCase() === 'whatsapp' ||
-    msg.sender?.toLowerCase().includes('whatsapp') ||
-    (msg.user_id && /^\d+$/.test(msg.user_id));
-
-  // If no buttons extracted from payload and sender is WhatsApp Bot, provide tenant default choices
-  if (buttons.length === 0 && isBot && isWhatsapp) {
-    const defaultBtns = tenantSlug && KNOWN_TENANTS[tenantSlug.toLowerCase()]?.defaultButtons;
-    if (defaultBtns && defaultBtns.length > 0) {
-      buttons.push(...defaultBtns);
-    } else {
-      buttons.push('Job Matcher AI', 'Simulasi HR', 'Negosiasi Gaji');
-    }
-  }
-
-  return Array.from(new Set(buttons));
+let msgSeq = 0;
+function createMessageId(prefix: string) {
+  msgSeq += 1;
+  return `${prefix}-${msgSeq}`;
 }
 
-export default function TenantInboxPage() {
+function getCurrentTimeStr() {
+  const now = new Date();
+  return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function createInvoiceId(tenantSlug: string) {
+  const rnd = Math.floor(100000 + Math.random() * 900000);
+  return `INV/${(tenantSlug || 'BOON').toUpperCase()}/${rnd}`;
+}
+
+export default function TenantPublicWebchatPage() {
   const params = useParams();
   const tenantSlug = Array.isArray(params?.tenant) ? params.tenant[0] : (params?.tenant as string);
-  const meta = tenantSlug ? KNOWN_TENANTS[tenantSlug.toLowerCase()] : undefined;
 
-  const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [selectedChannel, setSelectedChannel] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [prevSlug, setPrevSlug] = useState(tenantSlug);
+  const [config, setConfig] = useState<TenantConfig | null>(() =>
+    tenantSlug ? getTenantConfig(tenantSlug) : null
+  );
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (!tenantSlug) return [];
+    const cfg = getTenantConfig(tenantSlug);
+    return [
+      {
+        id: 'bot-init-0',
+        sender: 'bot',
+        text:
+          cfg.persona.greeting_message ||
+          `Halo! Selamat datang di ${cfg.name}. Ada yang bisa kami bantu seputar layanan kami?`,
+        timestamp: '09:00',
+        actionButtons:
+          KNOWN_TENANTS[tenantSlug.toLowerCase()]?.defaultButtons || [
+            'Info Layanan',
+            'Katalog Paket',
+            'Jam Buka',
+            'Simulasi QRIS',
+          ],
+      },
+    ];
+  });
 
+  if (tenantSlug !== prevSlug) {
+    setPrevSlug(tenantSlug);
+    const cfg = tenantSlug ? getTenantConfig(tenantSlug) : null;
+    setConfig(cfg);
+    if (cfg) {
+      setMessages([
+        {
+          id: 'bot-init-0',
+          sender: 'bot',
+          text:
+            cfg.persona.greeting_message ||
+            `Halo! Selamat datang di ${cfg.name}. Ada yang bisa kami bantu seputar layanan kami?`,
+          timestamp: '09:00',
+          actionButtons:
+            KNOWN_TENANTS[tenantSlug.toLowerCase()]?.defaultButtons || [
+              'Info Layanan',
+              'Katalog Paket',
+              'Jam Buka',
+              'Simulasi QRIS',
+            ],
+        },
+      ]);
+    }
+  }
+
+  const [inputText, setInputText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
+  // QRIS Modal state
+  const [qrisModal, setQrisModal] = useState<{
+    isOpen: boolean;
+    packageName: string;
+    amount: number;
+    invoiceId: string;
+    isPaid: boolean;
+  }>({
+    isOpen: false,
+    packageName: '',
+    amount: 0,
+    invoiceId: '',
+    isPaid: false,
+  });
+
+  const [copiedInvoice, setCopiedInvoice] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -353,371 +196,578 @@ export default function TenantInboxPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, selectedUserId]);
+  }, [messages, isTyping]);
 
-  useEffect(() => {
-    let ignore = false;
-    const currentMeta = tenantSlug ? KNOWN_TENANTS[tenantSlug.toLowerCase()] : undefined;
-    let currentTenantId: string | undefined;
+  // Intelligent Response Simulator
+  const generateBotReply = (userQuery: string, currentConfig: TenantConfig): string => {
+    const q = userQuery.toLowerCase();
 
-    async function fetchInitialMessages() {
-      if (!tenantSlug) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const supabase = getSupabase();
-
-        // 1. Ambil info tenant
-        const { data: tenant, error: tErr } = await supabase
-          .from('tenants')
-          .select('*')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tErr) console.warn('Supabase tenant query error:', tErr);
-
-        if (!ignore) {
-          if (tenant) {
-            currentTenantId = tenant.id;
-            setTenantInfo({
-              ...tenant,
-              category: tenant.category || currentMeta?.category || 'external',
-              description: currentMeta?.description,
-            } as TenantInfo);
-          } else {
-            const fallbackName =
-              currentMeta?.name ||
-              (tenantSlug === 'om-budi'
-                ? 'Om Budi Channel'
-                : tenantSlug.replace(/-/g, ' ').toUpperCase());
-            setTenantInfo({
-              id: tenantSlug,
-              name: fallbackName,
-              slug: tenantSlug,
-              status: 'active',
-              category: currentMeta?.category || 'external',
-              description: currentMeta?.description,
-            });
-          }
-        }
-
-        // 2. Query data messages
-        const query = supabase
-          .from('messages')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        const { data: messagesData, error: msgErr } = await query;
-        if (msgErr) console.error('Supabase messages query error:', msgErr);
-
-        if (!ignore) {
-          const rawMessages = (messagesData || []) as DatabaseMessage[];
-          const normalizedMsgs: Message[] = rawMessages.map(normalizeMessage);
-
-          // Filter pesan khusus tenant sesuai slug / tenant_id
-          const filteredForTenant = normalizedMsgs.filter((m) =>
-            isMessageForTenant(m, tenantSlug, tenant?.id)
-          );
-
-          setMessages(filteredForTenant);
-
-          if (filteredForTenant.length > 0) {
-            const users = Array.from(
-              new Set(filteredForTenant.map((m) => m.user_id))
-            ).filter(Boolean);
-            if (users.length > 0) setSelectedUserId(users[users.length - 1] as string);
-          }
-        }
-      } catch (err: unknown) {
-        console.error('Error fetching inbox data:', err);
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
+    if (q.includes('qris') || q.includes('bayar') || q.includes('tagihan') || q.includes('beli') || q.includes('paket')) {
+      const firstPkg = currentConfig.pricing.custom_packages[0];
+      const amountStr = firstPkg ? `Rp ${firstPkg.price.toLocaleString('id-ID')}` : 'Rp 250.000';
+      const nameStr = firstPkg ? firstPkg.name : 'Paket Standar';
+      return `Tentu! Untuk pembayaran dapat langsung diproses melalui QRIS Real-time Dynamic. Anda dapat memilih paket di katalog samping atau langsung klik tombol QRIS di bawah ini untuk paket ${nameStr} (${amountStr}).`;
     }
 
-    void fetchInitialMessages();
+    if (q.includes('membership') || q.includes('member') || q.includes('daftar') || q.includes('langganan')) {
+      if (tenantSlug === 'atmosfitnes') {
+        return `Pendaftaran membership di Atmosfitnes Gym Hub sangat mudah! Paket bulanan kami Rp 250.000 sudah termasuk akses All Access gym floor, fasilitas locker gratis, dan integrasi kartu akses RFID gate. Mau saya buatkan QRIS pembayarannya sekarang?`;
+      }
+      return `Kami menyediakan pilihan paket ${currentConfig.pricing.tier} dengan alokasi kuota hingga ${currentConfig.pricing.max_monthly_messages.toLocaleString()} chat per bulan. Silakan pilih paket yang sesuai kebutuhan Anda!`;
+    }
 
-    const supabase = getSupabase();
-    const channel = supabase
-      .channel(`realtime-inbox-${tenantSlug}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          const m = payload.new as DatabaseMessage;
-          const isMatch = isMessageForTenant(m, tenantSlug, currentTenantId);
+    if (q.includes('zumba') || q.includes('aerobik') || q.includes('kelas') || q.includes('studio')) {
+      return `Jadwal kelas Zumba & Aerobik di Studio Lt 2 Atmosfitnes tersedia setiap Selasa, Kamis, dan Sabtu pukul 16:30 & 19:00 WIB bersama instruktur bersertifikasi. Biaya per sesi hanya Rp 35.000.`;
+    }
 
-          if (isMatch) {
-            const newMsg = normalizeMessage(m);
-            setMessages((prev) => {
-              if (prev.some((p) => String(p.id) === String(newMsg.id))) {
-                return prev;
-              }
-              return [...prev, newMsg];
-            });
-          }
-        }
-      )
-      .subscribe();
+    if (q.includes('gate') || q.includes('rfid') || q.includes('nfc') || q.includes('akses')) {
+      return `Akses barrier gate Atmosfitnes menggunakan tap kartu RFID atau NFC smartphone. Member aktif yang sudah membayar otomatis dapat membuka gate masuk secara instan.`;
+    }
 
-    return () => {
-      ignore = true;
-      supabase.removeChannel(channel);
+    if (q.includes('cafe') || q.includes('minuman') || q.includes('lemon') || q.includes('cway') || q.includes('pos')) {
+      return `Di area cafe POS Atmosfitnes tersedia Cway Lemon Energy Drink dingin (Rp 15.000) dan whey protein shaker untuk memulihkan ion tubuh setelah latihan. Pembayaran bisa langsung via QRIS kasir.`;
+    }
+
+    if (q.includes('surat') || q.includes('rt') || q.includes('kelurahan') || q.includes('aduan')) {
+      return `Untuk pelayanan surat pengantar atau pengaduan warga Kelurahan Indra, Anda dapat melampirkan foto KTP/KK dan memilih jenis surat. Pengajuan Anda diproses dalam 1x24 jam kerja.`;
+    }
+
+    if (q.includes('cv') || q.includes('karir') || q.includes('ats') || q.includes('interview')) {
+      return `Di BoonTrack Career AI, kami menyediakan audit ATS Score untuk resume Anda, optimasi keyword kata kerja aksi STAR, dan simulasi wawancara HR interaktif. Paket scan mendalam mulai dari Rp 49.000.`;
+    }
+
+    if (q.includes('jam') || q.includes('buka') || q.includes('tutup') || q.includes('waktu')) {
+      const open = currentConfig.operational_hours.open_time;
+      const close = currentConfig.operational_hours.close_time;
+      const is24 = currentConfig.operational_hours.is_24_hours;
+      return is24
+        ? `Layanan kami beroperasi 24/7 nonstop.`
+        : `Jam operasional ${currentConfig.name} adalah pukul ${open} - ${close} WIB (${currentConfig.operational_hours.days.join(', ')}).`;
+    }
+
+    return `Terima kasih atas pertanyaan Anda. Sebagai ${currentConfig.persona.ai_name}, saya siap membantu Anda terkait ${currentConfig.name}. Anda juga dapat memilih menu cepat atau mengecek katalog paket di panel sebelah kanan.`;
+  };
+
+  const handleSendMessage = async (textToSend?: string) => {
+    const text = (textToSend || inputText).trim();
+    if (!text || !config || !tenantSlug) return;
+
+    setInputText('');
+
+    const userMessage: ChatMessage = {
+      id: createMessageId('user'),
+      sender: 'user',
+      text,
+      timestamp: getCurrentTimeStr(),
     };
-  }, [tenantSlug]);
 
-  // Filter List Percakapan
-  const filteredMessages = messages.filter((m) => {
-    const matchChannel =
-      selectedChannel === 'all' ||
-      m.channel?.toLowerCase() === selectedChannel.toLowerCase();
-    const matchQuery = searchQuery
-      ? m.user_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.message_text?.toLowerCase().includes(searchQuery.toLowerCase())
-      : true;
-    return matchChannel && matchQuery;
-  });
+    setMessages((prev) => [...prev, userMessage]);
+    setIsTyping(true);
 
-  const uniqueUsers = Array.from(new Set(filteredMessages.map((m) => m.user_id))).filter(Boolean);
+    // Sync to Supabase so it appears in the CS Dashboard
+    try {
+      const supabase = getSupabase();
+      await supabase.from('messages').insert({
+        tenant_slug: tenantSlug,
+        conversation_id: 'webchat-demo-visitor',
+        sender: 'Pengunjung Web Demo',
+        channel: 'webchat',
+        text,
+        message_text: text,
+      });
+    } catch {
+      // ignore
+    }
 
-  const conversationList = uniqueUsers.map((uid) => {
-    const userMsgs = filteredMessages.filter((m) => m.user_id === uid);
-    const lastMsg = userMsgs[userMsgs.length - 1];
-    return {
-      userId: uid as string,
-      channel: lastMsg?.channel || 'whatsapp',
-      lastMessage: lastMsg?.message_text || '',
-      lastTime: lastMsg?.created_at || '',
-      total: userMsgs.length,
-    };
-  });
+    setTimeout(async () => {
+      const reply = generateBotReply(text, config);
+      const isQrisRelated = text.toLowerCase().includes('qris') || text.toLowerCase().includes('bayar');
 
-  const activeMessages = messages.filter((m) => m.user_id === selectedUserId);
+      const botMessage: ChatMessage = {
+        id: createMessageId('bot'),
+        sender: 'bot',
+        text: reply,
+        timestamp: getCurrentTimeStr(),
+        actionButtons: isQrisRelated
+          ? ['Buka QRIS Sekarang', 'Katalog Paket', 'Tanya Layanan Lain']
+          : ['Info Membership', 'Lihat Jadwal', 'Bayar QRIS'],
+      };
+
+      setMessages((prev) => [...prev, botMessage]);
+      setIsTyping(false);
+
+      try {
+        const supabase = getSupabase();
+        await supabase.from('messages').insert({
+          tenant_slug: tenantSlug,
+          conversation_id: 'webchat-demo-visitor',
+          sender: config.persona.ai_name || 'AI Assistant',
+          channel: 'webchat',
+          text: reply,
+          message_text: reply,
+        });
+      } catch {
+        // ignore
+      }
+    }, 850);
+  };
+
+  const handleOpenQris = (pkg?: CustomPackage) => {
+    const inv = createInvoiceId(tenantSlug || 'BOON');
+    const name = pkg?.name || config?.pricing.custom_packages[0]?.name || 'Paket Membership All Access';
+    const price = pkg?.price || config?.pricing.custom_packages[0]?.price || 250000;
+
+    setQrisModal({
+      isOpen: true,
+      packageName: name,
+      amount: price,
+      invoiceId: inv,
+      isPaid: false,
+    });
+  };
+
+  const handleSimulatePaymentSuccess = async () => {
+    setQrisModal((prev) => ({ ...prev, isPaid: true }));
+
+    const confirmText = `✅ Pembayaran Rp ${qrisModal.amount.toLocaleString(
+      'id-ID'
+    )} via QRIS untuk "${qrisModal.packageName}" berhasil diverifikasi! Invoice: ${qrisModal.invoiceId}. Akses otomatis aktif.`;
+
+    setTimeout(async () => {
+      const botConfirm: ChatMessage = {
+        id: createMessageId('bot-paid'),
+        sender: 'bot',
+        text: confirmText,
+        timestamp: getCurrentTimeStr(),
+        actionButtons: ['Lihat Bukti Bayar', 'Mulai Menggunakan', 'Tanya Lainnya'],
+      };
+      setMessages((prev) => [...prev, botConfirm]);
+
+      try {
+        const supabase = getSupabase();
+        await supabase.from('messages').insert({
+          tenant_slug: tenantSlug,
+          conversation_id: 'webchat-demo-visitor',
+          sender: 'Sistem Pembayaran QRIS',
+          channel: 'webchat',
+          text: confirmText,
+          message_text: confirmText,
+        });
+      } catch {
+        // ignore
+      }
+    }, 600);
+
+    setTimeout(() => {
+      setQrisModal((prev) => ({ ...prev, isOpen: false }));
+    }, 2200);
+  };
+
+  const meta = KNOWN_TENANTS[tenantSlug?.toLowerCase() || ''];
+
+  const getTenantIcon = () => {
+    if (tenantSlug === 'atmosfitnes') return <Dumbbell className="w-5 h-5 text-emerald-400" />;
+    if (tenantSlug === 'career') return <Briefcase className="w-5 h-5 text-indigo-400" />;
+    if (tenantSlug === 'pelayanan-publik' || tenantSlug === 'indra-public') return <Building2 className="w-5 h-5 text-sky-400" />;
+    if (tenantSlug === 'bale-pananggeuhan') return <Compass className="w-5 h-5 text-amber-400" />;
+    return <Bot className="w-5 h-5 text-blue-400" />;
+  };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      {/* Top Navbar */}
-      <header className="bg-slate-900/90 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/admin"
-            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition border border-slate-700/60"
-          >
-            &larr; Super Admin
-          </Link>
-          {meta?.verticalHref && (
-            <Link
-              href={meta.verticalHref}
-              className="text-xs bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5 font-semibold shadow-sm shadow-emerald-950"
-            >
-              <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{meta.verticalLabel || 'Buka Vertical Hub'} &rarr;</span>
-            </Link>
-          )}
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-white">{tenantInfo?.name || meta?.name || tenantSlug}</h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                {tenantSlug}
-              </span>
-              {(tenantInfo?.category || meta?.category) && (
-                <span
-                  className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                    (tenantInfo?.category || meta?.category) === 'internal'
-                      ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-                      : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                  }`}
-                >
-                  {(tenantInfo?.category || meta?.category) === 'internal' ? 'Internal' : 'Client B2B'}
-                </span>
-              )}
+    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-blue-600 selection:text-white">
+      {/* Top Public Bar */}
+      <header className="bg-slate-900/90 border-b border-slate-800 px-6 py-3.5 sticky top-0 z-30 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shadow-md">
+              {getTenantIcon()}
             </div>
-            <p className="text-[10px] text-slate-400">
-              {tenantInfo?.description || meta?.description || 'Live Stream Supabase: Webchat, WhatsApp & Telegram'}
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-bold text-white tracking-tight">
+                  {config?.name || meta?.name || tenantSlug}
+                </h1>
+                <span className="text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Online Webchat Demo</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                {config?.persona.ai_name} &bull; Powered by BoonTrack Omnichannel
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Filter Channel */}
-        <div className="flex items-center gap-1.5 bg-slate-950 p-1 border border-slate-800 rounded-xl text-xs">
-          {['all', 'webchat', 'whatsapp', 'telegram'].map((ch) => {
-            const isSelected = selectedChannel === ch;
-            return (
-              <button
-                key={ch}
-                onClick={() => setSelectedChannel(ch)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium capitalize transition ${
-                  isSelected
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
+          <div className="flex items-center gap-2.5">
+            {config && !config.operational_hours.is_24_hours && (
+              <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] text-slate-400 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                <Clock className="w-3 h-3 text-amber-400" />
+                <span>
+                  Buka: {config.operational_hours.open_time} - {config.operational_hours.close_time} WIB
+                </span>
+              </span>
+            )}
+
+            {/* Link to Gym Hub if atmosfitnes */}
+            {tenantSlug === 'atmosfitnes' && (
+              <Link
+                href="/gym"
+                className="px-3 py-1.5 bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 text-xs font-semibold rounded-xl border border-emerald-500/40 transition inline-flex items-center gap-1.5 shadow-sm"
               >
-                {ch === 'all' ? 'Semua Channel' : ch}
-              </button>
-            );
-          })}
+                <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Gym Hub</span>
+              </Link>
+            )}
+
+            {/* Direct Link to Dashboard Inbox */}
+            <Link
+              href={`/${tenantSlug}/dashboard`}
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition inline-flex items-center gap-1.5"
+            >
+              <span>Dashboard CS / Admin</span>
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* Konten Utama */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar Sesi Chat */}
-        <aside className="w-80 md:w-96 border-r border-slate-800 bg-slate-900/40 flex flex-col">
-          <div className="p-3 border-b border-slate-800">
-            <input
-              type="text"
-              placeholder="Cari nomor HP / teks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-700"
-            />
+      {/* Main Container */}
+      <div className="max-w-6xl mx-auto w-full p-4 md:p-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column: Interactive Webchat Demo (7 Cols) */}
+        <div className="lg:col-span-7 bg-slate-900/70 border border-slate-800 rounded-2xl flex flex-col h-[650px] shadow-2xl overflow-hidden">
+          {/* Chat Window Header */}
+          <div className="px-5 py-3.5 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-500/30">
+                AI
+              </div>
+              <div>
+                <span className="text-xs font-bold text-white block">
+                  {config?.persona.ai_name || 'Virtual Assistant'}
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Respon instan 24/7 &bull; Sinkron ke CS Inbox
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleOpenQris()}
+              className="px-2.5 py-1 bg-blue-600/15 hover:bg-blue-600/25 text-blue-400 border border-blue-500/30 rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1.5"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <span>Coba Bayar QRIS</span>
+            </button>
           </div>
 
-          <div className="p-2.5 border-b border-slate-800 flex justify-between text-[11px] text-slate-400 font-medium">
-            <span>Sesi Masuk ({conversationList.length})</span>
-            <span>Total: {messages.length} Pesan</span>
-          </div>
+          {/* Messages Stream */}
+          <div className="flex-1 p-5 overflow-y-auto space-y-4">
+            {messages.map((msg) => {
+              const isBot = msg.sender === 'bot';
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${isBot ? 'items-start' : 'items-end'}`}
+                >
+                  <div className="flex items-center gap-1.5 mb-1 px-1 text-[10px] text-slate-400 font-medium">
+                    <span>{isBot ? config?.persona.ai_name || 'AI' : 'Anda'}</span>
+                    <span>&bull;</span>
+                    <span>{msg.timestamp}</span>
+                  </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
-            {loading ? (
-              <div className="p-6 text-center text-xs text-slate-500">Menghubungkan ke Supabase...</div>
-            ) : conversationList.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500">Belum ada percakapan terdata.</div>
-            ) : (
-              conversationList.map((conv) => {
-                const isSelected = conv.userId === selectedUserId;
-                return (
-                  <button
-                    key={conv.userId}
-                    onClick={() => setSelectedUserId(conv.userId)}
-                    className={`w-full text-left p-3.5 transition flex flex-col gap-1 ${
-                      isSelected
-                        ? 'bg-slate-800/90 text-white border-l-2 border-blue-500'
-                        : 'hover:bg-slate-800/30 text-slate-300'
+                  <div
+                    className={`max-w-[85%] p-3.5 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap ${
+                      isBot
+                        ? 'bg-slate-950 border border-slate-800/90 text-slate-200 rounded-tl-sm shadow-md'
+                        : 'bg-blue-600 text-white rounded-tr-sm font-medium shadow-md shadow-blue-600/20'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-semibold text-slate-200 truncate max-w-[170px]">
-                        {conv.userId}
-                      </span>
-                      <span
-                        className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                          conv.channel === 'whatsapp'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : conv.channel === 'telegram'
-                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                            : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                        }`}
-                      >
-                        {conv.channel}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400 truncate">{conv.lastMessage}</p>
-                    <div className="flex justify-between items-center text-[10px] text-slate-500 mt-1">
-                      <span>{conv.total} chat</span>
-                      <span>
-                        {conv.lastTime
-                          ? new Date(conv.lastTime).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })
-                          : ''}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </aside>
+                    <div>{msg.text}</div>
 
-        {/* Area Dialog Chat */}
-        <section className="flex-1 bg-slate-950 flex flex-col justify-between">
-          {selectedUserId ? (
-            <>
-              <div className="px-6 py-3.5 border-b border-slate-800 bg-slate-900/30 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xs font-bold text-white font-mono flex items-center gap-2">
-                    {selectedUserId}
-                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  </h2>
-                  <p className="text-[10px] text-slate-400">Live Chat Stream Supabase</p>
+                    {/* Action Chips */}
+                    {isBot && msg.actionButtons && msg.actionButtons.length > 0 && (
+                      <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-wrap gap-1.5">
+                        {msg.actionButtons.map((btn, bIdx) => (
+                          <button
+                            key={bIdx}
+                            onClick={() => {
+                              if (btn.toLowerCase().includes('qris')) {
+                                handleOpenQris();
+                              } else {
+                                handleSendMessage(btn);
+                              }
+                            }}
+                            className="bg-slate-900 hover:bg-blue-600/30 text-blue-300 hover:text-white border border-slate-800 hover:border-blue-500/40 text-[11px] font-medium px-2.5 py-1 rounded-lg transition"
+                          >
+                            {btn}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {isTyping && (
+              <div className="flex items-center gap-1.5 text-slate-500 text-xs bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60 w-fit">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce" />
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:0.2s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-bounce [animation-delay:0.4s]" />
+                <span className="text-[11px] text-slate-400 ml-1">AI sedang merespon...</span>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Quick Suggestions Chips */}
+          <div className="px-4 py-2 bg-slate-950/40 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto text-[11px]">
+            <span className="text-slate-500 shrink-0 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-blue-400" />
+              <span>Contoh:</span>
+            </span>
+            {(KNOWN_TENANTS[tenantSlug?.toLowerCase() || '']?.defaultButtons || [
+              'Info Membership',
+              'Jadwal Zumba',
+              'Bayar QRIS',
+            ]).map((q, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleSendMessage(q)}
+                className="px-2.5 py-0.5 rounded-full bg-slate-800/70 hover:bg-slate-800 text-slate-300 text-[10px] shrink-0 transition"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+
+          {/* Input Box */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSendMessage();
+            }}
+            className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2"
+          >
+            <input
+              type="text"
+              placeholder={`Tanya ${config?.persona.ai_name || 'AI'} seputar fasilitas, jam buka, harga...`}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={!inputText.trim()}
+              className="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition shadow-md shadow-blue-600/20 disabled:opacity-50"
+              title="Kirim pesan"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+
+        {/* Right Column: Katalog Layanan / Produk & QRIS Dummy Card (5 Cols) */}
+        <div className="lg:col-span-5 space-y-5">
+          {/* Tenant Profile Card */}
+          <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                Profil Layanan
+              </span>
+              <span className="text-xs text-slate-400 font-mono">/{tenantSlug}</span>
+            </div>
+
+            <div>
+              <h2 className="text-base font-bold text-white">{config?.name || meta?.name}</h2>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                {meta?.description || config?.persona.system_prompt.slice(0, 120) + '...'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-xs">
+              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+                <span className="text-[10px] text-slate-500 block">Jam Operasional</span>
+                <span className="font-semibold text-slate-200">
+                  {config?.operational_hours.is_24_hours
+                    ? '24 Jam Nonstop'
+                    : `${config?.operational_hours.open_time} - ${config?.operational_hours.close_time} WIB`}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+                <span className="text-[10px] text-slate-500 block">Gateway Aktif</span>
+                <span className="font-semibold text-emerald-400 flex items-center gap-1 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Webchat + WA</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Katalog Paket Layanan & Pembayaran QRIS */}
+          <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+                  <CreditCard className="w-4 h-4 text-emerald-400" />
+                  <span>Katalog Paket & Layanan</span>
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Pilih paket dan bayar langsung menggunakan simulasi QRIS.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {config?.pricing.custom_packages && config.pricing.custom_packages.length > 0 ? (
+                config.pricing.custom_packages.map((pkg) => (
+                  <div
+                    key={pkg.id}
+                    className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition flex items-center justify-between gap-3 group"
+                  >
+                    <div className="space-y-0.5 flex-1">
+                      <h4 className="text-xs font-bold text-white group-hover:text-blue-400 transition">
+                        {pkg.name}
+                      </h4>
+                      <p className="text-[11px] text-slate-400 leading-snug">{pkg.description}</p>
+                      <span className="text-xs font-mono font-bold text-emerald-400 block pt-1">
+                        Rp {pkg.price.toLocaleString('id-ID')}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => handleOpenQris(pkg)}
+                      className="px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold transition shrink-0 inline-flex items-center gap-1.5"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Bayar QRIS</span>
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-center text-xs text-slate-500 bg-slate-950 rounded-xl border border-slate-800">
+                  Tidak ada paket terdaftar.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Quick CS Handoff Notice */}
+          <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 flex items-start gap-2.5">
+            <Users className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
+            <span>
+              <strong>Bantuan Human Agent:</strong> Jika butuh berbicara langsung dengan staf, tanyakan ke bot atau buka dashboard internal untuk staf operasional.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Dynamic QRIS Modal Generator */}
+      {qrisModal.isOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-white text-base tracking-wider bg-rose-600 px-2 py-0.5 rounded text-[11px]">
+                  QRIS
+                </span>
+                <span className="text-xs font-bold text-slate-300">Pembayaran Cepat</span>
+              </div>
+              <button
+                onClick={() => setQrisModal((prev) => ({ ...prev, isOpen: false }))}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* QR Code Container */}
+            <div className="bg-white p-6 rounded-2xl text-slate-950 flex flex-col items-center justify-center space-y-3 shadow-inner">
+              <div className="text-center">
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
+                  {config?.name || 'ATMOSFITNES GYM HUB'}
+                </span>
+                <span className="text-[9px] text-slate-400 font-mono">NMID: ID102026889910283</span>
+              </div>
+
+              {/* Realistic QR Pattern Simulation */}
+              <div className="relative w-48 h-48 bg-slate-950 p-2.5 rounded-xl flex items-center justify-center border-4 border-slate-900">
+                <div className="w-full h-full bg-white p-2 grid grid-cols-6 gap-1 rounded">
+                  {Array.from({ length: 36 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`rounded-xs ${
+                        i % 2 === 0 || i % 5 === 0 ? 'bg-slate-950' : 'bg-slate-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <span className="bg-white px-2 py-1 rounded shadow text-[10px] font-black text-rose-600 tracking-wider border border-rose-200">
+                    QRIS
+                  </span>
                 </div>
               </div>
 
-              <div className="flex-1 p-6 overflow-y-auto space-y-4">
-                {activeMessages.map((msg, idx) => {
-                  const isBot =
-                    msg.sender?.toLowerCase().includes('bot') ||
-                    msg.sender?.toLowerCase().includes('ai') ||
-                    msg.sender?.toLowerCase().includes('career') ||
-                    msg.sender?.toLowerCase().includes('assistant');
-
-                  const interactiveButtons = isBot ? extractInteractiveButtons(msg, tenantSlug) : [];
-
-                  return (
-                    <div
-                      key={idx}
-                      className={`flex flex-col ${isBot ? 'items-start' : 'items-end'}`}
-                    >
-                      <div className="flex items-center gap-1.5 mb-1 px-1">
-                        <span className="text-[10px] text-slate-400 font-medium">{msg.sender}</span>
-                        <span className="text-[9px] text-slate-600">
-                          {new Date(msg.created_at).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                      </div>
-                      <div
-                        className={`max-w-xl p-3.5 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap ${
-                          isBot
-                            ? 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-sm shadow-sm'
-                            : 'bg-emerald-600 text-white rounded-tr-sm font-medium shadow-md shadow-emerald-900/20'
-                        }`}
-                      >
-                        <div>{msg.message_text}</div>
-
-                        {/* Interactive Buttons / WhatsApp List Options */}
-                        {isBot && interactiveButtons.length > 0 && (
-                          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-col gap-2">
-                            <div className="text-[10px] uppercase tracking-wider font-semibold text-slate-400 flex items-center gap-1.5">
-                              <span className="text-xs">⚡</span>
-                              <span>Pilihan Interaktif WhatsApp:</span>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {interactiveButtons.map((btnText, bIdx) => (
-                                <div
-                                  key={bIdx}
-                                  className="inline-flex items-center gap-1.5 bg-slate-950/80 hover:bg-blue-950/70 border border-slate-700/80 hover:border-blue-500/50 text-slate-200 hover:text-blue-300 text-[11px] font-medium px-3 py-1.5 rounded-xl transition shadow-sm select-none"
-                                >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                                  <span>{btnText}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={chatEndRef} />
+              <div className="text-center w-full pt-1 border-t border-slate-200">
+                <span className="text-[10px] text-slate-500 block">Total Tagihan:</span>
+                <span className="text-lg font-black text-slate-900 font-mono">
+                  Rp {qrisModal.amount.toLocaleString('id-ID')}
+                </span>
               </div>
-            </>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-xs text-slate-500 gap-2">
-              <span className="text-2xl">💬</span>
-              Pilih salah satu nomor / session ID di panel kiri untuk membaca log percakapan.
             </div>
-          )}
-        </section>
-      </div>
+
+            {/* Details */}
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between items-center text-slate-400">
+                <span>Paket Layanan:</span>
+                <span className="text-white font-medium">{qrisModal.packageName}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-400">
+                <span>Invoice ID:</span>
+                <div className="flex items-center gap-1 font-mono text-slate-200">
+                  <span>{qrisModal.invoiceId}</span>
+                  <button
+                    onClick={() => {
+                      if (navigator.clipboard) {
+                        navigator.clipboard.writeText(qrisModal.invoiceId);
+                        setCopiedInvoice(true);
+                        setTimeout(() => setCopiedInvoice(false), 2000);
+                      }
+                    }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    {copiedInvoice ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex justify-between items-center text-slate-400">
+                <span>Berlaku Hingga:</span>
+                <span className="text-amber-400 font-mono font-semibold">14:59 menit</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="pt-2">
+              {qrisModal.isPaid ? (
+                <div className="w-full py-3 bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 rounded-xl text-center text-xs font-bold flex items-center justify-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Pembayaran Berhasil Dikonfirmasi!</span>
+                </div>
+              ) : (
+                <button
+                  onClick={handleSimulatePaymentSuccess}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Simulasikan Bayar Sukses (Instant Ping)</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
