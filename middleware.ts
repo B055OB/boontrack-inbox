@@ -64,6 +64,8 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/static') ||
+    pathname === '/pilot-onboarding' ||
+    pathname.startsWith('/pilot-onboarding/') ||
     pathname.includes('.')
   ) {
     return NextResponse.next();
