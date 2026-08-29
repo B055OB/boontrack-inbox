@@ -74,12 +74,19 @@ export const KNOWN_TENANTS: Record<string, TenantMeta> = {
     defaultButtons: ['Tanya Om Budi', 'Info Layanan', 'Status Bot'],
     aliases: ['om-budi', 'om_budi'],
   },
-  'indra-public': {
-    name: 'Kelurahan Indra Public Service',
+  'pelayanan-publik': {
+    name: 'Pelayanan Publik (Kelurahan Indra)',
     category: 'external',
     description: 'Layanan Aspirasi, Administrasi Surat & Pengaduan Warga Digital',
     defaultButtons: ['Layanan Surat', 'Pengaduan Warga', 'Info Kelurahan', 'Kontak Petugas'],
-    aliases: ['indra-public', 'indra_public', 'kelurahan-indra', 'indra'],
+    aliases: ['pelayanan-publik', 'pelayanan-publik-dummy', 'indra-public', 'indra_public', 'kelurahan-indra', 'indra'],
+  },
+  'indra-public': {
+    name: 'Pelayanan Publik (Kelurahan Indra)',
+    category: 'external',
+    description: 'Layanan Aspirasi, Administrasi Surat & Pengaduan Warga Digital',
+    defaultButtons: ['Layanan Surat', 'Pengaduan Warga', 'Info Kelurahan', 'Kontak Petugas'],
+    aliases: ['pelayanan-publik', 'pelayanan-publik-dummy', 'indra-public', 'indra_public', 'kelurahan-indra', 'indra'],
   },
   'bale-pananggeuhan': {
     name: 'Bale Pananggeuhan',
