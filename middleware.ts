@@ -5,19 +5,6 @@ import type { NextRequest } from 'next/server';
  * ============================================================
  * BoonTrack Subdomain Route Dispatcher
  * ============================================================
- *
- * Domain Routing Matrix:
- * ┌───────────────────────────────────┬────────────────────────────────────────────────────────────────┐
- * │ Domain / Path                     │ Renders                                                        │
- * ├───────────────────────────────────┼────────────────────────────────────────────────────────────────┤
- * │ shop.boontrack.com/               │ app/page.tsx (Clean White Seller Landing Page)                 │
- * │ shop.boontrack.com/[tenant]       │ /[tenant] (Public Storefront & Webchat)                        │
- * │ shop.boontrack.com/[tenant]/dash  │ /[tenant]/dashboard (Live Inbox & Katalog Merchant)            │
- * │ app.boontrack.com/[niche]         │ /gym, /resto, /padel, /cafe (B2B App Showcase & Hub)          │
- * │ chat.boontrack.com/               │ /admin (Live Multi-Tenant Monitoring — Super Admin Panel)      │
- * │ bossob.boontrack.com/             │ /career/bossob (Career Profile & ATS Resume Showcase)          │
- * │ [b2b-slug].boontrack.com/         │ /[slug] (B2B Multi-Tenant Webchat Demo Publik)                 │
- * └───────────────────────────────────┴────────────────────────────────────────────────────────────────┘
  */
 
 // Known B2B Tenant Slugs (webchat + CS inbox engine)
@@ -71,11 +58,15 @@ function extractSubdomain(hostWithPort: string): string | null {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ── 0. Universal pass-through: static assets, Next.js internals, API ───────
+  // ── 0. Universal pass-through: static assets, Next.js internals, API, Seller Onboarding ───────
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/static') ||
+    pathname === '/daftar' ||
+    pathname.startsWith('/daftar/') ||
+    pathname === '/onboarding' ||
+    pathname.startsWith('/onboarding/') ||
     pathname === '/pilot-onboarding' ||
     pathname.startsWith('/pilot-onboarding/') ||
     pathname === '/enterprise' ||
@@ -126,7 +117,6 @@ export function middleware(req: NextRequest) {
   // /[tenant] → Public storefront & webchat
   // ===========================================================================
   if (subdomain === 'shop') {
-    // Jalur root dan path merchant dibiarkan murni lewat tanpa rewrite paksa ke demo
     return NextResponse.next();
   }
 

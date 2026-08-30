@@ -20,7 +20,7 @@ export default function ShopLandingPage() {
     e.preventDefault();
     if (!storeSlug) return;
     const sanitized = storeSlug.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    window.location.href = `/auth/register?slug=${sanitized}`;
+    window.location.href = `/daftar?store=${sanitized}`;
   };
 
   return (
@@ -47,15 +47,15 @@ export default function ShopLandingPage() {
           <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
             <a href="#fitur" className="hover:text-blue-600 transition-colors">Fitur Unggulan</a>
             <a href="#cara-kerja" className="hover:text-blue-600 transition-colors">Cara Kerja</a>
-            <a href="#qris" className="hover:text-blue-600 transition-colors">Otomasi WhatsApp</a>
+            <a href="#fitur" className="hover:text-blue-600 transition-colors">Otomasi WhatsApp</a>
           </nav>
 
           <div className="flex items-center gap-3">
             <a 
-              href="https://chat.boontrack.com" 
+              href="/daftar" 
               className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-2"
             >
-              Masuk Dashboard
+              Masuk Toko
             </a>
             <a 
               href="#claim" 
@@ -128,8 +128,6 @@ export default function ShopLandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            
-            {/* Feature 1 */}
             <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
                 <QrCode className="w-6 h-6" />
@@ -140,7 +138,6 @@ export default function ShopLandingPage() {
               </p>
             </div>
 
-            {/* Feature 2 */}
             <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-6">
                 <MessageSquareCheck className="w-6 h-6" />
@@ -151,7 +148,6 @@ export default function ShopLandingPage() {
               </p>
             </div>
 
-            {/* Feature 3 */}
             <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-cyan-50 text-cyan-600 rounded-2xl flex items-center justify-center mb-6">
                 <Zap className="w-6 h-6" />
@@ -161,7 +157,6 @@ export default function ShopLandingPage() {
                 Halaman etalase toko dioptimasi dengan Next.js agar terbuka instan saat diklik dari Meta Ads, TikTok Ads, maupun link bio.
               </p>
             </div>
-
           </div>
         </div>
       </section>
@@ -174,7 +169,7 @@ export default function ShopLandingPage() {
             <p className="text-slate-600">Otomasi alur jualan Anda dari hulu ke hilir</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="flex flex-col items-center text-center">
               <div className="w-14 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center font-black text-xl mb-6 shadow-lg shadow-slate-900/10">
                 1
@@ -224,7 +219,7 @@ export default function ShopLandingPage() {
 
       {/* 7. FOOTER */}
       <footer className="bg-white border-t border-slate-100 py-8 text-center text-xs text-slate-400">
-        <p>© 2026 PT Envirotech Multi Core. All rights reserved.</p>
+        <p>© 2026 BoonTrack. All rights reserved.</p>
       </footer>
 
     </div>
