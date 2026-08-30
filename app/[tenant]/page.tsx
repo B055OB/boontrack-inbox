@@ -13,7 +13,8 @@ import {
   ArrowRight, 
   CheckCircle2,
   Video,
-  Layers
+  Layers,
+  Sparkles
 } from "lucide-react";
 
 interface Product {
@@ -134,6 +135,14 @@ export default function TenantStorefrontPage() {
   const totalCartCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const totalCartPrice = cart.reduce((sum, item) => sum + item.product.price * item.qty, 0);
 
+  const currentBillAmount = checkoutDirectProduct 
+    ? checkoutDirectProduct.price 
+    : (totalCartPrice > 0 ? totalCartPrice : 99000);
+
+  // Dynamic QRIS URL generator
+  const qrisPayloadString = `00020101021226570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI520473725303360540${currentBillAmount.toString().length < 10 ? '0' + currentBillAmount.toString().length : currentBillAmount.toString().length}${currentBillAmount}5802ID5909BoonTrack6012Kab.%20Bandung6105402866304`;
+  const qrisImageSrc = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&format=png&data=${encodeURIComponent(qrisPayloadString)}`;
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputMessage.trim()) return;
@@ -166,7 +175,7 @@ export default function TenantStorefrontPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
       
-      {/* 1. TOP HEADER (CLEAR LIGHT - TANPA TOMBOL CS/ADMIN) */}
+      {/* 1. TOP HEADER */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -193,7 +202,7 @@ export default function TenantStorefrontPage() {
 
             <button
               onClick={() => setShowCartModal(true)}
-              className="relative bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-blue-500/20 transition-all active:scale-95"
+              className="relative bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
             >
               <ShoppingBag className="w-4 h-4" />
               <span className="hidden sm:inline">Keranjang</span>
@@ -207,7 +216,7 @@ export default function TenantStorefrontPage() {
         </div>
       </header>
 
-      {/* 2. MAIN 2-COLUMN VIEW (KIRI: CHATBOT | KANAN: KATALOG) */}
+      {/* 2. MAIN 2-COLUMN VIEW */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
         
         {/* KOLOM KIRI: LIVE CHATBOT */}
@@ -248,14 +257,17 @@ export default function TenantStorefrontPage() {
 
           <div className="px-4 py-2 bg-white border-t border-slate-100 flex items-center gap-2 overflow-x-auto text-[11px]">
             <button 
-              onClick={() => setInputMessage("Bagaimana cara pembayaran QRIS?")}
-              className="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap transition-colors"
+              onClick={() => {
+                setShowQRISModal(true);
+                setCheckoutDirectProduct(null);
+              }}
+              className="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer"
             >
               ⚡ Cara Bayar QRIS
             </button>
             <button 
               onClick={() => setInputMessage("Apakah materi ada garansi update?")}
-              className="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap transition-colors"
+              className="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap transition-colors cursor-pointer"
             >
               🛡️ Info Garansi
             </button>
@@ -271,7 +283,7 @@ export default function TenantStorefrontPage() {
             />
             <button
               type="submit"
-              className="bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-xl transition-all shadow-xs active:scale-95 flex items-center justify-center shrink-0"
+              className="bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-xl transition-all shadow-xs active:scale-95 flex items-center justify-center shrink-0 cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
             </button>
@@ -281,7 +293,7 @@ export default function TenantStorefrontPage() {
         {/* KOLOM KANAN: KATALOG PRODUK */}
         <section className="lg:col-span-7 space-y-5">
           
-          {/* Category Switcher Tabs */}
+          {/* Category Tabs */}
           <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
             {[
               { id: "all", label: "Semua Produk" },
@@ -292,7 +304,7 @@ export default function TenantStorefrontPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveCategory(tab.id as any)}
-                className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap ${
+                className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
                   activeCategory === tab.id
                     ? "bg-blue-600 text-white shadow-xs"
                     : "text-slate-600 hover:bg-slate-100"
@@ -303,7 +315,7 @@ export default function TenantStorefrontPage() {
             ))}
           </div>
 
-          {/* Product Cards Grid */}
+          {/* Grid Produk */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {filteredProducts.map((p) => (
               <div
@@ -347,7 +359,7 @@ export default function TenantStorefrontPage() {
 
                   <button
                     onClick={(e) => addToCart(p, e)}
-                    className="bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-200 hover:border-transparent text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95"
+                    className="bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-200 hover:border-transparent text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> Keranjang
                   </button>
@@ -356,7 +368,7 @@ export default function TenantStorefrontPage() {
             ))}
           </div>
 
-          {/* Floating Cart Quick Bar */}
+          {/* Quick Floating Cart Bar */}
           {totalCartCount > 0 && (
             <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-xl flex items-center justify-between gap-4 sticky bottom-4 z-20">
               <div>
@@ -367,7 +379,7 @@ export default function TenantStorefrontPage() {
               </div>
               <button
                 onClick={() => setShowCartModal(true)}
-                className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95"
+                className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
               >
                 <span>Lihat Keranjang</span>
                 <ArrowRight className="w-4 h-4" />
@@ -379,7 +391,7 @@ export default function TenantStorefrontPage() {
 
       </main>
 
-      {/* 3. POPUP MODAL DETAIL PRODUK & SILABUS */}
+      {/* 3. MODAL DETAIL PRODUK */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -397,7 +409,7 @@ export default function TenantStorefrontPage() {
               </div>
               <button
                 onClick={() => setSelectedProduct(null)}
-                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-200/60 transition-colors"
+                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-200/60 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -483,7 +495,7 @@ export default function TenantStorefrontPage() {
                     addToCart(selectedProduct);
                     setSelectedProduct(null);
                   }}
-                  className="flex-1 sm:flex-initial px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                  className="flex-1 sm:flex-initial px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Plus className="w-4 h-4" /> Masuk Keranjang
                 </button>
@@ -493,7 +505,7 @@ export default function TenantStorefrontPage() {
                     setSelectedProduct(null);
                     setShowQRISModal(true);
                   }}
-                  className="flex-1 sm:flex-initial px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
+                  className="flex-1 sm:flex-initial px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
                 >
                   <QrCode className="w-4 h-4" /> Beli Sekarang
                 </button>
@@ -515,7 +527,7 @@ export default function TenantStorefrontPage() {
               </h3>
               <button 
                 onClick={() => setShowCartModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -538,14 +550,14 @@ export default function TenantStorefrontPage() {
                     <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg p-1">
                       <button 
                         onClick={() => updateCartQty(item.product.id, -1)}
-                        className="p-1 text-slate-500 hover:text-rose-600"
+                        className="p-1 text-slate-500 hover:text-rose-600 cursor-pointer"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
                       <span className="text-xs font-bold px-1.5">{item.qty}</span>
                       <button 
                         onClick={() => updateCartQty(item.product.id, 1)}
-                        className="p-1 text-slate-500 hover:text-blue-600"
+                        className="p-1 text-slate-500 hover:text-blue-600 cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
                       </button>
@@ -568,7 +580,7 @@ export default function TenantStorefrontPage() {
                     setShowCartModal(false);
                     setShowQRISModal(true);
                   }}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
                 >
                   <QrCode className="w-4 h-4" /> Bayar QRIS Sekarang
                 </button>
@@ -578,36 +590,48 @@ export default function TenantStorefrontPage() {
         </div>
       )}
 
-      {/* 5. QRIS MODAL */}
+      {/* 5. QRIS MODAL (DYNAMIC REAL-TIME EMVCO QRIS IMAGE) */}
       {showQRISModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full border border-slate-200 shadow-2xl text-center">
-            <h3 className="text-lg font-black text-slate-900 mb-1">QRIS Native Dispatch</h3>
-            <p className="text-xs text-slate-500 mb-4">Scan QRIS menggunakan BCA, GoPay, OVO, ShopeePay, atau Dana</p>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-sm w-full border border-slate-200 shadow-2xl text-center">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <Sparkles className="w-4 h-4 text-emerald-600" />
+              <h3 className="text-lg font-black text-slate-900">QRIS Native Dispatch</h3>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">
+              Scan QRIS menggunakan aplikasi <span className="font-semibold text-slate-700">BCA, GoPay, OVO, ShopeePay, DANA</span>, atau Mobile Banking lainnya
+            </p>
 
-            <div className="w-52 h-52 mx-auto bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center p-4 mb-4">
-              <QrCode className="w-32 h-32 text-slate-900" />
-              <span className="text-[9px] font-bold text-slate-400 mt-2 uppercase tracking-widest">NMID: ID102026BT001</span>
+            {/* Container Gambar Barcode QRIS Realtime */}
+            <div className="w-64 h-64 mx-auto bg-white border-2 border-slate-200 rounded-2xl flex flex-col items-center justify-center p-3 mb-4 shadow-inner relative overflow-hidden">
+              <img
+                src={qrisImageSrc}
+                alt="QRIS Barcode"
+                className="w-56 h-56 object-contain rounded-lg"
+              />
             </div>
 
-            <div className="bg-slate-50 p-3 rounded-xl mb-4">
-              <span className="text-[11px] text-slate-400 block">Total Tagihan</span>
-              <span className="text-lg font-black text-blue-600">
-                Rp {checkoutDirectProduct 
-                  ? checkoutDirectProduct.price.toLocaleString("id-ID")
-                  : totalCartPrice > 0 ? totalCartPrice.toLocaleString("id-ID") : "499.000"}
+            <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl mb-4 text-left flex justify-between items-center">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Total Tagihan</span>
+                <span className="text-base font-black text-blue-600 font-mono">
+                  Rp {currentBillAmount.toLocaleString("id-ID")}
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-mono bg-white px-2 py-1 rounded-md border border-slate-200">
+                ID102026567001
               </span>
             </div>
 
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  alert("Simulasi Pembayaran Berhasil! Notifikasi invoice dan akses materi otomatis dikirim ke WhatsApp Anda.");
+                  alert("Simulasi Pembayaran Berhasil! Akses materi/layanan Anda telah diaktifkan.");
                   setShowQRISModal(false);
                   setCart([]);
                   setCheckoutDirectProduct(null);
                 }}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs transition-all active:scale-95 shadow-xs"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs transition-all active:scale-95 shadow-md shadow-emerald-600/20 cursor-pointer"
               >
                 Simulasikan Bayar Sukses
               </button>
@@ -616,7 +640,7 @@ export default function TenantStorefrontPage() {
                   setShowQRISModal(false);
                   setCheckoutDirectProduct(null);
                 }}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-xl text-xs transition-all"
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-xl text-xs transition-all cursor-pointer"
               >
                 Tutup
               </button>
