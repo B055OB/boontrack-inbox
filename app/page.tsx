@@ -5,11 +5,8 @@ import {
   QrCode, 
   MessageSquareCheck, 
   Zap, 
-  ShieldCheck, 
   ArrowRight, 
   CheckCircle2, 
-  Store, 
-  TrendingUp, 
   Sparkles 
 } from "lucide-react";
 
@@ -20,7 +17,7 @@ export default function ShopLandingPage() {
     e.preventDefault();
     if (!storeSlug) return;
     const sanitized = storeSlug.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    window.location.href = `/daftar?store=${sanitized}`;
+    window.location.href = `/register?store=${sanitized}`;
   };
 
   return (
@@ -52,7 +49,7 @@ export default function ShopLandingPage() {
 
           <div className="flex items-center gap-3">
             <a 
-              href="/daftar" 
+              href="/register" 
               className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-2"
             >
               Masuk Toko
