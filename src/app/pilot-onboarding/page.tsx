@@ -1,1 +1,1 @@
-export { default } from '@/app/pilot-onboarding/page';
+export { default } from '@/app/register/page';
