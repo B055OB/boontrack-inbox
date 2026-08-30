@@ -58,11 +58,13 @@ function extractSubdomain(hostWithPort: string): string | null {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ── 0. Universal pass-through: static assets, Next.js internals, API, Seller Onboarding ───────
+  // ── 0. Universal pass-through: static assets, Next.js internals, API, Onboarding/Register ───────
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/static') ||
+    pathname === '/register' ||
+    pathname.startsWith('/register/') ||
     pathname === '/daftar' ||
     pathname.startsWith('/daftar/') ||
     pathname === '/onboarding' ||
