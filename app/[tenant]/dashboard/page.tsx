@@ -1,32 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Package,
   Brain,
   CreditCard,
-  CheckCircle2,
   Save,
   Plus,
   Trash2,
   Edit,
-  Building,
-  GraduationCap,
-  ShieldCheck,
   Store,
   ExternalLink,
   MessageSquare,
   Lock,
-  Sparkles,
-  Users,
-  Zap,
   ArrowRight,
-  X,
-  Image as ImageIcon
+  X
 } from 'lucide-react';
-import { KNOWN_TENANTS } from '../page';
+import WhatsAppEmbeddedModal from './components/WhatsAppEmbeddedModal';
 
 interface ProductItem {
   id: number;
@@ -74,8 +66,7 @@ export default function TenantDashboardPage() {
   const tenantSlug = rawTenant.toLowerCase();
   const displayName = tenantSlug.replace(/-/g, " ");
 
-  const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration'>('catalog');
-  const [savingSettings, setSavingSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration' | 'whatsapp'>('catalog');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
   // Products State
@@ -101,22 +92,6 @@ export default function TenantDashboardPage() {
     tone: 'casual',
     system_prompt:
       'Anda adalah asisten konsultan resmi Onlineboost. Berikan informasi silabus, materi video, akses Google Drive materi, dan proses pembayaran instan QRIS.',
-    syllabus: [
-      'Modul 1: Mindset & Riset Winning Product Meta Ads',
-      'Modul 2: Struktur Campaign CBO/ABO & Budgeting Strategy',
-      'Modul 3: Scale-Up Campaign & Optimasi Biaya Iklan (ROAS > 4x)',
-    ],
-    faq: [
-      {
-        q: 'Apakah materi ini bisa diakses selamanya?',
-        a: 'Ya, Anda mendapatkan akses seumur hidup (lifetime access) dan gratis update materi 2026.',
-      },
-      {
-        q: 'Bagaimana cara mengakses file setelah bayar?',
-        a: 'Setelah pembayaran QRIS berhasil diverifikasi, sistem otomatis memberikan tautan Google Drive resmi dan link grup diskusi.',
-      },
-    ],
-    promo_bundling: 'Beli 2 Kelas Digital Gratis 1 Toolkit Copywriting Siap Pakai.',
   });
 
   const [bankForm, setBankForm] = useState({
@@ -125,13 +100,7 @@ export default function TenantDashboardPage() {
     holder: 'PT BOONTRACK MEDIA DIGITAL',
   });
 
-  const [integrationInfo, setIntegrationInfo] = useState({
-    whatsapp_status: 'CONNECTED',
-    bot_number: '15556769563',
-    webhook_verified: true,
-  });
-
-  // Modal open for New Product
+  // Modal handlers
   const openNewProductModal = () => {
     setEditingProductId(null);
     setProductForm({
@@ -149,14 +118,12 @@ export default function TenantDashboardPage() {
     setIsProductModalOpen(true);
   };
 
-  // Modal open for Edit Product
   const openEditProductModal = (prod: ProductItem) => {
     setEditingProductId(prod.id);
     setProductForm(prod);
     setIsProductModalOpen(true);
   };
 
-  // Save product to list
   const handleSaveProductForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!productForm.name) return;
@@ -173,7 +140,6 @@ export default function TenantDashboardPage() {
     setTimeout(() => setSaveFeedback(null), 3000);
   };
 
-  // Delete product
   const handleDeleteProduct = (id: number) => {
     if (confirm("Hapus produk ini dari etalase toko?")) {
       setProducts(prev => prev.filter(p => p.id !== id));
@@ -198,7 +164,7 @@ export default function TenantDashboardPage() {
             <ExternalLink className="w-3 h-3 opacity-60" />
           </Link>
 
-          <div className="h-5 w-[1px] bg-slate-200 hidden sm:block"></div>
+          <div className="h-5 w-[1px] bg-slate-200 hidden sm:block" />
 
           <div className="flex items-center gap-2">
             <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight">
@@ -230,7 +196,7 @@ export default function TenantDashboardPage() {
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span>Live CS & Omnichannel Inbox</span>
+            <span>Live CS & Omnichannel</span>
             <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-1">
               <Lock className="w-2.5 h-2.5" /> PRO
             </span>
@@ -271,6 +237,18 @@ export default function TenantDashboardPage() {
             <CreditCard className="w-4 h-4" />
             <span>Rekening & QRIS</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('whatsapp')}
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
+              activeTab === 'whatsapp'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 text-emerald-600" />
+            <span>Koneksi WhatsApp</span>
+          </button>
         </div>
 
         {saveFeedback && (
@@ -303,7 +281,7 @@ export default function TenantDashboardPage() {
         </div>
       )}
 
-      {/* TAB 2: KATALOG MULTI-PRODUK DENGAN TOMBOL TAMBAH */}
+      {/* TAB 2: KATALOG MULTI-PRODUK */}
       {activeTab === 'catalog' && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -325,7 +303,6 @@ export default function TenantDashboardPage() {
             </button>
           </div>
 
-          {/* Table / Grid List of Products */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {products.map((p) => (
               <div
@@ -389,11 +366,10 @@ export default function TenantDashboardPage() {
         </div>
       )}
 
-      {/* MODAL POPUP FORM: TAMBAH / EDIT PRODUK */}
+      {/* MODAL POPUP FORM */}
       {isProductModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <Package className="w-4 h-4 text-blue-600" />
@@ -594,6 +570,32 @@ export default function TenantDashboardPage() {
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB 5: WhatsApp Embedded Signup (Meta Official Pop-up) */}
+      {activeTab === 'whatsapp' && (
+        <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <div>
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-emerald-600" />
+                <span>Integrasi WhatsApp Business Resmi</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Koneksikan nomor WhatsApp toko Anda via Meta Cloud API untuk melayani auto-closing dan notifikasi QRIS.
+              </p>
+            </div>
+          </div>
+
+          {/* Komponen Pop-up Modal Meta SDK */}
+          <WhatsAppEmbeddedModal 
+            tenantSlug={tenantSlug} 
+            onSuccess={(data) => {
+              setSaveFeedback(`✅ Nomor ${data.phone_number || ''} berhasil terhubung!`);
+              setTimeout(() => setSaveFeedback(null), 4000);
+            }}
+          />
         </div>
       )}
 
