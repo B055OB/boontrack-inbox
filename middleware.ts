@@ -150,7 +150,6 @@ export function middleware(req: NextRequest) {
   // /admin → Super Admin Panel (pass-through)
   // ===========================================================================
   if (subdomain === 'bossob') {
-    // /admin already handled globally above (step 0b), but be explicit here too
     const url = req.nextUrl.clone();
 
     // Strip internal /career/bossob prefix (clean URL)
@@ -193,10 +192,7 @@ export function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // /[tenant] → public webchat for that tenant
-    // /[tenant]/dashboard → CS inbox for that tenant
-    // These are accessed as chat.boontrack.com/suhu-ads-masterclass/dashboard
-    // We let them fall through to Next.js dynamic routing naturally
+    // Dynamic tenant routes fallback
     return NextResponse.next();
   }
 
@@ -221,8 +217,6 @@ export function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // Paths like /suhu-ads-masterclass and /suhu-ads-masterclass/dashboard
-    // are handled naturally by Next.js dynamic routing — just pass through
     return NextResponse.next();
   }
 
@@ -336,7 +330,6 @@ export function middleware(req: NextRequest) {
 
   // ===========================================================================
   // 5. Dynamic B2B Tenant Fallback
-  //    Unknown subdomains (wizard-onboarded tenants) → treated as B2B tenants
   // ===========================================================================
   {
     const url = req.nextUrl.clone();
