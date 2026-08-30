@@ -51,6 +51,17 @@ const INTERNAL_SLUGS = [
   'om-budi',
 ];
 
+// Daftar Core Workspaces Resmi BoonTrack Ecosystem
+const CORE_INITIAL_TENANTS = [
+  { name: 'Atmosfitnes Gym Hub', slug: 'atmosfitnes', category: 'external', monthly_fee: 1500000, access_username: 'admin', access_password: 'atmos_master_pass2026' },
+  { name: 'Om Budi Channel', slug: 'om-budi', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'budi_internal_sec_2026' },
+  { name: 'Pelayanan Publik (Kelurahan Indra)', slug: 'pelayanan-publik', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'kelurahan_lurah_pass2026' },
+  { name: 'Bale Pananggeuhan', slug: 'bale-pananggeuhan', category: 'external', monthly_fee: 750000, access_username: 'admin', access_password: 'bale_admin_pass2026' },
+  { name: 'BoonTrack Career AI', slug: 'career', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'career_master_pass2026' },
+  { name: 'Suhu Ads Masterclass', slug: 'suhu-ads', category: 'external', monthly_fee: 99000, access_username: 'admin', access_password: 'suhuads_admin_pass2026' },
+  { name: 'Nyka Hijab & Modest', slug: 'nyka', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'nyka_admin_pass2026' },
+];
+
 const MASTER_PIN = '998877';
 
 export default function SuperAdminDashboard() {
@@ -115,6 +126,35 @@ export default function SuperAdminDashboard() {
 
       if (error) throw error;
 
+      let currentTenants = (tenantsData || []) as Tenant[];
+      const existingSlugs = new Set(currentTenants.map((t) => t.slug));
+
+      // Auto-insert core tenants jika belum ada di database
+      const missingTenants = CORE_INITIAL_TENANTS.filter((ct) => !existingSlugs.has(ct.slug));
+      if (missingTenants.length > 0) {
+        for (const mt of missingTenants) {
+          try {
+            await supabase.from('tenants').insert({
+              name: mt.name,
+              slug: mt.slug,
+              category: mt.category,
+              access_username: mt.access_username,
+              access_password: mt.access_password,
+              monthly_fee: mt.monthly_fee,
+              status: 'active',
+            });
+          } catch {
+            // ignore duplicate
+          }
+        }
+        // Fetch ulang setelah auto-seed
+        const { data: refreshedData } = await supabase
+          .from('tenants')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (refreshedData) currentTenants = refreshedData as Tenant[];
+      }
+
       // 2. Fetch volume pesan real-time
       const { data: messagesData } = await supabase
         .from('messages')
@@ -145,18 +185,15 @@ export default function SuperAdminDashboard() {
         serverLiveStatus = 'DOWN';
       }
 
-      // 4. Transform data tanpa fallback mock
-      const rawTenants = (tenantsData || []) as Tenant[];
-      const mapped: Tenant[] = rawTenants.map((t) => {
+      // 4. Map data real-time
+      const mapped: Tenant[] = currentTenants.map((t) => {
         const isInternal =
           t.category === 'internal' ||
           INTERNAL_SLUGS.includes(t.slug) ||
           t.slug.startsWith('boontrack-');
 
         const isTenantActive = t.status === 'active';
-        const finalHealth: HealthStatus = !isTenantActive
-          ? 'DOWN'
-          : serverLiveStatus;
+        const finalHealth: HealthStatus = !isTenantActive ? 'DOWN' : serverLiveStatus;
 
         const finalWaStatus: WaGatewayStatus = !isTenantActive
           ? 'DISCONNECTED'
