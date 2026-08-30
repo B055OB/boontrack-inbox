@@ -48,18 +48,38 @@ const INTERNAL_SLUGS = [
   'boontrack-bola',
   'boontrack-loker',
   'boontrack-digicorn',
+  'boontrack-demo',
   'om-budi',
 ];
 
-// Daftar Core Workspaces Resmi BoonTrack Ecosystem
-const CORE_INITIAL_TENANTS = [
+// DAFTAR LENGKAP SELURUH TENANT BOONTRACK EKOSISTEM
+const ALL_ECOSYSTEM_TENANTS = [
+  // ── 1. Fitness & Hub ──
   { name: 'Atmosfitnes Gym Hub', slug: 'atmosfitnes', category: 'external', monthly_fee: 1500000, access_username: 'admin', access_password: 'atmos_master_pass2026' },
+  
+  // ── 2. Internal Core & AI Assistants ──
   { name: 'Om Budi Channel', slug: 'om-budi', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'budi_internal_sec_2026' },
-  { name: 'Pelayanan Publik (Kelurahan Indra)', slug: 'pelayanan-publik', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'kelurahan_lurah_pass2026' },
-  { name: 'Bale Pananggeuhan', slug: 'bale-pananggeuhan', category: 'external', monthly_fee: 750000, access_username: 'admin', access_password: 'bale_admin_pass2026' },
+  { name: 'BoonTrack Holding', slug: 'boontrack-holding', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'holding_master_pass2026' },
   { name: 'BoonTrack Career AI', slug: 'career', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'career_master_pass2026' },
+  { name: 'BoonTrack Demo Store', slug: 'boontrack-demo', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'demo_master_pass2026' },
+  { name: 'BoonTrack Kurir Logistik', slug: 'boontrack-kurir', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'kurir_master_pass2026' },
+  { name: 'BoonTrack Bola & Sport', slug: 'boontrack-bola', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'bola_master_pass2026' },
+  { name: 'BoonTrack Loker & Talenta', slug: 'boontrack-loker', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'loker_master_pass2026' },
+  { name: 'BoonTrack Digicorn Agency', slug: 'boontrack-digicorn', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'digicorn_master_pass2026' },
+
+  // ── 3. Education & Digital Courses ──
   { name: 'Suhu Ads Masterclass', slug: 'suhu-ads', category: 'external', monthly_fee: 99000, access_username: 'admin', access_password: 'suhuads_admin_pass2026' },
-  { name: 'Nyka Hijab & Modest', slug: 'nyka', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'nyka_admin_pass2026' },
+  { name: 'Digital Marketing Hub', slug: 'digital-marketing', category: 'external', monthly_fee: 150000, access_username: 'admin', access_password: 'dm_admin_pass2026' },
+
+  // ── 4. Retail & Modest Wear ──
+  { name: 'Nyka Hijab & Modest Wear', slug: 'nyka', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'nyka_admin_pass2026' },
+
+  // ── 5. Food, Beverage & Hospitality ──
+  { name: 'Bale Pananggeuhan', slug: 'bale-pananggeuhan', category: 'external', monthly_fee: 750000, access_username: 'admin', access_password: 'bale_admin_pass2026' },
+
+  // ── 6. Public Service & Government ──
+  { name: 'Pelayanan Publik (Kelurahan Indra)', slug: 'pelayanan-publik', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'kelurahan_lurah_pass2026' },
+  { name: 'Pelayanan Publik Kelurahan Dummy', slug: 'pelayanan-publik-dummy', category: 'external', monthly_fee: 0, access_username: 'admin', access_password: 'dummy_lurah_pass2026' },
 ];
 
 const MASTER_PIN = '998877';
@@ -129,8 +149,8 @@ export default function SuperAdminDashboard() {
       let currentTenants = (tenantsData || []) as Tenant[];
       const existingSlugs = new Set(currentTenants.map((t) => t.slug));
 
-      // Auto-insert core tenants jika belum ada di database
-      const missingTenants = CORE_INITIAL_TENANTS.filter((ct) => !existingSlugs.has(ct.slug));
+      // Auto-insert seluruh tenant ekosistem jika belum terdaftar di database
+      const missingTenants = ALL_ECOSYSTEM_TENANTS.filter((ct) => !existingSlugs.has(ct.slug));
       if (missingTenants.length > 0) {
         for (const mt of missingTenants) {
           try {
@@ -144,10 +164,10 @@ export default function SuperAdminDashboard() {
               status: 'active',
             });
           } catch {
-            // ignore duplicate
+            // ignore duplicate constraint
           }
         }
-        // Fetch ulang setelah auto-seed
+        // Fetch ulang setelah auto-seed seluruh tenant
         const { data: refreshedData } = await supabase
           .from('tenants')
           .select('*')
@@ -185,7 +205,7 @@ export default function SuperAdminDashboard() {
         serverLiveStatus = 'DOWN';
       }
 
-      // 4. Map data real-time
+      // 4. Map data real-time seluruh tenant
       const mapped: Tenant[] = currentTenants.map((t) => {
         const isInternal =
           t.category === 'internal' ||
@@ -805,14 +825,14 @@ export default function SuperAdminDashboard() {
                                 href={`/admin/${t.slug}/config`}
                                 className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1"
                               >
-                                <Sliders className="w-3 h-3" />
+                                <Sliders className="w-3.5 h-3.5" />
                                 <span>Config</span>
                               </Link>
                               <Link
                                 href={`/${t.slug}`}
                                 className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] transition inline-flex items-center gap-1"
                               >
-                                <Bot className="w-3 h-3" />
+                                <Bot className="w-3.5 h-3.5" />
                                 <span>Chat</span>
                               </Link>
                               {t.slug === 'atmosfitnes' && (
