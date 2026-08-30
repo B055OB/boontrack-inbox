@@ -8,11 +8,16 @@ import {
   QrCode, 
   Plus, 
   Minus, 
-  X,
-  Clock,
-  ArrowRight,
-  Sparkles,
-  CheckCircle2
+  X, 
+  Clock, 
+  ArrowRight, 
+  Sparkles, 
+  CheckCircle2,
+  BookOpen,
+  Video,
+  ChevronDown,
+  ChevronUp,
+  Layers
 } from "lucide-react";
 
 interface Product {
@@ -24,48 +29,55 @@ interface Product {
   image: string;
   description: string;
   badge?: string;
+  modules?: string[];
+  features?: string[];
 }
 
 const SAMPLE_PRODUCTS: Product[] = [
   {
     id: 1,
-    name: "Masterclass Ads 2026 - Lifetime Access",
+    name: "Step by Step Rahasia Menghasilkan Dollar dari Paid Traffic",
     category: "terlaris",
-    price: 99000,
-    originalPrice: 149000,
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
-    description: "Full modul video strategi Meta & TikTok Ads, template winning campaign, & grup support.",
-    badge: "🔥 Terlaris"
+    price: 499000,
+    originalPrice: 999000,
+    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=60",
+    description: "Sebuah formula hidden gem yang belum banyak orang ketahui untuk menghasilkan profit dollar secara konsisten melalui setup paid traffic Meta & Google Ads berkonversi tinggi.",
+    badge: "🔥 Terlaris",
+    modules: [
+      "Introduction: Apa Itu Internet Marketing CPM & Paid Traffic",
+      "Fundamental & Mindset Arbitrage Traffic",
+      "Riset Target Audience & Setup Pixel Tracker",
+      "Praktek Langsung Nambang Dollar & Live Case Study",
+      "Sesi Diskusi, Tanya Jawab & Akses Grup Support 2026"
+    ],
+    features: ["11 Modul Video HD", "Akses Selamanya (Lifetime)", "Template Copywriting Siap Pakai"]
   },
   {
     id: 2,
-    name: "Toolkit Copywriting & Hook Generator",
+    name: "Masterclass Ads 2026 - Scale Up Campaign",
     category: "digital",
-    price: 49000,
-    originalPrice: 75000,
-    image: "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=500&auto=format&fit=crop&q=60",
-    description: "100+ Template script iklan short video, headline landing page, dan chat closing.",
-    badge: "Diskon 35%"
+    price: 99000,
+    originalPrice: 149000,
+    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&auto=format&fit=crop&q=60",
+    description: "Full strategi optimasi ROAS > 4x, struktur campaign CBO/ABO, dan cara membaca metrik dashboard iklan secara profesional.",
+    badge: "Diskon 35%",
+    modules: [
+      "Modul 1: Riset Winning Creative & Angle",
+      "Modul 2: Struktur Budgeting & Testing Campaign",
+      "Modul 3: Optimasi Biaya Iklan & Scale-Up"
+    ],
+    features: ["Video Full HD", "File Spreadsheet Kalkulator Iklan"]
   },
   {
     id: 3,
-    name: "Parfum Pheromone Pocket 10ml",
+    name: "Parfum Pheromone Pocket 10ml - Missionary",
     category: "fisik",
     price: 99000,
     originalPrice: 125000,
-    image: "https://images.unsplash.com/photo-1547887537-6158d64c35b3?w=500&auto=format&fit=crop&q=60",
-    description: "Varian Missionary wangi mewah tahan 12 jam, botol pocket praktis dibawa ke mana saja.",
-    badge: "Produk Fisik"
-  },
-  {
-    id: 4,
-    name: "Landing Page High-Converting Template",
-    category: "digital",
-    price: 69000,
-    originalPrice: 99000,
-    image: "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=500&auto=format&fit=crop&q=60",
-    description: "Template siap import Next.js & Tailwind CSS, teroptimasi checkout WhatsApp instan.",
-    badge: "Promo 2026"
+    image: "https://images.unsplash.com/photo-1547887537-6158d64c35b3?w=600&auto=format&fit=crop&q=60",
+    description: "Parfum konsentrat tinggi dengan aroma mewah maskulin elegan yang tahan hingga 12 jam. Kemasan pocket 10ml praktis dibawa ke mana saja.",
+    badge: "Produk Fisik",
+    features: ["Konsentrat 20% Pheromone", "Ketahanan 12 Jam", "Gratis Mini Pouch"]
   }
 ];
 
@@ -75,13 +87,13 @@ export default function TenantStorefrontPage() {
   const tenantSlug = rawTenant.toLowerCase();
   const displayName = tenantSlug.replace(/-/g, " ");
 
-  // Category State
+  // Category & Modals State
   const [activeCategory, setActiveCategory] = useState<"all" | "terlaris" | "digital" | "fisik">("all");
-
-  // Cart State
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
   const [showCartModal, setShowCartModal] = useState(false);
   const [showQRISModal, setShowQRISModal] = useState(false);
+  const [checkoutDirectProduct, setCheckoutDirectProduct] = useState<Product | null>(null);
 
   // Chat State
   const [inputMessage, setInputMessage] = useState("");
@@ -90,7 +102,7 @@ export default function TenantStorefrontPage() {
       id: 1,
       sender: "bot",
       time: "09:00",
-      text: `Halo! Selamat datang di ${displayName.toUpperCase()}. Pilih produk langsung di katalog sebelah kanan atau tanya kami di sini ya!`
+      text: `Halo! Selamat datang di ${displayName.toUpperCase()}. Klik produk di etalase untuk melihat isi materi/detailnya, atau tanyakan kami di sini ya!`
     }
   ]);
 
@@ -98,7 +110,8 @@ export default function TenantStorefrontPage() {
     ? SAMPLE_PRODUCTS
     : SAMPLE_PRODUCTS.filter((p) => p.category === activeCategory);
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setCart((prev) => {
       const exist = prev.find((item) => item.product.id === product.id);
       if (exist) {
@@ -150,7 +163,7 @@ export default function TenantStorefrontPage() {
           id: Date.now() + 1,
           sender: "bot",
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `Pertanyaan untuk "${userText}" sudah kami catat! Anda bisa langsung klik tombol Tambah Keranjang di katalog sebelah kanan untuk proses checkout otomatis.`
+          text: `Pertanyaan seputar "${userText}" sudah kami catat! Klik salah satu kartu produk di samping untuk membaca silabus/konten lengkap dan pembayaran instan QRIS.`
         }
       ]);
     }, 700);
@@ -159,7 +172,7 @@ export default function TenantStorefrontPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
       
-      {/* 1. TOP HEADER (CLEAN LIGHT - TANPA TOMBOL CS / ADMIN) */}
+      {/* 1. TOP HEADER */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -180,11 +193,6 @@ export default function TenantStorefrontPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-              <Clock className="w-3.5 h-3.5 text-slate-400" /> Buka 24 Jam Otomatis
-            </div>
-
-            {/* Cart Header Button */}
             <button
               onClick={() => setShowCartModal(true)}
               className="relative bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-blue-500/20 transition-all active:scale-95"
@@ -214,7 +222,6 @@ export default function TenantStorefrontPage() {
             <span className="text-[11px] text-slate-400 font-medium">Auto-Kasir WhatsApp</span>
           </div>
 
-          {/* Chat Stream */}
           <div className="flex-1 p-5 overflow-y-auto space-y-3.5 bg-[#F8FAFC]">
             {messages.map((msg) => (
               <div
@@ -241,7 +248,6 @@ export default function TenantStorefrontPage() {
             ))}
           </div>
 
-          {/* Quick Buttons */}
           <div className="px-4 py-2 bg-white border-t border-slate-100 flex items-center gap-2 overflow-x-auto text-[11px]">
             <button 
               onClick={() => setInputMessage("Bagaimana cara order & bayar QRIS?")}
@@ -257,7 +263,6 @@ export default function TenantStorefrontPage() {
             </button>
           </div>
 
-          {/* Input Bar */}
           <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
             <input
               type="text"
@@ -275,10 +280,10 @@ export default function TenantStorefrontPage() {
           </form>
         </section>
 
-        {/* KOLOM KANAN: SINGLE-PAGE KATALOG & DAFTAR PRODUK */}
+        {/* KOLOM KANAN: KATALOG PRODUK */}
         <section className="lg:col-span-7 space-y-5">
           
-          {/* Category Switcher Tabs */}
+          {/* Category Tabs */}
           <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
             {[
               { id: "all", label: "Semua Produk" },
@@ -300,15 +305,15 @@ export default function TenantStorefrontPage() {
             ))}
           </div>
 
-          {/* Product Cards Grid */}
+          {/* Product Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {filteredProducts.map((p) => (
               <div
                 key={p.id}
-                className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
+                onClick={() => setSelectedProduct(p)}
+                className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
               >
                 <div>
-                  {/* Thumbnail Image */}
                   <div className="relative aspect-video rounded-2xl overflow-hidden mb-3 bg-slate-100">
                     <img 
                       src={p.image} 
@@ -322,7 +327,7 @@ export default function TenantStorefrontPage() {
                     )}
                   </div>
 
-                  <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2 mb-1">
+                  <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2 mb-1 group-hover:text-blue-600 transition-colors">
                     {p.name}
                   </h3>
                   <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">
@@ -343,7 +348,7 @@ export default function TenantStorefrontPage() {
                   </div>
 
                   <button
-                    onClick={() => addToCart(p)}
+                    onClick={(e) => addToCart(p, e)}
                     className="bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-200 hover:border-transparent text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95"
                   >
                     <Plus className="w-3.5 h-3.5" /> Keranjang
@@ -353,7 +358,7 @@ export default function TenantStorefrontPage() {
             ))}
           </div>
 
-          {/* Floating Cart Quick Bar */}
+          {/* Floating Quick Bar */}
           {totalCartCount > 0 && (
             <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-xl flex items-center justify-between gap-4 sticky bottom-4 z-20">
               <div>
@@ -376,7 +381,140 @@ export default function TenantStorefrontPage() {
 
       </main>
 
-      {/* MODAL KERANJANG & RINCIAN ORDER */}
+      {/* 3. POPUP MODAL QUICK-VIEW DETAIL PRODUK (ACCORDION & DETAIL) */}
+      {selectedProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg uppercase tracking-wider">
+                  Detail Produk
+                </span>
+                {selectedProduct.badge && (
+                  <span className="text-xs font-bold px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg">
+                    {selectedProduct.badge}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedProduct(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-200/60 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Content */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              
+              {/* Product Info & Thumbnail */}
+              <div className="flex flex-col sm:flex-row gap-5 items-start">
+                <img
+                  src={selectedProduct.image}
+                  alt={selectedProduct.name}
+                  className="w-full sm:w-48 aspect-video sm:aspect-square object-cover rounded-2xl border border-slate-100 shrink-0"
+                />
+                <div>
+                  <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                    {selectedProduct.name}
+                  </h2>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-xl font-black text-blue-600">
+                      Rp {selectedProduct.price.toLocaleString("id-ID")}
+                    </span>
+                    {selectedProduct.originalPrice && (
+                      <span className="text-xs text-slate-400 line-through">
+                        Rp {selectedProduct.originalPrice.toLocaleString("id-ID")}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-600 mt-3 leading-relaxed">
+                    {selectedProduct.description}
+                  </p>
+                </div>
+              </div>
+
+              {/* Feature Points */}
+              {selectedProduct.features && (
+                <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Benefit & Fasilitas yang Didapatkan:
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {selectedProduct.features.map((feat, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-xs font-semibold text-slate-800">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>{feat}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Modules / Content Curriculum Accordion */}
+              {selectedProduct.modules && (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-blue-600" />
+                    <span>Silabus & Isi Modul Materi ({selectedProduct.modules.length} Sesi):</span>
+                  </h4>
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+                    {selectedProduct.modules.map((mod, idx) => (
+                      <div key={idx} className="p-3.5 flex items-center justify-between text-xs hover:bg-slate-50/80 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <span className="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-[11px] shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="font-semibold text-slate-800">{mod}</span>
+                        </div>
+                        <Video className="w-4 h-4 text-slate-400 shrink-0 ml-2" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Modal Bottom Sticky Actions */}
+            <div className="p-4 sm:p-5 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div>
+                <span className="text-[11px] text-slate-400 block font-medium">Harga Spesial:</span>
+                <span className="text-lg font-black text-blue-600">
+                  Rp {selectedProduct.price.toLocaleString("id-ID")}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => {
+                    addToCart(selectedProduct);
+                    setSelectedProduct(null);
+                  }}
+                  className="flex-1 sm:flex-initial px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <Plus className="w-4 h-4" /> Masuk Keranjang
+                </button>
+                <button
+                  onClick={() => {
+                    setCheckoutDirectProduct(selectedProduct);
+                    setSelectedProduct(null);
+                    setShowQRISModal(true);
+                  }}
+                  className="flex-1 sm:flex-initial px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all"
+                >
+                  <QrCode className="w-4 h-4" /> Beli Sekarang
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 4. MODAL KERANJANG */}
       {showCartModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-200 shadow-2xl space-y-4">
@@ -436,6 +574,7 @@ export default function TenantStorefrontPage() {
 
                 <button
                   onClick={() => {
+                    setCheckoutDirectProduct(null);
                     setShowCartModal(false);
                     setShowQRISModal(true);
                   }}
@@ -449,7 +588,7 @@ export default function TenantStorefrontPage() {
         </div>
       )}
 
-      {/* QRIS POPUP MODAL */}
+      {/* 5. QRIS MODAL */}
       {showQRISModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full border border-slate-200 shadow-2xl text-center">
@@ -464,23 +603,29 @@ export default function TenantStorefrontPage() {
             <div className="bg-slate-50 p-3 rounded-xl mb-4">
               <span className="text-[11px] text-slate-400 block">Total Tagihan</span>
               <span className="text-lg font-black text-blue-600">
-                Rp {totalCartPrice > 0 ? totalCartPrice.toLocaleString("id-ID") : "99.000"}
+                Rp {checkoutDirectProduct 
+                  ? checkoutDirectProduct.price.toLocaleString("id-ID")
+                  : totalCartPrice > 0 ? totalCartPrice.toLocaleString("id-ID") : "499.000"}
               </span>
             </div>
 
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  alert("Simulasi Pembayaran Berhasil! Notifikasi invoice dan akses otomatis dikirim ke WhatsApp Anda.");
+                  alert("Simulasi Pembayaran Berhasil! Notifikasi invoice dan akses materi otomatis dikirim ke WhatsApp Anda.");
                   setShowQRISModal(false);
                   setCart([]);
+                  setCheckoutDirectProduct(null);
                 }}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs transition-all active:scale-95 shadow-xs"
               >
                 Simulasikan Bayar Sukses
               </button>
               <button
-                onClick={() => setShowQRISModal(false)}
+                onClick={() => {
+                  setShowQRISModal(false);
+                  setCheckoutDirectProduct(null);
+                }}
                 className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-xl text-xs transition-all"
               >
                 Tutup
