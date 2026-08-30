@@ -10,55 +10,31 @@ import type { NextRequest } from 'next/server';
  * ┌───────────────────────────────────┬────────────────────────────────────────────────────────────────┐
  * │ Domain / Path                     │ Renders                                                        │
  * ├───────────────────────────────────┼────────────────────────────────────────────────────────────────┤
- * │ localhost / boontrack.com /       │ root page.tsx → redirect /admin (Super Admin Panel)            │
- * │ localhost/admin                   │ /admin (Super Admin Panel) — always pass-through               │
- * │ bossob.boontrack.com/             │ /career/bossob (Career Profile & ATS Resume Showcase)          │
- * │ bossob.boontrack.com/admin        │ /admin (Super Admin Panel) — pass-through                      │
- * │ chat.boontrack.com/               │ /admin (Live Multi-Tenant Monitoring — Super Admin Panel)      │
- * │ chat.boontrack.com/boontrack-*    │ pass-through (legacy bookmark compat)                          │
- * │ shop.boontrack.com/               │ redirect to /suhu-ads-masterclass (default demo tenant)        │
+ * │ shop.boontrack.com/               │ app/page.tsx (Clean White Seller Landing Page)                 │
  * │ shop.boontrack.com/[tenant]       │ /[tenant] (Public Storefront & Webchat)                        │
  * │ shop.boontrack.com/[tenant]/dash  │ /[tenant]/dashboard (Live Inbox & Katalog Merchant)            │
- * │ gym.* / atmosfitnes.*             │ /atmosfitnes (Gym Webchat / Hub)                               │
+ * │ app.boontrack.com/[niche]         │ /gym, /resto, /padel, /cafe (B2B App Showcase & Hub)          │
+ * │ chat.boontrack.com/               │ /admin (Live Multi-Tenant Monitoring — Super Admin Panel)      │
+ * │ bossob.boontrack.com/             │ /career/bossob (Career Profile & ATS Resume Showcase)          │
  * │ [b2b-slug].boontrack.com/         │ /[slug] (B2B Multi-Tenant Webchat Demo Publik)                 │
- * │ [b2b-slug].boontrack.com/dash     │ /[slug]/dashboard (CS Inbox & CMS)                            │
- * │ [career-slug].boontrack.com/      │ /career/[slug] (Jobseeker Career Profile)                      │
- * │ [unknown].boontrack.com/          │ /[slug] (Dynamic B2B Tenant Fallback)                          │
  * └───────────────────────────────────┴────────────────────────────────────────────────────────────────┘
- *
- * NOTE: middleware runs on Edge runtime — cannot import from app/* or lib/*
  */
 
-// ---------------------------------------------------------------------------
 // Known B2B Tenant Slugs (webchat + CS inbox engine)
-// Keep in sync with KNOWN_TENANTS in app/[tenant]/page.tsx
-// ---------------------------------------------------------------------------
 const B2B_TENANT_SLUGS = new Set([
-  // Gym / Fitness
   'atmosfitnes', 'gym',
-  // Retail / Modest Wear
   'nyka', 'nyka-hijab', 'nyka-modest', 'nyka-store',
-  // Digital Education
   'suhu-ads', 'suhu-ads-masterclass', 'suhuads', 'masterclass', 'digital-marketing',
-  // Food & Beverage
   'bale-pananggeuhan', 'bale',
-  // Public Service
   'pelayanan-publik', 'pelayanan-publik-dummy', 'indra-public', 'indra', 'kelurahan-indra',
-  // Internal / Demo
   'om-budi', 'om_budi', 'boontrack-demo', 'boontrack-holding', 'holding',
 ]);
 
-// ---------------------------------------------------------------------------
-// Known Career/Jobseeker Profile subdomains (explicit whitelist)
-// ---------------------------------------------------------------------------
+// Known Career/Jobseeker Profile subdomains
 const CAREER_KNOWN_SLUGS = new Set([
   'cv', 'career', 'resume', 'profile',
   'rayi-gemilang', 'rayi',
-  // NOTE: 'bossob' is NOT here — it has special handling (career + admin)
 ]);
-
-// Default B2B tenant shown when accessing shop.boontrack.com/
-const SHOP_DEFAULT_TENANT = 'suhu-ads-masterclass';
 
 /**
  * Extract subdomain from incoming request hostname.
@@ -109,7 +85,7 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // ── 0b. /admin always resolves to Super Admin Panel, no subdomain override ──
+  // ── 0b. /admin always resolves to Super Admin Panel ──
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
     return NextResponse.next();
   }
@@ -117,7 +93,7 @@ export function middleware(req: NextRequest) {
   const host = req.headers.get('host') || '';
   const hostClean = host.split(':')[0].toLowerCase().trim();
 
-  // ── 1. Root / system hostnames: standard Next.js routing ────────────────────
+  // ── 1. Root / system hostnames & App Hub pass-through ───────────────────────
   if (
     hostClean === 'localhost' ||
     hostClean === 'boontrack.com' ||
@@ -145,14 +121,22 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
+  // SPECIAL DOMAIN: shop.boontrack.com
+  // / → Renders app/page.tsx (Landing Page Seller)
+  // /[tenant] → Public storefront & webchat
+  // ===========================================================================
+  if (subdomain === 'shop') {
+    // Jalur root dan path merchant dibiarkan murni lewat tanpa rewrite paksa ke demo
+    return NextResponse.next();
+  }
+
+  // ===========================================================================
   // SPECIAL DOMAIN: bossob.boontrack.com
-  // / → Career AI Showcase (resume ATS bossob)
-  // /admin → Super Admin Panel (pass-through)
+  // / → Career AI Showcase
   // ===========================================================================
   if (subdomain === 'bossob') {
     const url = req.nextUrl.clone();
 
-    // Strip internal /career/bossob prefix (clean URL)
     if (pathname === '/career/bossob' || pathname === '/career/bossob/') {
       url.pathname = '/';
       return NextResponse.redirect(url, 307);
@@ -162,13 +146,11 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(url, 307);
     }
 
-    // Root → Career Profile
     if (pathname === '/') {
       url.pathname = '/career/bossob';
       return NextResponse.rewrite(url);
     }
 
-    // Subpaths (e.g. /portfolio, /resume) → /career/bossob/[subpath]
     url.pathname = `/career/bossob${pathname}`;
     return NextResponse.rewrite(url);
   }
@@ -176,44 +158,16 @@ export function middleware(req: NextRequest) {
   // ===========================================================================
   // SPECIAL DOMAIN: chat.boontrack.com
   // / → Super Admin Live Monitoring Dashboard (/admin)
-  // /boontrack-* → legacy bookmark compat — pass-through
   // ===========================================================================
   if (subdomain === 'chat') {
     const url = req.nextUrl.clone();
 
-    // Legacy bookmark compat: /boontrack-career, /boontrack-demo, etc.
     if (pathname.startsWith('/boontrack-')) {
       return NextResponse.next();
     }
 
-    // Root → Redirect to Super Admin live monitoring view
     if (pathname === '/') {
       url.pathname = '/admin';
-      return NextResponse.rewrite(url);
-    }
-
-    // Dynamic tenant routes fallback
-    return NextResponse.next();
-  }
-
-  // ===========================================================================
-  // SPECIAL DOMAIN: shop.boontrack.com
-  // / → redirect to default B2B demo tenant storefront
-  // /[tenant] → public storefront & webchat for that tenant
-  // /[tenant]/dashboard → CS inbox & katalog for that merchant
-  // ===========================================================================
-  if (subdomain === 'shop') {
-    const url = req.nextUrl.clone();
-
-    // Root → redirect to default demo tenant
-    if (pathname === '/' || pathname === '') {
-      url.pathname = `/${SHOP_DEFAULT_TENANT}`;
-      return NextResponse.rewrite(url);
-    }
-
-    // Strip /shop prefix if accidentally included
-    if (pathname === '/shop' || pathname === '/shop/') {
-      url.pathname = `/${SHOP_DEFAULT_TENANT}`;
       return NextResponse.rewrite(url);
     }
 
@@ -226,7 +180,6 @@ export function middleware(req: NextRequest) {
   if (subdomain === 'gym' || subdomain === 'atmosfitnes') {
     const url = req.nextUrl.clone();
 
-    // Clean URL: strip internal /atmosfitnes prefix
     if (pathname === '/atmosfitnes' || pathname === '/atmosfitnes/') {
       url.pathname = '/';
       return NextResponse.redirect(url, 307);
@@ -240,19 +193,16 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(url, 307);
     }
 
-    // Root → Public Webchat Demo for Atmosfitnes
     if (pathname === '/') {
       url.pathname = '/atmosfitnes';
       return NextResponse.rewrite(url);
     }
 
-    // CS / Admin Inbox Dashboard
     if (pathname === '/dashboard' || pathname === '/inbox' || pathname === '/chat') {
       url.pathname = '/atmosfitnes/dashboard';
       return NextResponse.rewrite(url);
     }
 
-    // Gym Operational Hub subroutes
     const gymSubroutes = ['/members', '/access-logs', '/controllers', '/invoices', '/pos', '/classes', '/reports', '/settings'];
     if (gymSubroutes.some((r) => pathname === r || pathname.startsWith(`${r}/`))) {
       url.pathname = `/gym${pathname}`;
@@ -268,12 +218,11 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // 3. Explicit B2B Tenant Slugs (Retail / Digital / UMKM)
+  // 3. Explicit B2B Tenant Slugs
   // ===========================================================================
   if (B2B_TENANT_SLUGS.has(subdomain)) {
     const url = req.nextUrl.clone();
 
-    // Clean URL: strip internal /${subdomain} prefix
     if (pathname === `/${subdomain}` || pathname === `/${subdomain}/`) {
       url.pathname = '/';
       return NextResponse.redirect(url, 307);
@@ -287,13 +236,11 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(url, 307);
     }
 
-    // Root → Webchat Publik
     if (pathname === '/') {
       url.pathname = `/${subdomain}`;
       return NextResponse.rewrite(url);
     }
 
-    // CS / Admin Inbox Dashboard
     if (pathname === '/dashboard' || pathname === '/inbox' || pathname === '/chat') {
       url.pathname = `/${subdomain}/dashboard`;
       return NextResponse.rewrite(url);
@@ -304,12 +251,11 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // 4. Career Profile Subdomains (explicit whitelist)
+  // 4. Career Profile Subdomains
   // ===========================================================================
   if (CAREER_KNOWN_SLUGS.has(subdomain)) {
     const url = req.nextUrl.clone();
 
-    // Clean URL: strip internal /career/${subdomain} prefix
     if (pathname === `/career/${subdomain}` || pathname === `/career/${subdomain}/`) {
       url.pathname = '/';
       return NextResponse.redirect(url, 307);
@@ -334,7 +280,6 @@ export function middleware(req: NextRequest) {
   {
     const url = req.nextUrl.clone();
 
-    // Clean URL
     if (pathname === `/${subdomain}` || pathname === `/${subdomain}/`) {
       url.pathname = '/';
       return NextResponse.redirect(url, 307);
