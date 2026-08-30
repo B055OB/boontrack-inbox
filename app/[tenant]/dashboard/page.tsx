@@ -1,16 +1,9 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Dumbbell,
-  Send,
-  RefreshCw,
-  Search,
-  ExternalLink,
-  MessageSquare,
-  Sparkles,
   Package,
   Brain,
   CreditCard,
@@ -21,41 +14,16 @@ import {
   Building,
   GraduationCap,
   ShieldCheck,
+  Store,
+  ExternalLink,
+  MessageSquare,
+  Lock,
+  Sparkles,
+  Users,
+  Zap,
+  ArrowRight
 } from 'lucide-react';
-import { getSupabase } from '@/lib/supabaseClient';
 import { KNOWN_TENANTS } from '../page';
-
-interface Message {
-  id: string | number;
-  tenant_id?: string;
-  tenant_slug?: string;
-  conversation_id?: string;
-  channel?: string;
-  user_id?: string;
-  sender: string;
-  text?: string;
-  message_text?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload?: any | null;
-  created_at: string;
-}
-
-interface DatabaseMessage {
-  id: string | number;
-  tenant_id?: string | null;
-  tenant_slug?: string | null;
-  conversation_id?: string | null;
-  channel?: string | null;
-  user_id?: string | null;
-  user_phone?: string | null;
-  user_name?: string | null;
-  sender?: string | null;
-  text?: string | null;
-  message_text?: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload?: any | null;
-  created_at: string;
-}
 
 interface TenantInfo {
   id: string;
@@ -66,238 +34,12 @@ interface TenantInfo {
   description?: string;
 }
 
-function isMessageForTenant(
-  m: DatabaseMessage | Message,
-  slug: string,
-  tenantDbId?: string
-): boolean {
-  if (!slug) return false;
-  const lowerSlug = slug.toLowerCase();
-
-  const msgTenantId = (m.tenant_id || '').toLowerCase();
-  const msgTenantSlug = (m.tenant_slug || '').toLowerCase();
-
-  if (msgTenantSlug === lowerSlug || msgTenantId === lowerSlug) return true;
-  if (tenantDbId && (msgTenantId === tenantDbId.toLowerCase() || msgTenantSlug === tenantDbId.toLowerCase())) {
-    return true;
-  }
-
-  const known = KNOWN_TENANTS[lowerSlug];
-  if (known?.aliases) {
-    if (known.aliases.some((alias) => alias.toLowerCase() === msgTenantSlug || alias.toLowerCase() === msgTenantId)) {
-      return true;
-    }
-  }
-
-  if (!m.tenant_id && !m.tenant_slug) {
-    return true;
-  }
-
-  return false;
-}
-
-function extractMessageText(m: DatabaseMessage): string {
-  if (m.text && typeof m.text === 'string' && m.text.trim().length > 0) {
-    return m.text;
-  }
-  if (m.message_text && typeof m.message_text === 'string' && m.message_text.trim().length > 0) {
-    return m.message_text;
-  }
-
-  if (m.payload) {
-    let p = m.payload;
-    if (typeof p === 'string') {
-      try {
-        p = JSON.parse(p);
-      } catch {
-        return p;
-      }
-    }
-
-    if (typeof p === 'object' && p !== null) {
-      if (typeof p.text === 'string' && p.text.trim()) return p.text;
-      if (typeof p.message === 'string' && p.message.trim()) return p.message;
-      if (typeof p.message_text === 'string' && p.message_text.trim()) return p.message_text;
-      if (typeof p.body === 'string' && p.body.trim()) return p.body;
-      if (typeof p.conversation === 'string' && p.conversation.trim()) return p.conversation;
-      if (typeof p.caption === 'string' && p.caption.trim()) return p.caption;
-
-      if (p.text?.body && typeof p.text.body === 'string') return p.text.body;
-      if (p.extendedTextMessage?.text && typeof p.extendedTextMessage.text === 'string') return p.extendedTextMessage.text;
-      if (p.conversationMessage?.conversation && typeof p.conversationMessage.conversation === 'string') return p.conversationMessage.conversation;
-      if (p.messages?.[0]?.text?.body && typeof p.messages[0].text.body === 'string') return p.messages[0].text.body;
-      if (p.messages?.[0]?.body && typeof p.messages[0].body === 'string') return p.messages[0].body;
-      if (p.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body) {
-        return p.entry[0].changes[0].value.messages[0].text.body;
-      }
-    }
-  }
-
-  return m.text || m.message_text || '';
-}
-
-function normalizeMessage(m: DatabaseMessage): Message {
-  let resolvedUser = m.user_id || m.user_phone;
-
-  if (!resolvedUser && m.payload) {
-    let p = m.payload;
-    if (typeof p === 'string') {
-      try {
-        p = JSON.parse(p);
-      } catch {
-        // ignore
-      }
-    }
-    if (typeof p === 'object' && p !== null) {
-      resolvedUser =
-        p.from ||
-        p.sender ||
-        p.phone ||
-        p.user_phone ||
-        p.user_id ||
-        p.messages?.[0]?.from ||
-        p.entry?.[0]?.changes?.[0]?.value?.contacts?.[0]?.wa_id ||
-        p.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
-    }
-  }
-
-  if (!resolvedUser) {
-    if (m.sender && (m.sender.includes('+') || /\d{8,}/.test(m.sender))) {
-      resolvedUser = m.sender;
-    } else {
-      resolvedUser = m.conversation_id || 'Pengunjung Web';
-    }
-  }
-
-  let resolvedChannel = m.channel || 'whatsapp';
-  if (
-    m.sender?.toLowerCase().includes('bot') ||
-    m.sender?.toLowerCase().includes('career') ||
-    m.sender?.toLowerCase().includes('budi')
-  ) {
-    resolvedChannel = 'whatsapp';
-  }
-
-  const msgText = extractMessageText(m);
-
-  return {
-    ...m,
-    user_id: resolvedUser,
-    channel: resolvedChannel,
-    sender: m.sender || 'Unknown',
-    message_text: msgText,
-    text: m.text ?? (msgText || undefined),
-    payload: m.payload ?? null,
-    tenant_id: m.tenant_id ?? undefined,
-    tenant_slug: m.tenant_slug ?? undefined,
-    conversation_id: m.conversation_id ?? undefined,
-  };
-}
-
-function extractInteractiveButtons(msg: Message, tenantSlug?: string): string[] {
-  const buttons: string[] = [];
-
-  if (msg.payload) {
-    let p = msg.payload;
-    if (typeof p === 'string') {
-      try {
-        p = JSON.parse(p);
-      } catch {
-        // ignore
-      }
-    }
-
-    if (typeof p === 'object' && p !== null) {
-      const rawButtons =
-        p.interactive?.action?.buttons ||
-        p.action?.buttons ||
-        p.buttons ||
-        p.quick_replies;
-
-      if (Array.isArray(rawButtons)) {
-        for (const btn of rawButtons) {
-          if (typeof btn === 'string' && btn.trim()) {
-            buttons.push(btn.trim());
-          } else if (btn?.reply?.title) {
-            buttons.push(btn.reply.title);
-          } else if (btn?.buttonText?.displayText) {
-            buttons.push(btn.buttonText.displayText);
-          } else if (btn?.title) {
-            buttons.push(btn.title);
-          } else if (btn?.text) {
-            buttons.push(btn.text);
-          } else if (btn?.label) {
-            buttons.push(btn.label);
-          }
-        }
-      }
-
-      const sections =
-        p.interactive?.action?.sections ||
-        p.action?.sections ||
-        p.listMessage?.sections ||
-        p.sections;
-
-      if (Array.isArray(sections)) {
-        for (const sec of sections) {
-          if (Array.isArray(sec?.rows)) {
-            for (const row of sec.rows) {
-              if (row?.title) {
-                buttons.push(row.title);
-              } else if (typeof row === 'string' && row.trim()) {
-                buttons.push(row.trim());
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  const isBot =
-    msg.sender?.toLowerCase().includes('bot') ||
-    msg.sender?.toLowerCase().includes('ai') ||
-    msg.sender?.toLowerCase().includes('career') ||
-    msg.sender?.toLowerCase().includes('assistant');
-
-  const isWhatsapp =
-    msg.channel?.toLowerCase() === 'whatsapp' ||
-    msg.sender?.toLowerCase().includes('whatsapp') ||
-    (msg.user_id && /^\d+$/.test(msg.user_id));
-
-  if (buttons.length === 0 && isBot && isWhatsapp) {
-    const defaultBtns = tenantSlug && KNOWN_TENANTS[tenantSlug.toLowerCase()]?.defaultButtons;
-    if (defaultBtns && defaultBtns.length > 0) {
-      buttons.push(...defaultBtns);
-    }
-  }
-
-  return Array.from(new Set(buttons));
-}
-
-let csMsgSeq = 0;
-function createCsMsgId() {
-  csMsgSeq += 1;
-  return `local-cs-${csMsgSeq}`;
-}
-
-function getIsoTimestamp() {
-  return new Date().toISOString();
-}
-
 export default function TenantDashboardInboxPage() {
   const params = useParams();
   const tenantSlug = Array.isArray(params?.tenant) ? params.tenant[0] : (params?.tenant as string);
   const meta = tenantSlug ? KNOWN_TENANTS[tenantSlug.toLowerCase()] : undefined;
 
   const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [selectedChannel, setSelectedChannel] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [loading, setLoading] = useState(true);
-  const [replyText, setReplyText] = useState('');
-  const [sending, setSending] = useState(false);
 
   // Backpanel Tabs & CMS Settings State
   const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration'>('inbox');
@@ -461,198 +203,6 @@ export default function TenantDashboardInboxPage() {
     }
   };
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, selectedUserId]);
-
-  useEffect(() => {
-    let ignore = false;
-    const currentMeta = tenantSlug ? KNOWN_TENANTS[tenantSlug.toLowerCase()] : undefined;
-    let currentTenantId: string | undefined;
-
-    async function fetchInitialMessages() {
-      if (!tenantSlug) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const supabase = getSupabase();
-
-        // 1. Ambil info tenant
-        const { data: tenant, error: tErr } = await supabase
-          .from('tenants')
-          .select('*')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        if (tErr) console.warn('Supabase tenant query error:', tErr);
-
-        if (!ignore) {
-          if (tenant) {
-            currentTenantId = tenant.id;
-            setTenantInfo({
-              ...tenant,
-              category: tenant.category || currentMeta?.category || 'external',
-              description: currentMeta?.description,
-            } as TenantInfo);
-          } else {
-            const fallbackName =
-              currentMeta?.name ||
-              (tenantSlug === 'om-budi'
-                ? 'Om Budi Channel'
-                : tenantSlug.replace(/-/g, ' ').toUpperCase());
-            setTenantInfo({
-              id: tenantSlug,
-              name: fallbackName,
-              slug: tenantSlug,
-              status: 'active',
-              category: currentMeta?.category || 'external',
-              description: currentMeta?.description,
-            });
-          }
-        }
-
-        // 2. Query data messages
-        const query = supabase
-          .from('messages')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        const { data: messagesData, error: msgErr } = await query;
-        if (msgErr) console.error('Supabase messages query error:', msgErr);
-
-        if (!ignore) {
-          const rawMessages = (messagesData || []) as DatabaseMessage[];
-          const normalizedMsgs: Message[] = rawMessages.map(normalizeMessage);
-
-          const filteredForTenant = normalizedMsgs.filter((m) =>
-            isMessageForTenant(m, tenantSlug, tenant?.id)
-          );
-
-          setMessages(filteredForTenant);
-
-          if (filteredForTenant.length > 0) {
-            const users = Array.from(
-              new Set(filteredForTenant.map((m) => m.user_id))
-            ).filter(Boolean);
-            if (users.length > 0) setSelectedUserId(users[users.length - 1] as string);
-          }
-        }
-      } catch (err: unknown) {
-        console.error('Error fetching inbox data:', err);
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void fetchInitialMessages();
-
-    const supabase = getSupabase();
-    const channel = supabase
-      .channel(`realtime-dashboard-${tenantSlug}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          const m = payload.new as DatabaseMessage;
-          const isMatch = isMessageForTenant(m, tenantSlug, currentTenantId);
-
-          if (isMatch) {
-            const newMsg = normalizeMessage(m);
-            setMessages((prev) => {
-              if (prev.some((p) => String(p.id) === String(newMsg.id))) {
-                return prev;
-              }
-              return [...prev, newMsg];
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      ignore = true;
-      supabase.removeChannel(channel);
-    };
-  }, [tenantSlug]);
-
-  const handleSendReply = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!replyText.trim() || !selectedUserId || !tenantSlug) return;
-
-    setSending(true);
-    const content = replyText.trim();
-    setReplyText('');
-
-    const newMsg: Message = {
-      id: createCsMsgId(),
-      tenant_slug: tenantSlug,
-      conversation_id: selectedUserId,
-      user_id: selectedUserId,
-      sender: 'CS / Admin Agent',
-      channel: 'webchat',
-      text: content,
-      message_text: content,
-      created_at: getIsoTimestamp(),
-    };
-
-    setMessages((prev) => [...prev, newMsg]);
-
-    try {
-      const supabase = getSupabase();
-      await supabase.from('messages').insert({
-        tenant_slug: tenantSlug,
-        conversation_id: selectedUserId,
-        sender: 'CS / Admin Agent',
-        channel: 'webchat',
-        text: content,
-        message_text: content,
-      });
-    } catch (err) {
-      console.warn('Could not insert reply to DB:', err);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  // Filter List Percakapan
-  const filteredMessages = messages.filter((m) => {
-    const matchChannel =
-      selectedChannel === 'all' ||
-      m.channel?.toLowerCase() === selectedChannel.toLowerCase();
-    const matchQuery = searchQuery
-      ? m.user_id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.message_text?.toLowerCase().includes(searchQuery.toLowerCase())
-      : true;
-    return matchChannel && matchQuery;
-  });
-
-  const uniqueUsers = Array.from(new Set(filteredMessages.map((m) => m.user_id))).filter(Boolean);
-
-  const conversationList = uniqueUsers.map((uid) => {
-    const userMsgs = filteredMessages.filter((m) => m.user_id === uid);
-    const lastMsg = userMsgs[userMsgs.length - 1];
-    return {
-      userId: uid as string,
-      channel: lastMsg?.channel || 'whatsapp',
-      lastMessage: lastMsg?.message_text || '',
-      lastTime: lastMsg?.created_at || '',
-      total: userMsgs.length,
-    };
-  });
-
-  const activeMessages = messages.filter((m) => m.user_id === selectedUserId);
-
   const isSubdomainMode =
     tenantSlug === 'atmosfitnes' ||
     (typeof window !== 'undefined' &&
@@ -662,352 +212,192 @@ export default function TenantDashboardInboxPage() {
   const publicDemoHref = isSubdomainMode ? '/' : `/${tenantSlug}`;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
-      {/* Top Navbar */}
-      <header className="bg-slate-900/90 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-4 backdrop-blur-md sticky top-0 z-30">
-        <div className="flex items-center gap-3">
+    <main className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
+      
+      {/* 1. TOP NAVBAR */}
+      <header className="bg-white border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30 shadow-xs">
+        <div className="flex items-center gap-4">
           <Link
             href={publicDemoHref}
-            className="text-xs bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 px-3.5 py-1.5 rounded-lg transition inline-flex items-center gap-1.5 font-semibold shadow-sm"
+            target="_blank"
+            className="text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-3.5 py-2 rounded-xl border border-slate-200 transition inline-flex items-center gap-1.5 shadow-xs"
             title="Buka Halaman Publik & Webchat Demo"
           >
-            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-            <span>Webchat Demo Publik</span>
+            <Store className="w-3.5 h-3.5 text-slate-500" />
+            <span>Lihat Etalase Toko</span>
             <ExternalLink className="w-3 h-3 opacity-60" />
           </Link>
 
-          {tenantSlug === 'atmosfitnes' && (
-            <Link
-              href="/gym"
-              className="text-xs bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/40 px-3.5 py-1.5 rounded-lg transition inline-flex items-center gap-1.5 font-semibold shadow-sm shadow-emerald-950"
-            >
-              <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Gym Control Hub &rarr;</span>
-            </Link>
-          )}
+          <div className="h-5 w-[1px] bg-slate-200 hidden sm:block"></div>
 
-          <div className="border-l border-slate-800 pl-3">
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-white">{tenantInfo?.name || meta?.name || tenantSlug}</h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                Backpanel CMS
-              </span>
-            </div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight">
+              {tenantInfo?.name || meta?.name || tenantSlug}
+            </h1>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+              Merchant Panel
+            </span>
           </div>
         </div>
 
-        {/* Right side of header: Channel filter if inbox, or status */}
-        {activeTab === 'inbox' ? (
-          <div className="flex items-center gap-1 bg-slate-950 p-1 border border-slate-800 rounded-xl text-xs">
-            {['all', 'webchat', 'whatsapp', 'telegram'].map((ch) => {
-              const isSelected = selectedChannel === ch;
-              return (
-                <button
-                  key={ch}
-                  onClick={() => setSelectedChannel(ch)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium capitalize transition ${
-                    isSelected
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {ch === 'all' ? 'Semua Channel' : ch}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Live CMS Mode</span>
-            </span>
-          </div>
-        )}
+        <div className="flex items-center gap-2 text-xs">
+          <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Storefront Active</span>
+          </span>
+        </div>
       </header>
 
-      {/* Backpanel Tabs Navigation */}
-      <div className="bg-slate-900 border-b border-slate-800 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 sticky top-[57px] z-20 backdrop-blur-md">
-        <div className="flex items-center gap-2 overflow-x-auto">
+      {/* 2. SUB-NAVIGATION MENU TABS */}
+      <div className="bg-white border-b border-slate-200 px-6 flex items-center justify-between gap-3 sticky top-[57px] z-20 shadow-xs">
+        <div className="flex items-center gap-4 overflow-x-auto text-xs font-bold">
           <button
             onClick={() => setActiveTab('inbox')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
               activeTab === 'inbox'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>💬 Live Inbox</span>
-            {conversationList.length > 0 && (
-              <span className="px-1.5 py-0.2 bg-blue-900/80 text-blue-200 rounded text-[10px]">
-                {conversationList.length}
-              </span>
-            )}
+            <MessageSquare className="w-4 h-4" />
+            <span>Live CS & Omnichannel Inbox</span>
+            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-1">
+              <Lock className="w-2.5 h-2.5" /> PRO
+            </span>
           </button>
 
           <button
             onClick={() => setActiveTab('catalog')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
               activeTab === 'catalog'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            <Package className="w-3.5 h-3.5" />
-            <span>📦 Katalog Produk</span>
+            <Package className="w-4 h-4" />
+            <span>Katalog Produk</span>
           </button>
 
           <button
             onClick={() => setActiveTab('ai_knowledge')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
               activeTab === 'ai_knowledge'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            <Brain className="w-3.5 h-3.5" />
-            <span>🧠 AI Knowledge & Persona</span>
+            <Brain className="w-4 h-4" />
+            <span>AI Knowledge & Bot</span>
           </button>
 
           <button
             onClick={() => setActiveTab('integration')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
               activeTab === 'integration'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            <CreditCard className="w-3.5 h-3.5" />
-            <span>💳 Rekening & Integrasi</span>
+            <CreditCard className="w-4 h-4" />
+            <span>Rekening & QRIS</span>
           </button>
         </div>
 
         {saveFeedback && (
-          <div className="text-xs font-semibold px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-emerald-300 animate-in fade-in">
+          <div className="text-xs font-semibold px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 animate-in fade-in">
             {saveFeedback}
           </div>
         )}
       </div>
 
-      {/* TAB 1: Live Omnichannel CS Inbox */}
+      {/* TAB 1: Live CS & Chatwoot Upsell Paywall */}
       {activeTab === 'inbox' && (
-        <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar Sesi Chat */}
-          <aside className="w-80 md:w-96 border-r border-slate-800 bg-slate-900/40 flex flex-col">
-            <div className="p-3 border-b border-slate-800">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Cari user / nomor HP / teks..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-700"
-                />
+        <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
+          <div className="max-w-2xl w-full bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 shadow-xl shadow-slate-200/50 text-center relative overflow-hidden">
+            
+            <div className="w-16 h-16 bg-blue-50 border border-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+              <Lock className="w-8 h-8 text-blue-600" />
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-full text-xs font-bold mb-4">
+              <Sparkles className="w-3.5 h-3.5" /> Modul Tambahan CS Multi-Agent
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-3">
+              Omnichannel Inbox & Live Chat CS
+            </h2>
+
+            <p className="text-slate-500 text-sm leading-relaxed max-w-lg mx-auto mb-8">
+              Toko Anda saat ini menggunakan <strong>Engine Transaksi QRIS Otomatis</strong>. Untuk membalas pesan secara manual bersama tim customer service di satu nomor WhatsApp terpusat, silakan aktifkan lisensi add-on <strong>Chatwoot Enterprise Sync</strong>.
+            </p>
+
+            {/* Feature Comparison List */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8 text-left">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                <Users className="w-5 h-5 text-blue-600 mb-2" />
+                <h4 className="text-xs font-bold text-slate-900 mb-1">Multi-Agent CS</h4>
+                <p className="text-[11px] text-slate-500">Hingga 10 CS login bersamaan tanpa bentrok.</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                <Zap className="w-5 h-5 text-emerald-600 mb-2" />
+                <h4 className="text-xs font-bold text-slate-900 mb-1">WhatsApp & Webchat</h4>
+                <p className="text-[11px] text-slate-500">Inbox gabungan dari chat web, IG, & WhatsApp resmi.</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                <ShieldCheck className="w-5 h-5 text-indigo-600 mb-2" />
+                <h4 className="text-xs font-bold text-slate-900 mb-1">Intervensi Bot Otomatis</h4>
+                <p className="text-[11px] text-slate-500">CS bisa ambil alih obrolan bot kapan saja.</p>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60">
-              {loading ? (
-                <div className="p-8 text-center text-slate-500 text-xs flex flex-col items-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
-                  <span>Memuat daftar percakapan...</span>
-                </div>
-              ) : conversationList.length === 0 ? (
-                <div className="p-8 text-center text-slate-500 text-xs flex flex-col items-center gap-2">
-                  <MessageSquare className="w-6 h-6 text-slate-600" />
-                  <span>Belum ada riwayat pesan untuk tenant ini.</span>
-                </div>
-              ) : (
-                conversationList.map((c) => {
-                  const isSelected = selectedUserId === c.userId;
-                  const isWa = c.channel.toLowerCase() === 'whatsapp';
-                  return (
-                    <button
-                      key={c.userId}
-                      onClick={() => setSelectedUserId(c.userId)}
-                      className={`w-full text-left p-3.5 transition flex flex-col gap-1.5 ${
-                        isSelected
-                          ? 'bg-blue-600/15 border-l-2 border-blue-500'
-                          : 'hover:bg-slate-800/40'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`w-2 h-2 rounded-full ${
-                              isWa ? 'bg-emerald-500' : 'bg-blue-500'
-                            }`}
-                          />
-                          <span className="font-semibold text-xs text-white truncate max-w-[150px]">
-                            {c.userId}
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          {c.lastTime
-                            ? new Date(c.lastTime).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : ''}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 truncate line-clamp-1">{c.lastMessage}</p>
-                      <div className="flex items-center justify-between pt-0.5">
-                        <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
-                          {c.channel}
-                        </span>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          {c.total} pesan
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
+            {/* CTA Buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <a
+                href="https://wa.me/6281234567890?text=Halo%20Admin%20BoonTrack,%20saya%20mau%20aktivasi%20fitur%20Omnichannel%20Live%20CS%20Chatwoot%20untuk%20toko%20saya"
+                target="_blank"
+                rel="noreferrer"
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+              >
+                <span>Aktivasi Fitur Live Chat CS</span>
+                <ArrowRight className="w-4 h-4" />
+              </a>
+              <button
+                onClick={() => setActiveTab('catalog')}
+                className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-5 py-3.5 rounded-xl text-xs transition-all"
+              >
+                Kelola Katalog Dulu
+              </button>
             </div>
-          </aside>
 
-          {/* Area Percakapan Aktif */}
-          <section className="flex-1 flex flex-col bg-slate-950">
-            {selectedUserId ? (
-              <>
-                {/* Header Percakapan */}
-                <div className="p-4 border-b border-slate-800 bg-slate-900/40 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-xs border border-blue-500/30">
-                      {selectedUserId.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-bold text-white">{selectedUserId}</h2>
-                      <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        <span>Sesi Percakapan Aktif</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stream Bubble Chat */}
-                <div className="flex-1 p-5 overflow-y-auto space-y-3.5">
-                  {activeMessages.map((m) => {
-                    const isUser =
-                      m.sender.toLowerCase().includes('user') ||
-                      m.sender === selectedUserId ||
-                      (!m.sender.toLowerCase().includes('bot') &&
-                        !m.sender.toLowerCase().includes('admin') &&
-                        !m.sender.toLowerCase().includes('cs') &&
-                        !m.sender.toLowerCase().includes('ai'));
-                    const isCsAgent =
-                      m.sender.toLowerCase().includes('cs') ||
-                      m.sender.toLowerCase().includes('admin');
-
-                    const interactiveButtons = extractInteractiveButtons(m, tenantSlug);
-
-                    return (
-                      <div
-                        key={m.id}
-                        className={`flex flex-col ${isUser ? 'items-start' : 'items-end'}`}
-                      >
-                        <div className="flex items-center gap-1.5 mb-1 px-1 text-[10px] text-slate-400 font-medium">
-                          <span>{isCsAgent ? 'Anda (CS Agent)' : m.sender}</span>
-                          <span>&bull;</span>
-                          <span>
-                            {m.created_at
-                              ? new Date(m.created_at).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
-                              : ''}
-                          </span>
-                        </div>
-
-                        <div
-                          className={`max-w-[85%] p-3.5 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap ${
-                            isUser
-                              ? 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-sm'
-                              : isCsAgent
-                              ? 'bg-emerald-600 text-white rounded-tr-sm font-medium shadow-md shadow-emerald-900/30'
-                              : 'bg-blue-600 text-white rounded-tr-sm font-medium shadow-md shadow-blue-900/30'
-                          }`}
-                        >
-                          <div>{m.message_text || m.text}</div>
-
-                          {interactiveButtons.length > 0 && (
-                            <div className="mt-2.5 pt-2 border-t border-white/20 flex flex-wrap gap-1">
-                              {interactiveButtons.map((btnText, bIdx) => (
-                                <span
-                                  key={bIdx}
-                                  className="text-[10px] font-semibold bg-white/20 px-2 py-0.5 rounded-md text-white"
-                                >
-                                  {btnText}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={chatEndRef} />
-                </div>
-
-                {/* Balas Pesan Manual (CS Reply Form) */}
-                <form
-                  onSubmit={handleSendReply}
-                  className="p-4 border-t border-slate-800 bg-slate-900/60 flex items-center gap-3 shrink-0"
-                >
-                  <input
-                    type="text"
-                    placeholder={`Ketik pesan balasan CS ke ${selectedUserId}...`}
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    className="flex-1 px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={sending || !replyText.trim()}
-                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-blue-600/20 inline-flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Kirim</span>
-                  </button>
-                </form>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-xs text-slate-500 gap-2">
-                <MessageSquare className="w-8 h-8 text-slate-600" />
-                <span>Pilih salah satu sesi percakapan di panel kiri untuk membalas atau memantau chat.</span>
-              </div>
-            )}
-          </section>
+          </div>
         </div>
       )}
 
       {/* TAB 2: Katalog Produk CRUD */}
       {activeTab === 'catalog' && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Package className="w-5 h-5 text-blue-400" />
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <Package className="w-5 h-5 text-blue-600" />
                 <span>Katalog Produk & Akses Layanan</span>
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 Atur nama produk, harga normal, harga promo, deskripsi penawaran, dan link akses digital.
               </p>
             </div>
-            <span className="text-[11px] font-mono px-2.5 py-1 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200">
               CRUD Active
             </span>
           </div>
 
           <form onSubmit={handleSaveProduct} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Left Form: Basic Data */}
-            <div className="space-y-4 bg-slate-900/60 p-5 rounded-2xl border border-slate-800">
+            {/* Left Form */}
+            <div className="space-y-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
               <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
                   Nama Produk / Layanan *
                 </label>
                 <input
@@ -1016,13 +406,13 @@ export default function TenantDashboardInboxPage() {
                   value={productForm.name}
                   onChange={(e) => setProductForm((p) => ({ ...p, name: e.target.value }))}
                   placeholder="Contoh: Suhu Ads Masterclass 2026"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
                     Harga Normal (Rp) *
                   </label>
                   <input
@@ -1030,24 +420,24 @@ export default function TenantDashboardInboxPage() {
                     required
                     value={productForm.price}
                     onChange={(e) => setProductForm((p) => ({ ...p, price: Number(e.target.value) }))}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">
-                    Harga Promo / Bundling (Rp)
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                    Harga Promo (Rp)
                   </label>
                   <input
                     type="number"
                     value={productForm.promo_price || ''}
                     onChange={(e) => setProductForm((p) => ({ ...p, promo_price: Number(e.target.value) }))}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
                   Varian / Format Akses
                 </label>
                 <input
@@ -1055,12 +445,12 @@ export default function TenantDashboardInboxPage() {
                   value={productForm.variants}
                   onChange={(e) => setProductForm((p) => ({ ...p, variants: e.target.value }))}
                   placeholder="Contoh: Format Digital • Video HD + Template Canva"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
                   Label Promo Singkat
                 </label>
                 <input
@@ -1068,16 +458,16 @@ export default function TenantDashboardInboxPage() {
                   value={productForm.promo}
                   onChange={(e) => setProductForm((p) => ({ ...p, promo: e.target.value }))}
                   placeholder="Contoh: Diskon 35% Bulan Ini"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                 />
               </div>
             </div>
 
-            {/* Right Form: Delivery & Description */}
-            <div className="space-y-4 bg-slate-900/60 p-5 rounded-2xl border border-slate-800 flex flex-col justify-between">
+            {/* Right Form */}
+            <div className="space-y-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
                     Download URL / Link Akses Drive (Digital Delivery) *
                   </label>
                   <input
@@ -1085,23 +475,23 @@ export default function TenantDashboardInboxPage() {
                     value={productForm.download_url}
                     onChange={(e) => setProductForm((p) => ({ ...p, download_url: e.target.value }))}
                     placeholder="https://drive.google.com/..."
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-emerald-400 font-mono focus:outline-none focus:border-blue-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-blue-600 font-mono focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    Link ini otomatis diberikan ke pembeli saat status pembayaran QRIS sukses diverifikasi.
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Link ini otomatis diberikan ke pembeli saat pembayaran QRIS sukses diverifikasi.
                   </p>
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">
-                    Deskripsi Detail Produk & Layanan
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                    Deskripsi Detail Produk
                   </label>
                   <textarea
                     rows={5}
                     value={productForm.description}
                     onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))}
                     placeholder="Jelaskan kurikulum materi, benefit, dan keunggulan produk Anda..."
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500 leading-relaxed"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white leading-relaxed transition-all"
                   />
                 </div>
               </div>
@@ -1110,7 +500,7 @@ export default function TenantDashboardInboxPage() {
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 disabled:opacity-50"
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
                   <span>{savingSettings ? 'Menyimpan...' : 'Simpan Perubahan Produk'}</span>
@@ -1124,72 +514,71 @@ export default function TenantDashboardInboxPage() {
       {/* TAB 3: AI Knowledge & Persona */}
       {activeTab === 'ai_knowledge' && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Brain className="w-5 h-5 text-indigo-400" />
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <Brain className="w-5 h-5 text-blue-600" />
                 <span>AI Knowledge, Silabus & Persona</span>
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
-                Atur silabus modul materi, daftar FAQ otomatis, promo bundling, dan gaya bahasa asisten AI toko.
+              <p className="text-xs text-slate-500 mt-1">
+                Atur silabus modul materi, daftar FAQ otomatis, dan instruksi asisten AI toko.
               </p>
             </div>
           </div>
 
           <form onSubmit={handleSaveAiKnowledge} className="space-y-6">
-            {/* Persona & Tone */}
-            <div className="p-5 bg-slate-900/60 rounded-2xl border border-slate-800 space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+            {/* Persona */}
+            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Gaya Bahasa & Identitas AI
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
                     Nama Asisten AI
                   </label>
                   <input
                     type="text"
                     value={aiForm.ai_name}
                     onChange={(e) => setAiForm((a) => ({ ...a, ai_name: e.target.value }))}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                   />
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                    Tone of Voice (Gaya Bahasa)
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                    Tone of Voice
                   </label>
                   <select
                     value={aiForm.tone}
                     onChange={(e) => setAiForm((a) => ({ ...a, tone: e.target.value }))}
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                   >
-                    <option value="casual">Santai & Friendly (Casual)</option>
+                    <option value="casual">Santai & Ramah (Casual)</option>
                     <option value="formal">Profesional & Terstruktur (Formal)</option>
                     <option value="energetic">Antusias & Energik (Energetic)</option>
-                    <option value="concise">To-the-point & Singkat (Concise)</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
                   Instruksi Khusus (System Prompt)
                 </label>
                 <textarea
                   rows={2}
                   value={aiForm.system_prompt}
                   onChange={(e) => setAiForm((a) => ({ ...a, system_prompt: e.target.value }))}
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                 />
               </div>
             </div>
 
-            {/* Silabus Materi */}
-            <div className="p-5 bg-slate-900/60 rounded-2xl border border-slate-800 space-y-4">
+            {/* Silabus */}
+            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                  <GraduationCap className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <GraduationCap className="w-4 h-4 text-emerald-600" />
                   <span>Silabus Materi Kursus / Modul Produk</span>
                 </h3>
                 <button
@@ -1200,7 +589,7 @@ export default function TenantDashboardInboxPage() {
                       syllabus: [...a.syllabus, `Modul ${a.syllabus.length + 1}: Materi Tambahan Baru`],
                     }))
                   }
-                  className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition"
+                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Tambah Modul</span>
@@ -1210,7 +599,7 @@ export default function TenantDashboardInboxPage() {
               <div className="space-y-2.5">
                 {aiForm.syllabus.map((mod, idx) => (
                   <div key={idx} className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-400 shrink-0">
+                    <span className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0">
                       {idx + 1}
                     </span>
                     <input
@@ -1224,7 +613,7 @@ export default function TenantDashboardInboxPage() {
                           return { ...a, syllabus: updated };
                         });
                       }}
-                      className="flex-1 px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                      className="flex-1 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                     />
                     <button
                       type="button"
@@ -1234,7 +623,7 @@ export default function TenantDashboardInboxPage() {
                           syllabus: a.syllabus.filter((_, i) => i !== idx),
                         }))
                       }
-                      className="p-2 text-slate-500 hover:text-rose-400 rounded-lg transition"
+                      className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -1243,11 +632,11 @@ export default function TenantDashboardInboxPage() {
               </div>
             </div>
 
-            {/* FAQ Rules & Promo Bundling */}
-            <div className="p-5 bg-slate-900/60 rounded-2xl border border-slate-800 space-y-4">
+            {/* FAQ Rules */}
+            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                  FAQ Rules (Tanya Jawab Cepat AI)
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  FAQ Rules (Tanya Jawab Otomatis)
                 </h3>
                 <button
                   type="button"
@@ -1257,7 +646,7 @@ export default function TenantDashboardInboxPage() {
                       faq: [...a.faq, { q: 'Pertanyaan baru?', a: 'Jawaban penjelasan AI.' }],
                     }))
                   }
-                  className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition"
+                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Tambah FAQ</span>
@@ -1266,7 +655,7 @@ export default function TenantDashboardInboxPage() {
 
               <div className="space-y-3">
                 {aiForm.faq.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-slate-950 rounded-xl border border-slate-800/80 space-y-2">
+                  <div key={idx} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <input
                         type="text"
@@ -1280,7 +669,7 @@ export default function TenantDashboardInboxPage() {
                             return { ...a, faq: updated };
                           });
                         }}
-                        className="flex-1 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white font-semibold focus:outline-none focus:border-blue-500"
+                        className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
                       />
                       <button
                         type="button"
@@ -1290,7 +679,7 @@ export default function TenantDashboardInboxPage() {
                             faq: a.faq.filter((_, i) => i !== idx),
                           }))
                         }
-                        className="p-1 text-slate-500 hover:text-rose-400 rounded transition"
+                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1307,22 +696,10 @@ export default function TenantDashboardInboxPage() {
                           return { ...a, faq: updated };
                         });
                       }}
-                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:border-blue-600"
                     />
                   </div>
                 ))}
-              </div>
-
-              <div className="pt-2 border-t border-slate-800">
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                  Aturan Promo Bundling
-                </label>
-                <input
-                  type="text"
-                  value={aiForm.promo_bundling}
-                  onChange={(e) => setAiForm((a) => ({ ...a, promo_bundling: e.target.value }))}
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
-                />
               </div>
             </div>
 
@@ -1330,10 +707,10 @@ export default function TenantDashboardInboxPage() {
               <button
                 type="submit"
                 disabled={savingSettings}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 disabled:opacity-50"
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
-                <span>{savingSettings ? 'Menyimpan...' : 'Simpan AI Knowledge & Silabus'}</span>
+                <span>{savingSettings ? 'Menyimpan...' : 'Simpan AI Knowledge'}</span>
               </button>
             </div>
           </form>
@@ -1343,13 +720,13 @@ export default function TenantDashboardInboxPage() {
       {/* TAB 4: Rekening & Integrasi */}
       {activeTab === 'integration' && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-emerald-400" />
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-emerald-600" />
                 <span>Rekening Penarikan & Integrasi Gateway</span>
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 Kelola rekening tujuan penarikan dana QRIS dan pantau status koneksi WhatsApp Gateway resmi Meta.
               </p>
             </div>
@@ -1357,20 +734,20 @@ export default function TenantDashboardInboxPage() {
 
           <form onSubmit={handleSaveBankAndIntegration} className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Bank Account */}
-            <div className="p-5 bg-slate-900/60 rounded-2xl border border-slate-800 space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <Building className="w-4 h-4 text-emerald-400" />
+            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <Building className="w-4 h-4 text-emerald-600" />
                 <span>Rekening Penarikan Dana (QRIS Settlement)</span>
               </h3>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
                   Nama Bank *
                 </label>
                 <select
                   value={bankForm.name}
                   onChange={(e) => setBankForm((b) => ({ ...b, name: e.target.value }))}
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                 >
                   <option value="BCA (Bank Central Asia)">BCA (Bank Central Asia)</option>
                   <option value="Bank Mandiri">Bank Mandiri</option>
@@ -1382,7 +759,7 @@ export default function TenantDashboardInboxPage() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
                   Nomor Rekening *
                 </label>
                 <input
@@ -1390,12 +767,12 @@ export default function TenantDashboardInboxPage() {
                   required
                   value={bankForm.account}
                   onChange={(e) => setBankForm((b) => ({ ...b, account: e.target.value }))}
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
                   Nama Pemilik Rekening *
                 </label>
                 <input
@@ -1403,38 +780,38 @@ export default function TenantDashboardInboxPage() {
                   required
                   value={bankForm.holder}
                   onChange={(e) => setBankForm((b) => ({ ...b, holder: e.target.value }))}
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white uppercase focus:outline-none focus:border-blue-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 uppercase font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
                 />
               </div>
             </div>
 
             {/* WhatsApp Gateway Integration Status */}
-            <div className="p-5 bg-slate-900/60 rounded-2xl border border-slate-800 space-y-4 flex flex-col justify-between">
+            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
               <div className="space-y-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
                   <span>WhatsApp Gateway & Meta Cloud API</span>
                 </h3>
 
-                <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800/80 space-y-2">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-400">Status Gateway:</span>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-semibold text-[11px]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-xs font-semibold text-slate-500">Status Gateway:</span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[11px]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       <span>CONNECTED</span>
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Nomor Bot Target:</span>
-                    <span className="font-mono text-slate-200 font-semibold">
+                    <span className="text-slate-500 font-semibold">Nomor Bot WhatsApp:</span>
+                    <span className="font-mono text-slate-800 font-bold">
                       +{integrationInfo.bot_number || '15556769563'}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Webhook Status:</span>
-                    <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                    <span className="text-slate-500 font-semibold">Webhook Status:</span>
+                    <span className="text-emerald-600 font-bold flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>Verified 200 OK</span>
                     </span>
@@ -1442,7 +819,7 @@ export default function TenantDashboardInboxPage() {
                 </div>
 
                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Terintegrasi melalui WhatsApp Business Platform resmi, dengan konfigurasi bisnis mengikuti kebijakan dan persyaratan Meta.
+                  Terintegrasi langsung melalui WhatsApp Cloud API resmi Meta untuk dispatch gambar QRIS otomatis.
                 </p>
               </div>
 
@@ -1450,7 +827,7 @@ export default function TenantDashboardInboxPage() {
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 disabled:opacity-50"
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
                   <span>{savingSettings ? 'Menyimpan...' : 'Simpan Rekening & Integrasi'}</span>
