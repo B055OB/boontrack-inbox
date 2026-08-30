@@ -11,6 +11,7 @@ import {
   Save,
   Plus,
   Trash2,
+  Edit,
   Building,
   GraduationCap,
   ShieldCheck,
@@ -21,53 +22,89 @@ import {
   Sparkles,
   Users,
   Zap,
-  ArrowRight
+  ArrowRight,
+  X,
+  Image as ImageIcon
 } from 'lucide-react';
 import { KNOWN_TENANTS } from '../page';
 
-interface TenantInfo {
-  id: string;
+interface ProductItem {
+  id: number;
   name: string;
-  slug: string;
-  status: string;
-  category?: 'internal' | 'external' | string;
-  description?: string;
+  category: 'terlaris' | 'digital' | 'fisik';
+  price: number;
+  promo_price?: number;
+  variants?: string;
+  promo?: string;
+  description: string;
+  download_url?: string;
+  image: string;
 }
 
-export default function TenantDashboardInboxPage() {
+const DEFAULT_PRODUCTS: ProductItem[] = [
+  {
+    id: 1,
+    name: "Step by Step Rahasia Menghasilkan Dollar dari Paid Traffic",
+    category: "terlaris",
+    price: 499000,
+    promo_price: 249000,
+    variants: "Format Digital • Video HD + Support",
+    promo: "Diskon 50%",
+    description: "Sebuah formula hidden gem yang belum banyak orang Indonesia mengetahuinya untuk menghasilkan dollar dari paid traffic.",
+    download_url: "https://onlineboost.my.id/p/step-by-step-rahasia-menghasilkan-dollar",
+    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
+  },
+  {
+    id: 2,
+    name: "Masterclass Ads 2026 - Scale Up Campaign",
+    category: "digital",
+    price: 99000,
+    promo_price: 149000,
+    variants: "Format Digital • Video HD",
+    promo: "Diskon 35%",
+    description: "Panduan praktis scale-up iklan Meta & TikTok ads dengan optimasi ROAS tinggi.",
+    download_url: "https://drive.google.com/drive/folders/masterclass-ads",
+    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60"
+  }
+];
+
+export default function TenantDashboardPage() {
   const params = useParams();
-  const tenantSlug = Array.isArray(params?.tenant) ? params.tenant[0] : (params?.tenant as string);
-  const meta = tenantSlug ? KNOWN_TENANTS[tenantSlug.toLowerCase()] : undefined;
+  const rawTenant = (params?.tenant as string) || "onlineboost";
+  const tenantSlug = rawTenant.toLowerCase();
+  const displayName = tenantSlug.replace(/-/g, " ");
 
-  const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null);
-
-  // Backpanel Tabs & CMS Settings State
-  const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration'>('inbox');
+  const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration'>('catalog');
   const [savingSettings, setSavingSettings] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
-  const [productForm, setProductForm] = useState({
-    name: 'Suhu Ads Masterclass 2026 - Full Lifetime Access',
+  // Products State
+  const [products, setProducts] = useState<ProductItem[]>(DEFAULT_PRODUCTS);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+
+  const [productForm, setProductForm] = useState<ProductItem>({
+    id: 0,
+    name: "",
+    category: "digital",
     price: 99000,
-    promo_price: 149000,
-    variants: 'Format Digital • Video HD + Template Canva',
-    promo: 'Diskon 35% Bulan Ini',
-    description:
-      'Pusat pelatihan Meta Ads praktis untuk media buyer & pebisnis online. Dapatkan strategi scale-up campaign, riset audience, dan optimasi konversi terbukti.',
-    download_url: 'https://drive.google.com/drive/folders/suhu-ads-masterclass-2026',
-    type: 'digital',
+    promo_price: 0,
+    variants: "Format Digital",
+    promo: "",
+    description: "",
+    download_url: "",
+    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
   });
 
   const [aiForm, setAiForm] = useState({
-    ai_name: 'Suhu Ads AI Consultant',
+    ai_name: 'Onlineboost AI Consultant',
     tone: 'casual',
     system_prompt:
-      'Anda adalah asisten konsultan resmi Suhu Ads Masterclass. Berikan informasi silabus, materi video, akses Google Drive materi, dan proses pembayaran instan QRIS.',
+      'Anda adalah asisten konsultan resmi Onlineboost. Berikan informasi silabus, materi video, akses Google Drive materi, dan proses pembayaran instan QRIS.',
     syllabus: [
       'Modul 1: Mindset & Riset Winning Product Meta Ads',
       'Modul 2: Struktur Campaign CBO/ABO & Budgeting Strategy',
-      'Modul 3: Creative Angle & Copywriting High-Converting',
-      'Modul 4: Scale-Up Campaign & Optimasi Biaya Iklan (ROAS > 4x)',
+      'Modul 3: Scale-Up Campaign & Optimasi Biaya Iklan (ROAS > 4x)',
     ],
     faq: [
       {
@@ -77,10 +114,6 @@ export default function TenantDashboardInboxPage() {
       {
         q: 'Bagaimana cara mengakses file setelah bayar?',
         a: 'Setelah pembayaran QRIS berhasil diverifikasi, sistem otomatis memberikan tautan Google Drive resmi dan link grup diskusi.',
-      },
-      {
-        q: 'Apakah pemula bisa mengikuti materi ini?',
-        a: 'Sangat bisa! Materi disusun dari nol, langkah demi langkah dengan panduan praktis.',
       },
     ],
     promo_bundling: 'Beli 2 Kelas Digital Gratis 1 Toolkit Copywriting Siap Pakai.',
@@ -98,130 +131,67 @@ export default function TenantDashboardInboxPage() {
     webhook_verified: true,
   });
 
-  useEffect(() => {
-    if (!tenantSlug) return;
-    let isCancelled = false;
-
-    async function loadTenantSettings() {
-      try {
-        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!isCancelled && data.success && data.settings) {
-            const s = data.settings;
-            if (s.product) setProductForm(s.product);
-            if (s.ai_knowledge) setAiForm(s.ai_knowledge);
-            if (s.bank) setBankForm(s.bank);
-            if (s.integration) setIntegrationInfo(s.integration);
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to load tenant settings:', err);
-      }
-    }
-
-    loadTenantSettings();
-    return () => {
-      isCancelled = true;
-    };
-  }, [tenantSlug]);
-
-  const handleSaveProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingSettings(true);
-    setSaveFeedback(null);
-    try {
-      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(productForm),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSaveFeedback('✅ Katalog produk berhasil disimpan!');
-      } else {
-        setSaveFeedback(`❌ Gagal: ${data.error || 'Terjadi kesalahan'}`);
-      }
-    } catch {
-      setSaveFeedback('❌ Gagal menghubungi server.');
-    } finally {
-      setSavingSettings(false);
-      setTimeout(() => setSaveFeedback(null), 3500);
-    }
+  // Modal open for New Product
+  const openNewProductModal = () => {
+    setEditingProductId(null);
+    setProductForm({
+      id: Date.now(),
+      name: "",
+      category: "digital",
+      price: 99000,
+      promo_price: 0,
+      variants: "Format Digital",
+      promo: "",
+      description: "",
+      download_url: "",
+      image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
+    });
+    setIsProductModalOpen(true);
   };
 
-  const handleSaveAiKnowledge = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingSettings(true);
-    setSaveFeedback(null);
-    try {
-      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ai_knowledge: aiForm,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSaveFeedback('✅ AI Knowledge & Silabus berhasil diperbarui!');
-      } else {
-        setSaveFeedback(`❌ Gagal: ${data.error || 'Terjadi kesalahan'}`);
-      }
-    } catch {
-      setSaveFeedback('❌ Gagal menghubungi server.');
-    } finally {
-      setSavingSettings(false);
-      setTimeout(() => setSaveFeedback(null), 3500);
-    }
+  // Modal open for Edit Product
+  const openEditProductModal = (prod: ProductItem) => {
+    setEditingProductId(prod.id);
+    setProductForm(prod);
+    setIsProductModalOpen(true);
   };
 
-  const handleSaveBankAndIntegration = async (e: React.FormEvent) => {
+  // Save product to list
+  const handleSaveProductForm = (e: React.FormEvent) => {
     e.preventDefault();
-    setSavingSettings(true);
-    setSaveFeedback(null);
-    try {
-      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bank: bankForm,
-          integration: integrationInfo,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSaveFeedback('✅ Rekening & Integrasi berhasil disimpan!');
-      } else {
-        setSaveFeedback(`❌ Gagal: ${data.error || 'Terjadi kesalahan'}`);
-      }
-    } catch {
-      setSaveFeedback('❌ Gagal menghubungi server.');
-    } finally {
-      setSavingSettings(false);
-      setTimeout(() => setSaveFeedback(null), 3500);
+    if (!productForm.name) return;
+
+    if (editingProductId) {
+      setProducts(prev => prev.map(p => p.id === editingProductId ? productForm : p));
+      setSaveFeedback("✅ Produk berhasil diperbarui!");
+    } else {
+      setProducts(prev => [...prev, { ...productForm, id: Date.now() }]);
+      setSaveFeedback("✅ Produk baru berhasil ditambahkan!");
     }
+
+    setIsProductModalOpen(false);
+    setTimeout(() => setSaveFeedback(null), 3000);
   };
 
-  const isSubdomainMode =
-    tenantSlug === 'atmosfitnes' ||
-    (typeof window !== 'undefined' &&
-      (window.location.host.toLowerCase().includes('gym.') ||
-        (tenantSlug && window.location.host.toLowerCase().startsWith(`${tenantSlug.toLowerCase()}.`))));
-
-  const publicDemoHref = isSubdomainMode ? '/' : `/${tenantSlug}`;
+  // Delete product
+  const handleDeleteProduct = (id: number) => {
+    if (confirm("Hapus produk ini dari etalase toko?")) {
+      setProducts(prev => prev.filter(p => p.id !== id));
+      setSaveFeedback("🗑️ Produk telah dihapus.");
+      setTimeout(() => setSaveFeedback(null), 3000);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
       
-      {/* 1. TOP NAVBAR */}
+      {/* TOP NAVBAR */}
       <header className="bg-white border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30 shadow-xs">
         <div className="flex items-center gap-4">
           <Link
-            href={publicDemoHref}
+            href={`/${tenantSlug}`}
             target="_blank"
             className="text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-3.5 py-2 rounded-xl border border-slate-200 transition inline-flex items-center gap-1.5 shadow-xs"
-            title="Buka Halaman Publik & Webchat Demo"
           >
             <Store className="w-3.5 h-3.5 text-slate-500" />
             <span>Lihat Etalase Toko</span>
@@ -232,7 +202,7 @@ export default function TenantDashboardInboxPage() {
 
           <div className="flex items-center gap-2">
             <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight">
-              {tenantInfo?.name || meta?.name || tenantSlug}
+              {displayName}
             </h1>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
               Merchant Panel
@@ -248,7 +218,7 @@ export default function TenantDashboardInboxPage() {
         </div>
       </header>
 
-      {/* 2. SUB-NAVIGATION MENU TABS */}
+      {/* TABS NAVIGATION */}
       <div className="bg-white border-b border-slate-200 px-6 flex items-center justify-between gap-3 sticky top-[57px] z-20 shadow-xs">
         <div className="flex items-center gap-4 overflow-x-auto text-xs font-bold">
           <button
@@ -275,7 +245,7 @@ export default function TenantDashboardInboxPage() {
             }`}
           >
             <Package className="w-4 h-4" />
-            <span>Katalog Produk</span>
+            <span>Katalog Produk ({products.length})</span>
           </button>
 
           <button
@@ -304,113 +274,170 @@ export default function TenantDashboardInboxPage() {
         </div>
 
         {saveFeedback && (
-          <div className="text-xs font-semibold px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 animate-in fade-in">
+          <div className="text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 animate-in fade-in">
             {saveFeedback}
           </div>
         )}
       </div>
 
-      {/* TAB 1: Live CS & Chatwoot Upsell Paywall */}
+      {/* TAB 1: Chatwoot Upsell Paywall */}
       {activeTab === 'inbox' && (
         <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
-          <div className="max-w-2xl w-full bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 shadow-xl shadow-slate-200/50 text-center relative overflow-hidden">
-            
-            <div className="w-16 h-16 bg-blue-50 border border-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
-              <Lock className="w-8 h-8 text-blue-600" />
+          <div className="max-w-2xl w-full bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 shadow-xl text-center">
+            <div className="w-16 h-16 bg-blue-50 border border-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <Lock className="w-8 h-8" />
             </div>
-
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-full text-xs font-bold mb-4">
-              <Sparkles className="w-3.5 h-3.5" /> Modul Tambahan CS Multi-Agent
-            </div>
-
-            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-3">
-              Omnichannel Inbox & Live Chat CS
-            </h2>
-
-            <p className="text-slate-500 text-sm leading-relaxed max-w-lg mx-auto mb-8">
-              Toko Anda saat ini menggunakan <strong>Engine Transaksi QRIS Otomatis</strong>. Untuk membalas pesan secara manual bersama tim customer service di satu nomor WhatsApp terpusat, silakan aktifkan lisensi add-on <strong>Chatwoot Enterprise Sync</strong>.
+            <h2 className="text-2xl font-black text-slate-900 mb-2">Live Chat CS Multi-Agent (Chatwoot)</h2>
+            <p className="text-slate-500 text-sm max-w-lg mx-auto mb-6">
+              Fitur intervensi manual bersama banyak tim CS di satu nomor WhatsApp terpusat.
             </p>
-
-            {/* Feature Comparison List */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8 text-left">
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                <Users className="w-5 h-5 text-blue-600 mb-2" />
-                <h4 className="text-xs font-bold text-slate-900 mb-1">Multi-Agent CS</h4>
-                <p className="text-[11px] text-slate-500">Hingga 10 CS login bersamaan tanpa bentrok.</p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                <Zap className="w-5 h-5 text-emerald-600 mb-2" />
-                <h4 className="text-xs font-bold text-slate-900 mb-1">WhatsApp & Webchat</h4>
-                <p className="text-[11px] text-slate-500">Inbox gabungan dari chat web, IG, & WhatsApp resmi.</p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                <ShieldCheck className="w-5 h-5 text-indigo-600 mb-2" />
-                <h4 className="text-xs font-bold text-slate-900 mb-1">Intervensi Bot Otomatis</h4>
-                <p className="text-[11px] text-slate-500">CS bisa ambil alih obrolan bot kapan saja.</p>
-              </div>
-            </div>
-
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <a
-                href="https://wa.me/6281234567890?text=Halo%20Admin%20BoonTrack,%20saya%20mau%20aktivasi%20fitur%20Omnichannel%20Live%20CS%20Chatwoot%20untuk%20toko%20saya"
-                target="_blank"
-                rel="noreferrer"
-                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition-all active:scale-95"
-              >
-                <span>Aktivasi Fitur Live Chat CS</span>
-                <ArrowRight className="w-4 h-4" />
-              </a>
-              <button
-                onClick={() => setActiveTab('catalog')}
-                className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-5 py-3.5 rounded-xl text-xs transition-all"
-              >
-                Kelola Katalog Dulu
-              </button>
-            </div>
-
+            <a
+              href="https://wa.me/6281234567890?text=Halo%20Admin%20BoonTrack,%20saya%20mau%20aktivasi%20fitur%20Omnichannel%20Live%20CS%20Chatwoot"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3.5 rounded-xl text-xs items-center gap-2 shadow-lg shadow-blue-500/20"
+            >
+              Aktivasi Lisensi Add-on CS <ArrowRight className="w-4 h-4" />
+            </a>
           </div>
         </div>
       )}
 
-      {/* TAB 2: Katalog Produk CRUD */}
+      {/* TAB 2: KATALOG MULTI-PRODUK DENGAN TOMBOL TAMBAH */}
       {activeTab === 'catalog' && (
-        <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+        <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
             <div>
               <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                 <Package className="w-5 h-5 text-blue-600" />
-                <span>Katalog Produk & Akses Layanan</span>
+                <span>Katalog Produk & Layanan ({products.length})</span>
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Atur nama produk, harga normal, harga promo, deskripsi penawaran, dan link akses digital.
+                Kelola daftar produk, harga promo, link akses digital, dan foto etalase.
               </p>
             </div>
-            <span className="text-[11px] font-bold px-2.5 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200">
-              CRUD Active
-            </span>
+            
+            <button
+              onClick={openNewProductModal}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all active:scale-95"
+            >
+              <Plus className="w-4 h-4" /> Tambah Produk Baru
+            </button>
           </div>
 
-          <form onSubmit={handleSaveProduct} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Left Form */}
-            <div className="space-y-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+          {/* Table / Grid List of Products */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {products.map((p) => (
+              <div
+                key={p.id}
+                className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+              >
+                <div className="flex items-start gap-4">
+                  <img
+                    src={p.image}
+                    alt={p.name}
+                    className="w-20 h-20 rounded-2xl object-cover border border-slate-100 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase tracking-wider">
+                      {p.category}
+                    </span>
+                    <h3 className="font-bold text-slate-900 text-sm mt-1 line-clamp-1">
+                      {p.name}
+                    </h3>
+                    <div className="flex items-baseline gap-2 mt-1">
+                      <span className="text-sm font-black text-blue-600">
+                        Rp {p.price.toLocaleString("id-ID")}
+                      </span>
+                      {p.promo_price && p.promo_price > 0 && (
+                        <span className="text-[11px] text-slate-400 line-through">
+                          Rp {p.promo_price.toLocaleString("id-ID")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 line-clamp-2 mt-1.5">
+                      {p.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
+                    {p.download_url || "Tanpa Link Download"}
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => openEditProductModal(p)}
+                      className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      title="Edit Produk"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProduct(p.id)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                      title="Hapus Produk"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL POPUP FORM: TAMBAH / EDIT PRODUK */}
+      {isProductModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <Package className="w-4 h-4 text-blue-600" />
+                <span>{editingProductId ? "Edit Produk" : "Tambah Produk Baru"}</span>
+              </h3>
+              <button
+                onClick={() => setIsProductModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-200/60"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProductForm} className="p-6 overflow-y-auto space-y-4 flex-1">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Nama Produk / Layanan *
+                  Nama Produk / Kelas *
                 </label>
                 <input
                   type="text"
                   required
                   value={productForm.name}
-                  onChange={(e) => setProductForm((p) => ({ ...p, name: e.target.value }))}
-                  placeholder="Contoh: Suhu Ads Masterclass 2026"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
+                  onChange={(e) => setProductForm(p => ({ ...p, name: e.target.value }))}
+                  placeholder="Contoh: Ecourse Ads Masterclass 2026"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                    Kategori *
+                  </label>
+                  <select
+                    value={productForm.category}
+                    onChange={(e) => setProductForm(p => ({ ...p, category: e.target.value as any }))}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  >
+                    <option value="terlaris">🔥 Produk Terlaris</option>
+                    <option value="digital">💻 Produk Digital / Course</option>
+                    <option value="fisik">📦 Produk Fisik</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1.5">
                     Harga Normal (Rp) *
@@ -419,424 +446,157 @@ export default function TenantDashboardInboxPage() {
                     type="number"
                     required
                     value={productForm.price}
-                    onChange={(e) => setProductForm((p) => ({ ...p, price: Number(e.target.value) }))}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
+                    onChange={(e) => setProductForm(p => ({ ...p, price: Number(e.target.value) }))}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1.5">
                     Harga Promo (Rp)
                   </label>
                   <input
                     type="number"
-                    value={productForm.promo_price || ''}
-                    onChange={(e) => setProductForm((p) => ({ ...p, promo_price: Number(e.target.value) }))}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
+                    value={productForm.promo_price || ""}
+                    onChange={(e) => setProductForm(p => ({ ...p, promo_price: Number(e.target.value) }))}
+                    placeholder="Opsional (harga coret)"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
                   />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Varian / Format Akses
-                </label>
-                <input
-                  type="text"
-                  value={productForm.variants}
-                  onChange={(e) => setProductForm((p) => ({ ...p, variants: e.target.value }))}
-                  placeholder="Contoh: Format Digital • Video HD + Template Canva"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Label Promo Singkat
-                </label>
-                <input
-                  type="text"
-                  value={productForm.promo}
-                  onChange={(e) => setProductForm((p) => ({ ...p, promo: e.target.value }))}
-                  placeholder="Contoh: Diskon 35% Bulan Ini"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Right Form */}
-            <div className="space-y-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                    Download URL / Link Akses Drive (Digital Delivery) *
-                  </label>
-                  <input
-                    type="url"
-                    value={productForm.download_url}
-                    onChange={(e) => setProductForm((p) => ({ ...p, download_url: e.target.value }))}
-                    placeholder="https://drive.google.com/..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-blue-600 font-mono focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Link ini otomatis diberikan ke pembeli saat pembayaran QRIS sukses diverifikasi.
-                  </p>
                 </div>
 
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                    Deskripsi Detail Produk
-                  </label>
-                  <textarea
-                    rows={5}
-                    value={productForm.description}
-                    onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))}
-                    placeholder="Jelaskan kurikulum materi, benefit, dan keunggulan produk Anda..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white leading-relaxed transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={savingSettings}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{savingSettings ? 'Menyimpan...' : 'Simpan Perubahan Produk'}</span>
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* TAB 3: AI Knowledge & Persona */}
-      {activeTab === 'ai_knowledge' && (
-        <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Brain className="w-5 h-5 text-blue-600" />
-                <span>AI Knowledge, Silabus & Persona</span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Atur silabus modul materi, daftar FAQ otomatis, dan instruksi asisten AI toko.
-              </p>
-            </div>
-          </div>
-
-          <form onSubmit={handleSaveAiKnowledge} className="space-y-6">
-            {/* Persona */}
-            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Gaya Bahasa & Identitas AI
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                    Nama Asisten AI
+                    Label Promo Singkat
                   </label>
                   <input
                     type="text"
-                    value={aiForm.ai_name}
-                    onChange={(e) => setAiForm((a) => ({ ...a, ai_name: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
+                    value={productForm.promo || ""}
+                    onChange={(e) => setProductForm(p => ({ ...p, promo: e.target.value }))}
+                    placeholder="Contoh: Diskon 50%"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
                   />
                 </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                    Tone of Voice
-                  </label>
-                  <select
-                    value={aiForm.tone}
-                    onChange={(e) => setAiForm((a) => ({ ...a, tone: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
-                  >
-                    <option value="casual">Santai & Ramah (Casual)</option>
-                    <option value="formal">Profesional & Terstruktur (Formal)</option>
-                    <option value="energetic">Antusias & Energik (Energetic)</option>
-                  </select>
-                </div>
               </div>
 
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Instruksi Khusus (System Prompt)
+                  URL Gambar / Foto Produk (Thumbnail)
+                </label>
+                <input
+                  type="url"
+                  value={productForm.image}
+                  onChange={(e) => setProductForm(p => ({ ...p, image: e.target.value }))}
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Link Akses / Download URL (Digital Delivery)
+                </label>
+                <input
+                  type="url"
+                  value={productForm.download_url || ""}
+                  onChange={(e) => setProductForm(p => ({ ...p, download_url: e.target.value }))}
+                  placeholder="https://drive.google.com/..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-blue-600 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Deskripsi Produk
                 </label>
                 <textarea
-                  rows={2}
-                  value={aiForm.system_prompt}
-                  onChange={(e) => setAiForm((a) => ({ ...a, system_prompt: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
+                  rows={3}
+                  value={productForm.description}
+                  onChange={(e) => setProductForm(p => ({ ...p, description: e.target.value }))}
+                  placeholder="Penjelasan ringkas materi atau spesifikasi barang..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
                 />
-              </div>
-            </div>
-
-            {/* Silabus */}
-            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                  <GraduationCap className="w-4 h-4 text-emerald-600" />
-                  <span>Silabus Materi Kursus / Modul Produk</span>
-                </h3>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setAiForm((a) => ({
-                      ...a,
-                      syllabus: [...a.syllabus, `Modul ${a.syllabus.length + 1}: Materi Tambahan Baru`],
-                    }))
-                  }
-                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Tambah Modul</span>
-                </button>
-              </div>
-
-              <div className="space-y-2.5">
-                {aiForm.syllabus.map((mod, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0">
-                      {idx + 1}
-                    </span>
-                    <input
-                      type="text"
-                      value={mod}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setAiForm((a) => {
-                          const updated = [...a.syllabus];
-                          updated[idx] = val;
-                          return { ...a, syllabus: updated };
-                        });
-                      }}
-                      className="flex-1 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAiForm((a) => ({
-                          ...a,
-                          syllabus: a.syllabus.filter((_, i) => i !== idx),
-                        }))
-                      }
-                      className="p-2 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* FAQ Rules */}
-            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  FAQ Rules (Tanya Jawab Otomatis)
-                </h3>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setAiForm((a) => ({
-                      ...a,
-                      faq: [...a.faq, { q: 'Pertanyaan baru?', a: 'Jawaban penjelasan AI.' }],
-                    }))
-                  }
-                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold inline-flex items-center gap-1 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Tambah FAQ</span>
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {aiForm.faq.map((item, idx) => (
-                  <div key={idx} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <input
-                        type="text"
-                        placeholder="Pertanyaan..."
-                        value={item.q}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setAiForm((a) => {
-                            const updated = [...a.faq];
-                            updated[idx] = { ...updated[idx], q: val };
-                            return { ...a, faq: updated };
-                          });
-                        }}
-                        className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAiForm((a) => ({
-                            ...a,
-                            faq: a.faq.filter((_, i) => i !== idx),
-                          }))
-                        }
-                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <textarea
-                      rows={2}
-                      placeholder="Jawaban resmi AI..."
-                      value={item.a}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setAiForm((a) => {
-                          const updated = [...a.faq];
-                          updated[idx] = { ...updated[idx], a: val };
-                          return { ...a, faq: updated };
-                        });
-                      }}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:border-blue-600"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={savingSettings}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                <span>{savingSettings ? 'Menyimpan...' : 'Simpan AI Knowledge'}</span>
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* TAB 4: Rekening & Integrasi */}
-      {activeTab === 'integration' && (
-        <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-emerald-600" />
-                <span>Rekening Penarikan & Integrasi Gateway</span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Kelola rekening tujuan penarikan dana QRIS dan pantau status koneksi WhatsApp Gateway resmi Meta.
-              </p>
-            </div>
-          </div>
-
-          <form onSubmit={handleSaveBankAndIntegration} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Bank Account */}
-            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <Building className="w-4 h-4 text-emerald-600" />
-                <span>Rekening Penarikan Dana (QRIS Settlement)</span>
-              </h3>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Nama Bank *
-                </label>
-                <select
-                  value={bankForm.name}
-                  onChange={(e) => setBankForm((b) => ({ ...b, name: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
-                >
-                  <option value="BCA (Bank Central Asia)">BCA (Bank Central Asia)</option>
-                  <option value="Bank Mandiri">Bank Mandiri</option>
-                  <option value="BRI (Bank Rakyat Indonesia)">BRI (Bank Rakyat Indonesia)</option>
-                  <option value="BNI (Bank Negara Indonesia)">BNI (Bank Negara Indonesia)</option>
-                  <option value="Bank Jago">Bank Jago</option>
-                  <option value="Bank Syariah Indonesia (BSI)">Bank Syariah Indonesia (BSI)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Nomor Rekening *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={bankForm.account}
-                  onChange={(e) => setBankForm((b) => ({ ...b, account: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Nama Pemilik Rekening *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={bankForm.holder}
-                  onChange={(e) => setBankForm((b) => ({ ...b, holder: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 uppercase font-bold focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
-                />
-              </div>
-            </div>
-
-            {/* WhatsApp Gateway Integration Status */}
-            <div className="p-6 bg-white rounded-3xl border border-slate-200 shadow-sm space-y-4 flex flex-col justify-between">
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>WhatsApp Gateway & Meta Cloud API</span>
-                </h3>
-
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-500">Status Gateway:</span>
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[11px]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span>CONNECTED</span>
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500 font-semibold">Nomor Bot WhatsApp:</span>
-                    <span className="font-mono text-slate-800 font-bold">
-                      +{integrationInfo.bot_number || '15556769563'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500 font-semibold">Webhook Status:</span>
-                    <span className="text-emerald-600 font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Verified 200 OK</span>
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Terintegrasi langsung melalui WhatsApp Cloud API resmi Meta untuk dispatch gambar QRIS otomatis.
-                </p>
               </div>
 
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={savingSettings}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50"
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 active:scale-95"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{savingSettings ? 'Menyimpan...' : 'Simpan Rekening & Integrasi'}</span>
+                  <span>Simpan ke Etalase</span>
                 </button>
               </div>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       )}
+
+      {/* TAB 3: AI Knowledge */}
+      {activeTab === 'ai_knowledge' && (
+        <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Brain className="w-5 h-5 text-blue-600" />
+              <span>AI Knowledge & Bot Persona</span>
+            </h2>
+          </div>
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">Nama Asisten AI</label>
+              <input
+                type="text"
+                value={aiForm.ai_name}
+                onChange={(e) => setAiForm(a => ({ ...a, ai_name: e.target.value }))}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">System Prompt</label>
+              <textarea
+                rows={3}
+                value={aiForm.system_prompt}
+                onChange={(e) => setAiForm(a => ({ ...a, system_prompt: e.target.value }))}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: Rekening & QRIS */}
+      {activeTab === 'integration' && (
+        <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-emerald-600" />
+              <span>Rekening Penarikan & QRIS</span>
+            </h2>
+          </div>
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">Bank Tujuan</label>
+              <input
+                type="text"
+                value={bankForm.name}
+                onChange={(e) => setBankForm(b => ({ ...b, name: e.target.value }))}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">Nomor Rekening</label>
+              <input
+                type="text"
+                value={bankForm.account}
+                onChange={(e) => setBankForm(b => ({ ...b, account: e.target.value }))}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
     </main>
   );
 }
