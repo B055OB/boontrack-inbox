@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Store, ArrowRight, Sparkles, CheckCircle2, MessageSquare, Phone } from "lucide-react";
+import { ArrowRight, CheckCircle2, Phone } from "lucide-react";
 
 function RegisterForm() {
   const searchParams = useSearchParams();
@@ -20,20 +20,20 @@ function RegisterForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!storeName) return;
     setIsSubmitting(true);
     
-    // Format nomor WhatsApp & slug
     const cleanSlug = storeName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     
-    // Redirect ke toko baru atau dashboard toko
+    // Redirect ke Onboarding Wizard milik toko (Light Theme)
     setTimeout(() => {
-      window.location.href = `/${cleanSlug}`;
-    }, 1000);
+      window.location.href = `/${cleanSlug}/onboarding`;
+    }, 600);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl shadow-slate-200/50">
+    <div className="min-h-screen bg-[#FDFDFD] flex items-center justify-center p-4 selection:bg-blue-100 selection:text-blue-900 font-sans">
+      <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl shadow-slate-200/40">
         <div className="text-center mb-8">
           <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-xl mx-auto mb-4 shadow-md shadow-blue-500/20">
             B
@@ -75,7 +75,7 @@ function RegisterForm() {
                 required
               />
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Digunakan untuk kirim invoice & QRIS otomatis ke pembeli.</p>
+            <p className="text-[11px] text-slate-400 mt-1">Digunakan untuk notifikasi order & kirim QRIS ke pembeli.</p>
           </div>
 
           <div>
@@ -106,7 +106,7 @@ function RegisterForm() {
 
         <div className="mt-6 pt-6 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400 flex items-center justify-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> WhatsApp Cloud API Resmi • Siap Transaksi
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> WhatsApp Cloud API Resmi • Siap Digunakan
           </p>
         </div>
       </div>
