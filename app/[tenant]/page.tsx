@@ -11,12 +11,8 @@ import {
   X, 
   Clock, 
   ArrowRight, 
-  Sparkles, 
   CheckCircle2,
-  BookOpen,
   Video,
-  ChevronDown,
-  ChevronUp,
   Layers
 } from "lucide-react";
 
@@ -41,14 +37,14 @@ const SAMPLE_PRODUCTS: Product[] = [
     price: 499000,
     originalPrice: 999000,
     image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=60",
-    description: "Sebuah formula hidden gem yang belum banyak orang ketahui untuk menghasilkan profit dollar secara konsisten melalui setup paid traffic Meta & Google Ads berkonversi tinggi.",
+    description: "Sebuah formula hidden gem yang belum banyak orang ketahui untuk menghasilkan profit dollar secara konsisten melalui setup paid traffic Meta & Google Ads.",
     badge: "🔥 Terlaris",
     modules: [
       "Introduction: Apa Itu Internet Marketing CPM & Paid Traffic",
       "Fundamental & Mindset Arbitrage Traffic",
       "Riset Target Audience & Setup Pixel Tracker",
       "Praktek Langsung Nambang Dollar & Live Case Study",
-      "Sesi Diskusi, Tanya Jawab & Akses Grup Support 2026"
+      "Sesi Diskusi, Tanya Jawab & Akses Grup Support"
     ],
     features: ["11 Modul Video HD", "Akses Selamanya (Lifetime)", "Template Copywriting Siap Pakai"]
   },
@@ -87,7 +83,6 @@ export default function TenantStorefrontPage() {
   const tenantSlug = rawTenant.toLowerCase();
   const displayName = tenantSlug.replace(/-/g, " ");
 
-  // Category & Modals State
   const [activeCategory, setActiveCategory] = useState<"all" | "terlaris" | "digital" | "fisik">("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
@@ -95,14 +90,13 @@ export default function TenantStorefrontPage() {
   const [showQRISModal, setShowQRISModal] = useState(false);
   const [checkoutDirectProduct, setCheckoutDirectProduct] = useState<Product | null>(null);
 
-  // Chat State
   const [inputMessage, setInputMessage] = useState("");
   const [messages, setMessages] = useState([
     {
       id: 1,
       sender: "bot",
       time: "09:00",
-      text: `Halo! Selamat datang di ${displayName.toUpperCase()}. Klik produk di etalase untuk melihat isi materi/detailnya, atau tanyakan kami di sini ya!`
+      text: `Halo! Selamat datang di ${displayName.toUpperCase()}. Klik produk di katalog untuk melihat silabus/konten lengkap, atau tanyakan kami di sini ya!`
     }
   ]);
 
@@ -163,16 +157,16 @@ export default function TenantStorefrontPage() {
           id: Date.now() + 1,
           sender: "bot",
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `Pertanyaan seputar "${userText}" sudah kami catat! Klik salah satu kartu produk di samping untuk membaca silabus/konten lengkap dan pembayaran instan QRIS.`
+          text: `Pertanyaan "${userText}" sudah kami catat! Klik salah satu kartu produk di sebelah kanan untuk melihat detail silabus materi dan pembayaran QRIS instan.`
         }
       ]);
-    }, 700);
+    }, 600);
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
       
-      {/* 1. TOP HEADER */}
+      {/* 1. TOP HEADER (CLEAR LIGHT - TANPA TOMBOL CS/ADMIN) */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -188,11 +182,15 @@ export default function TenantStorefrontPage() {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Buka
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">BoonTrack Verified Merchant</p>
+              <p className="text-[11px] text-slate-400 font-medium">BoonTrack Official Store</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+              <Clock className="w-3.5 h-3.5 text-slate-400" /> Auto-Kasir 24 Jam
+            </div>
+
             <button
               onClick={() => setShowCartModal(true)}
               className="relative bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-blue-500/20 transition-all active:scale-95"
@@ -209,7 +207,7 @@ export default function TenantStorefrontPage() {
         </div>
       </header>
 
-      {/* 2. MAIN 2-COLUMN VIEW (KIRI: CHAT | KANAN: KATALOG) */}
+      {/* 2. MAIN 2-COLUMN VIEW (KIRI: CHATBOT | KANAN: KATALOG) */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
         
         {/* KOLOM KIRI: LIVE CHATBOT */}
@@ -250,13 +248,13 @@ export default function TenantStorefrontPage() {
 
           <div className="px-4 py-2 bg-white border-t border-slate-100 flex items-center gap-2 overflow-x-auto text-[11px]">
             <button 
-              onClick={() => setInputMessage("Bagaimana cara order & bayar QRIS?")}
+              onClick={() => setInputMessage("Bagaimana cara pembayaran QRIS?")}
               className="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap transition-colors"
             >
               ⚡ Cara Bayar QRIS
             </button>
             <button 
-              onClick={() => setInputMessage("Apakah materi/produk ada garansi?")}
+              onClick={() => setInputMessage("Apakah materi ada garansi update?")}
               className="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium whitespace-nowrap transition-colors"
             >
               🛡️ Info Garansi
@@ -283,7 +281,7 @@ export default function TenantStorefrontPage() {
         {/* KOLOM KANAN: KATALOG PRODUK */}
         <section className="lg:col-span-7 space-y-5">
           
-          {/* Category Tabs */}
+          {/* Category Switcher Tabs */}
           <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
             {[
               { id: "all", label: "Semua Produk" },
@@ -305,7 +303,7 @@ export default function TenantStorefrontPage() {
             ))}
           </div>
 
-          {/* Product Cards */}
+          {/* Product Cards Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {filteredProducts.map((p) => (
               <div
@@ -358,7 +356,7 @@ export default function TenantStorefrontPage() {
             ))}
           </div>
 
-          {/* Floating Quick Bar */}
+          {/* Floating Cart Quick Bar */}
           {totalCartCount > 0 && (
             <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-xl flex items-center justify-between gap-4 sticky bottom-4 z-20">
               <div>
@@ -381,12 +379,11 @@ export default function TenantStorefrontPage() {
 
       </main>
 
-      {/* 3. POPUP MODAL QUICK-VIEW DETAIL PRODUK (ACCORDION & DETAIL) */}
+      {/* 3. POPUP MODAL DETAIL PRODUK & SILABUS */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             
-            {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg uppercase tracking-wider">
@@ -406,10 +403,7 @@ export default function TenantStorefrontPage() {
               </button>
             </div>
 
-            {/* Modal Scrollable Content */}
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
-              
-              {/* Product Info & Thumbnail */}
               <div className="flex flex-col sm:flex-row gap-5 items-start">
                 <img
                   src={selectedProduct.image}
@@ -436,11 +430,10 @@ export default function TenantStorefrontPage() {
                 </div>
               </div>
 
-              {/* Feature Points */}
               {selectedProduct.features && (
                 <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Benefit & Fasilitas yang Didapatkan:
+                    Benefit & Fasilitas:
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {selectedProduct.features.map((feat, idx) => (
@@ -453,7 +446,6 @@ export default function TenantStorefrontPage() {
                 </div>
               )}
 
-              {/* Modules / Content Curriculum Accordion */}
               {selectedProduct.modules && (
                 <div className="space-y-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
@@ -475,13 +467,11 @@ export default function TenantStorefrontPage() {
                   </div>
                 </div>
               )}
-
             </div>
 
-            {/* Modal Bottom Sticky Actions */}
             <div className="p-4 sm:p-5 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-3">
               <div>
-                <span className="text-[11px] text-slate-400 block font-medium">Harga Spesial:</span>
+                <span className="text-[11px] text-slate-400 block font-medium">Harga:</span>
                 <span className="text-lg font-black text-blue-600">
                   Rp {selectedProduct.price.toLocaleString("id-ID")}
                 </span>
