@@ -16,7 +16,8 @@ import {
   Layers,
   Sparkles,
   Store,
-  AlertCircle
+  AlertCircle,
+  PackageOpen
 } from "lucide-react";
 import ShopClaimSection from "@/app/components/ShopClaimSection";
 
@@ -78,6 +79,9 @@ export default function TenantStorefrontPage() {
   const tenantSlug = rawTenant.toLowerCase().trim();
   const displayName = tenantSlug.replace(/-/g, " ");
 
+  // Validasi Toko Demo
+  const isDemoStore = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
+
   // 1. BYPASS RUTE SISTEM KE FORM REGISTER
   if (tenantSlug === "register" || tenantSlug === "daftar") {
     return (
@@ -92,7 +96,7 @@ export default function TenantStorefrontPage() {
 
   useEffect(() => {
     // Toko default demo selalu aktif
-    if (tenantSlug === "onlineboost" || tenantSlug === "demo") {
+    if (isDemoStore) {
       setStoreStatus("active");
       return;
     }
@@ -113,7 +117,7 @@ export default function TenantStorefrontPage() {
     }
 
     checkTenant();
-  }, [tenantSlug]);
+  }, [tenantSlug, isDemoStore]);
 
   // STATE STOREFRONT
   const [activeCategory, setActiveCategory] = useState<"all" | "terlaris" | "digital" | "fisik">("all");
@@ -173,10 +177,11 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // JIKA TOKO TERDAFTAR & AKTIF -> TAMPILKAN ETALASE LENGKAP
+  // PRODUK: Isolasi data demo hanya untuk akun demo resmi
+  const rawProducts = isDemoStore ? SAMPLE_PRODUCTS : [];
   const filteredProducts = activeCategory === "all"
-    ? SAMPLE_PRODUCTS
-    : SAMPLE_PRODUCTS.filter((p) => p.category === activeCategory);
+    ? rawProducts
+    : rawProducts.filter((p) => p.category === activeCategory);
 
   const addToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -333,7 +338,7 @@ export default function TenantStorefrontPage() {
             {[
               { id: "all", label: "Semua Produk" },
               { id: "terlaris", label: "🔥 Terlaris" },
-              { id: "digital", label: "💻 Digital" },
+              { id: "digital", label: "📁 Digital" },
               { id: "fisik", label: "📦 Produk Fisik" },
             ].map((tab) => (
               <button
@@ -348,40 +353,54 @@ export default function TenantStorefrontPage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {filteredProducts.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => setSelectedProduct(p)}
-                className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
-              >
-                <div>
-                  <div className="relative aspect-video rounded-2xl overflow-hidden mb-3 bg-slate-100">
-                    <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    {p.badge && (
-                      <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
-                        {p.badge}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2 mb-1 group-hover:text-blue-600 transition-colors">
-                    {p.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">{p.description}</p>
-                </div>
-
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <div>
-                    {p.originalPrice && <span className="text-[10px] text-slate-400 line-through block font-medium">Rp {p.originalPrice.toLocaleString("id-ID")}</span>}
-                    <span className="text-sm font-black text-blue-600">Rp {p.price.toLocaleString("id-ID")}</span>
-                  </div>
-                  <button onClick={(e) => addToCart(p, e)} className="bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-200 hover:border-transparent text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer">
-                    <Plus className="w-3.5 h-3.5" /> Keranjang
-                  </button>
-                </div>
+          {filteredProducts.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-12 text-center flex flex-col items-center justify-center space-y-3 shadow-xs">
+              <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center border border-slate-100">
+                <PackageOpen className="w-6 h-6" />
               </div>
-            ))}
-          </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-800">Katalog Produk Masih Kosong</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                  Toko <span className="font-semibold text-slate-600">{displayName}</span> belum menambahkan produk ke etalase.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {filteredProducts.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => setSelectedProduct(p)}
+                  className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
+                >
+                  <div>
+                    <div className="relative aspect-video rounded-2xl overflow-hidden mb-3 bg-slate-100">
+                      <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      {p.badge && (
+                        <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                          {p.badge}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2 mb-1 group-hover:text-blue-600 transition-colors">
+                      {p.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">{p.description}</p>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <div>
+                      {p.originalPrice && <span className="text-[10px] text-slate-400 line-through block font-medium">Rp {p.originalPrice.toLocaleString("id-ID")}</span>}
+                      <span className="text-sm font-black text-blue-600">Rp {p.price.toLocaleString("id-ID")}</span>
+                    </div>
+                    <button onClick={(e) => addToCart(p, e)} className="bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-200 hover:border-transparent text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer">
+                      <Plus className="w-3.5 h-3.5" /> Keranjang
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </main>
 

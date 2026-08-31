@@ -16,7 +16,8 @@ import {
   MessageSquare,
   Lock,
   ArrowRight,
-  X
+  X,
+  PackageOpen
 } from 'lucide-react';
 import WhatsAppEmbeddedModal from './components/WhatsAppEmbeddedModal';
 
@@ -66,11 +67,13 @@ export default function TenantDashboardPage() {
   const tenantSlug = rawTenant.toLowerCase();
   const displayName = tenantSlug.replace(/-/g, " ");
 
+  const isDemoStore = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
+
   const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration' | 'whatsapp'>('catalog');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
-  // Products State
-  const [products, setProducts] = useState<ProductItem[]>(DEFAULT_PRODUCTS);
+  // Products State: Hanya load mock untuk demo store
+  const [products, setProducts] = useState<ProductItem[]>(isDemoStore ? DEFAULT_PRODUCTS : []);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
 
@@ -88,16 +91,15 @@ export default function TenantDashboardPage() {
   });
 
   const [aiForm, setAiForm] = useState({
-    ai_name: 'Onlineboost AI Consultant',
+    ai_name: `${displayName.toUpperCase()} AI Assistant`,
     tone: 'casual',
-    system_prompt:
-      'Anda adalah asisten konsultan resmi Onlineboost. Berikan informasi silabus, materi video, akses Google Drive materi, dan proses pembayaran instan QRIS.',
+    system_prompt: `Anda adalah asisten resmi untuk toko ${displayName.toUpperCase()}. Bantu pelanggan mengenai katalog produk, materi, dan transaksi pembayaran QRIS otomatis.`,
   });
 
   const [bankForm, setBankForm] = useState({
     name: 'BCA (Bank Central Asia)',
-    account: '8820199201',
-    holder: 'PT BOONTRACK MEDIA DIGITAL',
+    account: '',
+    holder: displayName.toUpperCase(),
   });
 
   // Modal handlers
@@ -297,72 +299,93 @@ export default function TenantDashboardPage() {
             
             <button
               onClick={openNewProductModal}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all active:scale-95"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" /> Tambah Produk Baru
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {products.map((p) => (
-              <div
-                key={p.id}
-                className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-              >
-                <div className="flex items-start gap-4">
-                  <img
-                    src={p.image}
-                    alt={p.name}
-                    className="w-20 h-20 rounded-2xl object-cover border border-slate-100 shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase tracking-wider">
-                      {p.category}
-                    </span>
-                    <h3 className="font-bold text-slate-900 text-sm mt-1 line-clamp-1">
-                      {p.name}
-                    </h3>
-                    <div className="flex items-baseline gap-2 mt-1">
-                      <span className="text-sm font-black text-blue-600">
-                        Rp {p.price.toLocaleString("id-ID")}
-                      </span>
-                      {p.promo_price && p.promo_price > 0 && (
-                        <span className="text-[11px] text-slate-400 line-through">
-                          Rp {p.promo_price.toLocaleString("id-ID")}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 line-clamp-2 mt-1.5">
-                      {p.description}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
-                    {p.download_url || "Tanpa Link Download"}
-                  </span>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => openEditProductModal(p)}
-                      className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                      title="Edit Produk"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteProduct(p.id)}
-                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                      title="Hapus Produk"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+          {products.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-12 text-center flex flex-col items-center justify-center space-y-3 shadow-xs">
+              <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center border border-slate-100">
+                <PackageOpen className="w-6 h-6" />
               </div>
-            ))}
-          </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-800">Katalog Anda Masih Kosong</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                  Tambahkan produk atau kelas digital pertama Anda agar calon pembeli dapat langsung checkout melalui etalase.
+                </p>
+              </div>
+              <button
+                onClick={openNewProductModal}
+                className="mt-2 inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs px-4 py-2 rounded-xl transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Buat Produk Pertama</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {products.map((p) => (
+                <div
+                  key={p.id}
+                  className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                >
+                  <div className="flex items-start gap-4">
+                    <img
+                      src={p.image}
+                      alt={p.name}
+                      className="w-20 h-20 rounded-2xl object-cover border border-slate-100 shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase tracking-wider">
+                        {p.category}
+                      </span>
+                      <h3 className="font-bold text-slate-900 text-sm mt-1 line-clamp-1">
+                        {p.name}
+                      </h3>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <span className="text-sm font-black text-blue-600">
+                          Rp {p.price.toLocaleString("id-ID")}
+                        </span>
+                        {p.promo_price && p.promo_price > 0 && (
+                          <span className="text-[11px] text-slate-400 line-through">
+                            Rp {p.promo_price.toLocaleString("id-ID")}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 line-clamp-2 mt-1.5">
+                        {p.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
+                      {p.download_url || "Tanpa Link Download"}
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => openEditProductModal(p)}
+                        className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                        title="Edit Produk"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProduct(p.id)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title="Hapus Produk"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -377,7 +400,7 @@ export default function TenantDashboardPage() {
               </h3>
               <button
                 onClick={() => setIsProductModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:bg-slate-200/60"
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-200/60 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -498,7 +521,7 @@ export default function TenantDashboardPage() {
               <div className="pt-2">
                 <button
                   type="submit"
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 active:scale-95"
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
                   <span>Simpan ke Etalase</span>
@@ -566,6 +589,7 @@ export default function TenantDashboardPage() {
                 type="text"
                 value={bankForm.account}
                 onChange={(e) => setBankForm(b => ({ ...b, account: e.target.value }))}
+                placeholder="Masukkan nomor rekening..."
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold"
               />
             </div>
