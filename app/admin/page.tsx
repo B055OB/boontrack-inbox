@@ -20,7 +20,6 @@ import {
   ShoppingBag,
   ArrowRight,
   Store,
-  Layers
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { HealthStatus, WaGatewayStatus } from '@/lib/tenant-config';
@@ -56,12 +55,8 @@ const INTERNAL_SLUGS = [
   'om-budi',
 ];
 
-// DAFTAR LENGKAP SELURUH TENANT BOONTRACK EKOSISTEM
 const ALL_ECOSYSTEM_TENANTS = [
-  // ── 1. Fitness & Hub ──
   { name: 'Atmosfitnes Gym Hub', slug: 'atmosfitnes', category: 'external', monthly_fee: 1500000, access_username: 'admin', access_password: 'atmos_master_pass2026' },
-  
-  // ── 2. Internal Core & AI Assistants ──
   { name: 'Om Budi Channel', slug: 'om-budi', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'budi_internal_sec_2026' },
   { name: 'BoonTrack Holding', slug: 'boontrack-holding', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'holding_master_pass2026' },
   { name: 'BoonTrack Career AI', slug: 'career', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'career_master_pass2026' },
@@ -70,18 +65,10 @@ const ALL_ECOSYSTEM_TENANTS = [
   { name: 'BoonTrack Bola & Sport', slug: 'boontrack-bola', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'bola_master_pass2026' },
   { name: 'BoonTrack Loker & Talenta', slug: 'boontrack-loker', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'loker_master_pass2026' },
   { name: 'BoonTrack Digicorn Agency', slug: 'boontrack-digicorn', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'digicorn_master_pass2026' },
-
-  // ── 3. Education & Digital Courses ──
   { name: 'Suhu Ads Masterclass', slug: 'suhu-ads', category: 'external', monthly_fee: 99000, access_username: 'admin', access_password: 'suhuads_admin_pass2026' },
   { name: 'Digital Marketing Hub', slug: 'digital-marketing', category: 'external', monthly_fee: 150000, access_username: 'admin', access_password: 'dm_admin_pass2026' },
-
-  // ── 4. Retail & Modest Wear ──
   { name: 'Nyka Hijab & Modest Wear', slug: 'nyka', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'nyka_admin_pass2026' },
-
-  // ── 5. Food, Beverage & Hospitality ──
   { name: 'Bale Pananggeuhan', slug: 'bale-pananggeuhan', category: 'external', monthly_fee: 750000, access_username: 'admin', access_password: 'bale_admin_pass2026' },
-
-  // ── 6. Public Service & Government ──
   { name: 'Pelayanan Publik (Kelurahan Indra)', slug: 'pelayanan-publik', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'kelurahan_lurah_pass2026' },
   { name: 'Pelayanan Publik Kelurahan Dummy', slug: 'pelayanan-publik-dummy', category: 'external', monthly_fee: 0, access_username: 'admin', access_password: 'dummy_lurah_pass2026' },
 ];
@@ -142,7 +129,6 @@ export default function SuperAdminDashboard() {
     try {
       const supabase = getSupabase();
 
-      // 1. Fetch live tenants dari Supabase
       const { data: tenantsData, error } = await supabase
         .from('tenants')
         .select('*')
@@ -153,7 +139,6 @@ export default function SuperAdminDashboard() {
       let currentTenants = (tenantsData || []) as Tenant[];
       const existingSlugs = new Set(currentTenants.map((t) => t.slug));
 
-      // Auto-insert seluruh tenant ekosistem jika belum terdaftar di database
       const missingTenants = ALL_ECOSYSTEM_TENANTS.filter((ct) => !existingSlugs.has(ct.slug));
       if (missingTenants.length > 0) {
         for (const mt of missingTenants) {
@@ -168,10 +153,9 @@ export default function SuperAdminDashboard() {
               status: 'active',
             });
           } catch {
-            // ignore duplicate constraint
+            // ignore duplicate
           }
         }
-        // Fetch ulang setelah auto-seed seluruh tenant
         const { data: refreshedData } = await supabase
           .from('tenants')
           .select('*')
@@ -179,7 +163,6 @@ export default function SuperAdminDashboard() {
         if (refreshedData) currentTenants = refreshedData as Tenant[];
       }
 
-      // 2. Fetch volume pesan real-time
       const { data: messagesData } = await supabase
         .from('messages')
         .select('tenant_id, tenant_slug');
@@ -190,7 +173,6 @@ export default function SuperAdminDashboard() {
         if (m.tenant_slug) countMap[m.tenant_slug] = (countMap[m.tenant_slug] || 0) + 1;
       });
 
-      // 3. Healthcheck ping live ke backend engine Railway
       let serverLiveStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' = 'HEALTHY';
       let serverLatency = 120;
       const startTime = performance.now();
@@ -209,7 +191,6 @@ export default function SuperAdminDashboard() {
         serverLiveStatus = 'DOWN';
       }
 
-      // 4. Map data real-time seluruh tenant
       const mapped: Tenant[] = currentTenants.map((t) => {
         const isInternal =
           t.category === 'internal' ||
@@ -296,7 +277,7 @@ export default function SuperAdminDashboard() {
       setRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      alert('Gagal menambah tenant: ' + errorMsg);
+      alert('Gagal menambah workspace: ' + errorMsg);
     }
   };
 
@@ -359,7 +340,8 @@ export default function SuperAdminDashboard() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10 antialiased selection:bg-blue-600 selection:text-white">
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header Super Admin */}
+        
+        {/* Top Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/80 border border-slate-800 p-6 rounded-2xl backdrop-blur-md shadow-xl">
           <div>
             <div className="flex items-center gap-2">
@@ -400,7 +382,7 @@ export default function SuperAdminDashboard() {
           </div>
         </div>
 
-        {/* 1 MASTER HUB CARD UNTUK SAAS MULTI-STORE / SHOPS */}
+        {/* Master Card Shop Hub */}
         <div className="bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/70 border border-blue-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 backdrop-blur-md">
           <div className="space-y-2 max-w-2xl">
             <div className="flex items-center gap-2">
@@ -417,25 +399,23 @@ export default function SuperAdminDashboard() {
               BoonTrack Multi-Store & Merchant Superadmin
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-              Direktori terpusat untuk monitoring ribuan toko online merchant, auto-delivery QRIS Xendit, dan routing Meta WhatsApp Cloud API tanpa membebani tabel workspace internal.
+              Direktori terpusat untuk monitoring ribuan toko online merchant, auto-delivery QRIS Xendit, dan routing Meta WhatsApp Cloud API.
             </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto shrink-0">
-            <a
-              href="https://shop.boontrack.com/onlineboost/dashboard"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href="/admin/shops"
               className="px-5 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-2 active:scale-95 text-center cursor-pointer"
             >
               <Store className="w-4 h-4" />
-              <span>Buka Superadmin Shop Directory</span>
+              <span>Buka Directory Semua Toko</span>
               <ArrowRight className="w-4 h-4" />
-            </a>
+            </Link>
           </div>
         </div>
 
-        {/* Executive Health Overview Bar */}
+        {/* Health Stat Bar */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
             <span className="text-[11px] font-medium text-slate-400 block">Total Workspaces</span>
@@ -491,7 +471,7 @@ export default function SuperAdminDashboard() {
           </div>
         </div>
 
-        {/* View Switcher, Filter & Search Toolbar */}
+        {/* Tab Filter & Search Toolbar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2 flex-wrap">
             <button
@@ -559,7 +539,7 @@ export default function SuperAdminDashboard() {
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
-                title="Tampilan Grid Card"
+                title="Grid Mode"
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
@@ -570,7 +550,7 @@ export default function SuperAdminDashboard() {
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
-                title="Tampilan Tabel Rinci"
+                title="Table Mode"
               >
                 <List className="w-4 h-4" />
               </button>
@@ -584,11 +564,11 @@ export default function SuperAdminDashboard() {
             {loading ? (
               <div className="col-span-full py-16 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
-                <span>Mengambil data live telemetry dari database & engine...</span>
+                <span>Mengambil data live telemetry dari database...</span>
               </div>
             ) : filteredTenants.length === 0 ? (
               <div className="col-span-full py-16 text-center text-slate-500 text-xs bg-slate-900/40 rounded-2xl border border-slate-800">
-                Tidak ada workspace aktif di kategori ini.
+                Tidak ada workspace di kategori ini.
               </div>
             ) : (
               filteredTenants.map((t) => {
