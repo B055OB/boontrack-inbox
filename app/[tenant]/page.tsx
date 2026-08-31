@@ -16,6 +16,7 @@ import {
   Layers,
   Sparkles
 } from "lucide-react";
+import ShopClaimSection from "@/app/components/ShopClaimSection";
 
 interface Product {
   id: number;
@@ -84,6 +85,16 @@ export default function TenantStorefrontPage() {
   const tenantSlug = rawTenant.toLowerCase();
   const displayName = tenantSlug.replace(/-/g, " ");
 
+  // 1. SISTEM FALLBACK JIKA DIAKSES VIA RUTE /register ATAU /daftar
+  if (tenantSlug === "register" || tenantSlug === "daftar") {
+    return (
+      <main className="min-h-screen bg-slate-50 py-12 px-4 flex flex-col items-center justify-center">
+        <ShopClaimSection />
+      </main>
+    );
+  }
+
+  // 2. STATE STOREFRONT
   const [activeCategory, setActiveCategory] = useState<"all" | "terlaris" | "digital" | "fisik">("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
@@ -590,7 +601,7 @@ export default function TenantStorefrontPage() {
         </div>
       )}
 
-      {/* 5. QRIS MODAL (DYNAMIC REAL-TIME EMVCO QRIS IMAGE) */}
+      {/* 5. QRIS MODAL */}
       {showQRISModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-sm w-full border border-slate-200 shadow-2xl text-center">
@@ -602,7 +613,6 @@ export default function TenantStorefrontPage() {
               Scan QRIS menggunakan aplikasi <span className="font-semibold text-slate-700">BCA, GoPay, OVO, ShopeePay, DANA</span>, atau Mobile Banking lainnya
             </p>
 
-            {/* Container Gambar Barcode QRIS Realtime */}
             <div className="w-64 h-64 mx-auto bg-white border-2 border-slate-200 rounded-2xl flex flex-col items-center justify-center p-3 mb-4 shadow-inner relative overflow-hidden">
               <img
                 src={qrisImageSrc}
