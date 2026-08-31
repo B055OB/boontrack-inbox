@@ -17,6 +17,10 @@ import {
   Dumbbell,
   Bot,
   Sliders,
+  ShoppingBag,
+  ArrowRight,
+  Store,
+  Layers
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { HealthStatus, WaGatewayStatus } from '@/lib/tenant-config';
@@ -25,7 +29,7 @@ interface Tenant {
   id: string;
   name: string;
   slug: string;
-  category?: 'internal' | 'external' | string;
+  category?: 'internal' | 'external' | 'shop' | string;
   status: string;
   start_date: string | null;
   due_date: string | null;
@@ -101,7 +105,7 @@ export default function SuperAdminDashboard() {
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'all' | 'internal' | 'external'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'internal' | 'external' | 'shop'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -111,7 +115,7 @@ export default function SuperAdminDashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newSlug, setNewSlug] = useState('');
-  const [newCategory, setNewCategory] = useState<'internal' | 'external'>('external');
+  const [newCategory, setNewCategory] = useState<'internal' | 'external' | 'shop'>('external');
   const [newUser, setNewUser] = useState('admin');
   const [newPass, setNewPass] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
@@ -212,6 +216,8 @@ export default function SuperAdminDashboard() {
           INTERNAL_SLUGS.includes(t.slug) ||
           t.slug.startsWith('boontrack-');
 
+        const isShop = t.category === 'shop' || t.slug === 'onlineboost' || t.slug === 'yuhu';
+
         const isTenantActive = t.status === 'active';
         const finalHealth: HealthStatus = !isTenantActive ? 'DOWN' : serverLiveStatus;
 
@@ -225,7 +231,7 @@ export default function SuperAdminDashboard() {
 
         return {
           ...t,
-          category: isInternal ? 'internal' : 'external',
+          category: isShop ? 'shop' : isInternal ? 'internal' : 'external',
           message_count: countMap[t.id] || countMap[t.slug] || 0,
           health_status: finalHealth,
           wa_gateway_status: finalWaStatus,
@@ -298,7 +304,8 @@ export default function SuperAdminDashboard() {
     const matchCategory =
       activeTab === 'all' ||
       (activeTab === 'internal' && t.category === 'internal') ||
-      (activeTab === 'external' && t.category === 'external');
+      (activeTab === 'external' && t.category === 'external') ||
+      (activeTab === 'shop' && t.category === 'shop');
 
     const matchSearch = searchQuery
       ? t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -310,6 +317,7 @@ export default function SuperAdminDashboard() {
 
   const countInternal = tenants.filter((t) => t.category === 'internal').length;
   const countExternal = tenants.filter((t) => t.category === 'external').length;
+  const countShops = tenants.filter((t) => t.category === 'shop').length;
   const countHealthy = tenants.filter((t) => t.health_status === 'HEALTHY').length;
   const countDegraded = tenants.filter((t) => t.health_status === 'DEGRADED').length;
   const countDown = tenants.filter((t) => t.health_status === 'DOWN').length;
@@ -338,7 +346,7 @@ export default function SuperAdminDashboard() {
             {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
             <button
               type="submit"
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-blue-600/30"
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-blue-600/30 cursor-pointer"
             >
               Buka Internal Control Plane
             </button>
@@ -369,14 +377,14 @@ export default function SuperAdminDashboard() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setRefreshKey((k) => k + 1)}
-              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-xl border border-slate-700 transition"
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-xl border border-slate-700 transition cursor-pointer"
               title="Refresh Live Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : ''}`} />
             </button>
             <button
               onClick={() => setShowAddModal(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-xs font-semibold rounded-xl transition shadow-lg shadow-blue-600/30 inline-flex items-center gap-1.5"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-xs font-semibold rounded-xl transition shadow-lg shadow-blue-600/30 inline-flex items-center gap-1.5 cursor-pointer"
             >
               <span>+ Tambah Workspace</span>
             </button>
@@ -385,10 +393,45 @@ export default function SuperAdminDashboard() {
                 sessionStorage.removeItem('super_admin_auth');
                 setIsAdminAuth(false);
               }}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-xl border border-slate-700 transition"
+              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-xl border border-slate-700 transition cursor-pointer"
             >
               Kunci
             </button>
+          </div>
+        </div>
+
+        {/* 1 MASTER HUB CARD UNTUK SAAS MULTI-STORE / SHOPS */}
+        <div className="bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/70 border border-blue-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 backdrop-blur-md">
+          <div className="space-y-2 max-w-2xl">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black tracking-wider uppercase px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1.5">
+                <ShoppingBag className="w-3 h-3 text-blue-400" />
+                <span>SaaS Commerce Hub</span>
+              </span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live Settlement Sync
+              </span>
+            </div>
+
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              BoonTrack Multi-Store & Merchant Superadmin
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+              Direktori terpusat untuk monitoring ribuan toko online merchant, auto-delivery QRIS Xendit, dan routing Meta WhatsApp Cloud API tanpa membebani tabel workspace internal.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto shrink-0">
+            <a
+              href="https://shop.boontrack.com/onlineboost/dashboard"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-5 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-2 active:scale-95 text-center cursor-pointer"
+            >
+              <Store className="w-4 h-4" />
+              <span>Buka Superadmin Shop Directory</span>
+              <ArrowRight className="w-4 h-4" />
+            </a>
           </div>
         </div>
 
@@ -450,10 +493,10 @@ export default function SuperAdminDashboard() {
 
         {/* View Switcher, Filter & Search Toolbar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                 activeTab === 'all'
                   ? 'bg-slate-800 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -463,7 +506,7 @@ export default function SuperAdminDashboard() {
             </button>
             <button
               onClick={() => setActiveTab('internal')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'internal'
                   ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -474,7 +517,7 @@ export default function SuperAdminDashboard() {
             </button>
             <button
               onClick={() => setActiveTab('external')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'external'
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -482,6 +525,17 @@ export default function SuperAdminDashboard() {
             >
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
               Client B2B ({countExternal})
+            </button>
+            <button
+              onClick={() => setActiveTab('shop')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'shop'
+                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+              SaaS Shops ({countShops})
             </button>
           </div>
 
@@ -500,7 +554,7 @@ export default function SuperAdminDashboard() {
             <div className="flex items-center bg-slate-900 p-1 border border-slate-800 rounded-xl">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-lg text-xs transition ${
+                className={`p-1.5 rounded-lg text-xs transition cursor-pointer ${
                   viewMode === 'grid'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
@@ -511,7 +565,7 @@ export default function SuperAdminDashboard() {
               </button>
               <button
                 onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-lg text-xs transition ${
+                className={`p-1.5 rounded-lg text-xs transition cursor-pointer ${
                   viewMode === 'table'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
@@ -534,11 +588,12 @@ export default function SuperAdminDashboard() {
               </div>
             ) : filteredTenants.length === 0 ? (
               <div className="col-span-full py-16 text-center text-slate-500 text-xs bg-slate-900/40 rounded-2xl border border-slate-800">
-                Tidak ada workspace aktif di database.
+                Tidak ada workspace aktif di kategori ini.
               </div>
             ) : (
               filteredTenants.map((t) => {
                 const isInternal = t.category === 'internal';
+                const isShop = t.category === 'shop';
                 const isHealthyTenant = t.health_status === 'HEALTHY';
                 const isDegradedTenant = t.health_status === 'DEGRADED';
                 const isWaConnected = t.wa_gateway_status === 'CONNECTED';
@@ -554,12 +609,14 @@ export default function SuperAdminDashboard() {
                       <div className="flex items-center justify-between gap-2 mb-2.5">
                         <span
                           className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                            isInternal
+                            isShop
+                              ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                              : isInternal
                               ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
                               : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
                           }`}
                         >
-                          {isInternal ? 'Internal Ecosystem' : 'Client B2B'}
+                          {isShop ? 'SaaS Storefront' : isInternal ? 'Internal Ecosystem' : 'Client B2B'}
                         </span>
 
                         <div className="flex items-center gap-1.5">
@@ -644,7 +701,7 @@ export default function SuperAdminDashboard() {
                       <button
                         type="button"
                         onClick={() => togglePasswordMask(t.id)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition"
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition cursor-pointer"
                         title={isRevealed ? 'Sembunyikan password' : 'Lihat password'}
                       >
                         {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -686,7 +743,7 @@ export default function SuperAdminDashboard() {
                         </span>
                         <button
                           onClick={() => toggleTenantStatus(t)}
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded transition ${
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded transition cursor-pointer ${
                             t.status === 'active'
                               ? 'text-emerald-400 hover:text-rose-400'
                               : 'text-rose-400 hover:text-emerald-400'
@@ -728,12 +785,13 @@ export default function SuperAdminDashboard() {
                   ) : filteredTenants.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
-                        Tidak ada workspace di database.
+                        Tidak ada workspace di kategori ini.
                       </td>
                     </tr>
                   ) : (
                     filteredTenants.map((t) => {
                       const isInternal = t.category === 'internal';
+                      const isShop = t.category === 'shop';
                       const isHealthyTenant = t.health_status === 'HEALTHY';
                       const isDegradedTenant = t.health_status === 'DEGRADED';
                       const isRevealed = revealedPasswords[t.id] || false;
@@ -744,12 +802,14 @@ export default function SuperAdminDashboard() {
                             <div className="flex items-center gap-2 mb-1">
                               <span
                                 className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                                  isInternal
+                                  isShop
+                                    ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                                    : isInternal
                                     ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
                                     : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
                                 }`}
                               >
-                                {isInternal ? 'Internal' : 'Client B2B'}
+                                {isShop ? 'SaaS Store' : isInternal ? 'Internal' : 'Client B2B'}
                               </span>
                               <p className="font-semibold text-white text-sm">{t.name}</p>
                             </div>
@@ -805,7 +865,7 @@ export default function SuperAdminDashboard() {
                               <button
                                 type="button"
                                 onClick={() => togglePasswordMask(t.id)}
-                                className="p-1 text-slate-400 hover:text-slate-200"
+                                className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
                                 title={isRevealed ? 'Sembunyikan' : 'Tampilkan'}
                               >
                                 {isRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
@@ -845,7 +905,7 @@ export default function SuperAdminDashboard() {
                               )}
                               <button
                                 onClick={() => toggleTenantStatus(t)}
-                                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
                                   t.status === 'active'
                                     ? 'bg-emerald-500/15 text-emerald-400 hover:bg-rose-500/20 hover:text-rose-400'
                                     : 'bg-rose-500/15 text-rose-400 hover:bg-emerald-500/20 hover:text-emerald-400'
@@ -875,28 +935,39 @@ export default function SuperAdminDashboard() {
               <form onSubmit={handleCreateTenant} className="space-y-3">
                 <div>
                   <label className="text-[11px] text-slate-300 block mb-1">Kategori Entitas</label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setNewCategory('internal')}
-                      className={`py-2 rounded-lg text-xs font-semibold border transition ${
+                      className={`py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                         newCategory === 'internal'
                           ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300'
                           : 'bg-slate-950 border-slate-800 text-slate-400'
                       }`}
                     >
-                      Internal Ecosystem
+                      Internal
                     </button>
                     <button
                       type="button"
                       onClick={() => setNewCategory('external')}
-                      className={`py-2 rounded-lg text-xs font-semibold border transition ${
+                      className={`py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                         newCategory === 'external'
                           ? 'bg-amber-500/20 border-amber-500 text-amber-300'
                           : 'bg-slate-950 border-slate-800 text-slate-400'
                       }`}
                     >
-                      External Client B2B
+                      Client B2B
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewCategory('shop')}
+                      className={`py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                        newCategory === 'shop'
+                          ? 'bg-blue-500/20 border-blue-500 text-blue-300'
+                          : 'bg-slate-950 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      SaaS Shop
                     </button>
                   </div>
                 </div>
@@ -980,13 +1051,13 @@ export default function SuperAdminDashboard() {
                   <button
                     type="button"
                     onClick={() => setShowAddModal(false)}
-                    className="flex-1 py-2 bg-slate-800 text-xs text-slate-300 rounded-lg hover:bg-slate-700 transition"
+                    className="flex-1 py-2 bg-slate-800 text-xs text-slate-300 rounded-lg hover:bg-slate-700 transition cursor-pointer"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-2 bg-blue-600 text-xs font-semibold text-white rounded-lg hover:bg-blue-500 transition shadow-lg shadow-blue-600/30"
+                    className="flex-1 py-2 bg-blue-600 text-xs font-semibold text-white rounded-lg hover:bg-blue-500 transition shadow-lg shadow-blue-600/30 cursor-pointer"
                   >
                     Simpan Workspace
                   </button>
