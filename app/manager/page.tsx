@@ -8,10 +8,10 @@ import {
   Clock, 
   Search, 
   RotateCw, 
-  Phone, 
   Receipt,
   Wallet,
-  PiggyBank
+  PiggyBank,
+  MessageCircle
 } from "lucide-react";
 
 // DUMMY DATA FOR TESTING (30% Budget Promosi: 25% Agensi Pool + 5% AM)
@@ -135,7 +135,7 @@ export default function ManagerControlCenter() {
               Affiliate Manager Control Center
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              Budget Promosi 30% (25% Agensi Pool + 5% AM), Payout Affiliate (30%), dan Log Pesanan Real-time.
+              Budget Promosi 30% (25% Agensi Pool + 5% AM), Payout Affiliate (30%), dan Direct WhatsApp CRM.
             </p>
           </div>
 
@@ -241,7 +241,7 @@ export default function ManagerControlCenter() {
             <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white">Log Transaksi Masuk & Split Komisi</h3>
-                <p className="text-[11px] text-slate-400">Rincian invoice, pembeli, atribusi affiliate (30%), agensi pool (25%), dan hak AM (5%).</p>
+                <p className="text-[11px] text-slate-400">Klik nomor WhatsApp untuk membuka obrolan chat langsung.</p>
               </div>
             </div>
 
@@ -251,7 +251,7 @@ export default function ManagerControlCenter() {
                   <tr>
                     <th className="px-6 py-3.5">Waktu</th>
                     <th className="px-6 py-3.5">Invoice</th>
-                    <th className="px-6 py-3.5">Data Buyer</th>
+                    <th className="px-6 py-3.5">Data Buyer (Direct WA)</th>
                     <th className="px-6 py-3.5">Gross Order</th>
                     <th className="px-6 py-3.5 text-amber-400">Affiliate (30%)</th>
                     <th className="px-6 py-3.5 text-indigo-400">Agensi Pool (25%)</th>
@@ -260,41 +260,54 @@ export default function ManagerControlCenter() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {filteredOrders.map((o) => (
-                    <tr key={o.id} className="hover:bg-slate-800/30 transition">
-                      <td className="px-6 py-4 font-mono text-slate-400 whitespace-nowrap">
-                        {o.createdAt}
-                      </td>
-                      <td className="px-6 py-4 font-mono font-bold text-white whitespace-nowrap">
-                        {o.id}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-white">{o.customerName}</div>
-                        <div className="text-[11px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
-                          <Phone className="w-3 h-3" /> {o.customerPhone}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-slate-200 line-clamp-1">{o.productName}</div>
-                        <div className="font-bold text-white">Rp {o.grossAmount.toLocaleString("id-ID")}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-amber-400">Rp {o.affiliateCut.toLocaleString("id-ID")}</div>
-                        <span className="text-[10px] text-slate-400 font-mono">Ref: {o.affiliateCode}</span>
-                      </td>
-                      <td className="px-6 py-4 font-bold text-indigo-400 whitespace-nowrap">
-                        Rp {o.agencyCut.toLocaleString("id-ID")}
-                      </td>
-                      <td className="px-6 py-4 font-bold text-emerald-400 whitespace-nowrap">
-                        + Rp {o.managerCut.toLocaleString("id-ID")}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          {o.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredOrders.map((o) => {
+                    const cleanPhone = o.customerPhone.replace(/^0/, "62").replace(/\D/g, "");
+                    const waText = encodeURIComponent(
+                      `Halo Kak ${o.customerName}, konfirmasi pesanan dari BoonTrack Store untuk invoice ${o.id} (${o.productName}). Ada yang bisa kami bantu?`
+                    );
+
+                    return (
+                      <tr key={o.id} className="hover:bg-slate-800/30 transition">
+                        <td className="px-6 py-4 font-mono text-slate-400 whitespace-nowrap">
+                          {o.createdAt}
+                        </td>
+                        <td className="px-6 py-4 font-mono font-bold text-white whitespace-nowrap">
+                          {o.id}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-white">{o.customerName}</div>
+                          <a
+                            href={`https://wa.me/${cleanPhone}?text=${waText}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 mt-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-mono font-medium border border-emerald-500/20 transition-all cursor-pointer"
+                          >
+                            <MessageCircle className="w-3 h-3" />
+                            <span>{o.customerPhone}</span>
+                          </a>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-slate-200 line-clamp-1">{o.productName}</div>
+                          <div className="font-bold text-white">Rp {o.grossAmount.toLocaleString("id-ID")}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-amber-400">Rp {o.affiliateCut.toLocaleString("id-ID")}</div>
+                          <span className="text-[10px] text-slate-400 font-mono">Ref: {o.affiliateCode}</span>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-indigo-400 whitespace-nowrap">
+                          Rp {o.agencyCut.toLocaleString("id-ID")}
+                        </td>
+                        <td className="px-6 py-4 font-bold text-emerald-400 whitespace-nowrap">
+                          + Rp {o.managerCut.toLocaleString("id-ID")}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            {o.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
