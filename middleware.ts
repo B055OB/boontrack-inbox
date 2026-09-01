@@ -158,14 +158,9 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // SPECIAL DOMAIN: shop.boontrack.com (Landing Page Showcase Shop)
+  // SPECIAL DOMAIN: shop.boontrack.com (Langsung render app/page.tsx)
   // ===========================================================================
   if (subdomain === 'shop') {
-    if (pathname === '/' || pathname === '') {
-      const url = req.nextUrl.clone();
-      url.pathname = '/shop'; // Rewrite internal ke halaman showcase landing shop
-      return NextResponse.rewrite(url);
-    }
     return NextResponse.next();
   }
 
