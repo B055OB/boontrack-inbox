@@ -21,6 +21,7 @@ import {
   Check
 } from "lucide-react";
 import ShopClaimSection from "@/app/components/ShopClaimSection";
+import CheckoutModal from "@/app/components/CheckoutModal";
 import { captureAffiliateReferral, getActiveAffiliateCode } from "@/lib/tracking";
 
 interface Product {
@@ -124,13 +125,14 @@ export default function TenantStorefrontPage() {
     checkTenant();
   }, [tenantSlug, isDemoStore]);
 
-  // STATE STOREFRONT
+  // STATE STOREFRONT & MODAL CHECKOUT
   const [activeCategory, setActiveCategory] = useState<"all" | "terlaris" | "digital" | "fisik">("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [productForCheckout, setProductForCheckout] = useState<{ id: string; title: string; price: number } | null>(null);
+
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
   const [showCartModal, setShowCartModal] = useState(false);
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
 
   const [inputMessage, setInputMessage] = useState("");
   const [messages, setMessages] = useState([
@@ -185,6 +187,17 @@ export default function TenantStorefrontPage() {
     ? rawProducts
     : rawProducts.filter((p) => p.category === activeCategory);
 
+  const openDirectCheckout = (product: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setProductForCheckout({
+      id: String(product.id),
+      title: product.name,
+      price: product.price
+    });
+    setIsCheckoutOpen(true);
+    if (selectedProduct) setSelectedProduct(null);
+  };
+
   const addToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setCart((prev) => {
@@ -215,46 +228,16 @@ export default function TenantStorefrontPage() {
   const totalCartCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const totalCartPrice = cart.reduce((sum, item) => sum + item.product.price * item.qty, 0);
 
-  const handleCreateOrder = async (singleProduct?: Product) => {
-    if (!customerPhone.trim()) {
-      alert("Silakan masukkan nomor WhatsApp Anda terlebih dahulu.");
-      return;
-    }
-
-    setIsSubmittingOrder(true);
-    const activeRef = getActiveAffiliateCode();
-    const items = singleProduct 
-      ? [{ product_id: singleProduct.id, name: singleProduct.name, price: singleProduct.price, qty: 1 }]
-      : cart.map(item => ({ product_id: item.product.id, name: item.product.name, price: item.product.price, qty: item.qty }));
-    
-    const amount = singleProduct ? singleProduct.price : totalCartPrice;
-
-    try {
-      const payload = {
-        tenant_slug: tenantSlug,
-        customer_phone: customerPhone,
-        items,
-        amount,
-        affiliate_code: activeRef
-      };
-
-      const res = await fetch("https://boontrack-core-production.up.railway.app/api/v1/shop/gateway/create-invoice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      if (data?.order_id) {
-        router.push(`/checkout/${data.order_id}`);
-      } else {
-        router.push(`/checkout/demo-${Date.now()}`);
-      }
-    } catch {
-      router.push(`/checkout/demo-${Date.now()}`);
-    } finally {
-      setIsSubmittingOrder(false);
-    }
+  const handleCartCheckout = () => {
+    if (cart.length === 0) return;
+    const combinedTitles = cart.map(c => `${c.product.name} (${c.qty}x)`).join(", ");
+    setProductForCheckout({
+      id: `CART-MULTI-${Date.now()}`,
+      title: combinedTitles,
+      price: totalCartPrice
+    });
+    setShowCartModal(false);
+    setIsCheckoutOpen(true);
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -430,8 +413,11 @@ export default function TenantStorefrontPage() {
                       {p.originalPrice && <span className="text-[10px] text-slate-400 line-through block font-medium">Rp {p.originalPrice.toLocaleString("id-ID")}</span>}
                       <span className="text-sm font-black text-blue-600">Rp {p.price.toLocaleString("id-ID")}</span>
                     </div>
-                    <button onClick={(e) => addToCart(p, e)} className="bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-200 hover:border-transparent text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer">
-                      <Plus className="w-3.5 h-3.5" /> Keranjang
+                    <button 
+                      onClick={(e) => openDirectCheckout(p, e)} 
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" /> Beli
                     </button>
                   </div>
                 </div>
@@ -472,22 +458,13 @@ export default function TenantStorefrontPage() {
               </div>
             )}
 
-            <div className="border-t border-slate-100 pt-3 space-y-3">
-              <label className="text-xs font-bold text-slate-700 block">Nomor WhatsApp untuk Pengiriman Akses:</label>
-              <input
-                type="tel"
-                placeholder="Contoh: 08123456789"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
-              />
+            <div className="border-t border-slate-100 pt-3">
               <button
-                onClick={() => handleCreateOrder(selectedProduct)}
-                disabled={isSubmittingOrder}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                onClick={() => openDirectCheckout(selectedProduct)}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <QrCode className="w-4 h-4" />
-                <span>{isSubmittingOrder ? "Memproses Invoice..." : "Beli Sekarang (QRIS Instan)"}</span>
+                <span>Beli Sekarang (QRIS Instan)</span>
               </button>
             </div>
           </div>
@@ -535,29 +512,26 @@ export default function TenantStorefrontPage() {
                   <span>Total Tagihan</span>
                   <span className="text-sm text-blue-600">Rp {totalCartPrice.toLocaleString("id-ID")}</span>
                 </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Nomor WhatsApp:</label>
-                  <input
-                    type="tel"
-                    placeholder="08123456789"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
-                  />
-                </div>
                 <button
-                  onClick={() => handleCreateOrder()}
-                  disabled={isSubmittingOrder}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  onClick={handleCartCheckout}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <QrCode className="w-4 h-4" />
-                  <span>{isSubmittingOrder ? "Membuat Pesanan..." : "Checkout Sekarang"}</span>
+                  <span>Checkout Sekarang</span>
                 </button>
               </div>
             )}
           </div>
         </div>
       )}
+
+      {/* MODAL CHECKOUT QRIS & REFERRAL BINDING */}
+      <CheckoutModal
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        tenantSlug={tenantSlug}
+        product={productForCheckout}
+      />
 
       <footer className="py-5 text-center text-xs text-slate-400 bg-white border-t border-slate-200 mt-auto">
         © 2026 {displayName.toUpperCase()} • Powered by BoonTrack Commerce Engine
