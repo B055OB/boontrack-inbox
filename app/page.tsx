@@ -89,7 +89,7 @@ function CleanShopLanding() {
         </div>
       </header>
 
-      {/* Hero Section (Clean White & Soft Blue) */}
+      {/* Hero Section */}
       <section id="claim-section" className="relative pt-12 sm:pt-20 pb-16 sm:pb-24 overflow-hidden bg-gradient-to-b from-blue-50/60 via-slate-50/30 to-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-6">
           
@@ -173,7 +173,7 @@ function CleanShopLanding() {
               </p>
             </div>
 
-            <div className="p-8 bg-white rounded-3xl border border-slate-200/80 shadow-sm space-y-4 hover:shadow-md transition">
+            <div className="p-8 bg-white rounded-3xl border border-slate-200/80 space-y-4 hover:shadow-md transition">
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center">
                 <Bot className="w-6 h-6" />
               </div>
@@ -187,28 +187,31 @@ function CleanShopLanding() {
         </div>
       </section>
 
-      {/* Pricing Tiers Clean */}
+      {/* Pricing Tiers Strategis: Growth (Solo Starter) vs Pro Scale (Team & Automation) */}
       <section id="harga" className="py-20 bg-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-2xl mx-auto mb-12">
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Investasi Ringan untuk Bisnis Anda</h2>
-            <p className="text-slate-500 text-sm mt-2">Pilih paket sesuai kebutuhan skala penjualan Anda.</p>
+            <p className="text-slate-500 text-sm mt-2">Pilih paket sesuai kebutuhan skala operasional penjualan Anda.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
             
-            {/* Growth */}
+            {/* Growth: Solo Starter */}
             <div className="p-8 bg-white rounded-3xl border-2 border-slate-200 flex flex-col justify-between hover:border-blue-500 transition-all">
               <div className="space-y-4">
-                <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-bold">Starter & UMKM</span>
-                <h3 className="text-xl font-bold text-slate-900">Growth Plan</h3>
+                <span className="px-3.5 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-bold">Growth (Solo Starter)</span>
+                <h3 className="text-xl font-bold text-slate-900">Solo Engine</h3>
                 <div className="text-3xl font-black text-slate-900">
                   Rp 199.000 <span className="text-xs font-normal text-slate-500">/bulan</span>
                 </div>
-                <ul className="space-y-3 pt-4 text-xs text-slate-600">
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> Kuota 300 Order Otomatis/Bulan</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> 2 CS Inbox Seats</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> QRIS Dinamis Otomatis</li>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Dirancang khusus untuk pebisnis mandiri yang ingin merapikan sistem order, kasir QRIS, dan pencatatan tanpa ribet.
+                </p>
+                <ul className="space-y-3 pt-2 text-xs text-slate-600">
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> <b>Order & Transaksi Tanpa Batas</b></li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> 1 User (Owner Mandiri / 0 Admin)</li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> QRIS Dinamis Otomatis (Xendit)</li>
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> URL Domain Toko Resmi</li>
                 </ul>
               </div>
@@ -220,27 +223,30 @@ function CleanShopLanding() {
               </button>
             </div>
 
-            {/* Pro Scale */}
-            <div className="p-8 bg-gradient-to-b from-blue-50/50 to-white rounded-3xl border-2 border-blue-600 relative flex flex-col justify-between shadow-lg shadow-blue-500/10">
-              <div className="absolute -top-3 right-6 bg-blue-600 text-white text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-                Paling Diminati
+            {/* Pro Scale: Team & Automation */}
+            <div className="p-8 bg-gradient-to-b from-blue-50/60 to-white rounded-3xl border-2 border-blue-600 relative flex flex-col justify-between shadow-xl shadow-blue-500/10">
+              <div className="absolute -top-3 right-6 bg-blue-600 text-white text-[11px] font-bold px-3.5 py-1 rounded-full uppercase tracking-wider shadow-md">
+                Paling Direkomendasikan
               </div>
               <div className="space-y-4">
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">Skala Bisnis Skala Besar</span>
-                <h3 className="text-xl font-bold text-slate-900">Pro Scale Plan</h3>
+                <span className="px-3.5 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">Pro Scale (Team & Automation)</span>
+                <h3 className="text-xl font-bold text-slate-900">Business Growth Engine</h3>
                 <div className="text-3xl font-black text-blue-600">
                   Rp 499.000 <span className="text-xs font-normal text-slate-500">/bulan</span>
                 </div>
-                <ul className="space-y-3 pt-4 text-xs text-slate-600">
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> <b>Unlimited Order & Transaksi</b></li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> 5 Multi-Agent CS Seats</li>
-                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> AI Assistant Closing Bot</li>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Mesin otomatisasi lengkap untuk melipatgandakan omzet lewat kolaborasi tim multi-admin dan AI bot aktif 24 jam.
+                </p>
+                <ul className="space-y-3 pt-2 text-xs text-slate-600">
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> <b>Order & Transaksi Tanpa Batas</b></li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> <b>Hingga 5-10 Multi-Agent CS Seats</b></li>
+                  <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> <b>AI Assistant Closing Bot (Tanpa Fee Per Transaksi)</b></li>
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-blue-600" /> Dukungan Teknis Prioritas 24/7</li>
                 </ul>
               </div>
               <button
                 onClick={() => router.push(`/register?plan=pro_scale&ref=${encodeURIComponent(refCode)}`)}
-                className="mt-8 w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl text-center transition shadow-md shadow-blue-600/20 cursor-pointer"
+                className="mt-8 w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl text-center transition shadow-lg shadow-blue-600/25 cursor-pointer"
               >
                 Pilih Paket Pro Scale
               </button>
