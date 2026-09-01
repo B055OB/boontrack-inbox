@@ -9,10 +9,12 @@ import {
   Search, 
   CheckCircle, 
   Clock, 
-  AlertCircle,
-  ExternalLink,
-  ChevronRight,
-  RefreshCw
+  AlertCircle, 
+  ExternalLink, 
+  ChevronRight, 
+  RefreshCw,
+  X,
+  Check
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabaseClient";
 
@@ -21,12 +23,17 @@ interface AffiliateSummary {
   salesCount: number;
   grossAmount: number;
   overrideEarned: number;
+  pendingPayout: number;
   status: string;
 }
 
 export default function ManagerPortalPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
+  const [settlingCode, setSettlingCode] = useState<string | null>(null);
+  const [settleModalOpen, setSettleModalOpen] = useState(false);
+  const [selectedAffiliate, setSelectedAffiliate] = useState<AffiliateSummary | null>(null);
+  const [payoutNotes, setPayoutNotes] = useState("Transfer Bank Manual (BCA/Mandiri)");
 
   const [stats, setStats] = useState({
     totalAffiliates: 0,
@@ -55,15 +62,18 @@ export default function ManagerPortalPage() {
           .filter((r: any) => r.status === "PENDING_PAYOUT")
           .reduce((sum: number, r: any) => sum + Number(r.affiliate_commission_amount || 0), 0);
 
-        const groupedMap = new Map<string, { count: number; gross: number; override: number }>();
+        const groupedMap = new Map<string, { count: number; gross: number; override: number; pending: number }>();
 
         rows.forEach((r: any) => {
           const code = (r.affiliate_code || "DEFAULT").toUpperCase();
-          const curr = groupedMap.get(code) || { count: 0, gross: 0, override: 0 };
+          const curr = groupedMap.get(code) || { count: 0, gross: 0, override: 0, pending: 0 };
+          
+          const isPending = r.status === "PENDING_PAYOUT";
           groupedMap.set(code, {
             count: curr.count + 1,
             gross: curr.gross + Number(r.gross_amount || 0),
             override: curr.override + Number(r.manager_override_amount || 0),
+            pending: curr.pending + (isPending ? Number(r.affiliate_commission_amount || 0) : 0),
           });
         });
 
@@ -72,7 +82,8 @@ export default function ManagerPortalPage() {
           salesCount: val.count,
           grossAmount: val.gross,
           overrideEarned: val.override,
-          status: "Active",
+          pendingPayout: val.pending,
+          status: val.pending > 0 ? "Pending Payout" : "Settled",
         }));
 
         setStats({
@@ -88,6 +99,35 @@ export default function ManagerPortalPage() {
       console.error("Failed to fetch manager data:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExecutePayout = async () => {
+    if (!selectedAffiliate) return;
+    setSettlingCode(selectedAffiliate.code);
+
+    try {
+      const res = await fetch("https://boontrack-core-production.up.railway.app/payout/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          affiliate_code: selectedAffiliate.code,
+          notes: payoutNotes
+        }),
+      });
+
+      if (res.ok) {
+        setSettleModalOpen(false);
+        setSelectedAffiliate(null);
+        await fetchManagerData();
+      } else {
+        alert("Gagal memproses payout batch.");
+      }
+    } catch (err) {
+      console.error("Payout settlement failed:", err);
+      alert("Error saat menghubungi backend server.");
+    } finally {
+      setSettlingCode(null);
     }
   };
 
@@ -122,9 +162,6 @@ export default function ManagerPortalPage() {
               title="Refresh Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            </button>
-            <button className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition-all cursor-pointer">
-              <ShieldCheck className="w-4 h-4" /> Validasi Payout Batch
             </button>
           </div>
         </div>
@@ -175,9 +212,9 @@ export default function ManagerPortalPage() {
                   <th className="pb-3 font-semibold">Kode Referral</th>
                   <th className="pb-3 font-semibold">Total Order</th>
                   <th className="pb-3 font-semibold">Gross Sales</th>
-                  <th className="pb-3 font-semibold">Override Anda (10%)</th>
-                  <th className="pb-3 font-semibold">Status</th>
-                  <th className="pb-3 font-semibold text-right">Detail</th>
+                  <th className="pb-3 font-semibold">Override Agensi (10%)</th>
+                  <th className="pb-3 font-semibold">Pending Payout Affiliate</th>
+                  <th className="pb-3 font-semibold text-right">Aksi Payout</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -195,14 +232,28 @@ export default function ManagerPortalPage() {
                       <td className="py-3.5">Rp {aff.grossAmount.toLocaleString("id-ID")}</td>
                       <td className="py-3.5 font-bold text-emerald-400">Rp {aff.overrideEarned.toLocaleString("id-ID")}</td>
                       <td className="py-3.5">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
-                          {aff.status}
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          aff.pendingPayout > 0 
+                            ? "bg-amber-950/60 text-amber-400 border border-amber-800/40" 
+                            : "bg-slate-800 text-slate-400 border border-slate-700"
+                        }`}>
+                          Rp {aff.pendingPayout.toLocaleString("id-ID")}
                         </span>
                       </td>
                       <td className="py-3.5 text-right">
-                        <button className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
+                        {aff.pendingPayout > 0 ? (
+                          <button
+                            onClick={() => {
+                              setSelectedAffiliate(aff);
+                              setSettleModalOpen(true);
+                            }}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" /> Cairkan Komisi
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-500 font-semibold">Terselesaikan</span>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -213,6 +264,68 @@ export default function ManagerPortalPage() {
         </div>
 
       </div>
+
+      {/* Modal Settlement Payout */}
+      {settleModalOpen && selectedAffiliate && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white">Konfirmasi Settlement Payout</h3>
+              <button 
+                onClick={() => setSettleModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 space-y-2 text-xs">
+              <div className="flex justify-between text-slate-400">
+                <span>Kode Affiliate:</span>
+                <span className="font-mono font-bold text-indigo-400">{selectedAffiliate.code}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Total Komisi Dicairkan:</span>
+                <span className="font-bold text-emerald-400 text-sm">
+                  Rp {selectedAffiliate.pendingPayout.toLocaleString("id-ID")}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 text-xs">
+              <label className="font-semibold text-slate-300">Catatan Settlement Transfer:</label>
+              <input
+                type="text"
+                value={payoutNotes}
+                onChange={(e) => setPayoutNotes(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-600 text-xs"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setSettleModalOpen(false)}
+                className="w-1/2 py-2.5 rounded-xl border border-slate-800 text-slate-300 font-bold text-xs hover:bg-slate-800 transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                disabled={settlingCode === selectedAffiliate.code}
+                onClick={handleExecutePayout}
+                className="w-1/2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-lg shadow-indigo-600/20 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                {settlingCode === selectedAffiliate.code ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" /> Konfirmasi Payout
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
