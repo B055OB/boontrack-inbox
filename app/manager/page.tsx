@@ -1,331 +1,345 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { 
   Users, 
-  TrendingUp, 
   DollarSign, 
-  ShieldCheck, 
-  Search, 
-  CheckCircle, 
+  TrendingUp, 
   Clock, 
-  AlertCircle, 
-  ExternalLink, 
-  ChevronRight, 
-  RefreshCw,
-  X,
-  Check
+  Search, 
+  RotateCw, 
+  ShoppingBag, 
+  Calendar, 
+  Phone, 
+  UserCheck, 
+  ExternalLink,
+  Receipt
 } from "lucide-react";
-import { getSupabase } from "@/lib/supabaseClient";
 
-interface AffiliateSummary {
-  code: string;
-  salesCount: number;
-  grossAmount: number;
-  overrideEarned: number;
-  pendingPayout: number;
-  status: string;
-}
+// DUMMY DATA FOR TESTING
+const DUMMY_AFFILIATES = [
+  {
+    code: "BOON-SUPER",
+    name: "Suhu Ads",
+    totalOrders: 18,
+    grossSales: 8982000,
+    overrideAgency: 898200,
+    pendingPayout: 2694600,
+  },
+  {
+    code: "SCALE-FAST",
+    name: "Digital Champion",
+    totalOrders: 9,
+    grossSales: 4491000,
+    overrideAgency: 449100,
+    pendingPayout: 1347300,
+  },
+  {
+    code: "GROWTH-HUB",
+    name: "Media Booster",
+    totalOrders: 4,
+    grossSales: 1996000,
+    overrideAgency: 199600,
+    pendingPayout: 598800,
+  }
+];
 
-export default function ManagerPortalPage() {
+const DUMMY_BUYER_ORDERS = [
+  {
+    id: "ORD-20260901-0812",
+    createdAt: "2026-09-01 09:42",
+    customerName: "Rizky Pratama",
+    customerPhone: "081288991122",
+    productName: "Step by Step Rahasia Dollar",
+    grossAmount: 499000,
+    affiliateCode: "BOON-SUPER",
+    status: "PAID"
+  },
+  {
+    id: "ORD-20260901-0735",
+    createdAt: "2026-09-01 08:35",
+    customerName: "Dewi Lestari",
+    customerPhone: "085712345678",
+    productName: "Masterclass Ads 2026",
+    grossAmount: 99000,
+    affiliateCode: "BOON-SUPER",
+    status: "PAID"
+  },
+  {
+    id: "ORD-20260901-0610",
+    createdAt: "2026-09-01 07:10",
+    customerName: "Ahmad Faisal",
+    customerPhone: "087899887766",
+    productName: "Step by Step Rahasia Dollar",
+    grossAmount: 499000,
+    affiliateCode: "SCALE-FAST",
+    status: "PAID"
+  },
+  {
+    id: "ORD-20260831-2315",
+    createdAt: "2026-08-31 23:15",
+    customerName: "Hendra Wijaya",
+    customerPhone: "081377889900",
+    productName: "Parfum Pheromone Missionary",
+    grossAmount: 99000,
+    affiliateCode: "GROWTH-HUB",
+    status: "PAID"
+  }
+];
+
+export default function ManagerControlCenter() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [settlingCode, setSettlingCode] = useState<string | null>(null);
-  const [settleModalOpen, setSettleModalOpen] = useState(false);
-  const [selectedAffiliate, setSelectedAffiliate] = useState<AffiliateSummary | null>(null);
-  const [payoutNotes, setPayoutNotes] = useState("Transfer Bank Manual (BCA/Mandiri)");
+  const [activeTab, setActiveTab] = useState<"marketers" | "orders">("orders");
 
-  const [stats, setStats] = useState({
-    totalAffiliates: 0,
-    grossSales: 0,
-    managerOverrideRevenue: 0,
-    pendingPayoutTotal: 0,
-  });
+  const totalGross = DUMMY_AFFILIATES.reduce((acc, curr) => acc + curr.grossSales, 0);
+  const totalOverride = DUMMY_AFFILIATES.reduce((acc, curr) => acc + curr.overrideAgency, 0);
+  const totalPending = DUMMY_AFFILIATES.reduce((acc, curr) => acc + curr.pendingPayout, 0);
 
-  const [affiliateList, setAffiliateList] = useState<AffiliateSummary[]>([]);
+  const filteredAffiliates = DUMMY_AFFILIATES.filter((a) =>
+    a.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    a.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  const fetchManagerData = async () => {
-    setLoading(true);
-    try {
-      const supabase = getSupabase();
-      if (!supabase) return;
-
-      const { data: rows, error } = await supabase
-        .from("commission_ledger")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (rows && !error) {
-        const totalGross = rows.reduce((sum: number, r: any) => sum + Number(r.gross_amount || 0), 0);
-        const totalOverride = rows.reduce((sum: number, r: any) => sum + Number(r.manager_override_amount || 0), 0);
-        const pendingPayout = rows
-          .filter((r: any) => r.status === "PENDING_PAYOUT")
-          .reduce((sum: number, r: any) => sum + Number(r.affiliate_commission_amount || 0), 0);
-
-        const groupedMap = new Map<string, { count: number; gross: number; override: number; pending: number }>();
-
-        rows.forEach((r: any) => {
-          const code = (r.affiliate_code || "DEFAULT").toUpperCase();
-          const curr = groupedMap.get(code) || { count: 0, gross: 0, override: 0, pending: 0 };
-          
-          const isPending = r.status === "PENDING_PAYOUT";
-          groupedMap.set(code, {
-            count: curr.count + 1,
-            gross: curr.gross + Number(r.gross_amount || 0),
-            override: curr.override + Number(r.manager_override_amount || 0),
-            pending: curr.pending + (isPending ? Number(r.affiliate_commission_amount || 0) : 0),
-          });
-        });
-
-        const formattedList: AffiliateSummary[] = Array.from(groupedMap.entries()).map(([code, val]) => ({
-          code,
-          salesCount: val.count,
-          grossAmount: val.gross,
-          overrideEarned: val.override,
-          pendingPayout: val.pending,
-          status: val.pending > 0 ? "Pending Payout" : "Settled",
-        }));
-
-        setStats({
-          totalAffiliates: formattedList.length,
-          grossSales: totalGross,
-          managerOverrideRevenue: totalOverride,
-          pendingPayoutTotal: pendingPayout,
-        });
-
-        setAffiliateList(formattedList);
-      }
-    } catch (err) {
-      console.error("Failed to fetch manager data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleExecutePayout = async () => {
-    if (!selectedAffiliate) return;
-    setSettlingCode(selectedAffiliate.code);
-
-    try {
-      const res = await fetch("https://boontrack-core-production.up.railway.app/payout/settle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          affiliate_code: selectedAffiliate.code,
-          notes: payoutNotes
-        }),
-      });
-
-      if (res.ok) {
-        setSettleModalOpen(false);
-        setSelectedAffiliate(null);
-        await fetchManagerData();
-      } else {
-        alert("Gagal memproses payout batch.");
-      }
-    } catch (err) {
-      console.error("Payout settlement failed:", err);
-      alert("Error saat menghubungi backend server.");
-    } finally {
-      setSettlingCode(null);
-    }
-  };
-
-  useEffect(() => {
-    fetchManagerData();
-  }, []);
-
-  const filteredAffiliates = affiliateList.filter((a) =>
-    a.code.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredOrders = DUMMY_BUYER_ORDERS.filter((o) =>
+    o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    o.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    o.customerPhone.includes(searchTerm) ||
+    o.affiliateCode.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
-      <div className="max-w-6xl mx-auto space-y-6">
-
-        {/* Header Portal */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 border border-slate-800 p-6 rounded-3xl">
+      <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* HEADER SECTION */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 uppercase">
-                Agency Control Plane
-              </span>
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold uppercase tracking-wider mb-2">
+              Agency Control Plane
             </div>
-            <h1 className="text-2xl font-black text-white mt-1">Affiliate Manager Control Center</h1>
-            <p className="text-xs text-slate-400">Monitoring tim marketer, komisi override agensi, dan validasi payout.</p>
+            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+              Affiliate Manager Control Center
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Monitoring tim marketer, komisi override agensi, data pesanan pembeli, dan validasi payout.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={fetchManagerData} 
-              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer"
-              title="Refresh Data"
+          <button 
+            onClick={() => window.location.reload()}
+            className="self-start md:self-auto p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl border border-slate-800 flex items-center gap-2 text-xs font-semibold transition"
+          >
+            <RotateCw className="w-4 h-4" />
+            <span>Sync Live</span>
+          </button>
+        </div>
+
+        {/* METRICS ROW */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-xs font-semibold">Affiliate Aktif</span>
+              <Users className="w-4 h-4 text-blue-400" />
+            </div>
+            <div className="text-2xl font-black text-white">
+              {DUMMY_AFFILIATES.length} <span className="text-xs font-normal text-slate-400">Marketer</span>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-xs font-semibold">Gross Penjualan Tim</span>
+              <DollarSign className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-2xl font-black text-emerald-400">
+              Rp {totalGross.toLocaleString("id-ID")}
+            </div>
+          </div>
+
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-xs font-semibold">Override Revenue (Agensi)</span>
+              <TrendingUp className="w-4 h-4 text-indigo-400" />
+            </div>
+            <div className="text-2xl font-black text-indigo-400">
+              Rp {totalOverride.toLocaleString("id-ID")}
+            </div>
+          </div>
+
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-xs font-semibold">Menunggu Approval Payout</span>
+              <Clock className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="text-2xl font-black text-amber-400">
+              Rp {totalPending.toLocaleString("id-ID")}
+            </div>
+          </div>
+        </div>
+
+        {/* TAB & SEARCH BAR */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+          <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+            <button
+              onClick={() => setActiveTab("orders")}
+              className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${
+                activeTab === "orders" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+              }`}
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              <Receipt className="w-3.5 h-3.5" />
+              <span>Data Transaksi & Buyer ({DUMMY_BUYER_ORDERS.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("marketers")}
+              className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${
+                activeTab === "marketers" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Performa Marketer</span>
             </button>
           </div>
-        </div>
 
-        {/* Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-1">
-            <span className="text-xs text-slate-400">Affiliate Aktif</span>
-            <h3 className="text-xl font-black text-white">{stats.totalAffiliates} Marketer</h3>
-          </div>
-          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-1">
-            <span className="text-xs text-slate-400">Gross Penjualan Tim</span>
-            <h3 className="text-xl font-black text-white">Rp {stats.grossSales.toLocaleString("id-ID")}</h3>
-          </div>
-          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-1">
-            <span className="text-xs text-slate-400">Override Revenue (Agensi)</span>
-            <h3 className="text-xl font-black text-indigo-400">Rp {stats.managerOverrideRevenue.toLocaleString("id-ID")}</h3>
-          </div>
-          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl space-y-1">
-            <span className="text-xs text-slate-400">Menunggu Approval Payout</span>
-            <h3 className="text-xl font-black text-amber-400">Rp {stats.pendingPayoutTotal.toLocaleString("id-ID")}</h3>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              placeholder={activeTab === "orders" ? "Cari no invoice, nama, WA, ref..." : "Cari kode ref / nama marketer..."}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full sm:w-80 bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+            />
           </div>
         </div>
 
-        {/* Tabel Marketer Binaan */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div>
-              <h2 className="text-base font-bold text-white">Daftar Affiliate & Performa Penjualan</h2>
-              <p className="text-xs text-slate-400">Rincian performa konversi masing-masing kode referral (Live Sync)</p>
+        {/* TAB CONTENT 1: DATA TRANSAKSI & BUYER */}
+        {activeTab === "orders" && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white">Log Transaksi Masuk (Live Buyer Data)</h3>
+                <p className="text-[11px] text-slate-400">Rincian invoice, identitas pembeli, nomor WhatsApp, dan atribusi referral.</p>
+              </div>
             </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Cari kode ref..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-600"
-              />
-            </div>
-          </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="text-slate-400 border-b border-slate-800">
-                <tr>
-                  <th className="pb-3 font-semibold">Kode Referral</th>
-                  <th className="pb-3 font-semibold">Total Order</th>
-                  <th className="pb-3 font-semibold">Gross Sales</th>
-                  <th className="pb-3 font-semibold">Override Agensi (10%)</th>
-                  <th className="pb-3 font-semibold">Pending Payout Affiliate</th>
-                  <th className="pb-3 font-semibold text-right">Aksi Payout</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {filteredAffiliates.length === 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950/60 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-500 text-xs">
-                      {loading ? "Memuat data affiliate..." : "Belum ada data marketer ditemukan."}
-                    </td>
+                    <th className="px-6 py-3.5">Tanggal & Jam</th>
+                    <th className="px-6 py-3.5">No Invoice / Order ID</th>
+                    <th className="px-6 py-3.5">Data Buyer (Nama & WA)</th>
+                    <th className="px-6 py-3.5">Item Produk</th>
+                    <th className="px-6 py-3.5">Nominal</th>
+                    <th className="px-6 py-3.5">Atribusi Marketer</th>
+                    <th className="px-6 py-3.5">Status</th>
                   </tr>
-                ) : (
-                  filteredAffiliates.map((aff, idx) => (
-                    <tr key={idx} className="text-slate-300">
-                      <td className="py-3.5 font-mono text-indigo-400 font-bold">{aff.code}</td>
-                      <td className="py-3.5">{aff.salesCount} transaksi</td>
-                      <td className="py-3.5">Rp {aff.grossAmount.toLocaleString("id-ID")}</td>
-                      <td className="py-3.5 font-bold text-emerald-400">Rp {aff.overrideEarned.toLocaleString("id-ID")}</td>
-                      <td className="py-3.5">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          aff.pendingPayout > 0 
-                            ? "bg-amber-950/60 text-amber-400 border border-amber-800/40" 
-                            : "bg-slate-800 text-slate-400 border border-slate-700"
-                        }`}>
-                          Rp {aff.pendingPayout.toLocaleString("id-ID")}
-                        </span>
-                      </td>
-                      <td className="py-3.5 text-right">
-                        {aff.pendingPayout > 0 ? (
-                          <button
-                            onClick={() => {
-                              setSelectedAffiliate(aff);
-                              setSettleModalOpen(true);
-                            }}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5"
-                          >
-                            <ShieldCheck className="w-3.5 h-3.5" /> Cairkan Komisi
-                          </button>
-                        ) : (
-                          <span className="text-[11px] text-slate-500 font-semibold">Terselesaikan</span>
-                        )}
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-8 text-slate-500">
+                        Tidak ada transaksi ditemukan.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredOrders.map((o) => (
+                      <tr key={o.id} className="hover:bg-slate-800/30 transition">
+                        <td className="px-6 py-4 font-mono text-slate-400 whitespace-nowrap">
+                          {o.createdAt}
+                        </td>
+                        <td className="px-6 py-4 font-mono font-bold text-white whitespace-nowrap">
+                          {o.id}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-white">{o.customerName}</div>
+                          <div className="text-[11px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
+                            <Phone className="w-3 h-3" /> {o.customerPhone}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-200">
+                          {o.productName}
+                        </td>
+                        <td className="px-6 py-4 font-bold text-emerald-400 whitespace-nowrap">
+                          Rp {o.grossAmount.toLocaleString("id-ID")}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="px-2.5 py-1 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold">
+                            {o.affiliateCode}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            {o.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* TAB CONTENT 2: PERFORMA MARKETER */}
+        {activeTab === "marketers" && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white">Daftar Affiliate & Performa Penjualan</h3>
+                <p className="text-[11px] text-slate-400">Rincian performa konversi masing-masing kode referral (Live Sync).</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950/60 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
+                  <tr>
+                    <th className="px-6 py-3.5">Kode Referral</th>
+                    <th className="px-6 py-3.5">Nama Marketer</th>
+                    <th className="px-6 py-3.5">Total Order</th>
+                    <th className="px-6 py-3.5">Gross Sales</th>
+                    <th className="px-6 py-3.5">Override Agensi (10%)</th>
+                    <th className="px-6 py-3.5">Pending Payout Affiliate</th>
+                    <th className="px-6 py-3.5 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {filteredAffiliates.map((a) => (
+                    <tr key={a.code} className="hover:bg-slate-800/30 transition">
+                      <td className="px-6 py-4 font-mono font-bold text-blue-400">
+                        {a.code}
+                      </td>
+                      <td className="px-6 py-4 text-white font-medium">
+                        {a.name}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-slate-200">
+                        {a.totalOrders} order
+                      </td>
+                      <td className="px-6 py-4 font-bold text-emerald-400">
+                        Rp {a.grossSales.toLocaleString("id-ID")}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-indigo-400">
+                        Rp {a.overrideAgency.toLocaleString("id-ID")}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-amber-400">
+                        Rp {a.pendingPayout.toLocaleString("id-ID")}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11px] font-bold transition">
+                          Disburse Payout
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
       </div>
-
-      {/* Modal Settlement Payout */}
-      {settleModalOpen && selectedAffiliate && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white">Konfirmasi Settlement Payout</h3>
-              <button 
-                onClick={() => setSettleModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 space-y-2 text-xs">
-              <div className="flex justify-between text-slate-400">
-                <span>Kode Affiliate:</span>
-                <span className="font-mono font-bold text-indigo-400">{selectedAffiliate.code}</span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Total Komisi Dicairkan:</span>
-                <span className="font-bold text-emerald-400 text-sm">
-                  Rp {selectedAffiliate.pendingPayout.toLocaleString("id-ID")}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 text-xs">
-              <label className="font-semibold text-slate-300">Catatan Settlement Transfer:</label>
-              <input
-                type="text"
-                value={payoutNotes}
-                onChange={(e) => setPayoutNotes(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 focus:outline-none focus:border-indigo-600 text-xs"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setSettleModalOpen(false)}
-                className="w-1/2 py-2.5 rounded-xl border border-slate-800 text-slate-300 font-bold text-xs hover:bg-slate-800 transition-all cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                disabled={settlingCode === selectedAffiliate.code}
-                onClick={handleExecutePayout}
-                className="w-1/2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-lg shadow-indigo-600/20 transition-all cursor-pointer flex items-center justify-center gap-2"
-              >
-                {settlingCode === selectedAffiliate.code ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" /> Konfirmasi Payout
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
