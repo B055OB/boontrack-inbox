@@ -8,18 +8,32 @@ import {
   Sparkles, 
   ShieldCheck, 
   Zap, 
-  CreditCard 
+  CreditCard,
+  ShoppingBag,
+  Sparkle,
+  UtensilsCrossed,
+  GraduationCap,
+  Layers
 } from "lucide-react";
+
+const CATEGORIES = [
+  { id: "fashion", label: "Fashion & Hijab", icon: ShoppingBag },
+  { id: "skincare", label: "Skincare & Herbal", icon: Sparkle },
+  { id: "fnb", label: "Kuliner & F&B", icon: UtensilsCrossed },
+  { id: "digital", label: "Digital Course & E-Book", icon: GraduationCap },
+  { id: "general", label: "Retail & Toko Fisik", icon: Store },
+  { id: "other", label: "Jasa & Bisnis Lainnya", icon: Layers },
+];
 
 export default function RegisterShopPage() {
   const [storeName, setStoreName] = useState("");
   const [slug, setSlug] = useState("");
   const [status, setStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
+  const [category, setCategory] = useState("fashion");
   const [selectedPlan, setSelectedPlan] = useState<"growth" | "pro_scale">("growth");
   const [merchantData, setMerchantData] = useState({ name: "", phone: "", email: "" });
   const [loadingPay, setLoadingPay] = useState(false);
 
-  // Sanitasi slug
   const sanitize = (val: string) => {
     return val
       .toLowerCase()
@@ -29,7 +43,6 @@ export default function RegisterShopPage() {
       .replace(/^-|-$/g, "");
   };
 
-  // Cek parameter ?store= atau ?claim= secara native di browser
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -78,6 +91,7 @@ export default function RegisterShopPage() {
         body: JSON.stringify({
           tenant_slug: slug,
           plan_tier: selectedPlan,
+          business_category: category,
           merchant_name: merchantData.name,
           merchant_phone: merchantData.phone,
           customer_email: merchantData.email
@@ -111,7 +125,7 @@ export default function RegisterShopPage() {
             Klaim & Buka Toko Online Anda
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-2 leading-relaxed">
-            Otomatisasi etalase produk, verifikasi bayar QRIS 3 detik, dan reminder tagihan WhatsApp resmi.
+            Otomatisasi etalase produk, verifikasi bayar QRIS 3 detik, dan integrasi WhatsApp bot resmi.
           </p>
         </div>
 
@@ -165,11 +179,43 @@ export default function RegisterShopPage() {
             {status === "available" && (
               <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Domain <b>shop.boontrack.com/{slug}</b> tersedia! Lengkapi data toko:</span>
+                <span>Domain <b>shop.boontrack.com/{slug}</b> tersedia! Silakan lengkapi data toko:</span>
               </div>
             )}
 
+            {/* PILIHAN KATEGORI PRODUK / BISNIS */}
+            <div className="space-y-2">
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
+                2. Kategori Produk / Bisnis
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {CATEGORIES.map((cat) => {
+                  const Icon = cat.icon;
+                  const isSelected = category === cat.id;
+                  return (
+                    <button
+                      type="button"
+                      key={cat.id}
+                      onClick={() => setCategory(cat.id)}
+                      className={`p-3 rounded-xl border text-left flex flex-col gap-1.5 transition-all cursor-pointer ${
+                        isSelected
+                          ? "border-blue-600 bg-blue-50/70 text-blue-950 font-bold shadow-sm ring-1 ring-blue-600"
+                          : "border-slate-200 hover:border-slate-300 bg-slate-50 text-slate-600 text-xs"
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 ${isSelected ? "text-blue-600" : "text-slate-400"}`} />
+                      <span className="text-[11px] leading-tight">{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* DATA PEMILIK */}
             <div className="space-y-3">
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
+                3. Data Pemilik Toko
+              </label>
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">Nama Pemilik / Merchant</label>
                 <input
@@ -211,7 +257,7 @@ export default function RegisterShopPage() {
             {/* PILIH PAKET */}
             <div className="space-y-2">
               <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
-                Pilih Paket Langganan:
+                4. Pilih Paket Langganan:
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div
