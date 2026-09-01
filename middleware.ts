@@ -158,14 +158,13 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // SPECIAL DOMAIN: shop.boontrack.com
+  // SPECIAL DOMAIN: shop.boontrack.com (Landing Page Showcase Shop)
   // ===========================================================================
   if (subdomain === 'shop') {
-    // Redirect root shop.boontrack.com langsung ke /register dengan mempertahankan query param (?ref=...)
     if (pathname === '/' || pathname === '') {
       const url = req.nextUrl.clone();
-      url.pathname = '/register';
-      return NextResponse.redirect(url, 307);
+      url.pathname = '/shop'; // Rewrite internal ke halaman showcase landing shop
+      return NextResponse.rewrite(url);
     }
     return NextResponse.next();
   }
