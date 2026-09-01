@@ -14,12 +14,7 @@ import {
   CheckCircle2,
   RefreshCw
 } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
-
-// Inisialisasi Supabase Client Frontend
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mpluzajlzpregmjwjpqq.supabase.co";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { getSupabase } from "@/lib/supabaseClient";
 
 interface CommissionRow {
   id: string;
@@ -56,7 +51,7 @@ export default function AffiliatePortalPage() {
   const fetchAffiliateData = async () => {
     setLoading(true);
     try {
-      // 1. Ambil data transaksi dari commission_ledger berdasarkan affiliate_code
+      const supabase = getSupabase();
       const { data: rows, error } = await supabase
         .table("commission_ledger")
         .select("*")
@@ -64,12 +59,12 @@ export default function AffiliatePortalPage() {
         .order("created_at", { ascending: false });
 
       if (rows && !error) {
-        setLedger(rows);
+        setLedger(rows as CommissionRow[]);
 
-        const totalEarned = rows.reduce((sum, r) => sum + Number(r.affiliate_commission_amount || 0), 0);
+        const totalEarned = rows.reduce((sum: number, r: any) => sum + Number(r.affiliate_commission_amount || 0), 0);
         const pending = rows
-          .filter((r) => r.status === "PENDING_PAYOUT")
-          .reduce((sum, r) => sum + Number(r.affiliate_commission_amount || 0), 0);
+          .filter((r: any) => r.status === "PENDING_PAYOUT")
+          .reduce((sum: number, r: any) => sum + Number(r.affiliate_commission_amount || 0), 0);
 
         setStats({
           totalEarnings: totalEarned,

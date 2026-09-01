@@ -14,12 +14,7 @@ import {
   ChevronRight,
   RefreshCw
 } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
-
-// Inisialisasi Supabase Client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mpluzajlzpregmjwjpqq.supabase.co";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { getSupabase } from "@/lib/supabaseClient";
 
 interface AffiliateSummary {
   code: string;
@@ -45,23 +40,22 @@ export default function ManagerPortalPage() {
   const fetchManagerData = async () => {
     setLoading(true);
     try {
+      const supabase = getSupabase();
       const { data: rows, error } = await supabase
         .table("commission_ledger")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (rows && !error) {
-        // Agregasi Global Stats
-        const totalGross = rows.reduce((sum, r) => sum + Number(r.gross_amount || 0), 0);
-        const totalOverride = rows.reduce((sum, r) => sum + Number(r.manager_override_amount || 0), 0);
+        const totalGross = rows.reduce((sum: number, r: any) => sum + Number(r.gross_amount || 0), 0);
+        const totalOverride = rows.reduce((sum: number, r: any) => sum + Number(r.manager_override_amount || 0), 0);
         const pendingPayout = rows
-          .filter((r) => r.status === "PENDING_PAYOUT")
-          .reduce((sum, r) => sum + Number(r.affiliate_commission_amount || 0), 0);
+          .filter((r: any) => r.status === "PENDING_PAYOUT")
+          .reduce((sum: number, r: any) => sum + Number(r.affiliate_commission_amount || 0), 0);
 
-        // Agregasi Performa per Kode Affiliate
         const groupedMap = new Map<string, { count: number; gross: number; override: number }>();
 
-        rows.forEach((r) => {
+        rows.forEach((r: any) => {
           const code = (r.affiliate_code || "DEFAULT").toUpperCase();
           const curr = groupedMap.get(code) || { count: 0, gross: 0, override: 0 };
           groupedMap.set(code, {
@@ -158,7 +152,7 @@ export default function ManagerPortalPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <h2 className="text-base font-bold text-white">Daftar Affiliate & Performa Penjualan</h2>
-              <p className="text-xs text-slate-400">Rincian performa konversi masing-masing kode referral (Live Supabase)</p>
+              <p className="text-xs text-slate-400">Rincian performa konversi masing-masing kode referral (Live Sync)</p>
             </div>
             <div className="relative w-full sm:w-64">
               <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
