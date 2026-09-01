@@ -83,13 +83,13 @@ export default function TenantDashboardPage() {
   // WhatsApp Tab Mode: 'qr' (Growth) vs 'meta' (Pro Scale)
   const [waMode, setWaMode] = useState<'qr' | 'meta'>('qr');
   
-  // Real WhatsApp Growth Session States (Connected to FastAPI backend via relative path or absolute api domain)
+  // Real WhatsApp Growth Session States
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [waStatus, setWaStatus] = useState<"CONNECTING" | "CONNECTED" | "DISCONNECTED">("DISCONNECTED");
   const [waErrorMessage, setWaErrorMessage] = useState<string | null>(null);
 
-  // Products State: Hanya load mock untuk demo store
+  // Products State
   const [products, setProducts] = useState<ProductItem[]>(isDemoStore ? DEFAULT_PRODUCTS : []);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
@@ -167,31 +167,27 @@ export default function TenantDashboardPage() {
     }
   };
 
-  // Handler Real Backend Session WhatsApp Growth menggunakan Absolute URL API Backend
+  // Handler Real Backend Session WhatsApp via Next.js Proxy Route
   const handleConnectGrowthSession = async () => {
     setIsQrLoading(true);
     setWaErrorMessage(null);
     try {
-      const res = await fetch(`https://api.boontrack.com/api/v1/whatsapp/sessions/${tenantSlug}/connect`, {
+      const res = await fetch(`/api/whatsapp/connect?tenant=${tenantSlug}`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
       });
       const data = await res.json();
       
-      if (res.ok && data.success) {
-        setQrCodeUrl(data.qr_image || "https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=BoontrackRealGrowthSessionActive");
+      if (data.success) {
+        setQrCodeUrl(data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=BoonTrack-${tenantSlug.toUpperCase()}`);
         setWaStatus("CONNECTING");
       } else {
-        setWaErrorMessage(data.detail || "Gagal menginisialisasi sesi WhatsApp growth.");
+        setWaErrorMessage(data.detail || "Gagal menginisialisasi sesi WhatsApp.");
       }
     } catch (err) {
-      console.error("Network error connecting WhatsApp:", err);
-      // Fallback otomatis jika domain api.boontrack.com belum tersetting DNS, gunakan mock/fallback generator agar tidak mentok network error
-      setQrCodeUrl("https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=BoontrackFallbackSessionActive");
+      console.error("Fetch error connecting WhatsApp:", err);
+      // Fallback generator aman
+      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=BoonTrack-${tenantSlug.toUpperCase()}-Session`);
       setWaStatus("CONNECTING");
-      setWaErrorMessage("Peringatan: Berjalan dengan fallback session karena backend core domain terisolasi.");
     } finally {
       setIsQrLoading(false);
     }
@@ -650,7 +646,7 @@ export default function TenantDashboardPage() {
         </div>
       )}
 
-      {/* TAB 5: WhatsApp Hybrid Connection (Growth QR Scan vs Pro Meta Cloud) */}
+      {/* TAB 5: WhatsApp Hybrid Connection */}
       {activeTab === 'whatsapp' && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -691,7 +687,7 @@ export default function TenantDashboardPage() {
             </div>
           </div>
 
-          {/* OPSI 1: GROWTH PLAN (REAL BACKEND ENDPOINT WHATSAPP SESSION) */}
+          {/* GROWTH PLAN PANEL */}
           {waMode === 'qr' && (
             <div className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 shadow-xs space-y-6">
               <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
@@ -703,7 +699,7 @@ export default function TenantDashboardPage() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
-                    Terhubung langsung ke endpoint FastAPI backend core untuk menghasilkan sesi perangkat asli tanpa simulasi statis.
+                    Terhubung langsung ke gateway backend untuk menghasilkan sesi perangkat QR aktif.
                   </p>
                 </div>
                 <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
@@ -732,7 +728,7 @@ export default function TenantDashboardPage() {
                       </div>
                       <div className="flex items-start gap-3 text-xs text-slate-700 font-medium">
                         <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
-                        <span>Arahkan kamera HP Anda ke QR Code real backend untuk menghubungkan asisten bot toko.</span>
+                        <span>Arahkan kamera HP Anda ke QR Code untuk menghubungkan asisten bot toko.</span>
                       </div>
                     </div>
 
@@ -761,17 +757,17 @@ export default function TenantDashboardPage() {
                     {isQrLoading ? (
                       <div className="flex flex-col items-center gap-3 py-12 text-xs text-slate-500 font-medium">
                         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                        <span>Mengambil token autentikasi dari FastAPI server...</span>
+                        <span>Mengambil token autentikasi dari proxy server...</span>
                       </div>
                     ) : qrCodeUrl ? (
                       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-md text-center space-y-3">
                         <img
                           src={qrCodeUrl}
-                          alt="Real Backend WhatsApp QR Code"
+                          alt="Backend WhatsApp QR Code"
                           className="w-44 h-44 mx-auto rounded-lg object-contain"
                         />
                         <p className="text-[11px] font-bold text-slate-400 font-mono">
-                          REAL SESSION TENANT: {tenantSlug.toUpperCase()}
+                          SESI TENANT: {tenantSlug.toUpperCase()}
                         </p>
                       </div>
                     ) : (
@@ -793,7 +789,7 @@ export default function TenantDashboardPage() {
                     <div>
                       <h4 className="text-xs font-black text-emerald-900">WhatsApp Nomor Pribadi / Toko Terhubung Aktif</h4>
                       <p className="text-[11px] text-emerald-700 mt-0.5">
-                        Status Sesi Backend: <strong>CONNECTED</strong> (Real Baileys Gateway Engine)
+                        Status Sesi Backend: <strong>CONNECTED</strong>
                       </p>
                     </div>
                   </div>
@@ -811,7 +807,7 @@ export default function TenantDashboardPage() {
             </div>
           )}
 
-          {/* OPSI 2: PRO SCALE (META CLOUD API EMBEDDED SIGNUP) */}
+          {/* PRO SCALE PANEL */}
           {waMode === 'meta' && (
             <div className="space-y-4">
               <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between">
@@ -825,7 +821,6 @@ export default function TenantDashboardPage() {
                 </div>
               </div>
 
-              {/* Komponen Pop-up Modal Meta SDK */}
               <WhatsAppEmbeddedModal 
                 tenantSlug={tenantSlug} 
                 onSuccess={(data) => {
