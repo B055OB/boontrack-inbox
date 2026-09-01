@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import React, { useState, useEffect } from "react";
 import { 
   CheckCircle2, 
   Store, 
@@ -12,17 +11,15 @@ import {
   CreditCard 
 } from "lucide-react";
 
-function RegisterShopContent() {
-  const searchParams = useSearchParams();
-  const initialStore = searchParams ? (searchParams.get("store") || searchParams.get("claim") || "") : "";
-
-  const [storeName, setStoreName] = useState(initialStore);
+export default function RegisterShopPage() {
+  const [storeName, setStoreName] = useState("");
   const [slug, setSlug] = useState("");
   const [status, setStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
   const [selectedPlan, setSelectedPlan] = useState<"growth" | "pro_scale">("growth");
   const [merchantData, setMerchantData] = useState({ name: "", phone: "", email: "" });
   const [loadingPay, setLoadingPay] = useState(false);
 
+  // Sanitasi slug
   const sanitize = (val: string) => {
     return val
       .toLowerCase()
@@ -31,6 +28,20 @@ function RegisterShopContent() {
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
   };
+
+  // Cek parameter ?store= atau ?claim= secara native di browser
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const initialStore = params.get("store") || params.get("claim") || "";
+      if (initialStore) {
+        const clean = sanitize(initialStore);
+        setStoreName(initialStore);
+        setSlug(clean);
+        verifySlugApi(clean);
+      }
+    }
+  }, []);
 
   const verifySlugApi = async (targetSlug: string) => {
     if (!targetSlug) return;
@@ -43,15 +54,6 @@ function RegisterShopContent() {
       setStatus("available");
     }
   };
-
-  useEffect(() => {
-    if (initialStore) {
-      const clean = sanitize(initialStore);
-      setStoreName(initialStore);
-      setSlug(clean);
-      verifySlugApi(clean);
-    }
-  }, [initialStore]);
 
   const handleStoreNameChange = (val: string) => {
     setStoreName(val);
@@ -96,72 +98,74 @@ function RegisterShopContent() {
   };
 
   return (
-    <div className="w-full max-w-xl flex flex-col items-center">
-      {/* Header */}
-      <div className="text-center max-w-lg mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-bold mb-3">
-          <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-          <span>BoonTrack Shop Onboarding</span>
+    <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans py-10 px-4 sm:px-6 flex flex-col justify-center items-center">
+      <div className="w-full max-w-xl flex flex-col items-center">
+        
+        {/* Header */}
+        <div className="text-center max-w-lg mb-8">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-bold mb-3">
+            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+            <span>BoonTrack Shop Onboarding</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            Klaim & Buka Toko Online Anda
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-2 leading-relaxed">
+            Otomatisasi etalase produk, verifikasi bayar QRIS 3 detik, dan reminder tagihan WhatsApp resmi.
+          </p>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-          Klaim & Buka Toko Online Anda
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-2 leading-relaxed">
-          Otomatisasi etalase produk, verifikasi bayar QRIS 3 detik, dan reminder tagihan WhatsApp resmi.
-        </p>
-      </div>
 
-      {/* Main Form Box */}
-      <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-xl p-6 sm:p-8 space-y-6">
-        {/* STEP 1: INPUT NAMA TOKO */}
-        <div className="space-y-3">
-          <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
-            1. Nama Toko / Brand Anda
-          </label>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Store className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                required
-                placeholder="Contoh: Toko Berkah 99"
-                value={storeName}
-                onChange={(e) => handleStoreNameChange(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 outline-none transition-all"
-              />
+        {/* Main Form Box */}
+        <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-xl p-6 sm:p-8 space-y-6">
+          
+          {/* STEP 1: INPUT NAMA TOKO */}
+          <div className="space-y-3">
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
+              1. Nama Toko / Brand Anda
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Store className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Toko Berkah 99"
+                  value={storeName}
+                  onChange={(e) => handleStoreNameChange(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 outline-none transition-all"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleManualCheck}
+                disabled={status === "checking" || !slug}
+                className="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+              >
+                {status === "checking" ? "Mengecek..." : "Cek Ketersediaan"}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleManualCheck}
-              disabled={status === "checking" || !slug}
-              className="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
-            >
-              {status === "checking" ? "Mengecek..." : "Cek Ulang"}
-            </button>
+
+            {slug && (
+              <p className="text-[11px] text-slate-400 pl-1">
+                Alamat Toko: <span className="font-mono font-bold text-blue-600">shop.boontrack.com/{slug}</span>
+              </p>
+            )}
           </div>
 
-          {slug && (
-            <p className="text-[11px] text-slate-400 pl-1">
-              Alamat Toko: <span className="font-mono font-bold text-blue-600">shop.boontrack.com/{slug}</span>
-            </p>
+          {/* NOTIFIKASI SUDAH DIGUNAKAN */}
+          {status === "taken" && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-medium flex items-center gap-2">
+              <span>❌</span>
+              <span>Nama toko <b>{slug}</b> sudah terpakai. Silakan ganti nama lain.</span>
+            </div>
           )}
-        </div>
 
-        {/* NOTIFIKASI SUDAH DIGUNAKAN */}
-        {status === "taken" && (
-          <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs font-medium flex items-center gap-2">
-            <span>❌</span>
-            <span>Nama toko <b>{slug}</b> sudah terpakai. Silakan ganti nama lain.</span>
-          </div>
-        )}
-
-        {/* STEP 2: FORM DATA SELLER (Default terbuka jika status available atau idle) */}
-        {(status === "available" || status === "idle") && (
-          <form onSubmit={handleRegisterAndPay} className="space-y-5 pt-2 border-t border-slate-100 animate-in fade-in duration-300">
+          {/* STEP 2: FORM DATA SELLER */}
+          <form onSubmit={handleRegisterAndPay} className="space-y-5 pt-2 border-t border-slate-100">
             {status === "available" && (
               <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Domain <b>shop.boontrack.com/{slug}</b> tersedia! Silakan lengkapi data toko Anda:</span>
+                <span>Domain <b>shop.boontrack.com/{slug}</b> tersedia! Lengkapi data toko:</span>
               </div>
             )}
 
@@ -263,33 +267,20 @@ function RegisterShopContent() {
               <ArrowRight className="w-4 h-4 ml-1" />
             </button>
           </form>
-        )}
-      </div>
+        </div>
 
-      <div className="mt-8 flex items-center gap-6 text-xs text-slate-400">
-        <div className="flex items-center gap-1.5">
-          <ShieldCheck className="w-4 h-4 text-emerald-600" />
-          <span>Verifikasi Otomatis</span>
+        <div className="mt-8 flex items-center gap-6 text-xs text-slate-400">
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>Verifikasi Otomatis</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-4 h-4 text-blue-600" />
+            <span>Aktif Instan</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Zap className="w-4 h-4 text-blue-600" />
-          <span>Aktif Instan</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-export default function RegisterShopPage() {
-  return (
-    <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans py-12 px-4 sm:px-6 flex flex-col justify-center items-center">
-      <Suspense fallback={
-        <div className="w-full max-w-xl bg-white rounded-3xl border border-slate-200 p-8 text-center text-xs text-slate-400 animate-pulse">
-          Memuat formulir pendaftaran...
-        </div>
-      }>
-        <RegisterShopContent />
-      </Suspense>
+      </div>
     </main>
   );
 }
