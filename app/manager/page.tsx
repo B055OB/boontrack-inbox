@@ -8,22 +8,18 @@ import {
   Clock, 
   Search, 
   RotateCw, 
-  ShoppingBag, 
-  Calendar, 
   Phone, 
-  UserCheck, 
-  ExternalLink,
   Receipt
 } from "lucide-react";
 
-// DUMMY DATA FOR TESTING
+// DUMMY DATA FOR TESTING (OVERRIDE AGENSI 25%)
 const DUMMY_AFFILIATES = [
   {
     code: "BOON-SUPER",
     name: "Suhu Ads",
     totalOrders: 18,
     grossSales: 8982000,
-    overrideAgency: 898200,
+    overrideAgency: 2245500, // 25% dari Rp 8.982.000
     pendingPayout: 2694600,
   },
   {
@@ -31,7 +27,7 @@ const DUMMY_AFFILIATES = [
     name: "Digital Champion",
     totalOrders: 9,
     grossSales: 4491000,
-    overrideAgency: 449100,
+    overrideAgency: 1122750, // 25% dari Rp 4.491.000
     pendingPayout: 1347300,
   },
   {
@@ -39,7 +35,7 @@ const DUMMY_AFFILIATES = [
     name: "Media Booster",
     totalOrders: 4,
     grossSales: 1996000,
-    overrideAgency: 199600,
+    overrideAgency: 499000, // 25% dari Rp 1.996.000
     pendingPayout: 598800,
   }
 ];
@@ -89,7 +85,7 @@ const DUMMY_BUYER_ORDERS = [
 
 export default function ManagerControlCenter() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"marketers" | "orders">("orders");
+  const [activeTab, setActiveTab] = useState<"orders" | "marketers">("orders");
 
   const totalGross = DUMMY_AFFILIATES.reduce((acc, curr) => acc + curr.grossSales, 0);
   const totalOverride = DUMMY_AFFILIATES.reduce((acc, curr) => acc + curr.overrideAgency, 0);
@@ -121,13 +117,13 @@ export default function ManagerControlCenter() {
               Affiliate Manager Control Center
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              Monitoring tim marketer, komisi override agensi, data pesanan pembeli, dan validasi payout.
+              Monitoring tim marketer, komisi override agensi (25%), data pesanan pembeli, dan validasi payout.
             </p>
           </div>
 
           <button 
             onClick={() => window.location.reload()}
-            className="self-start md:self-auto p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl border border-slate-800 flex items-center gap-2 text-xs font-semibold transition"
+            className="self-start md:self-auto p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl border border-slate-800 flex items-center gap-2 text-xs font-semibold transition cursor-pointer"
           >
             <RotateCw className="w-4 h-4" />
             <span>Sync Live</span>
@@ -158,7 +154,7 @@ export default function ManagerControlCenter() {
 
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-2">
             <div className="flex items-center justify-between text-slate-400">
-              <span className="text-xs font-semibold">Override Revenue (Agensi)</span>
+              <span className="text-xs font-semibold">Override Revenue (Agensi 25%)</span>
               <TrendingUp className="w-4 h-4 text-indigo-400" />
             </div>
             <div className="text-2xl font-black text-indigo-400">
@@ -182,7 +178,7 @@ export default function ManagerControlCenter() {
           <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
             <button
               onClick={() => setActiveTab("orders")}
-              className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-lg transition flex items-center gap-2 cursor-pointer ${
                 activeTab === "orders" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
               }`}
             >
@@ -191,7 +187,7 @@ export default function ManagerControlCenter() {
             </button>
             <button
               onClick={() => setActiveTab("marketers")}
-              className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-lg transition flex items-center gap-2 cursor-pointer ${
                 activeTab === "marketers" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
               }`}
             >
@@ -300,7 +296,7 @@ export default function ManagerControlCenter() {
                     <th className="px-6 py-3.5">Nama Marketer</th>
                     <th className="px-6 py-3.5">Total Order</th>
                     <th className="px-6 py-3.5">Gross Sales</th>
-                    <th className="px-6 py-3.5">Override Agensi (10%)</th>
+                    <th className="px-6 py-3.5">Override Agensi (25%)</th>
                     <th className="px-6 py-3.5">Pending Payout Affiliate</th>
                     <th className="px-6 py-3.5 text-right">Aksi</th>
                   </tr>
@@ -327,7 +323,7 @@ export default function ManagerControlCenter() {
                         Rp {a.pendingPayout.toLocaleString("id-ID")}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11px] font-bold transition">
+                        <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer">
                           Disburse Payout
                         </button>
                       </td>
