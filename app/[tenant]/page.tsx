@@ -17,9 +17,11 @@ import {
   Sparkles,
   Store,
   AlertCircle,
-  PackageOpen
+  PackageOpen,
+  Check
 } from "lucide-react";
 import ShopClaimSection from "@/app/components/ShopClaimSection";
+import { captureAffiliateReferral, getActiveAffiliateCode } from "@/lib/tracking";
 
 interface Product {
   id: number;
@@ -82,6 +84,11 @@ export default function TenantStorefrontPage() {
   // Validasi Toko Demo
   const isDemoStore = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
 
+  // 0. CAPTURE AFFILIATE REFERRAL DARI URL (?ref=... / ?via=...)
+  useEffect(() => {
+    captureAffiliateReferral();
+  }, []);
+
   // 1. BYPASS RUTE SISTEM KE FORM REGISTER
   if (tenantSlug === "register" || tenantSlug === "daftar") {
     return (
@@ -95,7 +102,6 @@ export default function TenantStorefrontPage() {
   const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">("checking");
 
   useEffect(() => {
-    // Toko default demo selalu aktif
     if (isDemoStore) {
       setStoreStatus("active");
       return;
@@ -105,7 +111,6 @@ export default function TenantStorefrontPage() {
       try {
         const res = await fetch(`https://api.boontrack.com/api/v1/shop/subscriptions/check-slug/${tenantSlug}`);
         const data = await res.json();
-        // Jika available = true (artinya nama toko belum didaftarkan/belum bayar), maka tampilkan not_found
         if (data.available === true) {
           setStoreStatus("not_found");
         } else {
@@ -124,8 +129,8 @@ export default function TenantStorefrontPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
   const [showCartModal, setShowCartModal] = useState(false);
-  const [showQRISModal, setShowQRISModal] = useState(false);
-  const [checkoutDirectProduct, setCheckoutDirectProduct] = useState<Product | null>(null);
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
 
   const [inputMessage, setInputMessage] = useState("");
   const [messages, setMessages] = useState([
@@ -137,7 +142,6 @@ export default function TenantStorefrontPage() {
     }
   ]);
 
-  // TAMPILAN LOADING CHECK
   if (storeStatus === "checking") {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-xs text-slate-400 font-semibold">
@@ -146,7 +150,6 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // TAMPILAN JIKA TOKO TIDAK DITEMUKAN / BELUM DIDAFTARKAN
   if (storeStatus === "not_found") {
     return (
       <div className="min-h-screen bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
@@ -162,7 +165,7 @@ export default function TenantStorefrontPage() {
           </div>
 
           <div className="p-3.5 bg-blue-50 border border-blue-100 text-blue-900 rounded-2xl text-xs font-semibold">
-            🎉 Kabar baik! Nama toko <b>"{tenantSlug}"</b> masih tersedia untuk Anda klaim.
+            ✨ Kabar baik! Nama toko <b>"{tenantSlug}"</b> masih tersedia untuk Anda klaim.
           </div>
 
           <button
@@ -177,7 +180,6 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // PRODUK: Isolasi data demo hanya untuk akun demo resmi
   const rawProducts = isDemoStore ? SAMPLE_PRODUCTS : [];
   const filteredProducts = activeCategory === "all"
     ? rawProducts
@@ -213,12 +215,47 @@ export default function TenantStorefrontPage() {
   const totalCartCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const totalCartPrice = cart.reduce((sum, item) => sum + item.product.price * item.qty, 0);
 
-  const currentBillAmount = checkoutDirectProduct 
-    ? checkoutDirectProduct.price 
-    : (totalCartPrice > 0 ? totalCartPrice : 99000);
+  const handleCreateOrder = async (singleProduct?: Product) => {
+    if (!customerPhone.trim()) {
+      alert("Silakan masukkan nomor WhatsApp Anda terlebih dahulu.");
+      return;
+    }
 
-  const qrisPayloadString = `00020101021226570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI520473725303360540${currentBillAmount.toString().length < 10 ? '0' + currentBillAmount.toString().length : currentBillAmount.toString().length}${currentBillAmount}5802ID5909BoonTrack6012Kab.%20Bandung6105402866304`;
-  const qrisImageSrc = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&format=png&data=${encodeURIComponent(qrisPayloadString)}`;
+    setIsSubmittingOrder(true);
+    const activeRef = getActiveAffiliateCode();
+    const items = singleProduct 
+      ? [{ product_id: singleProduct.id, name: singleProduct.name, price: singleProduct.price, qty: 1 }]
+      : cart.map(item => ({ product_id: item.product.id, name: item.product.name, price: item.product.price, qty: item.qty }));
+    
+    const amount = singleProduct ? singleProduct.price : totalCartPrice;
+
+    try {
+      const payload = {
+        tenant_slug: tenantSlug,
+        customer_phone: customerPhone,
+        items,
+        amount,
+        affiliate_code: activeRef
+      };
+
+      const res = await fetch("https://boontrack-core-production.up.railway.app/api/v1/shop/gateway/create-invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (data?.order_id) {
+        router.push(`/checkout/${data.order_id}`);
+      } else {
+        router.push(`/checkout/demo-${Date.now()}`);
+      }
+    } catch {
+      router.push(`/checkout/demo-${Date.now()}`);
+    } finally {
+      setIsSubmittingOrder(false);
+    }
+  };
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -293,7 +330,7 @@ export default function TenantStorefrontPage() {
 
       {/* 2-COLUMN VIEW */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
-        {/* KOLOM KIRI */}
+        {/* KOLOM KIRI: ASSISTANT CHAT */}
         <section className="lg:col-span-5 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden h-[580px] lg:h-[calc(100vh-120px)] lg:sticky lg:top-24">
           <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -332,13 +369,13 @@ export default function TenantStorefrontPage() {
           </form>
         </section>
 
-        {/* KOLOM KANAN */}
+        {/* KOLOM KANAN: KATALOG PRODUK */}
         <section className="lg:col-span-7 space-y-5">
           <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
             {[
               { id: "all", label: "Semua Produk" },
               { id: "terlaris", label: "🔥 Terlaris" },
-              { id: "digital", label: "📁 Digital" },
+              { id: "digital", label: "⚡ Digital" },
               { id: "fisik", label: "📦 Produk Fisik" },
             ].map((tab) => (
               <button
@@ -403,6 +440,124 @@ export default function TenantStorefrontPage() {
           )}
         </section>
       </main>
+
+      {/* MODAL DETAIL PRODUK */}
+      {selectedProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-lg w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
+              <X className="w-5 h-5" />
+            </button>
+            <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full aspect-video object-cover rounded-2xl" />
+            <div>
+              <h2 className="text-lg font-black text-slate-900">{selectedProduct.name}</h2>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-xl font-black text-blue-600">Rp {selectedProduct.price.toLocaleString("id-ID")}</span>
+                {selectedProduct.originalPrice && (
+                  <span className="text-xs text-slate-400 line-through">Rp {selectedProduct.originalPrice.toLocaleString("id-ID")}</span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">{selectedProduct.description}</p>
+            </div>
+
+            {selectedProduct.features && (
+              <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                <span className="text-xs font-bold text-slate-700">Fitur & Manfaat:</span>
+                {selectedProduct.features.map((feat, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
+                    <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span>{feat}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-slate-100 pt-3 space-y-3">
+              <label className="text-xs font-bold text-slate-700 block">Nomor WhatsApp untuk Pengiriman Akses:</label>
+              <input
+                type="tel"
+                placeholder="Contoh: 08123456789"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
+              />
+              <button
+                onClick={() => handleCreateOrder(selectedProduct)}
+                disabled={isSubmittingOrder}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>{isSubmittingOrder ? "Memproses Invoice..." : "Beli Sekarang (QRIS Instan)"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KERANJANG */}
+      {showCartModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative">
+            <button onClick={() => setShowCartModal(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-blue-600" /> Keranjang Belanja
+            </h2>
+
+            {cart.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-6">Keranjang masih kosong.</p>
+            ) : (
+              <div className="space-y-3 max-h-60 overflow-y-auto">
+                {cart.map((item) => (
+                  <div key={item.product.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex-1 pr-2">
+                      <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{item.product.name}</h4>
+                      <span className="text-xs text-blue-600 font-bold">Rp {(item.product.price * item.qty).toLocaleString("id-ID")}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
+                        <Minus className="w-3 h-3 text-slate-600" />
+                      </button>
+                      <span className="text-xs font-bold text-slate-800">{item.qty}</span>
+                      <button onClick={() => updateCartQty(item.product.id, 1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
+                        <Plus className="w-3 h-3 text-slate-600" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {cart.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <div className="flex justify-between items-center text-xs font-black text-slate-900">
+                  <span>Total Tagihan</span>
+                  <span className="text-sm text-blue-600">Rp {totalCartPrice.toLocaleString("id-ID")}</span>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">Nomor WhatsApp:</label>
+                  <input
+                    type="tel"
+                    placeholder="08123456789"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+                <button
+                  onClick={() => handleCreateOrder()}
+                  disabled={isSubmittingOrder}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>{isSubmittingOrder ? "Membuat Pesanan..." : "Checkout Sekarang"}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <footer className="py-5 text-center text-xs text-slate-400 bg-white border-t border-slate-200 mt-auto">
         © 2026 {displayName.toUpperCase()} • Powered by BoonTrack Commerce Engine

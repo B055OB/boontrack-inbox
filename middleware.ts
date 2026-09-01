@@ -9,7 +9,7 @@ import type { NextRequest } from 'next/server';
 
 // Known B2B Tenant Slugs (webchat + CS inbox engine)
 const B2B_TENANT_SLUGS = new Set([
-  'atmosfitnes', 'gym',
+  'atmosfitnes',
   'nyka', 'nyka-hijab', 'nyka-modest', 'nyka-store',
   'suhu-ads', 'suhu-ads-masterclass', 'suhuads', 'masterclass', 'digital-marketing',
   'bale-pananggeuhan', 'bale',
@@ -58,13 +58,21 @@ function extractSubdomain(hostWithPort: string): string | null {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ── 0. Universal pass-through: static assets, Next.js internals, API, Onboarding/Register ───────
+  // ── 0. Universal pass-through: static assets, Next.js internals, API, Auth/Checkout & Vertical Apps ──
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/static') ||
     pathname === '/register' ||
     pathname.startsWith('/register/') ||
+    pathname === '/pricing' ||
+    pathname.startsWith('/pricing/') ||
+    pathname === '/checkout' ||
+    pathname.startsWith('/checkout/') ||
+    pathname === '/dashboard' ||
+    pathname.startsWith('/dashboard/') ||
+    pathname === '/login' ||
+    pathname.startsWith('/login/') ||
     pathname === '/daftar' ||
     pathname.startsWith('/daftar/') ||
     pathname === '/onboarding' ||
@@ -73,6 +81,10 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/pilot-onboarding/') ||
     pathname === '/enterprise' ||
     pathname.startsWith('/enterprise/') ||
+    pathname.startsWith('/gym') ||
+    pathname.startsWith('/pos') ||
+    pathname.startsWith('/hotel') ||
+    pathname.startsWith('/clinic') ||
     pathname.includes('.')
   ) {
     return NextResponse.next();
@@ -86,7 +98,7 @@ export function middleware(req: NextRequest) {
   const host = req.headers.get('host') || '';
   const hostClean = host.split(':')[0].toLowerCase().trim();
 
-  // ── 1. Root / system hostnames & App Hub pass-through ───────────────────────
+  // ── 1. Root / system hostnames & App Hub pass-through ──
   if (
     hostClean === 'localhost' ||
     hostClean === 'boontrack.com' ||
@@ -114,9 +126,39 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
+  // SUBDOMAIN: manager.boontrack.com (Affiliate & Agency Manager Control Plane)
+  // ===========================================================================
+  if (subdomain === 'manager') {
+    const url = req.nextUrl.clone();
+    if (pathname === '/') {
+      url.pathname = '/manager';
+      return NextResponse.rewrite(url);
+    }
+    if (!pathname.startsWith('/manager')) {
+      url.pathname = `/manager${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+    return NextResponse.next();
+  }
+
+  // ===========================================================================
+  // SUBDOMAIN: affiliate.boontrack.com (Affiliate Marketer Hub & Leaderboard)
+  // ===========================================================================
+  if (subdomain === 'affiliate') {
+    const url = req.nextUrl.clone();
+    if (pathname === '/') {
+      url.pathname = '/affiliate';
+      return NextResponse.rewrite(url);
+    }
+    if (!pathname.startsWith('/affiliate')) {
+      url.pathname = `/affiliate${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+    return NextResponse.next();
+  }
+
+  // ===========================================================================
   // SPECIAL DOMAIN: shop.boontrack.com
-  // / → Renders app/page.tsx (Landing Page Seller)
-  // /[tenant] → Public storefront & webchat
   // ===========================================================================
   if (subdomain === 'shop') {
     return NextResponse.next();
@@ -124,7 +166,6 @@ export function middleware(req: NextRequest) {
 
   // ===========================================================================
   // SPECIAL DOMAIN: bossob.boontrack.com
-  // / → Career AI Showcase
   // ===========================================================================
   if (subdomain === 'bossob') {
     const url = req.nextUrl.clone();
@@ -149,7 +190,6 @@ export function middleware(req: NextRequest) {
 
   // ===========================================================================
   // SPECIAL DOMAIN: chat.boontrack.com
-  // / → Super Admin Live Monitoring Dashboard (/admin)
   // ===========================================================================
   if (subdomain === 'chat') {
     const url = req.nextUrl.clone();
@@ -167,50 +207,7 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // 2. Gym Subdomain (gym.* or atmosfitnes.*)
-  // ===========================================================================
-  if (subdomain === 'gym' || subdomain === 'atmosfitnes') {
-    const url = req.nextUrl.clone();
-
-    if (pathname === '/atmosfitnes' || pathname === '/atmosfitnes/') {
-      url.pathname = '/';
-      return NextResponse.redirect(url, 307);
-    }
-    if (pathname === '/atmosfitnes/dashboard') {
-      url.pathname = '/dashboard';
-      return NextResponse.redirect(url, 307);
-    }
-    if (pathname.startsWith('/atmosfitnes/')) {
-      url.pathname = pathname.replace('/atmosfitnes', '') || '/';
-      return NextResponse.redirect(url, 307);
-    }
-
-    if (pathname === '/') {
-      url.pathname = '/atmosfitnes';
-      return NextResponse.rewrite(url);
-    }
-
-    if (pathname === '/dashboard' || pathname === '/inbox' || pathname === '/chat') {
-      url.pathname = '/atmosfitnes/dashboard';
-      return NextResponse.rewrite(url);
-    }
-
-    const gymSubroutes = ['/members', '/access-logs', '/controllers', '/invoices', '/pos', '/classes', '/reports', '/settings'];
-    if (gymSubroutes.some((r) => pathname === r || pathname.startsWith(`${r}/`))) {
-      url.pathname = `/gym${pathname}`;
-      return NextResponse.rewrite(url);
-    }
-
-    if (pathname.startsWith('/gym') || pathname.startsWith('/admin')) {
-      return NextResponse.next();
-    }
-
-    url.pathname = `/atmosfitnes${pathname}`;
-    return NextResponse.rewrite(url);
-  }
-
-  // ===========================================================================
-  // 3. Explicit B2B Tenant Slugs
+  // 2. Explicit B2B Tenant Slugs
   // ===========================================================================
   if (B2B_TENANT_SLUGS.has(subdomain)) {
     const url = req.nextUrl.clone();
@@ -243,7 +240,7 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // 4. Career Profile Subdomains
+  // 3. Career Profile Subdomains
   // ===========================================================================
   if (CAREER_KNOWN_SLUGS.has(subdomain)) {
     const url = req.nextUrl.clone();
@@ -267,7 +264,7 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // 5. Dynamic B2B Tenant Fallback
+  // 4. Dynamic B2B Tenant Fallback
   // ===========================================================================
   {
     const url = req.nextUrl.clone();
