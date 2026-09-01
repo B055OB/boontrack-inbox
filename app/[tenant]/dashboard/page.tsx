@@ -22,11 +22,11 @@ import {
   Smartphone,
   CheckCircle2,
   RefreshCw,
-  Sparkles,
   ShieldCheck,
   Loader2,
   ShieldAlert,
-  PhoneCall
+  PhoneCall,
+  AlertTriangle
 } from 'lucide-react';
 import WhatsAppEmbeddedModal from './components/WhatsAppEmbeddedModal';
 
@@ -84,11 +84,12 @@ export default function TenantDashboardPage() {
   // WhatsApp Tab Mode: 'qr' (Growth) vs 'meta' (Pro Scale)
   const [waMode, setWaMode] = useState<'qr' | 'meta'>('qr');
   
-  // Real WhatsApp Growth Session States
+  // Real WhatsApp Gateway Session States (Failure-Honest Architecture)
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-  const [waStatus, setWaStatus] = useState<"CONNECTING" | "CONNECTED" | "DISCONNECTED">("DISCONNECTED");
+  const [waStatus, setWaStatus] = useState<"CONNECTING" | "CONNECTED" | "DISCONNECTED" | "DEGRADED">("DISCONNECTED");
   const [waErrorMessage, setWaErrorMessage] = useState<string | null>(null);
+  const [connectedPhone, setConnectedPhone] = useState<string | null>(null);
 
   // State untuk Pairing Code (Nomor HP)
   const [pairingPhone, setPairingPhone] = useState("");
@@ -173,33 +174,46 @@ export default function TenantDashboardPage() {
     }
   };
 
-  // Handler Real Backend Session WhatsApp via Next.js Proxy Route
+  // Failure-Honest Backend Fetcher ke Live Railway Endpoint
   const handleConnectGrowthSession = async () => {
     setIsQrLoading(true);
     setWaErrorMessage(null);
     setPairingCodeResult(null);
+
     try {
-      const res = await fetch(`/api/whatsapp/connect?tenant=${tenantSlug}`, {
-        method: "POST",
-      });
+      const res = await fetch("https://api.boontrack.com/tenant/whatsapp/status");
       const data = await res.json();
       
-      if (data.success) {
-        setQrCodeUrl(data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=BoonTrack-${tenantSlug.toUpperCase()}`);
+      // Jika Gateway DEGRADED atau unreachable -> Blok render QR
+      if (!data.success || data.status === "DEGRADED") {
+        setWaStatus("DEGRADED");
+        setQrCodeUrl(null);
+        setWaErrorMessage(
+          data.disconnect_reason === "GATEWAY_UNREACHABLE"
+            ? "Cluster WhatsApp Gateway belum aktif / offline. QR Code tidak dapat dimuat sampai engine gateway dinyalakan."
+            : "Layanan WhatsApp Gateway sedang dalam pemeliharaan."
+        );
+      } else if (data.status === "CONNECTED") {
+        setWaStatus("CONNECTED");
+        setConnectedPhone(data.phone_number || null);
+        setQrCodeUrl(null);
+      } else if (data.qr_image || data.qr_raw) {
+        // HANYA RENDER JIKA ADA PAYLOAD RAW DARI ENGINE WA
         setWaStatus("CONNECTING");
+        setQrCodeUrl(data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.qr_raw)}`);
       } else {
-        setWaErrorMessage(data.detail || "Gagal menginisialisasi sesi WhatsApp.");
+        setWaStatus("DISCONNECTED");
+        setQrCodeUrl(null);
       }
     } catch (err) {
-      console.error("Fetch error connecting WhatsApp:", err);
-      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=BoonTrack-${tenantSlug.toUpperCase()}-Session`);
-      setWaStatus("CONNECTING");
+      setWaStatus("DEGRADED");
+      setQrCodeUrl(null);
+      setWaErrorMessage("Gagal tersambung ke BoonTrack Core Gateway API.");
     } finally {
       setIsQrLoading(false);
     }
   };
 
-  // Handler Request Pairing Code via Phone Number
   const handleRequestPairingCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pairingPhone.trim()) return alert("Masukkan nomor WhatsApp terlebih dahulu!");
@@ -207,7 +221,7 @@ export default function TenantDashboardPage() {
     setIsPairingLoading(true);
     setPairingCodeResult(null);
     try {
-      const res = await fetch(`/api/whatsapp/pair`, {
+      const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/reconnect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant: tenantSlug, phone: pairingPhone })
@@ -216,12 +230,10 @@ export default function TenantDashboardPage() {
       if (data.success && data.pairing_code) {
         setPairingCodeResult(data.pairing_code);
       } else {
-        // Fallback simulasi kode pairing jika endpoint backend belum aktif sepenuhnya
-        setPairingCodeResult("8K9X-2L1M");
+        alert(data.detail || "Gateway cluster belum siap menerima pairing code.");
       }
     } catch (err) {
-      // Fallback simulasi aman untuk keperluan demo
-      setPairingCodeResult("8K9X-2L1M");
+      alert("Tidak dapat menghubungi cluster gateway.");
     } finally {
       setIsPairingLoading(false);
     }
@@ -352,7 +364,7 @@ export default function TenantDashboardPage() {
             </div>
             <h2 className="text-2xl font-black text-slate-900 mb-2">Live Chat CS Multi-Agent (Chatwoot)</h2>
             <p className="text-slate-500 text-sm max-w-lg mx-auto mb-6">
-              Fitur intervensi manual bersama banyak tim CS di satu nomor WhatsApp terpusat[cite: 3].
+              Fitur intervensi manual bersama banyak tim CS di satu nomor WhatsApp terpusat.
             </p>
             <a
               href="https://wa.me/6281234567890?text=Halo%20Admin%20BoonTrack,%20saya%20mau%20aktivasi%20fitur%20Omnichannel%20Live%20CS%20Chatwoot"
@@ -690,7 +702,7 @@ export default function TenantDashboardPage() {
                 <span>Pengaturan Gateway WhatsApp Bot</span>
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Pilih metode koneksi bot sesuai dengan kebutuhan dan paket langganan Anda[cite: 3].
+                Pilih metode koneksi bot sesuai dengan kebutuhan dan paket langganan Anda.
               </p>
             </div>
 
@@ -733,7 +745,7 @@ export default function TenantDashboardPage() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
-                    Terhubung langsung ke gateway backend untuk menghasilkan sesi perangkat QR aktif[cite: 3].
+                    Terhubung langsung ke gateway backend untuk menghasilkan sesi perangkat QR aktif.
                   </p>
                 </div>
                 <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
@@ -741,14 +753,35 @@ export default function TenantDashboardPage() {
                 </div>
               </div>
 
-              {waErrorMessage && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3 text-xs text-amber-800">
-                  <ShieldAlert className="w-5 h-5 shrink-0" />
-                  <span>{waErrorMessage}</span>
+              {/* STATE WARNING: GATEWAY DEGRADED */}
+              {waStatus === "DEGRADED" && (
+                <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+                      <AlertTriangle className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-amber-900">Cluster Gateway Sedang Tidak Terjangkau</h4>
+                      <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                        {waErrorMessage || "Layanan WhatsApp Gateway sedang offline. QR Code tidak dapat dimuat sampai engine backend gateway diaktifkan."}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="pt-1">
+                    <button
+                      onClick={handleConnectGrowthSession}
+                      disabled={isQrLoading}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white text-xs font-bold rounded-xl flex items-center gap-2 transition"
+                    >
+                      {isQrLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                      <span>Cek Ulang Koneksi Gateway</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {waStatus !== "CONNECTED" ? (
+              {/* STATE NORMAL / CONNECTING */}
+              {waStatus !== "CONNECTED" && waStatus !== "DEGRADED" && (
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
                   <div className="md:col-span-6 space-y-4">
                     <div className="space-y-3">
@@ -786,16 +819,14 @@ export default function TenantDashboardPage() {
                       </button>
                     </div>
 
-                    {/* ========================================== */}
-                    {/* TAMBAHAN FITUR OPSI PAIRING VIA NOMOR TELEPON */}
-                    {/* ========================================== */}
+                    {/* OPSI PAIRING VIA NOMOR TELEPON */}
                     <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 mt-4 space-y-3">
                       <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
                         <PhoneCall className="w-4 h-4 text-blue-600" />
                         <span>Atau Tautkan dengan Nomor WhatsApp Saja</span>
                       </div>
                       <p className="text-[11px] text-slate-500">
-                        Solusi jika kamera HP gagal/invalid membaca QR Code. Masukkan nomor WhatsApp aktif Anda (awali 62):
+                        Solusi jika kamera HP bermasalah saat scan QR. Masukkan nomor WhatsApp aktif Anda (awali 62):
                       </p>
 
                       <form onSubmit={handleRequestPairingCode} className="flex gap-2">
@@ -825,7 +856,6 @@ export default function TenantDashboardPage() {
                         </div>
                       )}
                     </div>
-                    {/* ========================================== */}
 
                   </div>
 
@@ -856,7 +886,10 @@ export default function TenantDashboardPage() {
                     )}
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {/* STATE CONNECTED */}
+              {waStatus === "CONNECTED" && (
                 <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
@@ -865,7 +898,7 @@ export default function TenantDashboardPage() {
                     <div>
                       <h4 className="text-xs font-black text-emerald-900">WhatsApp Nomor Pribadi / Toko Terhubung Aktif</h4>
                       <p className="text-[11px] text-emerald-700 mt-0.5">
-                        Status Sesi Backend: <strong>CONNECTED</strong>
+                        Nomor: <strong>+{connectedPhone || "-"}</strong> • Status: <strong>CONNECTED</strong>
                       </p>
                     </div>
                   </div>
