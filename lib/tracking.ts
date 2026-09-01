@@ -1,10 +1,33 @@
-import Cookies from 'js-cookie';
-
 const COOKIE_NAME = 'bt_ref';
 const COOKIE_EXPIRY_DAYS = 30;
 
 /**
- * Tangkap query parameter ref dari URL (?ref=ALDI01) dan simpan ke cookie 30 hari.
+ * Helper untuk membaca cookie browser secara native
+ */
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+/**
+ * Helper untuk menyimpan cookie browser secara native dengan domain sharing
+ */
+function setCookie(name: string, value: string, days: number) {
+  if (typeof document === 'undefined') return;
+  const date = new Date();
+  date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+  const expires = `expires=${date.toUTCString()}`;
+  
+  const host = window.location.hostname;
+  const isBoonTrackDomain = host.includes('boontrack.com');
+  const domainPart = isBoonTrackDomain ? '; domain=.boontrack.com' : '';
+
+  document.cookie = `${name}=${encodeURIComponent(value)}; ${expires}; path=/${domainPart}; SameSite=Lax`;
+}
+
+/**
+ * Menangkap query parameter (?ref=... / ?via=...) dari URL dan menyimpan ke cookie
  */
 export function captureAffiliateReferral(): string | null {
   if (typeof window === 'undefined') return null;
@@ -13,22 +36,17 @@ export function captureAffiliateReferral(): string | null {
   const refCode = urlParams.get('ref') || urlParams.get('via');
 
   if (refCode) {
-    // First-touch: Hanya set jika cookie belum pernah ada, atau timpa jika strategi last-touch
-    Cookies.set(COOKIE_NAME, refCode.trim().toUpperCase(), {
-      expires: COOKIE_EXPIRY_DAYS,
-      domain: window.location.hostname.includes('boontrack.com') ? '.boontrack.com' : undefined,
-      sameSite: 'lax',
-    });
-    return refCode.trim().toUpperCase();
+    const cleanRef = refCode.trim().toUpperCase();
+    setCookie(COOKIE_NAME, cleanRef, COOKIE_EXPIRY_DAYS);
+    return cleanRef;
   }
 
-  return Cookies.get(COOKIE_NAME) || null;
+  return getCookie(COOKIE_NAME);
 }
 
 /**
- * Ambil referral code yang aktif untuk disisipkan ke payload checkout
+ * Mengambil referral code yang tersimpan di cookie
  */
 export function getActiveAffiliateCode(): string | null {
-  if (typeof window === 'undefined') return null;
-  return Cookies.get(COOKIE_NAME) || null;
+  return getCookie(COOKIE_NAME);
 }
