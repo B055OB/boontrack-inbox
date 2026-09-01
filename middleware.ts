@@ -161,6 +161,12 @@ export function middleware(req: NextRequest) {
   // SPECIAL DOMAIN: shop.boontrack.com
   // ===========================================================================
   if (subdomain === 'shop') {
+    // Redirect root shop.boontrack.com langsung ke /register dengan mempertahankan query param (?ref=...)
+    if (pathname === '/' || pathname === '') {
+      const url = req.nextUrl.clone();
+      url.pathname = '/register';
+      return NextResponse.redirect(url, 307);
+    }
     return NextResponse.next();
   }
 
