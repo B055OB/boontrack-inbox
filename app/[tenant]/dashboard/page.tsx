@@ -26,7 +26,10 @@ import {
   Loader2,
   ShieldAlert,
   PhoneCall,
-  AlertTriangle
+  AlertTriangle,
+  Send,
+  Users,
+  CheckCheck
 } from 'lucide-react';
 import WhatsAppEmbeddedModal from './components/WhatsAppEmbeddedModal';
 
@@ -84,7 +87,7 @@ export default function TenantDashboardPage() {
   // WhatsApp Tab Mode: 'qr' (Growth) vs 'meta' (Pro Scale)
   const [waMode, setWaMode] = useState<'qr' | 'meta'>('qr');
   
-  // Real WhatsApp Gateway Session States (Failure-Honest Architecture)
+  // Real WhatsApp Gateway Session States
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [waStatus, setWaStatus] = useState<"CONNECTING" | "CONNECTED" | "DISCONNECTED" | "DEGRADED">("DISCONNECTED");
@@ -95,6 +98,23 @@ export default function TenantDashboardPage() {
   const [pairingPhone, setPairingPhone] = useState("");
   const [pairingCodeResult, setPairingCodeResult] = useState<string | null>(null);
   const [isPairingLoading, setIsPairingLoading] = useState(false);
+
+  // Live Chat Demo State
+  const [replyText, setReplyText] = useState("");
+  const [chatMessages, setChatMessages] = useState([
+    {
+      id: 1,
+      sender: "customer",
+      text: "Halo OnlineBoost, mau lihat katalog produk lengkapnya dong",
+      time: "Baru Saja"
+    },
+    {
+      id: 2,
+      sender: "bot",
+      text: "Halo! Selamat datang di OnlineBoost Digital Hub 🚀 Solusi scale-up bisnis via Paid Traffic dan Digital Agency. Berikut katalog materi aktif kami!",
+      time: "Baru Saja"
+    }
+  ]);
 
   // Products State
   const [products, setProducts] = useState<ProductItem[]>(isDemoStore ? DEFAULT_PRODUCTS : []);
@@ -126,7 +146,6 @@ export default function TenantDashboardPage() {
     holder: displayName.toUpperCase(),
   });
 
-  // Modal handlers
   const openNewProductModal = () => {
     setEditingProductId(null);
     setProductForm({
@@ -174,6 +193,21 @@ export default function TenantDashboardPage() {
     }
   };
 
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replyText.trim()) return;
+    setChatMessages(prev => [
+      ...prev,
+      {
+        id: Date.now(),
+        sender: "agent",
+        text: replyText,
+        time: "Baru Saja"
+      }
+    ]);
+    setReplyText("");
+  };
+
   // Failure-Honest Backend Fetcher ke Live Railway Endpoint
   const handleConnectGrowthSession = async () => {
     setIsQrLoading(true);
@@ -181,10 +215,9 @@ export default function TenantDashboardPage() {
     setPairingCodeResult(null);
 
     try {
-      const res = await fetch("https://api.boontrack.com/tenant/whatsapp/status");
+      const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/status?tenant=${tenantSlug}`);
       const data = await res.json();
       
-      // Jika Gateway DEGRADED atau unreachable -> Blok render QR
       if (!data.success || data.status === "DEGRADED") {
         setWaStatus("DEGRADED");
         setQrCodeUrl(null);
@@ -198,7 +231,6 @@ export default function TenantDashboardPage() {
         setConnectedPhone(data.phone_number || null);
         setQrCodeUrl(null);
       } else if (data.qr_image || data.qr_raw) {
-        // HANYA RENDER JIKA ADA PAYLOAD RAW DARI ENGINE WA
         setWaStatus("CONNECTING");
         setQrCodeUrl(data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.qr_raw)}`);
       } else {
@@ -286,22 +318,22 @@ export default function TenantDashboardPage() {
         <div className="flex items-center gap-4 overflow-x-auto text-xs font-bold">
           <button
             onClick={() => setActiveTab('inbox')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === 'inbox'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            <MessageSquare className="w-4 h-4" />
+            <MessageSquare className="w-4 h-4 text-blue-600" />
             <span>Live CS & Omnichannel</span>
-            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-1">
-              <Lock className="w-2.5 h-2.5" /> PRO
+            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold flex items-center gap-1">
+              ACTIVE
             </span>
           </button>
 
           <button
             onClick={() => setActiveTab('catalog')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === 'catalog'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -313,7 +345,7 @@ export default function TenantDashboardPage() {
 
           <button
             onClick={() => setActiveTab('ai_knowledge')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === 'ai_knowledge'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -325,7 +357,7 @@ export default function TenantDashboardPage() {
 
           <button
             onClick={() => setActiveTab('integration')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === 'integration'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -337,7 +369,7 @@ export default function TenantDashboardPage() {
 
           <button
             onClick={() => setActiveTab('whatsapp')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === 'whatsapp'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -355,25 +387,118 @@ export default function TenantDashboardPage() {
         )}
       </div>
 
-      {/* TAB 1: Chatwoot Upsell Paywall */}
+      {/* TAB 1: LIVE CHAT CS OMNICHANNEL (UNLOCKED) */}
       {activeTab === 'inbox' && (
-        <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
-          <div className="max-w-2xl w-full bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 shadow-xl text-center">
-            <div className="w-16 h-16 bg-blue-50 border border-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <Lock className="w-8 h-8" />
+        <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-blue-600" />
+                  <span>Live CS & Omnichannel Console</span>
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  PRO SCALE UNLOCKED • 5 SEATS
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Kelola pesan masuk WhatsApp toko dan intervensi chat pelanggan secara real-time bersama tim CS.
+              </p>
             </div>
-            <h2 className="text-2xl font-black text-slate-900 mb-2">Live Chat CS Multi-Agent (Chatwoot)</h2>
-            <p className="text-slate-500 text-sm max-w-lg mx-auto mb-6">
-              Fitur intervensi manual bersama banyak tim CS di satu nomor WhatsApp terpusat.
-            </p>
-            <a
-              href="https://wa.me/6281234567890?text=Halo%20Admin%20BoonTrack,%20saya%20mau%20aktivasi%20fitur%20Omnichannel%20Live%20CS%20Chatwoot"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3.5 rounded-xl text-xs items-center gap-2 shadow-lg shadow-blue-500/20"
-            >
-              Aktivasi Lisensi Add-on CS <ArrowRight className="w-4 h-4" />
-            </a>
+
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Inbox Live Connected</span>
+              </span>
+            </div>
+          </div>
+
+          {/* CHAT CONSOLE VIEW */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden grid grid-cols-1 md:grid-cols-12 min-h-[550px]">
+            
+            {/* Sidebar Daftar Chat Masuk */}
+            <div className="md:col-span-4 border-r border-slate-100 p-4 flex flex-col justify-between bg-slate-50/50">
+              <div className="space-y-2">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider px-2 flex items-center justify-between">
+                  <span>Percakapan Aktif</span>
+                  <Users className="w-3.5 h-3.5" />
+                </div>
+                
+                <div className="p-3.5 bg-white rounded-2xl border border-blue-200 shadow-xs flex items-start gap-3 cursor-pointer hover:border-blue-400 transition">
+                  <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center shrink-0">
+                    62
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 truncate">Customer +62 812-3745-0222</span>
+                      <span className="text-[10px] text-emerald-600 font-bold">Online</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate mt-0.5">Halo OnlineBoost, mau lihat katalog...</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-blue-50 border border-blue-100 rounded-2xl text-[11px] text-blue-800 font-medium flex items-center justify-between">
+                <span>Kuota CS: 1 / 5 Kursi Aktif</span>
+                <span className="font-bold text-blue-600">Pro Active</span>
+              </div>
+            </div>
+
+            {/* Main Chat Workspace */}
+            <div className="md:col-span-8 p-6 flex flex-col justify-between bg-white">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="text-xs font-black text-slate-900">+62 812-3745-0222</h3>
+                    <p className="text-[10px] text-emerald-600 font-bold">● Terhubung ke AI Assistant & Live CS Agent</p>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 rounded-lg text-slate-600">Direct Session</span>
+                </div>
+
+                <div className="space-y-3 py-2 text-xs max-h-[350px] overflow-y-auto">
+                  {chatMessages.map(msg => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.sender === 'customer' ? 'justify-start' : 'justify-end'}`}
+                    >
+                      <div
+                        className={`p-3.5 rounded-2xl max-w-sm ${
+                          msg.sender === 'customer'
+                            ? 'bg-slate-100 text-slate-800 rounded-tl-xs'
+                            : 'bg-blue-600 text-white rounded-tr-xs'
+                        }`}
+                      >
+                        <p className="leading-relaxed">{msg.text}</p>
+                        <div className={`text-[9px] mt-1 flex items-center gap-1 ${msg.sender === 'customer' ? 'text-slate-400' : 'text-blue-200 justify-end'}`}>
+                          <span>{msg.time}</span>
+                          {msg.sender !== 'customer' && <CheckCheck className="w-3 h-3" />}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Input Balas Chat CS */}
+              <form onSubmit={handleSendMessage} className="pt-4 border-t border-slate-100 flex gap-2">
+                <input
+                  type="text"
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder="Ketik pesan live CS untuk membalas pembeli langsung..."
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                />
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Kirim</span>
+                </button>
+              </form>
+            </div>
+
           </div>
         </div>
       )}
@@ -413,7 +538,7 @@ export default function TenantDashboardPage() {
               </div>
               <button
                 onClick={openNewProductModal}
-                className="mt-2 inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs px-4 py-2 rounded-xl transition"
+                className="mt-2 inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs px-4 py-2 rounded-xl transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>Buat Produk Pertama</span>
@@ -771,7 +896,7 @@ export default function TenantDashboardPage() {
                     <button
                       onClick={handleConnectGrowthSession}
                       disabled={isQrLoading}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white text-xs font-bold rounded-xl flex items-center gap-2 transition"
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white text-xs font-bold rounded-xl flex items-center gap-2 transition cursor-pointer"
                     >
                       {isQrLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                       <span>Cek Ulang Koneksi Gateway</span>
