@@ -1,224 +1,178 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
+import { useRouter } from "next/navigation";
 import { 
-  QrCode, 
-  MessageSquareCheck, 
-  Zap, 
+  Dumbbell, 
+  ShoppingBag, 
+  Building2, 
+  Briefcase, 
   ArrowRight, 
-  CheckCircle2, 
-  Sparkles 
+  Sparkles, 
+  ShieldCheck, 
+  Zap, 
+  Layers,
+  ChevronRight
 } from "lucide-react";
 
-export default function ShopLandingPage() {
-  const [storeSlug, setStoreSlug] = useState("");
+interface VerticalModule {
+  id: string;
+  title: string;
+  tagline: string;
+  description: string;
+  badge: string;
+  path: string;
+  icon: React.ReactNode;
+  gradient: string;
+  features: string[];
+}
 
-  const handleClaimStore = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!storeSlug) return;
-    const sanitized = storeSlug.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    window.location.href = `/register?store=${sanitized}`;
-  };
+const VERTICAL_MODULES: VerticalModule[] = [
+  {
+    id: "commerce",
+    title: "WhatsApp Commerce Engine",
+    tagline: "Instant Storefront & Auto-Kasir",
+    description: "Etalase digital instan dengan integrasi pembayaran QRIS real-time dan notifikasi WhatsApp delivery.",
+    badge: "Most Popular",
+    path: "/onlineboost",
+    icon: <ShoppingBag className="w-6 h-6 text-emerald-400" />,
+    gradient: "from-emerald-950/40 to-slate-900 border-emerald-800/30 hover:border-emerald-500/50",
+    features: ["Auto-Kasir 24 Jam", "QRIS Multi-Tenant", "Multi-Tier Affiliate Attribution"]
+  },
+  {
+    id: "gym",
+    title: "Gym Access & POS Management",
+    tagline: "Turnstile IoT & Member Tracking",
+    description: "Sistem operasional gym lengkap dengan gate access kontrol QR, point of sales, dan komisi trainer.",
+    badge: "Turnkey Hardware",
+    path: "/gym",
+    icon: <Dumbbell className="w-6 h-6 text-cyan-400" />,
+    gradient: "from-cyan-950/40 to-slate-900 border-cyan-800/30 hover:border-cyan-500/50",
+    features: ["Gate QR Scanner Relay", "Member Check-in History", "Trainer Session Booking"]
+  },
+  {
+    id: "career",
+    title: "AI Career Builder & ATS Engine",
+    tagline: "Resume Parser & Document State",
+    description: "Platform generasi dan optimasi CV berbasis AI dengan integrasi parsing dokumen DOCX/PDF.",
+    badge: "AI Powered",
+    path: "/career",
+    icon: <Briefcase className="w-6 h-6 text-blue-400" />,
+    gradient: "from-blue-950/40 to-slate-900 border-blue-800/30 hover:border-blue-500/50",
+    features: ["ATS Score Analyzer", "Real-time DOCX Exporter", "WhatsApp Delivery Flow"]
+  },
+  {
+    id: "enterprise",
+    title: "Enterprise Solutions & Booking",
+    tagline: "Multi-Unit Property Management",
+    description: "Manajemen reservasi, billing multi-cabang, dan kontrol akses kamar hotel/studio terintegrasi.",
+    badge: "B2B Engine",
+    path: "/enterprise",
+    icon: <Building2 className="w-6 h-6 text-indigo-400" />,
+    gradient: "from-indigo-950/40 to-slate-900 border-indigo-800/30 hover:border-indigo-500/50",
+    features: ["Multi-Property Routing", "Centralized Ledger", "Automated Billing Webhook"]
+  }
+];
+
+export default function AppHubLandingPage() {
+  const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900">
-      
-      {/* 1. TOP ANNOUNCEMENT BANNER */}
-      <div className="bg-blue-600 text-white text-xs md:text-sm py-2 px-4 text-center font-medium flex items-center justify-center gap-2">
-        <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-        <span>Update Engine 2026: Pembayaran QRIS Native via WhatsApp Meta Cloud API resmi aktif!</span>
-      </div>
-
-      {/* 2. NAVIGATION BAR */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-lg shadow-md shadow-blue-500/20">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col antialiased">
+      {/* Top Navbar */}
+      <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center font-black text-white shadow-md shadow-blue-500/20">
               B
             </div>
-            <span className="text-xl font-extrabold tracking-tight text-slate-900">
-              BoonTrack <span className="text-blue-600 font-bold">Shop</span>
-            </span>
+            <div>
+              <span className="font-black text-white text-base tracking-tight">BoonTrack App Hub</span>
+              <p className="text-[10px] text-slate-400">Multi-Tenant SaaS Infrastructure</p>
+            </div>
           </div>
 
-          <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
-            <a href="#fitur" className="hover:text-blue-600 transition-colors">Fitur Unggulan</a>
-            <a href="#cara-kerja" className="hover:text-blue-600 transition-colors">Cara Kerja</a>
-            <a href="#fitur" className="hover:text-blue-600 transition-colors">Otomasi WhatsApp</a>
-          </nav>
-
           <div className="flex items-center gap-3">
-            <a 
-              href="/register" 
-              className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-2"
+            <button
+              onClick={() => router.push("/affiliate")}
+              className="text-xs font-bold text-slate-300 hover:text-white px-3 py-2 rounded-xl hover:bg-slate-800 transition-all cursor-pointer"
             >
-              Masuk Toko
-            </a>
-            <a 
-              href="#claim" 
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-4 py-2.5 rounded-full shadow-sm hover:shadow-md transition-all"
+              Affiliate Portal
+            </button>
+            <button
+              onClick={() => router.push("/manager")}
+              className="text-xs font-bold text-indigo-400 hover:text-indigo-300 px-3 py-2 rounded-xl bg-indigo-950/50 border border-indigo-800/40 hover:bg-indigo-900/40 transition-all cursor-pointer"
             >
-              Buka Toko Gratis
-            </a>
+              Manager Control
+            </button>
           </div>
         </div>
       </header>
 
-      {/* 3. HERO SECTION */}
-      <section id="claim" className="pt-16 pb-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto text-center">
-        <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-full px-4 py-1.5 mb-8">
-          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-          <span className="text-xs md:text-sm font-bold text-blue-800">#1 WhatsApp-Native Commerce Engine</span>
+      {/* Hero Section */}
+      <main className="max-w-6xl mx-auto px-4 py-12 flex-1 space-y-12">
+        <div className="text-center space-y-4 max-w-2xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Vertical SaaS Orchestrator</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight">
+            Pilih Ekosistem Bisnis Anda
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+            Infrastruktur multi-tenant siap pakai dengan automasi pembayaran Xendit, tracking referral native, dan sinkronisasi database real-time.
+          </p>
         </div>
 
-        <h1 className="text-4xl sm:text-6xl font-black text-slate-950 tracking-tight leading-[1.15] mb-6">
-          Landing Page Super Ngebut. <br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">
-            QRIS & Notifikasi Tembus Langsung ke WhatsApp.
-          </span>
-        </h1>
-
-        <p className="text-base sm:text-xl text-slate-600 max-w-2xl mx-auto mb-10 leading-relaxed font-normal">
-          Satu pintu untuk bikin katalog etalase instan, integrasi WhatsApp Bisnis resmi, terima pembayaran QRIS otomatis 24/7, dan follow-up pelanggan tanpa ribet simpan kontak manual.
-        </p>
-
-        {/* Interactive URL Claim Bar */}
-        <div className="max-w-xl mx-auto mb-6">
-          <form onSubmit={handleClaimStore} className="p-2 bg-white rounded-2xl border-2 border-slate-200 shadow-xl shadow-slate-200/50 flex flex-col sm:flex-row items-stretch gap-2 focus-within:border-blue-600 transition-all">
-            <div className="flex items-center pl-4 pr-1 py-2 text-slate-400 font-semibold text-sm sm:text-base flex-1">
-              <span className="text-slate-400 select-none">shop.boontrack.com/</span>
-              <input 
-                type="text" 
-                placeholder="namatokomu" 
-                value={storeSlug}
-                onChange={(e) => setStoreSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-                className="w-full bg-transparent text-slate-900 placeholder:text-slate-300 font-bold focus:outline-none pl-1"
-                required
-              />
-            </div>
-            <button 
-              type="submit" 
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/20 active:scale-95"
+        {/* Vertical Modules Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {VERTICAL_MODULES.map((mod) => (
+            <div
+              key={mod.id}
+              onClick={() => router.push(mod.path)}
+              className={`bg-gradient-to-br ${mod.gradient} border p-6 rounded-3xl transition-all duration-200 hover:scale-[1.01] hover:shadow-xl cursor-pointer flex flex-col justify-between group`}
             >
-              Klaim Link Toko <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 bg-slate-900/80 rounded-2xl border border-slate-800">
+                    {mod.icon}
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
+                    {mod.badge}
+                  </span>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-black text-white group-hover:text-blue-400 transition-colors">
+                    {mod.title}
+                  </h3>
+                  <p className="text-xs font-semibold text-slate-400 mt-0.5">{mod.tagline}</p>
+                  <p className="text-xs text-slate-400/90 mt-2.5 leading-relaxed">{mod.description}</p>
+                </div>
+
+                <div className="space-y-1.5 border-t border-slate-800/60 pt-3">
+                  {mod.features.map((feat, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs text-slate-300">
+                      <Zap className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                      <span>{feat}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-5 mt-4 border-t border-slate-800/40 flex items-center justify-between text-xs font-bold text-blue-400 group-hover:text-blue-300">
+                <span>Buka Demo & Solusi</span>
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+          ))}
         </div>
+      </main>
 
-        <div className="flex flex-wrap items-center justify-center gap-6 text-xs sm:text-sm text-slate-500 font-medium">
-          <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Setup &lt; 2 Menit</span>
-          <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> WhatsApp Cloud API Resmi</span>
-          <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Otomasi QRIS Real-time</span>
-        </div>
-      </section>
-
-      {/* 4. VALUE PROPOSITION GRID */}
-      <section id="fitur" className="py-20 bg-slate-50 border-y border-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-4">
-              Dibangun Khusus untuk Scale-Up Penjualan Online & Ads Traffic
-            </h2>
-            <p className="text-slate-600 text-base sm:text-lg">
-              Tinggalkan cara lama yang bikin checkout drop karena form rumit dan verifikasi bukti transfer manual.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6">
-                <QrCode className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">Native QRIS Image Dispatch</h3>
-              <p className="text-slate-600 leading-relaxed text-sm">
-                Saat pembeli checkout, kode QRIS berbentuk gambar resmi langsung terkirim di chat WhatsApp. Pembayaran terverifikasi otomatis dalam 3 detik.
-              </p>
-            </div>
-
-            <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-6">
-                <MessageSquareCheck className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">WhatsApp Bisnis Resmi</h3>
-              <p className="text-slate-600 leading-relaxed text-sm">
-                Hubungkan nomor brand Anda langsung melalui Meta Cloud API. Kirim reminder tagihan otomatis tanpa risiko nomor diblokir.
-              </p>
-            </div>
-
-            <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 bg-cyan-50 text-cyan-600 rounded-2xl flex items-center justify-center mb-6">
-                <Zap className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-3">Ultra-Fast Loading Storefront</h3>
-              <p className="text-slate-600 leading-relaxed text-sm">
-                Halaman etalase toko dioptimasi dengan Next.js agar terbuka instan saat diklik dari Meta Ads, TikTok Ads, maupun link bio.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 5. 3-STEP WORKFLOW */}
-      <section id="cara-kerja" className="py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">3 Langkah Praktis</h2>
-            <p className="text-slate-600">Otomasi alur jualan Anda dari hulu ke hilir</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center font-black text-xl mb-6 shadow-lg shadow-slate-900/10">
-                1
-              </div>
-              <h4 className="text-lg font-bold text-slate-900 mb-2">Buat Katalog Produk</h4>
-              <p className="text-sm text-slate-600">Upload foto produk, tentukan harga dan varian. Dapatkan link toko cantik secara instan.</p>
-            </div>
-
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-black text-xl mb-6 shadow-lg shadow-blue-600/20">
-                2
-              </div>
-              <h4 className="text-lg font-bold text-slate-900 mb-2">Pembeli Klik & Checkout</h4>
-              <p className="text-sm text-slate-600">Pembeli memilih item di web, order langsung terkirim ke WhatsApp dengan data terstruktur.</p>
-            </div>
-
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center font-black text-xl mb-6 shadow-lg shadow-emerald-600/20">
-                3
-              </div>
-              <h4 className="text-lg font-bold text-slate-900 mb-2">QRIS & Notifikasi Auto</h4>
-              <p className="text-sm text-slate-600">Sistem mengirim gambar QRIS, mencatat settlement pembayaran, dan mengubah status lunas 100% otomatis.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 6. BOTTOM CONVERSION CTA */}
-      <section className="py-16 px-4">
-        <div className="max-w-5xl mx-auto bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 rounded-3xl p-8 sm:p-14 text-center text-white shadow-2xl relative overflow-hidden">
-          <div className="relative z-10 max-w-2xl mx-auto">
-            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-4">
-              Siap Mengubah Chat WhatsApp Jadi Mesin Kasir Otomatis?
-            </h2>
-            <p className="text-slate-300 text-sm sm:text-base mb-8">
-              Tingkatkan efisiensi CS, hilangkan verifikasi mutasi manual, dan berikan pengalaman belanja terbaik untuk pelanggan toko Anda.
-            </p>
-            <a 
-              href="#claim" 
-              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold px-8 py-4 rounded-xl text-base shadow-lg shadow-blue-500/30 transition-all hover:scale-105 active:scale-95"
-            >
-              Mulai Buat Toko Online Sekarang <ArrowRight className="w-5 h-5" />
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* 7. FOOTER */}
-      <footer className="bg-white border-t border-slate-100 py-8 text-center text-xs text-slate-400">
-        <p>© 2026 BoonTrack. All rights reserved.</p>
+      {/* Footer */}
+      <footer className="py-6 border-t border-slate-800 text-center text-xs text-slate-500 bg-slate-900/40">
+        © 2026 BoonTrack Multi-Tenant Engine • Consolidated Vertical Hub
       </footer>
-
     </div>
   );
 }
