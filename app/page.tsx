@@ -78,7 +78,7 @@ export default function AppHubLandingPage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col antialiased">
+    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 font-sans flex flex-col antialiased">
       {/* Top Navbar */}
       <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">

@@ -101,7 +101,7 @@ function RegisterShopContent() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 py-12 px-4 sm:px-6 flex flex-col justify-center items-center">
+    <div className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 py-12 px-4 sm:px-6 flex flex-col justify-center items-center">
       
       {/* Header */}
       <div className="text-center max-w-lg mb-8">
@@ -125,7 +125,7 @@ function RegisterShopContent() {
           <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
             1. Nama Toko / Brand Anda
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
               <Store className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
@@ -134,7 +134,7 @@ function RegisterShopContent() {
                 placeholder="Contoh: Toko Berkah 99"
                 value={storeName}
                 onChange={(e) => handleStoreNameChange(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 outline-none transition-all"
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 outline-none transition-all"
               />
             </div>
             <button
@@ -179,7 +179,7 @@ function RegisterShopContent() {
                   placeholder="Nama Lengkap Pemilik Toko"
                   value={merchantData.name}
                   onChange={(e) => setMerchantData({ ...merchantData, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none"
                 />
               </div>
 
@@ -192,7 +192,7 @@ function RegisterShopContent() {
                     placeholder="08123456789"
                     value={merchantData.phone}
                     onChange={(e) => setMerchantData({ ...merchantData, phone: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none font-mono"
                   />
                 </div>
                 <div>
@@ -203,7 +203,7 @@ function RegisterShopContent() {
                     placeholder="email@bisnis.com"
                     value={merchantData.email}
                     onChange={(e) => setMerchantData({ ...merchantData, email: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none"
                   />
                 </div>
               </div>
@@ -289,7 +289,7 @@ function RegisterShopContent() {
 
 export default function RegisterShopPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-xs text-slate-400">Memuat onboarding...</div>}>
+    <Suspense fallback={<div className="min-h-[100dvh] flex items-center justify-center text-xs text-slate-400">Memuat onboarding...</div>}>
       <RegisterShopContent />
     </Suspense>
   );

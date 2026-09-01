@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
+import { getActiveAffiliateCode } from "@/lib/tracking";
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -24,20 +25,13 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [qrData, setQrData] = useState<{ orderId: string; invoiceUrl?: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Ambil referral code dari cookie browser jika ada
+  // Ambil referral code via multi-tier fallback (Memory -> URL -> Cookie -> LocalStorage -> SessionStorage)
   useEffect(() => {
-    const getCookie = (name: string) => {
-      const value = `; ${document.cookie}`;
-      const parts = value.split(`; ${name}=`);
-      if (parts.length === 2) return parts.pop()?.split(";").shift();
-      return undefined;
-    };
-
-    const ref = getCookie("bt_ref");
-    if (ref) {
-      setAffiliateCode(decodeURIComponent(ref));
+    const activeRef = getActiveAffiliateCode();
+    if (activeRef) {
+      setAffiliateCode(activeRef);
     }
-  }, []);
+  }, [isOpen]);
 
   if (!isOpen || !product) return null;
 
@@ -45,6 +39,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     e.preventDefault();
     setLoading(true);
     setErrorMessage("");
+
+    // Fallback: Check active ref again at submit time in case user navigated directly
+    const currentRef = affiliateCode || getActiveAffiliateCode() || undefined;
 
     try {
       const result = await createOrderAndInvoice({
@@ -55,7 +52,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         customerName,
         customerPhone,
         customerEmail,
-        affiliateCode,
+        affiliateCode: currentRef,
       });
 
       setQrData({
@@ -70,11 +67,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-5 text-slate-100 shadow-2xl relative">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-5 text-slate-100 shadow-2xl relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
         
         {/* Header Modal */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3 sticky top-0 bg-slate-900 z-10">
           <div>
             <h3 className="text-base font-bold text-white">Instant Checkout</h3>
             <p className="text-[11px] text-slate-400">Pembayaran Instan via QRIS Real-time</p>
@@ -145,7 +142,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="Contoh: Budi Pratama"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-xs"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-base md:text-xs"
               />
             </div>
 
@@ -157,7 +154,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
                 placeholder="Contoh: 081234567890"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-xs font-mono"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-base md:text-xs font-mono"
               />
             </div>
 
@@ -168,7 +165,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 value={customerEmail}
                 onChange={(e) => setCustomerEmail(e.target.value)}
                 placeholder="nama@email.com"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-xs"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-base md:text-xs"
               />
             </div>
 

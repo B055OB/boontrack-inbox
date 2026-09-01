@@ -56,31 +56,31 @@ export default function ShopClaimSection() {
   };
 
   return (
-    <div className="max-w-xl mx-auto p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+    <div className="max-w-xl mx-auto p-6 bg-white rounded-2xl shadow-lg border border-gray-100 w-full">
       <h2 className="text-2xl font-bold text-gray-900 text-center mb-2">Buka Toko Online Anda</h2>
       <p className="text-gray-500 text-center mb-6 text-sm">Cek ketersediaan nama toko & aktifkan sistem otomatis sekarang.</p>
 
       <div className="space-y-4">
         <div>
           <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Nama Toko / Brand</label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               placeholder="Contoh: Toko Berkah 99"
               value={storeName}
               onChange={(e) => handleSlugInput(e.target.value)}
-              className="flex-1 px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+              className="flex-1 px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-base md:text-sm"
             />
             <button
               onClick={handleCheckAvailability}
               disabled={status === 'checking' || !slug}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition disabled:opacity-50"
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition disabled:opacity-50 cursor-pointer shrink-0"
             >
               {status === 'checking' ? 'Mengecek...' : 'Cek Ketersediaan'}
             </button>
           </div>
           {slug && (
-            <p className="text-xs text-gray-400 mt-1">Domain: <span className="font-mono text-gray-600">shop.boontrack.com/{slug}</span></p>
+            <p className="text-xs text-gray-400 mt-1">Domain: <span className="font-mono text-gray-600 font-semibold">shop.boontrack.com/{slug}</span></p>
           )}
         </div>
 
@@ -104,7 +104,7 @@ export default function ShopClaimSection() {
                 placeholder="Nama Lengkap"
                 value={merchantData.name}
                 onChange={(e) => setMerchantData({ ...merchantData, name: e.target.value })}
-                className="w-full px-3.5 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 border rounded-lg text-base md:text-sm outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -116,7 +116,7 @@ export default function ShopClaimSection() {
                 placeholder="08123456789"
                 value={merchantData.phone}
                 onChange={(e) => setMerchantData({ ...merchantData, phone: e.target.value })}
-                className="w-full px-3.5 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 border rounded-lg text-base md:text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -128,7 +128,7 @@ export default function ShopClaimSection() {
                 placeholder="email@bisnis.com"
                 value={merchantData.email}
                 onChange={(e) => setMerchantData({ ...merchantData, email: e.target.value })}
-                className="w-full px-3.5 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 border rounded-lg text-base md:text-sm outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -162,7 +162,7 @@ export default function ShopClaimSection() {
             <button
               type="submit"
               disabled={loadingPay}
-              className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition shadow-md disabled:opacity-50"
+              className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition shadow-md disabled:opacity-50 cursor-pointer"
             >
               {loadingPay ? 'Menyiapkan Pembayaran...' : `Aktivasi & Bayar (${selectedPlan === 'growth' ? 'Rp199.000' : 'Rp499.000'})`}
             </button>

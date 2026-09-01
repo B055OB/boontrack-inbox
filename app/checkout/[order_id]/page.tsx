@@ -30,7 +30,7 @@ export default function CheckoutPage({ params }: Props) {
   const seconds = timeLeft % 60;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6">
         
         {/* Header Order */}

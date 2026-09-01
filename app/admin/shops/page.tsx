@@ -31,7 +31,7 @@ export default function SuperAdminShopDirectory() {
   );
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-8">
+    <main className="min-h-[100dvh] bg-slate-950 text-slate-100 p-8">
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
           <div>
@@ -48,7 +48,7 @@ export default function SuperAdminShopDirectory() {
               placeholder="Cari toko / nama pemilik..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 w-64"
+              className="pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-base md:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 w-64"
             />
           </div>
         </div>

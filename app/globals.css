@@ -19,8 +19,29 @@
   }
 }
 
+html {
+  min-height: 100dvh;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  min-height: 100dvh;
 }
+
+/* iOS Safari: Prevent automatic viewport zoom on input focus when font-size < 16px */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Safe area support for iOS home bar and notch */
+.safe-pb {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+}
+

@@ -53,7 +53,7 @@ export default function CareerProfilePage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-indigo-600 selection:text-white flex flex-col">
+    <main className="min-h-[100dvh] bg-slate-950 text-slate-100 antialiased selection:bg-indigo-600 selection:text-white flex flex-col">
       {/* Top Banner */}
       <header className="bg-slate-900/90 border-b border-slate-800 px-6 py-3.5 sticky top-0 z-30 backdrop-blur-md">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">

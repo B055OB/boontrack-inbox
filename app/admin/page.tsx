@@ -305,7 +305,7 @@ export default function SuperAdminDashboard() {
 
   if (!isAdminAuth) {
     return (
-      <main className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
         <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
           <div className="w-12 h-12 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-3 font-bold text-xl shadow-lg shadow-blue-500/10">
             ⚡
@@ -321,7 +321,7 @@ export default function SuperAdminDashboard() {
               placeholder="PIN Super Admin (default: 998877)"
               value={adminPin}
               onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
+              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-base md:text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
               required
             />
             {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
@@ -338,7 +338,7 @@ export default function SuperAdminDashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10 antialiased selection:bg-blue-600 selection:text-white">
+    <main className="min-h-[100dvh] bg-slate-950 text-slate-100 p-6 md:p-10 antialiased selection:bg-blue-600 selection:text-white">
       <div className="max-w-6xl mx-auto space-y-6">
         
         {/* Top Header */}

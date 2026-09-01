@@ -77,7 +77,7 @@ export default function MerchantManagerDashboard() {
   );
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10 font-sans antialiased selection:bg-blue-600 selection:text-white">
+    <main className="min-h-[100dvh] bg-slate-950 text-slate-100 p-6 md:p-10 font-sans antialiased selection:bg-blue-600 selection:text-white">
       <div className="max-w-6xl mx-auto space-y-6">
         
         {/* HEADER */}
@@ -99,8 +99,8 @@ export default function MerchantManagerDashboard() {
             <h1 className="text-2xl font-black text-white tracking-tight">
               Directory Merchant Binaan ({merchants.length})
             </h1>
-            <p className="text-xs text-slate-400">
-              Monitoring toko merchant, follow-up retention langganan, dan direct assistance WhatsApp.
+            <p className="text-xs text-slate-400 mt-1">
+              Daftar seluruh pemilik toko (merchant) dalam binaan manajerial. Akses langsung WhatsApp seller & link etalase.
             </p>
           </div>
 
@@ -112,7 +112,7 @@ export default function MerchantManagerDashboard() {
                 placeholder="Cari toko / kontak merchant..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 w-64"
+                className="pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-base md:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 w-64"
               />
             </div>
 

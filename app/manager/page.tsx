@@ -122,7 +122,7 @@ export default function ManagerControlCenter() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
+    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* HEADER SECTION */}
@@ -230,7 +230,7 @@ export default function ManagerControlCenter() {
               placeholder={activeTab === "orders" ? "Cari no invoice, nama, WA, ref..." : "Cari kode ref / nama marketer..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full sm:w-80 bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+              className="w-full sm:w-80 bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-base md:text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
             />
           </div>
         </div>

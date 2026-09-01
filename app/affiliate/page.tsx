@@ -87,7 +87,7 @@ export default function AffiliatePortalPage() {
   }, [affiliateCode]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
+    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         
         {/* Header Portal */}
@@ -124,7 +124,7 @@ export default function AffiliatePortalPage() {
               type="text"
               readOnly
               value={referralLink}
-              className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-xs px-4 py-3 rounded-xl font-mono focus:outline-none"
+              className="w-full bg-slate-950 border border-slate-800 text-slate-200 text-base md:text-xs px-4 py-3 rounded-xl font-mono focus:outline-none"
             />
             <button
               onClick={copyToClipboard}

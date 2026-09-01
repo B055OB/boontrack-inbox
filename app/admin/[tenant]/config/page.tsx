@@ -181,7 +181,7 @@ export default function TenantConfigEditorPage() {
 
   if (!config) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+      <main className="min-h-[100dvh] bg-slate-950 text-slate-100 flex items-center justify-center p-6">
         <div className="flex items-center gap-3 text-slate-400 text-sm">
           <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
           <span>Memuat konfigurasi modular tenant {tenantSlug}...</span>
@@ -194,7 +194,7 @@ export default function TenantConfigEditorPage() {
   const isDegraded = config.health.status === 'DEGRADED';
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-blue-600 selection:text-white">
+    <main className="min-h-[100dvh] bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-blue-600 selection:text-white">
       {/* Toast Notification */}
       {toast && (
         <div

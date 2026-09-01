@@ -29,7 +29,7 @@ export default function TenantOnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col justify-between">
+    <div className="min-h-[100dvh] bg-[#FDFDFD] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col justify-between">
       
       {/* Top Header Bar */}
       <header className="bg-white border-b border-slate-100 py-4 px-6 sticky top-0 z-10 shadow-sm">
