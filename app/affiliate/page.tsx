@@ -52,8 +52,10 @@ export default function AffiliatePortalPage() {
     setLoading(true);
     try {
       const supabase = getSupabase();
+      if (!supabase) return;
+
       const { data: rows, error } = await supabase
-        .table("commission_ledger")
+        .from("commission_ledger")
         .select("*")
         .eq("affiliate_code", affiliateCode)
         .order("created_at", { ascending: false });
@@ -103,7 +105,7 @@ export default function AffiliatePortalPage() {
           <div className="flex items-center gap-3">
             <button 
               onClick={fetchAffiliateData} 
-              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all"
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer"
               title="Refresh Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />

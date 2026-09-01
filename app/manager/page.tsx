@@ -41,8 +41,10 @@ export default function ManagerPortalPage() {
     setLoading(true);
     try {
       const supabase = getSupabase();
+      if (!supabase) return;
+
       const { data: rows, error } = await supabase
-        .table("commission_ledger")
+        .from("commission_ledger")
         .select("*")
         .order("created_at", { ascending: false });
 
@@ -116,7 +118,7 @@ export default function ManagerPortalPage() {
           <div className="flex items-center gap-3">
             <button 
               onClick={fetchManagerData} 
-              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all"
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer"
               title="Refresh Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -198,7 +200,7 @@ export default function ManagerPortalPage() {
                         </span>
                       </td>
                       <td className="py-3.5 text-right">
-                        <button className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors">
+                        <button className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
                           <ChevronRight className="w-4 h-4" />
                         </button>
                       </td>
