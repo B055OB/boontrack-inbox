@@ -20,6 +20,8 @@ import {
   ShoppingBag,
   ArrowRight,
   Store,
+  ShieldAlert,
+  Check,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { HealthStatus, WaGatewayStatus } from '@/lib/tenant-config';
@@ -29,6 +31,8 @@ interface Tenant {
   name: string;
   slug: string;
   category?: 'internal' | 'external' | 'shop' | string;
+  vertical?: string;
+  plan?: string;
   status: string;
   start_date: string | null;
   due_date: string | null;
@@ -43,6 +47,17 @@ interface Tenant {
   response_time_ms?: number;
 }
 
+interface Incident {
+  id: string;
+  tenant_id: string;
+  service: string;
+  severity: 'LOW' | 'MEDIUM' | 'CRITICAL';
+  status: 'OPEN' | 'RESOLVED';
+  error_code: string;
+  error_message: string;
+  first_seen_at: string;
+}
+
 const INTERNAL_SLUGS = [
   'boontrack-holding',
   'boontrack-career',
@@ -53,24 +68,6 @@ const INTERNAL_SLUGS = [
   'boontrack-digicorn',
   'boontrack-demo',
   'om-budi',
-];
-
-const ALL_ECOSYSTEM_TENANTS = [
-  { name: 'Atmosfitnes Gym Hub', slug: 'atmosfitnes', category: 'external', monthly_fee: 1500000, access_username: 'admin', access_password: 'atmos_master_pass2026' },
-  { name: 'Om Budi Channel', slug: 'om-budi', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'budi_internal_sec_2026' },
-  { name: 'BoonTrack Holding', slug: 'boontrack-holding', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'holding_master_pass2026' },
-  { name: 'BoonTrack Career AI', slug: 'career', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'career_master_pass2026' },
-  { name: 'BoonTrack Demo Store', slug: 'boontrack-demo', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'demo_master_pass2026' },
-  { name: 'BoonTrack Kurir Logistik', slug: 'boontrack-kurir', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'kurir_master_pass2026' },
-  { name: 'BoonTrack Bola & Sport', slug: 'boontrack-bola', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'bola_master_pass2026' },
-  { name: 'BoonTrack Loker & Talenta', slug: 'boontrack-loker', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'loker_master_pass2026' },
-  { name: 'BoonTrack Digicorn Agency', slug: 'boontrack-digicorn', category: 'internal', monthly_fee: 0, access_username: 'admin', access_password: 'digicorn_master_pass2026' },
-  { name: 'Suhu Ads Masterclass', slug: 'suhu-ads', category: 'external', monthly_fee: 99000, access_username: 'admin', access_password: 'suhuads_admin_pass2026' },
-  { name: 'Digital Marketing Hub', slug: 'digital-marketing', category: 'external', monthly_fee: 150000, access_username: 'admin', access_password: 'dm_admin_pass2026' },
-  { name: 'Nyka Hijab & Modest Wear', slug: 'nyka', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'nyka_admin_pass2026' },
-  { name: 'Bale Pananggeuhan', slug: 'bale-pananggeuhan', category: 'external', monthly_fee: 750000, access_username: 'admin', access_password: 'bale_admin_pass2026' },
-  { name: 'Pelayanan Publik (Kelurahan Indra)', slug: 'pelayanan-publik', category: 'external', monthly_fee: 500000, access_username: 'admin', access_password: 'kelurahan_lurah_pass2026' },
-  { name: 'Pelayanan Publik Kelurahan Dummy', slug: 'pelayanan-publik-dummy', category: 'external', monthly_fee: 0, access_username: 'admin', access_password: 'dummy_lurah_pass2026' },
 ];
 
 const MASTER_PIN = '998877';
@@ -91,6 +88,7 @@ export default function SuperAdminDashboard() {
   const [pinError, setPinError] = useState('');
 
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'internal' | 'external' | 'shop'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -99,14 +97,18 @@ export default function SuperAdminDashboard() {
 
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
 
+  // Modal Provision State
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newSlug, setNewSlug] = useState('');
-  const [newCategory, setNewCategory] = useState<'internal' | 'external' | 'shop'>('external');
-  const [newUser, setNewUser] = useState('admin');
-  const [newPass, setNewPass] = useState('');
-  const [newDueDate, setNewDueDate] = useState('');
-  const [newFee, setNewFee] = useState(0);
+  const [newVertical, setNewVertical] = useState<'shop' | 'gym' | 'career'>('shop');
+  const [newPlan, setNewPlan] = useState<'growth' | 'pro'>('growth');
+  const [newPhone, setNewPhone] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [modalMsg, setModalMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+
+  // Drawer Incident State
+  const [showIncidentDrawer, setShowIncidentDrawer] = useState(false);
 
   const togglePasswordMask = (id: string) => {
     setRevealedPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -123,70 +125,60 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const loadIncidents = useCallback(async () => {
+    try {
+      const res = await fetch(`${CORE_API_URL}/api/v1/internal/tenants/incidents`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success) {
+        setIncidents(data.data || []);
+      }
+    } catch {
+      // ignore
+    }
+  }, [CORE_API_URL]);
+
   const loadTenants = useCallback(async () => {
     if (!isAdminAuth) return;
     setLoading(true);
     try {
-      const supabase = getSupabase();
+      let currentTenants: Tenant[] = [];
 
-      const { data: tenantsData, error } = await supabase
-        .from('tenants')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      let currentTenants = (tenantsData || []) as Tenant[];
-      const existingSlugs = new Set(currentTenants.map((t) => t.slug));
-
-      const missingTenants = ALL_ECOSYSTEM_TENANTS.filter((ct) => !existingSlugs.has(ct.slug));
-      if (missingTenants.length > 0) {
-        for (const mt of missingTenants) {
-          try {
-            await supabase.from('tenants').insert({
-              name: mt.name,
-              slug: mt.slug,
-              category: mt.category,
-              access_username: mt.access_username,
-              access_password: mt.access_password,
-              monthly_fee: mt.monthly_fee,
-              status: 'active',
-            });
-          } catch {
-            // ignore duplicate
-          }
+      // 1. Prioritaskan API internal boontrack-core yang sudah steril
+      try {
+        const res = await fetch(`${CORE_API_URL}/api/v1/internal/tenants/list`, { cache: 'no-store' });
+        const resJson = await res.json();
+        if (resJson.success && Array.isArray(resJson.data)) {
+          currentTenants = resJson.data as Tenant[];
         }
-        const { data: refreshedData } = await supabase
-          .from('tenants')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (refreshedData) currentTenants = refreshedData as Tenant[];
+      } catch {
+        // Fallback langsung ke Supabase
+        const supabase = getSupabase();
+        const { data } = await supabase.from('tenants').select('*');
+        if (data) currentTenants = data as Tenant[];
       }
 
-      const { data: messagesData } = await supabase
-        .from('messages')
-        .select('tenant_id, tenant_slug');
+      // 2. Fetch volume pesan
+      let countMap: Record<string, number> = {};
+      try {
+        const supabase = getSupabase();
+        const { data: messagesData } = await supabase.from('messages').select('tenant_id, tenant_slug');
+        messagesData?.forEach((m: { tenant_id?: string | null; tenant_slug?: string | null }) => {
+          if (m.tenant_id) countMap[m.tenant_id] = (countMap[m.tenant_id] || 0) + 1;
+          if (m.tenant_slug) countMap[m.tenant_slug] = (countMap[m.tenant_slug] || 0) + 1;
+        });
+      } catch {
+        countMap = {};
+      }
 
-      const countMap: Record<string, number> = {};
-      messagesData?.forEach((m: { tenant_id?: string | null; tenant_slug?: string | null }) => {
-        if (m.tenant_id) countMap[m.tenant_id] = (countMap[m.tenant_id] || 0) + 1;
-        if (m.tenant_slug) countMap[m.tenant_slug] = (countMap[m.tenant_slug] || 0) + 1;
-      });
-
+      // 3. Ping server health
       let serverLiveStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' = 'HEALTHY';
       let serverLatency = 120;
       const startTime = performance.now();
 
       try {
         const healthRes = await fetch(`${CORE_API_URL}/health`, { method: 'GET', cache: 'no-store' });
-        const latency = Math.round(performance.now() - startTime);
-        serverLatency = latency;
-
-        if (healthRes.ok) {
-          serverLiveStatus = latency > 800 ? 'DEGRADED' : 'HEALTHY';
-        } else {
-          serverLiveStatus = 'DEGRADED';
-        }
+        serverLatency = Math.round(performance.now() - startTime);
+        serverLiveStatus = healthRes.ok ? (serverLatency > 800 ? 'DEGRADED' : 'HEALTHY') : 'DEGRADED';
       } catch {
         serverLiveStatus = 'DOWN';
       }
@@ -197,45 +189,39 @@ export default function SuperAdminDashboard() {
           INTERNAL_SLUGS.includes(t.slug) ||
           t.slug.startsWith('boontrack-');
 
-        const isShop = t.category === 'shop' || t.slug === 'onlineboost' || t.slug === 'yuhu';
+        const isShop = t.category === 'shop' || t.vertical === 'shop' || t.slug === 'onlineboost' || t.slug === 'kanz-store' || t.slug === 'toko-berkah';
 
-        const isTenantActive = t.status === 'active';
-        const finalHealth: HealthStatus = !isTenantActive ? 'DOWN' : serverLiveStatus;
-
-        const finalWaStatus: WaGatewayStatus = !isTenantActive
-          ? 'DISCONNECTED'
-          : serverLiveStatus === 'HEALTHY'
-          ? 'CONNECTED'
-          : serverLiveStatus === 'DEGRADED'
-          ? 'RECONNECTING'
-          : 'DISCONNECTED';
+        const isHealthy = t.status === 'HEALTHY' || t.status === 'active';
+        const finalHealth: HealthStatus = !isHealthy ? 'DOWN' : serverLiveStatus;
 
         return {
           ...t,
           category: isShop ? 'shop' : isInternal ? 'internal' : 'external',
           message_count: countMap[t.id] || countMap[t.slug] || 0,
           health_status: finalHealth,
-          wa_gateway_status: finalWaStatus,
-          last_payment_ping: isTenantActive ? 'Live Sync' : 'Offline',
-          uptime_pct: isTenantActive ? (serverLiveStatus === 'HEALTHY' ? 99.9 : 95.0) : 0,
-          response_time_ms: isTenantActive ? serverLatency : 0,
+          wa_gateway_status: isHealthy ? (serverLiveStatus === 'HEALTHY' ? 'CONNECTED' : 'RECONNECTING') : 'DISCONNECTED',
+          last_payment_ping: isHealthy ? 'Live Sync' : 'Offline',
+          uptime_pct: isHealthy ? (serverLiveStatus === 'HEALTHY' ? 99.9 : 95.0) : 0,
+          response_time_ms: isHealthy ? serverLatency : 0,
         };
       });
 
       setTenants(mapped);
+      await loadIncidents();
     } catch (err) {
       console.error('Error fetching live tenants:', err);
     } finally {
       setLoading(false);
     }
-  }, [isAdminAuth, CORE_API_URL]);
+  }, [isAdminAuth, CORE_API_URL, loadIncidents]);
 
   useEffect(() => {
     loadTenants();
   }, [loadTenants, refreshKey]);
 
   const toggleTenantStatus = async (tenant: Tenant) => {
-    const nextStatus = tenant.status === 'active' ? 'suspended' : 'active';
+    const isCurrentlyActive = tenant.status === 'active' || tenant.status === 'HEALTHY';
+    const nextStatus = isCurrentlyActive ? 'SUSPENDED' : 'HEALTHY';
     const supabase = getSupabase();
 
     const { error } = await supabase
@@ -253,31 +239,55 @@ export default function SuperAdminDashboard() {
 
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
+    setModalMsg(null);
     try {
-      const supabase = getSupabase();
-      const cleanSlug = newSlug.toLowerCase().trim().replace(/\s+/g, '-');
+      const cleanSlug = newSlug.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
 
-      const { error } = await supabase.from('tenants').insert({
-        name: newName,
-        slug: cleanSlug,
-        category: newCategory,
-        access_username: newUser,
-        access_password: newPass,
-        due_date: newDueDate || null,
-        monthly_fee: newFee,
-        status: 'active',
+      const res = await fetch(`${CORE_API_URL}/api/v1/internal/tenants/provision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_name: newName,
+          slug: cleanSlug,
+          vertical: newVertical,
+          plan: newPlan,
+          admin_phone: newPhone,
+        }),
       });
 
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.detail || data.message || 'Gagal memprovisi tenant');
+      }
 
-      setShowAddModal(false);
-      setNewName('');
-      setNewSlug('');
-      setNewPass('');
-      setRefreshKey((k) => k + 1);
+      setModalMsg({ type: 'success', text: `Tenant "${newName}" berhasil didaftarkan!` });
+      setTimeout(() => {
+        setShowAddModal(false);
+        setNewName('');
+        setNewSlug('');
+        setNewPhone('');
+        setModalMsg(null);
+        setRefreshKey((k) => k + 1);
+      }, 1200);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      alert('Gagal menambah workspace: ' + errorMsg);
+      setModalMsg({ type: 'error', text: errorMsg });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResolveIncident = async (incidentId: string) => {
+    try {
+      await fetch(`${CORE_API_URL}/api/v1/internal/tenants/incidents/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incident_id: incidentId }),
+      });
+      loadIncidents();
+    } catch {
+      // ignore
     }
   };
 
@@ -302,6 +312,7 @@ export default function SuperAdminDashboard() {
   const countHealthy = tenants.filter((t) => t.health_status === 'HEALTHY').length;
   const countDegraded = tenants.filter((t) => t.health_status === 'DEGRADED').length;
   const countDown = tenants.filter((t) => t.health_status === 'DOWN').length;
+  const openIncidentsCount = incidents.filter((i) => i.status === 'OPEN').length;
 
   if (!isAdminAuth) {
     return (
@@ -346,9 +357,9 @@ export default function SuperAdminDashboard() {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30">
-                Phase D Control Plane
+                P1 Control Plane
               </span>
-              <span className="text-[11px] text-slate-400">&bull; Live Multi-Tenant Orchestrator</span>
+              <span className="text-[11px] text-slate-400">&bull; Live Multi-Tenant Cockpit</span>
             </div>
             <h1 className="text-xl font-bold text-white mt-1">BoonTrack Internal Control Plane</h1>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -357,6 +368,13 @@ export default function SuperAdminDashboard() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowIncidentDrawer(true)}
+              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-semibold rounded-xl border border-amber-500/30 transition cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <span>Incidents ({openIncidentsCount})</span>
+            </button>
             <button
               onClick={() => setRefreshKey((k) => k + 1)}
               className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-xl border border-slate-700 transition cursor-pointer"
@@ -668,24 +686,11 @@ export default function SuperAdminDashboard() {
 
                     <div className="px-3.5 py-2.5 rounded-xl bg-slate-950/50 border border-slate-800/60 flex items-center justify-between text-xs font-mono">
                       <div>
-                        <span className="text-slate-500 text-[10px] block">Login: {t.access_username || 'admin'}</span>
+                        <span className="text-slate-500 text-[10px] block">Vertical: {t.vertical || 'shop'}</span>
                         <span className="text-slate-300 text-[11px]">
-                          Pass:{' '}
-                          {isRevealed ? (
-                            <span className="text-amber-300 font-semibold">{t.access_password || '••••••••'}</span>
-                          ) : (
-                            <span className="text-slate-500 tracking-widest">••••••••</span>
-                          )}
+                          Tier: <span className="text-indigo-400 uppercase font-semibold">{t.plan || 'growth'}</span>
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => togglePasswordMask(t.id)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition cursor-pointer"
-                        title={isRevealed ? 'Sembunyikan password' : 'Lihat password'}
-                      >
-                        {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
                     </div>
 
                     <div className="space-y-2 pt-1">
@@ -724,12 +729,12 @@ export default function SuperAdminDashboard() {
                         <button
                           onClick={() => toggleTenantStatus(t)}
                           className={`text-[10px] font-bold px-2 py-0.5 rounded transition cursor-pointer ${
-                            t.status === 'active'
+                            t.status === 'active' || t.status === 'HEALTHY'
                               ? 'text-emerald-400 hover:text-rose-400'
                               : 'text-rose-400 hover:text-emerald-400'
                           }`}
                         >
-                          {t.status === 'active' ? '● Aktif (klik matikan)' : '○ Nonaktif (klik aktifkan)'}
+                          {t.status === 'active' || t.status === 'HEALTHY' ? '● Aktif (klik matikan)' : '○ Nonaktif (klik aktifkan)'}
                         </button>
                       </div>
                     </div>
@@ -750,7 +755,7 @@ export default function SuperAdminDashboard() {
                     <th className="px-6 py-4">Workspace & Slug</th>
                     <th className="px-6 py-4">Health Status</th>
                     <th className="px-6 py-4">WA Gateway & Payment</th>
-                    <th className="px-6 py-4">Kredensial (Secret Masked)</th>
+                    <th className="px-6 py-4">Vertical / Tier</th>
                     <th className="px-6 py-4">Volume Chat</th>
                     <th className="px-6 py-4 text-center">Aksi Control Plane</th>
                   </tr>
@@ -774,7 +779,6 @@ export default function SuperAdminDashboard() {
                       const isShop = t.category === 'shop';
                       const isHealthyTenant = t.health_status === 'HEALTHY';
                       const isDegradedTenant = t.health_status === 'DEGRADED';
-                      const isRevealed = revealedPasswords[t.id] || false;
 
                       return (
                         <tr key={t.id} className="hover:bg-slate-800/30 transition">
@@ -834,23 +838,8 @@ export default function SuperAdminDashboard() {
                           </td>
 
                           <td className="px-6 py-4 font-mono text-[11px]">
-                            <div className="text-slate-400">User: <span className="text-white">{t.access_username || 'admin'}</span></div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className="text-slate-400">Pass:</span>
-                              {isRevealed ? (
-                                <span className="text-amber-300 font-semibold">{t.access_password || '••••••••'}</span>
-                              ) : (
-                                <span className="text-slate-500 tracking-wider">••••••••</span>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => togglePasswordMask(t.id)}
-                                className="p-1 text-slate-400 hover:text-slate-200 cursor-pointer"
-                                title={isRevealed ? 'Sembunyikan' : 'Tampilkan'}
-                              >
-                                {isRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                              </button>
-                            </div>
+                            <div className="text-slate-400">Vertical: <span className="text-white capitalize">{t.vertical || 'shop'}</span></div>
+                            <div className="text-slate-400 mt-0.5">Plan: <span className="text-indigo-400 uppercase font-semibold">{t.plan || 'growth'}</span></div>
                           </td>
 
                           <td className="px-6 py-4">
@@ -886,12 +875,12 @@ export default function SuperAdminDashboard() {
                               <button
                                 onClick={() => toggleTenantStatus(t)}
                                 className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
-                                  t.status === 'active'
+                                  t.status === 'active' || t.status === 'HEALTHY'
                                     ? 'bg-emerald-500/15 text-emerald-400 hover:bg-rose-500/20 hover:text-rose-400'
                                     : 'bg-rose-500/15 text-rose-400 hover:bg-emerald-500/20 hover:text-emerald-400'
                                 }`}
                               >
-                                {t.status === 'active' ? 'AKTIF' : 'MATI'}
+                                {t.status === 'active' || t.status === 'HEALTHY' ? 'AKTIF' : 'MATI'}
                               </button>
                             </div>
                           </td>
@@ -905,147 +894,183 @@ export default function SuperAdminDashboard() {
           </div>
         )}
 
-        {/* Modal Tambah Workspace */}
+        {/* Modal Tambah Workspace (P1.1 No-Code Provisioning) */}
         {showAddModal && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
-              <h2 className="text-base font-bold text-white mb-1">Daftarkan Workspace Baru</h2>
-              <p className="text-xs text-slate-400 mb-4">Pilih entitas internal BoonTrack atau klien B2B eksternal.</p>
+              <h2 className="text-base font-bold text-white mb-1">Provision New Tenant (P1 Cockpit)</h2>
+              <p className="text-xs text-slate-400 mb-4">Onboarding instan merchant tanpa menyentuh terminal backend.</p>
 
-              <form onSubmit={handleCreateTenant} className="space-y-3">
-                <div>
-                  <label className="text-[11px] text-slate-300 block mb-1">Kategori Entitas</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setNewCategory('internal')}
-                      className={`py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
-                        newCategory === 'internal'
-                          ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300'
-                          : 'bg-slate-950 border-slate-800 text-slate-400'
-                      }`}
-                    >
-                      Internal
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNewCategory('external')}
-                      className={`py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
-                        newCategory === 'external'
-                          ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                          : 'bg-slate-950 border-slate-800 text-slate-400'
-                      }`}
-                    >
-                      Client B2B
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNewCategory('shop')}
-                      className={`py-2 rounded-lg text-xs font-semibold border transition cursor-pointer ${
-                        newCategory === 'shop'
-                          ? 'bg-blue-500/20 border-blue-500 text-blue-300'
-                          : 'bg-slate-950 border-slate-800 text-slate-400'
-                      }`}
-                    >
-                      SaaS Shop
-                    </button>
-                  </div>
+              {modalMsg && (
+                <div
+                  className={`p-3 mb-4 rounded-xl text-xs font-semibold ${
+                    modalMsg.type === 'success'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                  }`}
+                >
+                  {modalMsg.text}
                 </div>
+              )}
 
+              <form onSubmit={handleCreateTenant} className="space-y-3.5">
                 <div>
-                  <label className="text-[11px] text-slate-300 block mb-1">Nama Workspace / Bisnis</label>
+                  <label className="text-[11px] font-medium text-slate-300 block mb-1">Nama Workspace / Brand</label>
                   <input
                     type="text"
-                    placeholder="Contoh: BoonTrack Holding / Kelurahan Indra"
+                    placeholder="Contoh: Kanz Fashion Store"
                     value={newName}
                     onChange={(e) => {
                       setNewName(e.target.value);
-                      if (!newSlug) setNewSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'));
+                      if (!newSlug) {
+                        setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+                      }
                     }}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="text-[11px] text-slate-300 block mb-1">URL Slug Workspace</label>
+                  <label className="text-[11px] font-medium text-slate-300 block mb-1">Slug Domain (Subdomain)</label>
                   <input
                     type="text"
-                    placeholder="boontrack-holding atau kelurahan-indra"
+                    placeholder="kanz-fashion-store"
                     value={newSlug}
                     onChange={(e) => setNewSlug(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white font-mono"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-blue-500"
                     required
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] text-slate-300 block mb-1">Username Login</label>
-                    <input
-                      type="text"
-                      value={newUser}
-                      onChange={(e) => setNewUser(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
-                      required
-                    />
+                    <label className="text-[11px] font-medium text-slate-300 block mb-1">Vertical Engine</label>
+                    <select
+                      value={newVertical}
+                      onChange={(e) => setNewVertical(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="shop">Shop (Commerce)</option>
+                      <option value="gym">Gym (IoT Access)</option>
+                      <option value="career">Career (AI ATS)</option>
+                    </select>
                   </div>
                   <div>
-                    <label className="text-[11px] text-slate-300 block mb-1">Password Login</label>
-                    <input
-                      type="text"
-                      placeholder="pass123"
-                      value={newPass}
-                      onChange={(e) => setNewPass(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white font-mono"
-                      required
-                    />
+                    <label className="text-[11px] font-medium text-slate-300 block mb-1">Tier Plan</label>
+                    <select
+                      value={newPlan}
+                      onChange={(e) => setNewPlan(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="growth">Growth</option>
+                      <option value="pro">Pro Scale</option>
+                    </select>
                   </div>
                 </div>
 
-                {newCategory === 'external' && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] text-slate-300 block mb-1">Jatuh Tempo Tagihan</label>
-                      <input
-                        type="date"
-                        value={newDueDate}
-                        onChange={(e) => setNewDueDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-slate-300 block mb-1">Biaya / Bulan (Rp)</label>
-                      <input
-                        type="number"
-                        placeholder="500000"
-                        value={newFee}
-                        onChange={(e) => setNewFee(Number(e.target.value))}
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white font-mono"
-                      />
-                    </div>
-                  </div>
-                )}
+                <div>
+                  <label className="text-[11px] font-medium text-slate-300 block mb-1">Admin WhatsApp (Notifikasi)</label>
+                  <input
+                    type="text"
+                    placeholder="08123456789"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
 
                 <div className="flex gap-2 pt-3">
                   <button
                     type="button"
                     onClick={() => setShowAddModal(false)}
-                    className="flex-1 py-2 bg-slate-800 text-xs text-slate-300 rounded-lg hover:bg-slate-700 transition cursor-pointer"
+                    className="flex-1 py-2.5 bg-slate-800 text-xs text-slate-300 rounded-xl hover:bg-slate-700 transition cursor-pointer"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 py-2 bg-blue-600 text-xs font-semibold text-white rounded-lg hover:bg-blue-500 transition shadow-lg shadow-blue-600/30 cursor-pointer"
+                    disabled={submitting}
+                    className="flex-1 py-2.5 bg-blue-600 text-xs font-semibold text-white rounded-xl hover:bg-blue-500 transition shadow-lg shadow-blue-600/30 disabled:opacity-50 cursor-pointer"
                   >
-                    Simpan Workspace
+                    {submitting ? 'Memproses Provisioning...' : 'Provision Tenant 🚀'}
                   </button>
                 </div>
               </form>
             </div>
           </div>
         )}
+
+        {/* Drawer Incident Logs (P1.3 Observability) */}
+        {showIncidentDrawer && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-end z-50">
+            <div className="bg-slate-900 w-full max-w-xl h-full p-6 border-l border-slate-800 flex flex-col justify-between overflow-y-auto">
+              <div>
+                <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-amber-400" />
+                    <h2 className="text-base font-bold text-white">System Incident Logs</h2>
+                  </div>
+                  <button
+                    onClick={() => setShowIncidentDrawer(false)}
+                    className="text-slate-400 hover:text-white p-1 rounded-lg"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {incidents.length === 0 ? (
+                    <div className="py-12 text-center text-slate-500 text-xs">
+                      Semua service tenant terpantau sehat. Belum ada insiden terdata.
+                    </div>
+                  ) : (
+                    incidents.map((inc) => (
+                      <div
+                        key={inc.id}
+                        className="p-4 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2 text-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-indigo-400 font-mono">{inc.service}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              inc.status === 'OPEN'
+                                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            }`}
+                          >
+                            {inc.status}
+                          </span>
+                        </div>
+                        <p className="text-rose-300 font-mono break-all">{inc.error_message}</p>
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[10px] text-slate-400">
+                          <span>Tenant: {inc.tenant_id}</span>
+                          {inc.status === 'OPEN' && (
+                            <button
+                              onClick={() => handleResolveIncident(inc.id)}
+                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 rounded-lg inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>Mark Resolved</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowIncidentDrawer(false)}
+                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl mt-6 transition cursor-pointer"
+              >
+                Tutup Drawer
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </main>
   );
