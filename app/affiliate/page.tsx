@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   TrendingUp,
@@ -34,7 +34,7 @@ interface PortalResponse {
   };
 }
 
-export default function AffiliatePortalPage() {
+function AffiliatePortalContent() {
   const searchParams = useSearchParams();
   const initialTenant = searchParams.get('tenant') || 'cornvest';
   const initialRef = searchParams.get('ref') || searchParams.get('code') || 'ANDI';
@@ -45,6 +45,14 @@ export default function AffiliatePortalPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Sync state if URL query params change
+  useEffect(() => {
+    const qTenant = searchParams.get('tenant');
+    const qRef = searchParams.get('ref') || searchParams.get('code');
+    if (qTenant) setTenantSlug(qTenant);
+    if (qRef) setAffiliateCode(qRef);
+  }, [searchParams]);
 
   const fetchAffiliateData = useCallback(async (tSlug: string, aCode: string) => {
     if (!tSlug || !aCode) return;
@@ -100,7 +108,7 @@ export default function AffiliatePortalPage() {
               <span className="text-xs text-slate-400">&bull; Live Multi-Tenant Portal</span>
             </div>
             <h1 className="text-2xl font-black text-white mt-1.5">
-              {data ? `Halo, ${data.affiliate.name} ??` : 'Affiliate Partner Dashboard'}
+              {data ? `Halo, ${data.affiliate.name} 👋` : 'Affiliate Partner Dashboard'}
             </h1>
             <p className="text-xs text-slate-400">
               Pantau performa traffic, konversi pesanan, dan komisi siap cair secara real-time.
@@ -130,7 +138,7 @@ export default function AffiliatePortalPage() {
               value={tenantSlug}
               onChange={(e) => setTenantSlug(e.target.value)}
               placeholder="cornvest"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-base md:text-xs text-white font-mono focus:outline-none focus:border-blue-500"
             />
           </div>
           <div className="w-full sm:w-1/3">
@@ -140,7 +148,7 @@ export default function AffiliatePortalPage() {
               value={affiliateCode}
               onChange={(e) => setAffiliateCode(e.target.value)}
               placeholder="ANDI"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-blue-500 uppercase"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-base md:text-xs text-white font-mono focus:outline-none focus:border-blue-500 uppercase"
             />
           </div>
           <div className="w-full sm:w-auto self-end pt-2 sm:pt-0">
@@ -179,7 +187,7 @@ export default function AffiliatePortalPage() {
                   type="text"
                   readOnly
                   value={data.referral_url}
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-200 font-mono focus:outline-none select-all"
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-base md:text-xs text-slate-200 font-mono focus:outline-none select-all"
                 />
                 <div className="flex gap-2">
                   <button
@@ -249,5 +257,17 @@ export default function AffiliatePortalPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function AffiliatePortalPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[100dvh] bg-slate-950 flex items-center justify-center text-xs text-slate-400">
+        Memuat portal affiliate...
+      </div>
+    }>
+      <AffiliatePortalContent />
+    </Suspense>
   );
 }

@@ -65,6 +65,10 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/static') ||
     pathname === '/register' ||
     pathname.startsWith('/register/') ||
+    pathname === '/affiliate' ||
+    pathname.startsWith('/affiliate/') ||
+    pathname === '/manager' ||
+    pathname.startsWith('/manager/') ||
     pathname === '/pricing' ||
     pathname.startsWith('/pricing/') ||
     pathname === '/checkout' ||
