@@ -100,7 +100,7 @@ export default function AffiliatePortalPage() {
               <span className="text-xs text-slate-400">&bull; Live Multi-Tenant Portal</span>
             </div>
             <h1 className="text-2xl font-black text-white mt-1.5">
-              {data ? `Halo, ${data.affiliate.name} 👋` : 'Affiliate Partner Dashboard'}
+              {data ? `Halo, ${data.affiliate.name} ??` : 'Affiliate Partner Dashboard'}
             </h1>
             <p className="text-xs text-slate-400">
               Pantau performa traffic, konversi pesanan, dan komisi siap cair secara real-time.
