@@ -141,8 +141,15 @@ export default function ShopClaimSection() {
                     selectedPlan === 'growth' ? 'border-blue-600 bg-blue-50/50' : 'border-gray-200'
                   }`}
                 >
-                  <p className="font-bold text-sm text-gray-900">Growth</p>
-                  <p className="text-blue-600 font-extrabold text-sm">Rp199.000<span className="text-xs font-normal text-gray-500">/bln</span></p>
+                  <div className="flex justify-between items-center">
+                    <p className="font-bold text-sm text-gray-900">Growth</p>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 43%</span>
+                  </div>
+                  <div className="flex items-baseline gap-1.5 mt-1 flex-wrap">
+                    <span className="text-xs text-gray-400 line-through">Rp349.000</span>
+                    <span className="text-blue-600 font-extrabold text-sm">Rp199.000</span>
+                    <span className="text-xs font-normal text-gray-500">/bln</span>
+                  </div>
                   <p className="text-[11px] text-gray-500 mt-1">300 order & 2 CS Seat</p>
                 </div>
 
@@ -152,8 +159,15 @@ export default function ShopClaimSection() {
                     selectedPlan === 'pro_scale' ? 'border-blue-600 bg-blue-50/50' : 'border-gray-200'
                   }`}
                 >
-                  <p className="font-bold text-sm text-gray-900">Pro Scale</p>
-                  <p className="text-blue-600 font-extrabold text-sm">Rp499.000<span className="text-xs font-normal text-gray-500">/bln</span></p>
+                  <div className="flex justify-between items-center">
+                    <p className="font-bold text-sm text-gray-900">Pro Scale</p>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 45%</span>
+                  </div>
+                  <div className="flex items-baseline gap-1.5 mt-1 flex-wrap">
+                    <span className="text-xs text-gray-400 line-through">Rp899.000</span>
+                    <span className="text-blue-600 font-extrabold text-sm">Rp499.000</span>
+                    <span className="text-xs font-normal text-gray-500">/bln</span>
+                  </div>
                   <p className="text-[11px] text-gray-500 mt-1">Unlimited & 5 CS Seat</p>
                 </div>
               </div>

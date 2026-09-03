@@ -114,7 +114,7 @@ const INITIAL_TRANSACTIONS: TransactionItem[] = [
     customer_phone: "6281237450222",
     product_name: "Step by Step Rahasia Menghasilkan Dollar",
     amount: 499000,
-    payment_method: "QRIS Dinamis (Xendit)",
+    payment_method: "QRIS Dinamis",
     status: "PAID",
     created_at: "1 Sep 2026, 21:30"
   },
@@ -125,7 +125,7 @@ const INITIAL_TRANSACTIONS: TransactionItem[] = [
     customer_phone: "6285721110099",
     product_name: "Masterclass Ads 2026 - Scale Up Campaign",
     amount: 99000,
-    payment_method: "QRIS Dinamis (Xendit)",
+    payment_method: "QRIS Dinamis",
     status: "PAID",
     created_at: "1 Sep 2026, 20:15"
   }

@@ -200,9 +200,13 @@ export default function ShopLandingPage() {
                 </div>
                 <div>
                   <h3 className="text-xl font-black text-slate-900">Solo Engine</h3>
-                  <div className="mt-2 flex items-baseline gap-1">
+                  <div className="mt-2 flex items-baseline gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm text-slate-400 line-through font-semibold">Rp 349.000</span>
                     <span className="text-2xl sm:text-3xl font-black text-slate-900">Rp 199.000</span>
                     <span className="text-xs text-slate-500 font-medium">/bulan</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                      Hemat 43%
+                    </span>
                   </div>
                 </div>
                 <p className="text-xs text-slate-600 leading-relaxed">
@@ -219,7 +223,7 @@ export default function ShopLandingPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>QRIS Dinamis Otomatis (Xendit)</span>
+                    <span>QRIS Dinamis Otomatis</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-blue-600 shrink-0" />
@@ -246,9 +250,13 @@ export default function ShopLandingPage() {
                 </div>
                 <div>
                   <h3 className="text-xl font-black text-slate-900">Business Growth Engine</h3>
-                  <div className="mt-2 flex items-baseline gap-1">
+                  <div className="mt-2 flex items-baseline gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm text-slate-400 line-through font-semibold">Rp 899.000</span>
                     <span className="text-2xl sm:text-3xl font-black text-blue-600">Rp 499.000</span>
                     <span className="text-xs text-slate-500 font-medium">/bulan</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                      Hemat 45%
+                    </span>
                   </div>
                 </div>
                 <p className="text-xs text-slate-600 leading-relaxed">

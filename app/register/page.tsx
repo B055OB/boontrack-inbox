@@ -270,10 +270,12 @@ export default function RegisterShopPage() {
                 >
                   <div className="flex justify-between items-start mb-1">
                     <span className="font-black text-slate-900 text-xs">Growth</span>
-                    <Zap className="w-3.5 h-3.5 text-blue-600" />
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 43%</span>
                   </div>
-                  <div className="text-base font-black text-blue-600">
-                    Rp 199.000<span className="text-[10px] text-slate-400 font-normal">/bln</span>
+                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                    <span className="text-xs text-slate-400 line-through">Rp 349.000</span>
+                    <span className="text-base font-black text-blue-600">Rp 199.000</span>
+                    <span className="text-[10px] text-slate-400 font-normal">/bln</span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">300 order & 2 CS Seat</p>
                 </div>
@@ -288,10 +290,12 @@ export default function RegisterShopPage() {
                 >
                   <div className="flex justify-between items-start mb-1">
                     <span className="font-black text-slate-900 text-xs">Pro Scale</span>
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 45%</span>
                   </div>
-                  <div className="text-base font-black text-blue-600">
-                    Rp 499.000<span className="text-[10px] text-slate-400 font-normal">/bln</span>
+                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                    <span className="text-xs text-slate-400 line-through">Rp 899.000</span>
+                    <span className="text-base font-black text-blue-600">Rp 499.000</span>
+                    <span className="text-[10px] text-slate-400 font-normal">/bln</span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">Unlimited & 5 CS Seat</p>
                 </div>
@@ -307,7 +311,7 @@ export default function RegisterShopPage() {
               <CreditCard className="w-4 h-4" />
               <span>
                 {loadingPay
-                  ? "Menyiapkan Invoice Xendit..."
+                  ? "Menyiapkan Invoice QRIS..."
                   : `Aktivasi & Bayar (${selectedPlan === "growth" ? "Rp 199.000" : "Rp 499.000"})`}
               </span>
               <ArrowRight className="w-4 h-4 ml-1" />
