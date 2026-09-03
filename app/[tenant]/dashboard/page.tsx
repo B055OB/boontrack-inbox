@@ -40,7 +40,7 @@ import {
   Truck,
   Radio
 } from 'lucide-react';
-import WhatsAppEmbeddedModal from './components/WhatsAppEmbeddedModal';
+import WhatsAppWabaConfig from './components/WhatsAppWabaConfig';
 import AdsTrackingPro from './components/AdsTrackingPro';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
@@ -1477,21 +1477,17 @@ export default function TenantDashboardPage() {
           {/* PRO SCALE PANEL */}
           {waMode === 'meta' && (
             <div className="space-y-4">
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
-                    Enterprise Tier
-                  </span>
-                  <p className="text-xs font-bold text-emerald-900 mt-1">
-                    Meta Cloud API Resmi (Green Tick Verified, Broadcast Unlimited, Multi-CS)
-                  </p>
-                </div>
-              </div>
-
-              <WhatsAppEmbeddedModal 
-                tenantSlug={tenantSlug} 
+              <WhatsAppWabaConfig 
+                tenantSlug={tenantSlug}
+                displayName={displayName}
                 onSuccess={(data) => {
-                  setSaveFeedback(`✅ Nomor ${data.phone_number || ''} berhasil terhubung via Meta!`);
+                  setConnectedPhone(data.phone_number || 'Official WABA');
+                  setWaStatus("CONNECTED");
+                  setSaveFeedback(`✅ Kredensial Resmi WABA berhasil diaktifkan!`);
+                  setTimeout(() => setSaveFeedback(null), 4000);
+                }}
+                onSaved={(msg) => {
+                  setSaveFeedback(msg);
                   setTimeout(() => setSaveFeedback(null), 4000);
                 }}
               />
