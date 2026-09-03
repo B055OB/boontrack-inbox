@@ -10,6 +10,7 @@ interface CreateOrderPayload {
   customerEmail?: string;
   affiliateCode?: string;
   managerId?: string;
+  tracking?: Record<string, any>;
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
@@ -18,7 +19,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   const orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-  // 1. Simpan draft pesanan ke Supabase
+  // 1. Simpan draft pesanan dan metadata tracking ke Supabase
   const { data: orderData, error: orderError } = await supabase
     .from("orders")
     .insert({
@@ -32,6 +33,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       customer_email: payload.customerEmail || "",
       affiliate_code: payload.affiliateCode || null,
       manager_id: payload.managerId || null,
+      utm_source: payload.tracking?.utm_source || null,
+      utm_medium: payload.tracking?.utm_medium || null,
+      utm_campaign: payload.tracking?.utm_campaign || null,
+      utm_content: payload.tracking?.utm_content || null,
+      utm_term: payload.tracking?.utm_term || null,
+      fbclid: payload.tracking?.fbclid || null,
+      ttclid: payload.tracking?.ttclid || null,
       status: "PENDING_PAYMENT",
       created_at: new Date().toISOString()
     })
@@ -42,7 +50,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     throw new Error(`Failed to create order: ${orderError.message}`);
   }
 
-  // 2. Buat Invoice/QRIS via endpoint backend
+  // 2. Buat Invoice/QRIS via endpoint backend sekaligus kirim data atribusi
   const res = await fetch("https://boontrack-core-production.up.railway.app/payment/create-qris", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -51,7 +59,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       amount: payload.amount,
       tenant_slug: payload.tenantSlug,
       customer_phone: payload.customerPhone,
-      customer_name: payload.customerName
+      customer_name: payload.customerName,
+      customer_email: payload.customerEmail || null,
+      tracking: payload.tracking || {}
     })
   });
 

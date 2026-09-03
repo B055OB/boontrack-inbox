@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
-import { getActiveAffiliateCode } from "@/lib/tracking";
+import { getActiveAffiliateCode, getTrackingData, trackClientPurchase } from "@/lib/tracking";
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -25,7 +25,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [qrData, setQrData] = useState<{ orderId: string; invoiceUrl?: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Ambil referral code via multi-tier fallback (Memory -> URL -> Cookie -> LocalStorage -> SessionStorage)
   useEffect(() => {
     const activeRef = getActiveAffiliateCode();
     if (activeRef) {
@@ -40,8 +39,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     setLoading(true);
     setErrorMessage("");
 
-    // Fallback: Check active ref again at submit time in case user navigated directly
     const currentRef = affiliateCode || getActiveAffiliateCode() || undefined;
+    const trackingParams = getTrackingData();
 
     try {
       const result = await createOrderAndInvoice({
@@ -53,7 +52,13 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         customerPhone,
         customerEmail,
         affiliateCode: currentRef,
+        tracking: trackingParams,
       });
+
+      // Trigger Client-side Purchase Event dengan Deduplikasi Key
+      if (result?.orderId) {
+        trackClientPurchase(result.orderId, product.price);
+      }
 
       setQrData({
         orderId: result.orderId,
