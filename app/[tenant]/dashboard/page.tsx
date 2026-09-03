@@ -35,9 +35,13 @@ import {
   ArrowUpRight,
   Download,
   FileText,
-  Clock
+  Clock,
+  Target,
+  Truck
 } from 'lucide-react';
 import WhatsAppEmbeddedModal from './components/WhatsAppEmbeddedModal';
+import AdsTrackingPro from './components/AdsTrackingPro';
+import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 
 interface ProductItem {
   id: number;
@@ -124,7 +128,7 @@ export default function TenantDashboardPage() {
 
   const isProTenant = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
 
-  const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration' | 'whatsapp'>('whatsapp');
+  const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration' | 'ads_tracking' | 'biteship' | 'whatsapp'>('whatsapp');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
   // WhatsApp Tab Mode
@@ -435,6 +439,36 @@ export default function TenantDashboardPage() {
           >
             <CreditCard className="w-4 h-4 text-emerald-600" />
             <span>Laporan & Keuangan</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ads_tracking')}
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'ads_tracking'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Target className="w-4 h-4 text-blue-600" />
+            <span>Ads Tracking Pro</span>
+            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
+              CAPI
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('biteship')}
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'biteship'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Truck className="w-4 h-4 text-emerald-600" />
+            <span>Kurir Biteship</span>
+            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+              ONGKIR
+            </span>
           </button>
 
           <button
@@ -1334,6 +1368,30 @@ export default function TenantDashboardPage() {
           )}
 
         </div>
+      )}
+
+      {/* TAB: ADS TRACKING PRO */}
+      {activeTab === 'ads_tracking' && (
+        <AdsTrackingPro
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          onSaved={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 4000);
+          }}
+        />
+      )}
+
+      {/* TAB: KURIR & EKSPEDISI BITESHIP */}
+      {activeTab === 'biteship' && (
+        <BiteshipCourierConfig
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          onSaved={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 4000);
+          }}
+        />
       )}
 
     </main>

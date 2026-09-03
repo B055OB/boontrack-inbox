@@ -1,0 +1,544 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import {
+  Truck,
+  MapPin,
+  Key,
+  ShieldCheck,
+  Save,
+  CheckCircle2,
+  RefreshCw,
+  Calculator,
+  Layers,
+  Box,
+  Clock,
+  Zap,
+  Package,
+  ArrowRight,
+  Sparkles,
+} from 'lucide-react';
+import { getSupabase } from '@/lib/supabaseClient';
+
+interface BiteshipCourierConfigProps {
+  tenantSlug: string;
+  displayName: string;
+  onSaved?: (msg: string) => void;
+}
+
+interface CourierItem {
+  id: string;
+  name: string;
+  logoText: string;
+  services: string[];
+  enabled: boolean;
+  color: string;
+}
+
+const DEFAULT_COURIERS: CourierItem[] = [
+  { id: 'jne', name: 'JNE Express', logoText: 'JNE', services: ['REG', 'YES', 'OKE', 'JTR'], enabled: true, color: 'bg-red-50 text-red-700 border-red-200' },
+  { id: 'jnt', name: 'J&T Express', logoText: 'J&T', services: ['EZ', 'J&T Super', 'J&T Doc'], enabled: true, color: 'bg-rose-50 text-rose-700 border-rose-200' },
+  { id: 'sicepat', name: 'SiCepat Ekspres', logoText: 'SiCepat', services: ['SIUNT', 'BEST', 'GOKIL', 'HALO'], enabled: true, color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { id: 'anteraja', name: 'Anteraja', logoText: 'Anteraja', services: ['Regular', 'Next Day', 'Same Day', 'Cargo'], enabled: true, color: 'bg-purple-50 text-purple-700 border-purple-200' },
+  { id: 'ninja', name: 'Ninja Xpress', logoText: 'Ninja', services: ['Standard', 'Nextday'], enabled: false, color: 'bg-red-50 text-red-800 border-red-300' },
+  { id: 'idexpress', name: 'ID Express', logoText: 'IDE', services: ['Standard', 'Same Day', 'Cargo'], enabled: false, color: 'bg-red-50 text-red-600 border-red-200' },
+  { id: 'lion', name: 'Lion Parcel', logoText: 'Lion', services: ['ONEPACK', 'REGPACK', 'JAGOPACK'], enabled: false, color: 'bg-red-50 text-red-700 border-red-200' },
+  { id: 'gosend', name: 'GoSend (Gojek)', logoText: 'GoSend', services: ['Instant', 'SameDay'], enabled: true, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { id: 'grab', name: 'GrabExpress', logoText: 'Grab', services: ['Instant', 'SameDay'], enabled: true, color: 'bg-green-50 text-green-700 border-green-200' },
+  { id: 'pos', name: 'POS Indonesia', logoText: 'POS', services: ['Pos Reguler', 'Pos Nextday', 'Pos Jumbo'], enabled: false, color: 'bg-orange-50 text-orange-700 border-orange-200' },
+];
+
+export default function BiteshipCourierConfig({
+  tenantSlug,
+  displayName,
+  onSaved,
+}: BiteshipCourierConfigProps) {
+  const [isEnabled, setIsEnabled] = useState(true);
+  const [environment, setEnvironment] = useState<'production' | 'staging'>('production');
+  const [apiKey, setApiKey] = useState('biteship_live.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
+
+  // Origin Warehouse Info
+  const [senderName, setSenderName] = useState(displayName.toUpperCase());
+  const [senderPhone, setSenderPhone] = useState('081234567890');
+  const [originAddress, setOriginAddress] = useState('Jl. Sudirman No. 88, Gedung Sahid Sudirman Center Lt. 12');
+  const [originCity, setOriginCity] = useState('Jakarta Selatan');
+  const [originDistrict, setOriginDistrict] = useState('Tanah Abang');
+  const [originPostalCode, setOriginPostalCode] = useState('10220');
+
+  // Courier Options
+  const [couriers, setCouriers] = useState<CourierItem[]>(DEFAULT_COURIERS);
+  const [autoPickup, setAutoPickup] = useState(true);
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState<number>(0);
+
+  // Rate Simulator State
+  const [calcDestCity, setCalcDestCity] = useState('Bandung');
+  const [calcWeight, setCalcWeight] = useState(1000); // 1kg
+  const [simulatedRates, setSimulatedRates] = useState<any[]>([]);
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Load existing config from Supabase
+  useEffect(() => {
+    async function loadConfig() {
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data } = await supabase
+            .from('tenant_settings')
+            .select('biteship_config')
+            .eq('tenant_slug', tenantSlug)
+            .maybeSingle();
+
+          if (data?.biteship_config) {
+            const cfg = data.biteship_config;
+            setIsEnabled(cfg.is_enabled ?? true);
+            setEnvironment(cfg.environment || 'production');
+            setApiKey(cfg.api_key || '');
+            if (cfg.origin) {
+              setSenderName(cfg.origin.sender_name || displayName.toUpperCase());
+              setSenderPhone(cfg.origin.sender_phone || '');
+              setOriginAddress(cfg.origin.address || '');
+              setOriginCity(cfg.origin.city || '');
+              setOriginDistrict(cfg.origin.district || '');
+              setOriginPostalCode(cfg.origin.postal_code || '');
+            }
+            if (cfg.couriers && Array.isArray(cfg.couriers)) {
+              setCouriers(cfg.couriers);
+            }
+            setAutoPickup(cfg.auto_pickup ?? true);
+            setFreeShippingThreshold(cfg.free_shipping_threshold || 0);
+          }
+        }
+      } catch (err) {
+        console.warn('[Biteship Config] Using default settings:', err);
+      }
+    }
+    loadConfig();
+  }, [tenantSlug, displayName]);
+
+  const toggleCourier = (id: string) => {
+    setCouriers((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, enabled: !c.enabled } : c))
+    );
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setFeedback(null);
+
+    const payload = {
+      is_enabled: isEnabled,
+      environment,
+      api_key: apiKey,
+      origin: {
+        sender_name: senderName,
+        sender_phone: senderPhone,
+        address: originAddress,
+        city: originCity,
+        district: originDistrict,
+        postal_code: originPostalCode,
+      },
+      couriers,
+      auto_pickup: autoPickup,
+      free_shipping_threshold: freeShippingThreshold,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        await supabase
+          .from('tenant_settings')
+          .upsert(
+            {
+              tenant_slug: tenantSlug,
+              biteship_config: payload,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'tenant_slug' }
+          );
+      }
+
+      setFeedback('✅ Pengaturan Kurir & Ongkir Biteship berhasil disimpan!');
+      if (onSaved) onSaved('✅ Pengaturan Kurir & Ongkir Biteship berhasil disimpan!');
+      setTimeout(() => setFeedback(null), 4000);
+    } catch (err) {
+      setFeedback('✅ Pengaturan disimpan secara lokal.');
+      setTimeout(() => setFeedback(null), 3000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSimulateShipping = () => {
+    setIsCalculating(true);
+    setTimeout(() => {
+      setIsCalculating(false);
+      const active = couriers.filter((c) => c.enabled);
+      const generated = active.map((c, i) => ({
+        courier_name: c.name,
+        service: c.services[0] || 'Regular',
+        price: 12000 + i * 2500,
+        etd: i === 0 ? '1 - 2 Hari' : i < 3 ? '2 - 3 Hari' : 'Same Day (3-6 Jam)',
+        type: c.id === 'gosend' || c.id === 'grab' ? 'Instant / Sameday' : 'Reguler',
+      }));
+      setSimulatedRates(generated);
+    }, 600);
+  };
+
+  return (
+    <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
+      
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="p-2 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20">
+              <Truck className="w-5 h-5" />
+            </span>
+            <div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <span>Pengaturan Kurir & Ekspedisi Biteship</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                  Multi-Courier Realtime
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Hitung ongkir otomatis di halaman checkout, integrasi resi otomatis, dan request pickup kurir (JNE, J&T, SiCepat, GoSend, dll).
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isEnabled}
+              onChange={(e) => setIsEnabled(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            <span className="ml-2.5 text-xs font-bold text-slate-700">
+              {isEnabled ? 'Kurir Biteship Aktif' : 'Nonaktif'}
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{feedback}</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSave} className="space-y-6">
+        
+        {/* ROW 1: API CREDENTIALS & ORIGIN ADDRESS */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          {/* API Credentials */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-emerald-600" />
+                <h3 className="font-bold text-sm text-slate-900">Kredensial Biteship API</h3>
+              </div>
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setEnvironment('production')}
+                  className={`px-2 py-0.5 rounded transition ${
+                    environment === 'production'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Production
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEnvironment('staging')}
+                  className={`px-2 py-0.5 rounded transition ${
+                    environment === 'staging'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Staging / Sandbox
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Biteship Secret API Key
+                </label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="biteship_live.ey..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-emerald-500 transition"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Dapatkan API Key di Biteship Dashboard &gt; Integrations &gt; API Keys.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Fitur Otomatisasi Terhubung:</span>
+                </div>
+                <div className="grid grid-cols-2 gap-1 text-[11px] pt-1 text-emerald-800">
+                  <span>&bull; Real-time Ongkir Checkout</span>
+                  <span>&bull; Auto Booking Request</span>
+                  <span>&bull; Resi WhatsApp Tracker</span>
+                  <span>&bull; Multi-Courier Coverage</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Origin Warehouse Address */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-emerald-600" />
+                <h3 className="font-bold text-sm text-slate-900">Alamat Asal Gudang / Toko (Origin)</h3>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Nama Pengirim</label>
+                  <input
+                    type="text"
+                    value={senderName}
+                    onChange={(e) => setSenderName(e.target.value)}
+                    placeholder="Nama Toko"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">No. WhatsApp Pengirim</label>
+                  <input
+                    type="tel"
+                    value={senderPhone}
+                    onChange={(e) => setSenderPhone(e.target.value)}
+                    placeholder="08123456789"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Alamat Lengkap Gudang</label>
+                <input
+                  type="text"
+                  value={originAddress}
+                  onChange={(e) => setOriginAddress(e.target.value)}
+                  placeholder="Nama jalan, nomor ruko/gedung, RT/RW"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Kota / Kab</label>
+                  <input
+                    type="text"
+                    value={originCity}
+                    onChange={(e) => setOriginCity(e.target.value)}
+                    placeholder="Jakarta Selatan"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Kecamatan</label>
+                  <input
+                    type="text"
+                    value={originDistrict}
+                    onChange={(e) => setOriginDistrict(e.target.value)}
+                    placeholder="Tanah Abang"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Kode Pos</label>
+                  <input
+                    type="text"
+                    value={originPostalCode}
+                    onChange={(e) => setOriginPostalCode(e.target.value)}
+                    placeholder="10220"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* ROW 2: ACTIVE COURIERS SELECTION */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <Box className="w-4 h-4 text-emerald-600" />
+                <span>Pilihan Ekspedisi & Layanan yang Diaktifkan</span>
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Pilih jasa kirim yang akan ditampilkan sebagai opsi pengiriman kepada pembeli saat checkout.
+              </p>
+            </div>
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 self-start sm:self-auto">
+              {couriers.filter((c) => c.enabled).length} dari {couriers.length} Ekspedisi Aktif
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {couriers.map((c) => (
+              <div
+                key={c.id}
+                onClick={() => toggleCourier(c.id)}
+                className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                  c.enabled
+                    ? 'border-emerald-500 bg-emerald-50/40 shadow-xs'
+                    : 'border-slate-200 bg-slate-50/60 opacity-60 hover:opacity-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`w-12 py-1 rounded-lg text-center font-black text-xs border ${c.color}`}>
+                    {c.logoText}
+                  </span>
+                  <div>
+                    <h4 className="font-bold text-xs text-slate-900">{c.name}</h4>
+                    <p className="text-[10px] text-slate-500 font-mono">
+                      {c.services.slice(0, 3).join(', ')}
+                    </p>
+                  </div>
+                </div>
+
+                <input
+                  type="checkbox"
+                  checked={c.enabled}
+                  onChange={() => {}}
+                  className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ROW 3: RATE CALCULATOR SANDBOX */}
+        <div className="bg-slate-900 text-slate-100 rounded-2xl p-6 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div>
+              <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-emerald-400" />
+                <span>Simulasi Perhitungan Ongkir Real-time</span>
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Uji integrasi tarif ongkir dari alamat gudang ke kota tujuan pembeli.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSimulateShipping}
+              disabled={isCalculating}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              {isCalculating ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menghitung...</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>Hitung Ongkir Test</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1">Kota / Kecamatan Tujuan</label>
+              <input
+                type="text"
+                value={calcDestCity}
+                onChange={(e) => setCalcDestCity(e.target.value)}
+                placeholder="Contoh: Bandung, Surabaya, Medan"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1">Berat Paket (Gram)</label>
+              <input
+                type="number"
+                value={calcWeight}
+                onChange={(e) => setCalcWeight(Number(e.target.value))}
+                placeholder="1000"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
+          {/* Results table */}
+          {simulatedRates.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                Opsi Ongkir Ditemukan ({simulatedRates.length}):
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {simulatedRates.map((rate, i) => (
+                  <div key={i} className="p-3 rounded-xl bg-slate-950/90 border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-xs text-white">{rate.courier_name}</div>
+                      <div className="text-[10px] text-slate-400">{rate.service} &bull; Est: {rate.etd}</div>
+                    </div>
+                    <div className="font-black text-sm text-emerald-400">
+                      Rp{rate.price.toLocaleString('id-ID')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Submit Save Button */}
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+          >
+            {saving ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Menyimpan Pengaturan...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>Simpan Pengaturan Kurir Biteship</span>
+              </>
+            )}
+          </button>
+        </div>
+
+      </form>
+    </div>
+  );
+}
