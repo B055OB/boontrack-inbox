@@ -24,6 +24,18 @@ import ShopClaimSection from "@/app/components/ShopClaimSection";
 import CheckoutModal from "@/app/components/CheckoutModal";
 import { captureAffiliateReferral, getActiveAffiliateCode } from "@/lib/tracking";
 
+// Deklarasi global window untuk Ads Tracker
+declare global {
+  interface Window {
+    initSellerTracking?: (slug: string) => Promise<void>;
+    getTrackingData?: () => Record<string, any>;
+    trackInitiateCheckout?: (name: string, price: number) => void;
+    trackClientPurchase?: (orderId: string, amount: number) => void;
+    fbq?: (...args: any[]) => void;
+    ttq?: any;
+  }
+}
+
 interface Product {
   id: number;
   name: string;
@@ -85,10 +97,15 @@ export default function TenantStorefrontPage() {
   // Validasi Toko Demo
   const isDemoStore = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
 
-  // 0. CAPTURE AFFILIATE REFERRAL DARI URL (?ref=... / ?via=...)
+  // 0. CAPTURE AFFILIATE REFERRAL & INIT ADS TRACKING PRO MILIK SELLER
   useEffect(() => {
     captureAffiliateReferral();
-  }, []);
+
+    // Jalankan Ads Tracking Pro untuk seller
+    if (typeof window !== "undefined" && window.initSellerTracking) {
+      window.initSellerTracking(tenantSlug);
+    }
+  }, [tenantSlug]);
 
   // 1. BYPASS RUTE SISTEM KE FORM REGISTER
   if (tenantSlug === "register" || tenantSlug === "daftar") {
@@ -189,6 +206,12 @@ export default function TenantStorefrontPage() {
 
   const openDirectCheckout = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    
+    // Trigger event Initiate Checkout ke Pixel Ads Pro milik Seller
+    if (typeof window !== "undefined" && window.trackInitiateCheckout) {
+      window.trackInitiateCheckout(product.name, product.price);
+    }
+
     setProductForCheckout({
       id: String(product.id),
       title: product.name,
@@ -231,6 +254,12 @@ export default function TenantStorefrontPage() {
   const handleCartCheckout = () => {
     if (cart.length === 0) return;
     const combinedTitles = cart.map(c => `${c.product.name} (${c.qty}x)`).join(", ");
+    
+    // Trigger event Initiate Checkout
+    if (typeof window !== "undefined" && window.trackInitiateCheckout) {
+      window.trackInitiateCheckout(combinedTitles, totalCartPrice);
+    }
+
     setProductForCheckout({
       id: `CART-MULTI-${Date.now()}`,
       title: combinedTitles,

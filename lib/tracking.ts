@@ -1,6 +1,6 @@
 // lib/tracking.ts
 // Multi-Tier Resilient Referral Tracker for BoonTrack (iOS Safari ITP & Private Browsing Safe)
-// + Client-Side Tracking Engine (Meta Pixel & TikTok Pixel)
+// + Client-Side Tracking Engine (Meta Pixel & TikTok Pixel) + Ads Tracking Pro
 
 declare global {
   interface Window {
@@ -15,6 +15,10 @@ declare global {
     };
     TiktokAnalyticsObject?: string;
     _fbq?: any;
+    initSellerTracking?: (slug: string) => Promise<void>;
+    getTrackingData?: () => Record<string, any>;
+    trackInitiateCheckout?: (product: { id: string; name: string; price: number } | string, price?: number) => void;
+    trackClientPurchase?: (orderId: string, totalAmount: number) => void;
   }
 }
 
@@ -194,6 +198,58 @@ export function getActiveAffiliateCode(): string | null {
 }
 
 // ============================================================================
+// ADS TRACKING PRO: ATTRIBUTION & URL CAPTURE ENGINE
+// ============================================================================
+
+/**
+ * Tangkap parameter iklan (UTM, fbclid, ttclid) dan simpan ke sessionStorage
+ */
+export function captureAdParameters() {
+  if (typeof window === 'undefined') return;
+  const urlParams = new URLSearchParams(window.location.search);
+  const keys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'ttclid'];
+
+  keys.forEach((key) => {
+    const val = urlParams.get(key);
+    if (val) {
+      sessionStorage.setItem(`bt_${key}`, val);
+    }
+  });
+}
+
+/**
+ * Ambil seluruh data tracking atribusi tersimpan
+ */
+export function getTrackingData(): Record<string, any> {
+  if (typeof window === 'undefined') return {};
+  return {
+    utm_source: sessionStorage.getItem('bt_utm_source') || null,
+    utm_medium: sessionStorage.getItem('bt_utm_medium') || null,
+    utm_campaign: sessionStorage.getItem('bt_utm_campaign') || null,
+    utm_content: sessionStorage.getItem('bt_utm_content') || null,
+    utm_term: sessionStorage.getItem('bt_utm_term') || null,
+    fbclid: sessionStorage.getItem('bt_fbclid') || null,
+    ttclid: sessionStorage.getItem('bt_ttclid') || null,
+    affiliate_ref: getActiveAffiliateCode(),
+    client_user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null
+  };
+}
+
+/**
+ * Sinkronisasi data sesi atribusi (digunakan oleh attribution.ts)
+ */
+export async function syncAttributionSession(
+  tenantId: string,
+  searchParams?: URLSearchParams
+): Promise<Record<string, any>> {
+  captureAdParameters();
+  return {
+    tenant_id: tenantId,
+    ...getTrackingData()
+  };
+}
+
+// ============================================================================
 // ADS TRACKING PRO: META PIXEL & TIKTOK PIXEL ENGINE (P3-A.4)
 // ============================================================================
 
@@ -276,6 +332,27 @@ export function initTikTokPixel(pixelId: string) {
 }
 
 /**
+ * Fetch dan jalankan Pixel seller secara dinamis
+ */
+export async function initSellerTracking(tenantSlug: string) {
+  if (typeof window === 'undefined' || !tenantSlug) return;
+  try {
+    const res = await fetch(`https://api.boontrack.com/api/v1/seller/ads-pro/config/${tenantSlug}`);
+    const data = await res.json();
+    if (data.success && data.is_enabled && data.pixel_config) {
+      if (data.pixel_config.meta_pixel_id) {
+        initMetaPixel(data.pixel_config.meta_pixel_id);
+      }
+      if (data.pixel_config.tiktok_pixel_id) {
+        initTikTokPixel(data.pixel_config.tiktok_pixel_id);
+      }
+    }
+  } catch (err) {
+    console.error('[Ads Pro] Failed to load seller tracking config:', err);
+  }
+}
+
+/**
  * Tembakkan event ViewContent
  */
 export function trackViewContent(product: { id: string; name: string; price: number }) {
@@ -303,26 +380,64 @@ export function trackViewContent(product: { id: string; name: string; price: num
 }
 
 /**
- * Tembakkan event InitiateCheckout
+ * Tembakkan event InitiateCheckout (fleksibel: menerima objek produk atau name + price)
  */
-export function trackInitiateCheckout(product: { id: string; name: string; price: number }) {
+export function trackInitiateCheckout(
+  productOrName: { id?: string; name: string; price: number } | string,
+  priceParam?: number
+) {
   if (typeof window === 'undefined') return;
+
+  const name = typeof productOrName === 'string' ? productOrName : productOrName.name;
+  const price = typeof productOrName === 'string' ? (priceParam || 0) : productOrName.price;
+  const id = typeof productOrName === 'object' && productOrName.id ? productOrName.id : 'ITEM';
 
   if (window.fbq) {
     window.fbq('track', 'InitiateCheckout', {
-      content_ids: [product.id],
-      content_name: product.name,
-      value: product.price,
+      content_ids: [id],
+      content_name: name,
+      value: price,
       currency: 'IDR'
     });
   }
 
   if (window.ttq) {
     window.ttq.track('InitiateCheckout', {
-      content_id: product.id,
-      content_name: product.name,
-      value: product.price,
+      content_id: id,
+      content_name: name,
+      value: price,
       currency: 'IDR'
     });
   }
+}
+
+/**
+ * Tembakkan event Purchase dengan event_id deduplikasi untuk sinkronisasi CAPI
+ */
+export function trackClientPurchase(orderId: string, totalAmount: number) {
+  if (typeof window === 'undefined') return;
+  const deduplicationKey = `PURCHASE_${orderId}`;
+
+  if (window.fbq) {
+    window.fbq('track', 'Purchase', {
+      value: Number(totalAmount),
+      currency: 'IDR'
+    }, { eventID: deduplicationKey });
+  }
+
+  if (window.ttq) {
+    window.ttq.track('CompletePayment', {
+      value: Number(totalAmount),
+      currency: 'IDR'
+    }, { event_id: deduplicationKey });
+  }
+}
+
+// Auto-eksekusi capture parameter iklan dan ekspos ke window saat dimuat di client
+if (typeof window !== 'undefined') {
+  captureAdParameters();
+  window.initSellerTracking = initSellerTracking;
+  window.getTrackingData = getTrackingData;
+  window.trackInitiateCheckout = trackInitiateCheckout;
+  window.trackClientPurchase = trackClientPurchase;
 }
