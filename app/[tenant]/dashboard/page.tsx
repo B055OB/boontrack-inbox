@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Package,
@@ -133,9 +133,16 @@ const INITIAL_TRANSACTIONS: TransactionItem[] = [
 
 export default function TenantDashboardPage() {
   const params = useParams();
+  const router = useRouter();
   const rawTenant = (params?.tenant as string) || "onlineboost";
   const tenantSlug = rawTenant.toLowerCase();
   const displayName = tenantSlug.replace(/-/g, " ");
+
+  useEffect(() => {
+    if (tenantSlug === 'login' || tenantSlug === 'auth') {
+      router.replace('/login');
+    }
+  }, [tenantSlug, router]);
 
   const isProTenant = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
 

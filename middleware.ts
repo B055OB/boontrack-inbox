@@ -162,8 +162,17 @@ export function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // SPECIAL DOMAIN: shop.boontrack.com (Langsung render app/page.tsx)
+  // SPECIAL DOMAIN: login.boontrack.com & shop.boontrack.com
   // ===========================================================================
+  if (subdomain === 'login') {
+    const url = req.nextUrl.clone();
+    if (pathname === '/') {
+      url.pathname = '/login';
+      return NextResponse.rewrite(url);
+    }
+    return NextResponse.next();
+  }
+
   if (subdomain === 'shop') {
     return NextResponse.next();
   }
@@ -271,6 +280,15 @@ export function middleware(req: NextRequest) {
   // 4. Dynamic B2B Tenant Fallback
   // ===========================================================================
   {
+    // Safeguard: Do not process system reserved subdomains as dynamic B2B tenants
+    const RESERVED_SUBDOMAINS = new Set([
+      'login', 'register', 'daftar', 'api', 'dashboard', 'auth', 'admin',
+      'affiliate', 'manager', 'shop', 'www', 'app', 'static'
+    ]);
+    if (RESERVED_SUBDOMAINS.has(subdomain)) {
+      return NextResponse.next();
+    }
+
     const url = req.nextUrl.clone();
 
     if (pathname === `/${subdomain}` || pathname === `/${subdomain}/`) {

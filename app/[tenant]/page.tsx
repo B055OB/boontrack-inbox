@@ -98,13 +98,49 @@ export default function TenantStorefrontPage() {
     }
   }, [tenantSlug]);
 
-  // 1. BYPASS RUTE SISTEM KE FORM REGISTER
+  // 1. RESERVED SYSTEM SLUGS CHECK (Kecualikan slug sistem agar tidak diproses sebagai tenant toko)
+  const RESERVED_SYSTEM_SLUGS = new Set([
+    "login",
+    "register",
+    "daftar",
+    "api",
+    "dashboard",
+    "auth",
+    "admin",
+    "affiliate",
+    "manager",
+    "checkout",
+    "pricing",
+    "onboarding",
+    "pilot-onboarding",
+    "enterprise",
+    "gym"
+  ]);
+
+  if (tenantSlug === "login" || tenantSlug === "auth") {
+    if (typeof window !== "undefined") {
+      router.replace("/login");
+    }
+    return (
+      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center text-xs text-slate-400 font-semibold">
+        Mengalihkan ke halaman login...
+      </main>
+    );
+  }
+
   if (tenantSlug === "register" || tenantSlug === "daftar") {
     return (
       <main className="min-h-[100dvh] bg-slate-50 py-12 px-4 flex flex-col items-center justify-center">
         <ShopClaimSection />
       </main>
     );
+  }
+
+  if (RESERVED_SYSTEM_SLUGS.has(tenantSlug)) {
+    if (typeof window !== "undefined") {
+      router.replace("/");
+    }
+    return null;
   }
 
   // 2. VALIDASI KEBERADAAN TOKO DI DATABASE
