@@ -1,5 +1,22 @@
 // lib/tracking.ts
 // Multi-Tier Resilient Referral Tracker for BoonTrack (iOS Safari ITP & Private Browsing Safe)
+// + Client-Side Tracking Engine (Meta Pixel & TikTok Pixel)
+
+declare global {
+  interface Window {
+    fbq?: (...args: any[]) => void;
+    ttq?: {
+      track: (...args: any[]) => void;
+      page: () => void;
+      methods?: string[];
+      setAndDefer?: (t: any, e: any) => void;
+      load?: (e: any, n?: any) => void;
+      [key: string]: any;
+    };
+    TiktokAnalyticsObject?: string;
+    _fbq?: any;
+  }
+}
 
 const COOKIE_NAME = 'bt_ref';
 const STORAGE_KEY = 'bt_ref';
@@ -174,4 +191,138 @@ export function getActiveAffiliateCode(): string | null {
   }
 
   return null;
+}
+
+// ============================================================================
+// ADS TRACKING PRO: META PIXEL & TIKTOK PIXEL ENGINE (P3-A.4)
+// ============================================================================
+
+/**
+ * Inisialisasi Script Meta Pixel
+ */
+export function initMetaPixel(pixelId: string) {
+  if (typeof window === 'undefined' || !pixelId || window.fbq) return;
+  (function (f: any, b: any, e: any, v: any, n?: any, t?: any, s?: any) {
+    if (f.fbq) return;
+    n = f.fbq = function () {
+      n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+    };
+    if (!f._fbq) f._fbq = n;
+    n.push = n;
+    n.loaded = !0;
+    n.version = '2.0';
+    n.queue = [];
+    t = b.createElement(e);
+    t.async = !0;
+    t.src = v;
+    s = b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t, s);
+  })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+
+  window.fbq('init', pixelId);
+  window.fbq('track', 'PageView');
+}
+
+/**
+ * Inisialisasi Script TikTok Pixel
+ */
+export function initTikTokPixel(pixelId: string) {
+  if (typeof window === 'undefined' || !pixelId || window.ttq) return;
+  (function (w: any, d: any, t: any) {
+    w.TiktokAnalyticsObject = t;
+    var ttq = (w[t] = w[t] || []);
+    ttq.methods = [
+      'page',
+      'track',
+      'identify',
+      'instances',
+      'debug',
+      'on',
+      'off',
+      'once',
+      'ready',
+      'alias',
+      'group',
+      'enableCookie',
+      'disableCookie'
+    ];
+    ttq.setAndDefer = function (t: any, e: any) {
+      t[e] = function () {
+        t.push([e].concat(Array.prototype.slice.call(arguments, 0)));
+      };
+    };
+    for (var i = 0; i < ttq.methods.length; i++) {
+      ttq.setAndDefer(ttq, ttq.methods[i]);
+    }
+    ttq.load = function (e: any, n: any) {
+      var r = 'https://analytics.tiktok.com/i18n/pixel/events.js';
+      ttq._i = ttq._i || {};
+      ttq._i[e] = [];
+      ttq._i[e]._u = r;
+      ttq._t = ttq._t || {};
+      ttq._t[e] = +new Date();
+      ttq._o = ttq._o || {};
+      ttq._o[e] = n || {};
+      var a = d.createElement('script');
+      a.type = 'text/javascript';
+      a.async = !0;
+      a.src = r + '?type=desktop&lib=' + t;
+      var c = d.getElementsByTagName('script')[0];
+      c.parentNode.insertBefore(a, c);
+    };
+    ttq.load(pixelId);
+    ttq.page();
+  })(window, document, 'ttq');
+}
+
+/**
+ * Tembakkan event ViewContent
+ */
+export function trackViewContent(product: { id: string; name: string; price: number }) {
+  if (typeof window === 'undefined') return;
+
+  if (window.fbq) {
+    window.fbq('track', 'ViewContent', {
+      content_ids: [product.id],
+      content_name: product.name,
+      content_type: 'product',
+      value: product.price,
+      currency: 'IDR'
+    });
+  }
+
+  if (window.ttq) {
+    window.ttq.track('ViewContent', {
+      content_id: product.id,
+      content_name: product.name,
+      content_type: 'product',
+      value: product.price,
+      currency: 'IDR'
+    });
+  }
+}
+
+/**
+ * Tembakkan event InitiateCheckout
+ */
+export function trackInitiateCheckout(product: { id: string; name: string; price: number }) {
+  if (typeof window === 'undefined') return;
+
+  if (window.fbq) {
+    window.fbq('track', 'InitiateCheckout', {
+      content_ids: [product.id],
+      content_name: product.name,
+      value: product.price,
+      currency: 'IDR'
+    });
+  }
+
+  if (window.ttq) {
+    window.ttq.track('InitiateCheckout', {
+      content_id: product.id,
+      content_name: product.name,
+      value: product.price,
+      currency: 'IDR'
+    });
+  }
 }
