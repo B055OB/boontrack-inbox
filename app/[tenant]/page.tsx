@@ -26,7 +26,8 @@ import {
   captureAffiliateReferral, 
   getActiveAffiliateCode,
   initSellerTracking,
-  trackInitiateCheckout
+  trackInitiateCheckout,
+  trackViewContent
 } from "@/lib/tracking";
 
 interface Product {
@@ -193,21 +194,6 @@ export default function TenantStorefrontPage() {
   const filteredProducts = activeCategory === "all"
     ? rawProducts
     : rawProducts.filter((p) => p.category === activeCategory);
-
-  const openDirectCheckout = (product: Product, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    
-    // Trigger event Initiate Checkout ke Pixel Ads Pro milik Seller
-    trackInitiateCheckout(product.name, product.price);
-
-    setProductForCheckout({
-      id: String(product.id),
-      title: product.name,
-      price: product.price
-    });
-    setIsCheckoutOpen(true);
-    if (selectedProduct) setSelectedProduct(null);
-  };
 
   const addToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -405,7 +391,10 @@ export default function TenantStorefrontPage() {
               {filteredProducts.map((p) => (
                 <div
                   key={p.id}
-                  onClick={() => setSelectedProduct(p)}
+                  onClick={() => {
+                    trackViewContent(p);
+                    setSelectedProduct(p);
+                  }}
                   className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
                 >
                   <div>
@@ -429,10 +418,13 @@ export default function TenantStorefrontPage() {
                       <span className="text-sm font-black text-blue-600">Rp {p.price.toLocaleString("id-ID")}</span>
                     </div>
                     <button 
-                      onClick={(e) => openDirectCheckout(p, e)} 
+                      onClick={(e) => {
+                        addToCart(p, e);
+                        setShowCartModal(true);
+                      }} 
                       className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
                     >
-                      <QrCode className="w-3.5 h-3.5" /> Beli
+                      <ShoppingBag className="w-3.5 h-3.5" /> + Keranjang
                     </button>
                   </div>
                 </div>
@@ -475,11 +467,15 @@ export default function TenantStorefrontPage() {
 
             <div className="border-t border-slate-100 pt-3">
               <button
-                onClick={() => openDirectCheckout(selectedProduct)}
+                onClick={() => {
+                  addToCart(selectedProduct);
+                  setSelectedProduct(null);
+                  setShowCartModal(true);
+                }}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <QrCode className="w-4 h-4" />
-                <span>Beli Sekarang (QRIS Instan)</span>
+                <ShoppingBag className="w-4 h-4" />
+                <span>Tambah ke Keranjang</span>
               </button>
             </div>
           </div>
