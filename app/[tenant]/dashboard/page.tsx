@@ -56,6 +56,9 @@ interface ProductItem {
   description: string;
   download_url?: string;
   image: string;
+  stock: number;
+  sku?: string;
+  is_unlimited?: boolean;
 }
 
 interface TransactionItem {
@@ -81,7 +84,10 @@ const DEFAULT_PRODUCTS: ProductItem[] = [
     promo: "Diskon 50%",
     description: "Sebuah formula hidden gem yang belum banyak orang Indonesia mengetahuinya untuk menghasilkan dollar dari paid traffic.",
     download_url: "https://onlineboost.my.id/p/step-by-step-rahasia-menghasilkan-dollar",
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
+    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
+    stock: 9999,
+    sku: "OB-DIG-001",
+    is_unlimited: true,
   },
   {
     id: 2,
@@ -93,7 +99,10 @@ const DEFAULT_PRODUCTS: ProductItem[] = [
     promo: "Diskon 35%",
     description: "Panduan praktis scale-up iklan Meta & TikTok ads dengan optimasi ROAS tinggi.",
     download_url: "https://drive.google.com/drive/folders/masterclass-ads",
-    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60"
+    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
+    stock: 9999,
+    sku: "OB-DIG-002",
+    is_unlimited: true,
   }
 ];
 
@@ -178,7 +187,10 @@ export default function TenantDashboardPage() {
     promo: "",
     description: "",
     download_url: "",
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
+    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
+    stock: 100,
+    sku: "OB-SKU-001",
+    is_unlimited: false,
   });
 
   const [aiForm, setAiForm] = useState({
@@ -214,15 +226,35 @@ export default function TenantDashboardPage() {
       promo: "",
       description: "",
       download_url: "",
-      image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60"
+      image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
+      stock: 100,
+      sku: `SKU-${Date.now().toString().slice(-4)}`,
+      is_unlimited: false,
     });
     setIsProductModalOpen(true);
   };
 
   const openEditProductModal = (prod: ProductItem) => {
     setEditingProductId(prod.id);
-    setProductForm(prod);
+    setProductForm({
+      ...prod,
+      stock: prod.stock ?? 100,
+      sku: prod.sku || `SKU-${prod.id}`,
+      is_unlimited: prod.is_unlimited ?? false,
+    });
     setIsProductModalOpen(true);
+  };
+
+  const handleQuickStockChange = (productId: number, delta: number) => {
+    setProducts(prev =>
+      prev.map(p => {
+        if (p.id === productId) {
+          const newStock = Math.max(0, (p.stock || 0) + delta);
+          return { ...p, stock: newStock };
+        }
+        return p;
+      })
+    );
   };
 
   const handleSaveProductForm = (e: React.FormEvent) => {
@@ -717,7 +749,55 @@ export default function TenantDashboardPage() {
                     </div>
                   </div>
 
-                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                  {/* Stock & SKU row */}
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-slate-400 font-bold">
+                        SKU: {p.sku || 'SKU-AUTO'}
+                      </span>
+                      {p.is_unlimited ? (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          Digital (Unlimited)
+                        </span>
+                      ) : p.stock === 0 ? (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                          Stok Habis
+                        </span>
+                      ) : p.stock <= 10 ? (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          Stok Menipis ({p.stock} Unit)
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Stok: {p.stock} Unit
+                        </span>
+                      )}
+                    </div>
+
+                    {!p.is_unlimited && (
+                      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStockChange(p.id, -1)}
+                          className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shadow-xs transition"
+                          title="Kurangi Stok"
+                        >
+                          -
+                        </button>
+                        <span className="px-2 font-bold font-mono text-xs text-slate-900">{p.stock}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickStockChange(p.id, 1)}
+                          className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shadow-xs transition"
+                          title="Tambah Stok"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-3 mt-2 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
                       {p.download_url || "Tanpa Link Download"}
                     </span>
@@ -822,6 +902,40 @@ export default function TenantDashboardPage() {
                     onChange={(e) => setProductForm(p => ({ ...p, promo: e.target.value }))}
                     placeholder="Contoh: Diskon 50%"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Stock and SKU inputs */}
+              <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">Jumlah Stok Tersedia *</label>
+                  <input
+                    type="number"
+                    disabled={productForm.is_unlimited}
+                    value={productForm.is_unlimited ? 9999 : productForm.stock ?? 100}
+                    onChange={(e) => setProductForm(p => ({ ...p, stock: Number(e.target.value) }))}
+                    className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-blue-600 disabled:bg-slate-100 disabled:text-slate-400"
+                  />
+                  <label className="inline-flex items-center gap-1.5 mt-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={productForm.is_unlimited || false}
+                      onChange={(e) => setProductForm(p => ({ ...p, is_unlimited: e.target.checked, stock: e.target.checked ? 9999 : p.stock }))}
+                      className="rounded text-blue-600 focus:ring-blue-500 h-3.5 w-3.5"
+                    />
+                    <span className="text-[11px] text-slate-600 font-medium">Stok Tak Terbatas (Digital)</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">SKU / Kode Barang</label>
+                  <input
+                    type="text"
+                    value={productForm.sku || ""}
+                    onChange={(e) => setProductForm(p => ({ ...p, sku: e.target.value }))}
+                    placeholder="Contoh: OB-FSK-001"
+                    className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600"
                   />
                 </div>
               </div>

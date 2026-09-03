@@ -17,6 +17,12 @@ import {
   Package,
   ArrowRight,
   Sparkles,
+  Search,
+  Check,
+  Activity,
+  Send,
+  Navigation,
+  ExternalLink,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -33,6 +39,14 @@ interface CourierItem {
   services: string[];
   enabled: boolean;
   color: string;
+}
+
+interface TrackingStep {
+  time: string;
+  status: string;
+  location: string;
+  description: string;
+  isCompleted: boolean;
 }
 
 const DEFAULT_COURIERS: CourierItem[] = [
@@ -75,6 +89,19 @@ export default function BiteshipCourierConfig({
   const [calcWeight, setCalcWeight] = useState(1000); // 1kg
   const [simulatedRates, setSimulatedRates] = useState<any[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
+
+  // Resi Tracking & CAPI Automation Simulator
+  const [searchWaybill, setSearchWaybill] = useState('JNEX-8891029102-ID');
+  const [selectedCourierTracker, setSelectedCourierTracker] = useState('jne');
+  const [trackingResult, setTrackingResult] = useState<{
+    waybill: string;
+    courier: string;
+    status: 'IN_TRANSIT' | 'DELIVERED' | 'PICKED_UP';
+    receiver: string;
+    history: TrackingStep[];
+  } | null>(null);
+  const [isTracking, setIsTracking] = useState(false);
+  const [capiTriggeredLog, setCapiTriggeredLog] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -189,23 +216,75 @@ export default function BiteshipCourierConfig({
     }, 600);
   };
 
+  const handleLookupTracking = () => {
+    if (!searchWaybill) return;
+    setIsTracking(true);
+    setCapiTriggeredLog(null);
+
+    setTimeout(() => {
+      setIsTracking(false);
+      setTrackingResult({
+        waybill: searchWaybill,
+        courier: selectedCourierTracker.toUpperCase(),
+        status: 'DELIVERED',
+        receiver: 'Rian Hidayat (Penerima Paket)',
+        history: [
+          {
+            time: 'Hari Ini, 14:20 WIB',
+            status: 'DELIVERED',
+            location: 'Bandung Hub',
+            description: 'Paket telah berhasil diterima oleh yang bersangkutan (Rian Hidayat).',
+            isCompleted: true,
+          },
+          {
+            time: 'Hari Ini, 08:30 WIB',
+            status: 'WITH_DELIVERY_COURIER',
+            location: 'Bandung Selatan',
+            description: 'Paket sedang dibawa kurir menuju alamat penerima.',
+            isCompleted: true,
+          },
+          {
+            time: 'Kemarin, 21:00 WIB',
+            status: 'IN_TRANSIT',
+            location: 'Jakarta Gateway Hub',
+            description: 'Paket diberangkatkan menuju kota tujuan (Bandung).',
+            isCompleted: true,
+          },
+          {
+            time: 'Kemarin, 15:45 WIB',
+            status: 'PICKED_UP',
+            location: originCity,
+            description: `Paket telah di-pickup oleh kurir dari gudang ${displayName}.`,
+            isCompleted: true,
+          },
+        ],
+      });
+
+      // Auto CAPI server-side sync log
+      const log = `[CAPI Automation] Webhook status DELIVERED terverifikasi. Dispatched Meta CAPI & TikTok Events API with eventID: PURCHASE_${searchWaybill.slice(-8)}`;
+      setCapiTriggeredLog(log);
+    }, 700);
+  };
+
   return (
-    <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
+    <div className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full space-y-6 text-slate-900">
       
-      {/* Header Banner */}
+      {/* ── HEADER BANNER ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20">
+          <div className="flex items-center gap-2.5">
+            <span className="p-2.5 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/20">
               <Truck className="w-5 h-5" />
             </span>
             <div>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <span>Pengaturan Kurir & Ekspedisi Biteship</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                  Pengaturan Kurir & Ekspedisi Biteship
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
                   Multi-Courier Realtime
                 </span>
-              </h2>
+              </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 Hitung ongkir otomatis di halaman checkout, integrasi resi otomatis, dan request pickup kurir (JNE, J&T, SiCepat, GoSend, dll).
               </p>
@@ -236,13 +315,122 @@ export default function BiteshipCourierConfig({
         </div>
       )}
 
+      {/* ── ROW 1: RESI TRACKING & CAPI AUTOMATION SANDBOX ── */}
+      <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl p-6 shadow-xl space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <Navigation className="w-4 h-4 text-emerald-400" />
+              <h3 className="font-bold text-sm text-white">
+                Pelacakan Resi Otomatis & Sinkronisasi CAPI Webhook
+              </h3>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Lacak nomor resi pelanggan real-time. Status *DELIVERED* otomatis memicu event konversi final CAPI server-side.
+            </p>
+          </div>
+
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 self-start sm:self-auto">
+            LIVE CAPI SYNC
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+          <div className="sm:col-span-4">
+            <select
+              value={selectedCourierTracker}
+              onChange={(e) => setSelectedCourierTracker(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="jne">JNE Express</option>
+              <option value="jnt">J&T Express</option>
+              <option value="sicepat">SiCepat Ekspres</option>
+              <option value="anteraja">Anteraja</option>
+              <option value="gosend">GoSend Instant</option>
+            </select>
+          </div>
+
+          <div className="sm:col-span-5">
+            <input
+              type="text"
+              value={searchWaybill}
+              onChange={(e) => setSearchWaybill(e.target.value)}
+              placeholder="Masukkan Nomor Resi / AWB..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div className="sm:col-span-3">
+            <button
+              type="button"
+              onClick={handleLookupTracking}
+              disabled={isTracking}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-md disabled:opacity-50 cursor-pointer"
+            >
+              {isTracking ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Melacak...</span>
+                </>
+              ) : (
+                <>
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Lacak Resi</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Tracking result progress visualizer */}
+        {trackingResult && (
+          <div className="bg-slate-950/80 border border-slate-800 p-5 rounded-2xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-[10px] text-slate-400 font-mono">No. Resi: {trackingResult.waybill}</span>
+                <div className="text-xs font-bold text-white mt-0.5">
+                  Ekspedisi: {trackingResult.courier} &bull; Penerima: {trackingResult.receiver}
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500 text-slate-950">
+                PAKET TELAH SAMPAI (DELIVERED)
+              </span>
+            </div>
+
+            {/* Timeline history */}
+            <div className="space-y-3 pl-2">
+              {trackingResult.history.map((step, idx) => (
+                <div key={idx} className="flex items-start gap-3 relative">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
+                  <div className="text-xs">
+                    <div className="font-bold text-white flex items-center gap-2">
+                      <span>{step.description}</span>
+                      <span className="text-[10px] text-slate-400 font-normal">({step.location})</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono">{step.time}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* CAPI Server trigger notification */}
+            {capiTriggeredLog && (
+              <div className="p-3 bg-indigo-950/70 border border-indigo-700/60 rounded-xl text-xs text-indigo-200 font-mono flex items-center gap-2">
+                <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>{capiTriggeredLog}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <form onSubmit={handleSave} className="space-y-6">
         
-        {/* ROW 1: API CREDENTIALS & ORIGIN ADDRESS */}
+        {/* ROW 2: API CREDENTIALS & ORIGIN ADDRESS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
           {/* API Credentials */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Key className="w-4 h-4 text-emerald-600" />
@@ -307,7 +495,7 @@ export default function BiteshipCourierConfig({
           </div>
 
           {/* Origin Warehouse Address */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-emerald-600" />
@@ -387,8 +575,8 @@ export default function BiteshipCourierConfig({
 
         </div>
 
-        {/* ROW 2: ACTIVE COURIERS SELECTION */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+        {/* ROW 3: ACTIVE COURIERS SELECTION */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
               <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
@@ -438,8 +626,8 @@ export default function BiteshipCourierConfig({
           </div>
         </div>
 
-        {/* ROW 3: RATE CALCULATOR SANDBOX */}
-        <div className="bg-slate-900 text-slate-100 rounded-2xl p-6 shadow-xl space-y-4">
+        {/* ROW 4: RATE CALCULATOR SANDBOX */}
+        <div className="bg-slate-900 text-slate-100 rounded-3xl p-6 shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
               <h3 className="font-bold text-sm text-white flex items-center gap-2">
