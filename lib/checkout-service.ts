@@ -70,13 +70,15 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   });
 
   if (!res.ok) {
-    throw new Error("Gagal membuat sesi pembayaran QRIS");
+    const errorText = await res.text();
+    console.error("[Checkout Service] API Payment Error:", errorText);
+    throw new Error(`Gagal membuat sesi pembayaran QRIS (${res.status})`);
   }
 
   const paymentResult = await res.json();
   return {
     orderId,
-    qrString: paymentResult.qr_string,
-    invoiceUrl: paymentResult.qr_code_url || paymentResult.invoice_url
+    qrString: paymentResult.qr_string || paymentResult.qr_content || "",
+    invoiceUrl: paymentResult.qr_code_url || paymentResult.invoice_url || paymentResult.payment_url || ""
   };
 }
