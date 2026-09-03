@@ -50,18 +50,22 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     throw new Error(`Failed to create order: ${orderError.message}`);
   }
 
-  // 2. Buat Invoice/QRIS via endpoint backend sekaligus kirim data atribusi
-  const res = await fetch("https://boontrack-core-production.up.railway.app/payment/create-qris", {
+  // 2. Buat Invoice/QRIS via endpoint FastAPI resmi
+  const res = await fetch("https://boontrack-core-production.up.railway.app/api/v1/payments/qris/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      order_id: orderId,
+      external_id: orderId,
       amount: payload.amount,
       tenant_slug: payload.tenantSlug,
       customer_phone: payload.customerPhone,
       customer_name: payload.customerName,
-      customer_email: payload.customerEmail || null,
-      tracking: payload.tracking || {}
+      product_name: payload.productTitle,
+      metadata: {
+        customer_email: payload.customerEmail || null,
+        affiliate_code: payload.affiliateCode || null,
+        tracking: payload.tracking || {}
+      }
     })
   });
 
@@ -73,6 +77,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   return {
     orderId,
     qrString: paymentResult.qr_string,
-    invoiceUrl: paymentResult.invoice_url
+    invoiceUrl: paymentResult.qr_code_url || paymentResult.invoice_url
   };
 }
