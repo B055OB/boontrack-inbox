@@ -1,3 +1,5 @@
+import { getSupabase } from './supabaseClient';
+
 export function getOrCreateSessionId(): string {
   if (typeof window === 'undefined') return '';
   let sid = localStorage.getItem('bt_session_id');
@@ -19,36 +21,54 @@ export async function syncAttributionSession(tenantId: string, searchParams: URL
   const fbclid = searchParams.get('fbclid');
   const ttclid = searchParams.get('ttclid');
 
-  // Simpan ref ke localStorage/cookie sebagai backup fallback
   if (ref) {
     localStorage.setItem(`bt_ref_${tenantId}`, ref.toUpperCase());
   }
 
-  // Jika ada parameter tracking, tembakkan ke backend ingestion
+  // Jika ada parameter pelacakan, tulis langsung ke Supabase tabel attributions
   if (ref || utm_source || fbclid || ttclid) {
     try {
-      const res = await fetch('https://api.boontrack.com/api/v1/attribution/capture', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const supabase = getSupabase();
+      if (!supabase) return sessionId;
+
+      // Cari affiliate_id jika ada kode referral
+      let affiliateId: string | null = null;
+      if (ref) {
+        const { data: aff } = await supabase
+          .from('affiliates')
+          .select('id')
+          .ilike('referral_code', ref.trim())
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+
+        if (aff) affiliateId = aff.id;
+      }
+
+      // Simpan catatan atribusi
+      const { data, error } = await supabase
+        .from('attributions')
+        .insert({
           tenant_id: tenantId,
           session_id: sessionId,
-          ref_code: ref,
-          utm_source,
-          utm_medium,
-          utm_campaign,
-          utm_content,
-          utm_term,
-          fbclid,
-          ttclid
+          affiliate_id: affiliateId,
+          utm_source: utm_source || null,
+          utm_medium: utm_medium || null,
+          utm_campaign: utm_campaign || null,
+          utm_content: utm_content || null,
+          utm_term: utm_term || null,
+          fbclid: fbclid || null,
+          ttclid: ttclid || null,
+          ip_hash: 'client_session',
+          user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : 'browser'
         })
-      });
-      const data = await res.json();
-      if (data.attribution_id) {
-        sessionStorage.setItem('bt_last_attribution_id', data.attribution_id);
+        .select('id')
+        .single();
+
+      if (!error && data) {
+        sessionStorage.setItem('bt_last_attribution_id', data.id);
       }
     } catch (e) {
-      console.warn('Gagal sinkronisasi atribusi:', e);
+      console.warn('Gagal sinkronisasi atribusi ke Supabase:', e);
     }
   }
 

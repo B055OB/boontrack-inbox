@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Check, ShieldCheck, Zap, ArrowRight, Lock, MessageCircle } from 'lucide-react';
+import { Check, ShieldCheck, ArrowRight, Lock, Loader2 } from 'lucide-react';
 import { syncAttributionSession, getOrCreateSessionId } from '@/lib/attribution';
 
 function SingleProductContent() {
@@ -23,32 +23,46 @@ function SingleProductContent() {
 
   const handleDirectCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
-    const sessionId = getOrCreateSessionId();
-    const attributionId = sessionStorage.getItem('bt_last_attribution_id');
 
     try {
-      // POST order dengan mengikat attribution_id dan session_id
-      const res = await fetch('https://api.boontrack.com/api/v1/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const { getSupabase } = await import('@/lib/supabaseClient');
+      const supabase = getSupabase();
+
+      if (!supabase) {
+        throw new Error('Supabase client tidak terkonfigurasi');
+      }
+
+      const orderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
+      const attributionId = typeof window !== 'undefined' ? sessionStorage.getItem('bt_last_attribution_id') : null;
+
+      // Insert order langsung ke tabel product_orders beserta binding attribution_id
+      const { data, error } = await supabase
+        .from('product_orders')
+        .insert({
           tenant_id: tenant,
-          product_slug: slug,
+          order_id: orderId,
           customer_name: buyerName,
           customer_phone: buyerPhone,
-          session_id: sessionId,
-          attribution_id: attributionId
+          product_name: 'Masterclass Ads 2026',
+          gross_amount: 99000,
+          status: 'PENDING',
+          attribution_id: attributionId || null
         })
-      });
+        .select()
+        .single();
 
-      const data = await res.json();
-      if (data.checkout_url) {
-        window.location.href = data.checkout_url;
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Gagal memproses pesanan. Silakan coba lagi.');
+      if (error) throw error;
+
+      alert(`Pesanan ${orderId} berhasil dibuat!\nAtribusi: ${attributionId ? 'Terikat (' + attributionId.slice(0, 8) + '...)' : 'Direct Traffic'}`);
+      setCheckoutOpen(false);
+      setBuyerName('');
+      setBuyerPhone('');
+
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      alert(err.message || 'Gagal memproses pesanan.');
     } finally {
       setLoading(false);
     }
@@ -176,10 +190,19 @@ function SingleProductContent() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition"
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition disabled:opacity-75"
                 >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>{loading ? 'Memproses Pesanan...' : 'Lanjut ke QRIS (Rp 99.000)'}</span>
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Memproses Pesanan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Lanjut ke QRIS (Rp 99.000)</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
