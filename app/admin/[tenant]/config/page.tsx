@@ -884,7 +884,7 @@ export default function TenantConfigEditorPage() {
                 {
                   key: 'whatsapp_gateway',
                   name: 'WhatsApp Cloud Gateway',
-                  desc: 'Koneksi aktif ke Baileys / Meta Cloud API untuk pesan real-time.',
+                  desc: 'Koneksi aktif ke Jalur Unofficial / Meta Cloud API untuk pesan real-time.',
                 },
                 {
                   key: 'telegram_bot',

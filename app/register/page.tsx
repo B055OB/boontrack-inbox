@@ -30,7 +30,7 @@ export default function RegisterShopPage() {
   const [slug, setSlug] = useState("");
   const [status, setStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
   const [category, setCategory] = useState("fashion");
-  const [selectedPlan, setSelectedPlan] = useState<"growth" | "pro_scale">("growth");
+  const [selectedPlan, setSelectedPlan] = useState<"growth" | "growth_tracking" | "pro_scale">("growth_tracking");
   const [merchantData, setMerchantData] = useState({ name: "", phone: "", email: "" });
   const [loadingPay, setLoadingPay] = useState(false);
 
@@ -47,6 +47,14 @@ export default function RegisterShopPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const initialStore = params.get("store") || params.get("claim") || "";
+      const initialPlan = params.get("plan");
+
+      if (initialPlan === "growth" || initialPlan === "growth_tracking" || initialPlan === "pro_scale") {
+        setSelectedPlan(initialPlan);
+      } else if (initialPlan === "solo") {
+        setSelectedPlan("growth");
+      }
+
       if (initialStore) {
         const clean = sanitize(initialStore);
         setStoreName(initialStore);
@@ -84,6 +92,8 @@ export default function RegisterShopPage() {
     e.preventDefault();
     setLoadingPay(true);
 
+    const planAmount = selectedPlan === 'growth' ? 199000 : selectedPlan === 'growth_tracking' ? 299000 : 499000;
+
     try {
       const res = await fetch("https://api.boontrack.com/api/v1/shop/subscriptions/create", {
         method: "POST",
@@ -91,6 +101,7 @@ export default function RegisterShopPage() {
         body: JSON.stringify({
           tenant_slug: slug,
           plan_tier: selectedPlan,
+          amount: planAmount,
           business_category: category,
           merchant_name: merchantData.name,
           merchant_phone: merchantData.phone,
@@ -259,46 +270,86 @@ export default function RegisterShopPage() {
               <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
                 4. Pilih Paket Langganan:
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                
+                {/* 1. Growth */}
                 <div
                   onClick={() => setSelectedPlan("growth")}
-                  className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+                  className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
                     selectedPlan === "growth"
-                      ? "border-blue-600 bg-blue-50/50 shadow-sm"
+                      ? "border-blue-600 bg-blue-50/50 shadow-sm ring-1 ring-blue-500"
                       : "border-slate-200 hover:border-slate-300 bg-white"
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="font-black text-slate-900 text-xs">Growth</span>
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 43%</span>
+                  <div>
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-black text-slate-900 text-xs">Growth</span>
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 43%</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-semibold mb-1.5">Starter Pack Bisnis Digital</p>
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className="text-xs text-slate-400 line-through">Rp 349 ribu</span>
+                      <span className="text-sm font-black text-blue-600">Rp 199 ribu</span>
+                      <span className="text-[10px] text-slate-400 font-normal">/bln</span>
+                    </div>
                   </div>
-                  <div className="flex items-baseline gap-1.5 flex-wrap">
-                    <span className="text-xs text-slate-400 line-through">Rp 349.000</span>
-                    <span className="text-base font-black text-blue-600">Rp 199.000</span>
-                    <span className="text-[10px] text-slate-400 font-normal">/bln</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-1">300 order & 2 CS Seat</p>
+                  <p className="text-[11px] text-slate-500 mt-2 leading-tight">
+                    AI Webchat & WA (Jalur Unofficial), QRIS Otomatis Midtrans, E-Receipt
+                  </p>
                 </div>
 
+                {/* 2. Growth Tracking System */}
+                <div
+                  onClick={() => setSelectedPlan("growth_tracking")}
+                  className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between relative ${
+                    selectedPlan === "growth_tracking"
+                      ? "border-blue-600 bg-blue-50/60 shadow-md ring-2 ring-blue-500"
+                      : "border-blue-200 hover:border-blue-300 bg-white"
+                  }`}
+                >
+                  <div>
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-black text-blue-900 text-xs">Growth Tracking</span>
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">Paling Hemat</span>
+                    </div>
+                    <p className="text-[10px] text-blue-600 font-semibold mb-1.5">Scale-Up Iklan & Fisik</p>
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className="text-xs text-slate-400 line-through">Rp 599 ribu</span>
+                      <span className="text-sm font-black text-blue-600">Rp 299 ribu</span>
+                      <span className="text-[10px] text-slate-400 font-normal">/bln</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-2 leading-tight font-medium">
+                    Semua Fitur Growth + Meta CAPI, TikTok Events, Cek Ongkir & Resi Otomatis
+                  </p>
+                </div>
+
+                {/* 3. Pro Scale */}
                 <div
                   onClick={() => setSelectedPlan("pro_scale")}
-                  className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
+                  className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
                     selectedPlan === "pro_scale"
-                      ? "border-blue-600 bg-blue-50/50 shadow-sm"
+                      ? "border-emerald-600 bg-emerald-50/50 shadow-sm ring-1 ring-emerald-500"
                       : "border-slate-200 hover:border-slate-300 bg-white"
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="font-black text-slate-900 text-xs">Pro Scale</span>
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 45%</span>
+                  <div>
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-black text-slate-900 text-xs">Pro Scale</span>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Official Meta</span>
+                    </div>
+                    <p className="text-[10px] text-emerald-700 font-semibold mb-1.5">Official Anti-Banned</p>
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className="text-xs text-slate-400 line-through">Rp 899 ribu</span>
+                      <span className="text-sm font-black text-emerald-700">Rp 499 ribu</span>
+                      <span className="text-[10px] text-slate-400 font-normal">/bln</span>
+                    </div>
                   </div>
-                  <div className="flex items-baseline gap-1.5 flex-wrap">
-                    <span className="text-xs text-slate-400 line-through">Rp 899.000</span>
-                    <span className="text-base font-black text-blue-600">Rp 499.000</span>
-                    <span className="text-[10px] text-slate-400 font-normal">/bln</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-1">Unlimited & 5 CS Seat</p>
+                  <p className="text-[11px] text-slate-500 mt-2 leading-tight">
+                    Meta Cloud API Resmi, Anti-Banned, Centang Hijau & Multi-Agent CS
+                  </p>
                 </div>
+
               </div>
             </div>
 
@@ -312,7 +363,13 @@ export default function RegisterShopPage() {
               <span>
                 {loadingPay
                   ? "Menyiapkan Invoice QRIS..."
-                  : `Aktivasi & Bayar (${selectedPlan === "growth" ? "Rp 199.000" : "Rp 499.000"})`}
+                  : `Aktivasi & Bayar (${
+                      selectedPlan === "growth"
+                        ? "Rp 199 ribu"
+                        : selectedPlan === "growth_tracking"
+                        ? "Rp 299 ribu"
+                        : "Rp 499 ribu"
+                    })`}
               </span>
               <ArrowRight className="w-4 h-4 ml-1" />
             </button>

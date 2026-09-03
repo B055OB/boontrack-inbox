@@ -5,7 +5,7 @@ export default function ShopClaimSection() {
   const [storeName, setStoreName] = useState('');
   const [slug, setSlug] = useState('');
   const [status, setStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
-  const [selectedPlan, setSelectedPlan] = useState<'growth' | 'pro_scale'>('growth');
+  const [selectedPlan, setSelectedPlan] = useState<'growth' | 'growth_tracking' | 'pro_scale'>('growth_tracking');
   const [merchantData, setMerchantData] = useState({ name: '', phone: '', email: '' });
   const [loadingPay, setLoadingPay] = useState(false);
 
@@ -32,6 +32,8 @@ export default function ShopClaimSection() {
     e.preventDefault();
     setLoadingPay(true);
 
+    const planAmount = selectedPlan === 'growth' ? 199000 : selectedPlan === 'growth_tracking' ? 299000 : 499000;
+
     try {
       const res = await fetch('https://api.boontrack.com/api/v1/shop/subscriptions/create', {
         method: 'POST',
@@ -39,6 +41,7 @@ export default function ShopClaimSection() {
         body: JSON.stringify({
           tenant_slug: slug,
           plan_tier: selectedPlan,
+          amount: planAmount,
           merchant_name: merchantData.name,
           merchant_phone: merchantData.phone,
           merchant_email: merchantData.email
@@ -134,42 +137,71 @@ export default function ShopClaimSection() {
 
             <div className="pt-2">
               <label className="block text-xs font-semibold text-gray-700 uppercase mb-2">Pilih Paket Langganan</label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                
+                {/* Growth */}
                 <div
                   onClick={() => setSelectedPlan('growth')}
                   className={`p-3 border rounded-xl cursor-pointer text-left transition ${
-                    selectedPlan === 'growth' ? 'border-blue-600 bg-blue-50/50' : 'border-gray-200'
+                    selectedPlan === 'growth' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex justify-between items-center">
-                    <p className="font-bold text-sm text-gray-900">Growth</p>
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 43%</span>
+                    <p className="font-bold text-xs text-gray-900">Growth</p>
+                    <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">Hemat 43%</span>
                   </div>
-                  <div className="flex items-baseline gap-1.5 mt-1 flex-wrap">
-                    <span className="text-xs text-gray-400 line-through">Rp349.000</span>
-                    <span className="text-blue-600 font-extrabold text-sm">Rp199.000</span>
-                    <span className="text-xs font-normal text-gray-500">/bln</span>
+                  <div className="flex items-baseline gap-1 mt-1 flex-wrap">
+                    <span className="text-[10px] text-gray-400 line-through">Rp 349 ribu</span>
+                    <span className="text-blue-600 font-black text-xs sm:text-sm">Rp 199 ribu</span>
+                    <span className="text-[10px] font-normal text-gray-500">/bln</span>
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-1">300 order & 2 CS Seat</p>
+                  <p className="text-[10px] text-gray-500 mt-1 font-medium leading-snug">
+                    Starter Pack: AI Webchat & WA (Jalur Unofficial), QRIS Otomatis
+                  </p>
                 </div>
 
+                {/* Growth Tracking System */}
+                <div
+                  onClick={() => setSelectedPlan('growth_tracking')}
+                  className={`p-3 border-2 rounded-xl cursor-pointer text-left transition relative ${
+                    selectedPlan === 'growth_tracking' ? 'border-blue-600 bg-blue-50/60 shadow-sm' : 'border-blue-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <p className="font-bold text-xs text-blue-900">Growth Tracking</p>
+                    <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1 py-0.5 rounded">Paling Hemat</span>
+                  </div>
+                  <div className="flex items-baseline gap-1 mt-1 flex-wrap">
+                    <span className="text-[10px] text-gray-400 line-through">Rp 599 ribu</span>
+                    <span className="text-blue-600 font-black text-xs sm:text-sm">Rp 299 ribu</span>
+                    <span className="text-[10px] font-normal text-gray-500">/bln</span>
+                  </div>
+                  <p className="text-[10px] text-gray-600 mt-1 font-medium leading-snug">
+                    Scale-Up: Meta CAPI + TikTok, Cek Ongkir Kurir & Resi Otomatis
+                  </p>
+                </div>
+
+                {/* Pro Scale */}
                 <div
                   onClick={() => setSelectedPlan('pro_scale')}
                   className={`p-3 border rounded-xl cursor-pointer text-left transition ${
-                    selectedPlan === 'pro_scale' ? 'border-blue-600 bg-blue-50/50' : 'border-gray-200'
+                    selectedPlan === 'pro_scale' ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex justify-between items-center">
-                    <p className="font-bold text-sm text-gray-900">Pro Scale</p>
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 45%</span>
+                    <p className="font-bold text-xs text-gray-900">Pro Scale</p>
+                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded">Official Meta</span>
                   </div>
-                  <div className="flex items-baseline gap-1.5 mt-1 flex-wrap">
-                    <span className="text-xs text-gray-400 line-through">Rp899.000</span>
-                    <span className="text-blue-600 font-extrabold text-sm">Rp499.000</span>
-                    <span className="text-xs font-normal text-gray-500">/bln</span>
+                  <div className="flex items-baseline gap-1 mt-1 flex-wrap">
+                    <span className="text-[10px] text-gray-400 line-through">Rp 899 ribu</span>
+                    <span className="text-emerald-700 font-black text-xs sm:text-sm">Rp 499 ribu</span>
+                    <span className="text-[10px] font-normal text-gray-500">/bln</span>
                   </div>
-                  <p className="text-[11px] text-gray-500 mt-1">Unlimited & 5 CS Seat</p>
+                  <p className="text-[10px] text-gray-500 mt-1 font-medium leading-snug">
+                    Enterprise: Official Meta Cloud API, Anti-Banned, Centang Hijau
+                  </p>
                 </div>
+
               </div>
             </div>
 
@@ -178,7 +210,15 @@ export default function ShopClaimSection() {
               disabled={loadingPay}
               className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition shadow-md disabled:opacity-50 cursor-pointer"
             >
-              {loadingPay ? 'Menyiapkan Pembayaran...' : `Aktivasi & Bayar (${selectedPlan === 'growth' ? 'Rp199.000' : 'Rp499.000'})`}
+              {loadingPay
+                ? 'Menyiapkan Pembayaran...'
+                : `Aktivasi & Bayar (${
+                    selectedPlan === 'growth'
+                      ? 'Rp 199 ribu'
+                      : selectedPlan === 'growth_tracking'
+                      ? 'Rp 299 ribu'
+                      : 'Rp 499 ribu'
+                  })`}
             </button>
           </form>
         )}

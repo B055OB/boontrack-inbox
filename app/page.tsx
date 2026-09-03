@@ -187,97 +187,68 @@ export default function ShopLandingPage() {
         <section className="pt-10 text-left space-y-6">
           <div className="text-center space-y-1">
             <h2 className="text-xl md:text-2xl font-black text-slate-900">Pilih Paket Engine Bisnis Anda</h2>
-            <p className="text-xs text-slate-500">Pilih mesin otomasi yang paling pas untuk skala operasional Anda.</p>
+            <p className="text-xs text-slate-500">Pilih mesin otomasi terlengkap yang paling pas untuk skala operasional Anda.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
             
-            {/* Card 1: Solo Engine */}
+            {/* Card 1: Growth */}
             <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 flex flex-col justify-between shadow-sm hover:border-slate-300 transition">
               <div className="space-y-4">
                 <div className="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-[11px] font-bold">
-                  Untuk Solo Merchant & Pemula
+                  Starter Pack Bisnis Digital
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900">Solo Engine</h3>
-                  <div className="mt-2 flex items-baseline gap-2 flex-wrap">
-                    <span className="text-xs sm:text-sm text-slate-400 line-through font-semibold">Rp 349.000</span>
-                    <span className="text-2xl sm:text-3xl font-black text-slate-900">Rp 199.000</span>
-                    <span className="text-xs text-slate-500 font-medium">/bulan</span>
+                  <h3 className="text-xl font-black text-slate-900">Growth</h3>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">Starter Pack Bisnis Digital & AI Otomatis</p>
+                  <div className="mt-3 flex items-baseline gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm text-slate-400 line-through font-semibold">Rp 349 ribu</span>
+                    <span className="text-2xl sm:text-3xl font-black text-slate-900">Rp 199 ribu</span>
+                    <span className="text-xs text-slate-500 font-medium">/bln</span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
                       Hemat 43%
                     </span>
                   </div>
                 </div>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  &ldquo;Dirancang untuk pebisnis mandiri yang ingin operasional rapi dan bebas repot cek mutasi manual.&rdquo;
+                  Solusi komplit untuk pebisnis mandiri yang ingin melayani chat 24 jam nonstop dan verifikasi bayar instan.
                 </p>
                 <div className="border-t border-slate-100 pt-4 space-y-2.5 text-xs text-slate-700">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>Order & Transaksi Tanpa Batas</span>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Otak AI Pintar (Gemini & Groq Router) siap jawab chat 24/7</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>1 User (Owner Mandiri)</span>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Dual Assistant: AI aktif di Webchat Storefront & WhatsApp (Jalur Unofficial)</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>QRIS Dinamis Otomatis</span>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Custom Bot Persona & Knowledge Base toko tanpa batas</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>Domain Toko Resmi</span>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Etalase Digital Instan (shop.boontrack.com/[nama-toko])</span>
                   </div>
-                </div>
-              </div>
-
-              <div className="pt-6">
-                <Link
-                  href="/register?plan=solo"
-                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center block transition shadow-md"
-                >
-                  Pilih Paket Solo
-                </Link>
-              </div>
-            </div>
-
-            {/* Card 2: Business Growth Engine */}
-            <div className="bg-white border-2 border-blue-600 rounded-3xl p-6 sm:p-7 flex flex-col justify-between shadow-xl shadow-blue-600/10 relative">
-              <div className="space-y-4">
-                <div className="inline-block px-3 py-1 rounded-full bg-blue-600 text-white text-[11px] font-bold">
-                  Paling Direkomendasikan &bull; Untuk Tim & Bisnis Berkembang
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-slate-900">Business Growth Engine</h3>
-                  <div className="mt-2 flex items-baseline gap-2 flex-wrap">
-                    <span className="text-xs sm:text-sm text-slate-400 line-through font-semibold">Rp 899.000</span>
-                    <span className="text-2xl sm:text-3xl font-black text-blue-600">Rp 499.000</span>
-                    <span className="text-xs text-slate-500 font-medium">/bulan</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200 uppercase">
-                      Hemat 45%
-                    </span>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Generator QRIS Dinamis Otomatis per transaksi (Midtrans Core API)</span>
                   </div>
-                </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  &ldquo;Mesin otomasi lengkap untuk melipatgandakan omzet lewat kolaborasi multi-admin dan asisten AI aktif 24 jam.&rdquo;
-                </p>
-                <div className="border-t border-slate-100 pt-4 space-y-2.5 text-xs text-slate-700">
-                  <div className="flex items-center gap-2 font-semibold text-slate-900">
-                    <Check className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>Semua Fitur Solo Engine</span>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Auto-Reconciliation: Verifikasi pembayaran lunas detik itu juga</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Users2 className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span>Hingga 5–10 Akun CS (Multi-Agent)</span>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Auto Billing & E-Receipt instan terkirim ke WhatsApp pembeli</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Bot className="w-4 h-4 text-purple-600 shrink-0" />
-                    <span>AI Assistant Closing Bot (Tanpa Potongan per Transaksi)</span>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Dashboard Pengaturan Katalog & Manajemen Stok Produk Digital</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Headphones className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Prioritas Dukungan Teknis 24/7</span>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Ringkasan Laporan Penjualan & Riwayat Transaksi Real-time</span>
                   </div>
                 </div>
               </div>
@@ -285,9 +256,145 @@ export default function ShopLandingPage() {
               <div className="pt-6">
                 <Link
                   href="/register?plan=growth"
+                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center block transition shadow-md"
+                >
+                  Pilih Paket Growth
+                </Link>
+              </div>
+            </div>
+
+            {/* Card 2: Growth Tracking System */}
+            <div className="bg-white border-2 border-blue-600 rounded-3xl p-6 sm:p-7 flex flex-col justify-between shadow-xl shadow-blue-600/10 relative">
+              <div className="space-y-4">
+                <div className="inline-block px-3 py-1 rounded-full bg-blue-600 text-white text-[11px] font-bold">
+                  All-in Bundle Paling Hemat &bull; Termasuk Add-on Full Tracking
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">Growth Tracking System</h3>
+                  <p className="text-xs text-blue-600 font-bold mt-0.5">Fondasi Lengkap Seller Scale-Up Iklan & Produk Fisik</p>
+                  <div className="mt-3 flex items-baseline gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm text-slate-400 line-through font-semibold">Rp 599 ribu</span>
+                    <span className="text-2xl sm:text-3xl font-black text-blue-600">Rp 299 ribu</span>
+                    <span className="text-xs text-slate-500 font-medium">/bln</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                      Hemat 50%
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Mesin terlengkap untuk scale up iklan berbayar dan toko produk fisik dengan pelacakan data server-side & ongkir kurir nasional.
+                </p>
+                <div className="border-t border-slate-100 pt-4 space-y-2.5 text-xs text-slate-700">
+                  <div className="text-[11px] font-black uppercase text-blue-700 tracking-wide pb-1">
+                    ⭐ SEMUA FITUR DI PAKET GROWTH, DITAMBAH:
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span>Built-in Meta Conversions API (CAPI Server-Side Tracking) anti-adblock</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span>TikTok Events API & Multi-Pixel Injection untuk optimasi ROAS iklan</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span>Modul Lengkap Kurir Fisik: Cek ongkir otomatis se-Indonesia</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span>Manajemen Resi Otomatis & Auto-Tracking status paket pelanggan</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span>Kalkulator Ongkir & Form Alamat Checkout Otomatis</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span>Laporan Keuangan Lengkap: Laba/Rugi, HPP, & Margin per produk</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span>Ekspor Pembukuan ke CSV / Excel siap pajak & audit</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span>Multi-Device Connection (Support hingga 2 WhatsApp CS)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6">
+                <Link
+                  href="/register?plan=growth_tracking"
                   className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold text-center block transition shadow-lg shadow-blue-600/30"
                 >
-                  Pilih Paket Business Growth
+                  Pilih Paket Growth Tracking
+                </Link>
+              </div>
+            </div>
+
+            {/* Card 3: Pro Scale */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-7 flex flex-col justify-between shadow-sm hover:border-slate-300 transition">
+              <div className="space-y-4">
+                <div className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
+                  Enterprise Grade &bull; Official Meta API
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">Pro Scale</h3>
+                  <p className="text-xs text-emerald-700 font-bold mt-0.5">Infrastruktur Resmi Anti-Banned untuk Brand & Volume Tinggi</p>
+                  <div className="mt-3 flex items-baseline gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm text-slate-400 line-through font-semibold">Rp 899 ribu</span>
+                    <span className="text-2xl sm:text-3xl font-black text-slate-900">Rp 499 ribu</span>
+                    <span className="text-xs text-slate-500 font-medium">/bulan</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                      Hemat 45%
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Infrastruktur resmi kelas enterprise untuk brand dengan ribuan transaksi harian tanpa takut nomor diblokir.
+                </p>
+                <div className="border-t border-slate-100 pt-4 space-y-2.5 text-xs text-slate-700">
+                  <div className="text-[11px] font-black uppercase text-emerald-700 tracking-wide pb-1">
+                    ⭐ SEMUA FITUR GROWTH TRACKING SYSTEM, DITAMBAH:
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>WhatsApp Official API (Jalur Resmi Meta Cloud API)</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Akun Anti-Banned & Anti-Blokir untuk volume chat masif</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Dukungan Resmi Verifikasi Centang Hijau (Official Business Account)</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Multi-Agent CS Dashboard (Handle pelanggan bareng tim tanpa rebutan)</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Dedicated IP & Prioritas Antrean Server Pembayaran Tertinggi</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Template Broadcast Promosi Resmi Meta dengan Tombol Interaktif</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Dedicated Setup Assistance & Konsultasi Integrasi VIP</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-6">
+                <Link
+                  href="/register?plan=pro_scale"
+                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center block transition shadow-md"
+                >
+                  Pilih Paket Pro Scale
                 </Link>
               </div>
             </div>

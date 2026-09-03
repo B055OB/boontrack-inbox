@@ -8,13 +8,9 @@ import {
   ArrowRight,
   ShieldCheck,
   Lock,
-  Smartphone,
   AlertCircle,
   CheckCircle2,
   RefreshCw,
-  Sparkles,
-  ExternalLink,
-  Users,
   Compass,
 } from 'lucide-react';
 
@@ -27,9 +23,6 @@ export default function MerchantLoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  // Active Login Method Tab: 'store' | 'affiliate' | 'admin'
-  const [activeTab, setActiveTab] = useState<'store' | 'affiliate' | 'admin'>('store');
 
   const sanitizeSlug = (val: string) => {
     return val
@@ -119,64 +112,16 @@ export default function MerchantLoginPage() {
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition group"
           >
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <span>BoonTrack Merchant Hub</span>
+            <span>BoonTrack Merchant Portal</span>
             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
           </Link>
 
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight pt-1">
-            Masuk ke Toko Anda
+            Masuk ke Dashboard Toko
           </h1>
           <p className="text-xs text-slate-400 max-w-xs mx-auto">
-            Kelola pesanan, katalog produk, konfigurasi WhatsApp, dan laporan keuangan toko online Anda.
+            Kelola pesanan, katalog produk, integrasi WhatsApp, dan laporan keuangan toko Anda.
           </p>
-        </div>
-
-        {/* Role Selector Tabs */}
-        <div className="grid grid-cols-3 gap-1 bg-slate-900/90 border border-slate-800 p-1 rounded-2xl text-xs font-bold">
-          <button
-            type="button"
-            onClick={() => setActiveTab('store')}
-            className={`py-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'store'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Store className="w-3.5 h-3.5" />
-            <span>Merchant</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('affiliate');
-              router.push('/affiliate/login');
-            }}
-            className={`py-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'affiliate'
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Affiliate</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('admin');
-              router.push('/admin');
-            }}
-            className={`py-2 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
-              activeTab === 'admin'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span>Admin</span>
-          </button>
         </div>
 
         {/* Main Card */}
@@ -269,25 +214,17 @@ export default function MerchantLoginPage() {
           {/* Security Guarantee */}
           <div className="pt-2 border-t border-slate-800/80 flex items-center justify-center gap-2 text-[11px] text-slate-500">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Akses Terenkripsi & Verifikasi Tenant Resmi</span>
+            <span>Akses Terenkripsi & Verifikasi Tenant Toko Resmi</span>
           </div>
 
         </div>
 
         {/* Alternative Actions / Register Link */}
-        <div className="text-center text-xs text-slate-500 space-y-2">
-          <div>
-            Belum memiliki toko online di BoonTrack?{' '}
-            <Link href="/register" className="text-blue-400 hover:text-blue-300 font-bold underline transition">
-              Klaim & Buka Toko Baru
-            </Link>
-          </div>
-          <div className="pt-1">
-            <Link href="/affiliate/login" className="text-slate-400 hover:text-emerald-400 transition inline-flex items-center gap-1 font-semibold">
-              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Login via WhatsApp OTP (Portal Affiliate) &rarr;</span>
-            </Link>
-          </div>
+        <div className="text-center text-xs text-slate-500">
+          Belum memiliki toko online di BoonTrack?{' '}
+          <Link href="/register" className="text-blue-400 hover:text-blue-300 font-bold underline transition">
+            Klaim & Buka Toko Baru
+          </Link>
         </div>
 
       </div>
