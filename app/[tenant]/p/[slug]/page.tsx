@@ -4,6 +4,12 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Check, ShieldCheck, ArrowRight, Lock, Loader2 } from 'lucide-react';
 import { syncAttributionSession, getOrCreateSessionId } from '@/lib/attribution';
+import { 
+  initMetaPixel, 
+  initTikTokPixel, 
+  trackViewContent, 
+  trackInitiateCheckout 
+} from '@/lib/tracking';
 
 function SingleProductContent() {
   const params = useParams();
@@ -16,10 +22,29 @@ function SingleProductContent() {
   const [buyerPhone, setBuyerPhone] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const productData = {
+    id: slug,
+    name: 'Masterclass Ads 2026',
+    price: 99000
+  };
+
   useEffect(() => {
-    // Sinkronkan atribusi session otomatis begitu landing page dibuka
+    // 1. Rekam jejak atribusi referral & parameter UTM/Click ID
     syncAttributionSession(tenant, searchParams);
-  }, [tenant, searchParams]);
+
+    // 2. Inisialisasi Meta & TikTok Pixel (Demo / Tenant Config ID)
+    initMetaPixel('123456789012345');
+    initTikTokPixel('C1234567890ABCDE');
+
+    // 3. Dispatch event ViewContent saat landing page dimuat
+    trackViewContent(productData);
+  }, [tenant, searchParams, slug]);
+
+  const handleOpenCheckout = () => {
+    // Dispatch event InitiateCheckout saat tombol CTA utama diklik
+    trackInitiateCheckout(productData);
+    setCheckoutOpen(true);
+  };
 
   const handleDirectCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +62,7 @@ function SingleProductContent() {
       const orderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
       const attributionId = typeof window !== 'undefined' ? sessionStorage.getItem('bt_last_attribution_id') : null;
 
-      // Insert order langsung ke tabel product_orders beserta binding attribution_id
+      // Insert order langsung ke tabel product_orders beserta foreign key attribution_id
       const { data, error } = await supabase
         .from('product_orders')
         .insert({
@@ -45,8 +70,8 @@ function SingleProductContent() {
           order_id: orderId,
           customer_name: buyerName,
           customer_phone: buyerPhone,
-          product_name: 'Masterclass Ads 2026',
-          gross_amount: 99000,
+          product_name: productData.name,
+          gross_amount: productData.price,
           status: 'PENDING',
           attribution_id: attributionId || null
         })
@@ -106,11 +131,11 @@ function SingleProductContent() {
             Kuasai Pola Iklan Anti Boncos & Rahasia Scaling Meta Ads 2026
           </h1>
           <p className="text-sm text-slate-600 leading-relaxed">
-            Studi kasus ril mengelola anggaran iklan miliaran rupiah tanpa trik abu-abu. Akses langsung modul video, SOP tim media buyer, dan template dashboard.
+            Studi kasus riil mengelola anggaran iklan miliaran rupiah tanpa trik abu-abu. Akses langsung modul video, SOP tim media buyer, dan template dashboard.
           </p>
         </div>
 
-        {/* Problem vs Solusi (Core Benefits) */}
+        {/* Benefit Points */}
         <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Materi Yang Anda Dapatkan:</h3>
           <ul className="space-y-2.5 text-xs text-slate-700">
@@ -138,7 +163,7 @@ function SingleProductContent() {
             <span className="text-lg font-black text-slate-900">Rp 99.000</span>
           </div>
           <button
-            onClick={() => setCheckoutOpen(true)}
+            onClick={handleOpenCheckout}
             className="flex-1 max-w-xs py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition cursor-pointer"
           >
             <span>Daftar & Bayar Instan</span>
