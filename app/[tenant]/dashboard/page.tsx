@@ -206,6 +206,87 @@ export default function TenantDashboardPage() {
     system_prompt: `Anda adalah asisten resmi untuk toko ${displayName.toUpperCase()}. Bantu pelanggan mengenai katalog produk, materi, dan transaksi pembayaran QRIS otomatis.`,
   });
 
+  const [isSavingAi, setIsSavingAi] = useState(false);
+  const [isLoadingAi, setIsLoadingAi] = useState(false);
+
+  // Load existing AI Knowledge and Persona settings from backend / Supabase
+  useEffect(() => {
+    let isMounted = true;
+    async function loadTenantAiSettings() {
+      if (!tenantSlug || tenantSlug === 'login' || tenantSlug === 'auth') return;
+      try {
+        setIsLoadingAi(true);
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
+        if (res.ok) {
+          const data = await res.json();
+          const s = data.settings || {};
+          const aiK = s.ai_knowledge || s.persona || {};
+          if (isMounted) {
+            setAiForm(prev => ({
+              ...prev,
+              ai_name: aiK.ai_name || aiK.assistant_name || s.assistant_name || prev.ai_name,
+              system_prompt: aiK.system_prompt || s.system_prompt || prev.system_prompt,
+              tone: aiK.tone || prev.tone,
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Gagal memuat pengaturan AI tenant:', err);
+      } finally {
+        if (isMounted) setIsLoadingAi(false);
+      }
+    }
+    loadTenantAiSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug]);
+
+  const handleSaveAiKnowledge = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsSavingAi(true);
+    try {
+      const payload = {
+        name: displayName,
+        assistant_name: aiForm.ai_name,
+        system_prompt: aiForm.system_prompt,
+        ai_knowledge: {
+          ai_name: aiForm.ai_name,
+          assistant_name: aiForm.ai_name,
+          system_prompt: aiForm.system_prompt,
+          tone: aiForm.tone,
+        },
+        persona: {
+          ai_name: aiForm.ai_name,
+          assistant_name: aiForm.ai_name,
+          system_prompt: aiForm.system_prompt,
+          tone: aiForm.tone,
+        },
+      };
+
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      setSaveFeedback('✅ Pengaturan Bot Persona & System Prompt AI berhasil disimpan!');
+      setTimeout(() => setSaveFeedback(null), 4000);
+    } catch (err) {
+      alert('Gagal menyimpan pengaturan AI: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsSavingAi(false);
+    }
+  };
+
   const [bankForm, setBankForm] = useState({
     name: 'BCA (Bank Central Asia)',
     account: '1392819201',
@@ -997,30 +1078,114 @@ export default function TenantDashboardPage() {
       {/* TAB 3: AI Knowledge */}
       {activeTab === 'ai_knowledge' && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Brain className="w-5 h-5 text-blue-600" />
-              <span>AI Knowledge & Bot Persona</span>
-            </h2>
-          </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5">Nama Asisten AI</label>
-              <input
-                type="text"
-                value={aiForm.ai_name}
-                onChange={(e) => setAiForm(a => ({ ...a, ai_name: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
-              />
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <Brain className="w-5 h-5 text-blue-600" />
+                <span>AI Knowledge & Bot Persona</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Atur identitas asisten, gaya komunikasi, dan instruksi sistem (system prompt) yang digunakan model LLM saat membalas pesan WhatsApp.
+              </p>
             </div>
+            <button
+              onClick={() => handleSaveAiKnowledge()}
+              disabled={isSavingAi || isLoadingAi}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+            >
+              {isSavingAi ? (
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+              ) : (
+                <Save className="w-4 h-4 text-white" />
+              )}
+              <span>{isSavingAi ? 'Menyimpan...' : 'Simpan Persona AI'}</span>
+            </button>
+          </div>
+
+          {isLoadingAi && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 animate-pulse">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Memuat konfigurasi AI dari server...</span>
+            </div>
+          )}
+
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Nama Asisten AI
+                </label>
+                <input
+                  type="text"
+                  value={aiForm.ai_name}
+                  onChange={(e) => setAiForm(a => ({ ...a, ai_name: e.target.value }))}
+                  placeholder="Contoh: Maya - Asisten Resmi"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Nama asisten akan digunakan bot saat memperkenalkan diri kepada pelanggan.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Gaya Komunikasi (Tone of Voice)
+                </label>
+                <select
+                  value={aiForm.tone}
+                  onChange={(e) => setAiForm(a => ({ ...a, tone: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                >
+                  <option value="casual">Santai, Luwes & Ramah (Casual Human-like)</option>
+                  <option value="professional">Formal, Sopan & Profesional (Corporate Standard)</option>
+                  <option value="persuasive">High-Conversion Sales Closer (Proaktif & Solutif)</option>
+                  <option value="friendly">Edukatif, Lembut & Sabar (Customer Support)</option>
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Menentukan gaya bahasa dan pemilihan kosakata bot saat berinteraksi.
+                </p>
+              </div>
+            </div>
+
             <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5">System Prompt</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-700 block">
+                  System Prompt (Instruksi Utama AI)
+                </label>
+                <span className="text-[11px] font-medium text-slate-400">
+                  {aiForm.system_prompt.length} karakter
+                </span>
+              </div>
               <textarea
-                rows={3}
+                rows={6}
                 value={aiForm.system_prompt}
                 onChange={(e) => setAiForm(a => ({ ...a, system_prompt: e.target.value }))}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
+                placeholder="Tuliskan instruksi sistem, persona bisnis, aturan penawaran, atau instruksi khusus untuk asisten AI..."
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
               />
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                Instruksi ini akan diinjeksikan langsung sebagai <span className="font-semibold text-slate-600">system instruction</span> ke model LLM (Gemini / Groq) pada setiap pesan WhatsApp masuk.
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
+              <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Tersinkronisasi otomatis dengan backend WhatsApp Central & Database Supabase.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSaveAiKnowledge()}
+                disabled={isSavingAi || isLoadingAi}
+                className="w-full sm:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+              >
+                {isSavingAi ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <Save className="w-4 h-4 text-white" />
+                )}
+                <span>{isSavingAi ? 'Menyimpan Pengaturan...' : 'Simpan Persona & System Prompt'}</span>
+              </button>
             </div>
           </div>
         </div>
