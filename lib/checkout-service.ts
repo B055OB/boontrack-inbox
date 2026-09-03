@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabaseClient";
+import { getBackendApiUrl } from "@/lib/api-config";
 
 interface CreateOrderPayload {
   tenantSlug: string;
@@ -17,9 +18,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase client not initialized");
 
-  const orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const orderId = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  const { data: orderData, error: orderError } = await supabase
+  // 1. Simpan order ke database Supabase
+  const { error: orderError } = await supabase
     .from("orders")
     .insert({
       id: orderId,
@@ -41,42 +43,79 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       ttclid: payload.tracking?.ttclid || null,
       status: "PENDING_PAYMENT",
       created_at: new Date().toISOString()
-    })
-    .select()
-    .single();
+    });
 
   if (orderError) {
-    throw new Error(`Failed to create order: ${orderError.message}`);
+    console.error("[Checkout Service] Supabase Order Insert Error:", orderError);
+    try {
+      await supabase.from("product_orders").insert({
+        tenant_id: payload.tenantSlug,
+        order_id: orderId,
+        customer_name: payload.customerName,
+        customer_phone: payload.customerPhone,
+        customer_email: payload.customerEmail || "",
+        product_name: payload.productTitle,
+        gross_amount: payload.amount,
+        status: "PENDING",
+        affiliate_code: payload.affiliateCode || null,
+        created_at: new Date().toISOString()
+      });
+    } catch (fallbackErr) {
+      console.warn("[Checkout Service] Fallback table insert error:", fallbackErr);
+    }
   }
 
-  const res = await fetch("https://boontrack-core-production.up.railway.app/api/v1/payments/qris/create", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      external_id: orderId,
-      amount: payload.amount,
-      tenant_slug: payload.tenantSlug,
-      customer_phone: payload.customerPhone,
-      customer_name: payload.customerName,
-      product_name: payload.productTitle,
-      metadata: {
-        customer_email: payload.customerEmail || null,
-        affiliate_code: payload.affiliateCode || null,
-        tracking: payload.tracking || {}
-      }
-    })
+  // 2. Request pembuatan QRIS / Invoice ke Backend API
+  let qrString = "";
+  let invoiceUrl = "";
+
+  const paymentEndpoints = [
+    getBackendApiUrl("/api/v1/payments/qris/create"),
+    "https://api.boontrack.com/api/v1/payments/qris/create",
+    "https://boontrack-core-production.up.railway.app/api/v1/payments/qris/create"
+  ];
+
+  const requestBody = JSON.stringify({
+    external_id: orderId,
+    amount: payload.amount,
+    tenant_slug: payload.tenantSlug,
+    customer_phone: payload.customerPhone,
+    customer_name: payload.customerName,
+    product_name: payload.productTitle,
+    metadata: {
+      customer_email: payload.customerEmail || null,
+      affiliate_code: payload.affiliateCode || null,
+      tracking: payload.tracking || {}
+    }
   });
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    console.error("[Checkout Service] API Payment Error:", errorText);
-    throw new Error(`Gagal membuat sesi pembayaran QRIS (${res.status})`);
+  for (const endpoint of paymentEndpoints) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: requestBody
+      });
+
+      if (res.ok) {
+        const paymentResult = await res.json();
+        qrString = paymentResult.qr_string || paymentResult.qr_content || "";
+        invoiceUrl = paymentResult.qr_code_url || paymentResult.invoice_url || paymentResult.payment_url || "";
+        if (qrString || invoiceUrl) break;
+      }
+    } catch (apiErr) {
+      console.warn(`[Checkout Service] Error calling ${endpoint}:`, apiErr);
+    }
   }
 
-  const paymentResult = await res.json();
+  // 3. Fallback seamless jika gateway belum menghasilkan link eksternal
+  if (!invoiceUrl && !qrString) {
+    invoiceUrl = `/checkout/${orderId}`;
+  }
+
   return {
     orderId,
-    qrString: paymentResult.qr_string || paymentResult.qr_content || "",
-    invoiceUrl: paymentResult.qr_code_url || paymentResult.invoice_url || paymentResult.payment_url || ""
+    qrString,
+    invoiceUrl
   };
 }

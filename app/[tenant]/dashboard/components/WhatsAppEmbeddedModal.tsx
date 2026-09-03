@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Script from 'next/script';
 import { MessageSquare, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { getBackendApiUrl } from '@/lib/api-config';
 
 interface Props {
   tenantSlug: string;
@@ -63,7 +64,7 @@ export default function WhatsAppEmbeddedModal({ tenantSlug, onSuccess }: Props) 
           const authCode = response.authResponse.code;
 
           // Kirim authorization code ke backend untuk token exchange & register nomor
-          fetch(`${process.env.NEXT_PUBLIC_CORE_API}/api/v1/auth/facebook/exchange`, {
+          fetch(getBackendApiUrl('/api/v1/auth/facebook/exchange'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

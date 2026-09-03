@@ -72,6 +72,79 @@ export function getTrackingParams(): TrackingParams {
   };
 }
 
+export const getTrackingData = getTrackingParams;
+
+export function initMetaPixel(pixelId: string): void {
+  if (typeof window === "undefined" || !pixelId) return;
+  const win = window as unknown as Record<string, any>;
+  if (!win._fbq_initialized) {
+    /* eslint-disable */
+    (function(f: any, b: any, e: any, v: any, n?: any, t?: any, s?: any) {
+      if (f.fbq) return;
+      n = f.fbq = function() {
+        n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+      };
+      if (!f._fbq) f._fbq = n;
+      n.push = n;
+      n.loaded = !0;
+      n.version = '2.0';
+      n.queue = [];
+      t = b.createElement(e);
+      t.async = !0;
+      t.src = v;
+      s = b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t, s);
+    })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+    /* eslint-enable */
+
+    win.fbq('init', pixelId);
+    win.fbq('track', 'PageView');
+    win._fbq_initialized = true;
+  }
+}
+
+export function initTikTokPixel(pixelId: string): void {
+  if (typeof window === "undefined" || !pixelId) return;
+  const win = window as unknown as Record<string, any>;
+  if (!win._ttq_initialized) {
+    /* eslint-disable */
+    (function(w: any, d: any, t: any) {
+      w.TiktokAnalyticsObject = t;
+      var ttq = (w[t] = w[t] || []);
+      ttq.methods = [
+        "page", "track", "identify", "instances", "load", "on", "off", "once", "ready", "alias", "group", "enableCookie", "disableCookie"
+      ];
+      ttq.setAndDefer = function(t: any, e: any) {
+        t[e] = function() {
+          t.push([e].concat(Array.prototype.slice.call(arguments, 0)));
+        };
+      };
+      for (var i = 0; i < ttq.methods.length; i++) ttq.setAndDefer(ttq, ttq.methods[i]);
+      ttq.load = function(e: any, n: any) {
+        var r = "https://analytics.tiktok.com/i18n/pixel/events.js";
+        ttq._i = ttq._i || {};
+        ttq._i[e] = [];
+        ttq._i[e]._u = r;
+        ttq._t = ttq._t || {};
+        ttq._t[e] = +new Date();
+        ttq._o = ttq._o || {};
+        ttq._o[e] = n || {};
+        var o = document.createElement("script");
+        o.type = "text/javascript";
+        o.async = true;
+        o.src = r + "?sdkid=" + e + "&lib=" + t;
+        var a = document.getElementsByTagName("script")[0];
+        a.parentNode?.insertBefore(o, a);
+      };
+    })(window, document, 'ttq');
+    /* eslint-enable */
+
+    win.ttq.load(pixelId);
+    win.ttq.page();
+    win._ttq_initialized = true;
+  }
+}
+
 // 2. Inisialisasi Dinamis Pixel Meta & TikTok Seller
 export async function initSellerTracking(tenantSlug: string): Promise<void> {
   if (typeof window === "undefined" || !tenantSlug) return;
@@ -180,22 +253,30 @@ export function trackViewContent(product: { name: string; price: number; id?: nu
   }
 }
 
-export function trackInitiateCheckout(productTitle: string, amount: number): void {
+export function trackInitiateCheckout(
+  productOrTitle: string | { name?: string; title?: string; price: number; id?: number | string },
+  amount?: number
+): void {
   if (typeof window === "undefined") return;
   const win = window as unknown as Record<string, any>;
 
+  const title = typeof productOrTitle === "string"
+    ? productOrTitle
+    : (productOrTitle.title || productOrTitle.name || "Product Checkout");
+  const value = typeof productOrTitle === "object" ? productOrTitle.price : (amount || 0);
+
   if (win.fbq) {
     win.fbq("track", "InitiateCheckout", {
-      content_name: productTitle,
-      value: amount,
+      content_name: title,
+      value: value,
       currency: "IDR"
     });
   }
 
   if (win.ttq) {
     win.ttq.track("InitiateCheckout", {
-      content_name: productTitle,
-      value: amount,
+      content_name: title,
+      value: value,
       currency: "IDR"
     });
   }
