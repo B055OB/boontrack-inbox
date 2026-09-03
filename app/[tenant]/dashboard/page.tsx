@@ -37,11 +37,13 @@ import {
   FileText,
   Clock,
   Target,
-  Truck
+  Truck,
+  Radio
 } from 'lucide-react';
 import WhatsAppEmbeddedModal from './components/WhatsAppEmbeddedModal';
 import AdsTrackingPro from './components/AdsTrackingPro';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
+import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
 
 interface ProductItem {
   id: number;
@@ -128,7 +130,7 @@ export default function TenantDashboardPage() {
 
   const isProTenant = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
 
-  const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration' | 'ads_tracking' | 'biteship' | 'whatsapp'>('whatsapp');
+  const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration' | 'ads_tracking' | 'biteship' | 'broadcast' | 'whatsapp'>('whatsapp');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
   // WhatsApp Tab Mode
@@ -468,6 +470,21 @@ export default function TenantDashboardPage() {
             <span>Kurir Biteship</span>
             <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
               ONGKIR
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('broadcast')}
+            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'broadcast'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Radio className="w-4 h-4 text-emerald-600" />
+            <span>Broadcast WA Masal</span>
+            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+              BLAST
             </span>
           </button>
 
@@ -1385,6 +1402,18 @@ export default function TenantDashboardPage() {
       {/* TAB: KURIR & EKSPEDISI BITESHIP */}
       {activeTab === 'biteship' && (
         <BiteshipCourierConfig
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          onSaved={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 4000);
+          }}
+        />
+      )}
+
+      {/* TAB: WHATSAPP BROADCAST MANAGER */}
+      {activeTab === 'broadcast' && (
+        <WhatsAppBroadcastManager
           tenantSlug={tenantSlug}
           displayName={displayName}
           onSaved={(msg) => {
