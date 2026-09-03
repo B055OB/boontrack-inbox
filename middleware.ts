@@ -77,6 +77,8 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/dashboard/') ||
     pathname === '/login' ||
     pathname.startsWith('/login/') ||
+    pathname === '/auth' ||
+    pathname.startsWith('/auth/') ||
     pathname === '/daftar' ||
     pathname.startsWith('/daftar/') ||
     pathname === '/onboarding' ||

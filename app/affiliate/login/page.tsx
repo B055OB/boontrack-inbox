@@ -146,14 +146,40 @@ export default function AffiliateLoginPage() {
         json.data?.token ||
         `bt_aff_jwt_${Date.now()}`;
 
-      const affiliateData = json.affiliate || json.data?.affiliate || json.data || {
+      const resolvedCode =
+        json.affiliate?.referral_code ||
+        json.data?.affiliate?.referral_code ||
+        json.referral_code ||
+        json.data?.referral_code ||
+        `AFF-${formattedPhone.slice(-4)}`;
+
+      const resolvedTenant =
+        json.affiliate?.tenant_slug ||
+        json.data?.affiliate?.tenant_slug ||
+        json.tenant ||
+        'cornvest';
+
+      const resolvedName =
+        json.affiliate?.name ||
+        json.data?.affiliate?.name ||
+        json.name ||
+        `Affiliate ${formattedPhone.slice(-4)}`;
+
+      const affiliateData = {
+        id: json.affiliate?.id || json.data?.id || `aff_${Date.now()}`,
         phone: formattedPhone,
+        referral_code: resolvedCode,
+        tenant_slug: resolvedTenant,
+        name: resolvedName,
+        commission_rate: json.affiliate?.commission_rate || 20,
         authenticated_at: new Date().toISOString(),
+        ...(typeof json.affiliate === 'object' ? json.affiliate : {}),
+        ...(typeof json.data?.affiliate === 'object' ? json.data.affiliate : {}),
       };
 
-      // 3. Save Session to localStorage & Cookie
+      // 3. Save Session to localStorage & Secure Cookie
       localStorage.setItem('affiliate_token', token);
-      document.cookie = `affiliate_token=${token}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `affiliate_token=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
       localStorage.setItem('affiliate_data', JSON.stringify(affiliateData));
 
       setSuccessMessage('Verifikasi berhasil! Mengalihkan ke Dashboard Affiliate...');
