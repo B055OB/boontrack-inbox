@@ -22,19 +22,12 @@ import {
 } from "lucide-react";
 import ShopClaimSection from "@/app/components/ShopClaimSection";
 import CheckoutModal from "@/app/components/CheckoutModal";
-import { captureAffiliateReferral, getActiveAffiliateCode } from "@/lib/tracking";
-
-// Deklarasi global window untuk Ads Tracker
-declare global {
-  interface Window {
-    initSellerTracking?: (slug: string) => Promise<void>;
-    getTrackingData?: () => Record<string, any>;
-    trackInitiateCheckout?: (name: string, price: number) => void;
-    trackClientPurchase?: (orderId: string, amount: number) => void;
-    fbq?: (...args: any[]) => void;
-    ttq?: any;
-  }
-}
+import { 
+  captureAffiliateReferral, 
+  getActiveAffiliateCode,
+  initSellerTracking,
+  trackInitiateCheckout
+} from "@/lib/tracking";
 
 interface Product {
   id: number;
@@ -94,16 +87,13 @@ export default function TenantStorefrontPage() {
   const tenantSlug = rawTenant.toLowerCase().trim();
   const displayName = tenantSlug.replace(/-/g, " ");
 
-  // Validasi Toko Demo
   const isDemoStore = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
 
   // 0. CAPTURE AFFILIATE REFERRAL & INIT ADS TRACKING PRO MILIK SELLER
   useEffect(() => {
     captureAffiliateReferral();
-
-    // Jalankan Ads Tracking Pro untuk seller
-    if (typeof window !== "undefined" && window.initSellerTracking) {
-      window.initSellerTracking(tenantSlug);
+    if (typeof window !== "undefined") {
+      initSellerTracking(tenantSlug);
     }
   }, [tenantSlug]);
 
@@ -208,9 +198,7 @@ export default function TenantStorefrontPage() {
     if (e) e.stopPropagation();
     
     // Trigger event Initiate Checkout ke Pixel Ads Pro milik Seller
-    if (typeof window !== "undefined" && window.trackInitiateCheckout) {
-      window.trackInitiateCheckout(product.name, product.price);
-    }
+    trackInitiateCheckout(product.name, product.price);
 
     setProductForCheckout({
       id: String(product.id),
@@ -256,9 +244,7 @@ export default function TenantStorefrontPage() {
     const combinedTitles = cart.map(c => `${c.product.name} (${c.qty}x)`).join(", ");
     
     // Trigger event Initiate Checkout
-    if (typeof window !== "undefined" && window.trackInitiateCheckout) {
-      window.trackInitiateCheckout(combinedTitles, totalCartPrice);
-    }
+    trackInitiateCheckout(combinedTitles, totalCartPrice);
 
     setProductForCheckout({
       id: `CART-MULTI-${Date.now()}`,

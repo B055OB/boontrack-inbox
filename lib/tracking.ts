@@ -1,443 +1,555 @@
-// lib/tracking.ts
-// Multi-Tier Resilient Referral Tracker for BoonTrack (iOS Safari ITP & Private Browsing Safe)
-// + Client-Side Tracking Engine (Meta Pixel & TikTok Pixel) + Ads Tracking Pro
+"use client";
 
-declare global {
-  interface Window {
-    fbq?: (...args: any[]) => void;
-    ttq?: {
-      track: (...args: any[]) => void;
-      page: () => void;
-      methods?: string[];
-      setAndDefer?: (t: any, e: any) => void;
-      load?: (e: any, n?: any) => void;
-      [key: string]: any;
-    };
-    TiktokAnalyticsObject?: string;
-    _fbq?: any;
-    initSellerTracking?: (slug: string) => Promise<void>;
-    getTrackingData?: () => Record<string, any>;
-    trackInitiateCheckout?: (product: { id: string; name: string; price: number } | string, price?: number) => void;
-    trackClientPurchase?: (orderId: string, totalAmount: number) => void;
-  }
+import React, { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { 
+  ShoppingBag, 
+  Send, 
+  QrCode, 
+  Plus, 
+  Minus, 
+  X, 
+  Clock, 
+  ArrowRight, 
+  CheckCircle2,
+  Video,
+  Layers,
+  Sparkles,
+  Store,
+  AlertCircle,
+  PackageOpen,
+  Check
+} from "lucide-react";
+import ShopClaimSection from "@/app/components/ShopClaimSection";
+import CheckoutModal from "@/app/components/CheckoutModal";
+import { 
+  captureAffiliateReferral, 
+  getActiveAffiliateCode,
+  initSellerTracking,
+  trackInitiateCheckout
+} from "@/lib/tracking";
+
+interface Product {
+  id: number;
+  name: string;
+  category: "terlaris" | "digital" | "fisik";
+  price: number;
+  originalPrice?: number;
+  image: string;
+  description: string;
+  badge?: string;
+  modules?: string[];
+  features?: string[];
 }
 
-const COOKIE_NAME = 'bt_ref';
-const STORAGE_KEY = 'bt_ref';
-const COOKIE_EXPIRY_DAYS = 30;
+const SAMPLE_PRODUCTS: Product[] = [
+  {
+    id: 1,
+    name: "Step by Step Rahasia Menghasilkan Dollar dari Paid Traffic",
+    category: "terlaris",
+    price: 499000,
+    originalPrice: 999000,
+    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=60",
+    description: "Formula paid traffic Meta & Google Ads untuk menghasilkan profit konsisten.",
+    badge: "🔥 Terlaris",
+    modules: ["Mindset Paid Traffic", "Setup Pixel Tracker", "Live Case Study"],
+    features: ["11 Modul Video HD", "Akses Lifetime", "Template Copywriting"]
+  },
+  {
+    id: 2,
+    name: "Masterclass Ads 2026 - Scale Up Campaign",
+    category: "digital",
+    price: 99000,
+    originalPrice: 149000,
+    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&auto=format&fit=crop&q=60",
+    description: "Strategi optimasi ROAS > 4x dan scale-up campaign terstruktur.",
+    badge: "Diskon 35%",
+    modules: ["Riset Winning Creative", "Struktur Budgeting", "Scale-Up Rule"],
+    features: ["Video Full HD", "Spreadsheet Kalkulator"]
+  },
+  {
+    id: 3,
+    name: "Parfum Pheromone Pocket 10ml - Missionary",
+    category: "fisik",
+    price: 99000,
+    originalPrice: 125000,
+    image: "https://images.unsplash.com/photo-1547887537-6158d64c35b3?w=600&auto=format&fit=crop&q=60",
+    description: "Parfum konsentrat tinggi tahan hingga 12 jam, botol praktis dibawa ke mana saja.",
+    badge: "Produk Fisik",
+    features: ["Konsentrat 20%", "Tahan 12 Jam", "Gratis Pouch"]
+  }
+];
 
-// Tier 1: In-memory fallback (survives client-side SPA navigation even if third-party cookies/storage are blocked)
-let inMemoryAffiliateCode: string | null = null;
+export default function TenantStorefrontPage() {
+  const params = useParams();
+  const router = useRouter();
+  const rawTenant = (params?.tenant as string) || "onlineboost";
+  const tenantSlug = rawTenant.toLowerCase().trim();
+  const displayName = tenantSlug.replace(/-/g, " ");
 
-/**
- * Helper untuk membaca query parameter referral dari URL browser
- */
-function getRefFromUrl(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code =
-      urlParams.get('ref') ||
-      urlParams.get('via') ||
-      urlParams.get('aff') ||
-      urlParams.get('referral');
-    if (code && code.trim()) {
-      return code.trim().toUpperCase();
+  // Validasi Toko Demo
+  const isDemoStore = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
+
+  // 0. CAPTURE AFFILIATE REFERRAL & INIT ADS TRACKING PRO MILIK SELLER
+  useEffect(() => {
+    captureAffiliateReferral();
+    initSellerTracking(tenantSlug);
+  }, [tenantSlug]);
+
+  // 1. BYPASS RUTE SISTEM KE FORM REGISTER
+  if (tenantSlug === "register" || tenantSlug === "daftar") {
+    return (
+      <main className="min-h-[100dvh] bg-slate-50 py-12 px-4 flex flex-col items-center justify-center">
+        <ShopClaimSection />
+      </main>
+    );
+  }
+
+  // 2. VALIDASI KEBERADAAN TOKO DI DATABASE
+  const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">("checking");
+
+  useEffect(() => {
+    if (isDemoStore) {
+      setStoreStatus("active");
+      return;
     }
-  } catch {
-    // Fallback if URLSearchParams fails
-  }
-  return null;
-}
 
-/**
- * Helper untuk membaca cookie browser secara native
- */
-function getCookie(name: string): string | null {
-  if (typeof document === 'undefined') return null;
-  try {
-    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-    return match ? decodeURIComponent(match[2]) : null;
-  } catch {
-    return null;
-  }
-}
+    async function checkTenant() {
+      try {
+        const res = await fetch(`https://api.boontrack.com/api/v1/shop/subscriptions/check-slug/${tenantSlug}`);
+        const data = await res.json();
+        if (data.available === true) {
+          setStoreStatus("not_found");
+        } else {
+          setStoreStatus("active");
+        }
+      } catch {
+        setStoreStatus("not_found");
+      }
+    }
 
-/**
- * Helper untuk membaca dari localStorage dengan proteksi Safari Private Browsing
- */
-function getLocalStorage(key: string): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
+    checkTenant();
+  }, [tenantSlug, isDemoStore]);
 
-/**
- * Helper untuk membaca dari sessionStorage dengan proteksi Safari Private Browsing
- */
-function getSessionStorage(key: string): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
+  // STATE STOREFRONT & MODAL CHECKOUT
+  const [activeCategory, setActiveCategory] = useState<"all" | "terlaris" | "digital" | "fisik">("all");
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [productForCheckout, setProductForCheckout] = useState<{ id: string; title: string; price: number } | null>(null);
 
-/**
- * Helper untuk menyimpan cookie browser secara native dengan domain sharing
- */
-function setCookie(name: string, value: string, days: number) {
-  if (typeof document === 'undefined') return;
-  try {
-    const date = new Date();
-    date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
-    const expires = `expires=${date.toUTCString()}`;
+  const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
+  const [showCartModal, setShowCartModal] = useState(false);
+
+  const [inputMessage, setInputMessage] = useState("");
+  const [messages, setMessages] = useState([
+    {
+      id: 1,
+      sender: "bot",
+      time: "09:00",
+      text: `Halo! Selamat datang di ${displayName.toUpperCase()}. Pilih produk di katalog atau hubungi kami di sini!`
+    }
+  ]);
+
+  if (storeStatus === "checking") {
+    return (
+      <div className="min-h-[100dvh] bg-slate-50 flex items-center justify-center text-xs text-slate-400 font-semibold">
+        Memverifikasi toko {displayName}...
+      </div>
+    );
+  }
+
+  if (storeStatus === "not_found") {
+    return (
+      <div className="min-h-[100dvh] bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-5">
+          <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-100">
+            <Store className="w-7 h-7" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Toko Belum Terdaftar</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Alamat toko <span className="font-bold text-slate-800 font-mono">shop.boontrack.com/{tenantSlug}</span> saat ini belum aktif atau belum didaftarkan.
+            </p>
+          </div>
+
+          <div className="p-3.5 bg-blue-50 border border-blue-100 text-blue-900 rounded-2xl text-xs font-semibold">
+            ✨ Kabar baik! Nama toko <b>"{tenantSlug}"</b> masih tersedia untuk Anda klaim.
+          </div>
+
+          <button
+            onClick={() => router.push(`/register?store=${tenantSlug}`)}
+            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>Klaim & Buka Toko Ini Sekarang</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const rawProducts = isDemoStore ? SAMPLE_PRODUCTS : [];
+  const filteredProducts = activeCategory === "all"
+    ? rawProducts
+    : rawProducts.filter((p) => p.category === activeCategory);
+
+  const openDirectCheckout = (product: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     
-    const host = window.location.hostname;
-    const isBoonTrackDomain = host.includes('boontrack.com');
-    const domainPart = isBoonTrackDomain ? '; domain=.boontrack.com' : '';
+    // Trigger event Initiate Checkout ke Pixel Ads Pro milik Seller
+    trackInitiateCheckout(product.name, product.price);
 
-    document.cookie = `${name}=${encodeURIComponent(value)}; ${expires}; path=/${domainPart}; SameSite=Lax`;
-  } catch {
-    // Ignore cookie block errors in strict ITP contexts
-  }
-}
-
-/**
- * Menyimpan referral code ke seluruh tier (Memory, Cookie, LocalStorage, SessionStorage)
- */
-export function setAffiliateCode(code: string) {
-  if (!code || !code.trim()) return;
-  const cleanCode = code.trim().toUpperCase();
-  
-  // Tier 1: In-memory
-  inMemoryAffiliateCode = cleanCode;
-
-  // Tier 2: Cookie
-  setCookie(COOKIE_NAME, cleanCode, COOKIE_EXPIRY_DAYS);
-
-  // Tier 3: LocalStorage
-  if (typeof window !== 'undefined') {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, cleanCode);
-    } catch {
-      // Safari private mode storage quota error fallback
-    }
-
-    // Tier 4: SessionStorage
-    try {
-      window.sessionStorage.setItem(STORAGE_KEY, cleanCode);
-    } catch {
-      // Ignore
-    }
-  }
-}
-
-/**
- * Menangkap query parameter (?ref=... / ?via=...) dari URL dan menyimpan ke seluruh storage tier
- */
-export function captureAffiliateReferral(): string | null {
-  if (typeof window === 'undefined') return null;
-
-  const urlRef = getRefFromUrl();
-  if (urlRef) {
-    setAffiliateCode(urlRef);
-    return urlRef;
-  }
-
-  return getActiveAffiliateCode();
-}
-
-/**
- * Mengambil referral code aktif dengan multi-tier fallback:
- * 1. URL Query Param (?ref= / ?via= / ?aff= / ?referral=)
- * 2. In-Memory variable
- * 3. Browser Cookie (bt_ref)
- * 4. LocalStorage
- * 5. SessionStorage
- */
-export function getActiveAffiliateCode(): string | null {
-  // 1. Direct URL check if on client
-  const urlRef = getRefFromUrl();
-  if (urlRef) {
-    inMemoryAffiliateCode = urlRef;
-    return urlRef;
-  }
-
-  // 2. In-Memory fallback
-  if (inMemoryAffiliateCode) {
-    return inMemoryAffiliateCode;
-  }
-
-  // 3. Cookie fallback
-  const cookieRef = getCookie(COOKIE_NAME);
-  if (cookieRef) {
-    inMemoryAffiliateCode = cookieRef;
-    return cookieRef;
-  }
-
-  // 4. LocalStorage fallback
-  const localRef = getLocalStorage(STORAGE_KEY);
-  if (localRef) {
-    inMemoryAffiliateCode = localRef;
-    return localRef;
-  }
-
-  // 5. SessionStorage fallback
-  const sessionRef = getSessionStorage(STORAGE_KEY);
-  if (sessionRef) {
-    inMemoryAffiliateCode = sessionRef;
-    return sessionRef;
-  }
-
-  return null;
-}
-
-// ============================================================================
-// ADS TRACKING PRO: ATTRIBUTION & URL CAPTURE ENGINE
-// ============================================================================
-
-/**
- * Tangkap parameter iklan (UTM, fbclid, ttclid) dan simpan ke sessionStorage
- */
-export function captureAdParameters() {
-  if (typeof window === 'undefined') return;
-  const urlParams = new URLSearchParams(window.location.search);
-  const keys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'ttclid'];
-
-  keys.forEach((key) => {
-    const val = urlParams.get(key);
-    if (val) {
-      sessionStorage.setItem(`bt_${key}`, val);
-    }
-  });
-}
-
-/**
- * Ambil seluruh data tracking atribusi tersimpan
- */
-export function getTrackingData(): Record<string, any> {
-  if (typeof window === 'undefined') return {};
-  return {
-    utm_source: sessionStorage.getItem('bt_utm_source') || null,
-    utm_medium: sessionStorage.getItem('bt_utm_medium') || null,
-    utm_campaign: sessionStorage.getItem('bt_utm_campaign') || null,
-    utm_content: sessionStorage.getItem('bt_utm_content') || null,
-    utm_term: sessionStorage.getItem('bt_utm_term') || null,
-    fbclid: sessionStorage.getItem('bt_fbclid') || null,
-    ttclid: sessionStorage.getItem('bt_ttclid') || null,
-    affiliate_ref: getActiveAffiliateCode(),
-    client_user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null
+    setProductForCheckout({
+      id: String(product.id),
+      title: product.name,
+      price: product.price
+    });
+    setIsCheckoutOpen(true);
+    if (selectedProduct) setSelectedProduct(null);
   };
-}
 
-/**
- * Sinkronisasi data sesi atribusi (digunakan oleh attribution.ts)
- */
-export async function syncAttributionSession(
-  tenantId: string,
-  searchParams?: URLSearchParams
-): Promise<Record<string, any>> {
-  captureAdParameters();
-  return {
-    tenant_id: tenantId,
-    ...getTrackingData()
+  const addToCart = (product: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setCart((prev) => {
+      const exist = prev.find((item) => item.product.id === product.id);
+      if (exist) {
+        return prev.map((item) =>
+          item.product.id === product.id ? { ...item, qty: item.qty + 1 } : item
+        );
+      }
+      return [...prev, { product, qty: 1 }];
+    });
   };
-}
 
-// ============================================================================
-// ADS TRACKING PRO: META PIXEL & TIKTOK PIXEL ENGINE (P3-A.4)
-// ============================================================================
+  const updateCartQty = (productId: number, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((item) => {
+          if (item.product.id === productId) {
+            const nextQty = item.qty + delta;
+            return nextQty > 0 ? { ...item, qty: nextQty } : null;
+          }
+          return item;
+        })
+        .filter(Boolean) as { product: Product; qty: number }[]
+    );
+  };
 
-/**
- * Inisialisasi Script Meta Pixel
- */
-export function initMetaPixel(pixelId: string) {
-  if (typeof window === 'undefined' || !pixelId || window.fbq) return;
-  (function (f: any, b: any, e: any, v: any, n?: any, t?: any, s?: any) {
-    if (f.fbq) return;
-    n = f.fbq = function () {
-      n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
-    };
-    if (!f._fbq) f._fbq = n;
-    n.push = n;
-    n.loaded = !0;
-    n.version = '2.0';
-    n.queue = [];
-    t = b.createElement(e);
-    t.async = !0;
-    t.src = v;
-    s = b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t, s);
-  })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+  const totalCartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+  const totalCartPrice = cart.reduce((sum, item) => sum + item.product.price * item.qty, 0);
 
-  window.fbq('init', pixelId);
-  window.fbq('track', 'PageView');
-}
+  const handleCartCheckout = () => {
+    if (cart.length === 0) return;
+    const combinedTitles = cart.map(c => `${c.product.name} (${c.qty}x)`).join(", ");
+    
+    // Trigger event Initiate Checkout
+    trackInitiateCheckout(combinedTitles, totalCartPrice);
 
-/**
- * Inisialisasi Script TikTok Pixel
- */
-export function initTikTokPixel(pixelId: string) {
-  if (typeof window === 'undefined' || !pixelId || window.ttq) return;
-  (function (w: any, d: any, t: any) {
-    w.TiktokAnalyticsObject = t;
-    var ttq = (w[t] = w[t] || []);
-    ttq.methods = [
-      'page',
-      'track',
-      'identify',
-      'instances',
-      'debug',
-      'on',
-      'off',
-      'once',
-      'ready',
-      'alias',
-      'group',
-      'enableCookie',
-      'disableCookie'
-    ];
-    ttq.setAndDefer = function (t: any, e: any) {
-      t[e] = function () {
-        t.push([e].concat(Array.prototype.slice.call(arguments, 0)));
-      };
-    };
-    for (var i = 0; i < ttq.methods.length; i++) {
-      ttq.setAndDefer(ttq, ttq.methods[i]);
-    }
-    ttq.load = function (e: any, n: any) {
-      var r = 'https://analytics.tiktok.com/i18n/pixel/events.js';
-      ttq._i = ttq._i || {};
-      ttq._i[e] = [];
-      ttq._i[e]._u = r;
-      ttq._t = ttq._t || {};
-      ttq._t[e] = +new Date();
-      ttq._o = ttq._o || {};
-      ttq._o[e] = n || {};
-      var a = d.createElement('script');
-      a.type = 'text/javascript';
-      a.async = !0;
-      a.src = r + '?type=desktop&lib=' + t;
-      var c = d.getElementsByTagName('script')[0];
-      c.parentNode.insertBefore(a, c);
-    };
-    ttq.load(pixelId);
-    ttq.page();
-  })(window, document, 'ttq');
-}
+    setProductForCheckout({
+      id: `CART-MULTI-${Date.now()}`,
+      title: combinedTitles,
+      price: totalCartPrice
+    });
+    setShowCartModal(false);
+    setIsCheckoutOpen(true);
+  };
 
-/**
- * Fetch dan jalankan Pixel seller secara dinamis
- */
-export async function initSellerTracking(tenantSlug: string) {
-  if (typeof window === 'undefined' || !tenantSlug) return;
-  try {
-    const res = await fetch(`https://api.boontrack.com/api/v1/seller/ads-pro/config/${tenantSlug}`);
-    const data = await res.json();
-    if (data.success && data.is_enabled && data.pixel_config) {
-      if (data.pixel_config.meta_pixel_id) {
-        initMetaPixel(data.pixel_config.meta_pixel_id);
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputMessage.trim()) return;
+
+    const userText = inputMessage;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        sender: "user",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: userText
       }
-      if (data.pixel_config.tiktok_pixel_id) {
-        initTikTokPixel(data.pixel_config.tiktok_pixel_id);
-      }
-    }
-  } catch (err) {
-    console.error('[Ads Pro] Failed to load seller tracking config:', err);
-  }
-}
+    ]);
+    setInputMessage("");
 
-/**
- * Tembakkan event ViewContent
- */
-export function trackViewContent(product: { id: string; name: string; price: number }) {
-  if (typeof window === 'undefined') return;
+    setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          sender: "bot",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: `Pertanyaan "${userText}" sudah kami terima! Silakan pilih produk di sebelah kanan untuk order instan.`
+        }
+      ]);
+    }, 600);
+  };
 
-  if (window.fbq) {
-    window.fbq('track', 'ViewContent', {
-      content_ids: [product.id],
-      content_name: product.name,
-      content_type: 'product',
-      value: product.price,
-      currency: 'IDR'
-    });
-  }
+  return (
+    <div className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-sm shadow-blue-500/20 capitalize">
+              {displayName.charAt(0)}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-slate-900 capitalize tracking-tight text-base sm:text-lg">
+                  {displayName}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Buka
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-medium">BoonTrack Official Store</p>
+            </div>
+          </div>
 
-  if (window.ttq) {
-    window.ttq.track('ViewContent', {
-      content_id: product.id,
-      content_name: product.name,
-      content_type: 'product',
-      value: product.price,
-      currency: 'IDR'
-    });
-  }
-}
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+              <Clock className="w-3.5 h-3.5 text-slate-400" /> Auto-Kasir 24 Jam
+            </div>
 
-/**
- * Tembakkan event InitiateCheckout (fleksibel: menerima objek produk atau name + price)
- */
-export function trackInitiateCheckout(
-  productOrName: { id?: string; name: string; price: number } | string,
-  priceParam?: number
-) {
-  if (typeof window === 'undefined') return;
+            <button
+              onClick={() => setShowCartModal(true)}
+              className="relative bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span className="hidden sm:inline">Keranjang</span>
+              {totalCartCount > 0 && (
+                <span className="bg-white text-blue-600 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center shadow-xs">
+                  {totalCartCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
 
-  const name = typeof productOrName === 'string' ? productOrName : productOrName.name;
-  const price = typeof productOrName === 'string' ? (priceParam || 0) : productOrName.price;
-  const id = typeof productOrName === 'object' && productOrName.id ? productOrName.id : 'ITEM';
+      {/* 2-COLUMN VIEW */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
+        {/* KOLOM KIRI: ASSISTANT CHAT */}
+        <section className="lg:col-span-5 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden h-[580px] lg:h-[calc(100dvh-120px)] lg:sticky lg:top-24">
+          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span className="text-xs font-bold text-slate-800 capitalize">{displayName} Assistant</span>
+            </div>
+            <span className="text-[11px] text-slate-400 font-medium">Auto-Kasir WhatsApp</span>
+          </div>
 
-  if (window.fbq) {
-    window.fbq('track', 'InitiateCheckout', {
-      content_ids: [id],
-      content_name: name,
-      value: price,
-      currency: 'IDR'
-    });
-  }
+          <div className="flex-1 p-5 overflow-y-auto space-y-3.5 bg-[#F8FAFC]">
+            {messages.map((msg) => (
+              <div key={msg.id} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
+                <div className={`max-w-[85%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-xs ${
+                  msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
+                }`}>
+                  <p>{msg.text}</p>
+                  <span className={`block text-[9px] mt-1 text-right font-medium ${msg.sender === "user" ? "text-blue-200" : "text-slate-400"}`}>
+                    {msg.time}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
 
-  if (window.ttq) {
-    window.ttq.track('InitiateCheckout', {
-      content_id: id,
-      content_name: name,
-      value: price,
-      currency: 'IDR'
-    });
-  }
-}
+          <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              placeholder="Tanya info produk / bantuan..."
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-base md:text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all"
+            />
+            <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white p-2.5 rounded-xl transition-all shadow-xs active:scale-95 flex items-center justify-center shrink-0 cursor-pointer">
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        </section>
 
-/**
- * Tembakkan event Purchase dengan event_id deduplikasi untuk sinkronisasi CAPI
- */
-export function trackClientPurchase(orderId: string, totalAmount: number) {
-  if (typeof window === 'undefined') return;
-  const deduplicationKey = `PURCHASE_${orderId}`;
+        {/* KOLOM KANAN: KATALOG PRODUK */}
+        <section className="lg:col-span-7 space-y-5">
+          <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
+            {[
+              { id: "all", label: "Semua Produk" },
+              { id: "terlaris", label: "🔥 Terlaris" },
+              { id: "digital", label: "⚡ Digital" },
+              { id: "fisik", label: "📦 Produk Fisik" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveCategory(tab.id as any)}
+                className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+                  activeCategory === tab.id ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
-  if (window.fbq) {
-    window.fbq('track', 'Purchase', {
-      value: Number(totalAmount),
-      currency: 'IDR'
-    }, { eventID: deduplicationKey });
-  }
+          {filteredProducts.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-12 text-center flex flex-col items-center justify-center space-y-3 shadow-xs">
+              <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center border border-slate-100">
+                <PackageOpen className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-800">Katalog Produk Masih Kosong</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                  Toko <span className="font-semibold text-slate-600">{displayName}</span> belum menambahkan produk ke etalase.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {filteredProducts.map((p) => (
+                <div
+                  key={p.id}
+                  onClick={() => setSelectedProduct(p)}
+                  className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
+                >
+                  <div>
+                    <div className="relative aspect-video rounded-2xl overflow-hidden mb-3 bg-slate-100">
+                      <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      {p.badge && (
+                        <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                          {p.badge}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2 mb-1 group-hover:text-blue-600 transition-colors">
+                      {p.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">{p.description}</p>
+                  </div>
 
-  if (window.ttq) {
-    window.ttq.track('CompletePayment', {
-      value: Number(totalAmount),
-      currency: 'IDR'
-    }, { event_id: deduplicationKey });
-  }
-}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <div>
+                      {p.originalPrice && <span className="text-[10px] text-slate-400 line-through block font-medium">Rp {p.originalPrice.toLocaleString("id-ID")}</span>}
+                      <span className="text-sm font-black text-blue-600">Rp {p.price.toLocaleString("id-ID")}</span>
+                    </div>
+                    <button 
+                      onClick={(e) => openDirectCheckout(p, e)} 
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" /> Beli
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
 
-// Auto-eksekusi capture parameter iklan dan ekspos ke window saat dimuat di client
-if (typeof window !== 'undefined') {
-  captureAdParameters();
-  window.initSellerTracking = initSellerTracking;
-  window.getTrackingData = getTrackingData;
-  window.trackInitiateCheckout = trackInitiateCheckout;
-  window.trackClientPurchase = trackClientPurchase;
+      {/* MODAL DETAIL PRODUK */}
+      {selectedProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
+          <div className="bg-white max-w-lg w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
+            <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
+              <X className="w-5 h-5" />
+            </button>
+            <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full aspect-video object-cover rounded-2xl" />
+            <div>
+              <h2 className="text-lg font-black text-slate-900">{selectedProduct.name}</h2>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-xl font-black text-blue-600">Rp {selectedProduct.price.toLocaleString("id-ID")}</span>
+                {selectedProduct.originalPrice && (
+                  <span className="text-xs text-slate-400 line-through">Rp {selectedProduct.originalPrice.toLocaleString("id-ID")}</span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">{selectedProduct.description}</p>
+            </div>
+
+            {selectedProduct.features && (
+              <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                <span className="text-xs font-bold text-slate-700">Fitur & Manfaat:</span>
+                {selectedProduct.features.map((feat, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
+                    <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span>{feat}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-slate-100 pt-3">
+              <button
+                onClick={() => openDirectCheckout(selectedProduct)}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Beli Sekarang (QRIS Instan)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KERANJANG */}
+      {showCartModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
+          <div className="bg-white max-w-md w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
+            <button onClick={() => setShowCartModal(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-blue-600" /> Keranjang Belanja
+            </h2>
+
+            {cart.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-6">Keranjang masih kosong.</p>
+            ) : (
+              <div className="space-y-3 max-h-60 overflow-y-auto">
+                {cart.map((item) => (
+                  <div key={item.product.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex-1 pr-2">
+                      <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{item.product.name}</h4>
+                      <span className="text-xs text-blue-600 font-bold">Rp {(item.product.price * item.qty).toLocaleString("id-ID")}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
+                        <Minus className="w-3 h-3 text-slate-600" />
+                      </button>
+                      <span className="text-xs font-bold text-slate-800">{item.qty}</span>
+                      <button onClick={() => updateCartQty(item.product.id, 1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
+                        <Plus className="w-3 h-3 text-slate-600" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {cart.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <div className="flex justify-between items-center text-xs font-black text-slate-900">
+                  <span>Total Tagihan</span>
+                  <span className="text-sm text-blue-600">Rp {totalCartPrice.toLocaleString("id-ID")}</span>
+                </div>
+                <button
+                  onClick={handleCartCheckout}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>Checkout Sekarang</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CHECKOUT QRIS & REFERRAL BINDING */}
+      <CheckoutModal
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        tenantSlug={tenantSlug}
+        product={productForCheckout}
+      />
+
+      <footer className="py-5 text-center text-xs text-slate-400 bg-white border-t border-slate-200 mt-auto">
+        © 2026 {displayName.toUpperCase()} • Powered by BoonTrack Commerce Engine
+      </footer>
+    </div>
+  );
 }
