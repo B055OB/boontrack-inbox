@@ -38,7 +38,7 @@ export default function ShopLandingPage() {
       <div className="bg-blue-600 px-4 py-2 text-center text-xs font-semibold text-white flex items-center justify-center gap-1.5 shadow-sm">
         <span>⚡ Buka Toko Online Terintegrasi WhatsApp & QRIS Otomatis.</span>
         <Link href="/register" className="underline hover:text-blue-100 ml-1">
-          Coba Gratis Sekarang &rarr;
+          Coba Sekarang PROMO! &rarr;
         </Link>
       </div>
 
