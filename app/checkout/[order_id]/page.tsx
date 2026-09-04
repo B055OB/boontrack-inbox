@@ -108,7 +108,7 @@ export default function CheckoutPage({ params }: Props) {
   const isManual = order?.payment_method === 'manual_transfer' || order?.payment_method === 'manual';
   const grossAmount = Number(order?.gross_amount || order?.total_amount || order?.amount || 99000);
   const uniqueCode = Number(order?.unique_code || 0);
-  const adminFee = Number(order?.admin_fee || (isManual ? 5000 : 0));
+  const adminFee = Number(order?.admin_fee || 0);
   const basePrice = Number(order?.base_price || (grossAmount - adminFee - uniqueCode));
 
   const qrUrl = order?.qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=00020101021226${orderId}5408${grossAmount}5802ID5913BOONTRACK6007JAKARTA6304`;
@@ -126,7 +126,7 @@ export default function CheckoutPage({ params }: Props) {
           {isManual ? (
             <span className="text-xs uppercase tracking-wider font-semibold text-blue-400 bg-blue-950/60 px-3 py-1 rounded-full border border-blue-800/40 inline-flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5" />
-              <span>Menunggu Transfer Bank Manual</span>
+              <span>Menunggu Transfer Bank Manual (Bebas Biaya Admin)</span>
             </span>
           ) : (
             <span className="text-xs uppercase tracking-wider font-semibold text-emerald-400 bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-800/40 inline-flex items-center gap-1.5">
@@ -244,8 +244,8 @@ export default function CheckoutPage({ params }: Props) {
 
           <div className="flex justify-between text-slate-400">
             <span>Biaya Layanan & Admin</span>
-            <span className={isManual ? 'text-slate-200' : 'text-emerald-400 font-semibold'}>
-              {isManual ? `Rp ${adminFee.toLocaleString('id-ID')}` : 'Rp 0 (Gratis)'}
+            <span className="text-emerald-400 font-semibold">
+              Rp 0 (Bebas Biaya Admin)
             </span>
           </div>
 

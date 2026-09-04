@@ -1285,7 +1285,7 @@ export default function TenantDashboardPage() {
                     />
                     <div>
                       <span className="font-bold text-slate-900 block">Transfer Bank Manual</span>
-                      <span className="text-[10px] text-slate-500">BCA / Mandiri + Admin flat Rp5.000 & kode unik acak.</span>
+                      <span className="text-[10px] text-slate-500">BCA / Mandiri (Bebas Biaya Admin) & kode unik acak.</span>
                     </div>
                   </label>
                 </div>

@@ -27,7 +27,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   const paymentMethod = payload.paymentMethod || 'qris';
   const basePrice = payload.basePrice ?? payload.amount;
-  const adminFee = payload.adminFee ?? (paymentMethod === 'manual_transfer' ? 5000 : 0);
+  // Biaya admin Rp0 untuk QRIS maupun Transfer Bank Manual (dana langsung masuk ke seller)
+  const adminFee = payload.adminFee ?? 0;
   const uniqueCode = payload.uniqueCode ?? 0;
   const grossAmount = payload.amount || (basePrice + adminFee + uniqueCode);
   // Komisi affiliate 30% dihitung murni dari harga dasar (net), terpisah dari admin fee & kode unik

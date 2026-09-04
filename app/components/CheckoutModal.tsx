@@ -28,7 +28,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [errorMessage, setErrorMessage] = useState("");
 
   const basePrice = product?.price || 0;
-  const adminFee = paymentMethod === 'manual_transfer' ? 5000 : 0;
+  // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
+  const adminFee = 0;
   const currentUniqueCode = paymentMethod === 'manual_transfer' ? uniqueCode : 0;
   const totalAmount = basePrice + adminFee + currentUniqueCode;
   const affiliateCommission = Math.round(basePrice * 0.3);
@@ -243,11 +244,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                     <span className="font-bold text-white flex items-center gap-1">
                       <Building2 className="w-3.5 h-3.5 text-blue-400" /> Transfer Manual
                     </span>
-                    <span className="bg-slate-800 text-slate-300 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                      Admin Rp5.000 + Kode Unik
+                    <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                      Bebas Biaya Admin + Kode Unik
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Transfer via BCA / Mandiri dengan 3 digit kode verifikasi.</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Transfer langsung via BCA / Mandiri seller tanpa biaya admin dengan 3 digit kode verifikasi.</p>
                 </div>
               </label>
             </div>
@@ -259,14 +260,14 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 <span>Rp {basePrice.toLocaleString("id-ID")}</span>
               </div>
               <div className="flex justify-between">
-                <span>Biaya Admin</span>
-                <span className={paymentMethod === 'qris' ? 'text-emerald-400 font-bold' : ''}>
-                  {paymentMethod === 'qris' ? 'Rp 0' : `Rp ${adminFee.toLocaleString("id-ID")}`}
+                <span>Biaya Layanan & Admin</span>
+                <span className="text-emerald-400 font-semibold">
+                  Rp 0 (Bebas Biaya Admin)
                 </span>
               </div>
               {paymentMethod === 'manual_transfer' && (
                 <div className="flex justify-between">
-                  <span>Kode Unik</span>
+                  <span>Kode Unik Verifikasi</span>
                   <span className="font-mono text-blue-400">+{currentUniqueCode}</span>
                 </div>
               )}

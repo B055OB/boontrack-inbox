@@ -79,7 +79,8 @@ function SingleProductContent() {
   // Kalkulasi Pembayaran Presisi
   const basePrice = product.price || 99000;
   const promoPrice = product.promo_price || (basePrice > 100000 ? Math.round(basePrice * 1.5) : 499000);
-  const adminFee = paymentMethod === 'manual_transfer' ? 5000 : 0;
+  // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
+  const adminFee = 0;
   const currentUniqueCode = paymentMethod === 'manual_transfer' ? uniqueCode : 0;
   const totalAmount = basePrice + adminFee + currentUniqueCode;
 
@@ -277,12 +278,12 @@ function SingleProductContent() {
                   <Building2 className="w-4 h-4 text-blue-600" />
                   <span>Transfer Bank Manual</span>
                 </div>
-                <span className="bg-slate-200 text-slate-700 font-semibold text-[10px] px-2 py-0.5 rounded-md">
-                  Admin Rp5.000 + Kode Unik
+                <span className="bg-blue-100 text-blue-800 font-semibold text-[10px] px-2 py-0.5 rounded-md">
+                  Bebas Biaya Admin + Kode Unik
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Transfer ke rekening resmi BCA / Mandiri. Verifikasi otomatis dengan kode unik 3 digit acak.
+                Transfer langsung ke rekening BCA / Mandiri seller tanpa biaya admin. Dilengkapi 3 digit kode unik acak verifikasi.
               </p>
             </div>
           </label>
@@ -292,13 +293,13 @@ function SingleProductContent() {
       {/* Rincian Kalkulasi Pembayaran */}
       <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
         <div className="flex justify-between text-slate-600">
-          <span>Harga Dasar Produk (Net)</span>
+          <span>Harga Produk (Net)</span>
           <span className="font-semibold text-slate-900">Rp {basePrice.toLocaleString('id-ID')}</span>
         </div>
         <div className="flex justify-between text-slate-600">
           <span>Biaya Layanan & Admin</span>
-          <span className={`font-semibold ${paymentMethod === 'qris' ? 'text-emerald-600' : 'text-slate-900'}`}>
-            {paymentMethod === 'qris' ? 'Rp 0 (Gratis)' : `Rp ${adminFee.toLocaleString('id-ID')}`}
+          <span className="font-semibold text-emerald-600">
+            Rp 0 (Bebas Biaya Admin)
           </span>
         </div>
         {paymentMethod === 'manual_transfer' && (
