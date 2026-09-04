@@ -38,73 +38,24 @@ import {
   Clock,
   Target,
   Truck,
-  Radio
+  Radio,
+  Sparkles,
+  Globe,
+  Sliders,
+  Check,
+  Copy
 } from 'lucide-react';
 import WhatsAppWabaConfig from './components/WhatsAppWabaConfig';
 import AdsTrackingPro from './components/AdsTrackingPro';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
-
-interface ProductItem {
-  id: number;
-  name: string;
-  category: 'terlaris' | 'digital' | 'fisik';
-  price: number;
-  promo_price?: number;
-  variants?: string;
-  promo?: string;
-  description: string;
-  download_url?: string;
-  image: string;
-  stock: number;
-  sku?: string;
-  is_unlimited?: boolean;
-}
-
-interface TransactionItem {
-  id: string;
-  invoice_no: string;
-  customer_name: string;
-  customer_phone: string;
-  product_name: string;
-  amount: number;
-  payment_method: string;
-  status: 'PAID' | 'PENDING' | 'EXPIRED';
-  created_at: string;
-}
-
-const DEFAULT_PRODUCTS: ProductItem[] = [
-  {
-    id: 1,
-    name: "Step by Step Rahasia Menghasilkan Dollar dari Paid Traffic",
-    category: "terlaris",
-    price: 499000,
-    promo_price: 249000,
-    variants: "Format Digital • Video HD + Support",
-    promo: "Diskon 50%",
-    description: "Sebuah formula hidden gem yang belum banyak orang Indonesia mengetahuinya untuk menghasilkan dollar dari paid traffic.",
-    download_url: "https://onlineboost.my.id/p/step-by-step-rahasia-menghasilkan-dollar",
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
-    stock: 9999,
-    sku: "OB-DIG-001",
-    is_unlimited: true,
-  },
-  {
-    id: 2,
-    name: "Masterclass Ads 2026 - Scale Up Campaign",
-    category: "digital",
-    price: 99000,
-    promo_price: 149000,
-    variants: "Format Digital • Video HD",
-    promo: "Diskon 35%",
-    description: "Panduan praktis scale-up iklan Meta & TikTok ads dengan optimasi ROAS tinggi.",
-    download_url: "https://drive.google.com/drive/folders/masterclass-ads",
-    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
-    stock: 9999,
-    sku: "OB-DIG-002",
-    is_unlimited: true,
-  }
-];
+import { 
+  ProductItem, 
+  SinglePageConfig, 
+  TransactionItem,
+  DEFAULT_PRODUCTS, 
+  slugify 
+} from '@/lib/product-catalog';
 
 const INITIAL_TRANSACTIONS: TransactionItem[] = [
   {
@@ -183,6 +134,38 @@ export default function TenantDashboardPage() {
   const [products, setProducts] = useState<ProductItem[]>(isProTenant ? DEFAULT_PRODUCTS : []);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
+
+  // Single Page Checkout Builder State
+  const [isSinglePageModalOpen, setIsSinglePageModalOpen] = useState(false);
+  const [activeSinglePageProduct, setActiveSinglePageProduct] = useState<ProductItem | null>(null);
+  const [singlePageForm, setSinglePageForm] = useState<SinglePageConfig>({
+    slug: '',
+    headline: '',
+    subheadline: '',
+    banner_url: '',
+    enable_qris: true,
+    enable_manual_transfer: true,
+    discount_coupon: 'BOONPROMO50',
+    affiliate_commission_rate: 30,
+    badge_text: 'Direct Access Offer',
+  });
+
+  // Load persisted products from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(`bt_products_${tenantSlug}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setProducts(parsed);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load products from localStorage:', err);
+      }
+    }
+  }, [tenantSlug]);
 
   const [productForm, setProductForm] = useState<ProductItem>({
     id: 0,
@@ -363,10 +346,79 @@ export default function TenantDashboardPage() {
 
   const handleDeleteProduct = (id: number) => {
     if (confirm("Hapus produk ini dari etalase toko?")) {
-      setProducts(prev => prev.filter(p => p.id !== id));
+      const updated = products.filter(p => p.id !== id);
+      setProducts(updated);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updated));
+        } catch {}
+      }
       setSaveFeedback("🗑️ Produk telah dihapus.");
       setTimeout(() => setSaveFeedback(null), 3000);
     }
+  };
+
+  const openSinglePageBuilder = (prod: ProductItem) => {
+    setActiveSinglePageProduct(prod);
+    const prodSlug = prod.slug || slugify(prod.name);
+    setSinglePageForm({
+      slug: prodSlug,
+      headline: prod.single_page_config?.headline || prod.name,
+      subheadline: prod.single_page_config?.subheadline || prod.description,
+      banner_url: prod.single_page_config?.banner_url || prod.image,
+      enable_qris: prod.single_page_config?.enable_qris ?? true,
+      enable_manual_transfer: prod.single_page_config?.enable_manual_transfer ?? true,
+      discount_coupon: prod.single_page_config?.discount_coupon || 'BOONPROMO50',
+      affiliate_commission_rate: prod.single_page_config?.affiliate_commission_rate ?? 30,
+      badge_text: prod.single_page_config?.badge_text || 'Direct Access Offer',
+    });
+    setIsSinglePageModalOpen(true);
+  };
+
+  const handleSaveSinglePageConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeSinglePageProduct) return;
+
+    const prodSlug = singlePageForm.slug?.trim() || slugify(activeSinglePageProduct.name);
+    const updatedConfig: SinglePageConfig = {
+      ...singlePageForm,
+      slug: prodSlug,
+    };
+
+    const updatedProducts = products.map((p) => {
+      if (p.id === activeSinglePageProduct.id) {
+        return {
+          ...p,
+          slug: prodSlug,
+          single_page_config: updatedConfig,
+        };
+      }
+      return p;
+    });
+
+    setProducts(updatedProducts);
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
+        localStorage.setItem(
+          `bt_single_page_${tenantSlug}_${prodSlug}`,
+          JSON.stringify({
+            ...updatedConfig,
+            product: {
+              ...activeSinglePageProduct,
+              slug: prodSlug,
+            },
+          })
+        );
+      } catch (err) {
+        console.warn('Failed to save to localStorage:', err);
+      }
+    }
+
+    setIsSinglePageModalOpen(false);
+    setSaveFeedback(`✅ Single Page Checkout untuk "${activeSinglePageProduct.name}" berhasil disimpan & diterapkan!`);
+    setTimeout(() => setSaveFeedback(null), 4000);
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -885,7 +937,30 @@ export default function TenantDashboardPage() {
                     )}
                   </div>
 
-                  <div className="pt-3 mt-2 border-t border-slate-100 flex items-center justify-between">
+                  {/* Single Page Checkout Action Bar */}
+                  <div className="pt-3 mt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openSinglePageBuilder(p)}
+                      className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition flex items-center gap-1.5 border border-blue-200 shadow-xs cursor-pointer"
+                      title="Atur Single Page Checkout untuk produk ini"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Atur Single Page Checkout</span>
+                    </button>
+
+                    <Link
+                      href={`/${tenantSlug}/p/${p.slug || slugify(p.name)}`}
+                      target="_blank"
+                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-xs cursor-pointer"
+                      title="Buka Halaman Penawaran Publik"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Buka Halaman (Public URL)</span>
+                    </Link>
+                  </div>
+
+                  <div className="pt-2.5 mt-1 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
                       {p.download_url || "Tanpa Link Download"}
                     </span>
@@ -1069,6 +1144,212 @@ export default function TenantDashboardPage() {
                   <Save className="w-4 h-4" />
                   <span>Simpan ke Etalase</span>
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL / DRAWER BUILDER SINGLE PAGE CHECKOUT */}
+      {isSinglePageModalOpen && activeSinglePageProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] my-auto">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50 sticky top-0 z-10">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-blue-100 text-blue-600">
+                  <Sparkles className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 leading-tight">
+                    Builder Single Page Checkout
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Konfigurasi halaman penawaran untuk: <strong className="text-slate-800">{activeSinglePageProduct.name}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSinglePageModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200/60 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleSaveSinglePageConfig} className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
+              {/* URL Slug */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
+                <label className="font-bold text-slate-700 block">Tautan Halaman Publik (Public Slug URL) *</label>
+                <div className="flex items-center gap-1 font-mono text-xs">
+                  <span className="text-slate-400 shrink-0">/{tenantSlug}/p/</span>
+                  <input
+                    type="text"
+                    required
+                    value={singlePageForm.slug || ''}
+                    onChange={(e) => setSinglePageForm((p) => ({ ...p, slug: slugify(e.target.value) }))}
+                    placeholder="nama-slug-produk"
+                    className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold focus:outline-none focus:border-blue-600"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400 block">
+                  Akses langsung via browser: <code className="text-blue-600 font-bold">https://{tenantSlug}.boontrack.com/p/{singlePageForm.slug}</code>
+                </span>
+              </div>
+
+              {/* Headline & Subheadline */}
+              <div className="space-y-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Headline Penawaran Utama *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={singlePageForm.headline}
+                    onChange={(e) => setSinglePageForm((p) => ({ ...p, headline: e.target.value }))}
+                    placeholder="Contoh: Kuasai Pola Iklan Anti Boncos & Rahasia Scaling Meta Ads 2026"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Subheadline & Ringkasan Nilai
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={singlePageForm.subheadline}
+                    onChange={(e) => setSinglePageForm((p) => ({ ...p, subheadline: e.target.value }))}
+                    placeholder="Contoh: Studi kasus riil mengelola anggaran iklan miliaran rupiah tanpa trik abu-abu..."
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Badge Label Promosi
+                  </label>
+                  <input
+                    type="text"
+                    value={singlePageForm.badge_text || ''}
+                    onChange={(e) => setSinglePageForm((p) => ({ ...p, badge_text: e.target.value }))}
+                    placeholder="Contoh: Direct Access Class / Flash Sale 80%"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Banner Promosi */}
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Upload / Input URL Media Banner Promosi
+                </label>
+                <input
+                  type="url"
+                  value={singlePageForm.banner_url}
+                  onChange={(e) => setSinglePageForm((p) => ({ ...p, banner_url: e.target.value }))}
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                />
+              </div>
+
+              {/* Pengaturan Pembayaran (QRIS & Transfer Manual) */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <span className="font-bold text-slate-800 block text-xs">
+                  Opsi Metode Pembayaran di Checkout
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-emerald-400 transition">
+                    <input
+                      type="checkbox"
+                      checked={singlePageForm.enable_qris}
+                      onChange={(e) => setSinglePageForm((p) => ({ ...p, enable_qris: e.target.checked }))}
+                      className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-900 block">QRIS Instan Otomatis</span>
+                      <span className="text-[10px] text-slate-500">Bebas biaya admin (Fee Rp0) & aktivasi tercepat.</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-blue-400 transition">
+                    <input
+                      type="checkbox"
+                      checked={singlePageForm.enable_manual_transfer}
+                      onChange={(e) => setSinglePageForm((p) => ({ ...p, enable_manual_transfer: e.target.checked }))}
+                      className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-900 block">Transfer Bank Manual</span>
+                      <span className="text-[10px] text-slate-500">BCA / Mandiri + Admin flat Rp5.000 & kode unik acak.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Kupon Diskon & Komisi Affiliate */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Kupon Diskon Otomatis</label>
+                  <input
+                    type="text"
+                    value={singlePageForm.discount_coupon}
+                    onChange={(e) => setSinglePageForm((p) => ({ ...p, discount_coupon: e.target.value.toUpperCase() }))}
+                    placeholder="Contoh: BOONPROMO50"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold focus:outline-none focus:border-blue-600 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Komisi Affiliate Default (%)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={singlePageForm.affiliate_commission_rate}
+                      onChange={(e) => setSinglePageForm((p) => ({ ...p, affiliate_commission_rate: Number(e.target.value) }))}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white pr-8"
+                    />
+                    <span className="absolute right-3 top-2.5 font-bold text-slate-400">%</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Dihitung murni dari harga dasar net produk (Rp {activeSinglePageProduct.price.toLocaleString('id-ID')}).
+                  </span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+                <Link
+                  href={`/${tenantSlug}/p/${singlePageForm.slug || slugify(activeSinglePageProduct.name)}`}
+                  target="_blank"
+                  className="px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 transition flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Preview Halaman</span>
+                </Link>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSinglePageModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Simpan & Terapkan</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
