@@ -213,15 +213,24 @@ export async function GET(
       webhook_verified: true,
     };
 
+    const botStrategy =
+      dbMetadata.bot_strategy ||
+      dbMetadata.ai_knowledge?.bot_strategy ||
+      'trust_builder';
+
     return NextResponse.json({
       success: true,
       settings: {
         slug,
         name: defaultName,
         category: category || (isSuhu ? 'digital' : 'retail'),
+        bot_strategy: botStrategy,
         product: products[0] || product,
         products,
-        ai_knowledge: aiKnowledge,
+        ai_knowledge: {
+          ...aiKnowledge,
+          bot_strategy: botStrategy,
+        },
         bank,
         integration,
       },
@@ -249,7 +258,13 @@ export async function PUT(
       ai_knowledge,
       bank,
       integration,
+      bot_strategy,
     } = body;
+
+    let resolvedBotStrategy =
+      bot_strategy ||
+      ai_knowledge?.bot_strategy ||
+      'trust_builder';
 
     try {
       const supabase = getSupabase();
@@ -260,8 +275,13 @@ export async function PUT(
         .eq('slug', slug)
         .maybeSingle();
 
+      if (!bot_strategy && !ai_knowledge?.bot_strategy && existing?.metadata?.bot_strategy) {
+        resolvedBotStrategy = existing.metadata.bot_strategy;
+      }
+
       const updatedMetadata = {
         ...(existing?.metadata || {}),
+        bot_strategy: resolvedBotStrategy,
         product: {
           ...(existing?.metadata?.product || {}),
           ...(product || {}),
@@ -270,6 +290,11 @@ export async function PUT(
         ai_knowledge: {
           ...(existing?.metadata?.ai_knowledge || {}),
           ...(ai_knowledge || {}),
+          bot_strategy: resolvedBotStrategy,
+        },
+        persona: {
+          ...(existing?.metadata?.persona || {}),
+          bot_strategy: resolvedBotStrategy,
         },
         bank: {
           ...(existing?.metadata?.bank || {}),
@@ -302,7 +327,10 @@ export async function PUT(
             'Content-Type': 'application/json',
             'X-Tenant-ID': slug,
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            ...body,
+            bot_strategy: resolvedBotStrategy,
+          }),
           cache: 'no-store',
         }
       );
@@ -317,8 +345,12 @@ export async function PUT(
         slug,
         name,
         category,
+        bot_strategy: resolvedBotStrategy,
         product,
-        ai_knowledge,
+        ai_knowledge: {
+          ...(ai_knowledge || {}),
+          bot_strategy: resolvedBotStrategy,
+        },
         bank,
         integration,
       },
