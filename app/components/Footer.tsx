@@ -109,12 +109,12 @@ export default function Footer({ className = "" }: { className?: string }) {
                 <span>
                   WhatsApp CS:{" "}
                   <a 
-                    href="https://wa.me/6285715414744" 
+                    href="https://wa.me/628123745022" 
                     target="_blank" 
                     rel="noopener noreferrer" 
                     className="text-emerald-400 font-semibold hover:underline"
                   >
-                    +62 857-1541-4744
+                    +62 812-3745-022 (08123745022)
                   </a>
                 </span>
               </div>

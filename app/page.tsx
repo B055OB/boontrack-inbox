@@ -28,9 +28,9 @@ import {
 import Footer from '@/app/components/Footer';
 
 export default function ShopLandingPage() {
-  const waContactUrl = "https://wa.me/6285715414744?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin konsultasi layanan platform SaaS BoonTrack dan aktivasi merchant.");
-  const waStarterOrderUrl = "https://wa.me/6285715414744?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Starter Commerce Plan Rp149.000/bulan untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
-  const waProOrderUrl = "https://wa.me/6285715414744?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Pro Business Suite Rp299.000/bulan untuk bisnis saya. Mohon panduan onboarding VIP dan faktur pembayaran.");
+  const waContactUrl = "https://wa.me/628123745022?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin konsultasi layanan platform SaaS BoonTrack dan aktivasi merchant.");
+  const waStarterOrderUrl = "https://wa.me/628123745022?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Starter Commerce Plan Rp149.000/bulan untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
+  const waProOrderUrl = "https://wa.me/628123745022?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Pro Business Suite Rp299.000/bulan untuk bisnis saya. Mohon panduan onboarding VIP dan faktur pembayaran.");
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-blue-600 selection:text-white flex flex-col">
@@ -575,7 +575,7 @@ export default function ShopLandingPage() {
                   </div>
                   <div className="flex items-center gap-2 text-slate-700">
                     <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>WhatsApp CS: <span className="font-semibold text-slate-900">+62 857-1541-4744</span></span>
+                    <span>WhatsApp CS: <span className="font-semibold text-slate-900">+62 812-3745-022 (08123745022)</span></span>
                   </div>
                 </div>
               </div>
@@ -588,7 +588,7 @@ export default function ShopLandingPage() {
                   className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold text-center flex items-center justify-center gap-2 transition shadow-sm"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  <span>Chat WhatsApp Tim Sales & Legal (+62 857-1541-4744)</span>
+                  <span>Chat WhatsApp Tim Sales & Legal (+62 812-3745-022)</span>
                 </a>
               </div>
             </div>
