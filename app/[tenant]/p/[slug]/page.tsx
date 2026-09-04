@@ -12,7 +12,12 @@ import {
   Building2, 
   Sparkles, 
   X,
-  Tag
+  Tag,
+  Truck,
+  Package,
+  CheckCircle2,
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 import { syncAttributionSession } from '@/lib/attribution';
 import { 
@@ -25,7 +30,7 @@ import {
   getTrackingData
 } from '@/lib/tracking';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
-import { resolveSinglePageProduct, SinglePageConfig, ProductItem } from '@/lib/product-catalog';
+import { resolveSinglePageProduct, SinglePageConfig, ProductItem, VoucherConfig } from '@/lib/product-catalog';
 
 function SingleProductContent() {
   const params = useParams();
@@ -76,17 +81,141 @@ function SingleProductContent() {
   const [errorMessage, setErrorMessage] = useState('');
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
 
-  // Kalkulasi Pembayaran Presisi
+  // Deteksi Tipe Produk & Pengiriman (Khusus Produk Fisik)
+  const isPhysical = product.category === 'fisik';
+  const SHIPPING_OPTIONS = [
+    { id: 'reg', name: 'J&T / SiCepat Regular', price: 20000, eta: '2-3 hari' },
+    { id: 'exp', name: 'Kurir Express Next Day', price: 35000, eta: '1 hari' },
+    { id: 'cargo', name: 'Kargo Hemat', price: 15000, eta: '4-5 hari' }
+  ];
+  const [selectedShippingId, setSelectedShippingId] = useState<string>('reg');
+  const [shippingAddress, setShippingAddress] = useState<string>('');
+  const [shippingCity, setShippingCity] = useState<string>('');
+
+  // Modul Voucher Diskon Fleksibel
+  const initialVoucher: VoucherConfig | null = config.voucher || (config.discount_coupon ? {
+    code: config.discount_coupon,
+    discount_type: 'nominal',
+    discount_value: 20000,
+    shipping_discount_type: isPhysical ? 'free' : 'none',
+    shipping_discount_value: 0,
+    min_spend: 0
+  } : null);
+
+  const [voucherInput, setVoucherInput] = useState(initialVoucher?.code || '');
+  const [appliedVoucher, setAppliedVoucher] = useState<VoucherConfig | null>(initialVoucher);
+  const [voucherMsg, setVoucherMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(() => {
+    if (initialVoucher) {
+      return {
+        type: 'success',
+        text: `Voucher ${initialVoucher.code} berhasil diterapkan otomatis!`
+      };
+    }
+    return null;
+  });
+
+  const handleApplyVoucher = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const code = voucherInput.trim().toUpperCase();
+    if (!code) {
+      setVoucherMsg({ type: 'error', text: 'Silakan masukkan kode voucher.' });
+      return;
+    }
+
+    const currentBasePrice = product.price || 99000;
+
+    // Cek kecocokan kode voucher
+    const targetVoucher: VoucherConfig | null = 
+      (config.voucher && config.voucher.code.toUpperCase() === code)
+        ? config.voucher
+        : (config.discount_coupon && config.discount_coupon.toUpperCase() === code)
+        ? {
+            code: config.discount_coupon.toUpperCase(),
+            discount_type: 'nominal',
+            discount_value: 20000,
+            shipping_discount_type: isPhysical ? 'free' : 'none',
+            shipping_discount_value: 0,
+            min_spend: 0
+          }
+        : (code === 'HEMAT50' || code === 'DISKON20K' || code === 'FREESHIP' || code === 'BOONPROMO50')
+        ? {
+            code,
+            discount_type: code === 'DISKON20K' ? 'percentage' : 'nominal',
+            discount_value: code === 'DISKON20K' ? 20 : 50000,
+            shipping_discount_type: code === 'FREESHIP' ? 'free' : 'none',
+            shipping_discount_value: 0,
+            min_spend: 0
+          }
+        : null;
+
+    if (!targetVoucher) {
+      setVoucherMsg({ type: 'error', text: `Voucher "${code}" tidak valid atau telah kedaluwarsa.` });
+      setAppliedVoucher(null);
+      return;
+    }
+
+    // Validasi minimal belanja
+    if (targetVoucher.min_spend && currentBasePrice < targetVoucher.min_spend) {
+      setVoucherMsg({
+        type: 'error',
+        text: `Minimal belanja Rp ${targetVoucher.min_spend.toLocaleString('id-ID')} untuk menggunakan voucher ini.`
+      });
+      setAppliedVoucher(null);
+      return;
+    }
+
+    setAppliedVoucher(targetVoucher);
+    setVoucherMsg({
+      type: 'success',
+      text: `Voucher ${targetVoucher.code} berhasil digunakan!`
+    });
+  };
+
+  const handleRemoveVoucher = () => {
+    setAppliedVoucher(null);
+    setVoucherInput('');
+    setVoucherMsg(null);
+  };
+
+  // Perhitungan Finansial Presisi
   const basePrice = product.price || 99000;
   const promoPrice = product.promo_price || (basePrice > 100000 ? Math.round(basePrice * 1.5) : 499000);
-  // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
+
+  // 1. Potongan Diskon Produk (Nominal / Persen)
+  let productDiscount = 0;
+  if (appliedVoucher) {
+    if (appliedVoucher.discount_type === 'percentage') {
+      productDiscount = Math.round(basePrice * ((appliedVoucher.discount_value || 0) / 100));
+    } else {
+      productDiscount = appliedVoucher.discount_value || 0;
+    }
+  }
+  productDiscount = Math.min(productDiscount, basePrice);
+  const netProductPrice = Math.max(0, basePrice - productDiscount);
+
+  // 2. Ongkos Kirim & Subsidi (Khusus Produk Fisik)
+  const selectedShipping = SHIPPING_OPTIONS.find(s => s.id === selectedShippingId) || SHIPPING_OPTIONS[0];
+  const baseShippingCost = isPhysical ? selectedShipping.price : 0;
+  let shippingSubsidy = 0;
+  if (isPhysical && appliedVoucher) {
+    if (appliedVoucher.shipping_discount_type === 'free') {
+      shippingSubsidy = baseShippingCost;
+    } else if (appliedVoucher.shipping_discount_type === 'flat') {
+      shippingSubsidy = Math.min(baseShippingCost, appliedVoucher.shipping_discount_value || 0);
+    }
+  }
+  const netShippingCost = Math.max(0, baseShippingCost - shippingSubsidy);
+
+  // 3. Biaya Admin = Rp 0 & Kode Unik Verifikasi
   const adminFee = 0;
   const currentUniqueCode = paymentMethod === 'manual_transfer' ? uniqueCode : 0;
-  const totalAmount = basePrice + adminFee + currentUniqueCode;
 
-  // Komisi affiliate dihitung murni dari harga dasar net produk (default 30% atau nilai yang diatur di builder)
+  // 4. Total Bayar Presisi
+  const totalAmount = netProductPrice + netShippingCost + currentUniqueCode;
+
+  // 5. Komisi Affiliate (Wajib 30% dari Harga Bersih Produk, terpisah dari ongkir & kode unik)
   const commissionRate = config.affiliate_commission_rate ?? 30;
-  const affiliateCommission = Math.round(basePrice * (commissionRate / 100));
+  const affiliateCommission = Math.round(netProductPrice * (commissionRate / 100));
 
   useEffect(() => {
     // 1. Rekam jejak atribusi referral & parameter UTM/Click ID
@@ -126,6 +255,12 @@ function SingleProductContent() {
   const handleDirectCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
+
+    if (isPhysical && (!shippingAddress || !shippingCity)) {
+      setErrorMessage('Silakan lengkapi alamat dan kota pengiriman produk fisik.');
+      return;
+    }
+
     setLoading(true);
     setErrorMessage('');
 
@@ -139,7 +274,15 @@ function SingleProductContent() {
         productTitle: product.name,
         amount: totalAmount,
         basePrice,
-        adminFee,
+        productDiscount,
+        netProductPrice,
+        shippingCost: baseShippingCost,
+        shippingSubsidy,
+        netShippingCost,
+        shippingAddress: isPhysical ? `${shippingAddress}, ${shippingCity}` : undefined,
+        shippingCourier: isPhysical ? selectedShipping.name : undefined,
+        voucherCode: appliedVoucher?.code || undefined,
+        adminFee: 0,
         uniqueCode: currentUniqueCode,
         paymentMethod,
         affiliateCommission,
@@ -290,24 +433,174 @@ function SingleProductContent() {
         )}
       </div>
 
-      {/* Rincian Kalkulasi Pembayaran */}
+      {/* Khusus Produk Fisik: Alamat & Opsi Pengiriman */}
+      {isPhysical && (
+        <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
+          <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
+            <Package className="w-4 h-4 text-amber-700" />
+            <span>Alamat & Ekspedisi Pengiriman Produk Fisik</span>
+          </div>
+
+          <div className="space-y-2">
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">
+                Alamat Lengkap Rumah / Kantor <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={2}
+                required={isPhysical}
+                placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan, Kecamatan"
+                value={shippingAddress}
+                onChange={(e) => setShippingAddress(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">
+                Kota / Kabupaten & Kode Pos <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required={isPhysical}
+                placeholder="Contoh: Bandung, 40286"
+                value={shippingCity}
+                onChange={(e) => setShippingCity(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Pilih Layanan Kurir</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {SHIPPING_OPTIONS.map((opt) => (
+                  <div
+                    key={opt.id}
+                    onClick={() => setSelectedShippingId(opt.id)}
+                    className={`p-2.5 rounded-xl border cursor-pointer transition ${
+                      selectedShippingId === opt.id
+                        ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
+                        : 'bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-bold text-slate-900 text-[11px]">{opt.name}</div>
+                    <div className="text-[10px] text-slate-500">{opt.eta}</div>
+                    <div className="text-xs font-black text-blue-600 mt-1">
+                      Rp {opt.price.toLocaleString('id-ID')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Input Kode Voucher Promo Fleksibel */}
+      <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-bold text-slate-900">
+            <Tag className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Punya Kode Voucher?</span>
+          </div>
+          {appliedVoucher && (
+            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              {appliedVoucher.code} Aktif
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={voucherInput}
+            onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
+            placeholder="Masukkan kode voucher (mis: HEMAT50)"
+            className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 focus:outline-none focus:border-indigo-600"
+          />
+          <button
+            type="button"
+            onClick={() => handleApplyVoucher()}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+          >
+            Terapkan
+          </button>
+          {appliedVoucher && (
+            <button
+              type="button"
+              onClick={handleRemoveVoucher}
+              title="Hapus Voucher"
+              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {voucherMsg && (
+          <div className={`text-[11px] font-semibold flex items-center gap-1.5 ${
+            voucherMsg.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
+          }`}>
+            {voucherMsg.type === 'success' ? (
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            ) : (
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            )}
+            <span>{voucherMsg.text}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Rincian Kalkulasi Pembayaran Presisi */}
       <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
         <div className="flex justify-between text-slate-600">
-          <span>Harga Produk (Net)</span>
+          <span>Harga Dasar Produk</span>
           <span className="font-semibold text-slate-900">Rp {basePrice.toLocaleString('id-ID')}</span>
         </div>
+
+        {productDiscount > 0 && (
+          <div className="flex justify-between text-indigo-600 font-semibold">
+            <span>Diskon Voucher ({appliedVoucher?.code})</span>
+            <span>-Rp {productDiscount.toLocaleString('id-ID')}</span>
+          </div>
+        )}
+
+        {productDiscount > 0 && (
+          <div className="flex justify-between text-slate-600">
+            <span>Harga Bersih Produk</span>
+            <span className="font-semibold text-slate-900">Rp {netProductPrice.toLocaleString('id-ID')}</span>
+          </div>
+        )}
+
+        {isPhysical && (
+          <div className="flex justify-between text-slate-600">
+            <span>Ongkos Kirim ({selectedShipping.name})</span>
+            <span className="font-semibold text-slate-900">Rp {baseShippingCost.toLocaleString('id-ID')}</span>
+          </div>
+        )}
+
+        {isPhysical && shippingSubsidy > 0 && (
+          <div className="flex justify-between text-emerald-600 font-semibold">
+            <span>Subsidi Bebas Ongkir</span>
+            <span>-Rp {shippingSubsidy.toLocaleString('id-ID')}</span>
+          </div>
+        )}
+
         <div className="flex justify-between text-slate-600">
           <span>Biaya Layanan & Admin</span>
           <span className="font-semibold text-emerald-600">
             Rp 0 (Bebas Biaya Admin)
           </span>
         </div>
+
         {paymentMethod === 'manual_transfer' && (
           <div className="flex justify-between text-slate-600">
             <span>Kode Unik Verifikasi</span>
             <span className="font-mono font-semibold text-blue-600">+{currentUniqueCode}</span>
           </div>
         )}
+
         <div className="border-t border-slate-200 pt-2 flex justify-between items-baseline font-bold">
           <span className="text-slate-900">Total Pembayaran</span>
           <span className="text-base font-black text-emerald-600">
@@ -317,11 +610,11 @@ function SingleProductContent() {
 
         {/* Kupon & Affiliate Notice */}
         <div className="pt-1 text-[10px] text-slate-400 font-mono flex items-center justify-between border-t border-slate-200/60">
-          <span>Kupon Aktif: {config.discount_coupon || 'BOONPROMO50'}</span>
+          <span>{appliedVoucher ? `Voucher: ${appliedVoucher.code}` : `Kupon: ${config.discount_coupon || 'HEMAT50'}`}</span>
           {affiliateCode ? (
             <span className="text-indigo-600 font-medium">Reff: {affiliateCode} ({commissionRate}%: Rp {affiliateCommission.toLocaleString('id-ID')})</span>
           ) : (
-            <span className="text-slate-500">Komisi Mitra: {commissionRate}%</span>
+            <span className="text-slate-500">Komisi Mitra: {commissionRate}% (Rp {affiliateCommission.toLocaleString('id-ID')})</span>
           )}
         </div>
       </div>

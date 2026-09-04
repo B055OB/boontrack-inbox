@@ -1,3 +1,12 @@
+export interface VoucherConfig {
+  code: string;
+  discount_type: 'nominal' | 'percentage';
+  discount_value: number; // Diskon flat (Rp) atau persentase (%)
+  shipping_discount_type?: 'none' | 'flat' | 'free'; // Khusus produk fisik
+  shipping_discount_value?: number; // Subsidi ongkir (Rp) jika tipe 'flat'
+  min_spend?: number; // Batas minimal belanja (opsional, Rp)
+}
+
 export interface SinglePageConfig {
   slug?: string;
   headline: string;
@@ -6,6 +15,7 @@ export interface SinglePageConfig {
   enable_qris: boolean;
   enable_manual_transfer: boolean;
   discount_coupon: string;
+  voucher?: VoucherConfig;
   affiliate_commission_rate: number;
   badge_text?: string;
 }
@@ -71,7 +81,15 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       banner_url: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
       enable_qris: true,
       enable_manual_transfer: true,
-      discount_coupon: "DOLLAR50",
+      discount_coupon: "HEMAT50",
+      voucher: {
+        code: "HEMAT50",
+        discount_type: "nominal",
+        discount_value: 50000,
+        shipping_discount_type: "none",
+        shipping_discount_value: 0,
+        min_spend: 100000
+      },
       affiliate_commission_rate: 30,
       badge_text: "Special Blueprint"
     }
@@ -98,9 +116,52 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       banner_url: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
       enable_qris: true,
       enable_manual_transfer: true,
-      discount_coupon: "BOONPROMO50",
+      discount_coupon: "DISKON20K",
+      voucher: {
+        code: "DISKON20K",
+        discount_type: "percentage",
+        discount_value: 20,
+        shipping_discount_type: "none",
+        shipping_discount_value: 0,
+        min_spend: 50000
+      },
       affiliate_commission_rate: 30,
       badge_text: "Direct Access Class"
+    }
+  },
+  {
+    id: 3,
+    name: "Buku Fisik Blueprint Bisnis Online 2026",
+    slug: "buku-fisik-blueprint-bisnis",
+    category: "fisik",
+    price: 199000,
+    promo_price: 299000,
+    variants: "Hardcover 320 Hlm + Template SOP",
+    promo: "Free Ongkir",
+    description: "Buku cetak fisik panduan lengkap membangun funnel penjualan online, automasi closing WhatsApp, dan scaling produk.",
+    download_url: "",
+    image: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60",
+    stock: 250,
+    sku: "OB-PHY-001",
+    is_unlimited: false,
+    single_page_config: {
+      slug: "buku-fisik-blueprint-bisnis",
+      headline: "Buku Fisik Eksklusif: Blueprint Bisnis Online & Funnel Closing 2026",
+      subheadline: "Edisi cetak hardcover eksklusif dikirim langsung ke pintu rumah Anda. Dapatkan fasilitas voucher gratis ongkir khusus pemesanan hari ini.",
+      banner_url: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60",
+      enable_qris: true,
+      enable_manual_transfer: true,
+      discount_coupon: "FREESHIP",
+      voucher: {
+        code: "FREESHIP",
+        discount_type: "nominal",
+        discount_value: 20000,
+        shipping_discount_type: "free",
+        shipping_discount_value: 0,
+        min_spend: 100000
+      },
+      affiliate_commission_rate: 30,
+      badge_text: "Buku Fisik Kirim Langsung"
     }
   }
 ];
@@ -152,7 +213,15 @@ export function resolveSinglePageProduct(
               banner_url: match.image,
               enable_qris: true,
               enable_manual_transfer: true,
-              discount_coupon: 'BOONPROMO50',
+              discount_coupon: 'HEMAT50',
+              voucher: {
+                code: 'HEMAT50',
+                discount_type: 'nominal',
+                discount_value: 20000,
+                shipping_discount_type: 'none',
+                shipping_discount_value: 0,
+                min_spend: 50000,
+              },
               affiliate_commission_rate: 30,
               badge_text: 'Direct Access Offer',
             },

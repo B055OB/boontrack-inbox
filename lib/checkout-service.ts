@@ -17,6 +17,14 @@ export interface CreateOrderPayload {
   affiliateCode?: string;
   managerId?: string;
   tracking?: Record<string, any>;
+  voucherCode?: string;
+  productDiscount?: number;
+  netProductPrice?: number;
+  shippingCost?: number;
+  shippingSubsidy?: number;
+  netShippingCost?: number;
+  shippingAddress?: string;
+  shippingCourier?: string;
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
@@ -27,42 +35,68 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   const paymentMethod = payload.paymentMethod || 'qris';
   const basePrice = payload.basePrice ?? payload.amount;
+  const productDiscount = payload.productDiscount ?? 0;
+  const netProductPrice = payload.netProductPrice ?? Math.max(0, basePrice - productDiscount);
+  const shippingCost = payload.shippingCost ?? 0;
+  const shippingSubsidy = payload.shippingSubsidy ?? 0;
+  const netShippingCost = payload.netShippingCost ?? Math.max(0, shippingCost - shippingSubsidy);
+
   // Biaya admin Rp0 untuk QRIS maupun Transfer Bank Manual (dana langsung masuk ke seller)
-  const adminFee = payload.adminFee ?? 0;
+  const adminFee = 0;
   const uniqueCode = payload.uniqueCode ?? 0;
-  const grossAmount = payload.amount || (basePrice + adminFee + uniqueCode);
-  // Komisi affiliate 30% dihitung murni dari harga dasar (net), terpisah dari admin fee & kode unik
-  const affiliateCommission = payload.affiliateCommission ?? Math.round(basePrice * 0.3);
+  const grossAmount = payload.amount || (netProductPrice + netShippingCost + uniqueCode);
+
+  // Komisi affiliate 30% dihitung murni dari Harga Bersih Produk (net) setelah diskon produk, terpisah dari ongkir & kode unik
+  const affiliateCommission = payload.affiliateCommission ?? Math.round(netProductPrice * 0.3);
+
+  const orderData = {
+    id: orderId,
+    tenant_slug: payload.tenantSlug,
+    product_id: payload.productId,
+    product_title: payload.productTitle,
+    gross_amount: grossAmount,
+    base_price: basePrice,
+    product_discount: productDiscount,
+    net_product_price: netProductPrice,
+    shipping_cost: shippingCost,
+    shipping_subsidy: shippingSubsidy,
+    net_shipping_cost: netShippingCost,
+    voucher_code: payload.voucherCode || null,
+    shipping_address: payload.shippingAddress || null,
+    shipping_courier: payload.shippingCourier || null,
+    admin_fee: adminFee,
+    unique_code: uniqueCode,
+    payment_method: paymentMethod,
+    affiliate_commission: affiliateCommission,
+    customer_name: payload.customerName,
+    customer_phone: payload.customerPhone,
+    customer_email: payload.customerEmail || "",
+    affiliate_code: payload.affiliateCode || null,
+    manager_id: payload.managerId || null,
+    utm_source: payload.tracking?.utm_source || null,
+    utm_medium: payload.tracking?.utm_medium || null,
+    utm_campaign: payload.tracking?.utm_campaign || null,
+    utm_content: payload.tracking?.utm_content || null,
+    utm_term: payload.tracking?.utm_term || null,
+    fbclid: payload.tracking?.fbclid || null,
+    ttclid: payload.tracking?.ttclid || null,
+    status: "PENDING_PAYMENT",
+    created_at: new Date().toISOString()
+  };
+
+  // Simpan ke localStorage untuk akses cepat di browser client
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`bt_order_${orderId}`, JSON.stringify(orderData));
+    } catch (e) {
+      console.warn("[Checkout Service] Failed to save local order backup:", e);
+    }
+  }
 
   // 1. Simpan order ke database Supabase
   const { error: orderError } = await supabase
     .from("orders")
-    .insert({
-      id: orderId,
-      tenant_slug: payload.tenantSlug,
-      product_id: payload.productId,
-      product_title: payload.productTitle,
-      gross_amount: grossAmount,
-      base_price: basePrice,
-      admin_fee: adminFee,
-      unique_code: uniqueCode,
-      payment_method: paymentMethod,
-      affiliate_commission: affiliateCommission,
-      customer_name: payload.customerName,
-      customer_phone: payload.customerPhone,
-      customer_email: payload.customerEmail || "",
-      affiliate_code: payload.affiliateCode || null,
-      manager_id: payload.managerId || null,
-      utm_source: payload.tracking?.utm_source || null,
-      utm_medium: payload.tracking?.utm_medium || null,
-      utm_campaign: payload.tracking?.utm_campaign || null,
-      utm_content: payload.tracking?.utm_content || null,
-      utm_term: payload.tracking?.utm_term || null,
-      fbclid: payload.tracking?.fbclid || null,
-      ttclid: payload.tracking?.ttclid || null,
-      status: "PENDING_PAYMENT",
-      created_at: new Date().toISOString()
-    });
+    .insert(orderData);
 
   if (orderError) {
     console.error("[Checkout Service] Supabase Order Insert Error:", orderError);
@@ -76,6 +110,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         product_name: payload.productTitle,
         gross_amount: grossAmount,
         base_price: basePrice,
+        product_discount: productDiscount,
+        net_product_price: netProductPrice,
+        shipping_cost: shippingCost,
+        shipping_subsidy: shippingSubsidy,
+        net_shipping_cost: netShippingCost,
+        voucher_code: payload.voucherCode || null,
+        shipping_address: payload.shippingAddress || null,
         admin_fee: adminFee,
         unique_code: uniqueCode,
         payment_method: paymentMethod,
@@ -112,6 +153,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         affiliate_code: payload.affiliateCode || null,
         payment_method: paymentMethod,
         base_price: basePrice,
+        product_discount: productDiscount,
+        net_product_price: netProductPrice,
+        shipping_cost: shippingCost,
+        shipping_subsidy: shippingSubsidy,
+        net_shipping_cost: netShippingCost,
+        voucher_code: payload.voucherCode || null,
         admin_fee: adminFee,
         unique_code: uniqueCode,
         affiliate_commission: affiliateCommission,

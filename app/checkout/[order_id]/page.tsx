@@ -33,9 +33,24 @@ export default function CheckoutPage({ params }: Props) {
     async function loadOrder() {
       setLoading(true);
       try {
+        // 1. Coba baca dari backup lokal
+        if (typeof window !== 'undefined') {
+          const localOrderStr = localStorage.getItem(`bt_order_${orderId}`);
+          if (localOrderStr) {
+            try {
+              const parsed = JSON.parse(localOrderStr);
+              if (parsed?.id) {
+                setOrder(parsed);
+                setLoading(false);
+                return;
+              }
+            } catch {}
+          }
+        }
+
         const supabase = getSupabase();
         if (supabase) {
-          // 1. Coba baca dari tabel orders
+          // 2. Coba baca dari tabel orders
           const { data: dbOrder } = await supabase
             .from('orders')
             .select('*')
@@ -108,8 +123,14 @@ export default function CheckoutPage({ params }: Props) {
   const isManual = order?.payment_method === 'manual_transfer' || order?.payment_method === 'manual';
   const grossAmount = Number(order?.gross_amount || order?.total_amount || order?.amount || 99000);
   const uniqueCode = Number(order?.unique_code || 0);
-  const adminFee = Number(order?.admin_fee || 0);
-  const basePrice = Number(order?.base_price || (grossAmount - adminFee - uniqueCode));
+  const adminFee = 0;
+  const productDiscount = Number(order?.product_discount || order?.discount_amount || 0);
+  const voucherCode = order?.voucher_code || order?.coupon_code || '';
+  const basePrice = Number(order?.base_price || (order?.net_product_price ? (order.net_product_price + productDiscount) : grossAmount - uniqueCode));
+  const netProductPrice = Number(order?.net_product_price || Math.max(0, basePrice - productDiscount));
+  const shippingCost = Number(order?.shipping_cost || 0);
+  const shippingSubsidy = Number(order?.shipping_subsidy || 0);
+  const netShippingCost = Number(order?.net_shipping_cost || Math.max(0, shippingCost - shippingSubsidy));
 
   const qrUrl = order?.qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=00020101021226${orderId}5408${grossAmount}5802ID5913BOONTRACK6007JAKARTA6304`;
 
@@ -241,6 +262,34 @@ export default function CheckoutPage({ params }: Props) {
             <span>Harga Dasar Produk</span>
             <span className="text-slate-200">Rp {basePrice.toLocaleString('id-ID')}</span>
           </div>
+
+          {productDiscount > 0 && (
+            <div className="flex justify-between text-indigo-400 font-medium">
+              <span>Diskon Voucher {voucherCode ? `(${voucherCode})` : ''}</span>
+              <span>-Rp {productDiscount.toLocaleString('id-ID')}</span>
+            </div>
+          )}
+
+          {productDiscount > 0 && (
+            <div className="flex justify-between text-slate-400">
+              <span>Harga Bersih Produk</span>
+              <span className="text-slate-200 font-semibold">Rp {netProductPrice.toLocaleString('id-ID')}</span>
+            </div>
+          )}
+
+          {shippingCost > 0 && (
+            <div className="flex justify-between text-slate-400">
+              <span>Ongkos Kirim {order?.shipping_courier ? `(${order.shipping_courier})` : ''}</span>
+              <span className="text-slate-200">Rp {shippingCost.toLocaleString('id-ID')}</span>
+            </div>
+          )}
+
+          {shippingSubsidy > 0 && (
+            <div className="flex justify-between text-emerald-400 font-medium">
+              <span>Subsidi Bebas Ongkir</span>
+              <span>-Rp {shippingSubsidy.toLocaleString('id-ID')}</span>
+            </div>
+          )}
 
           <div className="flex justify-between text-slate-400">
             <span>Biaya Layanan & Admin</span>
