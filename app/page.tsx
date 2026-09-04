@@ -542,7 +542,7 @@ export default function ShopLandingPage() {
               </h3>
               <p className="text-xs text-slate-600 leading-relaxed">
                 <strong>PT BOONTRACK INOVASI DIGITAL</strong><br />
-                Jl Saturnus Selatan A16 Margahayu Raya, Bandung, Jawa Barat 40286, Indonesia.
+                Jl Saturnus Selatan Komplek Boemi Kirana A16 Buahbatu Bandung 40286, Indonesia.
               </p>
 
               <div className="pt-2 border-t border-slate-100 space-y-2 text-xs text-slate-600">
