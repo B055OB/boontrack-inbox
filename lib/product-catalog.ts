@@ -7,17 +7,52 @@ export interface VoucherConfig {
   min_spend?: number; // Batas minimal belanja (opsional, Rp)
 }
 
+export interface ComparisonItem {
+  id: string;
+  feature: string;       // Kriteria / Aspek (e.g. "Sistem Riset & Tracking")
+  others: string;        // Cara Lain / Lama (Them)
+  us: string;            // Solusi Produk Ini (Us)
+}
+
+export interface BonusItem {
+  id: string;
+  title: string;         // e.g. "Template SOP Media Buyer & Copywriting AI"
+  value: number;         // Nilai taksiran dalam Rp (e.g. 299000)
+  description?: string;
+}
+
 export interface SinglePageConfig {
   slug?: string;
+  // 1. Hook
   headline: string;
   subheadline: string;
   banner_url: string;
-  enable_qris: boolean;
-  enable_manual_transfer: boolean;
+  badge_text?: string;
+
+  // 2. Problem & Solution
+  problem_title?: string;
+  pain_points?: string[];       // Poin-poin masalah audiens
+  problem_image_url?: string;   // Ilustrasi masalah di sela teks
+  solution_title?: string;
+  solution_points?: string[];   // Poin-poin solusi & keunggulan
+
+  // 3. Tabel Perbandingan (Us vs Them)
+  comparison_rows?: ComparisonItem[];
+
+  // 4. Social Proof / Testimoni
+  testimonial_images?: string[]; // Hingga 3 screenshot bukti/chat
+
+  // 5. Offer & Bonus
+  bonus_items?: BonusItem[];
+
+  // 6. Voucher Diskon
   discount_coupon: string;
   voucher?: VoucherConfig;
+
+  // 7. Payment & Affiliate
+  enable_qris: boolean;
+  enable_manual_transfer: boolean;
   affiliate_commission_rate: number;
-  badge_text?: string;
 }
 
 export interface ProductItem {
@@ -79,6 +114,33 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       headline: "Formula Hidden Gem Menghasilkan Dollar dari Paid Traffic 2026",
       subheadline: "Panduan praktis mengelola campaign iklan global dan menerima pembayaran langsung dalam USD.",
       banner_url: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
+      badge_text: "Special Blueprint",
+      problem_title: "Apakah Anda Sering Menghadapi Masalah Ini?",
+      pain_points: [
+        "Pasar lokal semakin berdarah-darah dengan perang harga banting-bantingan profit tipis.",
+        "Biaya iklan Meta & TikTok terus merangkak naik, ROAS drop drastis hingga minus.",
+        "Bingung cara menjangkau pasar internasional dan cara aman menerima pencairan dana dalam USD."
+      ],
+      problem_image_url: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500&auto=format&fit=crop&q=60",
+      solution_title: "Kini Hadir Solusi Teruji: Blueprint Paid Traffic Global",
+      solution_points: [
+        "Targeting audiens negara Tier-1 dengan daya beli 5x - 10x lipat lebih tinggi.",
+        "Framework penulisan ad copy bilingual berkonversi tinggi tanpa perlu fasih bahasa Inggris.",
+        "Integrasi payment gateway internasional resmi dengan auto-withdraw ke rekening BCA / Mandiri Anda."
+      ],
+      comparison_rows: [
+        { id: '1', feature: 'Jangkauan Pasar', others: 'Lokal perang harga & margin tipis', us: 'Global Tier-1 dengan profit USD' },
+        { id: '2', feature: 'Strategi Campaign', others: 'Tebak-tebakan dan bakar anggaran tanpa arah', us: 'SOP battle-tested siap copy-paste' },
+        { id: '3', feature: 'Pencairan Dana', others: 'Rentan kena blokir & transfer ribet', us: 'Pencairan legal & otomatis masuk rekening' }
+      ],
+      testimonial_images: [
+        "https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60",
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=60"
+      ],
+      bonus_items: [
+        { id: 'b1', title: 'Private Community & Live Diskusi Mingguan', value: 499000, description: 'Bedah studi kasus iklan dan troubleshooting live tiap pekan' },
+        { id: 'b2', title: '50+ High-Converting Ad Creative Templates', value: 299000, description: 'Template visual & hook video siap edit di Canva' }
+      ],
       enable_qris: true,
       enable_manual_transfer: true,
       discount_coupon: "HEMAT50",
@@ -90,8 +152,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
         shipping_discount_value: 0,
         min_spend: 100000
       },
-      affiliate_commission_rate: 30,
-      badge_text: "Special Blueprint"
+      affiliate_commission_rate: 30
     }
   },
   {
@@ -114,6 +175,31 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       headline: "Kuasai Pola Iklan Anti Boncos & Rahasia Scaling Meta Ads 2026",
       subheadline: "Studi kasus riil mengelola anggaran iklan miliaran rupiah tanpa trik abu-abu. Akses langsung modul video, SOP tim media buyer, dan template dashboard.",
       banner_url: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
+      badge_text: "Direct Access Class",
+      problem_title: "Kenapa Iklan Anda Selalu Boncos?",
+      pain_points: [
+        "Budget iklan habis ratusan ribu per hari tapi tidak ada leads/penjualan masuk.",
+        "Sering terkena Restrict / AME akun iklan tanpa alasan yang jelas.",
+        "Kesulitan scale up: begitu budget dinaikkan, performa iklan langsung anjlok."
+      ],
+      problem_image_url: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
+      solution_title: "Metode Scaling Meta Ads 2026 Terbukti Stabil",
+      solution_points: [
+        "Struktur campaign CBO & ABO modern yang adaptif dengan algoritma AI Meta terbaru.",
+        "SOP pemanasan akun iklan dan teknik banding agar akun tahan banting.",
+        "Framework testing kreatif berbiaya rendah dengan tingkat akurasi tinggi."
+      ],
+      comparison_rows: [
+        { id: '1', feature: 'Algoritma Iklan', others: 'Metode usang 2022-2023 yang sudah usang', us: 'Update strategi algoritma AI Advantage+ 2026' },
+        { id: '2', feature: 'Pengelolaan Risiko', others: 'Sering panik saat iklan boncos atau AME', us: 'SOP mitigasi risiko & checklist audit harian' },
+        { id: '3', feature: 'Support & Konsultasi', others: 'Materi rekaman lama tanpa pembaruan', us: 'Update materi berkala & forum diskusi aktif' }
+      ],
+      testimonial_images: [
+        "https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60"
+      ],
+      bonus_items: [
+        { id: 'b1', title: 'Dashboard Sheet KPI & Media Buying Tracker', value: 199000, description: 'Template Google Sheets otomatis hitung ROAS, CPR, dan Margin' }
+      ],
       enable_qris: true,
       enable_manual_transfer: true,
       discount_coupon: "DISKON20K",
@@ -125,8 +211,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
         shipping_discount_value: 0,
         min_spend: 50000
       },
-      affiliate_commission_rate: 30,
-      badge_text: "Direct Access Class"
+      affiliate_commission_rate: 30
     }
   },
   {
@@ -149,6 +234,32 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       headline: "Buku Fisik Eksklusif: Blueprint Bisnis Online & Funnel Closing 2026",
       subheadline: "Edisi cetak hardcover eksklusif dikirim langsung ke pintu rumah Anda. Dapatkan fasilitas voucher gratis ongkir khusus pemesanan hari ini.",
       banner_url: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60",
+      badge_text: "Buku Fisik Kirim Langsung",
+      problem_title: "Lelah Menatap Layar HP & Mau Belajar Terstruktur?",
+      pain_points: [
+        "Materi video sering terdistraksi notifikasi dan susah untuk di-highlight.",
+        "Tim CS tidak punya buku panduan fisik yang bisa langsung ditaruh di meja kerja.",
+        "Biaya ongkir buku tebal seringkali mahal."
+      ],
+      problem_image_url: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60",
+      solution_title: "Buku Cetak Hardcover 320 Halaman Siap Praktek",
+      solution_points: [
+        "Kertas bookpaper premium anti silau, dijahit rapi, dan tahan lama.",
+        "Dilengkapi flowchart visual alur closing dan skrip WhatsApp siap contek.",
+        "Fasilitas Gratis Ongkir langsung ke seluruh kota di Indonesia."
+      ],
+      comparison_rows: [
+        { id: '1', feature: 'Kenyamanan Belajar', others: 'Layar gadget bikin lelah & mata perih', us: 'Buku fisik nyaman dibaca & dicoret' },
+        { id: '2', feature: 'Kesesuaian Tim', others: 'Harus bagi-bagi password akun kursus', us: 'SOP fisik siap pakai di meja kerja CS' },
+        { id: '3', feature: 'Ongkos Kirim', others: 'Bayar ongkir penuh mahal', us: 'Subsidi voucher Bebas Ongkir 100%' }
+      ],
+      testimonial_images: [
+        "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60"
+      ],
+      bonus_items: [
+        { id: 'b1', title: 'Akses Audio Book MP3 & Versi E-Book PDF', value: 149000, description: 'Bisa didengarkan di perjalanan lewat smartphone' },
+        { id: 'b2', title: 'Pembatas Buku Eksklusif + Sticker Pack', value: 49000, description: 'Merchandise resmi BoonTrack Store' }
+      ],
       enable_qris: true,
       enable_manual_transfer: true,
       discount_coupon: "FREESHIP",
@@ -160,8 +271,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
         shipping_discount_value: 0,
         min_spend: 100000
       },
-      affiliate_commission_rate: 30,
-      badge_text: "Buku Fisik Kirim Langsung"
+      affiliate_commission_rate: 30
     }
   }
 ];

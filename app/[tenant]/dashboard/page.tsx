@@ -53,6 +53,8 @@ import {
   ProductItem, 
   SinglePageConfig, 
   VoucherConfig,
+  ComparisonItem,
+  BonusItem,
   TransactionItem,
   DEFAULT_PRODUCTS, 
   slugify 
@@ -139,16 +141,25 @@ export default function TenantDashboardPage() {
   // Single Page Checkout Builder State
   const [isSinglePageModalOpen, setIsSinglePageModalOpen] = useState(false);
   const [activeSinglePageProduct, setActiveSinglePageProduct] = useState<ProductItem | null>(null);
+  const [activeBuilderTab, setActiveBuilderTab] = useState<'hook' | 'problem_solution' | 'comparison' | 'social_proof' | 'offer_bonus' | 'payment_voucher'>('hook');
   const [singlePageForm, setSinglePageForm] = useState<SinglePageConfig>({
     slug: '',
     headline: '',
     subheadline: '',
     banner_url: '',
+    badge_text: 'Direct Access Offer',
+    problem_title: 'Apakah Anda Sering Menghadapi Masalah Ini?',
+    pain_points: [],
+    problem_image_url: '',
+    solution_title: 'Kini Hadir Solusi Tepat untuk Anda',
+    solution_points: [],
+    comparison_rows: [],
+    testimonial_images: [],
+    bonus_items: [],
     enable_qris: true,
     enable_manual_transfer: true,
-    discount_coupon: 'BOONPROMO50',
+    discount_coupon: 'HEMAT50',
     affiliate_commission_rate: 30,
-    badge_text: 'Direct Access Offer',
   });
 
   // Load persisted products from localStorage
@@ -372,18 +383,59 @@ export default function TenantDashboardPage() {
       min_spend: 50000,
     };
 
+    const cfg = prod.single_page_config;
+
     setSinglePageForm({
       slug: prodSlug,
-      headline: prod.single_page_config?.headline || prod.name,
-      subheadline: prod.single_page_config?.subheadline || prod.description,
-      banner_url: prod.single_page_config?.banner_url || prod.image,
-      enable_qris: prod.single_page_config?.enable_qris ?? true,
-      enable_manual_transfer: prod.single_page_config?.enable_manual_transfer ?? true,
+      headline: cfg?.headline || prod.name,
+      subheadline: cfg?.subheadline || prod.description,
+      banner_url: cfg?.banner_url || prod.image,
+      badge_text: cfg?.badge_text || (prod.category === 'fisik' ? 'Produk Fisik Kirim Langsung' : 'Direct Access Offer'),
+      
+      // Problem & Solution
+      problem_title: cfg?.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
+      pain_points: cfg?.pain_points && cfg.pain_points.length > 0 ? [...cfg.pain_points] : [
+        'Biaya promosi terus naik tapi hasil omset penjualan belum maksimal.',
+        'Sulit meyakinkan calon pembeli karena penawaran terlihat sama dengan kompetitor.',
+        'Kurang formula teruji yang bisa langsung dicontek dan dipraktekkan sekarang juga.'
+      ],
+      problem_image_url: cfg?.problem_image_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500&auto=format&fit=crop&q=60',
+      solution_title: cfg?.solution_title || 'Kini Hadir Solusi Tepat untuk Melejitkan Konversi',
+      solution_points: cfg?.solution_points && cfg.solution_points.length > 0 ? [...cfg.solution_points] : [
+        'Langkah praktis teruji berbasis data riil tanpa tebak-tebakan.',
+        'Framework closing instan yang meningkatkan retensi dan repeat order.',
+        'Dukungan penuh dengan materi yang adaptif dan siap diaplikasikan.'
+      ],
+
+      // Comparison (Us vs Them)
+      comparison_rows: cfg?.comparison_rows && cfg.comparison_rows.length > 0 ? [...cfg.comparison_rows] : [
+        { id: '1', feature: 'Kejelasan Strategi', others: 'Materi teori panjang tanpa alur jelas', us: 'Actionable blueprint langkah demi langkah' },
+        { id: '2', feature: 'Efisiensi Biaya', others: 'Bakar anggaran promosi tanpa tracking', us: 'Optimalisasi presisi hemat biaya hingga 50%' },
+        { id: '3', feature: 'Dukungan & Komunitas', others: 'Dibiarkan bingung sendiri setelah bayar', us: 'Grup diskusi & update materi berkala' }
+      ],
+
+      // Testimonials
+      testimonial_images: cfg?.testimonial_images && cfg.testimonial_images.length > 0 ? [...cfg.testimonial_images] : [
+        'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60',
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=60'
+      ],
+
+      // Bonus
+      bonus_items: cfg?.bonus_items && cfg.bonus_items.length > 0 ? [...cfg.bonus_items] : [
+        { id: 'b1', title: 'Private Consultation & Community Access', value: 499000, description: 'Akses jaringan pebisnis & sesi tanya jawab' },
+        { id: 'b2', title: 'Template SOP & Checklist Praktis', value: 299000, description: 'Dokumen kerja siap pakai langsung' }
+      ],
+
+      // Voucher
       discount_coupon: defaultVoucher.code,
       voucher: defaultVoucher,
-      affiliate_commission_rate: prod.single_page_config?.affiliate_commission_rate ?? 30,
-      badge_text: prod.single_page_config?.badge_text || (prod.category === 'fisik' ? 'Produk Fisik Kirim Langsung' : 'Direct Access Offer'),
+
+      // Payment & Affiliate
+      enable_qris: cfg?.enable_qris ?? true,
+      enable_manual_transfer: cfg?.enable_manual_transfer ?? true,
+      affiliate_commission_rate: cfg?.affiliate_commission_rate ?? 30,
     });
+    setActiveBuilderTab('hook');
     setIsSinglePageModalOpen(true);
   };
 
@@ -1212,317 +1264,568 @@ export default function TenantDashboardPage() {
                 </span>
               </div>
 
-              {/* Headline & Subheadline */}
-              <div className="space-y-3">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">
-                    Headline Penawaran Utama *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={singlePageForm.headline}
-                    onChange={(e) => setSinglePageForm((p) => ({ ...p, headline: e.target.value }))}
-                    placeholder="Contoh: Kuasai Pola Iklan Anti Boncos & Rahasia Scaling Meta Ads 2026"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">
-                    Subheadline & Ringkasan Nilai
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={singlePageForm.subheadline}
-                    onChange={(e) => setSinglePageForm((p) => ({ ...p, subheadline: e.target.value }))}
-                    placeholder="Contoh: Studi kasus riil mengelola anggaran iklan miliaran rupiah tanpa trik abu-abu..."
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">
-                    Badge Label Promosi
-                  </label>
-                  <input
-                    type="text"
-                    value={singlePageForm.badge_text || ''}
-                    onChange={(e) => setSinglePageForm((p) => ({ ...p, badge_text: e.target.value }))}
-                    placeholder="Contoh: Direct Access Class / Flash Sale 80%"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
-                  />
-                </div>
+              {/* Navigation Tab Bar Formula Konversi */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
+                {[
+                  { id: 'hook', label: '1. Hook & Hero', icon: '🎯' },
+                  { id: 'problem_solution', label: '2. Problem & Solusi', icon: '⚡' },
+                  { id: 'comparison', label: '3. Us vs Them', icon: '⚖️' },
+                  { id: 'social_proof', label: '4. Testimoni', icon: '💬' },
+                  { id: 'offer_bonus', label: '5. Offer & Bonus', icon: '🎁' },
+                  { id: 'payment_voucher', label: '6. Bayar & Voucher', icon: '🎟️' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveBuilderTab(tab.id as any)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                      activeBuilderTab === tab.id
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
               </div>
 
-              {/* Banner Promosi */}
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">
-                  Upload / Input URL Media Banner Promosi
-                </label>
-                <input
-                  type="url"
-                  value={singlePageForm.banner_url}
-                  onChange={(e) => setSinglePageForm((p) => ({ ...p, banner_url: e.target.value }))}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
-                />
-              </div>
-
-              {/* Pengaturan Pembayaran (QRIS & Transfer Manual) */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                <span className="font-bold text-slate-800 block text-xs">
-                  Opsi Metode Pembayaran di Checkout
-                </span>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-emerald-400 transition">
-                    <input
-                      type="checkbox"
-                      checked={singlePageForm.enable_qris}
-                      onChange={(e) => setSinglePageForm((p) => ({ ...p, enable_qris: e.target.checked }))}
-                      className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                    />
-                    <div>
-                      <span className="font-bold text-slate-900 block">QRIS Instan Otomatis</span>
-                      <span className="text-[10px] text-slate-500">Bebas biaya admin (Fee Rp0) & aktivasi tercepat.</span>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-blue-400 transition">
-                    <input
-                      type="checkbox"
-                      checked={singlePageForm.enable_manual_transfer}
-                      onChange={(e) => setSinglePageForm((p) => ({ ...p, enable_manual_transfer: e.target.checked }))}
-                      className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
-                    />
-                    <div>
-                      <span className="font-bold text-slate-900 block">Transfer Bank Manual</span>
-                      <span className="text-[10px] text-slate-500">BCA / Mandiri (Bebas Biaya Admin) & kode unik acak.</span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Pengaturan Voucher Diskon Fleksibel */}
-              <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border border-indigo-100 rounded-2xl p-4 space-y-3.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1.5 bg-indigo-600 text-white rounded-lg text-xs">🎟️</span>
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-xs">Pengaturan Voucher & Promo Produk</h4>
-                      <p className="text-[10px] text-slate-500">Konfigurasi potongan harga produk dan/atau subsidi ongkir khusus landing page ini.</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full uppercase">
-                    {singlePageForm.voucher?.code || 'NO-CODE'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Kode Voucher */}
+              {/* TAB 1: HOOK & HERO */}
+              {activeBuilderTab === 'hook' && (
+                <div className="space-y-3.5 animate-fadeIn">
                   <div>
-                    <label className="font-bold text-slate-700 block text-xs mb-1">Kode Voucher</label>
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Headline Penawaran Utama *
+                    </label>
                     <input
                       type="text"
-                      value={singlePageForm.voucher?.code || ''}
-                      onChange={(e) => {
-                        const code = e.target.value.toUpperCase().replace(/\s+/g, '');
-                        setSinglePageForm(p => ({
-                          ...p,
-                          discount_coupon: code,
-                          voucher: {
-                            ...(p.voucher || {
-                              code,
-                              discount_type: 'nominal',
-                              discount_value: 20000,
-                              shipping_discount_type: 'none',
-                              shipping_discount_value: 0,
-                              min_spend: 0
-                            }),
-                            code
-                          }
-                        }));
-                      }}
-                      placeholder="Contoh: HEMAT50, DISKON20K, FREESHIP"
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold uppercase focus:outline-none focus:border-indigo-600"
+                      required
+                      value={singlePageForm.headline}
+                      onChange={(e) => setSinglePageForm((p) => ({ ...p, headline: e.target.value }))}
+                      placeholder="Contoh: Kuasai Pola Iklan Anti Boncos & Rahasia Scaling Meta Ads 2026"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
                     />
                   </div>
 
-                  {/* Batas Minimal Belanja */}
                   <div>
-                    <label className="font-bold text-slate-700 block text-xs mb-1">Minimal Belanja (Opsional, Rp)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step={1000}
-                      value={singlePageForm.voucher?.min_spend || 0}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setSinglePageForm(p => ({
-                          ...p,
-                          voucher: {
-                            ...(p.voucher || {
-                              code: p.discount_coupon || 'HEMAT50',
-                              discount_type: 'nominal',
-                              discount_value: 20000,
-                              shipping_discount_type: 'none',
-                              shipping_discount_value: 0,
-                              min_spend: val
-                            }),
-                            min_spend: val
-                          }
-                        }));
-                      }}
-                      placeholder="0 (Tanpa minimum)"
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600"
-                    />
-                  </div>
-                </div>
-
-                {/* Tipe Diskon Produk */}
-                <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
-                  <label className="font-bold text-slate-800 block text-xs">Pilihan Tipe Diskon Produk</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSinglePageForm(p => ({
-                        ...p,
-                        voucher: {
-                          ...(p.voucher || {
-                            code: p.discount_coupon || 'HEMAT50',
-                            discount_type: 'nominal',
-                            discount_value: 20000,
-                            shipping_discount_type: 'none',
-                            shipping_discount_value: 0
-                          }),
-                          discount_type: 'nominal',
-                          discount_value: (p.voucher?.discount_value && p.voucher.discount_type === 'percentage') ? 20000 : (p.voucher?.discount_value || 20000)
-                        }
-                      }))}
-                      className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                        singlePageForm.voucher?.discount_type === 'nominal'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      <span>Diskon Nominal (Rp)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSinglePageForm(p => ({
-                        ...p,
-                        voucher: {
-                          ...(p.voucher || {
-                            code: p.discount_coupon || 'HEMAT50',
-                            discount_type: 'percentage',
-                            discount_value: 10,
-                            shipping_discount_type: 'none',
-                            shipping_discount_value: 0
-                          }),
-                          discount_type: 'percentage',
-                          discount_value: (p.voucher?.discount_value && p.voucher.discount_type === 'nominal') ? 10 : (p.voucher?.discount_value || 10)
-                        }
-                      }))}
-                      className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                        singlePageForm.voucher?.discount_type === 'percentage'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      <span>Diskon Persentase (%)</span>
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] text-slate-500 font-semibold block mb-1">
-                      {singlePageForm.voucher?.discount_type === 'percentage' ? 'Besaran Diskon Persen (%)' : 'Besaran Diskon Flat (Rp)'}
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Subheadline Persuasif & Ringkasan Nilai
                     </label>
-                    <div className="relative">
+                    <textarea
+                      rows={2}
+                      value={singlePageForm.subheadline}
+                      onChange={(e) => setSinglePageForm((p) => ({ ...p, subheadline: e.target.value }))}
+                      placeholder="Contoh: Studi kasus riil mengelola anggaran iklan miliaran rupiah tanpa trik abu-abu..."
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">
+                        Badge Label Promosi
+                      </label>
                       <input
-                        type="number"
-                        min={0}
-                        max={singlePageForm.voucher?.discount_type === 'percentage' ? 100 : activeSinglePageProduct.price}
-                        value={singlePageForm.voucher?.discount_value || 0}
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          setSinglePageForm(p => ({
-                            ...p,
-                            voucher: {
-                              ...(p.voucher || {
-                                code: p.discount_coupon || 'HEMAT50',
-                                discount_type: 'nominal',
-                                discount_value: val,
-                                shipping_discount_type: 'none',
-                                shipping_discount_value: 0
-                              }),
-                              discount_value: val
-                            }
-                          }));
-                        }}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12"
+                        type="text"
+                        value={singlePageForm.badge_text || ''}
+                        onChange={(e) => setSinglePageForm((p) => ({ ...p, badge_text: e.target.value }))}
+                        placeholder="Contoh: Direct Access Class / Flash Sale 80%"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
                       />
-                      <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">
-                        {singlePageForm.voucher?.discount_type === 'percentage' ? '%' : 'Rp'}
-                      </span>
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">
+                        URL Media Banner Hero Utama
+                      </label>
+                      <input
+                        type="url"
+                        value={singlePageForm.banner_url}
+                        onChange={(e) => setSinglePageForm((p) => ({ ...p, banner_url: e.target.value }))}
+                        placeholder="https://images.unsplash.com/..."
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
+                      />
                     </div>
                   </div>
+
+                  {singlePageForm.banner_url && (
+                    <div className="p-2 bg-slate-100 rounded-xl border border-slate-200 inline-block">
+                      <span className="text-[10px] text-slate-500 block mb-1 font-semibold">Preview Banner Hero:</span>
+                      <img
+                        src={singlePageForm.banner_url}
+                        alt="Preview Banner"
+                        className="h-28 w-auto rounded-lg object-cover"
+                      />
+                    </div>
+                  )}
                 </div>
+              )}
 
-                {/* Subsidi Ongkir (Khusus Produk Fisik atau Fleksibel) */}
-                <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-slate-800 block text-xs">Pilihan Diskon Ongkir (Khusus Produk Fisik)</label>
-                    {activeSinglePageProduct.category === 'fisik' && (
-                      <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
-                        📦 Produk Fisik
+              {/* TAB 2: PROBLEM & SOLUTION */}
+              {activeBuilderTab === 'problem_solution' && (
+                <div className="space-y-4 animate-fadeIn">
+                  {/* Problem Block */}
+                  <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-rose-900 text-xs flex items-center gap-1.5">
+                        <span>⚠️</span> Poin Masalah Audiens (Pain Points)
                       </span>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    {[
-                      { id: 'none', label: 'Tanpa Subsidi' },
-                      { id: 'flat', label: 'Subsidi Flat (Rp)' },
-                      { id: 'free', label: 'Gratis Ongkir (100%)' }
-                    ].map((item) => (
                       <button
-                        key={item.id}
                         type="button"
                         onClick={() => setSinglePageForm(p => ({
                           ...p,
-                          voucher: {
-                            ...(p.voucher || {
-                              code: p.discount_coupon || 'HEMAT50',
-                              discount_type: 'nominal',
-                              discount_value: 0,
-                              shipping_discount_type: 'none',
-                              shipping_discount_value: 0
-                            }),
-                            shipping_discount_type: item.id as any
-                          }
+                          pain_points: [...(p.pain_points || []), '']
                         }))}
-                        className={`py-2 px-2 rounded-lg text-center font-bold text-[11px] transition cursor-pointer ${
-                          (singlePageForm.voucher?.shipping_discount_type || 'none') === item.id
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
+                        className="text-[11px] bg-white border border-rose-200 text-rose-700 hover:bg-rose-100 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
                       >
-                        {item.label}
+                        <Plus className="w-3 h-3" /> Tambah Poin
                       </button>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-slate-600 font-semibold block mb-1">Judul Masalah</label>
+                      <input
+                        type="text"
+                        value={singlePageForm.problem_title || ''}
+                        onChange={(e) => setSinglePageForm(p => ({ ...p, problem_title: e.target.value }))}
+                        placeholder="Contoh: Apakah Anda Sering Menghadapi Masalah Ini?"
+                        className="w-full px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-rose-500 font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      {(singlePageForm.pain_points || []).map((point, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="text-rose-500 font-bold text-xs shrink-0">❌ #{idx + 1}</span>
+                          <input
+                            type="text"
+                            value={point}
+                            onChange={(e) => {
+                              const newPoints = [...(singlePageForm.pain_points || [])];
+                              newPoints[idx] = e.target.value;
+                              setSinglePageForm(p => ({ ...p, pain_points: newPoints }));
+                            }}
+                            placeholder="Deskripsi masalah yang dihadapi target pembeli..."
+                            className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-rose-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newPoints = (singlePageForm.pain_points || []).filter((_, i) => i !== idx);
+                              setSinglePageForm(p => ({ ...p, pain_points: newPoints }));
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-100 rounded-lg transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-slate-600 font-semibold block mb-1">
+                        URL Gambar Ilustrasi Masalah di Sela Teks (Opsional)
+                      </label>
+                      <input
+                        type="url"
+                        value={singlePageForm.problem_image_url || ''}
+                        onChange={(e) => setSinglePageForm(p => ({ ...p, problem_image_url: e.target.value }))}
+                        placeholder="https://images.unsplash.com/..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Solution Block */}
+                  <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-900 text-xs flex items-center gap-1.5">
+                        <span>✅</span> Poin Solusi & Fitur Unggulan
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSinglePageForm(p => ({
+                          ...p,
+                          solution_points: [...(p.solution_points || []), '']
+                        }))}
+                        className="text-[11px] bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-100 font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                      >
+                        <Plus className="w-3 h-3" /> Tambah Solusi
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-slate-600 font-semibold block mb-1">Judul Solusi</label>
+                      <input
+                        type="text"
+                        value={singlePageForm.solution_title || ''}
+                        onChange={(e) => setSinglePageForm(p => ({ ...p, solution_title: e.target.value }))}
+                        placeholder="Contoh: Kini Hadir Solusi Teruji untuk Anda"
+                        className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      {(singlePageForm.solution_points || []).map((point, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="text-emerald-600 font-bold text-xs shrink-0">✨ #{idx + 1}</span>
+                          <input
+                            type="text"
+                            value={point}
+                            onChange={(e) => {
+                              const newPoints = [...(singlePageForm.solution_points || [])];
+                              newPoints[idx] = e.target.value;
+                              setSinglePageForm(p => ({ ...p, solution_points: newPoints }));
+                            }}
+                            placeholder="Poin solusi / manfaat yang langsung dirasakan pembeli..."
+                            className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newPoints = (singlePageForm.solution_points || []).filter((_, i) => i !== idx);
+                              setSinglePageForm(p => ({ ...p, solution_points: newPoints }));
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-100 rounded-lg transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: COMPARISON (US VS THEM) */}
+              {activeBuilderTab === 'comparison' && (
+                <div className="space-y-3.5 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xs">Tabel Perbandingan (Us vs Them)</h4>
+                      <p className="text-[10px] text-slate-500">Buktikan keunggulan produk Anda dibandingkan cara lama atau kompetitor.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSinglePageForm(p => ({
+                        ...p,
+                        comparison_rows: [
+                          ...(p.comparison_rows || []),
+                          { id: String(Date.now()), feature: '', others: '', us: '' }
+                        ]
+                      }))}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Tambah Baris
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(singlePageForm.comparison_rows || []).map((row, idx) => (
+                      <div key={row.id || idx} className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-700 text-[11px]">Kriteria #{idx + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const rows = (singlePageForm.comparison_rows || []).filter((_, i) => i !== idx);
+                              setSinglePageForm(p => ({ ...p, comparison_rows: rows }));
+                            }}
+                            className="text-slate-400 hover:text-rose-600 p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div>
+                          <input
+                            type="text"
+                            value={row.feature}
+                            onChange={(e) => {
+                              const rows = [...(singlePageForm.comparison_rows || [])];
+                              rows[idx] = { ...rows[idx], feature: e.target.value };
+                              setSinglePageForm(p => ({ ...p, comparison_rows: rows }));
+                            }}
+                            placeholder="Aspek / Kriteria (mis: Efisiensi Biaya / Kecepatan Hasil)"
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold text-rose-600 flex items-center gap-1">
+                              <span>❌</span> Cara Lain / Lama (Them)
+                            </span>
+                            <textarea
+                              rows={2}
+                              value={row.others}
+                              onChange={(e) => {
+                                const rows = [...(singlePageForm.comparison_rows || [])];
+                                rows[idx] = { ...rows[idx], others: e.target.value };
+                                setSinglePageForm(p => ({ ...p, comparison_rows: rows }));
+                              }}
+                              placeholder="Kelemahan cara lain..."
+                              className="w-full px-2.5 py-1.5 bg-white border border-rose-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-rose-500"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                              <span>✅</span> Solusi Produk Ini (Us)
+                            </span>
+                            <textarea
+                              rows={2}
+                              value={row.us}
+                              onChange={(e) => {
+                                const rows = [...(singlePageForm.comparison_rows || [])];
+                                rows[idx] = { ...rows[idx], us: e.target.value };
+                                setSinglePageForm(p => ({ ...p, comparison_rows: rows }));
+                              }}
+                              placeholder="Kelebihan nyata produk Anda..."
+                              className="w-full px-2.5 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: SOCIAL PROOF / TESTIMONI */}
+              {activeBuilderTab === 'social_proof' && (
+                <div className="space-y-3.5 animate-fadeIn">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xs">Galeri Testimoni Visual (Hingga 3 Screenshot)</h4>
+                    <p className="text-[10px] text-slate-500">Masukkan tautan gambar tangkapan layar chat WhatsApp, hasil omset, atau review pelanggan.</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[0, 1, 2].map((idx) => {
+                      const currentVal = (singlePageForm.testimonial_images || [])[idx] || '';
+                      return (
+                        <div key={idx} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+                          <label className="text-[11px] font-bold text-slate-700 block">
+                            Screenshot Testimoni #{idx + 1}
+                          </label>
+                          <input
+                            type="url"
+                            value={currentVal}
+                            onChange={(e) => {
+                              const imgs = [...(singlePageForm.testimonial_images || ['', '', ''])];
+                              imgs[idx] = e.target.value;
+                              setSinglePageForm(p => ({ ...p, testimonial_images: imgs.filter(Boolean) }));
+                            }}
+                            placeholder="https://images.unsplash.com/... atau link gambar screenshot"
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600"
+                          />
+                          {currentVal && (
+                            <div className="pt-1">
+                              <img
+                                src={currentVal}
+                                alt={`Testimoni ${idx + 1}`}
+                                className="h-20 w-auto rounded-lg object-cover border border-slate-200 shadow-sm"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: OFFER & BONUS */}
+              {activeBuilderTab === 'offer_bonus' && (
+                <div className="space-y-3.5 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xs">Bonus Spesial Pembelian Hari Ini</h4>
+                      <p className="text-[10px] text-slate-500">Tingkatkan value produk Anda dengan bonus gratis yang memiliki estimasi nilai tinggi.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSinglePageForm(p => ({
+                        ...p,
+                        bonus_items: [
+                          ...(p.bonus_items || []),
+                          { id: String(Date.now()), title: '', value: 199000, description: '' }
+                        ]
+                      }))}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Tambah Bonus
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(singlePageForm.bonus_items || []).map((bonus, idx) => (
+                      <div key={bonus.id || idx} className="bg-indigo-50/40 border border-indigo-100 p-3.5 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-indigo-900 text-[11px]">Bonus Gratis #{idx + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const items = (singlePageForm.bonus_items || []).filter((_, i) => i !== idx);
+                              setSinglePageForm(p => ({ ...p, bonus_items: items }));
+                            }}
+                            className="text-slate-400 hover:text-rose-600 p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] text-slate-600 font-bold block mb-1">Nama / Judul Bonus</label>
+                            <input
+                              type="text"
+                              value={bonus.title}
+                              onChange={(e) => {
+                                const items = [...(singlePageForm.bonus_items || [])];
+                                items[idx] = { ...items[idx], title: e.target.value };
+                                setSinglePageForm(p => ({ ...p, bonus_items: items }));
+                              }}
+                              placeholder="Contoh: 50+ Template Ad Copywriting Siap Pakai"
+                              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] text-slate-600 font-bold block mb-1">Taksiran Nilai (Rp)</label>
+                            <input
+                              type="number"
+                              step={5000}
+                              value={bonus.value}
+                              onChange={(e) => {
+                                const items = [...(singlePageForm.bonus_items || [])];
+                                items[idx] = { ...items[idx], value: Number(e.target.value) };
+                                setSinglePageForm(p => ({ ...p, bonus_items: items }));
+                              }}
+                              placeholder="199000"
+                              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <input
+                            type="text"
+                            value={bonus.description || ''}
+                            onChange={(e) => {
+                              const items = [...(singlePageForm.bonus_items || [])];
+                              items[idx] = { ...items[idx], description: e.target.value };
+                              setSinglePageForm(p => ({ ...p, bonus_items: items }));
+                            }}
+                            placeholder="Deskripsi singkat manfaat bonus ini..."
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:border-indigo-600"
+                          />
+                        </div>
+                      </div>
                     ))}
                   </div>
 
-                  {singlePageForm.voucher?.shipping_discount_type === 'flat' && (
-                    <div>
-                      <label className="text-[11px] text-slate-500 font-semibold block mb-1">Nominal Subsidi Ongkir (Rp)</label>
-                      <div className="relative">
+                  {/* Summary Total Nilai Bonus */}
+                  <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center justify-between text-xs">
+                    <span className="font-bold text-amber-900">Total Nilai Bonus Tambahan:</span>
+                    <span className="font-black text-amber-700">
+                      Rp {(singlePageForm.bonus_items || []).reduce((acc, b) => acc + (b.value || 0), 0).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: BAYAR & VOUCHER */}
+              {activeBuilderTab === 'payment_voucher' && (
+                <div className="space-y-4 animate-fadeIn">
+                  {/* Pengaturan Pembayaran (QRIS & Transfer Manual) */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                    <span className="font-bold text-slate-800 block text-xs">
+                      Opsi Metode Pembayaran di Checkout
+                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-emerald-400 transition">
+                        <input
+                          type="checkbox"
+                          checked={singlePageForm.enable_qris}
+                          onChange={(e) => setSinglePageForm((p) => ({ ...p, enable_qris: e.target.checked }))}
+                          className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                        />
+                        <div>
+                          <span className="font-bold text-slate-900 block">QRIS Instan Otomatis</span>
+                          <span className="text-[10px] text-slate-500">Bebas biaya admin (Fee Rp0) & aktivasi tercepat.</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-blue-400 transition">
+                        <input
+                          type="checkbox"
+                          checked={singlePageForm.enable_manual_transfer}
+                          onChange={(e) => setSinglePageForm((p) => ({ ...p, enable_manual_transfer: e.target.checked }))}
+                          className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                        />
+                        <div>
+                          <span className="font-bold text-slate-900 block">Transfer Bank Manual</span>
+                          <span className="text-[10px] text-slate-500">BCA / Mandiri (Bebas Biaya Admin) & kode unik acak.</span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Pengaturan Voucher Diskon Fleksibel */}
+                  <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border border-indigo-100 rounded-2xl p-4 space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 bg-indigo-600 text-white rounded-lg text-xs">🎟️</span>
+                        <div>
+                          <h4 className="font-bold text-slate-900 text-xs">Pengaturan Voucher & Promo Produk</h4>
+                          <p className="text-[10px] text-slate-500">Konfigurasi potongan harga produk dan/atau subsidi ongkir khusus landing page ini.</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full uppercase">
+                        {singlePageForm.voucher?.code || 'NO-CODE'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Kode Voucher */}
+                      <div>
+                        <label className="font-bold text-slate-700 block text-xs mb-1">Kode Voucher</label>
+                        <input
+                          type="text"
+                          value={singlePageForm.voucher?.code || ''}
+                          onChange={(e) => {
+                            const code = e.target.value.toUpperCase().replace(/\s+/g, '');
+                            setSinglePageForm(p => ({
+                              ...p,
+                              discount_coupon: code,
+                              voucher: {
+                                ...(p.voucher || {
+                                  code,
+                                  discount_type: 'nominal',
+                                  discount_value: 20000,
+                                  shipping_discount_type: 'none',
+                                  shipping_discount_value: 0,
+                                  min_spend: 0
+                                }),
+                                code
+                              }
+                            }));
+                          }}
+                          placeholder="Contoh: HEMAT50, DISKON20K, FREESHIP"
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold uppercase focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
+
+                      {/* Batas Minimal Belanja */}
+                      <div>
+                        <label className="font-bold text-slate-700 block text-xs mb-1">Minimal Belanja (Opsional, Rp)</label>
                         <input
                           type="number"
                           min={0}
                           step={1000}
-                          value={singlePageForm.voucher?.shipping_discount_value || 0}
+                          value={singlePageForm.voucher?.min_spend || 0}
                           onChange={(e) => {
                             const val = Number(e.target.value);
                             setSinglePageForm(p => ({
@@ -1531,42 +1834,210 @@ export default function TenantDashboardPage() {
                                 ...(p.voucher || {
                                   code: p.discount_coupon || 'HEMAT50',
                                   discount_type: 'nominal',
-                                  discount_value: 0,
-                                  shipping_discount_type: 'flat',
-                                  shipping_discount_value: val
+                                  discount_value: 20000,
+                                  shipping_discount_type: 'none',
+                                  shipping_discount_value: 0,
+                                  min_spend: val
                                 }),
-                                shipping_discount_value: val
+                                min_spend: val
                               }
                             }));
                           }}
-                          placeholder="Contoh: 15000"
-                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12"
+                          placeholder="0 (Tanpa minimum)"
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600"
                         />
-                        <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">Rp</span>
                       </div>
                     </div>
-                  )}
-                </div>
-              </div>
 
-              {/* Komisi Affiliate */}
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Komisi Affiliate Default (%)</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={singlePageForm.affiliate_commission_rate}
-                    onChange={(e) => setSinglePageForm((p) => ({ ...p, affiliate_commission_rate: Number(e.target.value) }))}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white pr-8"
-                  />
-                  <span className="absolute right-3 top-2.5 font-bold text-slate-400">%</span>
+                    {/* Tipe Diskon Produk */}
+                    <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
+                      <label className="font-bold text-slate-800 block text-xs">Pilihan Tipe Diskon Produk</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSinglePageForm(p => ({
+                            ...p,
+                            voucher: {
+                              ...(p.voucher || {
+                                code: p.discount_coupon || 'HEMAT50',
+                                discount_type: 'nominal',
+                                discount_value: 20000,
+                                shipping_discount_type: 'none',
+                                shipping_discount_value: 0
+                              }),
+                              discount_type: 'nominal',
+                              discount_value: (p.voucher?.discount_value && p.voucher.discount_type === 'percentage') ? 20000 : (p.voucher?.discount_value || 20000)
+                            }
+                          }))}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                            singlePageForm.voucher?.discount_type === 'nominal'
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          <span>Diskon Nominal (Rp)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSinglePageForm(p => ({
+                            ...p,
+                            voucher: {
+                              ...(p.voucher || {
+                                code: p.discount_coupon || 'HEMAT50',
+                                discount_type: 'percentage',
+                                discount_value: 10,
+                                shipping_discount_type: 'none',
+                                shipping_discount_value: 0
+                              }),
+                              discount_type: 'percentage',
+                              discount_value: (p.voucher?.discount_value && p.voucher.discount_type === 'nominal') ? 10 : (p.voucher?.discount_value || 10)
+                            }
+                          }))}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                            singlePageForm.voucher?.discount_type === 'percentage'
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          <span>Diskon Persentase (%)</span>
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] text-slate-500 font-semibold block mb-1">
+                          {singlePageForm.voucher?.discount_type === 'percentage' ? 'Besaran Diskon Persen (%)' : 'Besaran Diskon Flat (Rp)'}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min={0}
+                            max={singlePageForm.voucher?.discount_type === 'percentage' ? 100 : activeSinglePageProduct.price}
+                            value={singlePageForm.voucher?.discount_value || 0}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setSinglePageForm(p => ({
+                                ...p,
+                                voucher: {
+                                  ...(p.voucher || {
+                                    code: p.discount_coupon || 'HEMAT50',
+                                    discount_type: 'nominal',
+                                    discount_value: val,
+                                    shipping_discount_type: 'none',
+                                    shipping_discount_value: 0
+                                  }),
+                                  discount_value: val
+                                }
+                              }));
+                            }}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12"
+                          />
+                          <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">
+                            {singlePageForm.voucher?.discount_type === 'percentage' ? '%' : 'Rp'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Subsidi Ongkir (Khusus Produk Fisik atau Fleksibel) */}
+                    <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="font-bold text-slate-800 block text-xs">Pilihan Diskon Ongkir (Khusus Produk Fisik)</label>
+                        {activeSinglePageProduct.category === 'fisik' && (
+                          <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
+                            📦 Produk Fisik
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {[
+                          { id: 'none', label: 'Tanpa Subsidi' },
+                          { id: 'flat', label: 'Subsidi Flat (Rp)' },
+                          { id: 'free', label: 'Gratis Ongkir (100%)' }
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setSinglePageForm(p => ({
+                              ...p,
+                              voucher: {
+                                ...(p.voucher || {
+                                  code: p.discount_coupon || 'HEMAT50',
+                                  discount_type: 'nominal',
+                                  discount_value: 0,
+                                  shipping_discount_type: 'none',
+                                  shipping_discount_value: 0
+                                }),
+                                shipping_discount_type: item.id as any
+                              }
+                            }))}
+                            className={`py-2 px-2 rounded-lg text-center font-bold text-[11px] transition cursor-pointer ${
+                              (singlePageForm.voucher?.shipping_discount_type || 'none') === item.id
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {singlePageForm.voucher?.shipping_discount_type === 'flat' && (
+                        <div>
+                          <label className="text-[11px] text-slate-500 font-semibold block mb-1">Nominal Subsidi Ongkir (Rp)</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min={0}
+                              step={1000}
+                              value={singlePageForm.voucher?.shipping_discount_value || 0}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setSinglePageForm(p => ({
+                                  ...p,
+                                  voucher: {
+                                    ...(p.voucher || {
+                                      code: p.discount_coupon || 'HEMAT50',
+                                      discount_type: 'nominal',
+                                      discount_value: 0,
+                                      shipping_discount_type: 'flat',
+                                      shipping_discount_value: val
+                                    }),
+                                    shipping_discount_value: val
+                                  }
+                                }));
+                              }}
+                              placeholder="Contoh: 15000"
+                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12"
+                            />
+                            <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">Rp</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Komisi Affiliate */}
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Komisi Affiliate Default (%)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={singlePageForm.affiliate_commission_rate}
+                        onChange={(e) => setSinglePageForm((p) => ({ ...p, affiliate_commission_rate: Number(e.target.value) }))}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white pr-8"
+                      />
+                      <span className="absolute right-3 top-2.5 font-bold text-slate-400">%</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      Dihitung murni dari harga dasar bersih produk (setelah diskon produk, tanpa ongkir & kode unik).
+                    </span>
+                  </div>
                 </div>
-                <span className="text-[10px] text-slate-400 mt-0.5 block">
-                  Dihitung murni dari harga dasar bersih produk (setelah diskon produk, tanpa ongkir & kode unik).
-                </span>
-              </div>
+              )}
 
               {/* Actions */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
