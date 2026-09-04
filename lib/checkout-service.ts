@@ -46,8 +46,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   const uniqueCode = payload.uniqueCode ?? 0;
   const grossAmount = payload.amount || (netProductPrice + netShippingCost + uniqueCode);
 
-  // Komisi affiliate 30% dihitung murni dari Harga Bersih Produk (net) setelah diskon produk, terpisah dari ongkir & kode unik
-  const affiliateCommission = payload.affiliateCommission ?? Math.round(netProductPrice * 0.3);
+  // Komisi affiliate produk ritel toko dinonaktifkan sementara (transaksi berjalan direct store 100% ke seller)
+  const affiliateCommission = payload.affiliateCommission ?? 0;
 
   const orderData = {
     id: orderId,

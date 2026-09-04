@@ -280,9 +280,9 @@ function SingleProductContent() {
   // 4. Total Bayar Presisi
   const totalAmount = netProductPrice + netShippingCost + currentUniqueCode;
 
-  // 5. Komisi Affiliate (Wajib 30% dari Harga Bersih Produk, terpisah dari ongkir & kode unik)
-  const commissionRate = config.affiliate_commission_rate ?? 30;
-  const affiliateCommission = Math.round(netProductPrice * (commissionRate / 100));
+  // 5. Komisi Affiliate (Fitur affiliate produk retail toko dinonaktifkan sementara: murni direct store ke merchant)
+  const commissionRate = 0;
+  const affiliateCommission = 0;
 
   // 6. Total Nilai Bonus Eksklusif
   const totalBonusValue = useMemo(() => {
@@ -358,11 +358,11 @@ function SingleProductContent() {
         adminFee: 0,
         uniqueCode: currentUniqueCode,
         paymentMethod,
-        affiliateCommission,
+        affiliateCommission: 0,
         customerName: buyerName,
         customerPhone: buyerPhone,
         customerEmail: buyerEmail,
-        affiliateCode: currentRef,
+        affiliateCode: undefined, // Murni direct store ke toko merchant
         tracking: trackingParams
       });
 
@@ -738,14 +738,13 @@ function SingleProductContent() {
           </span>
         </div>
 
-        {/* Kupon & Affiliate Notice */}
+        {/* Kupon & Jaminan Transaksi Langsung */}
         <div className="pt-1 text-[10px] text-slate-400 font-mono flex items-center justify-between border-t border-slate-200/60">
           <span>{appliedVoucher ? `Voucher: ${appliedVoucher.code}` : `Kupon: ${config.discount_coupon || 'HEMAT50'}`}</span>
-          {affiliateCode ? (
-            <span className="text-indigo-600 font-medium">Reff: {affiliateCode} ({commissionRate}%: Rp {affiliateCommission.toLocaleString('id-ID')})</span>
-          ) : (
-            <span className="text-slate-500">Komisi Mitra: {commissionRate}% (Rp {affiliateCommission.toLocaleString('id-ID')})</span>
-          )}
+          <span className="text-emerald-600 font-semibold flex items-center gap-1">
+            <ShieldCheck className="w-3 h-3" />
+            <span>Direct Store (100% Toko Resmi)</span>
+          </span>
         </div>
       </div>
 

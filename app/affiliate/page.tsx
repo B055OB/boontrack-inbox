@@ -119,7 +119,7 @@ function AffiliatePortalContent() {
           commission_rate: 20,
           status: 'ACTIVE',
         },
-        referral_url: `https://shop.boontrack.com/${tSlug}?ref=${aCode.toUpperCase()}`,
+        referral_url: `https://shop.boontrack.com/?ref=${aCode.toUpperCase()}`,
         metrics: {
           total_clicks: 142,
           total_orders: 18,
@@ -141,10 +141,9 @@ function AffiliatePortalContent() {
     fetchAffiliateData(tenantSlug, affiliateCode);
   };
 
-  // Base & UTM Referral Links
-  const baseReferralLink = `https://shop.boontrack.com/?ref=${affiliateCode.toUpperCase()}`;
-  const storeReferralLink = `https://shop.boontrack.com/${tenantSlug.toLowerCase()}?ref=${affiliateCode.toUpperCase()}`;
-  const utmReferralLink = `https://shop.boontrack.com/${tenantSlug.toLowerCase()}?ref=${affiliateCode.toUpperCase()}&utm_source=affiliate&utm_medium=whatsapp&utm_campaign=aff_${affiliateCode.toUpperCase()}`;
+  // Platform Referral Links (Khusus Platform shop.boontrack.com)
+  const platformReferralLink = `https://shop.boontrack.com/?ref=${affiliateCode.toUpperCase()}`;
+  const utmReferralLink = `https://shop.boontrack.com/?ref=${affiliateCode.toUpperCase()}&utm_source=affiliate&utm_medium=whatsapp&utm_campaign=aff_${affiliateCode.toUpperCase()}`;
 
   const copyToClipboard = (text: string, type: 'base' | 'utm') => {
     navigator.clipboard.writeText(text);
@@ -177,12 +176,12 @@ function AffiliatePortalContent() {
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3" />
-                <span>Affiliate Growth Hub</span>
+                <span>Platform Affiliate • AM Whitelist</span>
               </span>
-              <span className="text-xs text-slate-400">&bull; Live Multi-Tenant Portal</span>
+              <span className="text-xs text-slate-400">&bull; Khusus Promosi shop.boontrack.com</span>
             </div>
             <h1 className="text-2xl font-black text-white mt-1.5 flex items-center gap-2">
-              <span>{data ? `Halo, ${data.affiliate.name} 👋` : 'Affiliate Partner Dashboard'}</span>
+              <span>{data ? `Halo, ${data.affiliate.name} 👋` : 'Platform Affiliate Partner Dashboard'}</span>
               {authSession && (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">
                   Terverifikasi WA
@@ -190,7 +189,7 @@ function AffiliatePortalContent() {
               )}
             </h1>
             <p className="text-xs text-slate-400">
-              Pantau performa traffic, konversi pesanan, dan komisi siap cair secara real-time.
+              Pantau performa traffic, konversi pesanan platform shop.boontrack.com, dan komisi siap cair secara real-time.
             </p>
           </div>
 
@@ -222,26 +221,23 @@ function AffiliatePortalContent() {
               </Link>
             )}
 
-            <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-mono text-slate-300">
-              Tenant: <strong className="text-white uppercase">{tenantSlug}</strong>
+            <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs font-mono text-emerald-400">
+              Platform: <strong>shop.boontrack.com</strong>
             </div>
           </div>
         </div>
 
         {/* Filter Toolbar / Selector */}
         <form onSubmit={handleSearch} className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/60 border border-slate-800 p-3.5 rounded-2xl">
-          <div className="w-full sm:w-1/3">
-            <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Tenant Toko Merchant</label>
-            <input
-              type="text"
-              value={tenantSlug}
-              onChange={(e) => setTenantSlug(e.target.value)}
-              placeholder="cornvest"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-base md:text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-            />
+          <div className="flex-1 w-full">
+            <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Target Platform Promosi</label>
+            <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-emerald-300 font-mono flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span>https://shop.boontrack.com</span>
+            </div>
           </div>
           <div className="w-full sm:w-1/3">
-            <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Kode Referral Anda</label>
+            <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Kode Referral Partner (AM Whitelist)</label>
             <input
               type="text"
               value={affiliateCode}
@@ -256,7 +252,7 @@ function AffiliatePortalContent() {
               className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Search className="w-3.5 h-3.5" />
-              <span>Cari Partner</span>
+              <span>Cek Akun Whitelist</span>
             </button>
           </div>
         </form>
@@ -276,21 +272,21 @@ function AffiliatePortalContent() {
                 <div>
                   <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
                     <TrendingUp className="w-4 h-4" />
-                    <span>Unique Affiliate Link & Tracking UTM</span>
+                    <span>Unique Platform Referral Link & Tracking UTM</span>
                   </span>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Gunakan link ini untuk mempromosikan toko merchant dan dapatkan komisi otomatis setiap transaksi berhasil.
+                    Gunakan link ini untuk mempromosikan platform shop.boontrack.com dan dapatkan komisi dari setiap transaksi pengguna yang bertransaksi.
                   </p>
                 </div>
                 <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-mono text-emerald-300 font-bold self-start sm:self-auto">
-                  Komisi: {data.affiliate.commission_rate}% per order
+                  Komisi: {data.affiliate.commission_rate}% Platform Payout
                 </span>
               </div>
 
               {/* Primary Unique Link Box */}
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-slate-300 block flex items-center justify-between">
-                  <span>Link Referral Toko Utama:</span>
+                  <span>Tautan Referral Platform Utama:</span>
                   <span className="text-[10px] text-slate-500 font-mono">shop.boontrack.com/?ref={affiliateCode.toUpperCase()}</span>
                 </label>
 
@@ -298,23 +294,23 @@ function AffiliatePortalContent() {
                   <input
                     type="text"
                     readOnly
-                    value={storeReferralLink}
+                    value={platformReferralLink}
                     className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-base md:text-xs text-emerald-300 font-mono focus:outline-none select-all"
                   />
                   <div className="flex gap-2">
                     <button
-                      onClick={() => copyToClipboard(storeReferralLink, 'base')}
+                      onClick={() => copyToClipboard(platformReferralLink, 'base')}
                       className="flex-1 sm:flex-none px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       {copied ? <Check className="w-4 h-4 text-slate-950" /> : <Copy className="w-4 h-4 text-slate-950" />}
                       <span>{copied ? 'Tersalin!' : 'Salin Link Tautan'}</span>
                     </button>
                     <a
-                      href={storeReferralLink}
+                      href={platformReferralLink}
                       target="_blank"
                       rel="noreferrer"
                       className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition flex items-center justify-center cursor-pointer"
-                      title="Buka Toko"
+                      title="Buka Platform shop.boontrack.com"
                     >
                       <ExternalLink className="w-4 h-4" />
                     </a>
@@ -327,7 +323,7 @@ function AffiliatePortalContent() {
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
                     <LinkIcon className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Link Promo WhatsApp (Termasuk Parameter UTM Tracking):</span>
+                    <span>Link Promo WhatsApp (Termasuk Parameter UTM Tracking Platform):</span>
                   </label>
                   <button
                     onClick={() => copyToClipboard(utmReferralLink, 'utm')}
@@ -346,7 +342,7 @@ function AffiliatePortalContent() {
               <div className="pt-2 flex flex-wrap items-center gap-3">
                 <a
                   href={`https://wa.me/?text=${encodeURIComponent(
-                    `Halo! Yuk belanja produk pilihan terbaik di toko resmi https://shop.boontrack.com/${tenantSlug}?ref=${affiliateCode.toUpperCase()}`
+                    `Halo! Temukan berbagai produk pilihan terbaik di platform resmi https://shop.boontrack.com/?ref=${affiliateCode.toUpperCase()}`
                   )}`}
                   target="_blank"
                   rel="noreferrer"
@@ -357,7 +353,7 @@ function AffiliatePortalContent() {
                 </a>
 
                 <span className="text-[11px] text-slate-500">
-                  Cookie referral pembeli disimpan otomatis selama 30 hari.
+                  Cookie referral pembeli disimpan otomatis selama 30 hari di platform.
                 </span>
               </div>
 

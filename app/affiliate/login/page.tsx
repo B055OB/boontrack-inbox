@@ -256,20 +256,16 @@ export default function AffiliateLoginPage() {
         
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition group"
-          >
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>BoonTrack Affiliate Network</span>
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-          </Link>
+            <span>Platform Affiliate • Whitelist Account Manager (AM)</span>
+          </div>
 
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight pt-1">
-            Masuk Portal Affiliate
+            Portal Affiliate shop.boontrack.com
           </h1>
-          <p className="text-xs text-slate-400 max-w-xs mx-auto">
-            Login instan tanpa password menggunakan verifikasi kode OTP WhatsApp resmi.
+          <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+            Khusus mitra partner resmi yang didaftarkan langsung oleh Account Manager (AM). Verifikasi instan menggunakan nomor WhatsApp yang terdaftar di whitelist.
           </p>
         </div>
 
@@ -445,12 +441,14 @@ export default function AffiliateLoginPage() {
 
         </div>
 
-        {/* Alternative Actions / Register Link */}
-        <div className="text-center text-xs text-slate-500">
-          Belum terdaftar sebagai affiliate?{' '}
-          <Link href="/daftar" className="text-emerald-400 hover:text-emerald-300 font-bold underline transition">
-            Daftar Toko & Affiliate Baru
-          </Link>
+        {/* Whitelist Partner Only Notice */}
+        <div className="text-center text-xs text-slate-400 p-4 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-1">
+          <p className="font-semibold text-slate-300">
+            Akses Pendaftaran Eksklusif Account Manager (AM)
+          </p>
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            Portal ini tertutup untuk pendaftaran publik mandiri. Hubungi Account Manager (AM) BoonTrack Anda jika nomor WhatsApp belum masuk ke whitelist partner.
+          </p>
         </div>
 
       </div>

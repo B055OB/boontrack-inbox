@@ -32,7 +32,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const adminFee = 0;
   const currentUniqueCode = paymentMethod === 'manual_transfer' ? uniqueCode : 0;
   const totalAmount = basePrice + adminFee + currentUniqueCode;
-  const affiliateCommission = Math.round(basePrice * 0.3);
+  const affiliateCommission = 0; // Fitur affiliate produk ritel dinonaktifkan sementara (murni direct store)
 
   useEffect(() => {
     const activeRef = getActiveAffiliateCode();
@@ -48,7 +48,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     setLoading(true);
     setErrorMessage("");
 
-    const currentRef = affiliateCode || getActiveAffiliateCode() || undefined;
     const trackingParams = getTrackingData();
 
     try {
@@ -61,11 +60,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         adminFee,
         uniqueCode: currentUniqueCode,
         paymentMethod,
-        affiliateCommission,
+        affiliateCommission: 0,
         customerName,
         customerPhone,
         customerEmail,
-        affiliateCode: currentRef,
+        affiliateCode: undefined, // Murni direct store ke toko merchant
         tracking: trackingParams,
       });
 

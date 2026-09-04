@@ -160,7 +160,7 @@ export default function TenantDashboardPage() {
     enable_qris: true,
     enable_manual_transfer: true,
     discount_coupon: 'HEMAT50',
-    affiliate_commission_rate: 30,
+    affiliate_commission_rate: 0,
   });
 
   // Load persisted products from localStorage
@@ -485,10 +485,10 @@ export default function TenantDashboardPage() {
       discount_coupon: defaultVoucher.code,
       voucher: defaultVoucher,
 
-      // Payment & Affiliate
+      // Payment & Direct Store
       enable_qris: cfg?.enable_qris ?? true,
       enable_manual_transfer: cfg?.enable_manual_transfer ?? true,
-      affiliate_commission_rate: cfg?.affiliate_commission_rate ?? 30,
+      affiliate_commission_rate: 0,
     });
     setActiveBuilderTab('hook');
     setIsSinglePageModalOpen(true);
@@ -2122,23 +2122,15 @@ export default function TenantDashboardPage() {
                     </div>
                   </div>
 
-                  {/* Komisi Affiliate */}
-                  <div>
-                    <label className="font-bold text-slate-700 block mb-1">Komisi Affiliate Default (%)</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={singlePageForm.affiliate_commission_rate}
-                        onChange={(e) => setSinglePageForm((p) => ({ ...p, affiliate_commission_rate: Number(e.target.value) }))}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white pr-8"
-                      />
-                      <span className="absolute right-3 top-2.5 font-bold text-slate-400">%</span>
+                  {/* Model Penjualan Toko Langsung (Direct Store) */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                      <Store className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Model Penjualan Toko Langsung (Direct Store)</span>
                     </div>
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">
-                      Dihitung murni dari harga dasar bersih produk (setelah diskon produk, tanpa ongkir & kode unik).
-                    </span>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Sistem berjalan murni direct store ke rekening merchant tanpa potongan komisi affiliate produk ritel. Seluruh omset 100% dialokasikan ke toko Anda.
+                    </p>
                   </div>
                 </div>
               )}
