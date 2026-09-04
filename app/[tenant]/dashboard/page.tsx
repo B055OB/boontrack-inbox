@@ -793,7 +793,7 @@ export default function TenantDashboardPage() {
               }`}
             >
               <Truck className="w-4 h-4 text-emerald-600" />
-              <span>Kurir Biteship</span>
+              <span>Pengiriman & Kurir</span>
               <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
                 ONGKIR
               </span>

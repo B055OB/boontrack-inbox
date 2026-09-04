@@ -4,25 +4,19 @@ import React, { useState, useEffect } from 'react';
 import {
   Truck,
   MapPin,
-  Key,
   ShieldCheck,
   Save,
   CheckCircle2,
   RefreshCw,
   Calculator,
-  Layers,
   Box,
-  Clock,
   Zap,
   Package,
-  ArrowRight,
   Sparkles,
   Search,
   Check,
   Activity,
-  Send,
   Navigation,
-  ExternalLink,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -68,16 +62,14 @@ export default function BiteshipCourierConfig({
   onSaved,
 }: BiteshipCourierConfigProps) {
   const [isEnabled, setIsEnabled] = useState(true);
-  const [environment, setEnvironment] = useState<'production' | 'staging'>('production');
-  const [apiKey, setApiKey] = useState('biteship_live.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
 
-  // Origin Warehouse Info
-  const [senderName, setSenderName] = useState(displayName.toUpperCase());
-  const [senderPhone, setSenderPhone] = useState('081234567890');
-  const [originAddress, setOriginAddress] = useState('Jl. Sudirman No. 88, Gedung Sahid Sudirman Center Lt. 12');
-  const [originCity, setOriginCity] = useState('Jakarta Selatan');
-  const [originDistrict, setOriginDistrict] = useState('Tanah Abang');
-  const [originPostalCode, setOriginPostalCode] = useState('10220');
+  // Origin Warehouse Info (Alamat Komersial Default White-Label)
+  const [senderName, setSenderName] = useState('Admin Gudang OnlineBoost');
+  const [senderPhone, setSenderPhone] = useState('081298765432');
+  const [originAddress, setOriginAddress] = useState('Jl. Soekarno Hatta No. 590, Kawasan Niaga MTC Kav. B2');
+  const [originCity, setOriginCity] = useState('Kota Bandung');
+  const [originDistrict, setOriginDistrict] = useState('Rancasari');
+  const [originPostalCode, setOriginPostalCode] = useState('40286');
 
   // Courier Options
   const [couriers, setCouriers] = useState<CourierItem[]>(DEFAULT_COURIERS);
@@ -121,15 +113,13 @@ export default function BiteshipCourierConfig({
           if (data?.biteship_config) {
             const cfg = data.biteship_config;
             setIsEnabled(cfg.is_enabled ?? true);
-            setEnvironment(cfg.environment || 'production');
-            setApiKey(cfg.api_key || '');
             if (cfg.origin) {
-              setSenderName(cfg.origin.sender_name || displayName.toUpperCase());
-              setSenderPhone(cfg.origin.sender_phone || '');
-              setOriginAddress(cfg.origin.address || '');
-              setOriginCity(cfg.origin.city || '');
-              setOriginDistrict(cfg.origin.district || '');
-              setOriginPostalCode(cfg.origin.postal_code || '');
+              setSenderName(cfg.origin.sender_name || 'Admin Gudang OnlineBoost');
+              setSenderPhone(cfg.origin.sender_phone || '081298765432');
+              setOriginAddress(cfg.origin.address || 'Jl. Soekarno Hatta No. 590, Kawasan Niaga MTC Kav. B2');
+              setOriginCity(cfg.origin.city || 'Kota Bandung');
+              setOriginDistrict(cfg.origin.district || 'Rancasari');
+              setOriginPostalCode(cfg.origin.postal_code || '40286');
             }
             if (cfg.couriers && Array.isArray(cfg.couriers)) {
               setCouriers(cfg.couriers);
@@ -139,7 +129,7 @@ export default function BiteshipCourierConfig({
           }
         }
       } catch (err) {
-        console.warn('[Biteship Config] Using default settings:', err);
+        console.warn('[Courier Config] Using default settings:', err);
       }
     }
     loadConfig();
@@ -158,8 +148,6 @@ export default function BiteshipCourierConfig({
 
     const payload = {
       is_enabled: isEnabled,
-      environment,
-      api_key: apiKey,
       origin: {
         sender_name: senderName,
         sender_phone: senderPhone,
@@ -189,10 +177,10 @@ export default function BiteshipCourierConfig({
           );
       }
 
-      setFeedback('✅ Pengaturan Kurir & Ongkir Biteship berhasil disimpan!');
-      if (onSaved) onSaved('✅ Pengaturan Kurir & Ongkir Biteship berhasil disimpan!');
+      setFeedback('✅ Pengaturan Pengiriman & Kurir berhasil disimpan!');
+      if (onSaved) onSaved('✅ Pengaturan Pengiriman & Kurir berhasil disimpan!');
       setTimeout(() => setFeedback(null), 4000);
-    } catch (err) {
+    } catch {
       setFeedback('✅ Pengaturan disimpan secara lokal.');
       setTimeout(() => setFeedback(null), 3000);
     } finally {
@@ -279,14 +267,14 @@ export default function BiteshipCourierConfig({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                  Pengaturan Kurir & Ekspedisi Biteship
+                  Pengaturan Pengiriman & Kurir
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
                   Multi-Courier Realtime
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Hitung ongkir otomatis di halaman checkout, integrasi resi otomatis, dan request pickup kurir (JNE, J&T, SiCepat, GoSend, dll).
+                Hitung ongkir otomatis di halaman checkout, integrasi resi otomatis, dan request pickup kurir (JNE, J&T, SiCepat, GoSend, Grab, dll).
               </p>
             </div>
           </div>
@@ -302,7 +290,7 @@ export default function BiteshipCourierConfig({
             />
             <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
             <span className="ml-2.5 text-xs font-bold text-slate-700">
-              {isEnabled ? 'Kurir Biteship Aktif' : 'Nonaktif'}
+              {isEnabled ? 'Layanan Pengiriman Aktif' : 'Nonaktif'}
             </span>
           </label>
         </div>
@@ -326,7 +314,7 @@ export default function BiteshipCourierConfig({
               </h3>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Lacak nomor resi pelanggan real-time. Status *DELIVERED* otomatis memicu event konversi final CAPI server-side.
+              Lacak nomor resi pelanggan real-time. Status <em>DELIVERED</em> otomatis memicu event konversi final CAPI server-side.
             </p>
           </div>
 
@@ -426,92 +414,78 @@ export default function BiteshipCourierConfig({
 
       <form onSubmit={handleSave} className="space-y-6">
         
-        {/* ROW 2: API CREDENTIALS & ORIGIN ADDRESS */}
+        {/* ROW 2: BANNER STATUS BOONTRACK & ORIGIN ADDRESS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
-          {/* API Credentials */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Key className="w-4 h-4 text-emerald-600" />
-                <h3 className="font-bold text-sm text-slate-900">Kredensial Biteship API</h3>
+          {/* Banner Status Jaringan Ekspedisi BoonTrack (White-Label) */}
+          <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 text-white border border-slate-800 rounded-3xl p-6 shadow-md flex flex-col justify-between space-y-5">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-white">Jaringan Ekspedisi BoonTrack</h3>
+                    <p className="text-[11px] text-slate-400">Gateway Logistik Platform Terintegrasi</p>
+                  </div>
+                </div>
+
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Terhubung Otomatis</span>
+                </span>
               </div>
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-[10px] font-bold">
-                <button
-                  type="button"
-                  onClick={() => setEnvironment('production')}
-                  className={`px-2 py-0.5 rounded transition ${
-                    environment === 'production'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Production
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEnvironment('staging')}
-                  className={`px-2 py-0.5 rounded transition ${
-                    environment === 'staging'
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Staging / Sandbox
-                </button>
-              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Sistem kalkulasi ongkir real-time dan pelacakan resi dikelola langsung oleh platform BoonTrack.
+              </p>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Biteship Secret API Key
-                </label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="biteship_live.ey..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-emerald-500 transition"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Dapatkan API Key di Biteship Dashboard &gt; Integrations &gt; API Keys.
-                </p>
+            <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+              <div className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Fitur Gateway Pengiriman Aktif:</span>
               </div>
-
-              <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-900 space-y-1">
-                <div className="font-bold flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Fitur Otomatisasi Terhubung:</span>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300 pt-1">
+                <div className="flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Ongkir Real-Time Akurat</span>
                 </div>
-                <div className="grid grid-cols-2 gap-1 text-[11px] pt-1 text-emerald-800">
-                  <span>&bull; Real-time Ongkir Checkout</span>
-                  <span>&bull; Auto Booking Request</span>
-                  <span>&bull; Resi WhatsApp Tracker</span>
-                  <span>&bull; Multi-Courier Coverage</span>
+                <div className="flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Multi-Kurir Instant & Reguler</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Pelacakan Resi Otomatis</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Sistem Tanpa Kredensial Rumit</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Origin Warehouse Address */}
+          {/* Origin Warehouse Address (Alamat Asal Gudang / Titik Jemput) */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-emerald-600" />
-                <h3 className="font-bold text-sm text-slate-900">Alamat Asal Gudang / Toko (Origin)</h3>
+                <h3 className="font-bold text-sm text-slate-900">Alamat Asal Gudang / Titik Jemput (Origin)</h3>
               </div>
             </div>
 
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">Nama Pengirim</label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Nama PIC Pengirim</label>
                   <input
                     type="text"
                     value={senderName}
                     onChange={(e) => setSenderName(e.target.value)}
-                    placeholder="Nama Toko"
+                    placeholder="Admin Gudang OnlineBoost"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
@@ -521,7 +495,7 @@ export default function BiteshipCourierConfig({
                     type="tel"
                     value={senderPhone}
                     onChange={(e) => setSenderPhone(e.target.value)}
-                    placeholder="08123456789"
+                    placeholder="081298765432"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
@@ -533,7 +507,7 @@ export default function BiteshipCourierConfig({
                   type="text"
                   value={originAddress}
                   onChange={(e) => setOriginAddress(e.target.value)}
-                  placeholder="Nama jalan, nomor ruko/gedung, RT/RW"
+                  placeholder="Jl. Soekarno Hatta No. 590, Kawasan Niaga MTC Kav. B2"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
@@ -545,7 +519,7 @@ export default function BiteshipCourierConfig({
                     type="text"
                     value={originCity}
                     onChange={(e) => setOriginCity(e.target.value)}
-                    placeholder="Jakarta Selatan"
+                    placeholder="Kota Bandung"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
@@ -555,7 +529,7 @@ export default function BiteshipCourierConfig({
                     type="text"
                     value={originDistrict}
                     onChange={(e) => setOriginDistrict(e.target.value)}
-                    placeholder="Tanah Abang"
+                    placeholder="Rancasari"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
@@ -565,7 +539,7 @@ export default function BiteshipCourierConfig({
                     type="text"
                     value={originPostalCode}
                     onChange={(e) => setOriginPostalCode(e.target.value)}
-                    placeholder="10220"
+                    placeholder="40286"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
@@ -575,7 +549,7 @@ export default function BiteshipCourierConfig({
 
         </div>
 
-        {/* ROW 3: ACTIVE COURIERS SELECTION */}
+        {/* ROW 3: ACTIVE COURIERS SELECTION (Checklist Pilihan Ekspedisi) */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
@@ -584,7 +558,7 @@ export default function BiteshipCourierConfig({
                 <span>Pilihan Ekspedisi & Layanan yang Diaktifkan</span>
               </h3>
               <p className="text-[11px] text-slate-500">
-                Pilih jasa kirim yang akan ditampilkan sebagai opsi pengiriman kepada pembeli saat checkout.
+                Pilih jasa kirim yang akan ditampilkan sebagai opsi pengiriman kepada pembeli saat checkout (JNE, J&T, SiCepat, GoSend Instant, GrabExpress, dll).
               </p>
             </div>
             <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 self-start sm:self-auto">
@@ -720,7 +694,7 @@ export default function BiteshipCourierConfig({
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                <span>Simpan Pengaturan Kurir Biteship</span>
+                <span>Simpan Pengaturan Pengiriman</span>
               </>
             )}
           </button>
