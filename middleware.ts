@@ -95,6 +95,8 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/acceptable-use/') ||
     pathname === '/refund' ||
     pathname.startsWith('/refund/') ||
+    pathname === '/store-original' ||
+    pathname.startsWith('/store-original/') ||
     pathname.startsWith('/gym') ||
     pathname.startsWith('/pos') ||
     pathname.startsWith('/hotel') ||

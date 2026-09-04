@@ -119,7 +119,8 @@ export default function TenantStorefrontPage() {
     "terms",
     "privacy",
     "acceptable-use",
-    "refund"
+    "refund",
+    "store-original"
   ]);
 
   if (tenantSlug === "login" || tenantSlug === "auth") {
