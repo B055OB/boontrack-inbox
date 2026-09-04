@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { 
   Zap, 
   ShieldCheck, 
@@ -50,18 +51,15 @@ export default function ShopLandingPage() {
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between">
           {/* Brand / Logo */}
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center font-black text-white text-lg shadow-sm shadow-blue-600/30 group-hover:bg-blue-700 transition">
-              B
-            </div>
-            <div>
-              <div className="font-extrabold text-lg tracking-tight text-slate-900 leading-tight">
-                BoonTrack <span className="text-blue-600 font-semibold text-sm">Shop</span>
-              </div>
-              <div className="text-[10px] text-slate-500 font-medium leading-none">
-                SaaS / Digital Platform
-              </div>
-            </div>
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/logo-shop.png"
+              alt="BoonTrack Shop"
+              width={160}
+              height={40}
+              className="h-8 md:h-9 w-auto object-contain"
+              priority
+            />
           </Link>
 
           {/* Menu Navigasi Desktop */}
