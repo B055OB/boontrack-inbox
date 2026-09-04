@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   TrendingUp,
   Target,
@@ -31,7 +31,8 @@ import {
   ChevronRight,
   Info,
   Clock,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -44,7 +45,7 @@ interface AdsTrackingProProps {
 interface CampaignRow {
   id: string;
   campaignName: string;
-  utmSource: 'meta' | 'tiktok' | 'google' | 'whatsapp' | 'affiliate';
+  utmSource: string;
   platformLabel: string;
   adSpend: number;
   clicks: number;
@@ -52,7 +53,8 @@ interface CampaignRow {
   closings: number;
   revenue: number;
   roas: number;
-  status: 'HOT' | 'STABLE' | 'NEEDS_OPT';
+  cr?: number;
+  status: 'HOT' | 'STABLE' | 'NEEDS_OPT' | string;
 }
 
 interface LeadScoreItem {
@@ -66,87 +68,6 @@ interface LeadScoreItem {
   intentAction: string;
   timestamp: string;
 }
-
-const SAMPLE_CAMPAIGNS: CampaignRow[] = [
-  {
-    id: 'cmp-1',
-    campaignName: 'fb_scale_winner_produk_v2',
-    utmSource: 'meta',
-    platformLabel: 'Meta Ads',
-    adSpend: 1500000,
-    clicks: 4320,
-    leads: 512,
-    closings: 184,
-    revenue: 9200000,
-    roas: 6.13,
-    status: 'HOT',
-  },
-  {
-    id: 'cmp-2',
-    campaignName: 'tt_traffic_masterclass_viral',
-    utmSource: 'tiktok',
-    platformLabel: 'TikTok Ads',
-    adSpend: 1200000,
-    clicks: 3890,
-    leads: 420,
-    closings: 132,
-    revenue: 6600000,
-    roas: 5.5,
-    status: 'HOT',
-  },
-  {
-    id: 'cmp-3',
-    campaignName: 'ig_retargeting_abandoned_cart',
-    utmSource: 'meta',
-    platformLabel: 'Instagram Ads',
-    adSpend: 650000,
-    clicks: 1420,
-    leads: 248,
-    closings: 98,
-    revenue: 4900000,
-    roas: 7.54,
-    status: 'HOT',
-  },
-  {
-    id: 'cmp-4',
-    campaignName: 'google_search_high_intent',
-    utmSource: 'google',
-    platformLabel: 'Google Search',
-    adSpend: 800000,
-    clicks: 980,
-    leads: 142,
-    closings: 46,
-    revenue: 2300000,
-    roas: 2.88,
-    status: 'STABLE',
-  },
-  {
-    id: 'cmp-5',
-    campaignName: 'wa_broadcast_vip_member_promo',
-    utmSource: 'whatsapp',
-    platformLabel: 'WA Broadcast',
-    adSpend: 100000,
-    clicks: 1250,
-    leads: 310,
-    closings: 122,
-    revenue: 6100000,
-    roas: 61.0,
-    status: 'HOT',
-  },
-  {
-    id: 'cmp-6',
-    campaignName: 'affiliate_andi_top_creator',
-    utmSource: 'affiliate',
-    platformLabel: 'Affiliate Ref',
-    adSpend: 0,
-    clicks: 980,
-    leads: 180,
-    closings: 64,
-    revenue: 3200000,
-    roas: 0,
-    status: 'STABLE',
-  },
-];
 
 const DAILY_TREND_DATA = [
   { day: 'Senin', clicks: 1240, leads: 142, orders: 48, revenue: 2400000, roas: 5.2 },
@@ -231,13 +152,56 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
   const [activeChartMetric, setActiveChartMetric] = useState<'revenue' | 'orders' | 'leads' | 'roas'>('revenue');
   const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
   const [searchCampaign, setSearchCampaign] = useState('');
-  const [campaigns, setCampaigns] = useState<CampaignRow[]>(SAMPLE_CAMPAIGNS);
+  const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState<boolean>(true);
   const [recentLeads, setRecentLeads] = useState<LeadScoreItem[]>(SAMPLE_RECENT_LEADS);
 
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [copiedScript, setCopiedScript] = useState(false);
   const [testLog, setTestLog] = useState<string[]>([]);
+
+  // Dynamic campaigns fetcher from GET /api/v1/analytics/campaigns?tenant_slug={tenant}
+  const fetchCampaigns = useCallback(async () => {
+    if (!tenantSlug) return;
+    setLoadingCampaigns(true);
+    try {
+      const res = await fetch(`/api/v1/analytics/campaigns?tenant_slug=${encodeURIComponent(tenantSlug)}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.success && Array.isArray(json.data)) {
+          const mapped: CampaignRow[] = json.data.map((item: any, idx: number) => ({
+            id: item.id || `cmp-${idx + 1}`,
+            campaignName: item.campaign_name || item.campaignName || 'Unnamed Campaign',
+            utmSource: item.utm_source || item.utmSource || 'direct',
+            platformLabel: item.platform || item.platformLabel || 'Direct / Organic',
+            adSpend: Number(item.ad_spend ?? item.adSpend ?? 0),
+            clicks: Number(item.clicks ?? 0),
+            leads: Number(item.leads_wa ?? item.leads ?? 0),
+            closings: Number(item.closings ?? 0),
+            revenue: Number(item.revenue ?? 0),
+            roas: Number(item.roas ?? 0),
+            cr: Number(item.cr ?? (item.clicks > 0 ? ((item.closings / item.clicks) * 100).toFixed(1) : 0)),
+            status: item.status || 'STABLE',
+          }));
+          setCampaigns(mapped);
+        } else {
+          setCampaigns([]);
+        }
+      } else {
+        setCampaigns([]);
+      }
+    } catch (err) {
+      console.warn('[AdsTrackingPro] Failed to fetch campaigns:', err);
+      setCampaigns([]);
+    } finally {
+      setLoadingCampaigns(false);
+    }
+  }, [tenantSlug]);
+
+  useEffect(() => {
+    fetchCampaigns();
+  }, [fetchCampaigns]);
 
   // Load configuration from Supabase or API
   useEffect(() => {
@@ -283,12 +247,12 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
 
   // Aggregated KPI metrics
   const totals = useMemo(() => {
-    const totalSpend = campaigns.reduce((acc, curr) => acc + curr.adSpend, 0);
+    const totalSpend = campaigns.reduce((acc, curr) => acc + (curr.adSpend || 0), 0);
     const totalClicks = campaigns.reduce((acc, curr) => acc + curr.clicks, 0);
     const totalLeads = campaigns.reduce((acc, curr) => acc + curr.leads, 0);
     const totalOrders = campaigns.reduce((acc, curr) => acc + curr.closings, 0);
     const totalRev = campaigns.reduce((acc, curr) => acc + curr.revenue, 0);
-    const blendedRoas = totalSpend > 0 ? (totalRev / totalSpend).toFixed(2) : '6.45';
+    const blendedRoas = totalSpend > 0 ? (totalRev / totalSpend).toFixed(2) : (totalRev > 0 ? '10.0+' : '0.00');
 
     return {
       totalSpend,
@@ -298,6 +262,22 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
       totalRev,
       blendedRoas,
     };
+  }, [campaigns]);
+
+  // Daily trend data (graceful zero base for new tenants)
+  const trendData = useMemo(() => {
+    if (campaigns.length === 0) {
+      return [
+        { day: 'Senin', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
+        { day: 'Selasa', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
+        { day: 'Rabu', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
+        { day: 'Kamis', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
+        { day: 'Jumat', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
+        { day: 'Sabtu', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
+        { day: 'Minggu', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
+      ];
+    }
+    return DAILY_TREND_DATA;
   }, [campaigns]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -461,14 +441,20 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
           </div>
           <div className="my-2">
             <div className="text-2xl font-black text-slate-900">
-              68.4% <span className="text-xs font-bold text-emerald-600">+12%</span>
+              {campaigns.length > 0 ? (
+                <>68.4% <span className="text-xs font-bold text-emerald-600">+12%</span></>
+              ) : (
+                '0%'
+              )}
             </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">Rasio Calon Pembeli Berkualitas Tinggi (HOT)</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {campaigns.length > 0 ? 'Rasio Calon Pembeli Berkualitas Tinggi (HOT)' : 'Belum ada data konversi lead iklan'}
+            </p>
           </div>
           <div className="flex items-center gap-2 text-[10px] font-bold">
-            <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">🔥 Hot: 68%</span>
-            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">⚡ Warm: 24%</span>
-            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600">❄️ Cold: 8%</span>
+            <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">🔥 Hot: {campaigns.length > 0 ? '68%' : '0%'}</span>
+            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">⚡ Warm: {campaigns.length > 0 ? '24%' : '0%'}</span>
+            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600">❄️ Cold: {campaigns.length > 0 ? '8%' : '0%'}</span>
           </div>
         </div>
 
@@ -508,10 +494,17 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
             </div>
             <p className="text-[11px] text-slate-500 mt-0.5">Target Minimum ROAS: <strong>3.0x</strong></p>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
-            <Sparkles className="w-3.5 h-3.5 shrink-0" />
-            <span>Scale-up Campaign Direkomendasikan</span>
-          </div>
+          {campaigns.length > 0 && Number(totals.blendedRoas) >= 3.0 ? (
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-xl border border-emerald-200">
+              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              <span>Scale-up Campaign Direkomendasikan</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200">
+              <Info className="w-3.5 h-3.5 shrink-0" />
+              <span>Menunggu Data Konversi Iklan</span>
+            </div>
+          )}
         </div>
 
       </div>
@@ -609,7 +602,7 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
         {/* Visual Interactive Bar & Area Chart (SVG Driven) */}
         <div className="space-y-4">
           <div className="h-64 w-full flex items-end justify-between gap-2 sm:gap-4 px-2 pt-6 pb-2 bg-slate-50/60 rounded-2xl border border-slate-100">
-            {DAILY_TREND_DATA.map((d, index) => {
+            {trendData.map((d, index) => {
               const currentVal =
                 activeChartMetric === 'revenue'
                   ? d.revenue
@@ -619,7 +612,7 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
                   ? d.orders
                   : d.roas;
 
-              const heightPct = Math.min(100, Math.max(15, (currentVal / maxMetricVal) * 100));
+              const heightPct = currentVal > 0 ? Math.min(100, Math.max(15, (currentVal / maxMetricVal) * 100)) : 4;
 
               return (
                 <div key={index} className="flex-1 flex flex-col items-center h-full justify-end group relative">
@@ -699,6 +692,18 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-2.5">
+            {/* Refresh Button */}
+            <button
+              type="button"
+              onClick={() => fetchCampaigns()}
+              disabled={loadingCampaigns}
+              className="w-full sm:w-auto p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition disabled:opacity-60 cursor-pointer"
+              title="Segarkan Data Kampanye"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingCampaigns ? 'animate-spin text-blue-600' : ''}`} />
+              <span className="sm:hidden text-xs">Refresh Data</span>
+            </button>
+
             {/* Platform Filter */}
             <select
               value={selectedPlatform}
@@ -727,72 +732,115 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
           </div>
         </div>
 
-        {/* Dynamic Attribution Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-black tracking-wider border-y border-slate-200">
-              <tr>
-                <th className="px-4 py-3">UTM Campaign & Platform</th>
-                <th className="px-4 py-3">Ad Spend</th>
-                <th className="px-4 py-3">Klik</th>
-                <th className="px-4 py-3 text-emerald-700">Lead WA</th>
-                <th className="px-4 py-3 text-indigo-700">Closing</th>
-                <th className="px-4 py-3">CR (%)</th>
-                <th className="px-4 py-3">Omzet Closing</th>
-                <th className="px-4 py-3 text-blue-700">ROAS</th>
-                <th className="px-4 py-3 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredCampaigns.length === 0 ? (
+        {/* Content Area: Loading State vs Empty State vs Dynamic Table */}
+        {loadingCampaigns ? (
+          <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-500">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <p className="text-xs font-bold text-slate-600">Memuat data atribusi campaign iklan...</p>
+          </div>
+        ) : campaigns.length === 0 ? (
+          /* Empty State untuk Tenant Baru */
+          <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-b from-slate-50/80 via-white to-slate-50/40 border-2 border-dashed border-slate-200 text-center flex flex-col items-center justify-center space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-xs">
+              <Target className="w-8 h-8" />
+            </div>
+            <div className="max-w-xl space-y-2">
+              <h4 className="text-base sm:text-lg font-black text-slate-900">
+                Belum Ada Data Konversi Iklan
+              </h4>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Gunakan parameter UTM pada tautan promosi Anda (contoh: <span className="font-mono text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-bold">?utm_source=meta&amp;utm_campaign=promo_gajian</span>) untuk melacak performa traffic, lead WhatsApp, dan omset closing secara otomatis di sini.
+              </p>
+            </div>
+            
+            <div className="pt-2 w-full max-w-lg">
+              <div className="p-3 bg-white border border-slate-200 rounded-2xl text-left shadow-xs flex items-center justify-between gap-3">
+                <div className="overflow-hidden">
+                  <span className="text-[10px] uppercase font-black text-slate-400 block tracking-wider">Format URL UTM Otomatis</span>
+                  <code className="text-xs font-mono text-slate-700 truncate block">
+                    ?utm_source=meta&amp;utm_campaign=promo_gajian
+                  </code>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('?utm_source=meta&utm_campaign=promo_gajian');
+                  }}
+                  className="shrink-0 px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl border border-blue-200 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Salin</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Dynamic Attribution Table */
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-600">
+              <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-black tracking-wider border-y border-slate-200">
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
-                    Tidak ditemukan data campaign yang sesuai dengan filter.
-                  </td>
+                  <th className="px-4 py-3">Campaign Name</th>
+                  <th className="px-4 py-3">Platform</th>
+                  <th className="px-4 py-3">Clicks</th>
+                  <th className="px-4 py-3 text-emerald-700">Leads WA</th>
+                  <th className="px-4 py-3 text-indigo-700">Closings</th>
+                  <th className="px-4 py-3">CR %</th>
+                  <th className="px-4 py-3">Omset Closing IDR</th>
+                  <th className="px-4 py-3 text-center">Status</th>
                 </tr>
-              ) : (
-                filteredCampaigns.map((c) => {
-                  const conversionRate = c.clicks > 0 ? ((c.closings / c.clicks) * 100).toFixed(1) : '0';
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredCampaigns.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                      Tidak ditemukan data campaign yang sesuai dengan filter.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredCampaigns.map((c) => {
+                    const crFormatted = c.cr !== undefined ? `${c.cr}%` : (c.clicks > 0 ? `${((c.closings / c.clicks) * 100).toFixed(1)}%` : '0%');
 
-                  return (
-                    <tr key={c.id} className="hover:bg-slate-50/80 transition">
-                      <td className="px-4 py-3.5">
-                        <div className="font-bold text-slate-900 font-mono">{c.campaignName}</div>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 bg-slate-100 text-slate-600 border border-slate-200">
-                          {c.platformLabel}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 font-semibold text-slate-700 whitespace-nowrap">
-                        {c.adSpend > 0 ? `Rp ${c.adSpend.toLocaleString('id-ID')}` : 'Rp 0 (Organic)'}
-                      </td>
-                      <td className="px-4 py-3.5 font-bold text-slate-900">{c.clicks.toLocaleString()}</td>
-                      <td className="px-4 py-3.5 font-bold text-emerald-600">{c.leads.toLocaleString()}</td>
-                      <td className="px-4 py-3.5 font-bold text-indigo-600">{c.closings.toLocaleString()}</td>
-                      <td className="px-4 py-3.5 font-bold text-slate-700">{conversionRate}%</td>
-                      <td className="px-4 py-3.5 font-black text-slate-900 whitespace-nowrap">
-                        Rp {c.revenue.toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-4 py-3.5 font-black text-blue-600 text-sm whitespace-nowrap">
-                        {c.roas > 0 ? `${c.roas.toFixed(2)}x` : 'N/A'}
-                      </td>
-                      <td className="px-4 py-3.5 text-center">
-                        {c.status === 'HOT' ? (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            🚀 Scale Up
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50/80 transition">
+                        <td className="px-4 py-3.5">
+                          <div className="font-bold text-slate-900 font-mono">{c.campaignName}</div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            {c.platformLabel}
                           </span>
-                        ) : (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
-                            ✅ Stabil
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                        </td>
+                        <td className="px-4 py-3.5 font-bold text-slate-900">{c.clicks.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 font-bold text-emerald-600">{c.leads.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 font-bold text-indigo-600">{c.closings.toLocaleString('id-ID')}</td>
+                        <td className="px-4 py-3.5 font-bold text-slate-700">{crFormatted}</td>
+                        <td className="px-4 py-3.5 font-black text-slate-900 whitespace-nowrap">
+                          Rp {c.revenue.toLocaleString('id-ID')}
+                        </td>
+                        <td className="px-4 py-3.5 text-center">
+                          {c.status === 'HOT' ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              🚀 Scale Up
+                            </span>
+                          ) : c.status === 'NEEDS_OPT' ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200">
+                              ⚠️ Perlu Optimasi
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
+                              ✅ Stabil
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* ── 3. SISTEM LEAD SCORING OTOMATIS & RECENT INTENT BUYERS ── */}
