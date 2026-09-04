@@ -24,7 +24,8 @@ import {
   Star,
   ArrowDown,
   Scale,
-  Flame
+  Flame,
+  Zap
 } from 'lucide-react';
 import { syncAttributionSession } from '@/lib/attribution';
 import { 
@@ -90,14 +91,73 @@ function SingleProductContent() {
 
   // Deteksi Tipe Produk & Pengiriman (Khusus Produk Fisik)
   const isPhysical = product.category === 'fisik';
-  const SHIPPING_OPTIONS = [
-    { id: 'reg', name: 'J&T / SiCepat Regular', price: 20000, eta: '2-3 hari' },
-    { id: 'exp', name: 'Kurir Express Next Day', price: 35000, eta: '1 hari' },
-    { id: 'cargo', name: 'Kargo Hemat', price: 15000, eta: '4-5 hari' }
+  const BASE_SHIPPING_OPTIONS = [
+    { id: 'reg', name: 'J&T / SiCepat Regular', price: 20000, eta: '2-3 hari', type: 'regular', badge: 'Reguler' },
+    { id: 'exp', name: 'Kurir Express Next Day', price: 35000, eta: '1 hari', type: 'express', badge: 'Express' },
+    { id: 'cargo', name: 'Kargo Hemat', price: 15000, eta: '4-5 hari', type: 'cargo', badge: 'Kargo' }
   ];
+  const [instantCouriers, setInstantCouriers] = useState<any[]>([]);
+  const [isLoadingInstant, setIsLoadingInstant] = useState(false);
   const [selectedShippingId, setSelectedShippingId] = useState<string>('reg');
   const [shippingAddress, setShippingAddress] = useState<string>('');
   const [shippingCity, setShippingCity] = useState<string>('');
+
+  const availableShippingOptions = useMemo(() => {
+    return [...BASE_SHIPPING_OPTIONS, ...instantCouriers];
+  }, [instantCouriers]);
+
+  // Efek pemanggilan tarif instan Biteship saat pembeli memasukkan kota Bandung atau kode pos 40xxx
+  useEffect(() => {
+    if (!isPhysical) return;
+
+    const queryCity = shippingCity.trim();
+    const queryAddress = shippingAddress.trim();
+
+    const hasBandungOrPostal = 
+      queryCity.toLowerCase().includes('bandung') ||
+      queryAddress.toLowerCase().includes('bandung') ||
+      /\b40\d{3}\b/.test(queryCity) ||
+      /\b40\d{3}\b/.test(queryAddress);
+
+    if (!hasBandungOrPostal) {
+      if (instantCouriers.length > 0) {
+        setInstantCouriers([]);
+        if (selectedShippingId.startsWith('biteship_')) {
+          setSelectedShippingId('reg');
+        }
+      }
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsLoadingInstant(true);
+      try {
+        const res = await fetch('/api/v1/shipping/rates/instant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            destination_city: queryCity,
+            destination_address: queryAddress,
+            destination_postal_code: (queryCity.match(/\b40\d{3}\b/) || queryAddress.match(/\b40\d{3}\b/) || [''])[0]
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.couriers) && data.couriers.length > 0) {
+            setInstantCouriers(data.couriers);
+          } else {
+            setInstantCouriers([]);
+          }
+        }
+      } catch (err) {
+        console.warn('[Rates Instant Error]', err);
+      } finally {
+        setIsLoadingInstant(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [isPhysical, shippingCity, shippingAddress]);
 
   // Modul Voucher Diskon Fleksibel
   const initialVoucher: VoucherConfig | null = config.voucher || (config.discount_coupon ? {
@@ -201,7 +261,7 @@ function SingleProductContent() {
   const netProductPrice = Math.max(0, basePrice - productDiscount);
 
   // 2. Ongkos Kirim & Subsidi (Khusus Produk Fisik)
-  const selectedShipping = SHIPPING_OPTIONS.find(s => s.id === selectedShippingId) || SHIPPING_OPTIONS[0];
+  const selectedShipping = availableShippingOptions.find(s => s.id === selectedShippingId) || availableShippingOptions[0];
   const baseShippingCost = isPhysical ? selectedShipping.price : 0;
   let shippingSubsidy = 0;
   if (isPhysical && appliedVoucher) {
@@ -293,7 +353,7 @@ function SingleProductContent() {
         shippingSubsidy,
         netShippingCost,
         shippingAddress: isPhysical ? `${shippingAddress}, ${shippingCity}` : undefined,
-        shippingCourier: isPhysical ? selectedShipping.name : undefined,
+        shippingCourier: isPhysical ? (selectedShipping.eta ? `${selectedShipping.name} (${selectedShipping.eta})` : selectedShipping.name) : undefined,
         voucherCode: appliedVoucher?.code || undefined,
         adminFee: 0,
         uniqueCode: currentUniqueCode,
@@ -481,29 +541,86 @@ function SingleProductContent() {
                 onChange={(e) => setShippingCity(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
               />
+              <span className="text-[10px] text-slate-500 mt-1 block">
+                💡 Masukkan kota &quot;Bandung&quot; atau kode pos 40xxx untuk mengaktifkan opsi kurir instan (GoSend &amp; GrabExpress 1-2 Jam via Biteship).
+              </span>
             </div>
 
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Pilih Layanan Kurir</label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {SHIPPING_OPTIONS.map((opt) => (
-                  <div
-                    key={opt.id}
-                    onClick={() => setSelectedShippingId(opt.id)}
-                    className={`p-2.5 rounded-xl border cursor-pointer transition ${
-                      selectedShippingId === opt.id
-                        ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
-                        : 'bg-white border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="font-bold text-slate-900 text-[11px]">{opt.name}</div>
-                    <div className="text-[10px] text-slate-500">{opt.eta}</div>
-                    <div className="text-xs font-black text-blue-600 mt-1">
-                      Rp {opt.price.toLocaleString('id-ID')}
-                    </div>
-                  </div>
-                ))}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-slate-700 block text-xs">Pilih Layanan Kurir</label>
+                {isLoadingInstant && (
+                  <span className="text-[10px] text-blue-600 flex items-center gap-1 font-semibold animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Menghitung tarif instan Biteship...
+                  </span>
+                )}
               </div>
+
+              {/* 1. Kurir Reguler & Kargo */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Kurir Reguler &amp; Kargo</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {BASE_SHIPPING_OPTIONS.map((opt) => (
+                    <div
+                      key={opt.id}
+                      onClick={() => setSelectedShippingId(opt.id)}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition ${
+                        selectedShippingId === opt.id
+                          ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="font-bold text-slate-900 text-[11px]">{opt.name}</div>
+                      <div className="text-[10px] text-slate-500">{opt.eta}</div>
+                      <div className="text-xs font-black text-blue-600 mt-1">
+                        Rp {opt.price.toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Opsi Kurir Instan Biteship (Muncul jika alamat / kota Bandung terdeteksi) */}
+              {instantCouriers.length > 0 && (
+                <div className="mt-2.5 pt-2 border-t border-amber-200/70 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                      <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
+                      Kurir Instan Biteship (Area Bandung)
+                    </span>
+                    <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                      Tiba Hari Ini (1-2 Jam)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {instantCouriers.map((opt) => (
+                      <div
+                        key={opt.id}
+                        onClick={() => setSelectedShippingId(opt.id)}
+                        className={`p-2.5 rounded-xl border cursor-pointer transition ${
+                          selectedShippingId === opt.id
+                            ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs'
+                            : 'bg-white border-emerald-200 hover:border-emerald-400'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 text-[11px]">{opt.name}</span>
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                            {opt.eta}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          {opt.name} - {opt.eta}: Rp {opt.price.toLocaleString('id-ID')}
+                        </div>
+                        <div className="text-xs font-black text-emerald-700 mt-1 flex items-center justify-between">
+                          <span>Rp {opt.price.toLocaleString('id-ID')}</span>
+                          <span className="text-[9px] text-emerald-600 font-semibold">{opt.badge || 'Instan'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
