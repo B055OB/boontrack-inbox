@@ -50,6 +50,7 @@ import WhatsAppWabaConfig from './components/WhatsAppWabaConfig';
 import AdsTrackingPro from './components/AdsTrackingPro';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
+import BoonPilotWidget from '@/components/BoonPilotWidget';
 import { 
   ProductItem, 
   SinglePageConfig, 
@@ -3135,6 +3136,9 @@ export default function TenantDashboardPage() {
           }}
         />
       )}
+
+      {/* BOONPILOT AI COPILOT FLOATING WIDGET */}
+      <BoonPilotWidget tenantSlug={params.tenant} />
 
     </main>
   );
