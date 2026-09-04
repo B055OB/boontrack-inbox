@@ -25,14 +25,18 @@ import {
   ArrowDown,
   Scale,
   Flame,
-  Zap
+  Zap,
+  MessageCircle
 } from 'lucide-react';
 import { syncAttributionSession } from '@/lib/attribution';
 import { 
   initMetaPixel, 
   initTikTokPixel, 
   trackViewContent, 
+  trackAddToCart,
   trackInitiateCheckout,
+  trackAddPaymentInfo,
+  trackWhatsAppConsultation,
   trackClientPurchase,
   getActiveAffiliateCode,
   getTrackingData
@@ -311,12 +315,61 @@ function SingleProductContent() {
     }
   }, [tenant, searchParams, slug, product.name, basePrice]);
 
-  const handleOpenCheckout = () => {
-    trackInitiateCheckout({
-      id: slug,
+  // ── TRACKING 2 JALUR: DIRECT CHECKOUT (FULL FUNNEL) & WHATSAPP CONSULTATION ──
+  const [hasTrackedAddToCart, setHasTrackedAddToCart] = useState(false);
+  const [hasTrackedInitiateCheckout, setHasTrackedInitiateCheckout] = useState(false);
+  const [hasTrackedPaymentInfo, setHasTrackedPaymentInfo] = useState(false);
+
+  const triggerAddToCart = () => {
+    if (!hasTrackedAddToCart) {
+      trackAddToCart({
+        id: slug,
+        name: product.name,
+        price: basePrice
+      });
+      setHasTrackedAddToCart(true);
+    }
+  };
+
+  const triggerInitiateCheckout = () => {
+    if (!hasTrackedInitiateCheckout) {
+      trackInitiateCheckout({
+        id: slug,
+        name: product.name,
+        price: basePrice
+      });
+      setHasTrackedInitiateCheckout(true);
+    }
+  };
+
+  const triggerAddPaymentInfo = (method?: string) => {
+    if (!hasTrackedPaymentInfo) {
+      trackAddPaymentInfo({
+        name: product.name,
+        price: totalAmount,
+        paymentMethod: method || paymentMethod
+      });
+      setHasTrackedPaymentInfo(true);
+    }
+  };
+
+  // Prefill Pesan WhatsApp: "Halo [Nama Toko], saya sedang melihat produk [Nama Produk] di website dan mau tanya detailnya."
+  const storeDisplayName = (tenant.charAt(0).toUpperCase() + tenant.slice(1));
+  const waConsultationMessage = `Halo ${storeDisplayName}, saya sedang melihat produk ${product.name} di website dan mau tanya detailnya.`;
+  const csWaNumber = (config.whatsapp_number || '6281237450222').replace(/\D/g, '');
+  const waConsultationUrl = `https://wa.me/${csWaNumber}?text=${encodeURIComponent(waConsultationMessage)}`;
+
+  const handleWhatsAppConsultation = () => {
+    trackWhatsAppConsultation({
       name: product.name,
       price: basePrice
     });
+    window.open(waConsultationUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleOpenCheckout = () => {
+    triggerAddToCart();
+    triggerInitiateCheckout();
     const checkoutEl = document.getElementById('checkout-section');
     if (checkoutEl) {
       checkoutEl.scrollIntoView({ behavior: 'smooth' });
@@ -399,6 +452,7 @@ function SingleProductContent() {
             required
             placeholder="Contoh: Budi Pratama"
             value={buyerName}
+            onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
             onChange={(e) => setBuyerName(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs transition"
           />
@@ -413,6 +467,7 @@ function SingleProductContent() {
             required
             placeholder="Contoh: 081234567890"
             value={buyerPhone}
+            onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
             onChange={(e) => setBuyerPhone(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs font-mono transition"
           />
@@ -427,6 +482,7 @@ function SingleProductContent() {
             required
             placeholder="nama@email.com"
             value={buyerEmail}
+            onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
             onChange={(e) => setBuyerEmail(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs transition"
           />
@@ -440,7 +496,7 @@ function SingleProductContent() {
         {/* QRIS Option (Jika Diaktifkan) */}
         {allowQris && (
           <label
-            onClick={() => setPaymentMethod('qris')}
+            onClick={() => { setPaymentMethod('qris'); triggerAddPaymentInfo('qris'); }}
             className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition ${
               paymentMethod === 'qris'
                 ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500/30'
@@ -451,7 +507,7 @@ function SingleProductContent() {
               type="radio"
               name="payment_method"
               checked={paymentMethod === 'qris'}
-              onChange={() => setPaymentMethod('qris')}
+              onChange={() => { setPaymentMethod('qris'); triggerAddPaymentInfo('qris'); }}
               className="mt-1 text-emerald-600 focus:ring-emerald-500"
             />
             <div className="flex-1">
@@ -474,7 +530,7 @@ function SingleProductContent() {
         {/* Transfer Manual Option (Jika Diaktifkan) */}
         {allowManual && (
           <label
-            onClick={() => setPaymentMethod('manual_transfer')}
+            onClick={() => { setPaymentMethod('manual_transfer'); triggerAddPaymentInfo('manual_transfer'); }}
             className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition ${
               paymentMethod === 'manual_transfer'
                 ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/30'
@@ -485,7 +541,7 @@ function SingleProductContent() {
               type="radio"
               name="payment_method"
               checked={paymentMethod === 'manual_transfer'}
-              onChange={() => setPaymentMethod('manual_transfer')}
+              onChange={() => { setPaymentMethod('manual_transfer'); triggerAddPaymentInfo('manual_transfer'); }}
               className="mt-1 text-blue-600 focus:ring-blue-500"
             />
             <div className="flex-1">
@@ -563,7 +619,7 @@ function SingleProductContent() {
                   {BASE_SHIPPING_OPTIONS.map((opt) => (
                     <div
                       key={opt.id}
-                      onClick={() => setSelectedShippingId(opt.id)}
+                      onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
                       className={`p-2.5 rounded-xl border cursor-pointer transition ${
                         selectedShippingId === opt.id
                           ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
@@ -596,7 +652,7 @@ function SingleProductContent() {
                     {instantCouriers.map((opt) => (
                       <div
                         key={opt.id}
-                        onClick={() => setSelectedShippingId(opt.id)}
+                        onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
                         className={`p-2.5 rounded-xl border cursor-pointer transition ${
                           selectedShippingId === opt.id
                             ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs'
@@ -765,6 +821,16 @@ function SingleProductContent() {
             <ArrowRight className="w-4 h-4" />
           </>
         )}
+      </button>
+
+      {/* ── CTA KONSULTASI WHATSAPP SEKUNDER (Jalur Chat-to-Close) ── */}
+      <button
+        type="button"
+        onClick={handleWhatsAppConsultation}
+        className="w-full py-3 px-4 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-[0.99]"
+      >
+        <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+        <span>💬 Masih ragu atau ingin tanya dulu? Hubungi Asisten WhatsApp</span>
       </button>
 
       <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400 pt-1">
@@ -1114,6 +1180,25 @@ function SingleProductContent() {
           </div>
         </div>
       )}
+
+      {/* ── FLOATING WHATSAPP BUTTON (POJOK KANAN BAWAH) ── */}
+      <div className="fixed bottom-24 sm:bottom-20 right-4 sm:right-6 z-40">
+        <button
+          type="button"
+          onClick={handleWhatsAppConsultation}
+          title="Hubungi Asisten WhatsApp"
+          className="group relative flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-full shadow-2xl shadow-emerald-600/40 border border-emerald-400/40 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        >
+          <span className="absolute -top-1 -right-1 flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-300"></span>
+          </span>
+          <MessageCircle className="w-5 h-5 text-white shrink-0" />
+          <span className="text-xs font-bold whitespace-nowrap hidden sm:inline">
+            Tanya Asisten WhatsApp
+          </span>
+        </button>
+      </div>
     </div>
   );
 }

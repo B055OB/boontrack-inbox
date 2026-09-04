@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
+import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
 
 interface Props {
   params: Promise<{ order_id: string }>;
@@ -116,6 +117,22 @@ export default function CheckoutPage({ params }: Props) {
 
     return () => clearInterval(timer);
   }, [orderId]);
+
+  // Trigger Purchase (Meta) & CompletePayment (TikTok) dengan deduplikasi event_id
+  const [hasTrackedPurchase, setHasTrackedPurchase] = useState(false);
+  useEffect(() => {
+    if (order && !hasTrackedPurchase) {
+      const gross = Number(order.gross_amount || order.total_amount || order.amount || 0);
+      const title = order.product_title || order.product_name || 'Checkout Order';
+
+      // Pastikan Pixel Terinisialisasi
+      initMetaPixel('123456789012345');
+      initTikTokPixel('C1234567890ABCDE');
+
+      trackClientPurchase(orderId, gross, title);
+      setHasTrackedPurchase(true);
+    }
+  }, [order, orderId, hasTrackedPurchase]);
 
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);

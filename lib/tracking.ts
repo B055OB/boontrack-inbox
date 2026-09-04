@@ -253,6 +253,77 @@ export function trackViewContent(product: { name: string; price: number; id?: nu
   }
 }
 
+export function trackAddToCart(product: { name: string; price: number; id?: number | string }): void {
+  if (typeof window === "undefined") return;
+  const win = window as unknown as Record<string, any>;
+
+  if (win.fbq) {
+    win.fbq("track", "AddToCart", {
+      content_name: product.name,
+      content_ids: [String(product.id || "")],
+      content_type: "product",
+      value: product.price,
+      currency: "IDR"
+    });
+  }
+
+  if (win.ttq) {
+    win.ttq.track("AddToCart", {
+      content_name: product.name,
+      content_id: String(product.id || ""),
+      value: product.price,
+      currency: "IDR"
+    });
+  }
+}
+
+export function trackAddPaymentInfo(product: { name: string; price: number; paymentMethod?: string }): void {
+  if (typeof window === "undefined") return;
+  const win = window as unknown as Record<string, any>;
+
+  if (win.fbq) {
+    win.fbq("track", "AddPaymentInfo", {
+      content_name: product.name,
+      value: product.price,
+      currency: "IDR"
+    });
+  }
+
+  if (win.ttq) {
+    win.ttq.track("AddPaymentInfo", {
+      content_name: product.name,
+      value: product.price,
+      currency: "IDR"
+    });
+  }
+}
+
+export function trackWhatsAppConsultation(product: { name: string; price: number }): void {
+  if (typeof window === "undefined") return;
+  const win = window as unknown as Record<string, any>;
+
+  if (win.fbq) {
+    win.fbq("track", "Contact", {
+      content_name: product.name,
+      value: product.price,
+      currency: "IDR"
+    });
+    win.fbq("track", "Lead", {
+      content_name: product.name,
+      value: product.price,
+      currency: "IDR"
+    });
+  }
+
+  if (win.ttq) {
+    win.ttq.track("Contact", {
+      content_name: product.name,
+      value: product.price,
+      currency: "IDR"
+    });
+  }
+}
+
 export function trackInitiateCheckout(
   productOrTitle: string | { name?: string; title?: string; price: number; id?: number | string },
   amount?: number

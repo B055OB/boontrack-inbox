@@ -53,6 +53,7 @@ export interface SinglePageConfig {
   enable_qris: boolean;
   enable_manual_transfer: boolean;
   affiliate_commission_rate: number;
+  whatsapp_number?: string;
 }
 
 export interface ProductItem {
