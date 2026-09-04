@@ -625,12 +625,14 @@ export default function TenantDashboardPage() {
         </header>
 
         {/* TABS NAVIGATION */}
-        <div className="px-2 sm:px-6 flex items-center justify-between gap-2 touch-manipulation bg-white">
-          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar text-xs font-bold w-full touch-pan-x py-1 relative z-10">
+        <div className="px-2 sm:px-6 flex items-center justify-between gap-2 touch-manipulation bg-white relative z-10">
+          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain text-xs font-bold w-full py-1 relative z-10">
             <button
               type="button"
+              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('inbox'); }}
               onClick={() => setActiveTab('inbox')}
-              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                 activeTab === 'inbox'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -651,8 +653,10 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
+              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('catalog'); }}
               onClick={() => setActiveTab('catalog')}
-              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                 activeTab === 'catalog'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -664,8 +668,10 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
+              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('ai_knowledge'); }}
               onClick={() => setActiveTab('ai_knowledge')}
-              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                 activeTab === 'ai_knowledge'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -677,8 +683,10 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
+              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('integration'); }}
               onClick={() => setActiveTab('integration')}
-              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                 activeTab === 'integration'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -690,8 +698,10 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
+              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('ads_tracking'); }}
               onClick={() => setActiveTab('ads_tracking')}
-              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                 activeTab === 'ads_tracking'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -706,8 +716,10 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
+              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('biteship'); }}
               onClick={() => setActiveTab('biteship')}
-              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                 activeTab === 'biteship'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -722,8 +734,10 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
+              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('broadcast'); }}
               onClick={() => setActiveTab('broadcast')}
-              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                 activeTab === 'broadcast'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -738,8 +752,10 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
+              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('whatsapp'); }}
               onClick={() => setActiveTab('whatsapp')}
-              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
                 activeTab === 'whatsapp'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -1278,7 +1294,7 @@ export default function TenantDashboardPage() {
               </div>
 
               {/* Navigation Tab Bar Formula Konversi */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-pan-x pb-1.5 border-b border-slate-200">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain pb-1.5 border-b border-slate-200 relative z-10">
                 {[
                   { id: 'hook', label: '1. Hook & Hero', icon: '🎯' },
                   { id: 'problem_solution', label: '2. Problem & Solusi', icon: '⚡' },
@@ -1290,8 +1306,10 @@ export default function TenantDashboardPage() {
                   <button
                     key={tab.id}
                     type="button"
+                    onTouchEnd={(e) => { e.stopPropagation(); setActiveBuilderTab(tab.id as any); }}
                     onClick={() => setActiveBuilderTab(tab.id as any)}
-                    className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer touch-manipulation select-none relative z-10 ${
+                    style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+                    className={`select-none pointer-events-auto shrink-0 relative z-20 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
                       activeBuilderTab === tab.id
                         ? 'bg-blue-600 text-white shadow-sm'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
