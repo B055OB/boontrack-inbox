@@ -45,3 +45,26 @@ body {
   padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
 }
 
+/* iOS Safari: Nonaktifkan Double-Tap to Zoom & 300ms Touch Delay */
+button,
+a,
+input,
+select,
+textarea,
+[role="button"],
+.touch-manipulation,
+.tab-btn {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Smooth Horizontal Scroll without visible ugly scrollbars on mobile */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+

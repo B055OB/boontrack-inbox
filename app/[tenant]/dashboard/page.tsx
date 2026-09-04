@@ -587,162 +587,175 @@ export default function TenantDashboardPage() {
   return (
     <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
       
-      {/* TOP NAVBAR */}
-      <header className="bg-white border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30 shadow-xs">
-        <div className="flex items-center gap-4">
-          <Link
-            href={`/${tenantSlug}`}
-            target="_blank"
-            className="text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-3.5 py-2 rounded-xl border border-slate-200 transition inline-flex items-center gap-1.5 shadow-xs"
-          >
-            <Store className="w-3.5 h-3.5 text-slate-500" />
-            <span>Lihat Etalase Toko</span>
-            <ExternalLink className="w-3 h-3 opacity-60" />
-          </Link>
+      {/* STICKY TOP WRAPPER (HEADER + TABS NAVIGATION) */}
+      <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
+        {/* TOP NAVBAR */}
+        <header className="px-4 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <Link
+              href={`/${tenantSlug}`}
+              target="_blank"
+              className="text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl border border-slate-200 transition inline-flex items-center gap-1.5 shadow-xs shrink-0"
+            >
+              <Store className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden sm:inline">Lihat Etalase Toko</span>
+              <span className="sm:hidden">Toko</span>
+              <ExternalLink className="w-3 h-3 opacity-60" />
+            </Link>
 
-          <div className="h-5 w-[1px] bg-slate-200 hidden sm:block" />
+            <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
 
-          <div className="flex items-center gap-2">
-            <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight">
-              {displayName}
-            </h1>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-              Merchant Panel
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <h1 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-tight truncate">
+                {displayName}
+              </h1>
+              <span className="text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                Panel
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs shrink-0">
+            <span className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5 text-[11px] sm:text-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="hidden sm:inline">Storefront Active</span>
+              <span className="sm:hidden">Online</span>
             </span>
           </div>
-        </div>
+        </header>
 
-        <div className="flex items-center gap-2 text-xs">
-          <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Storefront Active</span>
-          </span>
-        </div>
-      </header>
+        {/* TABS NAVIGATION */}
+        <div className="px-2 sm:px-6 flex items-center justify-between gap-2 touch-manipulation bg-white">
+          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar text-xs font-bold w-full touch-pan-x py-1 relative z-10">
+            <button
+              type="button"
+              onClick={() => setActiveTab('inbox')}
+              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+                activeTab === 'inbox'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 text-blue-600" />
+              <span>Live CS & Omnichannel</span>
+              {isProTenant ? (
+                <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+                  ACTIVE
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-1">
+                  <Lock className="w-2.5 h-2.5" /> PRO
+                </span>
+              )}
+            </button>
 
-      {/* TABS NAVIGATION */}
-      <div className="bg-white border-b border-slate-200 px-6 flex items-center justify-between gap-3 sticky top-[57px] z-20 shadow-xs">
-        <div className="flex items-center gap-4 overflow-x-auto text-xs font-bold">
-          <button
-            onClick={() => setActiveTab('inbox')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'inbox'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 text-blue-600" />
-            <span>Live CS & Omnichannel</span>
-            {isProTenant ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab('catalog')}
+              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+                activeTab === 'catalog'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              <span>Katalog Produk ({products.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('ai_knowledge')}
+              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+                activeTab === 'ai_knowledge'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Brain className="w-4 h-4" />
+              <span>AI Knowledge & Bot</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('integration')}
+              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+                activeTab === 'integration'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <CreditCard className="w-4 h-4 text-emerald-600" />
+              <span>Laporan & Keuangan</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('ads_tracking')}
+              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+                activeTab === 'ads_tracking'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Target className="w-4 h-4 text-blue-600" />
+              <span>Ads Tracking Pro</span>
+              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
+                CAPI
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('biteship')}
+              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+                activeTab === 'biteship'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Truck className="w-4 h-4 text-emerald-600" />
+              <span>Kurir Biteship</span>
               <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
-                ACTIVE
+                ONGKIR
               </span>
-            ) : (
-              <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-1">
-                <Lock className="w-2.5 h-2.5" /> PRO
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('broadcast')}
+              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+                activeTab === 'broadcast'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Radio className="w-4 h-4 text-emerald-600" />
+              <span>Broadcast WA Masal</span>
+              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+                BLAST
               </span>
-            )}
-          </button>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('catalog')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'catalog'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Package className="w-4 h-4" />
-            <span>Katalog Produk ({products.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('ai_knowledge')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'ai_knowledge'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Brain className="w-4 h-4" />
-            <span>AI Knowledge & Bot</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('integration')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'integration'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <CreditCard className="w-4 h-4 text-emerald-600" />
-            <span>Laporan & Keuangan</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('ads_tracking')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'ads_tracking'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Target className="w-4 h-4 text-blue-600" />
-            <span>Ads Tracking Pro</span>
-            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
-              CAPI
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('biteship')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'biteship'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Truck className="w-4 h-4 text-emerald-600" />
-            <span>Kurir Biteship</span>
-            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
-              ONGKIR
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('broadcast')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'broadcast'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Radio className="w-4 h-4 text-emerald-600" />
-            <span>Broadcast WA Masal</span>
-            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
-              BLAST
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('whatsapp')}
-            className={`py-3.5 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'whatsapp'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 text-emerald-600" />
-            <span>Koneksi WhatsApp</span>
-          </button>
-        </div>
-
-        {saveFeedback && (
-          <div className="text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 animate-in fade-in">
-            {saveFeedback}
+            <button
+              type="button"
+              onClick={() => setActiveTab('whatsapp')}
+              className={`shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation select-none relative z-10 ${
+                activeTab === 'whatsapp'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 text-emerald-600" />
+              <span>Koneksi WhatsApp</span>
+            </button>
           </div>
-        )}
+
+          {saveFeedback && (
+            <div className="hidden md:block text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 animate-in fade-in shrink-0">
+              {saveFeedback}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
@@ -1265,7 +1278,7 @@ export default function TenantDashboardPage() {
               </div>
 
               {/* Navigation Tab Bar Formula Konversi */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-pan-x pb-1.5 border-b border-slate-200">
                 {[
                   { id: 'hook', label: '1. Hook & Hero', icon: '🎯' },
                   { id: 'problem_solution', label: '2. Problem & Solusi', icon: '⚡' },
@@ -1278,7 +1291,7 @@ export default function TenantDashboardPage() {
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveBuilderTab(tab.id as any)}
-                    className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                    className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer touch-manipulation select-none relative z-10 ${
                       activeBuilderTab === tab.id
                         ? 'bg-blue-600 text-white shadow-sm'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
