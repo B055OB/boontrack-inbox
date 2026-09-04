@@ -1,11 +1,16 @@
 import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 
-interface CreateOrderPayload {
+export interface CreateOrderPayload {
   tenantSlug: string;
   productId: string;
   productTitle: string;
   amount: number;
+  basePrice?: number;
+  adminFee?: number;
+  uniqueCode?: number;
+  paymentMethod?: 'qris' | 'manual_transfer';
+  affiliateCommission?: number;
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
@@ -20,6 +25,14 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   const orderId = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
+  const paymentMethod = payload.paymentMethod || 'qris';
+  const basePrice = payload.basePrice ?? payload.amount;
+  const adminFee = payload.adminFee ?? (paymentMethod === 'manual_transfer' ? 5000 : 0);
+  const uniqueCode = payload.uniqueCode ?? 0;
+  const grossAmount = payload.amount || (basePrice + adminFee + uniqueCode);
+  // Komisi affiliate 30% dihitung murni dari harga dasar (net), terpisah dari admin fee & kode unik
+  const affiliateCommission = payload.affiliateCommission ?? Math.round(basePrice * 0.3);
+
   // 1. Simpan order ke database Supabase
   const { error: orderError } = await supabase
     .from("orders")
@@ -28,7 +41,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       tenant_slug: payload.tenantSlug,
       product_id: payload.productId,
       product_title: payload.productTitle,
-      gross_amount: payload.amount,
+      gross_amount: grossAmount,
+      base_price: basePrice,
+      admin_fee: adminFee,
+      unique_code: uniqueCode,
+      payment_method: paymentMethod,
+      affiliate_commission: affiliateCommission,
       customer_name: payload.customerName,
       customer_phone: payload.customerPhone,
       customer_email: payload.customerEmail || "",
@@ -55,7 +73,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         customer_phone: payload.customerPhone,
         customer_email: payload.customerEmail || "",
         product_name: payload.productTitle,
-        gross_amount: payload.amount,
+        gross_amount: grossAmount,
+        base_price: basePrice,
+        admin_fee: adminFee,
+        unique_code: uniqueCode,
+        payment_method: paymentMethod,
+        affiliate_commission: affiliateCommission,
         status: "PENDING",
         affiliate_code: payload.affiliateCode || null,
         created_at: new Date().toISOString()
@@ -65,52 +88,55 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
   }
 
-  // 2. Request pembuatan QRIS / Invoice ke Backend API
+  // 2. Request pembuatan QRIS / Invoice ke Backend API (jika QRIS)
   let qrString = "";
-  let invoiceUrl = "";
+  let invoiceUrl = `/checkout/${orderId}`;
 
-  const paymentEndpoints = [
-    getBackendApiUrl("/api/v1/payments/qris/create"),
-    "https://api.boontrack.com/api/v1/payments/qris/create",
-    "https://boontrack-core-production.up.railway.app/api/v1/payments/qris/create"
-  ];
+  if (paymentMethod === 'qris') {
+    const paymentEndpoints = [
+      getBackendApiUrl("/api/v1/payments/qris/create"),
+      "https://api.boontrack.com/api/v1/payments/qris/create",
+      "https://boontrack-core-production.up.railway.app/api/v1/payments/qris/create"
+    ];
 
-  const requestBody = JSON.stringify({
-    external_id: orderId,
-    amount: payload.amount,
-    tenant_slug: payload.tenantSlug,
-    customer_phone: payload.customerPhone,
-    customer_name: payload.customerName,
-    product_name: payload.productTitle,
-    metadata: {
-      customer_email: payload.customerEmail || null,
-      affiliate_code: payload.affiliateCode || null,
-      tracking: payload.tracking || {}
-    }
-  });
-
-  for (const endpoint of paymentEndpoints) {
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: requestBody
-      });
-
-      if (res.ok) {
-        const paymentResult = await res.json();
-        qrString = paymentResult.qr_string || paymentResult.qr_content || "";
-        invoiceUrl = paymentResult.qr_code_url || paymentResult.invoice_url || paymentResult.payment_url || "";
-        if (qrString || invoiceUrl) break;
+    const requestBody = JSON.stringify({
+      external_id: orderId,
+      amount: grossAmount,
+      tenant_slug: payload.tenantSlug,
+      customer_phone: payload.customerPhone,
+      customer_name: payload.customerName,
+      product_name: payload.productTitle,
+      metadata: {
+        customer_email: payload.customerEmail || null,
+        affiliate_code: payload.affiliateCode || null,
+        payment_method: paymentMethod,
+        base_price: basePrice,
+        admin_fee: adminFee,
+        unique_code: uniqueCode,
+        affiliate_commission: affiliateCommission,
+        tracking: payload.tracking || {}
       }
-    } catch (apiErr) {
-      console.warn(`[Checkout Service] Error calling ${endpoint}:`, apiErr);
-    }
-  }
+    });
 
-  // 3. Fallback seamless jika gateway belum menghasilkan link eksternal
-  if (!invoiceUrl && !qrString) {
-    invoiceUrl = `/checkout/${orderId}`;
+    for (const endpoint of paymentEndpoints) {
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody
+        });
+
+        if (res.ok) {
+          const paymentResult = await res.json();
+          qrString = paymentResult.qr_string || paymentResult.qr_content || "";
+          const remoteInvoice = paymentResult.qr_code_url || paymentResult.invoice_url || paymentResult.payment_url || "";
+          if (remoteInvoice) invoiceUrl = remoteInvoice;
+          if (qrString || remoteInvoice) break;
+        }
+      } catch (apiErr) {
+        console.warn(`[Checkout Service] Error calling ${endpoint}:`, apiErr);
+      }
+    }
   }
 
   return {
