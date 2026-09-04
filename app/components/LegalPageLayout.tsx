@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { 
   ShieldCheck, 
   ArrowLeft, 
@@ -55,11 +56,17 @@ export default function LegalPageLayout({
             </Link>
             <div className="h-5 w-px bg-slate-200" />
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center font-black text-white text-sm">
-                B
-              </div>
-              <span className="font-extrabold text-base tracking-tight text-slate-900">
-                BoonTrack <span className="text-blue-600 font-medium text-xs">Compliance</span>
+              <Image
+                src="/icon-shop.png"
+                alt="BoonTrack"
+                width={28}
+                height={28}
+                className="w-7 h-7 rounded-lg object-contain"
+              />
+              <span className="font-extrabold text-base tracking-tight leading-none">
+                <span className="text-slate-900">Boon</span>
+                <span className="text-blue-600">Track</span>{" "}
+                <span className="text-blue-600 font-medium text-xs">Compliance</span>
               </span>
             </Link>
           </div>

@@ -51,15 +51,24 @@ export default function ShopLandingPage() {
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between">
           {/* Brand / Logo */}
-          <Link href="/" className="flex items-center">
+          <Link href="/" className="flex items-center gap-2.5 group">
             <Image
-              src="/logo-shop.png"
+              src="/icon-shop.png"
               alt="BoonTrack Shop"
-              width={180}
-              height={48}
-              className="h-9 md:h-11 w-auto object-contain max-h-12"
+              width={36}
+              height={36}
+              className="h-8 w-8 md:h-9 md:w-9 rounded-lg object-contain"
               priority
             />
+            <div className="flex items-center gap-2">
+              <span className="font-extrabold text-lg md:text-xl tracking-tight leading-none">
+                <span className="text-slate-900">Boon</span>
+                <span className="text-blue-600">Track</span>
+              </span>
+              <span className="bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold text-[10px] tracking-wider uppercase px-1.5 py-0.5 rounded leading-none">
+                SHOP
+              </span>
+            </div>
           </Link>
 
           {/* Menu Navigasi Desktop */}
