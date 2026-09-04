@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Footer from '@/app/components/Footer';
 import { 
   Zap, 
   Store, 
@@ -403,6 +404,9 @@ export default function ShopLandingPage() {
         </section>
 
       </main>
+
+      {/* GLOBAL FOOTER */}
+      <Footer className="mb-14 md:mb-0" />
 
       {/* 5. STICKY BOTTOM BAR (MOBILE ONLY) */}
       <div className="fixed bottom-0 inset-x-0 bg-white/95 border-t border-slate-200 backdrop-blur-md p-3 md:hidden z-50 shadow-lg">

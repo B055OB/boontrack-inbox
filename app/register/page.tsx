@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { 
   CheckCircle2, 
   Store, 
@@ -373,6 +374,22 @@ export default function RegisterShopPage() {
               </span>
               <ArrowRight className="w-4 h-4 ml-1" />
             </button>
+
+            <p className="text-[11px] text-center text-slate-500 leading-relaxed pt-1">
+              Dengan mengklik tombol di atas, Anda menyatakan telah membaca dan menyetujui{" "}
+              <Link href="/terms" target="_blank" className="text-blue-600 underline hover:text-blue-700">
+                Ketentuan Layanan
+              </Link>
+              ,{" "}
+              <Link href="/privacy" target="_blank" className="text-blue-600 underline hover:text-blue-700">
+                Kebijakan Privasi
+              </Link>
+              , dan{" "}
+              <Link href="/refund" target="_blank" className="text-blue-600 underline hover:text-blue-700">
+                Kebijakan Refund
+              </Link>
+              {" "}BoonTrack (PT BOONTRACK INOVASI DIGITAL).
+            </p>
           </form>
         </div>
 

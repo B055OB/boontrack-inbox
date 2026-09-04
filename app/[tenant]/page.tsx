@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { 
   ShoppingBag, 
@@ -114,7 +115,11 @@ export default function TenantStorefrontPage() {
     "onboarding",
     "pilot-onboarding",
     "enterprise",
-    "gym"
+    "gym",
+    "terms",
+    "privacy",
+    "acceptable-use",
+    "refund"
   ]);
 
   if (tenantSlug === "login" || tenantSlug === "auth") {
@@ -580,8 +585,32 @@ export default function TenantStorefrontPage() {
         product={productForCheckout}
       />
 
-      <footer className="py-5 text-center text-xs text-slate-400 bg-white border-t border-slate-200 mt-auto">
-        © 2026 {displayName.toUpperCase()} • Powered by BoonTrack Commerce Engine
+      <footer className="py-8 px-4 text-center text-xs text-slate-500 bg-slate-900 border-t border-slate-800 mt-auto space-y-4">
+        <div className="max-w-4xl mx-auto space-y-3">
+          <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1 text-slate-400 font-medium">
+            <Link href="/terms" className="hover:text-white transition">Ketentuan Layanan</Link>
+            <span>•</span>
+            <Link href="/privacy" className="hover:text-white transition">Kebijakan Privasi</Link>
+            <span>•</span>
+            <Link href="/acceptable-use" className="hover:text-white transition">Kebijakan Penggunaan</Link>
+            <span>•</span>
+            <Link href="/refund" className="hover:text-white transition">Pengembalian Dana</Link>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            © 2026 PT BOONTRACK INOVASI DIGITAL. All rights reserved. • Etalase {displayName.toUpperCase()}
+          </p>
+          <p className="text-[11px] text-slate-500">
+            Alamat Operasional: PT BOONTRACK INOVASI DIGITAL, Bandung, Jawa Barat.
+          </p>
+          <div className="text-[11px] text-slate-400 space-y-1 pt-1 border-t border-slate-800/80">
+            <p>
+              Layanan Aduan & Kepatuhan: <a href="mailto:compliance@boontrack.com" className="text-blue-400 hover:underline">compliance@boontrack.com</a> | <a href="mailto:dispute@boontrack.com" className="text-blue-400 hover:underline">dispute@boontrack.com</a>
+            </p>
+            <p>
+              Layanan Pengaduan Konsumen Ditjen PKTN Kemendag RI: <span className="text-amber-300">WhatsApp 0853-1111-1010</span>
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
   );

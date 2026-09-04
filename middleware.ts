@@ -87,6 +87,14 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/pilot-onboarding/') ||
     pathname === '/enterprise' ||
     pathname.startsWith('/enterprise/') ||
+    pathname === '/terms' ||
+    pathname.startsWith('/terms/') ||
+    pathname === '/privacy' ||
+    pathname.startsWith('/privacy/') ||
+    pathname === '/acceptable-use' ||
+    pathname.startsWith('/acceptable-use/') ||
+    pathname === '/refund' ||
+    pathname.startsWith('/refund/') ||
     pathname.startsWith('/gym') ||
     pathname.startsWith('/pos') ||
     pathname.startsWith('/hotel') ||
