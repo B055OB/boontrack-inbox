@@ -28,7 +28,7 @@ export default function Footer({ className = "" }: { className?: string }) {
             <div className="flex items-start gap-2 text-slate-400 pt-1">
               <MapPin className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
               <span className="leading-snug">
-                Jl. Kirana Margahayu Raya, Bandung, Jawa Barat 40286, Indonesia.
+                Jl Saturnus Selatan A16 Margahayu Raya, Bandung, Jawa Barat 40286, Indonesia.
               </span>
             </div>
           </div>
