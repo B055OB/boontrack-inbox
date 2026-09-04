@@ -588,7 +588,7 @@ export default function TenantDashboardPage() {
     <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
       
       {/* STICKY TOP WRAPPER (HEADER + TABS NAVIGATION) */}
-      <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
+      <div className="sticky top-0 z-50 isolate bg-white border-b border-slate-200 shadow-xs">
         {/* TOP NAVBAR */}
         <header className="px-4 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
           <div className="flex items-center gap-2 sm:gap-4 min-w-0">
@@ -625,14 +625,16 @@ export default function TenantDashboardPage() {
         </header>
 
         {/* TABS NAVIGATION */}
-        <div className="px-2 sm:px-6 flex items-center justify-between gap-2 touch-manipulation bg-white relative z-10">
-          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain text-xs font-bold w-full py-1 relative z-10">
+        <div className="px-2 sm:px-6 flex items-center justify-between gap-2 touch-manipulation bg-white relative z-50 isolate">
+          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain text-xs font-bold w-full py-1 relative z-50">
             <button
               type="button"
-              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('inbox'); }}
+              role="tab"
+              aria-selected={activeTab === 'inbox'}
+              onPointerDown={(e) => { e.preventDefault(); setActiveTab('inbox'); }}
               onClick={() => setActiveTab('inbox')}
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
                 activeTab === 'inbox'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -653,10 +655,12 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
-              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('catalog'); }}
+              role="tab"
+              aria-selected={activeTab === 'catalog'}
+              onPointerDown={(e) => { e.preventDefault(); setActiveTab('catalog'); }}
               onClick={() => setActiveTab('catalog')}
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
                 activeTab === 'catalog'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -668,10 +672,12 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
-              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('ai_knowledge'); }}
+              role="tab"
+              aria-selected={activeTab === 'ai_knowledge'}
+              onPointerDown={(e) => { e.preventDefault(); setActiveTab('ai_knowledge'); }}
               onClick={() => setActiveTab('ai_knowledge')}
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
                 activeTab === 'ai_knowledge'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -683,10 +689,12 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
-              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('integration'); }}
+              role="tab"
+              aria-selected={activeTab === 'integration'}
+              onPointerDown={(e) => { e.preventDefault(); setActiveTab('integration'); }}
               onClick={() => setActiveTab('integration')}
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
                 activeTab === 'integration'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -698,10 +706,12 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
-              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('ads_tracking'); }}
+              role="tab"
+              aria-selected={activeTab === 'ads_tracking'}
+              onPointerDown={(e) => { e.preventDefault(); setActiveTab('ads_tracking'); }}
               onClick={() => setActiveTab('ads_tracking')}
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
                 activeTab === 'ads_tracking'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -716,10 +726,12 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
-              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('biteship'); }}
+              role="tab"
+              aria-selected={activeTab === 'biteship'}
+              onPointerDown={(e) => { e.preventDefault(); setActiveTab('biteship'); }}
               onClick={() => setActiveTab('biteship')}
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
                 activeTab === 'biteship'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -734,10 +746,12 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
-              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('broadcast'); }}
+              role="tab"
+              aria-selected={activeTab === 'broadcast'}
+              onPointerDown={(e) => { e.preventDefault(); setActiveTab('broadcast'); }}
               onClick={() => setActiveTab('broadcast')}
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
                 activeTab === 'broadcast'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -752,10 +766,12 @@ export default function TenantDashboardPage() {
 
             <button
               type="button"
-              onTouchEnd={(e) => { e.stopPropagation(); setActiveTab('whatsapp'); }}
+              role="tab"
+              aria-selected={activeTab === 'whatsapp'}
+              onPointerDown={(e) => { e.preventDefault(); setActiveTab('whatsapp'); }}
               onClick={() => setActiveTab('whatsapp')}
-              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-20 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
                 activeTab === 'whatsapp'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -1294,7 +1310,7 @@ export default function TenantDashboardPage() {
               </div>
 
               {/* Navigation Tab Bar Formula Konversi */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain pb-1.5 border-b border-slate-200 relative z-10">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain pb-1.5 border-b border-slate-200 relative z-50 isolate">
                 {[
                   { id: 'hook', label: '1. Hook & Hero', icon: '🎯' },
                   { id: 'problem_solution', label: '2. Problem & Solusi', icon: '⚡' },
@@ -1306,10 +1322,12 @@ export default function TenantDashboardPage() {
                   <button
                     key={tab.id}
                     type="button"
-                    onTouchEnd={(e) => { e.stopPropagation(); setActiveBuilderTab(tab.id as any); }}
+                    role="tab"
+                    aria-selected={activeBuilderTab === tab.id}
+                    onPointerDown={(e) => { e.preventDefault(); setActiveBuilderTab(tab.id as any); }}
                     onClick={() => setActiveBuilderTab(tab.id as any)}
-                    style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
-                    className={`select-none pointer-events-auto shrink-0 relative z-20 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                    style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+                    className={`select-none pointer-events-auto shrink-0 relative z-50 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer touch-manipulation ${
                       activeBuilderTab === tab.id
                         ? 'bg-blue-600 text-white shadow-sm'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
