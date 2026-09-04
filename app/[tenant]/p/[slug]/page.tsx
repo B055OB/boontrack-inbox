@@ -866,11 +866,7 @@ function SingleProductContent() {
               />
             ) : null}
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/45 to-transparent flex items-end p-5 sm:p-7">
-              <div className="space-y-1.5 text-left">
-                <span className="px-3 py-1 bg-blue-600/90 border border-blue-400/40 rounded-full text-[10px] font-bold text-white uppercase tracking-wider inline-flex items-center gap-1.5 backdrop-blur-xs">
-                  <Sparkles className="w-3 h-3" />
-                  {config.badge_text || 'Official Direct Access'}
-                </span>
+              <div className="text-left">
                 <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white leading-tight drop-shadow-sm">
                   {product.name}
                 </h2>
@@ -916,10 +912,6 @@ function SingleProductContent() {
         {/* 2. Problem Section (Pain Points + Ilustrasi) */}
         {config.pain_points && config.pain_points.length > 0 && (
           <section className="bg-rose-50/70 border border-rose-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-            <div className="flex items-center gap-2 text-rose-700 font-bold text-xs uppercase tracking-wider">
-              <Flame className="w-4 h-4 text-rose-600" />
-              <span>Tantangan & Kendala Nyata</span>
-            </div>
             <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
               {config.problem_title || 'Apakah Anda Sering Mengalami Masalah Ini?'}
             </h2>
@@ -946,10 +938,6 @@ function SingleProductContent() {
         {/* 3. Solution Section (Fitur Unggulan) */}
         {config.solution_points && config.solution_points.length > 0 ? (
           <section className="bg-emerald-50/60 border border-emerald-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-            <div className="flex items-center gap-2 text-emerald-700 font-bold text-xs uppercase tracking-wider">
-              <Sparkles className="w-4 h-4 text-emerald-600" />
-              <span>Solusi & Nilai Tambah</span>
-            </div>
             <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
               {config.solution_title || 'Solusi Tepat yang Didesain Khusus Untuk Anda'}
             </h2>
@@ -965,7 +953,7 @@ function SingleProductContent() {
         ) : (
           /* Safe Fallback jika belum mengisi solution points */
           <section className="bg-slate-50 border border-slate-200/80 rounded-3xl p-5 sm:p-6 space-y-3 shadow-xs">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Materi & Fasilitas Utama:</h3>
+            <h3 className="text-base font-black text-slate-900 leading-snug">Materi &amp; Fasilitas Utama</h3>
             <ul className="space-y-2.5 text-xs sm:text-sm text-slate-700">
               <li className="flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -986,10 +974,6 @@ function SingleProductContent() {
         {/* 4. Tabel Perbandingan Responsif (Us vs Them) */}
         {config.comparison_rows && config.comparison_rows.length > 0 && (
           <section className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 text-blue-600 font-bold text-xs uppercase tracking-wider">
-              <Scale className="w-4 h-4 text-blue-600" />
-              <span>Perbandingan Langsung</span>
-            </div>
             <div>
               <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
                 Kenapa Memilih Solusi Kami Dibanding Cara Lain?
@@ -1078,12 +1062,6 @@ function SingleProductContent() {
         {/* 6. Irresistible Offer & Bonus Box */}
         {config.bonus_items && config.bonus_items.length > 0 && (
           <section className="bg-gradient-to-br from-amber-50 via-yellow-50/60 to-orange-50/40 border-2 border-amber-300/90 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="px-3 py-1 bg-amber-500 text-white rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-xs">
-                <Gift className="w-3.5 h-3.5" />
-                Bonus Spesial Khusus Hari Ini
-              </span>
-            </div>
             <div>
               <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
                 Dapatkan Ekstra Bonus Eksklusif Senilai {totalBonusValue > 0 ? `Rp ${totalBonusValue.toLocaleString('id-ID')}` : 'Ratusan Ribu Rupiah'}
@@ -1126,11 +1104,7 @@ function SingleProductContent() {
         <section id="checkout-section" className="bg-white border-2 border-blue-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
           <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
             <div>
-              <div className="flex items-center gap-1.5 text-blue-600 text-[11px] font-bold uppercase tracking-wider">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Checkout Instan Satu Langkah</span>
-              </div>
-              <h2 className="text-base font-black text-slate-900 mt-0.5">Form Pemesanan & Pembayaran</h2>
+              <h2 className="text-base font-black text-slate-900">Form Pemesanan &amp; Pembayaran</h2>
             </div>
             <div className="text-right">
               <span className="text-[10px] text-slate-400 block font-semibold">Total Tagihan</span>
