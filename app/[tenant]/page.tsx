@@ -49,7 +49,8 @@ export interface StoreChatMessage {
   sender: "user" | "bot";
   time: string;
   text: string;
-  type?: 'TEXT' | 'SHOW_PRODUCT' | 'SHOW_CHECKOUT';
+  action?: 'NONE' | 'SHOW_PRODUCT' | 'SHOW_CHECKOUT' | string;
+  type?: 'TEXT' | 'SHOW_PRODUCT' | 'SHOW_CHECKOUT' | string;
   product?: {
     id: number | string;
     name: string;
@@ -349,13 +350,18 @@ export default function TenantStorefrontPage() {
       }
 
       const data = await res.json();
+      const action = data.action || (data.type === 'TEXT' ? 'NONE' : data.type) || 'NONE';
+      const type = data.type || (action === 'NONE' ? 'TEXT' : action) || 'TEXT';
+      const text = data.reply_text || data.reply || data.text || "Ada lagi yang bisa kami bantu seputar produk ini?";
+
       const botMsg: StoreChatMessage = {
         id: `bot-${Date.now()}`,
         sender: "bot",
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: data.reply || data.text || "Ada lagi yang bisa kami bantu seputar produk ini?",
-        type: data.type || 'TEXT',
-        product: data.product,
+        text,
+        action,
+        type,
+        product: (action === 'SHOW_PRODUCT' || action === 'SHOW_CHECKOUT' || type === 'SHOW_PRODUCT' || type === 'SHOW_CHECKOUT') ? data.product : undefined,
         quick_actions: data.quick_actions
       };
 
@@ -448,7 +454,7 @@ export default function TenantStorefrontPage() {
                   <p className="whitespace-pre-line">{msg.text}</p>
 
                   {/* Kartu Produk Interaktif / Instant QRIS Checkout */}
-                  {msg.sender === "bot" && msg.product && (msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && (
+                  {msg.sender === "bot" && msg.product && (msg.action === "SHOW_PRODUCT" || msg.action === "SHOW_CHECKOUT" || msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && msg.action !== "NONE" && (
                     <div className="mt-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-3 text-slate-900 space-y-2.5">
                       <div className="flex items-start gap-3">
                         {msg.product.image ? (
