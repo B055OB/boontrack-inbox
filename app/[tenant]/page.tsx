@@ -362,7 +362,7 @@ export default function TenantStorefrontPage() {
         action,
         type,
         product: (action === 'SHOW_PRODUCT' || action === 'SHOW_CHECKOUT' || type === 'SHOW_PRODUCT' || type === 'SHOW_CHECKOUT') ? data.product : undefined,
-        quick_actions: data.quick_actions
+        quick_actions: Array.isArray(data.quick_actions) ? data.quick_actions : undefined
       };
 
       setMessages((prev) => [...prev, botMsg]);
@@ -446,123 +446,127 @@ export default function TenantStorefrontPage() {
           </div>
 
           <div className="flex-1 p-5 overflow-y-auto space-y-3.5 bg-[#F8FAFC]">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
-                <div className={`max-w-[88%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-xs ${
-                  msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
-                }`}>
-                  <p className="whitespace-pre-line">{msg.text}</p>
+            {messages.map((msg, index) => {
+              const isLatestBotMessage = msg.sender === "bot" && index === messages.length - 1;
 
-                  {/* Kartu Produk Interaktif / Instant QRIS Checkout */}
-                  {msg.sender === "bot" && msg.product && (msg.action === "SHOW_PRODUCT" || msg.action === "SHOW_CHECKOUT" || msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && msg.action !== "NONE" && (
-                    <div className="mt-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-3 text-slate-900 space-y-2.5">
-                      <div className="flex items-start gap-3">
-                        {msg.product.image ? (
-                          <img
-                            src={msg.product.image}
-                            alt={msg.product.name}
-                            className="w-14 h-14 object-cover rounded-xl shrink-0 border border-slate-200"
-                          />
-                        ) : (
-                          <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
-                            <ShoppingBag className="w-6 h-6" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          {msg.product.badge && (
-                            <span className="inline-block text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 mb-0.5">
-                              {msg.product.badge}
-                            </span>
+              return (
+                <div key={msg.id} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
+                  <div className={`max-w-[88%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-xs ${
+                    msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
+                  }`}>
+                    <p className="whitespace-pre-line">{msg.text}</p>
+
+                    {/* Kartu Produk Interaktif / Instant QRIS Checkout */}
+                    {msg.sender === "bot" && msg.product && (msg.action === "SHOW_PRODUCT" || msg.action === "SHOW_CHECKOUT" || msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && msg.action !== "NONE" && (
+                      <div className="mt-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-3 text-slate-900 space-y-2.5">
+                        <div className="flex items-start gap-3">
+                          {msg.product.image ? (
+                            <img
+                              src={msg.product.image}
+                              alt={msg.product.name}
+                              className="w-14 h-14 object-cover rounded-xl shrink-0 border border-slate-200"
+                            />
+                          ) : (
+                            <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
+                              <ShoppingBag className="w-6 h-6" />
+                            </div>
                           )}
-                          <h4 className="font-black text-xs text-slate-900 line-clamp-1">
-                            {msg.product.name}
-                          </h4>
-                          <div className="flex items-baseline gap-1.5 mt-0.5">
-                            <span className="font-black text-blue-600 text-xs">
-                              Rp {msg.product.price.toLocaleString("id-ID")}
-                            </span>
-                            {msg.product.originalPrice && (
-                              <span className="text-[10px] text-slate-400 line-through">
-                                Rp {msg.product.originalPrice.toLocaleString("id-ID")}
+                          <div className="flex-1 min-w-0">
+                            {msg.product.badge && (
+                              <span className="inline-block text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 mb-0.5">
+                                {msg.product.badge}
                               </span>
                             )}
+                            <h4 className="font-black text-xs text-slate-900 line-clamp-1">
+                              {msg.product.name}
+                            </h4>
+                            <div className="flex items-baseline gap-1.5 mt-0.5">
+                              <span className="font-black text-blue-600 text-xs">
+                                Rp {msg.product.price.toLocaleString("id-ID")}
+                              </span>
+                              {msg.product.originalPrice && (
+                                <span className="text-[10px] text-slate-400 line-through">
+                                  Rp {msg.product.originalPrice.toLocaleString("id-ID")}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
+
+                        {msg.product.description && (
+                          <p className="text-[11px] text-slate-500 line-clamp-2 leading-normal">
+                            {msg.product.description}
+                          </p>
+                        )}
+
+                        <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!msg.product) return;
+                              trackInitiateCheckout(msg.product.name, msg.product.price);
+                              setProductForCheckout({
+                                id: String(msg.product.id),
+                                title: msg.product.name,
+                                price: msg.product.price
+                              });
+                              setIsCheckoutOpen(true);
+                            }}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>{msg.type === "SHOW_CHECKOUT" ? "Buka Checkout QRIS" : "Bayar Instan QRIS"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!msg.product) return;
+                              addToCart({
+                                id: Number(msg.product.id) || Date.now(),
+                                name: msg.product.name,
+                                category: (msg.product.category as any) || "digital",
+                                price: msg.product.price,
+                                originalPrice: msg.product.originalPrice,
+                                image: msg.product.image || "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=60",
+                                description: msg.product.description || "",
+                                badge: msg.product.badge
+                              });
+                              setShowCartModal(true);
+                            }}
+                            className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-2 px-2.5 rounded-xl border border-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
+                            title="Tambah ke Keranjang"
+                          >
+                            <ShoppingBag className="w-3.5 h-3.5 text-slate-600" />
+                          </button>
+                        </div>
                       </div>
+                    )}
 
-                      {msg.product.description && (
-                        <p className="text-[11px] text-slate-500 line-clamp-2 leading-normal">
-                          {msg.product.description}
-                        </p>
-                      )}
+                    <span className={`block text-[9px] mt-1 text-right font-medium ${msg.sender === "user" ? "text-blue-200" : "text-slate-400"}`}>
+                      {msg.time}
+                    </span>
+                  </div>
 
-                      <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
+                  {/* Dynamic Quick Action Buttons (Hanya di Pesan Bot Terakhir, Maks 3 Tombol) */}
+                  {isLatestBotMessage && Array.isArray(msg.quick_actions) && msg.quick_actions.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2 max-w-[88%]">
+                      {msg.quick_actions.slice(0, 3).map((chip, idx) => (
                         <button
+                          key={idx}
                           type="button"
-                          onClick={() => {
-                            if (!msg.product) return;
-                            trackInitiateCheckout(msg.product.name, msg.product.price);
-                            setProductForCheckout({
-                              id: String(msg.product.id),
-                              title: msg.product.name,
-                              price: msg.product.price
-                            });
-                            setIsCheckoutOpen(true);
-                          }}
-                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                          onClick={() => !isBotTyping && sendChatMessage(chip)}
+                          disabled={isBotTyping}
+                          className="text-[11px] font-semibold bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 border border-slate-200 hover:border-blue-300 px-3 py-1.5 rounded-full transition-all active:scale-95 shadow-2xs text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <QrCode className="w-3.5 h-3.5" />
-                          <span>{msg.type === "SHOW_CHECKOUT" ? "Buka Checkout QRIS" : "Bayar Instan QRIS"}</span>
+                          {chip}
                         </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!msg.product) return;
-                            addToCart({
-                              id: Number(msg.product.id) || Date.now(),
-                              name: msg.product.name,
-                              category: (msg.product.category as any) || "digital",
-                              price: msg.product.price,
-                              originalPrice: msg.product.originalPrice,
-                              image: msg.product.image || "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=60",
-                              description: msg.product.description || "",
-                              badge: msg.product.badge
-                            });
-                            setShowCartModal(true);
-                          }}
-                          className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-2 px-2.5 rounded-xl border border-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
-                          title="Tambah ke Keranjang"
-                        >
-                          <ShoppingBag className="w-3.5 h-3.5 text-slate-600" />
-                        </button>
-                      </div>
+                      ))}
                     </div>
                   )}
-
-                  <span className={`block text-[9px] mt-1 text-right font-medium ${msg.sender === "user" ? "text-blue-200" : "text-slate-400"}`}>
-                    {msg.time}
-                  </span>
                 </div>
-
-                {/* Quick Action Chips */}
-                {msg.sender === "bot" && msg.quick_actions && msg.quick_actions.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2 max-w-[88%]">
-                    {msg.quick_actions.map((chip, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => sendChatMessage(chip)}
-                        disabled={isBotTyping}
-                        className="text-[11px] font-semibold bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 border border-slate-200 hover:border-blue-200 px-3 py-1.5 rounded-full transition-all active:scale-95 shadow-2xs text-left cursor-pointer disabled:opacity-50"
-                      >
-                        {chip}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
 
             {isBotTyping && (
               <div className="flex flex-col items-start">
