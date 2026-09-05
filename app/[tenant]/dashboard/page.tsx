@@ -681,8 +681,11 @@ export default function TenantDashboardPage() {
         </header>
 
         {/* TABS NAVIGATION */}
-        <div className="px-2 sm:px-6 flex items-center justify-between gap-2 touch-manipulation bg-white relative z-50 isolate">
-          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain text-xs font-bold w-full py-1 relative z-50">
+        <div className="px-2 sm:px-6 flex items-center justify-between gap-2 touch-manipulation bg-white relative z-50 isolate w-full max-w-full">
+          <div 
+            style={{ WebkitOverflowScrolling: 'touch' }}
+            className="flex items-center gap-1 sm:gap-2 overflow-x-auto whitespace-nowrap scrollbar-none no-scrollbar touch-pan-x overscroll-x-contain text-xs font-bold w-full max-w-full min-w-0 py-1 relative z-50"
+          >
             <button
               type="button"
               role="tab"
@@ -690,21 +693,21 @@ export default function TenantDashboardPage() {
               onPointerDown={(e) => { e.preventDefault(); setActiveTab('inbox'); }}
               onClick={() => setActiveTab('inbox')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
+              className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'inbox'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <MessageSquare className="w-4 h-4 text-blue-600" />
-              <span>Live CS & Omnichannel</span>
+              <MessageSquare className="w-4 h-4 text-blue-600 shrink-0" />
+              <span className="whitespace-nowrap">Live CS & Omnichannel</span>
               {isProTenant ? (
-                <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+                <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold shrink-0">
                   ACTIVE
                 </span>
               ) : (
-                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-1">
-                  <Lock className="w-2.5 h-2.5" /> PRO
+                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-1 shrink-0">
+                  <Lock className="w-2.5 h-2.5 shrink-0" /> PRO
                 </span>
               )}
             </button>
@@ -716,14 +719,14 @@ export default function TenantDashboardPage() {
               onPointerDown={(e) => { e.preventDefault(); setActiveTab('catalog'); }}
               onClick={() => setActiveTab('catalog')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
+              className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'catalog'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Package className="w-4 h-4" />
-              <span>Katalog Produk ({products.length})</span>
+              <Package className="w-4 h-4 shrink-0" />
+              <span className="whitespace-nowrap">Katalog Produk ({products.length})</span>
             </button>
 
             <button
@@ -733,14 +736,14 @@ export default function TenantDashboardPage() {
               onPointerDown={(e) => { e.preventDefault(); setActiveTab('ai_knowledge'); }}
               onClick={() => setActiveTab('ai_knowledge')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
+              className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'ai_knowledge'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Brain className="w-4 h-4" />
-              <span>AI Knowledge & Bot</span>
+              <Brain className="w-4 h-4 shrink-0" />
+              <span className="whitespace-nowrap">AI Knowledge & Bot</span>
             </button>
 
             <button
@@ -750,14 +753,14 @@ export default function TenantDashboardPage() {
               onPointerDown={(e) => { e.preventDefault(); setActiveTab('integration'); }}
               onClick={() => setActiveTab('integration')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
+              className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'integration'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <CreditCard className="w-4 h-4 text-emerald-600" />
-              <span>Laporan & Keuangan</span>
+              <CreditCard className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="whitespace-nowrap">Laporan & Keuangan</span>
             </button>
 
             <button
@@ -767,15 +770,15 @@ export default function TenantDashboardPage() {
               onPointerDown={(e) => { e.preventDefault(); setActiveTab('ads_tracking'); }}
               onClick={() => setActiveTab('ads_tracking')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
+              className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'ads_tracking'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Target className="w-4 h-4 text-blue-600" />
-              <span>Ads Tracking Pro</span>
-              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
+              <Target className="w-4 h-4 text-blue-600 shrink-0" />
+              <span className="whitespace-nowrap">Ads Tracking Pro</span>
+              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold shrink-0">
                 CAPI
               </span>
             </button>
@@ -787,15 +790,15 @@ export default function TenantDashboardPage() {
               onPointerDown={(e) => { e.preventDefault(); setActiveTab('biteship'); }}
               onClick={() => setActiveTab('biteship')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
+              className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'biteship'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Truck className="w-4 h-4 text-emerald-600" />
-              <span>Pengiriman & Kurir</span>
-              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+              <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="whitespace-nowrap">Pengiriman & Kurir</span>
+              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold shrink-0">
                 ONGKIR
               </span>
             </button>
@@ -807,15 +810,15 @@ export default function TenantDashboardPage() {
               onPointerDown={(e) => { e.preventDefault(); setActiveTab('broadcast'); }}
               onClick={() => setActiveTab('broadcast')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
+              className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'broadcast'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Radio className="w-4 h-4 text-emerald-600" />
-              <span>Broadcast WA Masal</span>
-              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+              <Radio className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="whitespace-nowrap">Broadcast WA Masal</span>
+              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold shrink-0">
                 BLAST
               </span>
             </button>
@@ -827,14 +830,14 @@ export default function TenantDashboardPage() {
               onPointerDown={(e) => { e.preventDefault(); setActiveTab('whatsapp'); }}
               onClick={() => setActiveTab('whatsapp')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-              className={`select-none pointer-events-auto shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation ${
+              className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'whatsapp'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              <MessageSquare className="w-4 h-4 text-emerald-600" />
-              <span>Koneksi WhatsApp</span>
+              <MessageSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="whitespace-nowrap">Koneksi WhatsApp</span>
             </button>
           </div>
 
