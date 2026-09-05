@@ -299,7 +299,7 @@ export default function BoonPilotWidget({ tenantSlug }: BoonPilotWidgetProps) {
     }));
 
     try {
-      const res = await fetch('/api/v1/boonpilot/chat', {
+      const res = await fetch('/api/v1/merchant/copilot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -312,10 +312,11 @@ export default function BoonPilotWidget({ tenantSlug }: BoonPilotWidgetProps) {
 
       if (res.ok) {
         const data = await res.json();
+        const replyText = data.reply || data.reply_text || data.text || 'Saya telah memproses permintaan Anda.';
         const assistantMessage: ChatMessage = {
           id: `ast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           sender: 'assistant',
-          text: data.reply || 'Saya telah memproses permintaan Anda.',
+          text: replyText,
           timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           action_proposal: data.action_proposal
             ? {

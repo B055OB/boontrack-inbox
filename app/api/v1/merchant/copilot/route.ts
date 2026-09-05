@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getBackendApiUrl } from '@/lib/api-config';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 
 export interface ActionProposal {
@@ -16,6 +15,7 @@ export interface MerchantCopilotResponse {
   status?: string;
   type: 'TEXT' | 'ACTION_PROPOSAL';
   reply: string;
+  reply_text?: string;
   action_proposal?: ActionProposal | null;
   data?: Record<string, any> | null;
   quick_actions?: string[];
@@ -28,66 +28,93 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       tenant_slug,
+      tenant_id,
       message,
       session_id,
       conversation_history = [],
+      history = [],
+      context,
     } = body;
 
-    const slug = normalizeTenantSlug(tenant_slug || 'onlineboost');
+    const slug = normalizeTenantSlug(tenant_slug || tenant_id || 'onlineboost');
     const sessionId = session_id || `copilot_sess_${Date.now()}`;
     const storeName = slug.replace(/[-_]/g, ' ').toUpperCase();
+    const activeHistory = conversation_history.length > 0 ? conversation_history : history;
 
-    // 1. Panggil Langsung Backend AI Gateway (POST /api/v1/merchant/copilot)
+    // 1. Forward Langsung ke Core Backend AI Gateway
+    const backendBaseUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const targetUrl = `${backendBaseUrl.replace(/\/$/, '')}/api/v1/merchant/copilot`;
+
     try {
-      const coreRes = await fetch(getBackendApiUrl('/api/v1/merchant/copilot'), {
+      const coreRes = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Tenant-ID': slug,
+          'X-Session-ID': sessionId,
         },
         body: JSON.stringify({
           tenant_slug: slug,
           message,
           session_id: sessionId,
-          conversation_history,
+          conversation_history: activeHistory,
+          history: activeHistory,
+          context: context || {
+            tenant_slug: slug,
+            store_name: storeName,
+          },
         }),
         cache: 'no-store',
       });
 
       if (coreRes.ok) {
         const coreData = await coreRes.json();
-        if (coreData && (coreData.reply || coreData.type)) {
-          return NextResponse.json(coreData);
-        }
+        const reply = coreData.reply || coreData.reply_text || coreData.text || '';
+        return NextResponse.json({
+          status: coreData.status || 'success',
+          type: coreData.type || (coreData.action_proposal ? 'ACTION_PROPOSAL' : 'TEXT'),
+          reply,
+          reply_text: reply,
+          action_proposal: coreData.action_proposal || null,
+          data: coreData.data || null,
+          quick_actions: coreData.quick_actions || [],
+          session_id: coreData.session_id || sessionId,
+          tenant_id: slug,
+        });
       } else {
-        console.warn(`[Merchant Copilot] Backend returned status ${coreRes.status}`);
+        const errText = await coreRes.text().catch(() => '');
+        console.warn(`[Merchant Copilot] Core backend returned status ${coreRes.status}:`, errText);
+        return NextResponse.json({
+          status: 'error',
+          type: 'TEXT',
+          reply: `Layanan AI Gateway mengembalikan respon ${coreRes.status}. Silakan coba beberapa saat lagi.`,
+          reply_text: `Layanan AI Gateway mengembalikan respon ${coreRes.status}. Silakan coba beberapa saat lagi.`,
+          session_id: sessionId,
+          tenant_id: slug,
+        });
       }
-    } catch (backendErr) {
-      console.warn('[Merchant Copilot] Backend connection failed, using fallback:', backendErr);
+    } catch (fetchErr: any) {
+      console.warn(`[Merchant Copilot] Core backend offline at ${targetUrl}:`, fetchErr?.message || fetchErr);
+      return NextResponse.json({
+        status: 'error',
+        type: 'TEXT',
+        reply: 'Tidak dapat terhubung ke AI Gateway (Core Backend). Pastikan server backend aktif di port 8000.',
+        reply_text: 'Tidak dapat terhubung ke AI Gateway (Core Backend). Pastikan server backend aktif di port 8000.',
+        session_id: sessionId,
+        tenant_id: slug,
+      });
     }
-
-    // 2. Clean Fallback Tanpa Mock Echo Fiktif
-    return NextResponse.json({
-      status: 'success',
-      type: 'TEXT',
-      reply: `Halo! Saya **BoonPilot**, copilot operasional toko **${storeName}**. Saya dapat membantu memantau omset penjualan, memeriksa stok menipis, dan mengatur otomatisasi WhatsApp. Silakan tanyakan hal yang ingin Anda ketahui.`,
-      quick_actions: [
-        'Bagaimana performa penjualan toko saya minggu ini?',
-        'Cek stok produk yang hampir habis',
-        'Bantu atur titik penjemputan gudang kurir',
-      ],
-      session_id: sessionId,
-      tenant_id: slug,
-    } as MerchantCopilotResponse);
-
   } catch (error) {
-    console.error('Merchant copilot API error:', error);
-    return NextResponse.json({
-      status: 'error',
-      type: 'TEXT',
-      reply: 'Halo! BoonPilot siap membantu operasional toko Anda. Silakan pilih salah satu menu tindakan cepat.',
-      quick_actions: ['Performa penjualan minggu ini', 'Cek stok produk', 'Bantuan CS'],
-      session_id: 'err_fallback',
-    });
+    console.error('[Merchant Copilot] API error:', error);
+    return NextResponse.json(
+      {
+        status: 'error',
+        type: 'TEXT',
+        reply: 'Terjadi kesalahan sistem internal pada rute merchant copilot.',
+        reply_text: 'Terjadi kesalahan sistem internal pada rute merchant copilot.',
+        session_id: 'err_copilot',
+      },
+      { status: 500 }
+    );
   }
 }
