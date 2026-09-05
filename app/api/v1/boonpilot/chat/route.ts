@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       // Sub-case: Uji Nomor Asisten
       if (q.includes('uji') || q.includes('tes nomor')) {
         const reply = `✅ **Pengujian Koneksi Asisten WhatsApp Toko:**
-- **Status Sesi Gateway:** **CONNECTED** (WhatsApp Web & Baileys Cluster Aktif)
+- **Status Sesi Gateway:** **CONNECTED** (WhatsApp Web & BoonTrack Gateway Engine Aktif)
 - **Nomor CS Toko:** Terhubung
 - **Engine AI Respon:** Siap membalas pesan masuk pelanggan < 3 detik
 - **Strategi Aktif:** Mode Toko Baru (Konsultatif & Edukasi Garansi)
@@ -142,7 +142,7 @@ Semua webhook dan event handler \`messages.upsert\` beroperasi normal tanpa kend
 BoonTrack mengintegrasikan otomasi WhatsApp mutakhir untuk mempercepat siklus konversi penjualan toko Anda:
 
 1. **Jalur Koneksi Fleksibel**:
-   - **Mode Growth (Scan QR Baileys)**: Terhubung ke nomor WhatsApp toko biasa tanpa biaya API per-pesan.
+   - **Mode Growth (Scan QR BoonTrack Gateway Engine)**: Terhubung ke nomor WhatsApp toko biasa tanpa biaya API per-pesan.
    - **Mode Pro Scale (Meta Cloud API)**: Jalur resmi WABA bergaransi anti-banned dengan centang hijau.
 
 2. **3 Pilihan Persona Respon AI**:

@@ -2980,7 +2980,7 @@ export default function TenantDashboardPage() {
                 }`}
               >
                 <Smartphone className="w-3.5 h-3.5" />
-                <span>Scan QR (Baileys)</span>
+                <span>Scan QR Instan (BoonTrack Engine)</span>
               </button>
               <button
                 type="button"
