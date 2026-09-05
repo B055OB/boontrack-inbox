@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
+  ChevronLeft,
+  ChevronRight,
   Package,
   Brain,
   CreditCard,
@@ -81,6 +83,56 @@ export default function TenantDashboardPage() {
 
   const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration' | 'ads_tracking' | 'biteship' | 'broadcast' | 'whatsapp'>('whatsapp');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+
+  // Desktop Navigation Tab Scroll Controls
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkTabsScroll = () => {
+    if (tabsRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
+      setCanScrollLeft(scrollLeft > 4);
+      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 4);
+    }
+  };
+
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+
+    checkTabsScroll();
+
+    const onWheelHandler = (e: WheelEvent) => {
+      if (e.deltaY !== 0 && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    };
+
+    el.addEventListener('scroll', checkTabsScroll, { passive: true });
+    el.addEventListener('wheel', onWheelHandler, { passive: false });
+    window.addEventListener('resize', checkTabsScroll);
+
+    const timer = setTimeout(checkTabsScroll, 250);
+
+    return () => {
+      el.removeEventListener('scroll', checkTabsScroll);
+      el.removeEventListener('wheel', onWheelHandler);
+      window.removeEventListener('resize', checkTabsScroll);
+      clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    checkTabsScroll();
+  }, [activeTab]);
+
+  const scrollTabs = (offset: number) => {
+    if (tabsRef.current) {
+      tabsRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
 
   // WhatsApp Tab Mode
   const [waMode, setWaMode] = useState<'qr' | 'meta'>('qr');
@@ -667,10 +719,33 @@ export default function TenantDashboardPage() {
 
         {/* TABS NAVIGATION */}
         <div className="px-2 sm:px-6 flex items-center justify-between gap-2 touch-manipulation bg-white relative z-50 isolate w-full max-w-full">
-          <div 
-            style={{ WebkitOverflowScrolling: 'touch' }}
-            className="flex items-center gap-1 sm:gap-2 overflow-x-auto whitespace-nowrap scrollbar-none no-scrollbar touch-pan-x overscroll-x-contain text-xs font-bold w-full max-w-full min-w-0 py-1 relative z-50"
-          >
+          <div className="relative flex-1 min-w-0 flex items-center">
+            {/* Left Desktop Arrow & Gradient Fade */}
+            {canScrollLeft && (
+              <>
+                <div className="absolute left-0 top-0 bottom-0 w-8 sm:w-12 bg-gradient-to-r from-white via-white/80 to-transparent pointer-events-none z-40" />
+                <button
+                  type="button"
+                  onClick={() => scrollTabs(-200)}
+                  title="Geser Tab ke Kiri"
+                  aria-label="Geser navigasi tab ke kiri"
+                  className="hidden sm:flex absolute left-0 z-50 w-6 h-6 items-center justify-center rounded-full bg-white/95 hover:bg-white text-slate-700 shadow-md border border-slate-200 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+
+            <div 
+              ref={tabsRef}
+              onWheel={(e) => {
+                if (tabsRef.current && e.deltaY !== 0 && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                  tabsRef.current.scrollLeft += e.deltaY;
+                }
+              }}
+              style={{ WebkitOverflowScrolling: 'touch' }}
+              className="flex items-center gap-1 sm:gap-2 overflow-x-auto whitespace-nowrap scrollbar-none no-scrollbar touch-pan-x overscroll-x-contain text-xs font-bold w-full max-w-full min-w-0 py-1 relative z-30"
+            >
             <button
               type="button"
               role="tab"
@@ -825,6 +900,23 @@ export default function TenantDashboardPage() {
               <span className="whitespace-nowrap">Koneksi WhatsApp</span>
             </button>
           </div>
+
+          {/* Right Desktop Arrow & Gradient Fade */}
+          {canScrollRight && (
+            <>
+              <div className="absolute right-0 top-0 bottom-0 w-8 sm:w-12 bg-gradient-to-l from-white via-white/80 to-transparent pointer-events-none z-40" />
+              <button
+                type="button"
+                onClick={() => scrollTabs(200)}
+                title="Geser Tab ke Kanan"
+                aria-label="Geser navigasi tab ke kanan"
+                className="hidden sm:flex absolute right-0 z-50 w-6 h-6 items-center justify-center rounded-full bg-white/95 hover:bg-white text-slate-700 shadow-md border border-slate-200 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+        </div>
 
           {saveFeedback && (
             <div className="hidden md:block text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 animate-in fade-in shrink-0">
