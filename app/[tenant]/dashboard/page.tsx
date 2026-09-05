@@ -62,30 +62,7 @@ import {
   slugify 
 } from '@/lib/product-catalog';
 
-const INITIAL_TRANSACTIONS: TransactionItem[] = [
-  {
-    id: "tx-001",
-    invoice_no: "INV-OB-20260901-01",
-    customer_name: "Customer WhatsApp",
-    customer_phone: "6281237450222",
-    product_name: "Step by Step Rahasia Menghasilkan Dollar",
-    amount: 499000,
-    payment_method: "QRIS Dinamis",
-    status: "PAID",
-    created_at: "1 Sep 2026, 21:30"
-  },
-  {
-    id: "tx-002",
-    invoice_no: "INV-OB-20260901-02",
-    customer_name: "Rizky Pratama",
-    customer_phone: "6285721110099",
-    product_name: "Masterclass Ads 2026 - Scale Up Campaign",
-    amount: 99000,
-    payment_method: "QRIS Dinamis",
-    status: "PAID",
-    created_at: "1 Sep 2026, 20:15"
-  }
-];
+const INITIAL_TRANSACTIONS: TransactionItem[] = [];
 
 export default function TenantDashboardPage() {
   const params = useParams();
@@ -232,6 +209,14 @@ export default function TenantDashboardPage() {
               system_prompt: aiK.system_prompt || s.system_prompt || prev.system_prompt,
               tone: aiK.tone || prev.tone,
             }));
+            const payout = s.payout || {};
+            if (payout.bank_name || payout.account_number || payout.account_holder) {
+              setBankForm({
+                name: payout.bank_name || '',
+                account: payout.account_number || '',
+                holder: payout.account_holder || '',
+              });
+            }
           }
         }
       } catch (err) {
@@ -339,15 +324,15 @@ export default function TenantDashboardPage() {
   };
 
   const [bankForm, setBankForm] = useState({
-    name: 'BCA (Bank Central Asia)',
-    account: '1392819201',
-    holder: displayName.toUpperCase(),
+    name: '',
+    account: '',
+    holder: '',
   });
 
   // Financial Ledger & Payout State
   const [transactions, setTransactions] = useState<TransactionItem[]>(INITIAL_TRANSACTIONS);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
-  const [withdrawAmount, setWithdrawAmount] = useState<number>(500000);
+  const [withdrawAmount, setWithdrawAmount] = useState<number>(0);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
 
   const totalOmzet = transactions.filter(t => t.status === 'PAID').reduce((acc, curr) => acc + curr.amount, 0);
@@ -2544,10 +2529,10 @@ export default function TenantDashboardPage() {
                 <span className="p-2 bg-slate-50 text-slate-600 rounded-xl"><CreditCard className="w-4 h-4" /></span>
               </div>
               <div className="text-base font-black text-slate-900 font-mono">
-                {bankForm.name}
+                {bankForm.name || "Belum Ditetapkan"}
               </div>
               <p className="text-[11px] text-slate-500 font-mono font-bold truncate">
-                {bankForm.account} • {bankForm.holder}
+                {bankForm.account ? `${bankForm.account} • ${bankForm.holder || displayName.toUpperCase()}` : "Atur nomor rekening di bawah"}
               </p>
             </div>
           </div>
@@ -2584,44 +2569,62 @@ export default function TenantDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {transactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-slate-50/80 transition">
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-slate-900 font-mono">{t.invoice_no}</div>
-                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                          <Clock className="w-3 h-3" /> {t.created_at}
+                  {transactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-5 py-12 text-center">
+                        <div className="max-w-md mx-auto flex flex-col items-center justify-center space-y-2">
+                          <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-1">
+                            <FileText className="w-5 h-5 text-slate-400" />
+                          </div>
+                          <p className="text-xs font-bold text-slate-700">
+                            Belum ada transaksi masuk.
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            Transaksi dari checkout etalase atau WhatsApp akan tercatat otomatis di sini.
+                          </p>
                         </div>
                       </td>
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-slate-800">{t.customer_name}</div>
-                        <div className="text-[11px] text-slate-400 font-mono">+{t.customer_phone}</div>
-                      </td>
-                      <td className="px-5 py-4 max-w-[220px]">
-                        <div className="truncate font-semibold text-slate-900">{t.product_name}</div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">
-                          {t.payment_method}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
-                        Rp {t.amount.toLocaleString("id-ID")}
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <span className="px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {t.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <button
-                          onClick={() => alert(`Membuka lembar Invoice Resmi untuk ${t.invoice_no}`)}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
-                        >
-                          Invoice
-                        </button>
-                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    transactions.map((t) => (
+                      <tr key={t.id} className="hover:bg-slate-50/80 transition">
+                        <td className="px-5 py-4">
+                          <div className="font-bold text-slate-900 font-mono">{t.invoice_no}</div>
+                          <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                            <Clock className="w-3 h-3" /> {t.created_at}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="font-bold text-slate-800">{t.customer_name}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">+{t.customer_phone}</div>
+                        </td>
+                        <td className="px-5 py-4 max-w-[220px]">
+                          <div className="truncate font-semibold text-slate-900">{t.product_name}</div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">
+                            {t.payment_method}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
+                          Rp {t.amount.toLocaleString("id-ID")}
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {t.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <button
+                            onClick={() => alert(`Membuka lembar Invoice Resmi untuk ${t.invoice_no}`)}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                          >
+                            Invoice
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2639,6 +2642,7 @@ export default function TenantDashboardPage() {
                   type="text"
                   value={bankForm.name}
                   onChange={(e) => setBankForm(b => ({ ...b, name: e.target.value }))}
+                  placeholder="Contoh: BCA / Mandiri / BRI"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
                 />
               </div>
@@ -2648,6 +2652,7 @@ export default function TenantDashboardPage() {
                   type="text"
                   value={bankForm.account}
                   onChange={(e) => setBankForm(b => ({ ...b, account: e.target.value }))}
+                  placeholder="Contoh: 1234567890"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold"
                 />
               </div>
@@ -2657,6 +2662,7 @@ export default function TenantDashboardPage() {
                   type="text"
                   value={bankForm.holder}
                   onChange={(e) => setBankForm(b => ({ ...b, holder: e.target.value }))}
+                  placeholder="Nama sesuai buku tabungan"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 uppercase font-bold"
                 />
               </div>
@@ -2707,8 +2713,12 @@ export default function TenantDashboardPage() {
 
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 space-y-1">
                 <div className="text-[11px] font-bold text-slate-800">Transfer Ditujukan ke:</div>
-                <div className="font-mono font-bold text-slate-900">{bankForm.name} - {bankForm.account}</div>
-                <div className="text-[11px] text-slate-500 uppercase">a.n. {bankForm.holder}</div>
+                <div className="font-mono font-bold text-slate-900">
+                  {bankForm.name && bankForm.account ? `${bankForm.name} - ${bankForm.account}` : "Rekening belum diatur"}
+                </div>
+                <div className="text-[11px] text-slate-500 uppercase">
+                  {bankForm.holder ? `a.n. ${bankForm.holder}` : "Harap lengkapi rekening di tab pengaturan"}
+                </div>
               </div>
 
               <div className="pt-2">
