@@ -42,7 +42,12 @@ export async function POST(req: NextRequest) {
     const activeHistory = conversation_history.length > 0 ? conversation_history : history;
 
     // 1. Forward Langsung ke Core Backend AI Gateway
-    const backendBaseUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const backendBaseUrl =
+      process.env.CORE_BACKEND_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      process.env.BACKEND_URL ||
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      'https://boontrack-core-production.up.railway.app';
     const targetUrl = `${backendBaseUrl.replace(/\/$/, '')}/api/v1/merchant/copilot`;
 
     try {

@@ -5,8 +5,12 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const tenantSlug = searchParams.get("tenant") || "onlineboost";
 
-    // URL Backend FastAPI Core (Ganti dengan IP VPS/Port backend atau URL internal jika ada)
-    const BACKEND_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.boontrack.com";
+    const BACKEND_URL =
+      process.env.CORE_BACKEND_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      process.env.NEXT_PUBLIC_API_BASE_URL ||
+      process.env.BACKEND_URL ||
+      "https://boontrack-core-production.up.railway.app";
 
     const response = await fetch(`${BACKEND_URL}/api/v1/whatsapp/sessions/${tenantSlug}/connect`, {
       method: "POST",
