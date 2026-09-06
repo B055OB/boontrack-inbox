@@ -41,54 +41,105 @@ export async function POST(req: NextRequest) {
     const storeName = slug.replace(/[-_]/g, ' ').toUpperCase();
     const activeHistory = conversation_history.length > 0 ? conversation_history : history;
 
-    // 1. Forward Langsung ke Core Backend AI Gateway
+    // 1. Forward ke Core Backend AI Gateway (Cek endpoint FastAPI & WebChat fallback)
     const backendBaseUrl =
       process.env.CORE_BACKEND_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
       process.env.BACKEND_URL ||
       process.env.NEXT_PUBLIC_BACKEND_URL ||
       'https://boontrack-core-production.up.railway.app';
-    const targetUrl = `${backendBaseUrl.replace(/\/$/, '')}/api/v1/merchant/copilot`;
+
+    const baseUrlClean = backendBaseUrl.replace(/\/$/, '');
+    const candidatePaths = [
+      '/api/v1/merchant/copilot',
+      '/api/merchant/copilot',
+      '/api/v1/chat',
+      '/api/webchat/business',
+      '/api/b2b-webchat',
+      '/api/webchat',
+    ];
+
+    let coreRes: Response | null = null;
+    let successfulPath = '';
+
+    for (const path of candidatePaths) {
+      const targetUrl = `${baseUrlClean}${path}`;
+      try {
+        const res = await fetch(targetUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-ID': slug,
+            'X-Session-ID': sessionId,
+          },
+          body: JSON.stringify({
+            tenant_slug: slug,
+            tenant_id: slug,
+            slug,
+            message,
+            session_id: sessionId,
+            conversation_history: activeHistory,
+            history: activeHistory,
+            context: context || {
+              tenant_slug: slug,
+              store_name: storeName,
+            },
+          }),
+          cache: 'no-store',
+        });
+
+        // Jika tidak 404, simpan response (bisa 200 atau status lain)
+        if (res.status !== 404) {
+          coreRes = res;
+          successfulPath = path;
+          break;
+        }
+      } catch (err) {
+        console.warn(`[Merchant Copilot] Failed candidate ${targetUrl}:`, err);
+      }
+    }
 
     try {
-      const coreRes = await fetch(targetUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-ID': slug,
-          'X-Session-ID': sessionId,
-        },
-        body: JSON.stringify({
-          tenant_slug: slug,
-          message,
-          session_id: sessionId,
-          conversation_history: activeHistory,
-          history: activeHistory,
-          context: context || {
-            tenant_slug: slug,
-            store_name: storeName,
-          },
-        }),
-        cache: 'no-store',
-      });
-
-      if (coreRes.ok) {
+      if (coreRes && coreRes.ok) {
         const coreData = await coreRes.json();
-        const reply = coreData.reply || coreData.reply_text || coreData.text || '';
+        let reply = coreData.reply || coreData.reply_text || coreData.text || '';
+        let actionProposal = coreData.action_proposal || null;
+        let dataPayload = coreData.data || null;
+        let quickActions = coreData.quick_actions || [];
+
+        // Parse nested JSON jika reply berupa format JSON string dari AI engine
+        if (typeof reply === 'string' && reply.trim().startsWith('{') && reply.trim().endsWith('}')) {
+          try {
+            const parsed = JSON.parse(reply.trim());
+            if (parsed.reply) reply = parsed.reply;
+            if (Array.isArray(parsed.quick_actions) && parsed.quick_actions.length > 0) {
+              quickActions = parsed.quick_actions;
+            }
+            if (parsed.action_proposal) {
+              actionProposal = parsed.action_proposal;
+            }
+            if (parsed.data) {
+              dataPayload = parsed.data;
+            }
+          } catch {
+            // Keep original string if JSON parsing fails
+          }
+        }
+
         return NextResponse.json({
           status: coreData.status || 'success',
-          type: coreData.type || (coreData.action_proposal ? 'ACTION_PROPOSAL' : 'TEXT'),
+          type: coreData.type || (actionProposal ? 'ACTION_PROPOSAL' : 'TEXT'),
           reply,
           reply_text: reply,
-          action_proposal: coreData.action_proposal || null,
-          data: coreData.data || null,
-          quick_actions: coreData.quick_actions || [],
+          action_proposal: actionProposal,
+          data: dataPayload,
+          quick_actions: quickActions,
           session_id: coreData.session_id || sessionId,
           tenant_id: slug,
         });
-      } else {
+      } else if (coreRes) {
         const errText = await coreRes.text().catch(() => '');
-        console.warn(`[Merchant Copilot] Core backend returned status ${coreRes.status}:`, errText);
+        console.warn(`[Merchant Copilot] Core backend at ${successfulPath} returned ${coreRes.status}:`, errText);
         return NextResponse.json({
           status: 'error',
           type: 'TEXT',
@@ -97,14 +148,23 @@ export async function POST(req: NextRequest) {
           session_id: sessionId,
           tenant_id: slug,
         });
+      } else {
+        return NextResponse.json({
+          status: 'error',
+          type: 'TEXT',
+          reply: 'Layanan AI Gateway tidak ditemukan (404) di seluruh endpoint kandidat.',
+          reply_text: 'Layanan AI Gateway tidak ditemukan (404) di seluruh endpoint kandidat.',
+          session_id: sessionId,
+          tenant_id: slug,
+        });
       }
     } catch (fetchErr: any) {
-      console.warn(`[Merchant Copilot] Core backend offline at ${targetUrl}:`, fetchErr?.message || fetchErr);
+      console.warn('[Merchant Copilot] Core backend offline:', fetchErr?.message || fetchErr);
       return NextResponse.json({
         status: 'error',
         type: 'TEXT',
-        reply: 'Tidak dapat terhubung ke AI Gateway (Core Backend). Pastikan server backend aktif di port 8000.',
-        reply_text: 'Tidak dapat terhubung ke AI Gateway (Core Backend). Pastikan server backend aktif di port 8000.',
+        reply: 'Tidak dapat terhubung ke AI Gateway (Core Backend). Pastikan server backend aktif.',
+        reply_text: 'Tidak dapat terhubung ke AI Gateway (Core Backend). Pastikan server backend aktif.',
         session_id: sessionId,
         tenant_id: slug,
       });
