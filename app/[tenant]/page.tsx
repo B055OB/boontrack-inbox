@@ -30,11 +30,13 @@ import {
   trackInitiateCheckout,
   trackViewContent
 } from "@/lib/tracking";
+import { getSupabase } from "@/lib/supabaseClient";
+import { DEFAULT_ONLINEBOOST_PRODUCTS, ProductItem } from "@/lib/product-catalog";
 
 interface Product {
   id: number;
   name: string;
-  category: "terlaris" | "digital" | "fisik";
+  category: "terlaris" | "digital" | "fisik" | string;
   price: number;
   originalPrice?: number;
   image: string;
@@ -42,6 +44,10 @@ interface Product {
   badge?: string;
   modules?: string[];
   features?: string[];
+  promo_price?: number;
+  download_url?: string;
+  stock?: number;
+  sku?: string;
 }
 
 export interface StoreChatMessage {
@@ -66,43 +72,26 @@ export interface StoreChatMessage {
   quick_actions?: string[];
 }
 
-const SAMPLE_PRODUCTS: Product[] = [
-  {
-    id: 1,
-    name: "Step by Step Rahasia Menghasilkan Dollar dari Paid Traffic",
-    category: "terlaris",
-    price: 499000,
-    originalPrice: 999000,
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=60",
-    description: "Formula paid traffic Meta & Google Ads untuk menghasilkan profit konsisten.",
-    badge: "🔥 Terlaris",
-    modules: ["Mindset Paid Traffic", "Setup Pixel Tracker", "Live Case Study"],
-    features: ["11 Modul Video HD", "Akses Lifetime", "Template Copywriting"]
-  },
-  {
-    id: 2,
-    name: "Masterclass Ads 2026 - Scale Up Campaign",
-    category: "digital",
-    price: 99000,
-    originalPrice: 149000,
-    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&auto=format&fit=crop&q=60",
-    description: "Strategi optimasi ROAS > 4x dan scale-up campaign terstruktur.",
-    badge: "Diskon 35%",
-    modules: ["Riset Winning Creative", "Struktur Budgeting", "Scale-Up Rule"],
-    features: ["Video Full HD", "Spreadsheet Kalkulator"]
-  },
-  {
-    id: 3,
-    name: "Parfum Pheromone Pocket 10ml - Missionary",
-    category: "fisik",
-    price: 99000,
-    originalPrice: 125000,
-    image: "https://images.unsplash.com/photo-1547887537-6158d64c35b3?w=600&auto=format&fit=crop&q=60",
-    description: "Parfum konsentrat tinggi tahan hingga 12 jam, botol praktis dibawa ke mana saja.",
-    badge: "Produk Fisik",
-    features: ["Konsentrat 20%", "Tahan 12 Jam", "Gratis Pouch"]
-  }
-];
+function mapProductItemToStoreProduct(p: any, idx: number): Product {
+  const price = p.promo_price ? Number(p.promo_price) : (Number(p.price) || 0);
+  const originalPrice = p.promo_price && Number(p.price) > Number(p.promo_price) ? Number(p.price) : (p.originalPrice ? Number(p.originalPrice) : undefined);
+  return {
+    id: typeof p.id === 'number' ? p.id : (Date.now() + idx),
+    name: p.name || p.title || `Produk ${idx + 1}`,
+    category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
+    price,
+    originalPrice,
+    image: p.image || (Array.isArray(p.images) && p.images[0]) || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=60',
+    description: p.description || '',
+    badge: p.promo || (p.category === 'terlaris' ? '🔥 Terlaris' : '⚡ Akses Instan'),
+    features: p.features || (p.category === 'digital' ? ['Format Digital Ecourse', 'Akses Member Area', 'Update Materi'] : ['Produk Resmi', 'Kualitas Terjamin']),
+    modules: p.modules,
+    promo_price: p.promo_price ? Number(p.promo_price) : undefined,
+    download_url: p.download_url || p.delivery_url || '',
+    stock: p.stock !== undefined ? Number(p.stock) : 999,
+    sku: p.sku || `SKU-${idx + 1}`
+  };
+}
 
 export default function TenantStorefrontPage() {
   const params = useParams();
@@ -203,6 +192,86 @@ export default function TenantStorefrontPage() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [productForCheckout, setProductForCheckout] = useState<{ id: string; title: string; price: number } | null>(null);
 
+  // Dynamic Store Products (mengambil persis data produk tenant dari Supabase/catalog)
+  const [storeProducts, setStoreProducts] = useState<Product[]>(() => {
+    if (tenantSlug === "onlineboost" || isDemoStore) {
+      return DEFAULT_ONLINEBOOST_PRODUCTS.map((p, idx) => mapProductItemToStoreProduct(p, idx));
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function syncStorefrontCatalog() {
+      // 1. Cek cache localStorage hasil sinkronisasi dashboard
+      if (typeof window !== "undefined") {
+        try {
+          const saved = localStorage.getItem(`bt_products_${tenantSlug}`);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const mapped = parsed.map((p: any, idx: number) => mapProductItemToStoreProduct(p, idx));
+              if (isMounted) setStoreProducts(mapped);
+            }
+          }
+        } catch (err) {
+          console.warn("[Storefront] Local cache parse note:", err);
+        }
+      }
+
+      // 2. Query Supabase (tabel tenants.metadata.products)
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: tenantRow } = await supabase
+            .from("tenants")
+            .select("metadata")
+            .eq("slug", tenantSlug)
+            .maybeSingle();
+
+          if (Array.isArray(tenantRow?.metadata?.products) && tenantRow.metadata.products.length > 0) {
+            const mapped = tenantRow.metadata.products.map((p: any, idx: number) => mapProductItemToStoreProduct(p, idx));
+            if (isMounted) {
+              setStoreProducts(mapped);
+              return;
+            }
+          }
+        }
+      } catch (dbErr) {
+        console.warn("[Storefront] Supabase products query note:", dbErr);
+      }
+
+      // 3. Query internal API route /api/v1/tenants/[tenantSlug]/products
+      try {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.products) && data.products.length > 0) {
+            const mapped = data.products.map((p: any, idx: number) => mapProductItemToStoreProduct(p, idx));
+            if (isMounted) {
+              setStoreProducts(mapped);
+              return;
+            }
+          }
+        }
+      } catch (apiErr) {
+        console.warn("[Storefront] Internal products route note:", apiErr);
+      }
+
+      // 4. Default fallback khusus onlineboost (4 ecourse resmi)
+      if (tenantSlug === "onlineboost" && isMounted) {
+        setStoreProducts(DEFAULT_ONLINEBOOST_PRODUCTS.map((p, idx) => mapProductItemToStoreProduct(p, idx)));
+      }
+    }
+
+    syncStorefrontCatalog();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug]);
+
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
   const [showCartModal, setShowCartModal] = useState(false);
 
@@ -212,9 +281,9 @@ export default function TenantStorefrontPage() {
       id: "init-1",
       sender: "bot",
       time: "09:00",
-      text: `Halo! Selamat datang di ${displayName.toUpperCase()} 👋 Ada yang bisa kami bantu seputar produk, promo, atau pengiriman hari ini?`,
+      text: `Halo! Selamat datang di ${displayName.toUpperCase()} 👋 Ada yang bisa kami bantu seputar ecourse, materi, atau promo spesial hari ini?`,
       type: 'TEXT',
-      quick_actions: ['🔥 Produk Terlaris', '💰 Cek Promo Hari Ini', '🚚 Berapa Ongkirnya?']
+      quick_actions: ['🔥 Ecourse Terlaris', '💰 Cek Promo Hari Ini', '⚡ Konsultasi Materi']
     }
   ]);
   const [isBotTyping, setIsBotTyping] = useState(false);
@@ -262,7 +331,7 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  const rawProducts = isDemoStore ? SAMPLE_PRODUCTS : [];
+  const rawProducts = storeProducts;
   const filteredProducts = activeCategory === "all"
     ? rawProducts
     : rawProducts.filter((p) => p.category === activeCategory);

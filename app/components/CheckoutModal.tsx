@@ -24,7 +24,13 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [uniqueCode] = useState(() => Math.floor(100 + Math.random() * 900));
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
-  const [qrData, setQrData] = useState<{ orderId: string; invoiceUrl?: string } | null>(null);
+  const [qrData, setQrData] = useState<{
+    orderId: string;
+    invoiceUrl?: string;
+    qrString?: string;
+    qrCodeUrl?: string;
+    paymentMethod?: 'qris' | 'manual_transfer';
+  } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
   const basePrice = product?.price || 0;
@@ -76,6 +82,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
       setQrData({
         orderId: result.orderId,
         invoiceUrl: result.invoiceUrl,
+        qrString: result.qrString,
+        qrCodeUrl: result.qrCodeUrl,
+        paymentMethod: paymentMethod,
       });
     } catch (err: any) {
       setErrorMessage(err.message || "Gagal memproses pesanan.");
@@ -115,9 +124,25 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               <h4 className="font-bold text-white text-base">Pesanan Berhasil Dibuat!</h4>
               <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: {qrData.orderId}</p>
             </div>
+
+            {qrData.paymentMethod === 'qris' && (qrData.qrCodeUrl || qrData.qrString) && (
+              <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
+                <img
+                  src={qrData.qrCodeUrl || `https://quickchart.io/qr?text=${encodeURIComponent(qrData.qrString!)}&size=260&ecLevel=H`}
+                  alt="QRIS Dinamis Otomatis"
+                  className="w-52 h-52 object-contain rounded-lg"
+                />
+                <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
+                  QRIS STANDAR PEMBAYARAN NASIONAL
+                </div>
+                <p className="text-[10px] text-slate-500 text-center">
+                  BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
+                </p>
+              </div>
+            )}
             
             <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
-              Silakan selesaikan pembayaran. Rincian invoice dan nomor rekening/QR telah siap. Notifikasi transaksi otomatis dikirim ke WhatsApp Anda (<strong>{customerPhone}</strong>).
+              Silakan selesaikan pembayaran. Rincian invoice dan tautan QRIS telah siap. Notifikasi transaksi otomatis dikirim ke WhatsApp Anda (<strong>{customerPhone}</strong>).
             </p>
 
             {qrData.invoiceUrl && (

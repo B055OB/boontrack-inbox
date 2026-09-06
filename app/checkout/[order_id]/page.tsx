@@ -118,6 +118,44 @@ export default function CheckoutPage({ params }: Props) {
     return () => clearInterval(timer);
   }, [orderId]);
 
+  // Request dynamic QRIS jika belum ada qr_code_url
+  useEffect(() => {
+    async function ensureDynamicQris() {
+      if (!order || order.payment_method === 'manual_transfer' || order.qr_code_url) return;
+
+      try {
+        const gross = Number(order.gross_amount || order.total_amount || order.amount || 0);
+        const res = await fetch('/api/v1/payments/qris/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            external_id: orderId,
+            amount: gross,
+            tenant_slug: order.tenant_slug || 'onlineboost',
+            customer_phone: order.customer_phone,
+            customer_name: order.customer_name,
+            product_name: order.product_title
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.qr_code_url || data.qr_string) {
+            setOrder((prev: any) => ({
+              ...prev,
+              qr_code_url: data.qr_code_url || (data.qr_string ? `https://quickchart.io/qr?text=${encodeURIComponent(data.qr_string)}&size=300&ecLevel=H` : prev.qr_code_url),
+              qr_string: data.qr_string || prev.qr_string
+            }));
+          }
+        }
+      } catch (qErr) {
+        console.warn('[Checkout Page] Dynamic QRIS fetch note:', qErr);
+      }
+    }
+
+    ensureDynamicQris();
+  }, [order, orderId]);
+
   // Trigger Purchase (Meta) & CompletePayment (TikTok) dengan deduplikasi event_id
   const [hasTrackedPurchase, setHasTrackedPurchase] = useState(false);
   useEffect(() => {
@@ -155,10 +193,13 @@ export default function CheckoutPage({ params }: Props) {
   const shippingSubsidy = Number(order?.shipping_subsidy || 0);
   const netShippingCost = Number(order?.net_shipping_cost || Math.max(0, shippingCost - shippingSubsidy));
 
-  const qrUrl = order?.qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=00020101021226${orderId}5408${grossAmount}5802ID5913BOONTRACK6007JAKARTA6304`;
+  const fallbackQrisString = `00020101021226580016ID.CO.BOONTRACK.WWW01189360001000000000000215${orderId.slice(-15)}0303UMI520458125303360540${String(grossAmount).length}${grossAmount}5802ID5913BOONTRACK6007BANDUNG6304`;
+  const qrUrl = order?.qr_code_url || (order?.qr_string 
+    ? `https://quickchart.io/qr?text=${encodeURIComponent(order.qr_string)}&size=300&ecLevel=H`
+    : `https://quickchart.io/qr?text=${encodeURIComponent(fallbackQrisString)}&size=300&ecLevel=H`);
 
   const waConfirmUrl = `https://wa.me/6281237450222?text=${encodeURIComponent(
-    `Halo Tim BoonTrack, saya sudah melakukan pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Masterclass Ads 2026'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS'}\n\nMohon dicek dan aktivasi akses saya. Terima kasih!`
+    `Halo Tim BoonTrack, saya sudah melakukan pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Produk Digital'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\nMohon dicek dan aktivasi akses saya. Terima kasih!`
   )}`;
 
   return (
