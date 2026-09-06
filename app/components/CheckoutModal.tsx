@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, trackClientPurchase } from "@/lib/tracking";
 
@@ -24,13 +25,15 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [uniqueCode] = useState(() => Math.floor(100 + Math.random() * 900));
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
-  const [qrData, setQrData] = useState<{
+  const [paymentData, setPaymentData] = useState<{
     orderId: string;
     invoiceUrl?: string;
+    qr_string?: string;
     qrString?: string;
     qrCodeUrl?: string;
     paymentMethod?: 'qris' | 'manual_transfer';
   } | null>(null);
+  const qrData = paymentData;
   const [errorMessage, setErrorMessage] = useState("");
 
   const basePrice = product?.price || 0;
@@ -79,10 +82,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         trackClientPurchase(result.orderId, totalAmount);
       }
 
-      setQrData({
+      setPaymentData({
         orderId: result.orderId,
         invoiceUrl: result.invoiceUrl,
-        qrString: result.qrString,
+        qr_string: (result as any).qr_string || result.qrString,
+        qrString: result.qrString || (result as any).qr_string,
         qrCodeUrl: result.qrCodeUrl,
         paymentMethod: paymentMethod,
       });
@@ -114,7 +118,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           </button>
         </div>
 
-        {qrData ? (
+        {paymentData ? (
           /* Tampilan Selesai / Menunggu Pembayaran */
           <div className="text-center space-y-4 py-4">
             <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto border border-emerald-500/30">
@@ -122,16 +126,19 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
             </div>
             <div>
               <h4 className="font-bold text-white text-base">Pesanan Berhasil Dibuat!</h4>
-              <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: {qrData.orderId}</p>
+              <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: {paymentData.orderId}</p>
             </div>
 
-            {qrData.paymentMethod === 'qris' && (qrData.qrCodeUrl || qrData.qrString) && (
+            {paymentData.paymentMethod === 'qris' && (
               <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
-                <img
-                  src={qrData.qrCodeUrl || `https://quickchart.io/qr?text=${encodeURIComponent(qrData.qrString!)}&size=260&ecLevel=H`}
-                  alt="QRIS Dinamis Otomatis"
-                  className="w-52 h-52 object-contain rounded-lg"
-                />
+                <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
+                  <QRCodeSVG
+                    value={paymentData.qr_string || process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1"}
+                    size={220}
+                    level="M"
+                    includeMargin={true}
+                  />
+                </div>
                 <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
                   QRIS STANDAR PEMBAYARAN NASIONAL
                 </div>
@@ -145,9 +152,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               Silakan selesaikan pembayaran. Rincian invoice dan tautan QRIS telah siap. Notifikasi transaksi otomatis dikirim ke WhatsApp Anda (<strong>{customerPhone}</strong>).
             </p>
 
-            {qrData.invoiceUrl && (
+            {paymentData.invoiceUrl && (
               <a
-                href={qrData.invoiceUrl}
+                href={paymentData.invoiceUrl}
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
               >
                 <ArrowRight className="w-4 h-4" /> Buka Halaman Rincian Invoice

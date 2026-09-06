@@ -190,7 +190,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
 
     if (!qrString && !qrCodeUrl) {
-      qrString = `00020101021226580016ID.CO.BOONTRACK.WWW01189360001000000000000215${orderId.slice(-15)}0303UMI520458125303360540${String(grossAmount).length}${grossAmount}5802ID5913BOONTRACK6007BANDUNG6304`;
+      qrString = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
       qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
     }
 
@@ -218,6 +218,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   return {
     orderId,
     qrString,
+    qr_string: qrString,
     qrCodeUrl,
     invoiceUrl
   };

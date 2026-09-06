@@ -16,6 +16,7 @@ import {
   Zap 
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { QRCodeSVG } from 'qrcode.react';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
 
@@ -193,10 +194,9 @@ export default function CheckoutPage({ params }: Props) {
   const shippingSubsidy = Number(order?.shipping_subsidy || 0);
   const netShippingCost = Number(order?.net_shipping_cost || Math.max(0, shippingCost - shippingSubsidy));
 
-  const fallbackQrisString = `00020101021226580016ID.CO.BOONTRACK.WWW01189360001000000000000215${orderId.slice(-15)}0303UMI520458125303360540${String(grossAmount).length}${grossAmount}5802ID5913BOONTRACK6007BANDUNG6304`;
-  const qrUrl = order?.qr_code_url || (order?.qr_string 
-    ? `https://quickchart.io/qr?text=${encodeURIComponent(order.qr_string)}&size=300&ecLevel=H`
-    : `https://quickchart.io/qr?text=${encodeURIComponent(fallbackQrisString)}&size=300&ecLevel=H`);
+  const fallbackQrisString = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
+  const rawQrisValue = order?.qr_string || fallbackQrisString;
+  const qrUrl = order?.qr_code_url || `https://quickchart.io/qr?text=${encodeURIComponent(rawQrisValue)}&size=300&ecLevel=H`;
 
   const waConfirmUrl = `https://wa.me/6281237450222?text=${encodeURIComponent(
     `Halo Tim BoonTrack, saya sudah melakukan pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Produk Digital'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\nMohon dicek dan aktivasi akses saya. Terima kasih!`
@@ -306,13 +306,16 @@ export default function CheckoutPage({ params }: Props) {
             </div>
           </div>
         ) : (
-          /* QR Code Container (QRIS) */
+          /* QR Code Container (QRIS Standar Nasional) */
           <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center shadow-inner">
-            <img
-              src={qrUrl}
-              alt="QRIS Standar Nasional"
-              className="w-56 h-56 object-contain rounded-lg"
-            />
+            <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
+              <QRCodeSVG
+                value={rawQrisValue}
+                size={220}
+                level="M"
+                includeMargin={true}
+              />
+            </div>
             <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
               QRIS STANDAR PEMBAYARAN NASIONAL
             </div>
