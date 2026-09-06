@@ -30,9 +30,9 @@ import Footer from '@/app/components/Footer';
 
 export default function ShopLandingPage() {
   const waContactUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin konsultasi layanan platform SaaS BoonTrack dan aktivasi merchant.");
-  const waSoloOrderUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Solo Starter Plan Rp99.000/bulan untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
-  const waGrowthOrderUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Growth Plan Rp199.000/bulan untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
-  const waProOrderUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Pro Scale Plan Rp499.000/bulan untuk bisnis saya. Mohon panduan onboarding VIP dan faktur pembayaran.");
+  const waGrowthOrderUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Growth Plan Rp199.000/bulan (diskon dari Rp350.000) untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
+  const waGrowthTrackingOrderUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Growth + Ads Tracking Plan Rp299.000/bulan (diskon dari Rp500.000) untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
+  const waProOrderUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan ProScale Plan Rp499.000/bulan (diskon dari Rp800.000) untuk bisnis saya. Mohon panduan onboarding VIP dan faktur pembayaran.");
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-blue-600 selection:text-white flex flex-col">
@@ -194,107 +194,31 @@ export default function ShopLandingPage() {
         {/* Grid 3 Kartu Paket */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-stretch max-w-6xl mx-auto">
           
-          {/* PAKET 1: Solo Starter */}
+          {/* PAKET 1: Growth */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 flex flex-col justify-between shadow-sm hover:shadow-md transition">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold px-3 py-1 bg-slate-100 text-slate-700 rounded-full border border-slate-200">
-                  Solo Starter
-                </span>
-                <span className="text-xs text-slate-500 font-medium">Pemula & Mandiri</span>
-              </div>
-
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Solo Starter</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Cocok untuk pebisnis mandiri & toko online pemula.
-                </p>
-              </div>
-
-              <div className="pt-2 pb-1 border-y border-slate-100">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-extrabold text-slate-900 tracking-tight">Rp99.000</span>
-                  <span className="text-xs text-slate-500 font-medium">/ bulan</span>
-                </div>
-                <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">
-                  ✓ Langganan SaaS Bulanan • Lisensi Mandiri
-                </div>
-              </div>
-
-              {/* Rincian Fitur */}
-              <div className="space-y-3 pt-2 text-xs text-slate-700">
-                <div className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-                  Fitur Utama:
-                </div>
-                <ul className="space-y-2.5">
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>1 Nomor WhatsApp Terhubung:</strong> Gateway chat otomatis mandiri</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>Akses AI Assistant Penjualan:</strong> Otomasi respon chat pelanggan 24/7</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>Katalog Produk Digital:</strong> Etalase online & Dynamic QRIS Checkout</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>Dashboard Transaksi Ringkas:</strong> Pantau order & invoice masuk</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            {/* CTA Box */}
-            <div className="pt-6 mt-6 border-t border-slate-100 space-y-2">
-              <a
-                href={waSoloOrderUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5 transition shadow-sm"
-              >
-                <span>Pesan Sekarang (Rp99.000)</span>
-                <ArrowUpRight className="w-4 h-4" />
-              </a>
-              <Link
-                href="/register?plan=solo_starter"
-                className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold text-center block transition border border-slate-200"
-              >
-                Daftar Online Mandiri
-              </Link>
-            </div>
-          </div>
-
-          {/* PAKET 2: Growth (Paling Populer) */}
-          <div className="bg-white rounded-2xl border-2 border-blue-600 p-6 sm:p-7 flex flex-col justify-between shadow-md relative">
-            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wide shadow-sm">
-              Paling Populer
-            </div>
-
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold px-3 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200">
                   Growth Plan
                 </span>
-                <span className="text-xs text-blue-600 font-bold">Bisnis Berkembang</span>
+                <span className="text-xs text-slate-500 font-medium">Bisnis Berkembang</span>
               </div>
 
               <div>
                 <h3 className="text-xl font-bold text-slate-900">Growth</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Untuk bisnis yang berkembang dengan volume chat lebih tinggi.
+                <p className="text-xs text-slate-600 mt-1 font-medium leading-relaxed">
+                  WhatsApp Multi Admin & Otomasi Toko Online
                 </p>
               </div>
 
               <div className="pt-2 pb-1 border-y border-slate-100">
-                <div className="flex items-baseline gap-1">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="text-sm text-slate-400 line-through font-semibold">Rp350.000</span>
                   <span className="text-3xl font-extrabold text-slate-900 tracking-tight">Rp199.000</span>
                   <span className="text-xs text-slate-500 font-medium">/ bulan</span>
                 </div>
-                <div className="text-[11px] text-blue-600 font-semibold mt-0.5">
-                  ✓ Semua Fitur Solo Starter + Integrasi & Laporan
+                <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">
+                  ✓ Hemat Rp151.000 • Langganan SaaS Bulanan
                 </div>
               </div>
 
@@ -306,23 +230,19 @@ export default function ShopLandingPage() {
                 <ul className="space-y-2.5">
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Semua Fitur Solo Starter:</strong> Termasuk katalog, AI, dan dynamic QRIS</span>
+                    <span><strong>Multi-Agent Live CS:</strong> Kolaborasi tim CS dalam satu nomor WhatsApp</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Integrasi Webhook Eksternal:</strong> Support Sejoli, Mailketing & platform pihak ketiga</span>
+                    <span><strong>Bot Balas Otomatis 24/7:</strong> Respon pesan masuk otomatis berbasis AI persona</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Multi-Device WhatsApp Sync:</strong> Sinkronisasi nomor WhatsApp stabil</span>
+                    <span><strong>Dynamic QRIS Otomatis:</strong> Pembayaran instan kode unik real-time verifikasi</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Broadcast & e-Receipt Otomatis:</strong> Notifikasi pembayaran dan tanda terima instan</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Analitik & Laporan Penjualan:</strong> Rekap performa transaksi harian</span>
+                    <span><strong>BoonTrack Direct Connect:</strong> Sambungkan WhatsApp nomor bisnis via Scan QR instan</span>
                   </li>
                 </ul>
               </div>
@@ -334,13 +254,92 @@ export default function ShopLandingPage() {
                 href={waGrowthOrderUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5 transition shadow-sm"
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5 transition shadow-sm"
               >
                 <span>Pesan Sekarang (Rp199.000)</span>
                 <ArrowUpRight className="w-4 h-4" />
               </a>
               <Link
-                href="/register?plan=growth"
+                href="/register?plan=growth&amount=199000"
+                className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold text-center block transition border border-slate-200"
+              >
+                Daftar Online Mandiri
+              </Link>
+            </div>
+          </div>
+
+          {/* PAKET 2: Growth + Ads Tracking (Highlight/Terpopuler) */}
+          <div className="bg-white rounded-2xl border-2 border-blue-600 p-6 sm:p-7 flex flex-col justify-between shadow-xl relative ring-1 ring-blue-600/20">
+            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-3.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wide shadow-md flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-300" />
+              <span>Terpopuler & Paling Diminati</span>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold px-3 py-1 bg-blue-100 text-blue-800 rounded-full border border-blue-200">
+                  Growth + Ads Tracking
+                </span>
+                <span className="text-xs text-blue-600 font-bold">Scale-Up Ads</span>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Growth + Ads Tracking</h3>
+                <p className="text-xs text-slate-600 mt-1 font-medium leading-relaxed">
+                  Tracking Iklan Meta & TikTok ke WhatsApp (Auto CAPI)
+                </p>
+              </div>
+
+              <div className="pt-2 pb-1 border-y border-slate-100">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="text-sm text-slate-400 line-through font-semibold">Rp500.000</span>
+                  <span className="text-3xl font-extrabold text-blue-600 tracking-tight">Rp299.000</span>
+                  <span className="text-xs text-slate-500 font-medium">/ bulan</span>
+                </div>
+                <div className="text-[11px] text-blue-600 font-semibold mt-0.5">
+                  ✓ Hemat Rp201.000 • Solusi ROI & CAPI Server-Side
+                </div>
+              </div>
+
+              {/* Rincian Fitur */}
+              <div className="space-y-3 pt-2 text-xs text-slate-700">
+                <div className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
+                  Fitur Utama:
+                </div>
+                <ul className="space-y-2.5">
+                  <li className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span><strong>Semua Fitur Growth:</strong> Termasuk Multi-CS, Bot AI 24/7, dan Dynamic QRIS</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span><strong>Lacak Iklan WhatsApp Closing:</strong> Atribusi konversi akurat dari kampanye iklan ke kasir WA</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span><strong>Meta CAPI & TikTok Event Tracking:</strong> Server-Side conversion API tanpa terhalang iOS update</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span><strong>Laporan ROAS Akurat:</strong> Dashboard metrik performa iklan & kalkulasi laba riil</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* CTA Box */}
+            <div className="pt-6 mt-6 border-t border-slate-100 space-y-2">
+              <a
+                href={waGrowthTrackingOrderUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5 transition shadow-sm"
+              >
+                <span>Pesan Sekarang (Rp299.000)</span>
+                <ArrowUpRight className="w-4 h-4" />
+              </a>
+              <Link
+                href="/register?plan=growth_tracking&amount=299000"
                 className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-semibold text-center block transition border border-blue-200"
               >
                 Daftar Online Mandiri
@@ -348,30 +347,31 @@ export default function ShopLandingPage() {
             </div>
           </div>
 
-          {/* PAKET 3: Pro Scale */}
+          {/* PAKET 3: ProScale */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 flex flex-col justify-between shadow-sm hover:shadow-md transition">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
-                  Pro Scale
+                  ProScale
                 </span>
                 <span className="text-xs text-emerald-600 font-bold">Enterprise & Tim CS</span>
               </div>
 
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Pro Scale</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Solusi lengkap enterprise & tim CS omnichannel.
+                <h3 className="text-xl font-bold text-slate-900">ProScale</h3>
+                <p className="text-xs text-slate-600 mt-1 font-medium leading-relaxed">
+                  WhatsApp Broadcast Massal & Centang Biru Resmi
                 </p>
               </div>
 
               <div className="pt-2 pb-1 border-y border-slate-100">
-                <div className="flex items-baseline gap-1">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="text-sm text-slate-400 line-through font-semibold">Rp800.000</span>
                   <span className="text-3xl font-extrabold text-slate-900 tracking-tight">Rp499.000</span>
                   <span className="text-xs text-slate-500 font-medium">/ bulan</span>
                 </div>
                 <div className="text-[11px] text-emerald-600 font-semibold mt-0.5">
-                  ✓ Semua Fitur Growth + Multi-CS & WABA
+                  ✓ Hemat Rp301.000 • Multi CS & Official WABA
                 </div>
               </div>
 
@@ -383,23 +383,19 @@ export default function ShopLandingPage() {
                 <ul className="space-y-2.5">
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>Semua Fitur Paket Growth:</strong> Termasuk webhook & broadcast e-receipt</span>
+                    <span><strong>Semua Fitur Growth+Tracking:</strong> Termasuk Meta CAPI & Laporan ROAS Akurat</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>BoonTrack Inbox (Multi-Admin Live CS):</strong> Dukungan hingga 5 CS Seats kolaboratif</span>
+                    <span><strong>Broadcast WhatsApp Massal Anti-Blokir:</strong> Kirim blast promosi resmi tanpa risiko banned</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>Meta Cloud API (Official WABA):</strong> Integrasi jalur resmi Meta & AI Omnichannel</span>
+                    <span><strong>Integrasi Resmi WABA Meta Cloud:</strong> Jalur resmi WhatsApp Business API & AI verified</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>Pelacakan Iklan Tingkat Lanjut:</strong> Meta CAPI & Server-Side Pixel Tracking</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>Prioritas Support 24/7:</strong> Bantuan teknis VIP & Dedicated SLA</span>
+                    <span><strong>Multi CS Skala Besar:</strong> Dukungan kuota CS tak terbatas untuk tim enterprise</span>
                   </li>
                 </ul>
               </div>
@@ -417,7 +413,7 @@ export default function ShopLandingPage() {
                 <ArrowUpRight className="w-4 h-4" />
               </a>
               <Link
-                href="/register?plan=pro_scale"
+                href="/register?plan=pro_scale&amount=499000"
                 className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold text-center block transition border border-slate-200"
               >
                 Daftar Online Mandiri

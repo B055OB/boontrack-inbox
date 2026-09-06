@@ -83,11 +83,12 @@ export default function TenantDashboardPage() {
     }
   }, [tenantSlug, router]);
 
-  const isProTenant = ["onlineboost", "demo", "suhu-ads-masterclass"].includes(tenantSlug);
+  const isProTenant = ["demo"].includes(tenantSlug);
 
-  // FEATURE GATING (ENTITLEMENTS BERDASARKAN TIER TOKO)
+  // FEATURE GATING (ENTITLEMENTS BERDASARKAN TIER TOKO: Growth, GrowthPlus, ProScale)
   // 'growth' | 'growth_tracking' | 'proscale'
   const isTenantGrowthPlus = tenantSlug === 'growthplus' || tenantSlug.includes('growthplus') || tenantSlug === 'growth-plus' || tenantSlug === 'growth_plus';
+  const isTenantProScale = tenantSlug === 'proscale' || tenantSlug.includes('proscale') || tenantSlug === 'enterprise' || ["demo", "onlineboost", "suhu-ads-masterclass"].includes(tenantSlug);
 
   const [planTier, setPlanTier] = useState<'growth' | 'growth_tracking' | 'proscale'>(() => {
     if (typeof window !== 'undefined') {
@@ -100,14 +101,14 @@ export default function TenantDashboardPage() {
         if (['proscale', 'enterprise', 'pro'].some(t => tierParam.includes(t))) {
           return 'proscale';
         }
-        if (['growth', 'starter'].some(t => tierParam.includes(t))) {
+        if (['growth', 'starter', 'solo'].some(t => tierParam.includes(t))) {
           return 'growth';
         }
       }
       const stored = localStorage.getItem(`bt_tier_${tenantSlug}`) as 'growth' | 'growth_tracking' | 'proscale' | null;
       if (stored && ['growth', 'growth_tracking', 'proscale'].includes(stored)) return stored;
     }
-    if (["demo", "onlineboost", "suhu-ads-masterclass"].includes(tenantSlug)) {
+    if (isTenantProScale) {
       return 'proscale';
     }
     if (isTenantGrowthPlus) {
@@ -116,15 +117,12 @@ export default function TenantDashboardPage() {
     return 'growth';
   });
 
-  const isGrowthPlus = planTier === 'growth_tracking' || isTenantGrowthPlus;
-  const isProScale = planTier === 'proscale';
+  const isProScale = planTier === 'proscale' || isTenantProScale;
+  const isGrowthPlus = (planTier === 'growth_tracking' || isTenantGrowthPlus) && !isProScale;
   const isGrowth = planTier === 'growth' && !isGrowthPlus && !isProScale;
 
-  const isAdsTrackingUnlocked =
-    isTenantGrowthPlus ||
-    ['growth+', 'growth_tracking', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => planTier.includes(t)) ||
-    isGrowthPlus ||
-    isProScale;
+  const isAdsTrackingUnlocked = isGrowthPlus || isProScale;
+  const isBroadcastUnlocked = isProScale;
 
   const handleUpgradeTier = (targetTier: 'growth_tracking' | 'proscale') => {
     const tierLabel = targetTier === 'proscale' ? 'ProScale (Official WABA & Unlimited)' : 'Growth+Tracking (CAPI Server-Side & ROAS)';
@@ -412,7 +410,9 @@ export default function TenantDashboardPage() {
               const rawTier = (s.plan_tier || s.tier || s.pricing?.tier || '').toLowerCase();
               if (rawTier.includes('proscale') || rawTier.includes('enterprise')) setPlanTier('proscale');
               else if (rawTier.includes('tracking') || rawTier.includes('plus') || rawTier === 'pro' || rawTier.includes('growth+')) setPlanTier('growth_tracking');
-              else if (rawTier.includes('growth') || rawTier === 'starter') setPlanTier(isTenantGrowthPlus ? 'growth_tracking' : 'growth');
+              else if (rawTier.includes('growth') || rawTier === 'starter') setPlanTier(isTenantProScale ? 'proscale' : isTenantGrowthPlus ? 'growth_tracking' : 'growth');
+            } else if (isTenantProScale) {
+              setPlanTier('proscale');
             } else if (isTenantGrowthPlus) {
               setPlanTier('growth_tracking');
             }
@@ -1108,11 +1108,15 @@ export default function TenantDashboardPage() {
               }`}>
                 {tenantSlug === 'growthplus' || tenantSlug.includes('growthplus')
                   ? 'GROWTHPLUS Tier: Growth+Tracking'
+                  : tenantSlug === 'proscale' || tenantSlug.includes('proscale')
+                  ? 'PROSCALE Tier: ProScale'
+                  : tenantSlug === 'growth'
+                  ? 'GROWTH Tier: Growth'
                   : isProScale
-                  ? 'Tier: ProScale'
+                  ? 'PROSCALE Tier: ProScale'
                   : isGrowthPlus
-                  ? 'Tier: Growth+Tracking'
-                  : 'Tier: Growth'}
+                  ? 'GROWTHPLUS Tier: Growth+Tracking'
+                  : 'GROWTH Tier: Growth'}
               </span>
             </div>
           </div>
