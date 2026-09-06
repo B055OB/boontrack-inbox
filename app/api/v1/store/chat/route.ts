@@ -47,6 +47,40 @@ export async function POST(req: NextRequest) {
     const slug = normalizeTenantSlug(tenant_slug || tenant_id || rawSlug || 'onlineboost');
     const sessionId = session_id || `store_sess_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const storeName = slug.replace(/[-_]/g, ' ').toUpperCase();
+    const qLower = (message || '').trim().toLowerCase();
+
+    // 0. QUICK REPLIES INTERCEPTOR (Handling instan & konsisten untuk widget storefront)
+    // A. Quick Reply "🔥 Produk Terlaris"
+    const isBestSellerQuery = /terlaris|produk terlaris|ecourse terlaris/i.test(qLower);
+    if (isBestSellerQuery) {
+      const bestSellerReply = `Berikut 2 ecourse paling terlaris dan paling banyak dipelajari member OnlineBoost:\n\n1. 🔥 Ecourse Strategi YouTube AI: Metode Praktis Raih Pendapatan AdSense (Rp 1.499.000)\n2. 🚀 Step by Step Rahasia Menghasilkan Dollar dari Paid Traffic (Rp 249.000)\n\nSilakan langsung klik tombol '+ Keranjang' pada kartu produk di etalase sebelah kanan untuk langsung checkout instan via QRIS!`;
+      return NextResponse.json({
+        status: 'success',
+        action: 'NONE',
+        type: 'TEXT',
+        reply_text: bestSellerReply,
+        reply: bestSellerReply,
+        quick_actions: ['🏷️ Cek Promo Hari Ini', '⚡ Konsultasi Materi', 'Cara Bayar QRIS'],
+        session_id: sessionId,
+        tenant_id: slug,
+      });
+    }
+
+    // B. Quick Reply "🏷️ Cek Promo Hari Ini"
+    const isPromoQuery = /promo|cek promo|diskon|potongan/i.test(qLower);
+    if (isPromoQuery) {
+      const promoReply = `Kabar baik! Khusus pemesanan hari ini, berikut rincian diskon aktif untuk ecourse OnlineBoost:\n\n• Master Class Internet Marketing CPM: diskon 50% jadi Rp 4.999.000 (dari Rp 9.999.999).\n• Ecourse YouTube AI: diskon 50% jadi Rp 1.499.000 (dari Rp 2.999.000).\n• Ecourse Member CPM: diskon 50% jadi Rp 749.000 (dari Rp 1.490.000).\n• Step by Step Paid Traffic: diskon 50% jadi Rp 249.000 (dari Rp 499.000).\n\nSemua materi dapat langsung diakses secara lifetime setelah verifikasi QRIS instan. Silakan pilih produk favorit Anda di etalase dan klik '+ Keranjang'!`;
+      return NextResponse.json({
+        status: 'success',
+        action: 'NONE',
+        type: 'TEXT',
+        reply_text: promoReply,
+        reply: promoReply,
+        quick_actions: ['🔥 Produk Terlaris', '⚡ Ambil Promo Sekarang', 'Metode Pembayaran'],
+        session_id: sessionId,
+        tenant_id: slug,
+      });
+    }
 
     // 1. Forward Langsung ke Core Backend AI Gateway (POST /api/v1/store/chat)
     try {
@@ -96,7 +130,6 @@ export async function POST(req: NextRequest) {
 
     // 2. Fallback Engine Adaptif (Hanya jika Core Backend Offline)
     const storeCatalog: StoreChatProduct[] = Array.isArray(products) && products.length > 0 ? products : [];
-    const qLower = (message || '').trim().toLowerCase();
 
     // A. Pertanyaan Non-Produk: Ongkir & Ekspedisi Pengiriman
     const isShippingQuery = /ongkir|ongkos|kirim|ekspedisi|kurir|jne|jnt|j&t|sicepat|antar|sampai|alamat|lokasi toko|asal pengiriman/i.test(qLower);

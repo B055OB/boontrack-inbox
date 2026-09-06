@@ -75,16 +75,18 @@ export interface StoreChatMessage {
 function mapProductItemToStoreProduct(p: any, idx: number): Product {
   const price = p.promo_price ? Number(p.promo_price) : (Number(p.price) || 0);
   const originalPrice = p.promo_price && Number(p.price) > Number(p.promo_price) ? Number(p.price) : (p.originalPrice ? Number(p.originalPrice) : undefined);
+  const pName = (p.name || p.title || '').toLowerCase();
+  const isTerlaris = p.category === 'terlaris' || pName.includes('youtube ai') || pName.includes('paid traffic') || pName.includes('dollar');
   return {
     id: typeof p.id === 'number' ? p.id : (Date.now() + idx),
     name: p.name || p.title || `Produk ${idx + 1}`,
-    category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
+    category: isTerlaris ? 'terlaris' : ((p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital')),
     price,
     originalPrice,
     image: p.image || (Array.isArray(p.images) && p.images[0]) || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=60',
     description: p.description || '',
-    badge: p.promo || (p.category === 'terlaris' ? '🔥 Terlaris' : '⚡ Akses Instan'),
-    features: p.features || (p.category === 'digital' ? ['Format Digital Ecourse', 'Akses Member Area', 'Update Materi'] : ['Produk Resmi', 'Kualitas Terjamin']),
+    badge: isTerlaris ? '🔥 Terlaris' : (p.promo || '⚡ Diskon 50%'),
+    features: p.features || (p.category === 'digital' || isTerlaris ? ['Format Digital Ecourse', 'Akses Member Area', 'Update Materi'] : ['Produk Resmi', 'Kualitas Terjamin']),
     modules: p.modules,
     promo_price: p.promo_price ? Number(p.promo_price) : undefined,
     download_url: p.download_url || p.delivery_url || '',
@@ -283,7 +285,7 @@ export default function TenantStorefrontPage() {
       time: "09:00",
       text: `Halo! Selamat datang di ${displayName.toUpperCase()} 👋 Ada yang bisa kami bantu seputar ecourse, materi, atau promo spesial hari ini?`,
       type: 'TEXT',
-      quick_actions: ['🔥 Ecourse Terlaris', '💰 Cek Promo Hari Ini', '⚡ Konsultasi Materi']
+      quick_actions: ['🔥 Produk Terlaris', '🏷️ Cek Promo Hari Ini', '⚡ Konsultasi Materi']
     }
   ]);
   const [isBotTyping, setIsBotTyping] = useState(false);
@@ -334,7 +336,16 @@ export default function TenantStorefrontPage() {
   const rawProducts = storeProducts;
   const filteredProducts = activeCategory === "all"
     ? rawProducts
-    : rawProducts.filter((p) => p.category === activeCategory);
+    : rawProducts.filter((p) => {
+        if (activeCategory === "terlaris") {
+          const pName = (p.name || '').toLowerCase();
+          return p.category === "terlaris" || pName.includes("youtube ai") || pName.includes("paid traffic") || pName.includes("dollar");
+        }
+        if (activeCategory === "digital") {
+          return p.category === "digital" || p.category === "terlaris" || !p.category;
+        }
+        return p.category === activeCategory;
+      });
 
   const addToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -398,6 +409,50 @@ export default function TenantStorefrontPage() {
     setMessages(nextHistory);
     setIsBotTyping(true);
 
+    const qLower = trimmed.toLowerCase();
+
+    // 1. Quick Reply Spesifik: 🔥 Produk Terlaris
+    if (/terlaris|produk terlaris|ecourse terlaris/i.test(qLower)) {
+      setTimeout(() => {
+        const botReply = `Berikut 2 ecourse paling terlaris dan paling banyak dipelajari member OnlineBoost:\n\n1. 🔥 Ecourse Strategi YouTube AI: Metode Praktis Raih Pendapatan AdSense (Rp 1.499.000)\n2. 🚀 Step by Step Rahasia Menghasilkan Dollar dari Paid Traffic (Rp 249.000)\n\nSilakan langsung klik tombol '+ Keranjang' pada kartu produk di etalase sebelah kanan untuk langsung checkout instan via QRIS!`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `bot-${Date.now()}`,
+            sender: "bot",
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: botReply,
+            action: 'NONE',
+            type: 'TEXT',
+            quick_actions: ['🏷️ Cek Promo Hari Ini', '⚡ Konsultasi Materi', 'Cara Bayar QRIS']
+          }
+        ]);
+        setIsBotTyping(false);
+      }, 300);
+      return;
+    }
+
+    // 2. Quick Reply Spesifik: 🏷️ Cek Promo Hari Ini
+    if (/promo|cek promo|diskon|potongan/i.test(qLower)) {
+      setTimeout(() => {
+        const promoReply = `Kabar baik! Khusus pemesanan hari ini, berikut rincian diskon aktif untuk ecourse OnlineBoost:\n\n• Master Class Internet Marketing CPM: diskon 50% jadi Rp 4.999.000 (dari Rp 9.999.999).\n• Ecourse YouTube AI: diskon 50% jadi Rp 1.499.000 (dari Rp 2.999.000).\n• Ecourse Member CPM: diskon 50% jadi Rp 749.000 (dari Rp 1.490.000).\n• Step by Step Paid Traffic: diskon 50% jadi Rp 249.000 (dari Rp 499.000).\n\nSemua materi dapat langsung diakses secara lifetime setelah verifikasi QRIS instan. Silakan pilih produk favorit Anda di etalase dan klik '+ Keranjang'!`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `bot-${Date.now()}`,
+            sender: "bot",
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: promoReply,
+            action: 'NONE',
+            type: 'TEXT',
+            quick_actions: ['🔥 Produk Terlaris', '⚡ Ambil Promo Sekarang', 'Metode Pembayaran']
+          }
+        ]);
+        setIsBotTyping(false);
+      }, 300);
+      return;
+    }
+
     try {
       const res = await fetch("/api/v1/store/chat", {
         method: "POST",
@@ -444,7 +499,7 @@ export default function TenantStorefrontPage() {
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           text: "Mohon maaf, terjadi kendala saat memproses jawaban. Silakan coba tanyakan kembali atau pilih langsung produk di sebelah kanan.",
           type: 'TEXT',
-          quick_actions: ['🔥 Produk Terlaris', '💰 Cek Promo Hari Ini']
+          quick_actions: ['🔥 Produk Terlaris', '🏷️ Cek Promo Hari Ini']
         }
       ]);
     } finally {
