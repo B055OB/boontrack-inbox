@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 
@@ -41,9 +41,10 @@ export async function POST(req: NextRequest) {
     const storeName = slug.replace(/[-_]/g, ' ').toUpperCase();
     const activeHistory = conversation_history.length > 0 ? conversation_history : history;
 
-    // 1. Forward ke Core Backend AI Gateway (Cek endpoint FastAPI & WebChat fallback)
+    // Forward murni ke Merchant Copilot Backend Railway (FastAPI)
     const backendBaseUrl =
       process.env.CORE_BACKEND_URL ||
+      process.env.NEXT_PUBLIC_CORE_API_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
       process.env.BACKEND_URL ||
       process.env.NEXT_PUBLIC_BACKEND_URL ||
@@ -53,10 +54,6 @@ export async function POST(req: NextRequest) {
     const candidatePaths = [
       '/api/v1/merchant/copilot',
       '/api/merchant/copilot',
-      '/api/v1/chat',
-      '/api/webchat/business',
-      '/api/b2b-webchat',
-      '/api/webchat',
     ];
 
     let coreRes: Response | null = null;
@@ -88,7 +85,7 @@ export async function POST(req: NextRequest) {
           cache: 'no-store',
         });
 
-        // Jika tidak 404, simpan response (bisa 200 atau status lain)
+        // Jika tidak 404, simpan response
         if (res.status !== 404) {
           coreRes = res;
           successfulPath = path;
@@ -143,8 +140,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           status: 'error',
           type: 'TEXT',
-          reply: `Layanan AI Gateway mengembalikan respon ${coreRes.status}. Silakan coba beberapa saat lagi.`,
-          reply_text: `Layanan AI Gateway mengembalikan respon ${coreRes.status}. Silakan coba beberapa saat lagi.`,
+          reply: `Layanan Copilot Toko (${successfulPath}) mengembalikan respon ${coreRes.status}. Silakan coba beberapa saat lagi.`,
+          reply_text: `Layanan Copilot Toko (${successfulPath}) mengembalikan respon ${coreRes.status}. Silakan coba beberapa saat lagi.`,
           session_id: sessionId,
           tenant_id: slug,
         });
@@ -152,8 +149,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           status: 'error',
           type: 'TEXT',
-          reply: 'Layanan AI Gateway tidak ditemukan (404) di seluruh endpoint kandidat.',
-          reply_text: 'Layanan AI Gateway tidak ditemukan (404) di seluruh endpoint kandidat.',
+          reply: 'Layanan Merchant Copilot tidak ditemukan (404) di backend.',
+          reply_text: 'Layanan Merchant Copilot tidak ditemukan (404) di backend.',
           session_id: sessionId,
           tenant_id: slug,
         });
@@ -163,8 +160,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         status: 'error',
         type: 'TEXT',
-        reply: 'Tidak dapat terhubung ke AI Gateway (Core Backend). Pastikan server backend aktif.',
-        reply_text: 'Tidak dapat terhubung ke AI Gateway (Core Backend). Pastikan server backend aktif.',
+        reply: 'Tidak dapat terhubung ke Merchant Copilot (Core Backend). Pastikan server backend aktif.',
+        reply_text: 'Tidak dapat terhubung ke Merchant Copilot (Core Backend). Pastikan server backend aktif.',
         session_id: sessionId,
         tenant_id: slug,
       });
