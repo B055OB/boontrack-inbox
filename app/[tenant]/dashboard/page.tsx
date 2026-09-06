@@ -73,7 +73,7 @@ const INITIAL_TRANSACTIONS: TransactionItem[] = [];
 export default function TenantDashboardPage() {
   const params = useParams();
   const router = useRouter();
-  const rawTenant = (params?.tenant as string) || "onlineboost";
+  const rawTenant = (params?.tenant as string) || "growth";
   const tenantSlug = rawTenant.toLowerCase();
   const displayName = tenantSlug.replace(/-/g, " ");
 
@@ -230,22 +230,40 @@ export default function TenantDashboardPage() {
   const [pairingCodeResult, setPairingCodeResult] = useState<string | null>(null);
   const [isPairingLoading, setIsPairingLoading] = useState(false);
 
-  // Live Chat Console State
-  const [replyText, setReplyText] = useState("");
-  const [chatMessages, setChatMessages] = useState([
-    {
-      id: 1,
-      sender: "customer",
-      text: "Halo OnlineBoost, mau lihat katalog produk lengkapnya dong",
-      time: "Baru Saja"
-    },
-    {
-      id: 2,
-      sender: "bot",
-      text: "Halo! Selamat datang di OnlineBoost Digital Hub 🚀 Katalog produk aktif otomatis sudah dikirim via WhatsApp.",
-      time: "Baru Saja"
+  // Live Chat Console State (Strictly isolated per tenant)
+  interface ConversationMessage {
+    id: number | string;
+    sender: 'customer' | 'agent' | 'bot';
+    text: string;
+    time: string;
+  }
+
+  interface ChatConversation {
+    id: string;
+    customerPhone: string;
+    customerName?: string;
+    lastMessage: string;
+    time: string;
+    status: 'online' | 'offline';
+    messages: ConversationMessage[];
+  }
+
+  const [conversations, setConversations] = useState<ChatConversation[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(`bt_conversations_${tenantSlug}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (err) {
+        console.warn('Gagal memuat percakapan dari storage:', err);
+      }
     }
-  ]);
+    return [];
+  });
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
 
   // Products State
   const [products, setProducts] = useState<ProductItem[]>(isProTenant ? DEFAULT_PRODUCTS : []);
@@ -304,6 +322,29 @@ export default function TenantDashboardPage() {
     }
   }, [tenantSlug]);
 
+  // Strict Tenant Isolation: Muat riwayat chat khusus tenant dari storage / API
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(`bt_conversations_${tenantSlug}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setConversations(parsed);
+            setActiveConversationId(parsed[0].id);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Gagal memuat percakapan tenant:', err);
+      }
+      setConversations([]);
+      setActiveConversationId(null);
+    }
+  }, [tenantSlug]);
+
+  const activeConversation = conversations.find(c => c.id === activeConversationId) || (conversations.length > 0 ? conversations[0] : null);
+
   const [productForm, setProductForm] = useState<ProductItem>({
     id: 0,
     name: "",
@@ -334,7 +375,7 @@ export default function TenantDashboardPage() {
   const [isSavingStrategy, setIsSavingStrategy] = useState(false);
   const [strategyFeedback, setStrategyFeedback] = useState<string | null>(null);
 
-  // Load existing AI Knowledge and Persona settings from backend / Supabase
+  // Load existing AI Knowledge and Persona settings from backend / BoonTrack Secure Cloud Engine
   useEffect(() => {
     let isMounted = true;
     async function loadTenantAiSettings() {
@@ -900,16 +941,32 @@ export default function TenantDashboardPage() {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!replyText.trim()) return;
-    setChatMessages(prev => [
-      ...prev,
-      {
-        id: Date.now(),
-        sender: "agent",
-        text: replyText,
-        time: "Baru Saja"
+    if (!replyText.trim() || !activeConversation) return;
+    const newMsg: ConversationMessage = {
+      id: Date.now(),
+      sender: "agent",
+      text: replyText.trim(),
+      time: "Baru Saja"
+    };
+    const updatedConversations = conversations.map(c => {
+      if (c.id === activeConversation.id) {
+        return {
+          ...c,
+          lastMessage: newMsg.text,
+          time: newMsg.time,
+          messages: [...c.messages, newMsg]
+        };
       }
-    ]);
+      return c;
+    });
+    setConversations(updatedConversations);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`bt_conversations_${tenantSlug}`, JSON.stringify(updatedConversations));
+      } catch (err) {
+        console.warn('Gagal menyimpan percakapan:', err);
+      }
+    }
     setReplyText("");
   };
 
@@ -1318,18 +1375,40 @@ export default function TenantDashboardPage() {
                   <Users className="w-3.5 h-3.5" />
                 </div>
                 
-                <div className="p-3.5 bg-white rounded-2xl border border-blue-200 shadow-xs flex items-start gap-3 cursor-pointer hover:border-blue-400 transition">
-                  <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center shrink-0">
-                    62
+                {conversations.length === 0 ? (
+                  <div className="p-6 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2 border border-dashed border-slate-200 rounded-2xl bg-white/60">
+                    <MessageSquare className="w-5 h-5 text-slate-300" />
+                    <span>Tidak ada percakapan aktif</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 truncate">Customer +62 812-3745-0222</span>
-                      <span className="text-[10px] text-emerald-600 font-bold">Online</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 truncate mt-0.5">Halo OnlineBoost, mau lihat katalog...</p>
-                  </div>
-                </div>
+                ) : (
+                  conversations.map(c => {
+                    const isSelected = activeConversation?.id === c.id;
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => setActiveConversationId(c.id)}
+                        className={`p-3.5 bg-white rounded-2xl border ${
+                          isSelected ? 'border-blue-500 shadow-xs ring-1 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300'
+                        } flex items-start gap-3 cursor-pointer transition`}
+                      >
+                        <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center shrink-0">
+                          {c.customerPhone.replace(/[^0-9]/g, '').slice(0, 2) || 'WA'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-900 truncate">
+                              {c.customerName || `Customer ${c.customerPhone}`}
+                            </span>
+                            <span className={`text-[10px] font-bold ${c.status === 'online' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                              {c.status === 'online' ? 'Online' : 'Offline'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">{c.lastMessage}</p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
               <div className="p-3 bg-white border border-slate-200 rounded-2xl text-[11px] space-y-2 shadow-xs">
@@ -1373,18 +1452,35 @@ export default function TenantDashboardPage() {
               </div>
             </div>
 
+            {!activeConversation ? (
+              <div className="md:col-span-8 p-8 md:p-12 flex flex-col items-center justify-center text-center bg-white min-h-[480px]">
+                <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3 border border-blue-100 shadow-xs">
+                  <MessageSquare className="w-7 h-7" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 mb-1">Belum Ada Percakapan Aktif</h3>
+                <p className="text-xs text-slate-500 max-w-sm leading-relaxed">
+                  Belum ada percakapan aktif untuk toko ini. Pesan masuk dari WhatsApp akan otomatis muncul di sini.
+                </p>
+                <div className="mt-5 flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-500">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>BoonTrack Inbox Siap Menerima Pesan Masuk</span>
+                </div>
+              </div>
+            ) : (
               <div className="md:col-span-8 p-6 flex flex-col justify-between bg-white">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                     <div>
-                      <h3 className="text-xs font-black text-slate-900">+62 812-3745-0222</h3>
+                      <h3 className="text-xs font-black text-slate-900">
+                        {activeConversation.customerName ? `${activeConversation.customerName} (${activeConversation.customerPhone})` : activeConversation.customerPhone}
+                      </h3>
                       <p className="text-[10px] text-emerald-600 font-bold">● Terhubung ke AI Assistant & Live CS Agent</p>
                     </div>
                     <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 rounded-lg text-slate-600">Direct Session</span>
                   </div>
 
                   <div className="space-y-3 py-2 text-xs max-h-[350px] overflow-y-auto">
-                    {chatMessages.map(msg => (
+                    {activeConversation.messages.map(msg => (
                       <div
                         key={msg.id}
                         className={`flex ${msg.sender === 'customer' ? 'justify-start' : 'justify-end'}`}
@@ -1424,6 +1520,7 @@ export default function TenantDashboardPage() {
                   </button>
                 </form>
               </div>
+            )}
             </div>
           </div>
       )}
@@ -3188,7 +3285,7 @@ export default function TenantDashboardPage() {
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
               <div className="flex items-center gap-2 text-[11px] text-slate-500">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Tersinkronisasi otomatis dengan backend WhatsApp Central & Database Supabase.</span>
+                <span>Tersimpan otomatis ke database terenkripsi BoonTrack Secure Cloud Engine.</span>
               </div>
               <button
                 type="button"
