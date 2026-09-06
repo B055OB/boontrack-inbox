@@ -297,7 +297,7 @@ export default function GymLayout({ children }: { children: React.ReactNode }) {
             >
               <span className="flex items-center gap-2">
                 <MessageSquare className="w-3.5 h-3.5 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
-                Live CS Inbox
+                BoonTrack Inbox (Live CS)
               </span>
               <ExternalLink className="w-3 h-3 text-emerald-400" />
             </Link>

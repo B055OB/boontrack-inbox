@@ -387,7 +387,7 @@ export default function ShopLandingPage() {
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span><strong>Multi-Admin Live CS Console:</strong> Dukungan hingga 5 CS Seats kolaboratif</span>
+                    <span><strong>BoonTrack Inbox (Multi-Admin Live CS):</strong> Dukungan hingga 5 CS Seats kolaboratif</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />

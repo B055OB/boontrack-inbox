@@ -1085,7 +1085,7 @@ export default function TenantDashboardPage() {
               }`}
             >
               <MessageSquare className="w-4 h-4 text-blue-600 shrink-0" />
-              <span className="whitespace-nowrap">Live CS & Omnichannel</span>
+              <span className="whitespace-nowrap">BoonTrack Inbox (Live CS)</span>
               {isProScale ? (
                 <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 border border-purple-200 rounded text-[10px] font-extrabold shrink-0">
                   PROSCALE
@@ -1281,7 +1281,7 @@ export default function TenantDashboardPage() {
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-blue-600" />
-                  <span>Live CS & Omnichannel Console</span>
+                  <span>BoonTrack Inbox Console (Live CS)</span>
                 </h2>
                 {isProScale ? (
                   <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
@@ -1305,7 +1305,7 @@ export default function TenantDashboardPage() {
             <div className="flex items-center gap-2">
               <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Inbox Live Connected</span>
+                <span>BoonTrack Inbox Live Connected</span>
               </span>
             </div>
           </div>
@@ -1478,7 +1478,7 @@ export default function TenantDashboardPage() {
                     <div className="space-y-2">
                       <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-extrabold uppercase tracking-wider text-blue-100 border border-white/20">
                         <Zap className="w-3 h-3 text-amber-300" />
-                        <span>BoonPilot Store Onboarding</span>
+                        <span>BoonPilot Copilot • Onboarding Toko</span>
                       </div>
                       <h3 className="text-base sm:text-lg font-black tracking-tight leading-snug">
                         Selamat datang di BoonTrack! Toko Anda belum memiliki produk.
@@ -1550,7 +1550,7 @@ export default function TenantDashboardPage() {
                 <div>
                   <h3 className="text-sm font-black text-slate-800">Etalase Toko Siap Diisi</h3>
                   <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                    Unggah file Excel/CSV produk Anda dalam hitungan detik atau gunakan asisten AI BoonPilot di pojok kanan bawah untuk memandu proses integrasi katalog Anda.
+                    Unggah file Excel/CSV produk Anda dalam hitungan detik atau gunakan asisten AI BoonPilot Copilot di pojok kanan bawah untuk memandu proses integrasi katalog Anda.
                   </p>
                 </div>
               </div>

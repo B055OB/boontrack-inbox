@@ -220,7 +220,7 @@ export default function BoonPilotWidget({
   const defaultWelcome: ChatMessage = {
     id: 'welcome-1',
     sender: 'assistant',
-    text: `Halo! Saya **BoonPilot**, AI Copilot & Asisten Toko Anda. 🚀\n\nSaya siap membantu Anda memantau performa penjualan, memeriksa ketersediaan stok, konfigurasi kurir gudang, hingga mengelola otomasi WhatsApp toko Anda.`,
+    text: `Halo! Saya **BoonPilot Copilot**, AI Copilot & Asisten Toko Anda. 🚀\n\nSaya siap membantu Anda memantau performa penjualan, memeriksa ketersediaan stok, konfigurasi kurir gudang, hingga mengelola otomasi WhatsApp toko Anda.`,
     timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     quick_actions: [
       'Bagaimana performa penjualan toko saya minggu ini?',
@@ -550,7 +550,7 @@ export default function BoonPilotWidget({
               </div>
               <div>
                 <h3 className="font-black text-sm text-white tracking-tight flex items-center gap-1.5">
-                  <span>BoonPilot</span>
+                  <span>BoonPilot Copilot</span>
                   <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-blue-500/20 text-blue-300 border border-blue-400/30">
                     AI PRO
                   </span>
@@ -573,7 +573,7 @@ export default function BoonPilotWidget({
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                title="Tutup BoonPilot"
+                title="Tutup BoonPilot Copilot"
                 className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -790,7 +790,7 @@ export default function BoonPilotWidget({
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Ketik instruksi atau pertanyaan ke BoonPilot..."
+              placeholder="Ketik instruksi atau pertanyaan ke BoonPilot Copilot..."
               disabled={loading}
               className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 transition"
             />
@@ -828,7 +828,7 @@ export default function BoonPilotWidget({
 
         <div className="hidden sm:flex flex-col text-left pr-1">
           <span className="text-xs font-black tracking-tight leading-none text-white">
-            BoonPilot
+            BoonPilot Copilot
           </span>
           <span className="text-[10px] text-blue-100 font-semibold leading-none mt-0.5">
             Store Copilot

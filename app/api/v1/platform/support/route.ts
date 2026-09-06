@@ -53,16 +53,16 @@ export async function POST(req: NextRequest) {
       console.warn('[Platform Support] Backend connection failed, using fallback:', backendErr);
     }
 
-    // 2. Clean Helpdesk Fallback
-    const waHelpdesk = 'https://wa.me/6281237450222';
-    const encoded = encodeURIComponent(`Halo Tim Support BoonTrack, saya butuh bantuan terkait ${category}: ${message}`);
+    // 2. BoonTrack Desk Fallback
+    const waDesk = 'https://wa.me/6281237450222';
+    const encoded = encodeURIComponent(`Halo Tim BoonTrack Desk, saya butuh bantuan terkait ${category}: ${message}`);
 
     return NextResponse.json({
       status: 'success',
       type: 'ESCALATE_WA',
-      reply: 'Halo! Customer Support BoonTrack siap membantu kendala setup toko, integrasi WhatsApp, dan pembayaran Anda. Anda juga dapat langsung berdiskusi dengan tim kami di WhatsApp.',
+      reply: 'Halo! Layanan BoonTrack Desk siap membantu kendala setup toko, integrasi WhatsApp, dan pembayaran Anda. Anda juga dapat langsung berdiskusi dengan tim kami di WhatsApp.',
       category: category as any,
-      escalation_url: `${waHelpdesk}?text=${encoded}`,
+      escalation_url: `${waDesk}?text=${encoded}`,
       quick_actions: ['Info Upgrade Paket Toko', 'Bantuan Teknis CAPI', 'Tanya Program Kemitraan Mitra', 'Hubungi Live Support WA'],
       session_id: sessionId,
       tenant_id: slug,
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       status: 'error',
       type: 'TEXT',
-      reply: 'Halo! Pusat Bantuan BoonTrack siap melayani Anda.',
+      reply: 'Halo! Layanan BoonTrack Desk siap melayani Anda.',
       session_id: 'err_fallback',
     });
   }

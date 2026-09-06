@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 
@@ -140,8 +140,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           status: 'error',
           type: 'TEXT',
-          reply: `Layanan Copilot Toko (${successfulPath}) mengembalikan respon ${coreRes.status}. Silakan coba beberapa saat lagi.`,
-          reply_text: `Layanan Copilot Toko (${successfulPath}) mengembalikan respon ${coreRes.status}. Silakan coba beberapa saat lagi.`,
+          reply: 'Layanan BoonPilot Copilot mengembalikan respon tidak terduga. Silakan coba beberapa saat lagi.',
+          reply_text: 'Layanan BoonPilot Copilot mengembalikan respon tidak terduga. Silakan coba beberapa saat lagi.',
           session_id: sessionId,
           tenant_id: slug,
         });
@@ -149,31 +149,31 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           status: 'error',
           type: 'TEXT',
-          reply: 'Layanan Merchant Copilot tidak ditemukan (404) di backend.',
-          reply_text: 'Layanan Merchant Copilot tidak ditemukan (404) di backend.',
+          reply: 'Layanan BoonPilot Copilot tidak ditemukan (404) di server.',
+          reply_text: 'Layanan BoonPilot Copilot tidak ditemukan (404) di server.',
           session_id: sessionId,
           tenant_id: slug,
         });
       }
     } catch (fetchErr: any) {
-      console.warn('[Merchant Copilot] Core backend offline:', fetchErr?.message || fetchErr);
+      console.warn('[BoonPilot Copilot] Core backend offline:', fetchErr?.message || fetchErr);
       return NextResponse.json({
         status: 'error',
         type: 'TEXT',
-        reply: 'Tidak dapat terhubung ke Merchant Copilot (Core Backend). Pastikan server backend aktif.',
-        reply_text: 'Tidak dapat terhubung ke Merchant Copilot (Core Backend). Pastikan server backend aktif.',
+        reply: 'Tidak dapat terhubung ke server BoonPilot Copilot. Pastikan koneksi backend aktif.',
+        reply_text: 'Tidak dapat terhubung ke server BoonPilot Copilot. Pastikan koneksi backend aktif.',
         session_id: sessionId,
         tenant_id: slug,
       });
     }
   } catch (error) {
-    console.error('[Merchant Copilot] API error:', error);
+    console.error('[BoonPilot Copilot] API error:', error);
     return NextResponse.json(
       {
         status: 'error',
         type: 'TEXT',
-        reply: 'Terjadi kesalahan sistem internal pada rute merchant copilot.',
-        reply_text: 'Terjadi kesalahan sistem internal pada rute merchant copilot.',
+        reply: 'Terjadi kendala internal pada layanan BoonPilot Copilot.',
+        reply_text: 'Terjadi kendala internal pada layanan BoonPilot Copilot.',
         session_id: 'err_copilot',
       },
       { status: 500 }
