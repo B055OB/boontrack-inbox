@@ -942,8 +942,8 @@ export default function TenantDashboardPage() {
         setQrCodeUrl(null);
         setWaErrorMessage(
           data.disconnect_reason === "GATEWAY_UNREACHABLE"
-            ? "Cluster WhatsApp Gateway belum aktif / offline. QR Code tidak dapat dimuat sampai engine gateway dinyalakan."
-            : "Layanan WhatsApp Gateway sedang dalam pemeliharaan."
+            ? "BoonTrack WhatsApp Engine belum aktif / offline. QR Code tidak dapat dimuat sampai engine dinyalakan."
+            : "Layanan BoonTrack WhatsApp Engine sedang dalam pemeliharaan."
         );
       } else if (data.status === "CONNECTED") {
         setWaStatus("CONNECTED");
@@ -959,7 +959,7 @@ export default function TenantDashboardPage() {
     } catch (err) {
       setWaStatus("DEGRADED");
       setQrCodeUrl(null);
-      setWaErrorMessage("Gagal tersambung ke BoonTrack Core Gateway API.");
+      setWaErrorMessage("Gagal tersambung ke BoonTrack WhatsApp Engine.");
     } finally {
       setIsQrLoading(false);
     }
@@ -3494,7 +3494,7 @@ export default function TenantDashboardPage() {
                 }`}
               >
                 <Smartphone className="w-3.5 h-3.5" />
-                <span>Scan QR Instan (BoonTrack Engine)</span>
+                <span>BoonTrack Direct Connect</span>
               </button>
               <button
                 type="button"
@@ -3662,13 +3662,13 @@ export default function TenantDashboardPage() {
               <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black text-slate-900">Koneksi WhatsApp Mandiri (Solo Starter)</h3>
+                    <h3 className="text-base font-black text-slate-900">BoonTrack Direct Connect</h3>
                     <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
-                      PLAN GROWTH • Rp199K
+                      BoonTrack WhatsApp Engine
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
-                    Terhubung langsung ke gateway backend untuk menghasilkan sesi perangkat QR aktif.
+                    Koneksi mandiri via BoonTrack WhatsApp Engine untuk menghasilkan sesi perangkat QR aktif dan sinkronisasi chat real-time.
                   </p>
                 </div>
                 <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
@@ -3683,9 +3683,9 @@ export default function TenantDashboardPage() {
                       <AlertTriangle className="w-4 h-4" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-black text-amber-900">Cluster Gateway Sedang Tidak Terjangkau</h4>
+                      <h4 className="text-xs font-black text-amber-900">BoonTrack WhatsApp Engine Belum Terjangkau</h4>
                       <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                        {waErrorMessage || "Layanan WhatsApp Gateway sedang offline. QR Code tidak dapat dimuat sampai engine backend gateway diaktifkan."}
+                        {waErrorMessage || "Layanan BoonTrack WhatsApp Engine sedang offline. QR Code tidak dapat dimuat sampai engine diaktifkan."}
                       </p>
                     </div>
                   </div>
@@ -3696,7 +3696,7 @@ export default function TenantDashboardPage() {
                       className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white text-xs font-bold rounded-xl flex items-center gap-2 transition cursor-pointer"
                     >
                       {isQrLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                      <span>Cek Ulang Koneksi Gateway</span>
+                      <span>Cek Ulang Koneksi Engine</span>
                     </button>
                   </div>
                 </div>
@@ -3729,7 +3729,7 @@ export default function TenantDashboardPage() {
                         {isQrLoading ? (
                           <>
                             <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Menghubungkan ke Backend Engine...</span>
+                            <span>Menghubungkan ke BoonTrack WhatsApp Engine...</span>
                           </>
                         ) : (
                           <>
