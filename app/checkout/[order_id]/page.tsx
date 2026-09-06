@@ -19,6 +19,9 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
+import { generateDynamicQRIS, INTERNAL_TENANTS } from '@/lib/qris-dynamic';
+
+const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
 
 interface Props {
   params: Promise<{ order_id: string }>;
@@ -194,8 +197,14 @@ export default function CheckoutPage({ params }: Props) {
   const shippingSubsidy = Number(order?.shipping_subsidy || 0);
   const netShippingCost = Number(order?.net_shipping_cost || Math.max(0, shippingCost - shippingSubsidy));
 
-  const fallbackQrisString = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
-  const rawQrisValue = order?.qr_string || fallbackQrisString;
+  const fallbackQrisString = STATIC_QRIS;
+  const tenantSlug = (order?.tenant_slug || order?.tenant_id || '').toLowerCase();
+  const isInternalTenant = INTERNAL_TENANTS.includes(tenantSlug);
+  // For internal tenants: generate dynamic QRIS with amount embedded
+  // For external merchants: use their own qr_string from backend as-is
+  const rawQrisValue = isInternalTenant
+    ? generateDynamicQRIS(order?.qr_string || fallbackQrisString, grossAmount)
+    : (order?.qr_string || fallbackQrisString);
   const qrUrl = order?.qr_code_url || `https://quickchart.io/qr?text=${encodeURIComponent(rawQrisValue)}&size=300&ecLevel=H`;
 
   const waConfirmUrl = `https://wa.me/6281237450222?text=${encodeURIComponent(

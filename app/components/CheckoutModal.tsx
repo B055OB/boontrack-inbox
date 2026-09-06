@@ -5,6 +5,9 @@ import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, L
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, trackClientPurchase } from "@/lib/tracking";
+import { generateDynamicQRIS, INTERNAL_TENANTS } from "@/lib/qris-dynamic";
+
+const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -129,24 +132,38 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: {paymentData.orderId}</p>
             </div>
 
-            {paymentData.paymentMethod === 'qris' && (
-              <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
-                <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
-                  <QRCodeSVG
-                    value={paymentData.qr_string || process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1"}
-                    size={220}
-                    level="M"
-                    includeMargin={true}
-                  />
+            {paymentData.paymentMethod === 'qris' && (() => {
+              // Tenant Isolation: Internal tenants use BoonTrack Dynamic QRIS with amount.
+              // External merchants use their own qr_string from backend.
+              const isInternal = INTERNAL_TENANTS.includes(tenantSlug.toLowerCase());
+              const qrisValue = isInternal
+                ? generateDynamicQRIS(STATIC_QRIS, totalAmount)
+                : (paymentData.qr_string || paymentData.qrString || STATIC_QRIS);
+
+              return (
+                <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
+                  <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
+                    <QRCodeSVG
+                      value={qrisValue}
+                      size={220}
+                      level="M"
+                      includeMargin={true}
+                    />
+                  </div>
+                  <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
+                    QRIS STANDAR PEMBAYARAN NASIONAL
+                  </div>
+                  <p className="text-[10px] text-slate-500 text-center">
+                    BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
+                  </p>
+                  {isInternal && (
+                    <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
+                      Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
+                    </p>
+                  )}
                 </div>
-                <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
-                  QRIS STANDAR PEMBAYARAN NASIONAL
-                </div>
-                <p className="text-[10px] text-slate-500 text-center">
-                  BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
-                </p>
-              </div>
-            )}
+              );
+            })()}
             
             <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
               Silakan selesaikan pembayaran. Rincian invoice dan tautan QRIS telah siap. Notifikasi transaksi otomatis dikirim ke WhatsApp Anda (<strong>{customerPhone}</strong>).
