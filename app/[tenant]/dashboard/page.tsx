@@ -87,12 +87,22 @@ export default function TenantDashboardPage() {
 
   // FEATURE GATING (ENTITLEMENTS BERDASARKAN TIER TOKO)
   // 'growth' | 'growth_tracking' | 'proscale'
+  const isTenantGrowthPlus = tenantSlug === 'growthplus' || tenantSlug.includes('growthplus') || tenantSlug === 'growth-plus' || tenantSlug === 'growth_plus';
+
   const [planTier, setPlanTier] = useState<'growth' | 'growth_tracking' | 'proscale'>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const tierParam = urlParams.get('tier')?.toLowerCase();
-      if (tierParam && ['growth', 'growth_tracking', 'proscale'].includes(tierParam)) {
-        return tierParam as 'growth' | 'growth_tracking' | 'proscale';
+      if (tierParam) {
+        if (['growth+', 'growth_tracking', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
+          return 'growth_tracking';
+        }
+        if (['proscale', 'enterprise', 'pro'].some(t => tierParam.includes(t))) {
+          return 'proscale';
+        }
+        if (['growth', 'starter'].some(t => tierParam.includes(t))) {
+          return 'growth';
+        }
       }
       const stored = localStorage.getItem(`bt_tier_${tenantSlug}`) as 'growth' | 'growth_tracking' | 'proscale' | null;
       if (stored && ['growth', 'growth_tracking', 'proscale'].includes(stored)) return stored;
@@ -100,12 +110,21 @@ export default function TenantDashboardPage() {
     if (["demo", "onlineboost", "suhu-ads-masterclass"].includes(tenantSlug)) {
       return 'proscale';
     }
+    if (isTenantGrowthPlus) {
+      return 'growth_tracking';
+    }
     return 'growth';
   });
 
-  const isGrowth = planTier === 'growth';
-  const isGrowthPlus = planTier === 'growth_tracking';
+  const isGrowthPlus = planTier === 'growth_tracking' || isTenantGrowthPlus;
   const isProScale = planTier === 'proscale';
+  const isGrowth = planTier === 'growth' && !isGrowthPlus && !isProScale;
+
+  const isAdsTrackingUnlocked =
+    isTenantGrowthPlus ||
+    ['growth+', 'growth_tracking', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => planTier.includes(t)) ||
+    isGrowthPlus ||
+    isProScale;
 
   const handleUpgradeTier = (targetTier: 'growth_tracking' | 'proscale') => {
     const tierLabel = targetTier === 'proscale' ? 'ProScale (Official WABA & Unlimited)' : 'Growth+Tracking (CAPI Server-Side & ROAS)';
@@ -392,8 +411,10 @@ export default function TenantDashboardPage() {
             if (s.plan_tier || s.tier || s.pricing?.tier) {
               const rawTier = (s.plan_tier || s.tier || s.pricing?.tier || '').toLowerCase();
               if (rawTier.includes('proscale') || rawTier.includes('enterprise')) setPlanTier('proscale');
-              else if (rawTier.includes('tracking') || rawTier.includes('plus') || rawTier === 'pro') setPlanTier('growth_tracking');
-              else if (rawTier.includes('growth') || rawTier === 'starter') setPlanTier('growth');
+              else if (rawTier.includes('tracking') || rawTier.includes('plus') || rawTier === 'pro' || rawTier.includes('growth+')) setPlanTier('growth_tracking');
+              else if (rawTier.includes('growth') || rawTier === 'starter') setPlanTier(isTenantGrowthPlus ? 'growth_tracking' : 'growth');
+            } else if (isTenantGrowthPlus) {
+              setPlanTier('growth_tracking');
             }
             setBotStrategy(loadedStrategy as 'trust_builder' | 'balanced' | 'hard_selling');
             setAiForm(prev => ({
@@ -1085,7 +1106,13 @@ export default function TenantDashboardPage() {
                   ? 'bg-blue-50 text-blue-700 border-blue-200'
                   : 'bg-slate-100 text-slate-700 border-slate-200'
               }`}>
-                {isProScale ? 'Tier: ProScale' : isGrowthPlus ? 'Tier: Growth+' : 'Tier: Growth'}
+                {tenantSlug === 'growthplus' || tenantSlug.includes('growthplus')
+                  ? 'GROWTHPLUS Tier: Growth+Tracking'
+                  : isProScale
+                  ? 'Tier: ProScale'
+                  : isGrowthPlus
+                  ? 'Tier: Growth+Tracking'
+                  : 'Tier: Growth'}
               </span>
             </div>
           </div>
@@ -1225,9 +1252,9 @@ export default function TenantDashboardPage() {
               <Target className="w-4 h-4 text-blue-600 shrink-0" />
               <span className="whitespace-nowrap flex items-center gap-1">
                 Ads Tracking Pro
-                {isGrowth && <Lock className="w-3 h-3 text-amber-500 shrink-0" />}
+                {!isAdsTrackingUnlocked && <Lock className="w-3 h-3 text-amber-500 shrink-0" />}
               </span>
-              {isGrowth ? (
+              {!isAdsTrackingUnlocked ? (
                 <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-1 shrink-0">
                   <Lock className="w-2.5 h-2.5" /> PRO
                 </span>
@@ -3967,7 +3994,7 @@ export default function TenantDashboardPage() {
 
       {/* TAB: ADS TRACKING PRO */}
       {activeTab === 'ads_tracking' && (
-        isGrowth ? (
+        !isAdsTrackingUnlocked ? (
           renderLockedFeatureCard({
             title: "Ads Tracking Pro (Meta CAPI & ROAS)",
             badge: "Fitur Eksklusif Growth+Tracking & ProScale",

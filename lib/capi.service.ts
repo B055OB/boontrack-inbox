@@ -87,7 +87,7 @@ export async function checkAdsTrackingEntitlement(supabase: any, tenantId: strin
       .eq('id', tenantId)
       .maybeSingle();
 
-    if (tenant?.plan === 'pro_scale' || tenant?.plan === 'growth_pro') {
+    if (tenant?.plan === 'pro_scale' || tenant?.plan === 'growth_pro' || tenant?.plan === 'growth_tracking' || tenant?.plan === 'growthplus' || tenantId === 'growthplus') {
       return true;
     }
 
