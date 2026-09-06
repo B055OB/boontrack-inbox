@@ -53,6 +53,7 @@ import AdsTrackingPro from './components/AdsTrackingPro';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
 import BoonPilotWidget from '@/components/BoonPilotWidget';
+import ImageUpload from '@/components/ImageUpload';
 import { 
   ProductItem, 
   SinglePageConfig, 
@@ -1477,13 +1478,12 @@ export default function TenantDashboardPage() {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">URL Foto Produk</label>
-                <input
-                  type="url"
+                <ImageUpload
+                  label="Foto Produk"
                   value={productForm.image}
-                  onChange={(e) => setProductForm(p => ({ ...p, image: e.target.value }))}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  onChange={(url) => setProductForm(p => ({ ...p, image: url }))}
+                  placeholder="Upload foto produk (Auto-convert WebP)"
+                  description="Auto-convert WebP & resize max width 1200px"
                 />
               </div>
 
@@ -1735,15 +1735,11 @@ export default function TenantDashboardPage() {
                     </div>
 
                     <div>
-                      <label className="text-[11px] text-slate-600 font-semibold block mb-1">
-                        URL Gambar Ilustrasi Masalah di Sela Teks (Opsional)
-                      </label>
-                      <input
-                        type="url"
+                      <ImageUpload
+                        label="Gambar Ilustrasi Masalah (Opsional)"
                         value={singlePageForm.problem_image_url || ''}
-                        onChange={(e) => setSinglePageForm(p => ({ ...p, problem_image_url: e.target.value }))}
-                        placeholder="https://images.unsplash.com/..."
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-rose-500"
+                        onChange={(url) => setSinglePageForm(p => ({ ...p, problem_image_url: url }))}
+                        placeholder="Upload gambar ilustrasi masalah (Auto-convert WebP)"
                       />
                     </div>
                   </div>
@@ -1916,30 +1912,17 @@ export default function TenantDashboardPage() {
                     {[0, 1, 2].map((idx) => {
                       const currentVal = (singlePageForm.testimonial_images || [])[idx] || '';
                       return (
-                        <div key={idx} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
-                          <label className="text-[11px] font-bold text-slate-700 block">
-                            Screenshot Testimoni #{idx + 1}
-                          </label>
-                          <input
-                            type="url"
+                        <div key={idx} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                          <ImageUpload
+                            label={`Screenshot Testimoni #${idx + 1}`}
                             value={currentVal}
-                            onChange={(e) => {
+                            onChange={(url) => {
                               const imgs = [...(singlePageForm.testimonial_images || ['', '', ''])];
-                              imgs[idx] = e.target.value;
+                              imgs[idx] = url;
                               setSinglePageForm(p => ({ ...p, testimonial_images: imgs.filter(Boolean) }));
                             }}
-                            placeholder="https://images.unsplash.com/... atau link gambar screenshot"
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600"
+                            placeholder={`Upload bukti review / testimoni #${idx + 1}`}
                           />
-                          {currentVal && (
-                            <div className="pt-1">
-                              <img
-                                src={currentVal}
-                                alt={`Testimoni ${idx + 1}`}
-                                className="h-20 w-auto rounded-lg object-cover border border-slate-200 shadow-sm"
-                              />
-                            </div>
-                          )}
                         </div>
                       );
                     })}
