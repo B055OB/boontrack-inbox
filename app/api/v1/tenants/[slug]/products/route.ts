@@ -237,3 +237,58 @@ export async function DELETE(
   }
 }
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ slug: string }> }
+) {
+  try {
+    const { slug: rawSlug } = await params;
+    const slug = normalizeTenantSlug(rawSlug || '');
+
+    // 1. Coba dari Railway Backend Core
+    try {
+      const railwayRes = await fetch(
+        getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/products`),
+        {
+          headers: { 'X-Tenant-ID': slug },
+          cache: 'no-store',
+        }
+      );
+      if (railwayRes.ok) {
+        const rData = await railwayRes.json();
+        if (Array.isArray(rData.products)) {
+          return NextResponse.json({
+            success: true,
+            products: rData.products,
+          });
+        }
+      }
+    } catch (railwayErr) {
+      console.warn('Railway backend products fetch note:', railwayErr);
+    }
+
+    // 2. Fallback ke Supabase tenants table
+    const supabase = getSupabase();
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('metadata')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    const products = Array.isArray(tenantRow?.metadata?.products)
+      ? tenantRow.metadata.products
+      : tenantRow?.metadata?.product
+      ? [tenantRow.metadata.product]
+      : [];
+
+    return NextResponse.json({
+      success: true,
+      products,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error fetching products';
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+  }
+}
+
+
