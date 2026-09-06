@@ -15,7 +15,9 @@ import {
   Bot,
   CheckCircle2,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  FileSpreadsheet,
+  FileText
 } from 'lucide-react';
 
 export interface ActionProposal {
@@ -45,6 +47,9 @@ export interface ChatMessage {
 
 interface BoonPilotWidgetProps {
   tenantSlug?: string | string[];
+  isProductsEmpty?: boolean;
+  onOpenBulkImport?: () => void;
+  onOpenNewProduct?: () => void;
 }
 
 const STARTER_CHIPS = [
@@ -63,6 +68,21 @@ const STARTER_CHIPS = [
   {
     label: 'Jelaskan strategi bot WhatsApp & fitur otomasi',
     icon: MessageSquare,
+  },
+];
+
+const EMPTY_PRODUCTS_STARTER_CHIPS = [
+  {
+    label: 'Bagaimana cara import file Tokopedia/Shopee?',
+    icon: FileSpreadsheet,
+  },
+  {
+    label: 'Panduan format spreadsheet',
+    icon: FileText,
+  },
+  {
+    label: 'Bantu saya upload produk',
+    icon: Package,
   },
 ];
 
@@ -178,7 +198,12 @@ function MarkdownContent({ content }: { content: string }) {
   );
 }
 
-export default function BoonPilotWidget({ tenantSlug }: BoonPilotWidgetProps) {
+export default function BoonPilotWidget({ 
+  tenantSlug, 
+  isProductsEmpty = false,
+  onOpenBulkImport,
+  onOpenNewProduct
+}: BoonPilotWidgetProps) {
   const normalizedSlug = Array.isArray(tenantSlug)
     ? tenantSlug[0]
     : tenantSlug || 'onlineboost';
@@ -191,8 +216,8 @@ export default function BoonPilotWidget({ tenantSlug }: BoonPilotWidgetProps) {
   const storageKey = `boonpilot_history_${normalizedSlug}`;
   const sessionKey = `boonpilot_session_id_${normalizedSlug}`;
 
-  // Default welcome message
-  const initialWelcome: ChatMessage = {
+  // Default welcome message for active store
+  const defaultWelcome: ChatMessage = {
     id: 'welcome-1',
     sender: 'assistant',
     text: `Halo! Saya **BoonPilot**, AI Copilot & Asisten Toko Anda. 🚀\n\nSaya siap membantu Anda memantau performa penjualan, memeriksa ketersediaan stok, konfigurasi kurir gudang, hingga mengelola otomasi WhatsApp toko Anda.`,
@@ -204,6 +229,21 @@ export default function BoonPilotWidget({ tenantSlug }: BoonPilotWidgetProps) {
       'Jelaskan strategi bot WhatsApp & fitur otomasi'
     ]
   };
+
+  // Onboarding welcome message when products are empty
+  const emptyProductsWelcome: ChatMessage = {
+    id: 'welcome-empty-1',
+    sender: 'assistant',
+    text: "Selamat datang di BoonTrack! Toko Anda belum memiliki produk. Silakan klik tombol 'Import Massal (.xlsx / .csv)' atau '+ Tambah Produk Baru' untuk memulai etalase Anda.",
+    timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+    quick_actions: [
+      'Bagaimana cara import file Tokopedia/Shopee?',
+      'Panduan format spreadsheet',
+      'Bantu saya upload produk'
+    ]
+  };
+
+  const initialWelcome: ChatMessage = isProductsEmpty ? emptyProductsWelcome : defaultWelcome;
 
   // Persistent session ID
   const [sessionId, setSessionId] = useState<string>(() => {
@@ -241,6 +281,18 @@ export default function BoonPilotWidget({ tenantSlug }: BoonPilotWidgetProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Dynamically update welcome message if store state changes to empty and user has not started conversing
+  useEffect(() => {
+    if (isProductsEmpty) {
+      setMessages((prev) => {
+        if (prev.length <= 1 && (!prev[0] || prev[0].sender === 'assistant')) {
+          return [emptyProductsWelcome];
+        }
+        return prev;
+      });
+    }
+  }, [isProductsEmpty]);
+
   // Sync to sessionStorage whenever messages change
   useEffect(() => {
     try {
@@ -262,7 +314,7 @@ export default function BoonPilotWidget({ tenantSlug }: BoonPilotWidgetProps) {
   }, [messages, isOpen, scrollToBottom]);
 
   // Send message handler - guarantees previous messages are preserved
-  const handleSendMessage = async (textToSend?: string) => {
+  const handleSendMessage = useCallback(async (textToSend?: string) => {
     const userText = (textToSend || inputText).trim();
     if (!userText || loading) return;
 
@@ -354,7 +406,20 @@ export default function BoonPilotWidget({ tenantSlug }: BoonPilotWidgetProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [inputText, loading, normalizedSlug, sessionId, storageKey]);
+
+  // Listen for open-boonpilot custom events from anywhere in the app
+  useEffect(() => {
+    const handleOpenEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ prompt?: string }>;
+      setIsOpen(true);
+      if (customEvent.detail?.prompt) {
+        handleSendMessage(customEvent.detail.prompt);
+      }
+    };
+    window.addEventListener('open-boonpilot', handleOpenEvent);
+    return () => window.removeEventListener('open-boonpilot', handleOpenEvent);
+  }, [handleSendMessage]);
 
   // Action Proposal Approval/Rejection
   const handleActionDecision = async (
@@ -692,7 +757,7 @@ export default function BoonPilotWidget({ tenantSlug }: BoonPilotWidgetProps) {
                 Saran Pertanyaan Cepat:
               </span>
               <div className="flex flex-col gap-1.5">
-                {STARTER_CHIPS.map((chip, idx) => {
+                {(isProductsEmpty ? EMPTY_PRODUCTS_STARTER_CHIPS : STARTER_CHIPS).map((chip, idx) => {
                   const Icon = chip.icon;
                   return (
                     <button

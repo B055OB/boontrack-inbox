@@ -155,8 +155,17 @@ export default function TenantDashboardPage() {
     </div>
   );
 
-  const [activeTab, setActiveTab] = useState<'inbox' | 'catalog' | 'ai_knowledge' | 'integration' | 'ads_tracking' | 'biteship' | 'broadcast' | 'whatsapp'>('whatsapp');
+  type DashboardTab = 'inbox' | 'catalog' | 'products' | 'ai_knowledge' | 'integration' | 'overview' | 'analytics' | 'ads_tracking' | 'biteship' | 'broadcast' | 'whatsapp';
+
+  const [activeTab, setActiveTab] = useState<DashboardTab>('catalog');
+  const hasUserSelectedTabRef = useRef(false);
+  const [isStoreReadinessEvaluated, setIsStoreReadinessEvaluated] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+
+  const handleSelectTab = (tab: DashboardTab) => {
+    hasUserSelectedTabRef.current = true;
+    setActiveTab(tab);
+  };
 
   // Desktop Navigation Tab Scroll Controls
   const tabsRef = useRef<HTMLDivElement | null>(null);
@@ -554,7 +563,7 @@ export default function TenantDashboardPage() {
     }
   };
 
-  const refreshProducts = async () => {
+  const refreshProducts = async (): Promise<ProductItem[]> => {
     try {
       const res = await fetch(getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`), {
         headers: { 'X-Tenant-ID': tenantSlug },
@@ -584,7 +593,7 @@ export default function TenantDashboardPage() {
               localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mappedProducts));
             } catch {}
           }
-          return;
+          return mappedProducts;
         }
       }
     } catch (err) {
@@ -617,7 +626,7 @@ export default function TenantDashboardPage() {
               localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mappedProducts));
             } catch {}
           }
-          return;
+          return mappedProducts;
         }
       }
     } catch (err) {
@@ -629,11 +638,85 @@ export default function TenantDashboardPage() {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) setProducts(parsed);
+          if (Array.isArray(parsed)) {
+            setProducts(parsed);
+            return parsed;
+          }
         } catch {}
       }
     }
+
+    return [];
   };
+
+  // 1. Initial URL query param tab check (?tab=catalog, ?tab=products, ?tab=whatsapp, etc.)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab')?.toLowerCase();
+      if (tabParam) {
+        hasUserSelectedTabRef.current = true;
+        if (tabParam === 'products' || tabParam === 'catalog') setActiveTab('catalog');
+        else if (tabParam === 'overview' || tabParam === 'analytics' || tabParam === 'finance' || tabParam === 'laporan') setActiveTab('integration');
+        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'broadcast', 'whatsapp'].includes(tabParam)) {
+          setActiveTab(tabParam as DashboardTab);
+        }
+      }
+    }
+  }, []);
+
+  // 2. Evaluasi kesiapan toko (Store Readiness) & Smart Dynamic Initial Tab
+  useEffect(() => {
+    let isMounted = true;
+
+    async function evaluateStoreReadiness() {
+      // Fetch data produk terbaru dari server authoritative / storage
+      const fetchedProducts = await refreshProducts();
+      const currentProductsCount = Array.isArray(fetchedProducts) ? fetchedProducts.length : (products?.length || 0);
+
+      // Cek status koneksi WhatsApp / gateway cluster
+      try {
+        const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/status?tenant=${encodeURIComponent(tenantSlug)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'CONNECTED' && isMounted) {
+            setWaStatus('CONNECTED');
+            if (data.phone_number) setConnectedPhone(data.phone_number);
+          }
+        }
+      } catch (err) {
+        console.debug('WhatsApp status readiness check note:', err);
+      }
+
+      // Cek jumlah transaksi (omzet / order)
+      const currentTxCount = transactions.length;
+
+      // Atur initial/active tab secara dinamis jika user belum memilih tab secara manual:
+      if (!hasUserSelectedTabRef.current && isMounted) {
+        if (currentProductsCount === 0) {
+          // Jika produk masih 0 (kosong): paksa default activeTab ke 'catalog' (Katalog Produk)
+          // agar seller langsung melihat tombol Tambah Produk / Import Massal.
+          setActiveTab('catalog');
+        } else if (currentProductsCount > 0 && currentTxCount === 0) {
+          // Jika produk sudah ada tapi belum ada transaksi: arahkan ke 'catalog' atau 'overview' ('integration')
+          setActiveTab('catalog');
+        } else if (currentProductsCount > 0 && currentTxCount > 0) {
+          // Jika toko sudah aktif lengkap: arahkan ke 'analytics' / 'overview' ('integration' / Laporan & Keuangan)
+          setActiveTab('integration');
+        }
+      }
+
+      if (isMounted) {
+        setIsStoreReadinessEvaluated(true);
+      }
+    }
+
+    evaluateStoreReadiness();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug]);
 
   const handleBulkImport = async () => {
     if (!importFile || isImporting) return;
@@ -992,8 +1075,8 @@ export default function TenantDashboardPage() {
               type="button"
               role="tab"
               aria-selected={activeTab === 'inbox'}
-              onPointerDown={(e) => { e.preventDefault(); setActiveTab('inbox'); }}
-              onClick={() => setActiveTab('inbox')}
+              onPointerDown={(e) => { e.preventDefault(); handleSelectTab('inbox'); }}
+              onClick={() => handleSelectTab('inbox')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
               className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'inbox'
@@ -1021,12 +1104,12 @@ export default function TenantDashboardPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === 'catalog'}
-              onPointerDown={(e) => { e.preventDefault(); setActiveTab('catalog'); }}
-              onClick={() => setActiveTab('catalog')}
+              aria-selected={activeTab === 'catalog' || activeTab === 'products'}
+              onPointerDown={(e) => { e.preventDefault(); handleSelectTab('catalog'); }}
+              onClick={() => handleSelectTab('catalog')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
               className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
-                activeTab === 'catalog'
+                activeTab === 'catalog' || activeTab === 'products'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
@@ -1039,8 +1122,8 @@ export default function TenantDashboardPage() {
               type="button"
               role="tab"
               aria-selected={activeTab === 'ai_knowledge'}
-              onPointerDown={(e) => { e.preventDefault(); setActiveTab('ai_knowledge'); }}
-              onClick={() => setActiveTab('ai_knowledge')}
+              onPointerDown={(e) => { e.preventDefault(); handleSelectTab('ai_knowledge'); }}
+              onClick={() => handleSelectTab('ai_knowledge')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
               className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'ai_knowledge'
@@ -1055,12 +1138,12 @@ export default function TenantDashboardPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={activeTab === 'integration'}
-              onPointerDown={(e) => { e.preventDefault(); setActiveTab('integration'); }}
-              onClick={() => setActiveTab('integration')}
+              aria-selected={activeTab === 'integration' || activeTab === 'overview' || activeTab === 'analytics'}
+              onPointerDown={(e) => { e.preventDefault(); handleSelectTab('integration'); }}
+              onClick={() => handleSelectTab('integration')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
               className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
-                activeTab === 'integration'
+                activeTab === 'integration' || activeTab === 'overview' || activeTab === 'analytics'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
@@ -1073,8 +1156,8 @@ export default function TenantDashboardPage() {
               type="button"
               role="tab"
               aria-selected={activeTab === 'ads_tracking'}
-              onPointerDown={(e) => { e.preventDefault(); setActiveTab('ads_tracking'); }}
-              onClick={() => setActiveTab('ads_tracking')}
+              onPointerDown={(e) => { e.preventDefault(); handleSelectTab('ads_tracking'); }}
+              onClick={() => handleSelectTab('ads_tracking')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
               className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'ads_tracking'
@@ -1102,8 +1185,8 @@ export default function TenantDashboardPage() {
               type="button"
               role="tab"
               aria-selected={activeTab === 'biteship'}
-              onPointerDown={(e) => { e.preventDefault(); setActiveTab('biteship'); }}
-              onClick={() => setActiveTab('biteship')}
+              onPointerDown={(e) => { e.preventDefault(); handleSelectTab('biteship'); }}
+              onClick={() => handleSelectTab('biteship')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
               className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'biteship'
@@ -1122,8 +1205,8 @@ export default function TenantDashboardPage() {
               type="button"
               role="tab"
               aria-selected={activeTab === 'broadcast'}
-              onPointerDown={(e) => { e.preventDefault(); setActiveTab('broadcast'); }}
-              onClick={() => setActiveTab('broadcast')}
+              onPointerDown={(e) => { e.preventDefault(); handleSelectTab('broadcast'); }}
+              onClick={() => handleSelectTab('broadcast')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
               className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'broadcast'
@@ -1151,8 +1234,8 @@ export default function TenantDashboardPage() {
               type="button"
               role="tab"
               aria-selected={activeTab === 'whatsapp'}
-              onPointerDown={(e) => { e.preventDefault(); setActiveTab('whatsapp'); }}
-              onClick={() => setActiveTab('whatsapp')}
+              onPointerDown={(e) => { e.preventDefault(); handleSelectTab('whatsapp'); }}
+              onClick={() => handleSelectTab('whatsapp')}
               style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
               className={`select-none pointer-events-auto flex-shrink-0 shrink-0 relative z-50 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer touch-manipulation whitespace-nowrap ${
                 activeTab === 'whatsapp'
@@ -1346,7 +1429,7 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB 2: KATALOG MULTI-PRODUK */}
-      {activeTab === 'catalog' && (
+      {(activeTab === 'catalog' || activeTab === 'products') && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
             <div>
@@ -1383,23 +1466,94 @@ export default function TenantDashboardPage() {
           </div>
 
           {products.length === 0 ? (
-            <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-12 text-center flex flex-col items-center justify-center space-y-3 shadow-xs">
-              <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center border border-slate-100">
-                <PackageOpen className="w-6 h-6" />
+            <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+              {/* BOONPILOT ONBOARDING GUIDANCE BANNER */}
+              <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-indigo-500/10 relative overflow-hidden">
+                <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
+                      <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-extrabold uppercase tracking-wider text-blue-100 border border-white/20">
+                        <Zap className="w-3 h-3 text-amber-300" />
+                        <span>BoonPilot Store Onboarding</span>
+                      </div>
+                      <h3 className="text-base sm:text-lg font-black tracking-tight leading-snug">
+                        Selamat datang di BoonTrack! Toko Anda belum memiliki produk.
+                      </h3>
+                      <p className="text-xs sm:text-sm text-blue-100 max-w-2xl leading-relaxed">
+                        Silakan klik tombol <strong className="text-white font-bold">&apos;Import Massal (.xlsx / .csv)&apos;</strong> atau <strong className="text-white font-bold">&apos;+ Tambah Produk Baru&apos;</strong> untuk memulai etalase Anda.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full md:w-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportFile(null);
+                        setImportResult(null);
+                        setImportError(null);
+                        setIsBulkImportModalOpen(true);
+                      }}
+                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-indigo-700 font-black px-5 py-3 rounded-2xl text-xs shadow-lg shadow-black/10 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                      <span>Import Massal (.xlsx / .csv)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openNewProductModal}
+                      className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-indigo-950/60 hover:bg-indigo-950 text-white font-black px-5 py-3 rounded-2xl text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ Tambah Produk Baru</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quick Action Prompt Chips suggested by BoonPilot */}
+                <div className="mt-6 pt-5 border-t border-white/15 flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-bold text-blue-200 flex items-center gap-1.5 mr-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    Tanya BoonPilot Copilot:
+                  </span>
+                  {[
+                    "Bagaimana cara import file Tokopedia/Shopee?",
+                    "Panduan format spreadsheet",
+                    "Bantu saya upload produk"
+                  ].map((promptText, pIdx) => (
+                    <button
+                      key={pIdx}
+                      type="button"
+                      onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          window.dispatchEvent(new CustomEvent('open-boonpilot', { detail: { prompt: promptText } }));
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-[11px] font-semibold border border-white/20 transition-all hover:scale-105 active:scale-95 cursor-pointer backdrop-blur-xs"
+                    >
+                      <span>{promptText}</span>
+                      <ArrowRight className="w-3 h-3 text-blue-200" />
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-black text-slate-800">Katalog Anda Masih Kosong</h3>
-                <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                  Tambahkan produk atau kelas digital pertama Anda agar calon pembeli dapat langsung checkout melalui etalase.
-                </p>
+
+              {/* Empty Catalog Helper Box */}
+              <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-8 sm:p-10 text-center flex flex-col items-center justify-center space-y-3 shadow-xs">
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center border border-blue-100">
+                  <PackageOpen className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800">Etalase Toko Siap Diisi</h3>
+                  <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                    Unggah file Excel/CSV produk Anda dalam hitungan detik atau gunakan asisten AI BoonPilot di pojok kanan bawah untuk memandu proses integrasi katalog Anda.
+                  </p>
+                </div>
               </div>
-              <button
-                onClick={openNewProductModal}
-                className="mt-2 inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs px-4 py-2 rounded-xl transition cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Buat Produk Pertama</span>
-              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3055,7 +3209,7 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB 4: LAPORAN PENJUALAN, SALDO & REKENING (FINANCIAL LEDGER) */}
-      {activeTab === 'integration' && (
+      {(activeTab === 'integration' || activeTab === 'overview' || activeTab === 'analytics') && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -3771,7 +3925,17 @@ export default function TenantDashboardPage() {
       )}
 
       {/* BOONPILOT AI COPILOT FLOATING WIDGET */}
-      <BoonPilotWidget tenantSlug={params.tenant} />
+      <BoonPilotWidget 
+        tenantSlug={params.tenant} 
+        isProductsEmpty={products.length === 0}
+        onOpenBulkImport={() => {
+          setImportFile(null);
+          setImportResult(null);
+          setImportError(null);
+          setIsBulkImportModalOpen(true);
+        }}
+        onOpenNewProduct={openNewProductModal}
+      />
 
     </main>
   );
