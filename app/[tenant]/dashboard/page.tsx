@@ -64,7 +64,8 @@ import {
   ComparisonItem,
   BonusItem,
   TransactionItem,
-  DEFAULT_PRODUCTS, 
+  DEFAULT_PRODUCTS,
+  DEFAULT_ONLINEBOOST_PRODUCTS,
   slugify 
 } from '@/lib/product-catalog';
 
@@ -83,7 +84,7 @@ export default function TenantDashboardPage() {
     }
   }, [tenantSlug, router]);
 
-  const isProTenant = ["demo"].includes(tenantSlug);
+  const isProTenant = ["demo", "onlineboost"].includes(tenantSlug);
 
   // FEATURE GATING (ENTITLEMENTS BERDASARKAN TIER TOKO: Growth, GrowthPlus, ProScale)
   // 'growth' | 'growth_tracking' | 'proscale'
@@ -283,7 +284,13 @@ export default function TenantDashboardPage() {
   const [replyText, setReplyText] = useState("");
 
   // Products State
-  const [products, setProducts] = useState<ProductItem[]>(isProTenant ? DEFAULT_PRODUCTS : []);
+  const [products, setProducts] = useState<ProductItem[]>(
+    tenantSlug === 'onlineboost'
+      ? DEFAULT_ONLINEBOOST_PRODUCTS
+      : isProTenant
+      ? DEFAULT_PRODUCTS
+      : []
+  );
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
 
@@ -331,7 +338,14 @@ export default function TenantDashboardPage() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setProducts(parsed);
+            return;
           }
+        }
+        if (tenantSlug === 'onlineboost') {
+          setProducts(DEFAULT_ONLINEBOOST_PRODUCTS);
+          try {
+            localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(DEFAULT_ONLINEBOOST_PRODUCTS));
+          } catch {}
         }
       } catch (err) {
         console.warn('Failed to load products from localStorage:', err);

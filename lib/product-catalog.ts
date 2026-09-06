@@ -105,9 +105,9 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
     variants: "Format Digital • Video HD + Support",
     promo: "Diskon 50%",
     description: "Sebuah formula hidden gem yang belum banyak orang Indonesia mengetahuinya untuk menghasilkan dollar dari paid traffic.",
-    download_url: "https://onlineboost.my.id/p/step-by-step-rahasia-menghasilkan-dollar",
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
-    stock: 9999,
+    download_url: "https://onlineboost.myr.id/course/step-by-step-rahasia-menghasilkan-dollar-dari-paid-traffic/",
+    image: "https://media.mayar.id/images/3bdb77f1-e02e-4b04-bb13-2f62d645753e.jpeg",
+    stock: 999,
     sku: "OB-DIG-001",
     is_unlimited: true,
     single_page_config: {
@@ -274,7 +274,62 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       },
       affiliate_commission_rate: 30
     }
+  },
+  {
+    id: 4,
+    name: "Ecourse Strategi YouTube AI: Metode Praktis Raih Pendapatan AdSense",
+    slug: "ecourse-strategi-youtube-ai-metode-praktis-raih-pendapatan-adsense",
+    category: "digital",
+    price: 2999000,
+    promo_price: 1499000,
+    variants: "Format Digital • Akses Ecourse Instan",
+    promo: "Diskon Khusus",
+    description: "Metode Rahasia Simple dan Praktis dalam meraih Dollar dari Adsense hanya menggunakan AI",
+    download_url: "https://onlineboost.myr.id/course/ecourse-strategi-youtube-ai-metode-praktis-raih-pendapatan-adsense/",
+    image: "https://media.mayar.id/images/7d3af97d-b370-47e6-82da-f416576a2b6a.jpeg",
+    stock: 999,
+    sku: "OB-DIG-003",
+    is_unlimited: true,
+  },
+  {
+    id: 5,
+    name: "Master Class Internet Marketing CPM",
+    slug: "master-class-internet-marketing-cpm",
+    category: "digital",
+    price: 9999999,
+    promo_price: 4999000,
+    variants: "Format Digital • Akses Ecourse Instan",
+    promo: "Program Unggulan",
+    description: "Potensi Income Yang Didapat Setelah Mengikuti Kelas Ini: 1. Mendapatkan Income Dari CPM Dengan Organik Traffic Luar Negeri, 2. Mendapatkan Penghasilan dari Paid Traffic CPM.",
+    download_url: "https://onlineboost.myr.id/course/master-class-internet-marketing-cpm/",
+    image: "https://media.mayar.id/images/e7470199-3223-49c4-89a7-33f71af73617.jpeg",
+    stock: 999,
+    sku: "OB-DIG-004",
+    is_unlimited: true,
+  },
+  {
+    id: 6,
+    name: "Ecourse Member Internet Marketing CPM",
+    slug: "ecourse-member-internet-marketing-cpm",
+    category: "digital",
+    price: 1490000,
+    promo_price: 749000,
+    variants: "Format Digital • Akses Ecourse Instan",
+    promo: "Akses Member",
+    description: "Lanjutan Basic Meraih Income di atas 500rb / Hari dengan formula strategi internet marketing CPM.",
+    download_url: "https://onlineboost.myr.id/course/ecourse-member-internet-marketing-cpm/",
+    image: "https://media.mayar.id/images/90c6cb1b-ecf1-4bc2-b2a6-f09fb7330bee.jpeg",
+    stock: 999,
+    sku: "OB-DIG-005",
+    is_unlimited: true,
   }
+];
+
+export const DEFAULT_ONLINEBOOST_PRODUCTS: ProductItem[] = [
+  DEFAULT_PRODUCTS[3], // YouTube AI
+  DEFAULT_PRODUCTS[4], // Master Class CPM
+  DEFAULT_PRODUCTS[5], // Ecourse Member CPM
+  DEFAULT_PRODUCTS[0], // Paid Traffic
 ];
 
 export function resolveSinglePageProduct(
