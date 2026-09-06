@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { 
@@ -277,17 +277,46 @@ export default function TenantStorefrontPage() {
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
   const [showCartModal, setShowCartModal] = useState(false);
 
+  const isAllDigital = storeProducts.length > 0
+    ? !storeProducts.some((p) => {
+        const cat = (p.category || "").toLowerCase();
+        return cat === "fisik" || cat === "physical" || (p as any).type === "physical" || (p as any).product_type === "PHYSICAL";
+      })
+    : (tenantSlug === "onlineboost");
+
+  const dynamicQuickReplies = useMemo(() => {
+    return isAllDigital
+      ? ["🔥 Produk Terlaris", "🏷️ Cek Promo Hari Ini", "⚡ Cara Akses Materi", "💡 Konsultasi Pilihan"]
+      : ["🔥 Produk Terlaris", "🏷️ Cek Promo Hari Ini", "🚚 Berapa Ongkirnya?"];
+  }, [isAllDigital]);
+
   const [inputMessage, setInputMessage] = useState("");
   const [messages, setMessages] = useState<StoreChatMessage[]>([
     {
       id: "init-1",
       sender: "bot",
       time: "09:00",
-      text: `Halo! Selamat datang di ${displayName.toUpperCase()} 👋 Ada yang bisa kami bantu seputar ecourse, materi, atau promo spesial hari ini?`,
+      text: `Halo! Selamat datang di ${displayName.toUpperCase()} 👋 Ada yang bisa kami bantu seputar ${isAllDigital ? "materi ecourse, promo, atau pilihan kelas" : "produk, promo, atau pengiriman"} hari ini?`,
       type: 'TEXT',
-      quick_actions: ['🔥 Produk Terlaris', '🏷️ Cek Promo Hari Ini', '⚡ Konsultasi Materi']
+      quick_actions: dynamicQuickReplies
     }
   ]);
+
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length === 1 && prev[0].id === "init-1") {
+        return [
+          {
+            ...prev[0],
+            text: `Halo! Selamat datang di ${displayName.toUpperCase()} 👋 Ada yang bisa kami bantu seputar ${isAllDigital ? "materi ecourse, promo, atau rekomendasi kelas" : "produk, promo, atau pengiriman"} hari ini?`,
+            quick_actions: dynamicQuickReplies
+          }
+        ];
+      }
+      return prev;
+    });
+  }, [isAllDigital, displayName, dynamicQuickReplies]);
+
   const [isBotTyping, setIsBotTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -409,50 +438,6 @@ export default function TenantStorefrontPage() {
     setMessages(nextHistory);
     setIsBotTyping(true);
 
-    const qLower = trimmed.toLowerCase();
-
-    // 1. Quick Reply Spesifik: 🔥 Produk Terlaris
-    if (/terlaris|produk terlaris|ecourse terlaris/i.test(qLower)) {
-      setTimeout(() => {
-        const botReply = `Berikut 2 ecourse paling terlaris dan paling banyak dipelajari member OnlineBoost:\n\n1. 🔥 Ecourse Strategi YouTube AI: Metode Praktis Raih Pendapatan AdSense (Rp 1.499.000)\n2. 🚀 Step by Step Rahasia Menghasilkan Dollar dari Paid Traffic (Rp 249.000)\n\nSilakan langsung klik tombol '+ Keranjang' pada kartu produk di etalase sebelah kanan untuk langsung checkout instan via QRIS!`;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `bot-${Date.now()}`,
-            sender: "bot",
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            text: botReply,
-            action: 'NONE',
-            type: 'TEXT',
-            quick_actions: ['🏷️ Cek Promo Hari Ini', '⚡ Konsultasi Materi', 'Cara Bayar QRIS']
-          }
-        ]);
-        setIsBotTyping(false);
-      }, 300);
-      return;
-    }
-
-    // 2. Quick Reply Spesifik: 🏷️ Cek Promo Hari Ini
-    if (/promo|cek promo|diskon|potongan/i.test(qLower)) {
-      setTimeout(() => {
-        const promoReply = `Kabar baik! Khusus pemesanan hari ini, berikut rincian diskon aktif untuk ecourse OnlineBoost:\n\n• Master Class Internet Marketing CPM: diskon 50% jadi Rp 4.999.000 (dari Rp 9.999.999).\n• Ecourse YouTube AI: diskon 50% jadi Rp 1.499.000 (dari Rp 2.999.000).\n• Ecourse Member CPM: diskon 50% jadi Rp 749.000 (dari Rp 1.490.000).\n• Step by Step Paid Traffic: diskon 50% jadi Rp 249.000 (dari Rp 499.000).\n\nSemua materi dapat langsung diakses secara lifetime setelah verifikasi QRIS instan. Silakan pilih produk favorit Anda di etalase dan klik '+ Keranjang'!`;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `bot-${Date.now()}`,
-            sender: "bot",
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            text: promoReply,
-            action: 'NONE',
-            type: 'TEXT',
-            quick_actions: ['🔥 Produk Terlaris', '⚡ Ambil Promo Sekarang', 'Metode Pembayaran']
-          }
-        ]);
-        setIsBotTyping(false);
-      }, 300);
-      return;
-    }
-
     try {
       const res = await fetch("/api/v1/store/chat", {
         method: "POST",
@@ -486,7 +471,7 @@ export default function TenantStorefrontPage() {
         action,
         type,
         product: (action === 'SHOW_PRODUCT' || action === 'SHOW_CHECKOUT' || type === 'SHOW_PRODUCT' || type === 'SHOW_CHECKOUT') ? data.product : undefined,
-        quick_actions: Array.isArray(data.quick_actions) ? data.quick_actions : undefined
+        quick_actions: Array.isArray(data.quick_actions) && data.quick_actions.length > 0 ? data.quick_actions : dynamicQuickReplies
       };
 
       setMessages((prev) => [...prev, botMsg]);
@@ -497,9 +482,9 @@ export default function TenantStorefrontPage() {
           id: `bot-${Date.now()}`,
           sender: "bot",
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: "Mohon maaf, terjadi kendala saat memproses jawaban. Silakan coba tanyakan kembali atau pilih langsung produk di sebelah kanan.",
+          text: `Halo! Tim asisten toko ${displayName.toUpperCase()} siap membantu. Silakan pilih menu di bawah atau tanyakan seputar produk kami.`,
           type: 'TEXT',
-          quick_actions: ['🔥 Produk Terlaris', '🏷️ Cek Promo Hari Ini']
+          quick_actions: dynamicQuickReplies
         }
       ]);
     } finally {
