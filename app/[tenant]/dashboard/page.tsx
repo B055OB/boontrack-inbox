@@ -329,6 +329,39 @@ export default function TenantDashboardPage() {
     affiliate_commission_rate: 0,
   });
 
+  // Builder Single Page Checkout Tabs Scroll State
+  const builderTabsRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollTabsLeft, setCanScrollTabsLeft] = useState(false);
+  const [canScrollTabsRight, setCanScrollTabsRight] = useState(false);
+
+  const checkBuilderTabsScroll = () => {
+    const el = builderTabsRef.current;
+    if (!el) return;
+    setCanScrollTabsLeft(el.scrollLeft > 2);
+    setCanScrollTabsRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  };
+
+  const handleScrollBuilderTabs = (direction: 'left' | 'right') => {
+    const el = builderTabsRef.current;
+    if (!el) return;
+    const offset = direction === 'left' ? -200 : 200;
+    el.scrollBy({ left: offset, behavior: 'smooth' });
+    setTimeout(checkBuilderTabsScroll, 350);
+  };
+
+  useEffect(() => {
+    if (isSinglePageModalOpen) {
+      const timer = setTimeout(() => {
+        checkBuilderTabsScroll();
+      }, 150);
+      window.addEventListener('resize', checkBuilderTabsScroll);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('resize', checkBuilderTabsScroll);
+      };
+    }
+  }, [isSinglePageModalOpen]);
+
   // Load persisted products from localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -2245,34 +2278,65 @@ export default function TenantDashboardPage() {
                 </span>
               </div>
 
-              {/* Navigation Tab Bar Formula Konversi */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar touch-pan-x overscroll-x-contain pb-1.5 border-b border-slate-200 relative z-50 isolate">
-                {[
-                  { id: 'hook', label: '1. Hook & Hero', icon: '🎯' },
-                  { id: 'problem_solution', label: '2. Problem & Solusi', icon: '⚡' },
-                  { id: 'comparison', label: '3. Us vs Them', icon: '⚖️' },
-                  { id: 'social_proof', label: '4. Testimoni', icon: '💬' },
-                  { id: 'offer_bonus', label: '5. Offer & Bonus', icon: '🎁' },
-                  { id: 'payment_voucher', label: '6. Bayar & Voucher', icon: '🎟️' },
-                ].map((tab) => (
+              {/* Navigation Tab Bar Formula Konversi with Horizontal Scroll */}
+              <div className="relative flex items-center border-b border-slate-200 pb-1.5 isolate group">
+                {/* Tombol Scroll Kiri */}
+                {canScrollTabsLeft && (
                   <button
-                    key={tab.id}
                     type="button"
-                    role="tab"
-                    aria-selected={activeBuilderTab === tab.id}
-                    onPointerDown={(e) => { e.preventDefault(); setActiveBuilderTab(tab.id as any); }}
-                    onClick={() => setActiveBuilderTab(tab.id as any)}
-                    style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-                    className={`select-none pointer-events-auto shrink-0 relative z-50 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer touch-manipulation ${
-                      activeBuilderTab === tab.id
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                    onClick={() => handleScrollBuilderTabs('left')}
+                    aria-label="Scroll tab ke kiri"
+                    className="absolute left-0 z-30 h-7 w-7 -ml-2 flex items-center justify-center rounded-full bg-white/95 border border-slate-300 text-slate-700 shadow-md hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all cursor-pointer"
                   >
-                    <span>{tab.icon}</span>
-                    <span>{tab.label}</span>
+                    <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
                   </button>
-                ))}
+                )}
+
+                {/* Container Tab */}
+                <div
+                  ref={builderTabsRef}
+                  onScroll={checkBuilderTabsScroll}
+                  className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth touch-pan-x overscroll-x-contain relative z-10 px-0.5"
+                >
+                  {[
+                    { id: 'hook', label: '1. Hook & Hero', icon: '🎯' },
+                    { id: 'problem_solution', label: '2. Problem & Solusi', icon: '⚡' },
+                    { id: 'comparison', label: '3. Us vs Them', icon: '⚖️' },
+                    { id: 'social_proof', label: '4. Testimoni', icon: '💬' },
+                    { id: 'offer_bonus', label: '5. Offer & Bonus', icon: '🎁' },
+                    { id: 'payment_voucher', label: '6. Bayar & Voucher', icon: '🎟️' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeBuilderTab === tab.id}
+                      onPointerDown={(e) => { e.preventDefault(); setActiveBuilderTab(tab.id as any); }}
+                      onClick={() => setActiveBuilderTab(tab.id as any)}
+                      style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+                      className={`select-none pointer-events-auto shrink-0 relative z-10 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer touch-manipulation ${
+                        activeBuilderTab === tab.id
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>{tab.icon}</span>
+                      <span>{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tombol Scroll Kanan */}
+                {canScrollTabsRight && (
+                  <button
+                    type="button"
+                    onClick={() => handleScrollBuilderTabs('right')}
+                    aria-label="Scroll tab ke kanan"
+                    className="absolute right-0 z-30 h-7 w-7 -mr-2 flex items-center justify-center rounded-full bg-white/95 border border-slate-300 text-slate-700 shadow-md hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+                )}
               </div>
 
               {/* TAB 1: HOOK & HERO */}
