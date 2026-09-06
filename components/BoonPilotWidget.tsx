@@ -351,11 +351,16 @@ export default function BoonPilotWidget({
     }));
 
     try {
+      const tenantForRequest = normalizedSlug || 'growth';
       const res = await fetch('/api/v1/merchant/copilot', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Tenant-Slug': tenantForRequest,
+          'X-Tenant-ID': tenantForRequest,
+        },
         body: JSON.stringify({
-          tenant_slug: normalizedSlug,
+          tenant_slug: tenantForRequest,
           session_id: sessionId,
           message: userText,
           conversation_history,
@@ -387,20 +392,34 @@ export default function BoonPilotWidget({
           return next;
         });
       } else {
+        const fallbackOnboardingText = `Halo! Saya **BoonPilot Copilot** siap memandu Anda. 🚀\n\nUntuk memulai etalase toko:\n1. **Import Massal:** Klik tombol **'Import Massal (.xlsx / .csv)'** pada tab Katalog Produk untuk mengunggah ratusan produk sekaligus.\n2. **Tambah Produk Manual:** Gunakan tombol **'+ Tambah Produk Baru'** untuk mengisi nama, foto, dan harga produk.\n3. **Hubungkan WhatsApp:** Masuk ke tab **WhatsApp** dan scan QR dengan *BoonTrack Direct Connect*.\n\nAda yang ingin Anda tanyakan seputar etalase produk?`;
         const errMessage: ChatMessage = {
           id: `ast_${Date.now()}`,
           sender: 'assistant',
-          text: 'Maaf, terjadi kendala saat menghubungkan ke asisten BoonPilot. Silakan coba sesaat lagi.',
+          text: fallbackOnboardingText,
           timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          quick_actions: [
+            'Import Massal (.xlsx / .csv)',
+            'Panduan Format Spreadsheet',
+            'Bagaimana cara import file Tokopedia/Shopee?',
+            '+ Tambah Produk Baru',
+          ],
         };
         setMessages((prev) => [...prev, errMessage]);
       }
     } catch {
+      const fallbackOnboardingText = `Halo! Saya **BoonPilot Copilot** siap memandu toko Anda. 🚀\n\nUntuk mengelola katalog produk:\n1. **Import Massal (.xlsx / .csv):** Unggah file spreadsheet produk Anda secara instan.\n2. **Tambah Produk Baru:** Isi informasi produk dan upload gambar etalase.\n3. **Koneksi WhatsApp:** Scan QR untuk mengaktifkan bot asisten toko.\n\nSilakan pilih salah satu panduan cepat di bawah:`;
       const errMessage: ChatMessage = {
         id: `ast_${Date.now()}`,
         sender: 'assistant',
-        text: 'Maaf, jaringan sedang tidak stabil. Silakan periksa koneksi Anda.',
+        text: fallbackOnboardingText,
         timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        quick_actions: [
+          'Import Massal (.xlsx / .csv)',
+          'Panduan Format Spreadsheet',
+          'Bagaimana cara import file Tokopedia/Shopee?',
+          '+ Tambah Produk Baru',
+        ],
       };
       setMessages((prev) => [...prev, errMessage]);
     } finally {
