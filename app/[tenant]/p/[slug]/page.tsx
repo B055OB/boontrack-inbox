@@ -42,7 +42,8 @@ import {
   getTrackingData
 } from '@/lib/tracking';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
-import { resolveSinglePageProduct, SinglePageConfig, ProductItem, VoucherConfig, ComparisonItem, BonusItem } from '@/lib/product-catalog';
+import { resolveSinglePageProduct, SinglePageConfig, ProductItem, VoucherConfig, ComparisonItem, BonusItem, slugify } from '@/lib/product-catalog';
+import { getSupabase } from '@/lib/supabaseClient';
 
 function SingleProductContent() {
   const params = useParams();
@@ -51,15 +52,98 @@ function SingleProductContent() {
   const tenant = (params.tenant as string) || 'onlineboost';
   const slug = (params.slug as string) || 'masterclass-ads-2026';
 
-  // Resolusi Produk & Konfigurasi Dinamis dari Dasbor
+  // Resolusi Produk & Konfigurasi Dinamis dari Dasbor & Supabase
   const [resolvedData, setResolvedData] = useState<{ product: ProductItem; config: SinglePageConfig }>(() => 
     resolveSinglePageProduct(tenant, slug)
   );
 
   useEffect(() => {
-    // Sinkronisasi data dinamis dari localStorage jika baru diperbarui di Dasbor
+    // 1. Sinkronisasi data dinamis dari localStorage
     const dynamicData = resolveSinglePageProduct(tenant, slug);
     setResolvedData(dynamicData);
+
+    // 2. Sinkronisasi langsung secara dinamis dari database Supabase (tenants.metadata.products)
+    let isMounted = true;
+    async function syncFromSupabase() {
+      try {
+        const supabase = getSupabase();
+        if (!supabase) return;
+
+        const { data: tenantRow } = await supabase
+          .from("tenants")
+          .select("metadata")
+          .eq("slug", tenant)
+          .maybeSingle();
+
+        const prods = tenantRow?.metadata?.products;
+        if (Array.isArray(prods) && prods.length > 0) {
+          const norm = slug.toLowerCase();
+          const match = prods.find((p: any) => {
+            const pSlug = (p.slug || slugify(p.name || p.title || '')).toLowerCase();
+            return pSlug === norm || norm.includes(pSlug) || pSlug.includes(norm);
+          });
+
+          if (match && isMounted) {
+            const cfg = match.single_page_config || {};
+            const builder = match.builder_metadata || {};
+            const hero = match.hook_hero || builder.hook_hero || {};
+            const ps = match.problem_solution || builder.problem_solution || {};
+            const ob = match.offer_bonus || builder.offer_bonus || {};
+            const pm = match.payment_methods || builder.payment_methods || {};
+
+            const dynamicConfig: SinglePageConfig = {
+              slug: match.slug || slug,
+              headline: hero.headline || cfg.headline || match.title || match.name,
+              subheadline: hero.subheadline || cfg.subheadline || match.description || '',
+              banner_url: hero.banner_url || cfg.banner_url || match.image || '',
+              badge_text: hero.badge || cfg.badge_text || match.promo || 'Penawaran Spesial',
+              problem_title: ps.title || cfg.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
+              pain_points: ps.pain_points || cfg.pain_points || [],
+              solution_title: ps.solution_title || cfg.solution_title || 'Solusi Tepat untuk Melejitkan Konversi',
+              solution_points: ps.solution_points || cfg.solution_points || [],
+              comparison_rows: match.us_vs_them || builder.us_vs_them || cfg.comparison_rows || [],
+              testimonials: match.testimonials || builder.testimonials || cfg.testimonials || [],
+              testimonial_images: cfg.testimonial_images || [],
+              bonus_items: ob.bonus_items || cfg.bonus_items || [],
+              discount_coupon: cfg.discount_coupon || 'LIVEDEMO1000',
+              voucher: cfg.voucher,
+              enable_qris: pm.enable_qris ?? cfg.enable_qris ?? true,
+              enable_manual_transfer: pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? false,
+              affiliate_commission_rate: cfg.affiliate_commission_rate || 0,
+              whatsapp_number: cfg.whatsapp_number || '6281224456454',
+            };
+
+            const dynamicProduct: ProductItem = {
+              id: match.id || 7,
+              name: dynamicConfig.headline || match.title || match.name,
+              slug: match.slug || slug,
+              category: match.category || 'digital',
+              price: Number(ob.price ?? match.price) || 1000,
+              promo_price: Number(ob.promo_price ?? match.promo_price) || 1000,
+              variants: match.variants || 'Format Digital • Akses Instan',
+              promo: dynamicConfig.badge_text,
+              description: dynamicConfig.subheadline,
+              download_url: match.download_url || match.link_digital || match.delivery_url || '',
+              image: dynamicConfig.banner_url,
+              stock: match.stock || 999,
+              sku: match.sku || 'OB-CPM-24H',
+              is_unlimited: true,
+              single_page_config: dynamicConfig,
+            };
+
+            setResolvedData({
+              product: dynamicProduct,
+              config: dynamicConfig,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[SingleProductContent] Supabase sync note:', err);
+      }
+    }
+
+    syncFromSupabase();
+    return () => { isMounted = false; };
   }, [tenant, slug]);
 
   const product = resolvedData.product;
@@ -1013,8 +1097,8 @@ function SingleProductContent() {
           </section>
         )}
 
-        {/* 5. Galeri Testimoni Visual (Grid Screenshot) */}
-        {config.testimonial_images && config.testimonial_images.length > 0 && (
+        {/* 5. Galeri & Ulasan Testimoni */}
+        {((config.testimonials && config.testimonials.length > 0) || (config.testimonial_images && config.testimonial_images.length > 0)) && (
           <section className="bg-slate-50/90 border border-slate-200/90 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-1.5 text-amber-500 font-bold text-xs">
@@ -1029,33 +1113,68 @@ function SingleProductContent() {
             </div>
             <div>
               <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                Bukti Nyata & Kepuasan Pengguna
+                Bukti Nyata &amp; Kepuasan Pengguna
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Screenshot asli pengalaman dan hasil nyata dari mereka yang telah bergabung:
+                Pengalaman dan hasil nyata dari mereka yang telah mempraktikkan materi ini:
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
-              {config.testimonial_images.map((imgUrl, idx) => (
-                <div key={idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group">
-                  <div className="overflow-hidden bg-slate-100">
-                    <img 
-                      src={imgUrl} 
-                      alt={`Bukti Testimoni ${idx + 1}`} 
-                      className="w-full h-48 sm:h-52 object-cover object-top group-hover:scale-105 transition duration-300"
-                      loading="lazy"
-                    />
+            {config.testimonials && config.testimonials.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {config.testimonials.map((t) => (
+                  <div key={t.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex text-amber-400 gap-0.5">
+                          {[...Array(t.rating || 5)].map((_, i) => (
+                            <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
+                          ))}
+                        </div>
+                        {t.badge && (
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-2 py-0.5 rounded-full">
+                            {t.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-700 italic leading-relaxed mb-3">&ldquo;{t.quote}&rdquo;</p>
+                    </div>
+                    <div className="pt-2.5 border-t border-slate-100 flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                        {t.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                      </div>
+                      <div>
+                        <h5 className="text-xs font-bold text-slate-900">{t.name}</h5>
+                        <p className="text-[10px] text-slate-500">{t.role}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="p-2.5 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
-                    <span className="font-semibold text-slate-700">Verified User</span>
-                    <span className="text-emerald-600 font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> Sukses
-                    </span>
+                ))}
+              </div>
+            )}
+
+            {config.testimonial_images && config.testimonial_images.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                {config.testimonial_images.map((imgUrl, idx) => (
+                  <div key={idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group">
+                    <div className="overflow-hidden bg-slate-100">
+                      <img 
+                        src={imgUrl} 
+                        alt={`Bukti Testimoni ${idx + 1}`} 
+                        className="w-full h-48 sm:h-52 object-cover object-top group-hover:scale-105 transition duration-300"
+                        loading="lazy"
+                      />
+                    </div>
+                    <div className="p-2.5 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
+                      <span className="font-semibold text-slate-700">Verified User</span>
+                      <span className="text-emerald-600 font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Sukses
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 

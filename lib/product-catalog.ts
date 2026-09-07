@@ -21,6 +21,15 @@ export interface BonusItem {
   description?: string;
 }
 
+export interface TestimonialItem {
+  id: string;
+  name: string;
+  role: string;
+  quote: string;
+  badge?: string;
+  rating?: number;
+}
+
 export interface SinglePageConfig {
   slug?: string;
   // 1. Hook
@@ -41,6 +50,7 @@ export interface SinglePageConfig {
 
   // 4. Social Proof / Testimoni
   testimonial_images?: string[]; // Hingga 3 screenshot bukti/chat
+  testimonials?: TestimonialItem[]; // Testimoni teks peserta
 
   // 5. Offer & Bonus
   bonus_items?: BonusItem[];
