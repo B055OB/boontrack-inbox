@@ -85,7 +85,7 @@ function SingleProductContent() {
 
           if (match && isMounted) {
             const cfg = match.single_page_config || {};
-            const builder = match.builder_metadata || {};
+            const builder = match.builder_metadata || match.metadata?.builder || match.metadata || {};
             const hero = match.hook_hero || builder.hook_hero || {};
             const ps = match.problem_solution || builder.problem_solution || {};
             const ob = match.offer_bonus || builder.offer_bonus || {};
@@ -93,7 +93,7 @@ function SingleProductContent() {
 
             const dynamicConfig: SinglePageConfig = {
               slug: match.slug || slug,
-              headline: hero.headline || cfg.headline || match.title || match.name,
+              headline: hero.headline || cfg.headline || match.title || match.name || 'Produk Eksklusif',
               subheadline: hero.subheadline || cfg.subheadline || match.description || '',
               banner_url: hero.banner_url || cfg.banner_url || match.image || '',
               badge_text: hero.badge || cfg.badge_text || match.promo || 'Penawaran Spesial',
@@ -105,28 +105,28 @@ function SingleProductContent() {
               testimonials: match.testimonials || builder.testimonials || cfg.testimonials || [],
               testimonial_images: cfg.testimonial_images || [],
               bonus_items: ob.bonus_items || cfg.bonus_items || [],
-              discount_coupon: cfg.discount_coupon || 'LIVEDEMO1000',
+              discount_coupon: cfg.discount_coupon || cfg.voucher?.code || 'DISKON',
               voucher: cfg.voucher,
               enable_qris: pm.enable_qris ?? cfg.enable_qris ?? true,
-              enable_manual_transfer: pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? false,
+              enable_manual_transfer: pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? true,
               affiliate_commission_rate: cfg.affiliate_commission_rate || 0,
-              whatsapp_number: cfg.whatsapp_number || '6281224456454',
+              whatsapp_number: cfg.whatsapp_number || tenantRow?.metadata?.whatsapp_number || '6281237450222',
             };
 
             const dynamicProduct: ProductItem = {
-              id: match.id || 7,
-              name: dynamicConfig.headline || match.title || match.name,
+              id: match.id || Date.now(),
+              name: dynamicConfig.headline || match.title || match.name || 'Produk Eksklusif',
               slug: match.slug || slug,
               category: match.category || 'digital',
-              price: Number(ob.price ?? match.price) || 1000,
-              promo_price: Number(ob.promo_price ?? match.promo_price) || 1000,
+              price: Number(ob.price ?? match.price ?? 0),
+              promo_price: Number(ob.promo_price ?? match.promo_price ?? match.price ?? 0),
               variants: match.variants || 'Format Digital • Akses Instan',
               promo: dynamicConfig.badge_text,
               description: dynamicConfig.subheadline,
               download_url: match.download_url || match.link_digital || match.delivery_url || '',
               image: dynamicConfig.banner_url,
               stock: match.stock || 999,
-              sku: match.sku || 'OB-CPM-24H',
+              sku: match.sku || '',
               is_unlimited: true,
               single_page_config: dynamicConfig,
             };
