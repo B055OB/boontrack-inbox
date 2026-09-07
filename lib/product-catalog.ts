@@ -322,6 +322,46 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
     stock: 999,
     sku: "OB-DIG-005",
     is_unlimited: true,
+  },
+  {
+    id: 7,
+    name: "Modul Praktis CPM 24 Jam",
+    slug: "cpm-24-jam",
+    category: "digital",
+    price: 149000,
+    promo_price: 1000,
+    variants: "Format Digital • Akses Instan WhatsApp",
+    promo: "Spesial Live Demo Rp1.000",
+    description: "Panduan Praktis Setup Traffic CPM: Tembus Impresi Pertama dalam 24 Jam. 3 langkah taktis optimasi traffic instan tanpa teori rumit.",
+    download_url: "https://wa.me/6281224456454?text=Halo%20min,%20saya%20tertarik%20materi%20Modul%20Praktis%20CPM%2024%20Jam%20seharga%20Rp1.000",
+    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=80",
+    stock: 999,
+    sku: "OB-CPM-24H",
+    is_unlimited: true,
+    single_page_config: {
+      slug: "cpm-24-jam",
+      headline: "Panduan Praktis Setup Traffic CPM: Tembus Impresi Pertama dalam 24 Jam",
+      subheadline: "Bypass teori rumit. Pelajari 3 langkah taktis optimasi campaign Meta Ads & CAPI untuk mengalirkan traffic CPM terukur mulai hari ini.",
+      banner_url: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&auto=format&fit=crop&q=80",
+      badge_text: "🔴 Sesi Live Demo Khusus",
+      whatsapp_number: "6281224456454",
+      discount_coupon: "LIVEDEMO1000",
+      affiliate_commission_rate: 0,
+      enable_qris: false,
+      enable_manual_transfer: false,
+      problem_title: "Masalah Fatal yang Bikin Boncos Saat Setup Traffic CPM",
+      pain_points: [
+        "Boncos karena struktur campaign salah & budget terpecah tanpa arah.",
+        "Pixel & Conversions API (CAPI) tidak terbaca, data konversi buta total.",
+        "Akun iklan tiba-tiba kena restrict sebelum sempat menghasilkan cuan."
+      ],
+      solution_title: "Solusi Taktis 3 Langkah Optimasi Traffic Instan",
+      solution_points: [
+        "Setup Campaign & Event Tracking CAPI dengan validasi anti-loss.",
+        "Struktur Ad Set & Strategi Budgeting CBO vs ABO yang presisi.",
+        "Funnel Sederhana & Optimasi Konversi Cepat untuk lead masuk instan."
+      ]
+    }
   }
 ];
 
@@ -330,6 +370,7 @@ export const DEFAULT_ONLINEBOOST_PRODUCTS: ProductItem[] = [
   DEFAULT_PRODUCTS[4], // Master Class CPM
   DEFAULT_PRODUCTS[5], // Ecourse Member CPM
   DEFAULT_PRODUCTS[0], // Paid Traffic
+  DEFAULT_PRODUCTS[6], // Modul Praktis CPM 24 Jam
 ];
 
 export function resolveSinglePageProduct(
