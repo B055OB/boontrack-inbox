@@ -336,40 +336,104 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
   {
     id: 7,
     name: "Modul Praktis CPM 24 Jam",
-    slug: "cpm-24-jam",
+    slug: "modul-praktis-cpm-24-jam",
     category: "digital",
-    price: 149000,
+    price: 1000,
     promo_price: 1000,
     variants: "Format Digital • Akses Instan WhatsApp",
     promo: "Spesial Live Demo Rp1.000",
     description: "Panduan Praktis Setup Traffic CPM: Tembus Impresi Pertama dalam 24 Jam. 3 langkah taktis optimasi traffic instan tanpa teori rumit.",
-    download_url: "https://wa.me/6281224456454?text=Halo%20min,%20saya%20tertarik%20materi%20Modul%20Praktis%20CPM%2024%20Jam%20seharga%20Rp1.000",
+    download_url: "https://wa.me/62815395554489?text=Halo%20min,%20saya%20tertarik%20materi%20Modul%20Praktis%20CPM%2024%20Jam%20seharga%20Rp1.000",
     image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=80",
     stock: 999,
     sku: "OB-CPM-24H",
     is_unlimited: true,
     single_page_config: {
-      slug: "cpm-24-jam",
+      slug: "modul-praktis-cpm-24-jam",
       headline: "Panduan Praktis Setup Traffic CPM: Tembus Impresi Pertama dalam 24 Jam",
-      subheadline: "Bypass teori rumit. Pelajari 3 langkah taktis optimasi campaign Meta Ads & CAPI untuk mengalirkan traffic CPM terukur mulai hari ini.",
+      subheadline: "Rahasia membangun aliran traffic stabil, setup server-side CAPI anti-bocor, dan optimasi konversi kilat tanpa boncos atau akun restrict.",
       banner_url: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&auto=format&fit=crop&q=80",
-      badge_text: "🔴 Sesi Live Demo Khusus",
-      whatsapp_number: "6281224456454",
-      discount_coupon: "LIVEDEMO1000",
+      badge_text: "Penawaran Spesial Live Demo • Diskon 99%",
+      whatsapp_number: "62815395554489",
+      discount_coupon: "",
       affiliate_commission_rate: 0,
-      enable_qris: false,
+      enable_qris: true,
       enable_manual_transfer: false,
-      problem_title: "Masalah Fatal yang Bikin Boncos Saat Setup Traffic CPM",
+      problem_title: "Kenapa Traffic Iklan Sering Boncos Tanpa Hasil?",
       pain_points: [
-        "Boncos karena struktur campaign salah & budget terpecah tanpa arah.",
-        "Pixel & Conversions API (CAPI) tidak terbaca, data konversi buta total.",
-        "Akun iklan tiba-tiba kena restrict sebelum sempat menghasilkan cuan."
+        "Pixel & CAPI Kerap Buta Data (Browser privacy block bikin event konversi hilang dan optimasi AI Meta terganggu).",
+        "Struktur Budgeting CBO/ABO Berantakan (Biaya CPM membengkak tanpa hasil lead atau sales).",
+        "Akun Iklan Rentan Kena Restrict (Format landing page dan funnel keliru memicu penolakan sistem)."
       ],
-      solution_title: "Solusi Taktis 3 Langkah Optimasi Traffic Instan",
+      solution_title: "Blueprint 3 Modul CPM 24 Jam",
       solution_points: [
-        "Setup Campaign & Event Tracking CAPI dengan validasi anti-loss.",
-        "Struktur Ad Set & Strategi Budgeting CBO vs ABO yang presisi.",
-        "Funnel Sederhana & Optimasi Konversi Cepat untuk lead masuk instan."
+        "Setup CAPI Server-Side Presisi: Koneksi API anti-drop menjamin data konversi 100% terekam Meta.",
+        "Split Budgeting Hemat CBO vs ABO: Alokasi budget terukur tembus impresi perdana dalam 24 jam.",
+        "Funnel WhatsApp Instan: Lead capture otomatis dan konversi instan tanpa friksi teknis."
+      ],
+      comparison_rows: [
+        {
+          id: "1",
+          feature: "Alokasi Budget Testing",
+          others: "Bakar budget jutaan rupiah untuk testing awal tanpa arah yang jelas.",
+          us: "Formula hemat tembus impresi pertama dalam 24 jam dengan budget minimal."
+        },
+        {
+          id: "2",
+          feature: "Akurasi Tracking Event",
+          others: "Tracking sering error/desync, pixel buta terkena blokir browser.",
+          us: "Tracking CAPI presisi 100% server-side dengan event deduplication resmi."
+        },
+        {
+          id: "3",
+          feature: "Integrasi Funnel & Closing",
+          others: "Setup funnel rumit berhari-hari, lead lama merespons dan rawan drop.",
+          us: "Integrasi funnel WhatsApp Bot & Dynamic QRIS instan siap pakai."
+        }
+      ],
+      testimonials: [
+        {
+          id: "t1",
+          name: "Fajar R.",
+          role: "Media Buyer",
+          quote: "Setup CAPI to the point banget. Dalam 14 jam impresi tembus 12.000+ dengan CPM sangat stabil. Bot konversinya juga jalan otomatis.",
+          badge: "12K+ Impresi dlm 14 Jam",
+          rating: 5
+        },
+        {
+          id: "t2",
+          name: "Dian P.",
+          role: "Store Owner",
+          quote: "Sangat ngebantu pemula. Gak pusing coding, funnel langsung connect ke WA dan orderan perdana langsung pecah hari itu juga!",
+          badge: "Zero Restrict • Lead Perdana",
+          rating: 5
+        }
+      ],
+      bonus_items: [
+        {
+          id: "b1",
+          title: "Template Flow Funnel WhatsApp Bot",
+          value: 199000,
+          description: "Template pesan otomatis dan alur follow-up auto-closing di WhatsApp."
+        },
+        {
+          id: "b2",
+          title: "Checklist Integrasi CAPI & Anti-Restrict SOP",
+          value: 149000,
+          description: "Langkah demi langkah verifikasi domain dan setup event server token."
+        },
+        {
+          id: "b3",
+          title: "SOP Riset Audience CPM Rendah",
+          value: 150000,
+          description: "Strategi menemukan target audiens dengan CPM murah dan daya beli tinggi."
+        },
+        {
+          id: "b4",
+          title: "Script Chat WhatsApp Anti-Ghosting",
+          value: 99000,
+          description: "Formula balasan chat terbukti mengurangi cancel rate calon pembeli."
+        }
       ]
     }
   }
@@ -387,12 +451,12 @@ export function resolveSinglePageProduct(
   tenantSlug: string,
   targetSlug: string
 ): { product: ProductItem; config: SinglePageConfig } {
-  const normTarget = targetSlug.toLowerCase();
+  const normTarget = targetSlug.toLowerCase().replace(/[^a-z0-9]/g, '');
 
   // 1. Coba baca dari localStorage konfigurasi custom spesifik
   if (typeof window !== 'undefined') {
     try {
-      const savedConfigStr = localStorage.getItem(`bt_single_page_${tenantSlug}_${normTarget}`);
+      const savedConfigStr = localStorage.getItem(`bt_single_page_${tenantSlug}_${targetSlug.toLowerCase()}`);
       if (savedConfigStr) {
         const parsed = JSON.parse(savedConfigStr);
         if (parsed?.headline) {
@@ -417,8 +481,13 @@ export function resolveSinglePageProduct(
       if (tenantProductsStr) {
         const productsList: ProductItem[] = JSON.parse(tenantProductsStr);
         const match = productsList.find((p) => {
-          const pSlug = p.slug || slugify(p.name);
-          return pSlug === normTarget || normTarget.includes(pSlug) || pSlug.includes(normTarget);
+          const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const pNameSlug = slugify(p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (pSlug === normTarget || pNameSlug === normTarget) return true;
+          if (pSlug && (normTarget.includes(pSlug) || pSlug.includes(normTarget))) return true;
+          if (pNameSlug && (normTarget.includes(pNameSlug) || pNameSlug.includes(normTarget))) return true;
+          if (normTarget.includes('cpm') && (pSlug.includes('cpm') || pNameSlug.includes('cpm'))) return true;
+          return false;
         });
         if (match) {
           return {
@@ -430,15 +499,8 @@ export function resolveSinglePageProduct(
               banner_url: match.image,
               enable_qris: true,
               enable_manual_transfer: true,
-              discount_coupon: 'HEMAT50',
-              voucher: {
-                code: 'HEMAT50',
-                discount_type: 'nominal',
-                discount_value: 20000,
-                shipping_discount_type: 'none',
-                shipping_discount_value: 0,
-                min_spend: 50000,
-              },
+              discount_coupon: '',
+              voucher: undefined,
               affiliate_commission_rate: 30,
               badge_text: 'Direct Access Offer',
             },
@@ -452,8 +514,13 @@ export function resolveSinglePageProduct(
 
   // 3. Coba cari di DEFAULT_PRODUCTS
   const defaultMatch = DEFAULT_PRODUCTS.find((p) => {
-    const pSlug = p.slug || slugify(p.name);
-    return pSlug === normTarget || normTarget.includes(pSlug) || pSlug.includes(normTarget);
+    const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const pNameSlug = slugify(p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (pSlug === normTarget || pNameSlug === normTarget) return true;
+    if (pSlug && (normTarget.includes(pSlug) || pSlug.includes(normTarget))) return true;
+    if (pNameSlug && (normTarget.includes(pNameSlug) || pNameSlug.includes(normTarget))) return true;
+    if (normTarget.includes('cpm') && (pSlug.includes('cpm') || pNameSlug.includes('cpm'))) return true;
+    return false;
   });
 
   if (defaultMatch) {

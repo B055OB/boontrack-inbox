@@ -77,10 +77,24 @@ function SingleProductContent() {
 
         const prods = tenantRow?.metadata?.products;
         if (Array.isArray(prods) && prods.length > 0) {
-          const norm = slug.toLowerCase();
+          const norm = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
           const match = prods.find((p: any) => {
-            const pSlug = (p.slug || slugify(p.name || p.title || '')).toLowerCase();
-            return pSlug === norm || norm.includes(pSlug) || pSlug.includes(norm);
+            const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const pNameSlug = slugify(p.name || p.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const pAliases: string[] = Array.isArray(p.aliases)
+              ? p.aliases.map((a: string) => a.toLowerCase().replace(/[^a-z0-9]/g, ''))
+              : [];
+
+            if (pSlug === norm || pNameSlug === norm || pAliases.includes(norm)) return true;
+            if (pSlug && (norm.includes(pSlug) || pSlug.includes(norm))) return true;
+            if (pNameSlug && (norm.includes(pNameSlug) || pNameSlug.includes(norm))) return true;
+            if (pAliases.some((a) => a && (norm.includes(a) || a.includes(norm)))) return true;
+
+            const isCpmNorm = norm.includes('cpm') && (norm.includes('24') || norm.includes('modul') || norm.includes('praktis'));
+            const isCpmProd = (pSlug.includes('cpm') || pNameSlug.includes('cpm'));
+            if (isCpmNorm && isCpmProd) return true;
+
+            return false;
           });
 
           if (match && isMounted) {
@@ -104,13 +118,13 @@ function SingleProductContent() {
               comparison_rows: match.us_vs_them || builder.us_vs_them || cfg.comparison_rows || [],
               testimonials: match.testimonials || builder.testimonials || cfg.testimonials || [],
               testimonial_images: cfg.testimonial_images || [],
-              bonus_items: ob.bonus_items || cfg.bonus_items || [],
-              discount_coupon: cfg.discount_coupon || cfg.voucher?.code || 'DISKON',
-              voucher: cfg.voucher,
+              bonus_items: ob.bonus_items || builder.bonus_items || cfg.bonus_items || [],
+              discount_coupon: cfg.discount_coupon || cfg.voucher?.code || '',
+              voucher: cfg.voucher || null,
               enable_qris: pm.enable_qris ?? cfg.enable_qris ?? true,
-              enable_manual_transfer: pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? true,
+              enable_manual_transfer: pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? false,
               affiliate_commission_rate: cfg.affiliate_commission_rate || 0,
-              whatsapp_number: cfg.whatsapp_number || tenantRow?.metadata?.whatsapp_number || '6281237450222',
+              whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || tenantRow?.metadata?.whatsapp_number || '62815395554489',
             };
 
             const dynamicProduct: ProductItem = {
@@ -118,8 +132,8 @@ function SingleProductContent() {
               name: dynamicConfig.headline || match.title || match.name || 'Produk Eksklusif',
               slug: match.slug || slug,
               category: match.category || 'digital',
-              price: Number(ob.price ?? match.price ?? 0),
-              promo_price: Number(ob.promo_price ?? match.promo_price ?? match.price ?? 0),
+              price: Number(match.price ?? ob.price ?? 1000),
+              promo_price: Number(match.promo_price ?? ob.promo_price ?? match.price ?? 1000),
               variants: match.variants || 'Format Digital • Akses Instan',
               promo: dynamicConfig.badge_text,
               description: dynamicConfig.subheadline,
@@ -154,20 +168,16 @@ function SingleProductContent() {
   const [buyerPhone, setBuyerPhone] = useState('');
   const [buyerEmail, setBuyerEmail] = useState('');
 
-  // Default metode pembayaran sesuai konfigurasi yang diaktifkan
+  // Default metode pembayaran: QRIS Instan aktif utama
   const allowQris = config.enable_qris ?? true;
-  const allowManual = config.enable_manual_transfer ?? true;
+  const allowManual = config.enable_manual_transfer ?? false;
 
-  const [paymentMethod, setPaymentMethod] = useState<'qris' | 'manual_transfer'>(() => {
-    if (allowQris) return 'qris';
-    if (allowManual) return 'manual_transfer';
-    return 'qris';
-  });
+  const [paymentMethod, setPaymentMethod] = useState<'qris' | 'manual_transfer'>('qris');
 
   useEffect(() => {
     if (!allowQris && allowManual) {
       setPaymentMethod('manual_transfer');
-    } else if (allowQris && !allowManual) {
+    } else {
       setPaymentMethod('qris');
     }
   }, [allowQris, allowManual]);
@@ -247,15 +257,8 @@ function SingleProductContent() {
     return () => clearTimeout(timer);
   }, [isPhysical, shippingCity, shippingAddress]);
 
-  // Modul Voucher Diskon Fleksibel
-  const initialVoucher: VoucherConfig | null = config.voucher || (config.discount_coupon ? {
-    code: config.discount_coupon,
-    discount_type: 'nominal',
-    discount_value: 20000,
-    shipping_discount_type: isPhysical ? 'free' : 'none',
-    shipping_discount_value: 0,
-    min_spend: 0
-  } : null);
+  // Modul Voucher Diskon Fleksibel (Hanya aktif jika voucher valid diberikan secara eksplisit)
+  const initialVoucher: VoucherConfig | null = config.voucher && config.voucher.discount_value > 0 ? config.voucher : null;
 
   const [voucherInput, setVoucherInput] = useState(initialVoucher?.code || '');
   const [appliedVoucher, setAppliedVoucher] = useState<VoucherConfig | null>(initialVoucher);
@@ -269,6 +272,14 @@ function SingleProductContent() {
     return null;
   });
 
+  // Perhitungan Finansial Presisi
+  const basePrice = (product.promo_price && product.promo_price > 0)
+    ? product.promo_price
+    : (product.price && product.price > 0 ? product.price : 1000);
+  const promoPrice = (product.price && product.price > basePrice)
+    ? product.price
+    : (product.promo_price && product.promo_price > 0 ? Math.round(basePrice * 1.5) : (basePrice || 1000));
+
   const handleApplyVoucher = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const code = voucherInput.trim().toUpperCase();
@@ -277,7 +288,7 @@ function SingleProductContent() {
       return;
     }
 
-    const currentBasePrice = product.price || 99000;
+    const currentBasePrice = basePrice;
 
     // Cek kecocokan kode voucher
     const targetVoucher: VoucherConfig | null = 
@@ -332,10 +343,6 @@ function SingleProductContent() {
     setVoucherMsg(null);
   };
 
-  // Perhitungan Finansial Presisi
-  const basePrice = product.price || 99000;
-  const promoPrice = product.promo_price || (basePrice > 100000 ? Math.round(basePrice * 1.5) : 499000);
-
   // 1. Potongan Diskon Produk (Nominal / Persen)
   let productDiscount = 0;
   if (appliedVoucher) {
@@ -345,8 +352,8 @@ function SingleProductContent() {
       productDiscount = appliedVoucher.discount_value || 0;
     }
   }
-  productDiscount = Math.min(productDiscount, basePrice);
-  const netProductPrice = Math.max(0, basePrice - productDiscount);
+  productDiscount = Math.min(productDiscount, Math.max(0, basePrice - 1000));
+  const netProductPrice = Math.max(0, basePrice - (appliedVoucher ? productDiscount : 0));
 
   // 2. Ongkos Kirim & Subsidi (Khusus Produk Fisik)
   const selectedShipping = availableShippingOptions.find(s => s.id === selectedShippingId) || availableShippingOptions[0];
@@ -440,7 +447,7 @@ function SingleProductContent() {
   // Prefill Pesan WhatsApp: "Halo [Nama Toko], saya sedang melihat produk [Nama Produk] di website dan mau tanya detailnya."
   const storeDisplayName = (tenant.charAt(0).toUpperCase() + tenant.slice(1));
   const waConsultationMessage = `Halo ${storeDisplayName}, saya sedang melihat produk ${product.name} di website dan mau tanya detailnya.`;
-  const csWaNumber = (config.whatsapp_number || '6281237450222').replace(/\D/g, '');
+  const csWaNumber = (config.whatsapp_number || '62815395554489').replace(/\D/g, '');
   const waConsultationUrl = `https://wa.me/${csWaNumber}?text=${encodeURIComponent(waConsultationMessage)}`;
 
   const handleWhatsAppConsultation = () => {
@@ -880,7 +887,7 @@ function SingleProductContent() {
 
         {/* Kupon & Jaminan Transaksi Langsung */}
         <div className="pt-1 text-[10px] text-slate-400 font-mono flex items-center justify-between border-t border-slate-200/60">
-          <span>{appliedVoucher ? `Voucher: ${appliedVoucher.code}` : `Kupon: ${config.discount_coupon || 'HEMAT50'}`}</span>
+          <span>{appliedVoucher ? `Voucher: ${appliedVoucher.code}` : (config.discount_coupon ? `Kupon: ${config.discount_coupon}` : 'Direct Checkout')}</span>
           <span className="text-emerald-600 font-semibold flex items-center gap-1">
             <ShieldCheck className="w-3 h-3" />
             <span>Direct Store (100% Toko Resmi)</span>
