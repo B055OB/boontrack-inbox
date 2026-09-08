@@ -223,6 +223,14 @@ export default function TenantDashboardPage() {
   const hasUserSelectedTabRef = useRef(false);
   const [isStoreReadinessEvaluated, setIsStoreReadinessEvaluated] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  // State Edit Profil Toko & Validasi Unik
+  const [isStoreSettingsOpen, setIsStoreSettingsOpen] = useState(false);
+  const [storeDisplayName, setStoreDisplayName] = useState(tenant || 'KURASKORENKRW');
+  const [storeBio, setStoreBio] = useState('');
+  const [storeWhatsapp, setStoreWhatsapp] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [isCheckingName, setIsCheckingName] = useState(false);
+  const [isSavingStore, setIsSavingStore] = useState(false);
 
   const handleSelectTab = (tab: DashboardTab) => {
     hasUserSelectedTabRef.current = true;
@@ -1185,9 +1193,22 @@ export default function TenantDashboardPage() {
             <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
 
             <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-              <h1 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-tight truncate">
-                {displayName}
-              </h1>
+              <button
+                type="button"
+                onClick={() => {
+                  setNameError(null);
+                  setIsStoreSettingsOpen(true);
+              }}
+              className="group flex items-center gap-1.5 px-2 py-0.5 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-left"
+              title="Klik untuk ubah nama & profil toko"
+             >
+              <span className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-wider truncate group-hover:text-blue-600">
+               {storeDisplayName || displayName}
+              </span>
+              <span className="text-[11px] text-slate-400 group-hover:text-blue-600">
+                ✏️
+              </span>
+              </button>
               <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 ${
                 isTeamScale
                   ? 'bg-purple-50 text-purple-700 border-purple-200'
@@ -3938,7 +3959,144 @@ export default function TenantDashboardPage() {
         }}
         onOpenNewProduct={openNewProductModal}
       />
+      {/* Modal Edit Profil Toko */}
+      {isStoreSettingsOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Profil & Identitas Toko</h3>
+                <p className="text-[11px] text-slate-500">Sesuaikan nama toko dan informasi CS Anda.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStoreSettingsOpen(false)}
+                className="text-slate-400 hover:text-slate-700 font-bold p-1 text-sm rounded-md cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
 
+            <div className="space-y-4 py-4 text-xs font-medium text-slate-600">
+              <div>
+                <label className="block mb-1 font-semibold text-slate-700">Nama Tampilan Toko</label>
+                <input
+                  type="text"
+                  value={storeDisplayName}
+                  onChange={(e) => {
+                    setStoreDisplayName(e.target.value);
+                    if (nameError) setNameError(null);
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm text-slate-800 focus:outline-hidden ${
+                    nameError ? 'border-red-500 focus:border-red-500' : 'border-slate-200 focus:border-blue-600'
+                  }`}
+                  placeholder="Contoh: Kuras Koren Karawang"
+                />
+                {nameError && (
+                  <p className="text-[11px] font-semibold text-red-500 mt-1">
+                    ⚠️ {nameError}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold text-slate-700">Nomor WhatsApp CS</label>
+                <input
+                  type="text"
+                  value={storeWhatsapp}
+                  onChange={(e) => setStoreWhatsapp(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-hidden focus:border-blue-600"
+                  placeholder="Contoh: 6281234567890"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 font-semibold text-slate-700">Bio / Deskripsi Singkat</label>
+                <textarea
+                  rows={3}
+                  value={storeBio}
+                  onChange={(e) => setStoreBio(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-hidden focus:border-blue-600"
+                  placeholder="Contoh: Layanan spesialis pembersihan toren & instalasi filter bergaransi resmi."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsStoreSettingsOpen(false)}
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isSavingStore || isCheckingName}
+                onClick={async () => {
+                  const trimmed = storeDisplayName.trim();
+                  if (!trimmed) {
+                    setNameError('Nama toko tidak boleh kosong.');
+                    return;
+                  }
+
+                  setIsCheckingName(true);
+                  setNameError(null);
+
+                  try {
+                    const checkRes = await fetch(
+                      `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?store_name=ilike.${encodeURIComponent(trimmed)}&tenant_slug=neq.${tenant}&select=tenant_slug`,
+                      {
+                        headers: {
+                          'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+                          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                        },
+                      }
+                    );
+                    const existing = await checkRes.json();
+
+                    if (Array.isArray(existing) && existing.length > 0) {
+                      setNameError('Nama toko sudah digunakan (Not Available). Pilih nama lain.');
+                      setIsCheckingName(false);
+                      return;
+                    }
+
+                    setIsSavingStore(true);
+                    await fetch(
+                      `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?tenant_slug=eq.${tenant}`,
+                      {
+                        method: 'PATCH',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+                          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+                          'Prefer': 'return=minimal',
+                        },
+                        body: JSON.stringify({
+                          store_name: trimmed,
+                          bio: storeBio,
+                          whatsapp: storeWhatsapp,
+                          updated_at: new Date().toISOString(),
+                        }),
+                      }
+                    );
+                    setIsStoreSettingsOpen(false);
+                  } catch (err) {
+                    console.error(err);
+                    setNameError('Terjadi kesalahan koneksi.');
+                  } finally {
+                    setIsCheckingName(false);
+                    setIsSavingStore(false);
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {isSavingStore || isCheckingName ? 'Memvalidasi...' : 'Simpan Profil'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
