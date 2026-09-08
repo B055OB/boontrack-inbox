@@ -57,6 +57,7 @@ import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
 import BoonPilotWidget from '@/components/BoonPilotWidget';
 import ImageUpload from '@/components/ImageUpload';
 import { getBackendApiUrl } from '@/lib/api-config';
+import LocalServiceConfigForm from "@/app/components/LocalServiceConfigForm";
 import { getPlatformWhatsApp } from '@/lib/tenant-config';
 import { 
   ProductItem, 
@@ -822,11 +823,9 @@ export default function TenantDashboardPage() {
     let isMounted = true;
 
     async function evaluateStoreReadiness() {
-      // Fetch data produk terbaru dari server authoritative / storage
       const fetchedProducts = await refreshProducts();
       const currentProductsCount = Array.isArray(fetchedProducts) ? fetchedProducts.length : (products?.length || 0);
 
-      // Cek status koneksi WhatsApp / gateway cluster
       try {
         const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/status?tenant=${encodeURIComponent(tenantSlug)}`);
         if (res.ok) {
@@ -840,20 +839,14 @@ export default function TenantDashboardPage() {
         console.debug('WhatsApp status readiness check note:', err);
       }
 
-      // Cek jumlah transaksi (omzet / order)
       const currentTxCount = transactions.length;
 
-      // Atur initial/active tab secara dinamis jika user belum memilih tab secara manual:
       if (!hasUserSelectedTabRef.current && isMounted) {
         if (currentProductsCount === 0) {
-          // Jika produk masih 0 (kosong): paksa default activeTab ke 'catalog' (Katalog Produk)
-          // agar seller langsung melihat tombol Tambah Produk / Import Massal.
           setActiveTab('catalog');
         } else if (currentProductsCount > 0 && currentTxCount === 0) {
-          // Jika produk sudah ada tapi belum ada transaksi: arahkan ke 'catalog' atau 'overview' ('integration')
           setActiveTab('catalog');
         } else if (currentProductsCount > 0 && currentTxCount > 0) {
-          // Jika toko sudah aktif lengkap: arahkan ke 'analytics' / 'overview' ('integration' / Laporan & Keuangan)
           setActiveTab('integration');
         }
       }
@@ -956,7 +949,6 @@ export default function TenantDashboardPage() {
       banner_url: cfg?.banner_url || prod.image,
       badge_text: cfg?.badge_text || (prod.category === 'fisik' ? 'Produk Fisik Kirim Langsung' : 'Direct Access Offer'),
       
-      // Problem & Solution
       problem_title: cfg?.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
       pain_points: cfg?.pain_points && cfg.pain_points.length > 0 ? [...cfg.pain_points] : [
         'Biaya promosi terus naik tapi hasil omset penjualan belum maksimal.',
@@ -971,30 +963,25 @@ export default function TenantDashboardPage() {
         'Dukungan penuh dengan materi yang adaptif dan siap diaplikasikan.'
       ],
 
-      // Comparison (Us vs Them)
       comparison_rows: cfg?.comparison_rows && cfg.comparison_rows.length > 0 ? [...cfg.comparison_rows] : [
         { id: '1', feature: 'Kejelasan Strategi', others: 'Materi teori panjang tanpa alur jelas', us: 'Actionable blueprint langkah demi langkah' },
         { id: '2', feature: 'Efisiensi Biaya', others: 'Bakar anggaran promosi tanpa tracking', us: 'Optimalisasi presisi hemat biaya hingga 50%' },
         { id: '3', feature: 'Dukungan & Komunitas', others: 'Dibiarkan bingung sendiri setelah bayar', us: 'Grup diskusi & update materi berkala' }
       ],
 
-      // Testimonials
       testimonial_images: cfg?.testimonial_images && cfg.testimonial_images.length > 0 ? [...cfg.testimonial_images] : [
         'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60',
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=60'
       ],
 
-      // Bonus
       bonus_items: cfg?.bonus_items && cfg.bonus_items.length > 0 ? [...cfg.bonus_items] : [
         { id: 'b1', title: 'Private Consultation & Community Access', value: 499000, description: 'Akses jaringan pebisnis & sesi tanya jawab' },
         { id: 'b2', title: 'Template SOP & Checklist Praktis', value: 299000, description: 'Dokumen kerja siap pakai langsung' }
       ],
 
-      // Voucher
       discount_coupon: defaultVoucher.code,
       voucher: defaultVoucher,
 
-      // Payment & Direct Store
       enable_qris: cfg?.enable_qris ?? true,
       enable_manual_transfer: cfg?.enable_manual_transfer ?? true,
       affiliate_commission_rate: 0,
@@ -1217,7 +1204,6 @@ export default function TenantDashboardPage() {
         {/* TABS NAVIGATION */}
         <div className="px-2 sm:px-6 flex items-center justify-between gap-2 touch-manipulation bg-white relative z-50 isolate w-full max-w-full">
           <div className="relative flex-1 min-w-0 flex items-center">
-            {/* Left Desktop Arrow & Gradient Fade */}
             {canScrollLeft && (
               <>
                 <div className="absolute left-0 top-0 bottom-0 w-8 sm:w-12 bg-gradient-to-r from-white via-white/80 to-transparent pointer-events-none z-40" />
@@ -1420,7 +1406,6 @@ export default function TenantDashboardPage() {
             </button>
           </div>
 
-          {/* Right Desktop Arrow & Gradient Fade */}
           {canScrollRight && (
             <>
               <div className="absolute right-0 top-0 bottom-0 w-8 sm:w-12 bg-gradient-to-l from-white via-white/80 to-transparent pointer-events-none z-40" />
@@ -1679,7 +1664,6 @@ export default function TenantDashboardPage() {
 
           {products.length === 0 ? (
             <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
-              {/* BOONPILOT ONBOARDING GUIDANCE BANNER */}
               <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-indigo-500/10 relative overflow-hidden">
                 <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
                 <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -1726,7 +1710,6 @@ export default function TenantDashboardPage() {
                   </div>
                 </div>
 
-                {/* Quick Action Prompt Chips suggested by BoonPilot */}
                 <div className="mt-6 pt-5 border-t border-white/15 flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-bold text-blue-200 flex items-center gap-1.5 mr-1">
                     <Sparkles className="w-3.5 h-3.5 text-amber-300" />
@@ -1754,7 +1737,6 @@ export default function TenantDashboardPage() {
                 </div>
               </div>
 
-              {/* Empty Catalog Helper Box */}
               <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-8 sm:p-10 text-center flex flex-col items-center justify-center space-y-3 shadow-xs">
                 <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center border border-blue-100">
                   <PackageOpen className="w-6 h-6" />
@@ -1803,7 +1785,6 @@ export default function TenantDashboardPage() {
                     </div>
                   </div>
 
-                  {/* Stock & SKU row */}
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 text-xs">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-mono text-slate-400 font-bold">
@@ -1851,7 +1832,6 @@ export default function TenantDashboardPage() {
                     )}
                   </div>
 
-                  {/* Single Page Checkout Action Bar */}
                   <div className="pt-3 mt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
                     <button
                       type="button"
@@ -1907,7 +1887,6 @@ export default function TenantDashboardPage() {
       {isBulkImportModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Header */}
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
@@ -1935,9 +1914,7 @@ export default function TenantDashboardPage() {
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-6 overflow-y-auto space-y-4 flex-1">
-              {/* Petunjuk Format */}
               <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 text-xs text-slate-600 space-y-1.5">
                 <p className="font-bold text-slate-800 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-blue-600" /> Kolom Spreadsheet yang Didukung:
@@ -1949,7 +1926,6 @@ export default function TenantDashboardPage() {
                 </ul>
               </div>
 
-              {/* Upload Dropzone / File Picker */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-2">
                   Pilih File Spreadsheet (.csv, .xlsx, .xls)
@@ -2013,7 +1989,6 @@ export default function TenantDashboardPage() {
                 </div>
               </div>
 
-              {/* Loading Indicator */}
               {isImporting && (
                 <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center gap-3 text-blue-800 animate-pulse">
                   <Loader2 className="w-5 h-5 animate-spin shrink-0 text-blue-600" />
@@ -2024,7 +1999,6 @@ export default function TenantDashboardPage() {
                 </div>
               )}
 
-              {/* Success Result Box */}
               {importResult && (
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-900 space-y-2">
                   <div className="flex items-center gap-2">
@@ -2053,7 +2027,6 @@ export default function TenantDashboardPage() {
                 </div>
               )}
 
-              {/* Error Box */}
               {importError && (
                 <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-rose-900 flex items-start gap-2.5">
                   <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
@@ -2065,7 +2038,6 @@ export default function TenantDashboardPage() {
               )}
             </div>
 
-            {/* Modal Footer */}
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
               <button
                 type="button"
@@ -2186,7 +2158,6 @@ export default function TenantDashboardPage() {
                 </div>
               </div>
 
-              {/* Stock and SKU inputs */}
               <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1.5">Jumlah Stok Tersedia *</label>
@@ -2270,7 +2241,6 @@ export default function TenantDashboardPage() {
       {isSinglePageModalOpen && activeSinglePageProduct && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] my-auto">
-            {/* Header */}
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50 sticky top-0 z-10">
               <div className="flex items-center gap-2.5">
                 <span className="p-2 rounded-xl bg-blue-100 text-blue-600">
@@ -2294,9 +2264,7 @@ export default function TenantDashboardPage() {
               </button>
             </div>
 
-            {/* Form Body */}
             <form onSubmit={handleSaveSinglePageConfig} className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
-              {/* URL Slug */}
               <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
                 <label className="font-bold text-slate-700 block">Tautan Halaman Publik (Public Slug URL) *</label>
                 <div className="flex items-center gap-1 font-mono text-xs">
@@ -2315,9 +2283,7 @@ export default function TenantDashboardPage() {
                 </span>
               </div>
 
-              {/* Navigation Tab Bar Formula Konversi with Horizontal Scroll */}
               <div className="relative flex items-center border-b border-slate-200 pb-1.5 isolate group">
-                {/* Tombol Scroll Kiri */}
                 {canScrollTabsLeft && (
                   <button
                     type="button"
@@ -2329,7 +2295,6 @@ export default function TenantDashboardPage() {
                   </button>
                 )}
 
-                {/* Container Tab */}
                 <div
                   ref={builderTabsRef}
                   onScroll={checkBuilderTabsScroll}
@@ -2363,7 +2328,6 @@ export default function TenantDashboardPage() {
                   ))}
                 </div>
 
-                {/* Tombol Scroll Kanan */}
                 {canScrollTabsRight && (
                   <button
                     type="button"
@@ -2450,7 +2414,6 @@ export default function TenantDashboardPage() {
               {/* TAB 2: PROBLEM & SOLUTION */}
               {activeBuilderTab === 'problem_solution' && (
                 <div className="space-y-4 animate-fadeIn">
-                  {/* Problem Block */}
                   <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-rose-900 text-xs flex items-center gap-1.5">
@@ -2518,7 +2481,6 @@ export default function TenantDashboardPage() {
                     </div>
                   </div>
 
-                  {/* Solution Block */}
                   <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-emerald-900 text-xs flex items-center gap-1.5">
@@ -2794,7 +2756,6 @@ export default function TenantDashboardPage() {
                     ))}
                   </div>
 
-                  {/* Summary Total Nilai Bonus */}
                   <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center justify-between text-xs">
                     <span className="font-bold text-amber-900">Total Nilai Bonus Tambahan:</span>
                     <span className="font-black text-amber-700">
@@ -2807,7 +2768,6 @@ export default function TenantDashboardPage() {
               {/* TAB 6: BAYAR & VOUCHER */}
               {activeBuilderTab === 'payment_voucher' && (
                 <div className="space-y-4 animate-fadeIn">
-                  {/* Pengaturan Pembayaran (QRIS & Transfer Manual) */}
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
                     <span className="font-bold text-slate-800 block text-xs">
                       Opsi Metode Pembayaran di Checkout
@@ -2842,7 +2802,6 @@ export default function TenantDashboardPage() {
                     </div>
                   </div>
 
-                  {/* Pengaturan Voucher Diskon Fleksibel */}
                   <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border border-indigo-100 rounded-2xl p-4 space-y-3.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -2858,7 +2817,6 @@ export default function TenantDashboardPage() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Kode Voucher */}
                       <div>
                         <label className="font-bold text-slate-700 block text-xs mb-1">Kode Voucher</label>
                         <input
@@ -2887,7 +2845,6 @@ export default function TenantDashboardPage() {
                         />
                       </div>
 
-                      {/* Batas Minimal Belanja */}
                       <div>
                         <label className="font-bold text-slate-700 block text-xs mb-1">Minimal Belanja (Opsional, Rp)</label>
                         <input
@@ -2918,7 +2875,6 @@ export default function TenantDashboardPage() {
                       </div>
                     </div>
 
-                    {/* Tipe Diskon Produk */}
                     <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
                       <label className="font-bold text-slate-800 block text-xs">Pilihan Tipe Diskon Produk</label>
                       <div className="grid grid-cols-2 gap-2">
@@ -3008,7 +2964,6 @@ export default function TenantDashboardPage() {
                       </div>
                     </div>
 
-                    {/* Subsidi Ongkir (Khusus Produk Fisik atau Fleksibel) */}
                     <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
                       <div className="flex items-center justify-between">
                         <label className="font-bold text-slate-800 block text-xs">Pilihan Diskon Ongkir (Khusus Produk Fisik)</label>
@@ -3087,7 +3042,6 @@ export default function TenantDashboardPage() {
                     </div>
                   </div>
 
-                  {/* Model Penjualan Toko Langsung (Direct Store) */}
                   <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
                       <Store className="w-3.5 h-3.5 text-blue-600" />
@@ -3100,7 +3054,6 @@ export default function TenantDashboardPage() {
                 </div>
               )}
 
-              {/* Actions */}
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
                 <Link
                   href={`/${tenantSlug}/p/${singlePageForm.slug || slugify(activeSinglePageProduct.name)}`}
@@ -3208,7 +3161,6 @@ export default function TenantDashboardPage() {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Card 1: Mode Toko Baru */}
               <div
                 onClick={() => {
                   setBotStrategy('trust_builder');
@@ -3261,7 +3213,6 @@ export default function TenantDashboardPage() {
                 </div>
               </div>
 
-              {/* Card 2: Mode Seimbang */}
               <div
                 onClick={() => {
                   setBotStrategy('balanced');
@@ -3314,7 +3265,6 @@ export default function TenantDashboardPage() {
                 </div>
               </div>
 
-              {/* Card 3: Mode Penjualan Cepat */}
               <div
                 onClick={() => {
                   setBotStrategy('hard_selling');
@@ -3475,7 +3425,6 @@ export default function TenantDashboardPage() {
             </button>
           </div>
 
-          {/* FINANCIAL METRIC CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
               <div className="flex items-center justify-between">
@@ -3513,7 +3462,6 @@ export default function TenantDashboardPage() {
             </div>
           </div>
 
-          {/* TABEL MUTASI & LAPORAN PENJUALAN */}
           <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
               <div>
@@ -3606,7 +3554,6 @@ export default function TenantDashboardPage() {
             </div>
           </div>
 
-          {/* FORM PENGATURAN REKENING */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
             <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
               Ubah Data Rekening Bank Toko
@@ -4090,6 +4037,11 @@ export default function TenantDashboardPage() {
               })
             ) : (
               <div className="space-y-4">
+                {/* Form Konfigurasi Mandiri Vertical Jasa / LOCAL_SERVICE */}
+                <div className="mb-6">
+                  <LocalServiceConfigForm tenantSlug={tenantSlug} />
+                </div>
+
                 <WhatsAppWabaConfig 
                   tenantSlug={tenantSlug}
                   displayName={displayName}
