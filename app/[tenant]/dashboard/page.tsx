@@ -223,7 +223,7 @@ export default function TenantDashboardPage() {
   const hasUserSelectedTabRef = useRef(false);
   const [isStoreReadinessEvaluated, setIsStoreReadinessEvaluated] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
-  // State Edit Profil Toko & Validasi Unik
+// State Edit Profil Toko & Validasi Unik
   const [isStoreSettingsOpen, setIsStoreSettingsOpen] = useState(false);
   const [storeDisplayName, setStoreDisplayName] = useState(tenantSlug || '');
   const [storeBio, setStoreBio] = useState('');
@@ -231,6 +231,8 @@ export default function TenantDashboardPage() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [isSavingStore, setIsSavingStore] = useState(false);
+
+  const handleSelectTab = (tab: DashboardTab) => {
     hasUserSelectedTabRef.current = true;
     setActiveTab(tab);
   };
@@ -4043,7 +4045,7 @@ export default function TenantDashboardPage() {
 
                   try {
                     const checkRes = await fetch(
-                      `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?store_name=ilike.${encodeURIComponent(trimmed)}&tenant_slug=neq.${tenant}&select=tenant_slug`,
+                      `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?store_name=ilike.${encodeURIComponent(trimmed)}&tenant_slug=neq.${tenantSlug}&select=tenant_slug`,
                       {
                         headers: {
                           'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
@@ -4061,7 +4063,7 @@ export default function TenantDashboardPage() {
 
                     setIsSavingStore(true);
                     await fetch(
-                      `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?tenant_slug=eq.${tenant}`,
+                      `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?tenant_slug=eq.${tenantSlug}`,
                       {
                         method: 'PATCH',
                         headers: {
