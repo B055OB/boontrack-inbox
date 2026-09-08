@@ -1221,11 +1221,11 @@ export default function TenantDashboardPage() {
           />
 
           {saveFeedback && (
-            <div className="hidden md:block text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 animate-in fade-in shrink-0">
+            <div className="hidden md:block text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
               {saveFeedback}
             </div>
           )}
-      </div>
+        </div>
 
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
       {activeTab === 'inbox' && (
@@ -1423,7 +1423,7 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: PESANAN / ORDERS */}
-          {activeTab === 'orders' && (
+          {(activeTab as any) === 'orders' && (
             <OrdersTab tenantSlug={tenantSlug} />
           )}
       {/* TAB 2: KATALOG MULTI-PRODUK */}
