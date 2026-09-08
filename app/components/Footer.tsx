@@ -1,10 +1,8 @@
 import React from "react";
 import Link from "next/link";
 import { ShieldCheck, Mail, MessageSquare, ExternalLink, MapPin, Phone } from "lucide-react";
-import { getPlatformWhatsApp } from "@/lib/tenant-config";
 
 export default function Footer({ className = "" }: { className?: string }) {
-  const botNumber = getPlatformWhatsApp();
   return (
     <footer className={`bg-slate-950 text-slate-400 border-t border-slate-800 ${className}`}>
       <div className="max-w-6xl mx-auto px-4 py-12">
@@ -111,12 +109,12 @@ export default function Footer({ className = "" }: { className?: string }) {
                 <span>
                   WhatsApp CS:{" "}
                   <a 
-                    href={`https://wa.me/${botNumber}`} 
+                    href="https://wa.me/6281237450222" 
                     target="_blank" 
                     rel="noopener noreferrer" 
                     className="text-emerald-400 font-semibold hover:underline"
                   >
-                    +{botNumber || "WhatsApp Support"}
+                    +62 812-3745-0222 (081237450222)
                   </a>
                 </span>
               </div>
