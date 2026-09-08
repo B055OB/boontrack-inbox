@@ -2,6 +2,6 @@
 
 import OnlineBoostLandingPage from '@/components/OnlineBoostLandingPage';
 
-export default function CPM24JamPage() {
+export default function OnlineBoostPage() {
   return <OnlineBoostLandingPage />;
 }

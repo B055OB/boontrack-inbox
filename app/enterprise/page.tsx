@@ -3,9 +3,12 @@
 import React from 'react';
 import Link from 'next/link';
 import {
-  Cpu,
+  ShieldCheck,
   Building2,
+  Server,
+  Cpu,
   ArrowRight,
+  PhoneCall,
   Mail,
   MessageSquare,
   CheckCircle2,
@@ -13,10 +16,12 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react';
+import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 
 export default function EnterprisePage() {
+  const botNumber = getTenantWhatsApp('enterprise') || getPlatformWhatsApp();
   const waEnterpriseUrl =
-    'https://wa.me/6281298877665?text=' +
+    `https://wa.me/${botNumber}?text=` +
     encodeURIComponent(
       'Halo Tim BoonTrack Enterprise, saya tertarik mendiskusikan integrasi sistem khusus (Hardware/IoT Barrier Gate / Sistem Pemerintahan / Custom Omnichannel). Mohon informasi konsultasi lebih lanjut.'
     );

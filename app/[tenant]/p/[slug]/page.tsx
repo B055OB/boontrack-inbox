@@ -29,6 +29,7 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { syncAttributionSession } from '@/lib/attribution';
+import { getTenantWhatsApp } from '@/lib/tenant-config';
 import { 
   initMetaPixel, 
   initTikTokPixel, 
@@ -124,7 +125,7 @@ function SingleProductContent() {
               enable_qris: pm.enable_qris ?? cfg.enable_qris ?? true,
               enable_manual_transfer: pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? false,
               affiliate_commission_rate: cfg.affiliate_commission_rate || 0,
-              whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || tenantRow?.metadata?.whatsapp_number || '62815395554489',
+              whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || tenantRow?.metadata?.whatsapp_number || getTenantWhatsApp(tenant),
             };
 
             const dynamicProduct: ProductItem = {
@@ -447,7 +448,7 @@ function SingleProductContent() {
   // Prefill Pesan WhatsApp: "Halo [Nama Toko], saya sedang melihat produk [Nama Produk] di website dan mau tanya detailnya."
   const storeDisplayName = (tenant.charAt(0).toUpperCase() + tenant.slice(1));
   const waConsultationMessage = `Halo ${storeDisplayName}, saya sedang melihat produk ${product.name} di website dan mau tanya detailnya.`;
-  const csWaNumber = (config.whatsapp_number || '62815395554489').replace(/\D/g, '');
+  const csWaNumber = (config.whatsapp_number || getTenantWhatsApp(tenant)).replace(/\D/g, '');
   const waConsultationUrl = `https://wa.me/${csWaNumber}?text=${encodeURIComponent(waConsultationMessage)}`;
 
   const handleWhatsAppConsultation = () => {

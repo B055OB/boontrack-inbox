@@ -760,3 +760,28 @@ export function appendTenantConfigHistory(slug: string, entry: TenantConfigHisto
     }
   }
 }
+
+export function getTenantWhatsApp(slug?: string): string {
+  const normSlug = slug ? normalizeTenantSlug(slug) : 'onlineboost';
+  const envKey = `NEXT_PUBLIC_${normSlug.toUpperCase().replace(/-/g, '_')}_BOT_NUMBER`;
+
+  if (typeof process !== 'undefined' && process.env) {
+    const envVal = process.env[envKey] || process.env.NEXT_PUBLIC_META_BOT_NUMBER;
+    if (envVal) return envVal.replace(/\D/g, '');
+  }
+
+  const cfg = getTenantConfig(normSlug);
+  const fromCfg = cfg?.persona?.human_handoff_number || cfg?.operational_hours?.emergency_contact;
+  if (fromCfg) return fromCfg.replace(/\D/g, '');
+
+  return '';
+}
+
+export function getPlatformWhatsApp(): string {
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.NEXT_PUBLIC_SUPPORT_PHONE) return process.env.NEXT_PUBLIC_SUPPORT_PHONE.replace(/\D/g, '');
+    if (process.env.NEXT_PUBLIC_META_BOT_NUMBER) return process.env.NEXT_PUBLIC_META_BOT_NUMBER.replace(/\D/g, '');
+  }
+  return getTenantWhatsApp('onlineboost');
+}
+

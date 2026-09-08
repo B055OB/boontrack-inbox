@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getBackendApiUrl } from '@/lib/api-config';
+import { getPlatformWhatsApp } from '@/lib/tenant-config';
 
 export interface PlatformSupportResponse {
   status?: string;
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. BoonTrack Desk Fallback
-    const waDesk = 'https://wa.me/6281237450222';
+    const waDesk = `https://wa.me/${getPlatformWhatsApp()}`;
     const encoded = encodeURIComponent(`Halo Tim BoonTrack Desk, saya butuh bantuan terkait ${category}: ${message}`);
 
     return NextResponse.json({

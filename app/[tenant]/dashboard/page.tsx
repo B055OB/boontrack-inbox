@@ -57,6 +57,7 @@ import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
 import BoonPilotWidget from '@/components/BoonPilotWidget';
 import ImageUpload from '@/components/ImageUpload';
 import { getBackendApiUrl } from '@/lib/api-config';
+import { getPlatformWhatsApp } from '@/lib/tenant-config';
 import { 
   ProductItem, 
   SinglePageConfig, 
@@ -86,49 +87,80 @@ export default function TenantDashboardPage() {
 
   const isProTenant = ["demo", "onlineboost"].includes(tenantSlug);
 
-  // FEATURE GATING (ENTITLEMENTS BERDASARKAN TIER TOKO: Growth, GrowthPlus, ProScale)
-  // 'growth' | 'growth_tracking' | 'proscale'
+  // FEATURE GATING — tier state now covers legacy slugs + new enum values
+  // 'solo' | 'growth' | 'ads_performance' (legacy: growth_tracking) | 'team_scale' (legacy: proscale)
   const isTenantGrowthPlus = tenantSlug === 'growthplus' || tenantSlug.includes('growthplus') || tenantSlug === 'growth-plus' || tenantSlug === 'growth_plus';
   const isTenantProScale = tenantSlug === 'proscale' || tenantSlug.includes('proscale') || tenantSlug === 'enterprise' || ["demo", "onlineboost", "suhu-ads-masterclass"].includes(tenantSlug);
 
-  const [planTier, setPlanTier] = useState<'growth' | 'growth_tracking' | 'proscale'>(() => {
+  const [planTier, setPlanTier] = useState<'growth' | 'ads_performance' | 'team_scale'>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const tierParam = urlParams.get('tier')?.toLowerCase();
       if (tierParam) {
-        if (['growth+', 'growth_tracking', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
-          return 'growth_tracking';
+        if (['ads_performance', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
+          return 'ads_performance';
         }
-        if (['proscale', 'enterprise', 'pro'].some(t => tierParam.includes(t))) {
-          return 'proscale';
+        if (['team_scale', 'proscale', 'enterprise', 'pro'].some(t => tierParam.includes(t))) {
+          return 'team_scale';
         }
         if (['growth', 'starter', 'solo'].some(t => tierParam.includes(t))) {
           return 'growth';
         }
       }
-      const stored = localStorage.getItem(`bt_tier_${tenantSlug}`) as 'growth' | 'growth_tracking' | 'proscale' | null;
-      if (stored && ['growth', 'growth_tracking', 'proscale'].includes(stored)) return stored;
+      const stored = localStorage.getItem(`bt_tier_${tenantSlug}`) as 'growth' | 'ads_performance' | 'team_scale' | null;
+      if (stored && ['growth', 'ads_performance', 'team_scale'].includes(stored)) return stored;
     }
     if (isTenantProScale) {
-      return 'proscale';
+      return 'team_scale';
     }
     if (isTenantGrowthPlus) {
-      return 'growth_tracking';
+      return 'ads_performance';
     }
     return 'growth';
   });
 
-  const isProScale = planTier === 'proscale' || isTenantProScale;
-  const isGrowthPlus = (planTier === 'growth_tracking' || isTenantGrowthPlus) && !isProScale;
-  const isGrowth = planTier === 'growth' && !isGrowthPlus && !isProScale;
+  // Feature flags resolved from settings API response
+  const [tenantFeatureFlags, setTenantFeatureFlags] = useState<{
+    has_capi?: boolean;
+    ads_tracking?: boolean;
+    tier?: string;
+  }>({});
 
-  const isAdsTrackingUnlocked = isGrowthPlus || isProScale;
-  const isBroadcastUnlocked = isProScale;
+  const isTeamScale = planTier === 'team_scale' || isTenantProScale
+    || tenantFeatureFlags.tier === 'TEAM_SCALE'
+    || tenantFeatureFlags.tier === 'PRO_SCALE';
+  const isAdsPerformance = (planTier === 'ads_performance' || isTenantGrowthPlus
+    || tenantFeatureFlags.tier === 'ADS_PERFORMANCE'
+    || tenantFeatureFlags.tier === 'GROWTH_PLUS'
+    || tenantFeatureFlags.tier === 'PRO_SCALE') && !isTeamScale;
+  // Legacy aliases for backward compatibility
+  const isProScale = isTeamScale;
+  const isGrowthPlus = isAdsPerformance;
+  const isGrowth = planTier === 'growth' && !isAdsPerformance && !isTeamScale;
 
-  const handleUpgradeTier = (targetTier: 'growth_tracking' | 'proscale') => {
-    const tierLabel = targetTier === 'proscale' ? 'ProScale (Official WABA & Unlimited)' : 'Growth+Tracking (CAPI Server-Side & ROAS)';
+  /**
+   * isAdsTrackingUnlocked — Feature-flag-first gate.
+   * Grants access if any of:
+   *   • features.has_capi is true
+   *   • features.ads_tracking is true
+   *   • tier enum === ADS_PERFORMANCE or PRO_SCALE/TEAM_SCALE
+   *   • legacy planTier is ads_performance or team_scale
+   */
+  const isAdsTrackingUnlocked =
+    Boolean(
+      tenantFeatureFlags.has_capi ||
+      tenantFeatureFlags.ads_tracking ||
+      tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
+      tenantFeatureFlags.tier === 'PRO_SCALE' ||
+      isAdsPerformance ||
+      isTeamScale
+    );
+  const isBroadcastUnlocked = isTeamScale;
+
+  const handleUpgradeTier = (targetTier: 'ads_performance' | 'team_scale') => {
+    const tierLabel = targetTier === 'team_scale' ? 'Team Scale (Official WABA & Unlimited)' : 'Ads Performance (CAPI Server-Side & ROAS)';
     const text = encodeURIComponent(`Halo Tim BoonTrack, saya ingin upgrade paket toko "${displayName}" (${tenantSlug}) ke paket ${tierLabel}. Mohon panduannya.`);
-    window.open(`https://wa.me/6281237450222?text=${text}`, '_blank');
+    window.open(`https://wa.me/${getPlatformWhatsApp()}?text=${text}`, '_blank');
   };
 
   const renderLockedFeatureCard = ({
@@ -141,7 +173,7 @@ export default function TenantDashboardPage() {
     title: string;
     badge: string;
     description: string;
-    targetTier: 'growth_tracking' | 'proscale';
+    targetTier: 'ads_performance' | 'team_scale';
     targetTierLabel: string;
   }) => (
     <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
@@ -453,15 +485,26 @@ export default function TenantDashboardPage() {
           const aiK = s.ai_knowledge || s.persona || {};
           const loadedStrategy = s.bot_strategy || aiK.bot_strategy || 'trust_builder';
           if (isMounted) {
+            // Hydrate feature flags from settings payload
+            if (s.features) {
+              setTenantFeatureFlags(prev => ({
+                ...prev,
+                has_capi: Boolean(s.features.has_capi),
+                ads_tracking: Boolean(s.features.ads_tracking),
+                tier: s.features.tier || prev.tier,
+              }));
+            }
             if (s.plan_tier || s.tier || s.pricing?.tier) {
               const rawTier = (s.plan_tier || s.tier || s.pricing?.tier || '').toLowerCase();
-              if (rawTier.includes('proscale') || rawTier.includes('enterprise')) setPlanTier('proscale');
-              else if (rawTier.includes('tracking') || rawTier.includes('plus') || rawTier === 'pro' || rawTier.includes('growth+')) setPlanTier('growth_tracking');
-              else if (rawTier.includes('growth') || rawTier === 'starter') setPlanTier(isTenantProScale ? 'proscale' : isTenantGrowthPlus ? 'growth_tracking' : 'growth');
+              // Also propagate raw tier string into feature flags for gate evaluation
+              setTenantFeatureFlags(prev => ({ ...prev, tier: s.plan_tier || s.tier || s.pricing?.tier || prev.tier }));
+              if (rawTier.includes('team_scale') || rawTier.includes('proscale') || rawTier.includes('pro_scale') || rawTier.includes('enterprise')) setPlanTier('team_scale');
+              else if (rawTier.includes('ads_performance') || rawTier.includes('tracking') || rawTier.includes('plus') || rawTier === 'pro' || rawTier.includes('growth+')) setPlanTier('ads_performance');
+              else if (rawTier.includes('growth') || rawTier === 'starter' || rawTier === 'solo') setPlanTier(isTenantProScale ? 'team_scale' : isTenantGrowthPlus ? 'ads_performance' : 'growth');
             } else if (isTenantProScale) {
-              setPlanTier('proscale');
+              setPlanTier('team_scale');
             } else if (isTenantGrowthPlus) {
-              setPlanTier('growth_tracking');
+              setPlanTier('ads_performance');
             }
             setBotStrategy(loadedStrategy as 'trust_builder' | 'balanced' | 'hard_selling');
             setAiForm(prev => ({
@@ -1147,23 +1190,17 @@ export default function TenantDashboardPage() {
                 {displayName}
               </h1>
               <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 ${
-                isProScale
+                isTeamScale
                   ? 'bg-purple-50 text-purple-700 border-purple-200'
-                  : isGrowthPlus
+                  : isAdsPerformance
                   ? 'bg-blue-50 text-blue-700 border-blue-200'
                   : 'bg-slate-100 text-slate-700 border-slate-200'
               }`}>
-                {tenantSlug === 'growthplus' || tenantSlug.includes('growthplus')
-                  ? 'GROWTHPLUS Tier: Growth+Tracking'
-                  : tenantSlug === 'proscale' || tenantSlug.includes('proscale')
-                  ? 'PROSCALE Tier: ProScale'
-                  : tenantSlug === 'growth'
-                  ? 'GROWTH Tier: Growth'
-                  : isProScale
-                  ? 'PROSCALE Tier: ProScale'
-                  : isGrowthPlus
-                  ? 'GROWTHPLUS Tier: Growth+Tracking'
-                  : 'GROWTH Tier: Growth'}
+                {isTeamScale
+                  ? 'Team Scale'
+                  : isAdsPerformance
+                  ? 'Ads Performance'
+                  : 'Solo'}
               </span>
             </div>
           </div>
@@ -1492,26 +1529,26 @@ export default function TenantDashboardPage() {
               <div className="p-3 bg-white border border-slate-200 rounded-2xl text-[11px] space-y-2 shadow-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-600 font-medium">
-                    Kuota CS: {isProScale ? '1 / 5+ Kursi' : isGrowthPlus ? '1 / 2 Kursi' : '1 / 1 Kursi'}
+                    Kuota CS: {isTeamScale ? '1 / 5+ Kursi' : isAdsPerformance ? '1 / 2 Kursi' : '1 / 1 Kursi'}
                   </span>
                   <span className="font-bold text-blue-600">
-                    {isProScale ? 'ProScale' : isGrowthPlus ? 'Growth+' : 'Growth'}
+                    {isTeamScale ? 'Team Scale' : isAdsPerformance ? 'Ads Performance' : 'Solo'}
                   </span>
                 </div>
 
                 {isGrowth ? (
                   <button
                     type="button"
-                    onClick={() => handleUpgradeTier('growth_tracking')}
+                    onClick={() => handleUpgradeTier('ads_performance')}
                     className="w-full py-1.5 px-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
                   >
                     <Lock className="w-3 h-3 text-amber-600" />
-                    <span>Tambah CS Baru (Upgrade Growth+)</span>
+                    <span>Tambah CS Baru (Upgrade Ads Performance)</span>
                   </button>
-                ) : isGrowthPlus ? (
+                ) : isAdsPerformance ? (
                   <button
                     type="button"
-                    onClick={() => handleUpgradeTier('proscale')}
+                    onClick={() => handleUpgradeTier('team_scale')}
                     className="w-full py-1.5 px-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
                   >
                     <Plus className="w-3 h-3 text-blue-600" />
@@ -3961,7 +3998,7 @@ export default function TenantDashboardPage() {
                           required
                           value={pairingPhone}
                           onChange={(e) => setPairingPhone(e.target.value)}
-                          placeholder="6281237450222"
+                          placeholder="628xxxxxxxxxx"
                           className="flex-1 bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-mono"
                         />
                         <button
@@ -4046,10 +4083,10 @@ export default function TenantDashboardPage() {
             !isProScale ? (
               renderLockedFeatureCard({
                 title: "Koneksi Resmi Meta Cloud API (Official WABA)",
-                badge: "Fitur Eksklusif ProScale",
+                badge: "Fitur Eksklusif Team Scale",
                 description: "Integrasikan nomor WhatsApp bisnis resmi dengan Meta Cloud API (Official WABA) centang hijau, webhook instan berkecepatan tinggi, dan proteksi anti-banned.",
-                targetTier: 'proscale',
-                targetTierLabel: 'ProScale',
+                targetTier: 'team_scale',
+                targetTierLabel: 'Team Scale',
               })
             ) : (
               <div className="space-y-4">
@@ -4079,10 +4116,10 @@ export default function TenantDashboardPage() {
         !isAdsTrackingUnlocked ? (
           renderLockedFeatureCard({
             title: "Ads Tracking Pro (Meta CAPI & ROAS)",
-            badge: "Fitur Eksklusif Growth+Tracking & ProScale",
-            description: "Fitur Eksklusif Growth+Tracking & ProScale. Aktifkan integrasi CAPI Server-Side dan pelacakan ROAS iklan riil.",
-            targetTier: 'growth_tracking',
-            targetTierLabel: 'Growth+Tracking',
+            badge: "Fitur Eksklusif Ads Performance & Team Scale",
+            description: "Fitur Eksklusif Ads Performance & Team Scale. Aktifkan integrasi CAPI Server-Side dan pelacakan ROAS iklan riil.",
+            targetTier: 'ads_performance',
+            targetTierLabel: 'Ads Performance',
           })
         ) : (
           <AdsTrackingPro
@@ -4113,10 +4150,10 @@ export default function TenantDashboardPage() {
         !isProScale ? (
           renderLockedFeatureCard({
             title: "Broadcast WA Massal (Meta Cloud API)",
-            badge: "Fitur Eksklusif ProScale (Official WABA)",
-            description: "Fitur Eksklusif ProScale (Official WABA). Kirim pesan promosi massal resmi anti-banned langsung lewat Meta Cloud API.",
-            targetTier: 'proscale',
-            targetTierLabel: 'ProScale',
+            badge: "Fitur Eksklusif Team Scale (Official WABA)",
+            description: "Fitur Eksklusif Team Scale (Official WABA). Kirim pesan promosi massal resmi anti-banned langsung lewat Meta Cloud API.",
+            targetTier: 'team_scale',
+            targetTierLabel: 'Team Scale',
           })
         ) : (
           <WhatsAppBroadcastManager

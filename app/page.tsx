@@ -27,12 +27,14 @@ import {
   ArrowUpRight
 } from 'lucide-react';
 import Footer from '@/app/components/Footer';
+import { getPlatformWhatsApp } from '@/lib/tenant-config';
 
 export default function ShopLandingPage() {
-  const waContactUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin konsultasi layanan platform SaaS BoonTrack dan aktivasi merchant.");
-  const waGrowthOrderUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Growth Plan Rp199.000/bulan (diskon dari Rp350.000) untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
-  const waGrowthTrackingOrderUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Growth + Ads Tracking Plan Rp299.000/bulan (diskon dari Rp500.000) untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
-  const waProOrderUrl = "https://wa.me/6281237450222?text=" + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan ProScale Plan Rp499.000/bulan (diskon dari Rp800.000) untuk bisnis saya. Mohon panduan onboarding VIP dan faktur pembayaran.");
+  const botNumber = getPlatformWhatsApp();
+  const waContactUrl = `https://wa.me/${botNumber}?text=` + encodeURIComponent("Halo Tim BoonTrack, saya ingin konsultasi layanan platform SaaS BoonTrack dan aktivasi merchant.");
+  const waGrowthOrderUrl = `https://wa.me/${botNumber}?text=` + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Growth Plan Rp199.000/bulan (diskon dari Rp350.000) untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
+  const waGrowthTrackingOrderUrl = `https://wa.me/${botNumber}?text=` + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan Growth + Ads Tracking Plan Rp299.000/bulan (diskon dari Rp500.000) untuk bisnis saya. Mohon info aktivasi dan faktur pembayaran.");
+  const waProOrderUrl = `https://wa.me/${botNumber}?text=` + encodeURIComponent("Halo Tim BoonTrack, saya ingin memesan ProScale Plan Rp499.000/bulan (diskon dari Rp800.000) untuk bisnis saya. Mohon panduan onboarding VIP dan faktur pembayaran.");
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-blue-600 selection:text-white flex flex-col">

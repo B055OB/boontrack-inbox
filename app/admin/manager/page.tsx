@@ -15,6 +15,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 
 interface ManagerMerchant {
   id: string | number;
@@ -51,7 +52,7 @@ export default function MerchantManagerDashboard() {
             id: 'yuhu-1',
             tenant_slug: 'yuhu',
             merchant_name: 'Toko Yuhu Indonesia',
-            merchant_phone: '6289876543210',
+            merchant_phone: getTenantWhatsApp('yuhu') || getPlatformWhatsApp(),
             plan_tier: 'GROWTH',
             status: 'ACTIVE',
             due_date: '2026-10-01',

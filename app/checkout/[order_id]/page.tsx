@@ -20,6 +20,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
 import { generateDynamicQRIS, INTERNAL_TENANTS } from '@/lib/qris-dynamic';
+import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 
 const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
 
@@ -205,9 +206,8 @@ export default function CheckoutPage({ params }: Props) {
   const rawQrisValue = isInternalTenant
     ? generateDynamicQRIS(order?.qr_string || fallbackQrisString, grossAmount)
     : (order?.qr_string || fallbackQrisString);
-  const qrUrl = order?.qr_code_url || `https://quickchart.io/qr?text=${encodeURIComponent(rawQrisValue)}&size=300&ecLevel=H`;
-
-  const waConfirmUrl = `https://wa.me/6281237450222?text=${encodeURIComponent(
+  const targetWaNumber = getTenantWhatsApp(tenantSlug) || getPlatformWhatsApp();
+  const waConfirmUrl = `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(
     `Halo Tim BoonTrack, saya sudah melakukan pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Produk Digital'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\nMohon dicek dan aktivasi akses saya. Terima kasih!`
   )}`;
 
