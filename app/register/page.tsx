@@ -11,45 +11,70 @@ import {
   Zap, 
   CreditCard,
   ShoppingBag,
-  Sparkle,
   UtensilsCrossed,
   GraduationCap,
-  Layers,
-  Wrench
+  Wrench,
+  Briefcase,
+  Video
 } from "lucide-react";
 
 const CATEGORIES = [
-  { id: "fashion",       label: "Fashion & Hijab",              desc: "Baju, jilbab, mukena & aksesoris",              icon: ShoppingBag },
-  { id: "skincare",      label: "Skincare & Herbal",             desc: "Skincare, herbal, suplemen & kecantikan",        icon: Sparkle },
-  { id: "fnb",           label: "Kuliner & F&B",                 desc: "Makanan, minuman, katering & cloud kitchen",     icon: UtensilsCrossed },
-  { id: "digital",       label: "Digital Course & E-Book",       desc: "Kelas online, ebook & produk digital",           icon: GraduationCap },
-  { id: "general",       label: "Retail & Toko Fisik",           desc: "Toko multi-kategori & produk fisik umum",        icon: Store },
-  { id: "local_service", label: "Jasa Rumah Tangga & Servis",    desc: "Cuci toren, service AC, sedot WC & tukang harian", icon: Wrench },
-  { id: "other",         label: "Jasa & Bisnis Lainnya",         desc: "Freelancer, konsultan & bisnis jasa lain",       icon: Layers },
+  { 
+    id: "retail_physical",     
+    label: "Retail & Produk Fisik",         
+    desc: "Fashion, skincare, RT, aksesoris",              
+    icon: ShoppingBag 
+  },
+  { 
+    id: "digital",             
+    label: "Produk Digital",                
+    desc: "E-course, ebook, webinar, tools",               
+    icon: GraduationCap 
+  },
+  { 
+    id: "fnb",                 
+    label: "Kuliner & F&B",                 
+    desc: "Frozen food, makanan, camilan",                 
+    icon: UtensilsCrossed 
+  },
+  { 
+    id: "local_service",       
+    label: "Produk Jasa Teknisi & Lapangan", 
+    desc: "Servis AC, toren, sedot WC",                    
+    icon: Wrench 
+  },
+  { 
+    id: "professional_consult",
+    label: "Jasa Profesional & Konsultasi",  
+    desc: "Agensi, legal, freelancer",                     
+    icon: Briefcase 
+  },
+  { 
+    id: "affiliate_creator",   
+    label: "Affiliate, Agensi Live & Kreator",
+    desc: "Live host, video sample creator",               
+    icon: Video 
+  },
 ];
 
 /**
- * Maps UI category id → backend vertical enum (LOCAL_SERVICE_V1 spec)
- * - LOCAL_SERVICE : Jasa Rumah Tangga & Servis
- * - RETAIL        : Fashion, Skincare, F&B, Retail & Toko Fisik
- * - DIGITAL       : Digital Course & E-Book
+ * Maps UI category id → backend vertical enum
  */
 const VERTICAL_MAP: Record<string, "LOCAL_SERVICE" | "RETAIL" | "DIGITAL"> = {
-  local_service: "LOCAL_SERVICE",
-  digital:       "DIGITAL",
-  fashion:       "RETAIL",
-  skincare:      "RETAIL",
-  fnb:           "RETAIL",
-  general:       "RETAIL",
-  other:         "RETAIL",
+  retail_physical:      "RETAIL",
+  digital:              "DIGITAL",
+  fnb:                  "RETAIL",
+  local_service:        "LOCAL_SERVICE",
+  professional_consult: "LOCAL_SERVICE",
+  affiliate_creator:    "RETAIL",
 };
 
 export default function RegisterShopPage() {
   const [storeName, setStoreName] = useState("");
   const [slug, setSlug] = useState("");
   const [status, setStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
-  const [category, setCategory] = useState("fashion");
-  const [selectedPlan, setSelectedPlan] = useState<"growth" | "growth_tracking" | "pro_scale">("growth_tracking");
+  const [category, setCategory] = useState("retail_physical");
+  const [selectedPlan, setSelectedPlan] = useState<"solo" | "ads_performance" | "team_scale">("ads_performance");
   const [merchantData, setMerchantData] = useState({ name: "", phone: "", email: "" });
   const [loadingPay, setLoadingPay] = useState(false);
 
@@ -68,10 +93,12 @@ export default function RegisterShopPage() {
       const initialStore = params.get("store") || params.get("claim") || "";
       const initialPlan = params.get("plan");
 
-      if (initialPlan === "growth" || initialPlan === "growth_tracking" || initialPlan === "pro_scale") {
-        setSelectedPlan(initialPlan);
-      } else if (initialPlan === "solo") {
-        setSelectedPlan("growth");
+      if (initialPlan === "solo" || initialPlan === "growth") {
+        setSelectedPlan("solo");
+      } else if (initialPlan === "ads_performance" || initialPlan === "growth_tracking") {
+        setSelectedPlan("ads_performance");
+      } else if (initialPlan === "team_scale" || initialPlan === "pro_scale") {
+        setSelectedPlan("team_scale");
       }
 
       if (initialStore) {
@@ -111,7 +138,7 @@ export default function RegisterShopPage() {
     e.preventDefault();
     setLoadingPay(true);
 
-    const planAmount = selectedPlan === 'growth' ? 199000 : selectedPlan === 'growth_tracking' ? 299000 : 499000;
+    const planAmount = selectedPlan === 'solo' ? 199000 : selectedPlan === 'ads_performance' ? 299000 : 499000;
 
     try {
       const res = await fetch("https://api.boontrack.com/api/v1/shop/subscriptions/create", {
@@ -144,7 +171,7 @@ export default function RegisterShopPage() {
 
   return (
     <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans py-10 px-4 sm:px-6 flex flex-col justify-center items-center">
-      <div className="w-full max-w-xl flex flex-col items-center">
+      <div className="w-full max-w-2xl flex flex-col items-center">
         
         {/* Header */}
         <div className="text-center max-w-lg mb-8">
@@ -184,7 +211,7 @@ export default function RegisterShopPage() {
                 type="button"
                 onClick={handleManualCheck}
                 disabled={status === "checking" || !slug}
-                className="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+                className="px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shrink-0 cursor-pointer shadow-xs active:scale-95"
               >
                 {status === "checking" ? "Mengecek..." : "Cek Ketersediaan"}
               </button>
@@ -214,12 +241,12 @@ export default function RegisterShopPage() {
               </div>
             )}
 
-            {/* PILIHAN KATEGORI PRODUK / BISNIS */}
+            {/* PILIHAN KATEGORI PRODUK / BISNIS (Grid 3x2 Simetris) */}
             <div className="space-y-2">
               <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
                 2. Kategori Produk / Bisnis
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                 {CATEGORIES.map((cat) => {
                   const Icon = cat.icon;
                   const isSelected = category === cat.id;
@@ -229,15 +256,15 @@ export default function RegisterShopPage() {
                       type="button"
                       key={cat.id}
                       onClick={() => setCategory(cat.id)}
-                      className={`p-3 rounded-xl border text-left flex flex-col gap-1.5 transition-all cursor-pointer ${
+                      className={`p-3.5 rounded-2xl border text-left flex flex-col justify-between gap-2 transition-all cursor-pointer ${
                         isSelected
                           ? cat.id === "local_service"
-                            ? "border-amber-500 bg-amber-50/70 text-amber-950 font-bold shadow-sm ring-1 ring-amber-500"
-                            : "border-blue-600 bg-blue-50/70 text-blue-950 font-bold shadow-sm ring-1 ring-blue-600"
+                            ? "border-amber-500 bg-amber-50/70 text-amber-950 font-bold shadow-xs ring-1 ring-amber-500"
+                            : "border-blue-600 bg-blue-50/70 text-blue-950 font-bold shadow-xs ring-1 ring-blue-600"
                           : "border-slate-200 hover:border-slate-300 bg-slate-50 text-slate-600 text-xs"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center justify-between gap-1 w-full">
                         <Icon className={`w-4 h-4 shrink-0 ${
                           isSelected
                             ? cat.id === "local_service" ? "text-amber-600" : "text-blue-600"
@@ -251,8 +278,10 @@ export default function RegisterShopPage() {
                           }`}>{vertical}</span>
                         )}
                       </div>
-                      <span className="text-[11px] leading-tight font-semibold">{cat.label}</span>
-                      <span className="text-[10px] leading-snug text-slate-400 font-normal">{cat.desc}</span>
+                      <div>
+                        <span className="text-xs leading-tight font-bold block text-slate-900">{cat.label}</span>
+                        <span className="text-[10px] leading-snug text-slate-500 font-normal mt-0.5 block">{cat.desc}</span>
+                      </div>
                     </button>
                   );
                 })}
@@ -302,88 +331,88 @@ export default function RegisterShopPage() {
               </div>
             </div>
 
-            {/* PILIH PAKET */}
+            {/* PILIH PAKET (Solo, Ads Performance, Team Scale) */}
             <div className="space-y-2">
               <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
                 4. Pilih Paket Langganan:
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 
-                {/* 1. Growth */}
+                {/* 1. Solo (199k) */}
                 <div
-                  onClick={() => setSelectedPlan("growth")}
+                  onClick={() => setSelectedPlan("solo")}
                   className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                    selectedPlan === "growth"
-                      ? "border-blue-600 bg-blue-50/50 shadow-sm ring-1 ring-blue-500"
+                    selectedPlan === "solo"
+                      ? "border-blue-600 bg-blue-50/50 shadow-xs ring-1 ring-blue-500"
                       : "border-slate-200 hover:border-slate-300 bg-white"
                   }`}
                 >
                   <div>
                     <div className="flex justify-between items-start mb-1">
-                      <span className="font-black text-slate-900 text-xs">Growth</span>
+                      <span className="font-black text-slate-900 text-xs">Solo</span>
                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Hemat 43%</span>
                     </div>
-                    <p className="text-[10px] text-slate-500 font-semibold mb-1.5">Starter Pack Bisnis Digital</p>
+                    <p className="text-[10px] text-slate-500 font-semibold mb-1.5">Starter Mandiri</p>
                     <div className="flex items-baseline gap-1.5 flex-wrap">
-                      <span className="text-xs text-slate-400 line-through">Rp 349 ribu</span>
-                      <span className="text-sm font-black text-blue-600">Rp 199 ribu</span>
+                      <span className="text-xs text-slate-400 line-through">Rp 349k</span>
+                      <span className="text-sm font-black text-blue-600">Rp 199k</span>
                       <span className="text-[10px] text-slate-400 font-normal">/bln</span>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-2 leading-tight">
-                    AI Webchat & WA (Jalur Unofficial), QRIS Otomatis Midtrans, E-Receipt
+                    Katalog Tanpa Batas, Cek Ongkir Lincah & Biteship Instant, Tanpa CS Inbox
                   </p>
                 </div>
 
-                {/* 2. Growth Tracking System */}
+                {/* 2. Ads Performance (299k) */}
                 <div
-                  onClick={() => setSelectedPlan("growth_tracking")}
+                  onClick={() => setSelectedPlan("ads_performance")}
                   className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between relative ${
-                    selectedPlan === "growth_tracking"
+                    selectedPlan === "ads_performance"
                       ? "border-blue-600 bg-blue-50/60 shadow-md ring-2 ring-blue-500"
                       : "border-blue-200 hover:border-blue-300 bg-white"
                   }`}
                 >
                   <div>
                     <div className="flex justify-between items-start mb-1">
-                      <span className="font-black text-blue-900 text-xs">Growth Tracking</span>
-                      <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">Paling Hemat</span>
+                      <span className="font-black text-blue-900 text-xs">Ads Performance</span>
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">Paling Populer</span>
                     </div>
-                    <p className="text-[10px] text-blue-600 font-semibold mb-1.5">Scale-Up Iklan & Fisik</p>
+                    <p className="text-[10px] text-blue-600 font-semibold mb-1.5">Scale-Up Ads & CS</p>
                     <div className="flex items-baseline gap-1.5 flex-wrap">
-                      <span className="text-xs text-slate-400 line-through">Rp 599 ribu</span>
-                      <span className="text-sm font-black text-blue-600">Rp 299 ribu</span>
+                      <span className="text-xs text-slate-400 line-through">Rp 599k</span>
+                      <span className="text-sm font-black text-blue-600">Rp 299k</span>
                       <span className="text-[10px] text-slate-400 font-normal">/bln</span>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-600 mt-2 leading-tight font-medium">
-                    Semua Fitur Growth + Meta CAPI, TikTok Events, Cek Ongkir & Resi Otomatis
+                    Semua Fitur Solo + Meta & TikTok CAPI Server-Side, God Button & 2 Seats CS Inbox
                   </p>
                 </div>
 
-                {/* 3. Pro Scale */}
+                {/* 3. Team Scale (499k) */}
                 <div
-                  onClick={() => setSelectedPlan("pro_scale")}
+                  onClick={() => setSelectedPlan("team_scale")}
                   className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                    selectedPlan === "pro_scale"
-                      ? "border-emerald-600 bg-emerald-50/50 shadow-sm ring-1 ring-emerald-500"
+                    selectedPlan === "team_scale"
+                      ? "border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-500"
                       : "border-slate-200 hover:border-slate-300 bg-white"
                   }`}
                 >
                   <div>
                     <div className="flex justify-between items-start mb-1">
-                      <span className="font-black text-slate-900 text-xs">Pro Scale</span>
+                      <span className="font-black text-slate-900 text-xs">Team Scale</span>
                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Official Meta</span>
                     </div>
-                    <p className="text-[10px] text-emerald-700 font-semibold mb-1.5">Official Anti-Banned</p>
+                    <p className="text-[10px] text-emerald-700 font-semibold mb-1.5">Full Skala Tim</p>
                     <div className="flex items-baseline gap-1.5 flex-wrap">
-                      <span className="text-xs text-slate-400 line-through">Rp 899 ribu</span>
-                      <span className="text-sm font-black text-emerald-700">Rp 499 ribu</span>
+                      <span className="text-xs text-slate-400 line-through">Rp 899k</span>
+                      <span className="text-sm font-black text-emerald-700">Rp 499k</span>
                       <span className="text-[10px] text-slate-400 font-normal">/bln</span>
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-2 leading-tight">
-                    Meta Cloud API Resmi, Anti-Banned, Centang Hijau & Multi-Agent CS
+                    Multi-Seat CS Tanpa Batas, Custom Domain + SSL, WABA Cloud Resmi & Broadcast
                   </p>
                 </div>
 
@@ -401,9 +430,9 @@ export default function RegisterShopPage() {
                 {loadingPay
                   ? "Menyiapkan Invoice QRIS..."
                   : `Aktivasi & Bayar (${
-                      selectedPlan === "growth"
+                      selectedPlan === "solo"
                         ? "Rp 199 ribu"
-                        : selectedPlan === "growth_tracking"
+                        : selectedPlan === "ads_performance"
                         ? "Rp 299 ribu"
                         : "Rp 499 ribu"
                     })`}
