@@ -1,55 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabase } from '@/lib/supabaseClient';
 
 const BITESHIP_API_URL = 'https://api.biteship.com/v1/rates/couriers';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function POST(req: NextRequest) {
   try {
-    const { slug } = await params;
     const body = await req.json().catch(() => ({}));
+    const { searchParams } = new URL(req.url);
+    const slug = (body.slug || body.tenant_slug || searchParams.get('slug') || '').trim();
 
-    const destinationCity = (body.destination_city || body.city || '').trim().toLowerCase();
     const destinationPostalCode = (body.destination_postal_code || body.postal_code || '').trim();
-    const destinationAddress = (body.destination_address || body.address || '').trim().toLowerCase();
-    const weightInGrams = Number(body.weight || body.weight_grams || 1000);
+    const weightInGrams = Math.max(100, Number(body.weight || body.weight_grams || 1000));
 
-    // Deteksi jangkauan kurir instan Bandung (Kota / Kab Bandung & Kode Pos 40xxx)
-    const isBandungArea =
-      destinationCity.includes('bandung') ||
-      destinationAddress.includes('bandung') ||
-      /^40\d{3}$/.test(destinationPostalCode) ||
-      /\b40\d{3}\b/.test(destinationAddress);
+    // 1. Validasi Coverage / Konfigurasi
+    let isShippingActive = true;
+    if (slug) {
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data } = await supabase
+            .from('tenant_settings')
+            .select('biteship_config')
+            .eq('tenant_slug', slug)
+            .maybeSingle();
 
-    if (!isBandungArea) {
+          if (data?.biteship_config) {
+            isShippingActive = data.biteship_config.is_enabled ?? true;
+          }
+        }
+      } catch (err) {
+        console.warn('[Rates Instant API] Tenant settings fallback:', err);
+      }
+    }
+
+    if (!isShippingActive) {
       return NextResponse.json({
         success: true,
         coverage: false,
-        message: 'Layanan instan saat ini diprioritaskan untuk area Bandung & sekitarnya (Kode Pos 40xxx).',
+        message: 'Layanan pengiriman dinonaktifkan oleh toko.',
         couriers: [],
       });
     }
 
-    const apiKey = process.env.BITESHIP_API_KEY;
+    const biteshipKey = process.env.BITESHIP_API_KEY;
+    const availableRates: any[] = [];
 
-    // Call Real Biteship API jika API key tersedia
-    if (apiKey) {
+    if (biteshipKey) {
       try {
         const biteshipRes = await fetch(BITESHIP_API_URL, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${apiKey}`,
+            Authorization: `Bearer ${biteshipKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            origin_postal_code: 40286, // MTC Bandung default
+            origin_postal_code: 40286,
             destination_postal_code: Number(destinationPostalCode) || 40115,
             couriers: 'gosend,grab',
             items: [
               {
-                name: 'Pesanan Toko',
-                value: 100000,
+                name: 'Barang Kiriman',
+                value: 50000,
                 weight: weightInGrams,
                 quantity: 1,
               },
@@ -58,64 +69,56 @@ export async function POST(
         });
 
         if (biteshipRes.ok) {
-          const biteshipData = await biteshipRes.json();
-          if (Array.isArray(biteshipData?.pricing) && biteshipData.pricing.length > 0) {
-            const mappedCouriers = biteshipData.pricing.map((rate: any) => ({
-              id: `biteship_${rate.courier_name}_${rate.service_type}`.toLowerCase(),
-              name: `${rate.courier_name.toUpperCase()} (${rate.courier_service_name})`,
-              service: rate.service_type,
-              price: rate.price,
-              eta: rate.duration || '1-3 Jam',
-              type: 'instant',
-              badge: 'Instant / SameDay',
-              provider: 'biteship',
-            }));
-
-            return NextResponse.json({
-              success: true,
-              coverage: true,
-              city: 'Bandung',
-              couriers: mappedCouriers,
+          const bData = await biteshipRes.json();
+          if (Array.isArray(bData?.pricing)) {
+            bData.pricing.forEach((rate: any) => {
+              availableRates.push({
+                id: `instant_${rate.courier_name}_${rate.service_type}`.toLowerCase(),
+                courier_name: `${rate.courier_name.toUpperCase()} (${rate.courier_service_name})`,
+                service: rate.service_type,
+                price: rate.price,
+                etd: rate.duration || '1-3 Jam',
+                type: 'instant',
+              });
             });
           }
         }
-      } catch (biteshipErr) {
-        console.warn('[Biteship Live] Request failed, fallback to defaults:', biteshipErr);
+      } catch (bErr) {
+        console.warn('[Rates Instant API] Fetch error:', bErr);
       }
     }
 
-    // Fallback default jika token belum live atau rute point-to-point sedang cooldown
+    // Fallback jika API Key offline atau belum diisi
+    if (availableRates.length === 0) {
+      availableRates.push(
+        {
+          id: 'instant_gosend',
+          courier_name: 'GoSend Instant',
+          service: 'Instant',
+          price: 20000,
+          etd: '1-2 Jam',
+          type: 'instant',
+        },
+        {
+          id: 'instant_grab',
+          courier_name: 'GrabExpress Instant',
+          service: 'Instant',
+          price: 22000,
+          etd: '1-2 Jam',
+          type: 'instant',
+        }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       coverage: true,
-      city: 'Bandung',
-      couriers: [
-        {
-          id: 'biteship_gosend_instant',
-          name: 'GoSend Instant',
-          service: 'Instant',
-          price: 20000,
-          eta: '1-2 Jam',
-          type: 'instant',
-          badge: 'Paling Cepat / Tiba Hari Ini',
-          provider: 'biteship',
-        },
-        {
-          id: 'biteship_grab_instant',
-          name: 'GrabExpress Instant',
-          service: 'Instant',
-          price: 22000,
-          eta: '1-2 Jam',
-          type: 'instant',
-          badge: 'Tiba Hari Ini',
-          provider: 'biteship',
-        },
-      ],
+      rates: availableRates,
     });
   } catch (error: any) {
-    console.error('[API Shipping Rates Instant] Error:', error);
+    console.error('[Rates Instant API] Fatal error:', error);
     return NextResponse.json(
-      { success: false, error: 'Gagal memproses kalkulasi tarif kurir instan.' },
+      { success: false, error: 'Gagal memproses tarif instan' },
       { status: 500 }
     );
   }
