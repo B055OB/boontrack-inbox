@@ -15,13 +15,11 @@ interface RateOption {
 const BITESHIP_API_URL = 'https://api.biteship.com/v1/rates/couriers';
 const LINCAH_API_URL = 'https://api.lincah.id/openapi/ongkir';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function POST(req: NextRequest) {
   try {
-    const { slug } = await params;
     const body = await req.json().catch(() => ({}));
+    const { searchParams } = new URL(req.url);
+    const slug = (body.slug || body.tenant_slug || searchParams.get('slug') || '').trim();
 
     const destinationCity = (body.destination_city || body.city || '').trim();
     const destinationDistrict = (body.destination_district || body.district || '').trim();
@@ -34,25 +32,27 @@ export async function POST(
     let enabledCouriers: any[] = [];
     let isShippingActive = true;
 
-    try {
-      const supabase = getSupabase();
-      if (supabase) {
-        const { data } = await supabase
-          .from('tenant_settings')
-          .select('biteship_config')
-          .eq('tenant_slug', slug)
-          .maybeSingle();
+    if (slug) {
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data } = await supabase
+            .from('tenant_settings')
+            .select('biteship_config')
+            .eq('tenant_slug', slug)
+            .maybeSingle();
 
-        if (data?.biteship_config) {
-          const cfg = data.biteship_config;
-          isShippingActive = cfg.is_enabled ?? true;
-          if (Array.isArray(cfg.couriers)) {
-            enabledCouriers = cfg.couriers.filter((c: any) => c.enabled);
+          if (data?.biteship_config) {
+            const cfg = data.biteship_config;
+            isShippingActive = cfg.is_enabled ?? true;
+            if (Array.isArray(cfg.couriers)) {
+              enabledCouriers = cfg.couriers.filter((c: any) => c.enabled);
+            }
           }
         }
+      } catch (err) {
+        console.warn('[Rates API] Tenant settings fallback:', err);
       }
-    } catch (err) {
-      console.warn('[Rates API] Tenant settings fallback:', err);
     }
 
     if (!isShippingActive) {
@@ -171,7 +171,7 @@ export async function POST(
             weight: weightInGrams,
             packagePrice: 50000,
             origin: {
-              code: '32.73.06', // Rancasari Bandung
+              code: '32.73.06',
               longitude: 107.6757,
               latitude: -6.9538,
             },

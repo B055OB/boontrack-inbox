@@ -3895,7 +3895,7 @@ export default function TenantDashboardPage() {
             <div className="w-full">
               <BiteshipCourierConfig
                 tenantSlug={(tenantSlug as string) || (params?.tenant as string) || ''}
-                displayName={(displayName as string) || (storeName as string) || 'BoonTrack Shop'}
+                displayName={(displayName as string) || 'BoonTrack Shop'}
                 onSaved={(msg) => {
                   setSaveFeedback(msg);
                   setTimeout(() => setSaveFeedback(null), 4000);
