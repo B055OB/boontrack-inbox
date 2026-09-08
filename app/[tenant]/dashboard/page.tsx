@@ -231,7 +231,74 @@ export default function TenantDashboardPage() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [isSavingStore, setIsSavingStore] = useState(false);
+  const [storeQrisUrl, setStoreQrisUrl] = useState<string>('');
+  const [isUploadingQris, setIsUploadingQris] = useState(false);
+const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Ukuran file maksimal 2 MB');
+      return;
+    }
+
+    setIsUploadingQris(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${tenantSlug}-qris-${Date.now()}.${fileExt}`;
+      const filePath = `qris/${fileName}`;
+
+      const uploadRes = await fetch(
+        `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/tenants/${filePath}`,
+        {
+          method: 'POST',
+          headers: {
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+            'Content-Type': file.type,
+          },
+          body: file,
+        }
+      );
+
+      if (!uploadRes.ok) throw new Error('Gagal upload gambar QRIS ke storage');
+
+      const publicUrl = `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/tenants/${filePath}`;
+      setStoreQrisUrl(publicUrl);
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'Gagal mengunggah QRIS');
+    } finally {
+      setIsUploadingQris(false);
+    }
+  };
+  useEffect(() => {
+    if (!tenantSlug) return;
+    const fetchTenantSettings = async () => {
+      try {
+        const res = await fetch(
+          `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?tenant_slug=eq.${tenantSlug}&select=*`,
+          {
+            headers: {
+              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+            },
+          }
+        );
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const setting = data[0];
+          if (setting.store_name) setStoreDisplayName(setting.store_name);
+          if (setting.bio) setStoreBio(setting.bio);
+          if (setting.whatsapp) setStoreWhatsapp(setting.whatsapp);
+          if (setting.qris_image_url) setStoreQrisUrl(setting.qris_image_url);
+        }
+      } catch (err) {
+        console.error('Gagal memuat setting tenant:', err);
+      }
+    };
+    fetchTenantSettings();
+  }, [tenantSlug]);
   const handleSelectTab = (tab: DashboardTab) => {
     hasUserSelectedTabRef.current = true;
     setActiveTab(tab);
@@ -4021,7 +4088,27 @@ export default function TenantDashboardPage() {
                 />
               </div>
             </div>
-
+             {/* Input & Preview QRIS */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <label className="block text-xs font-semibold text-slate-700">Gambar QRIS Toko</label>
+              {storeQrisUrl && (
+                <div className="relative w-32 h-32 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center">
+                  <img
+                    src={storeQrisUrl}
+                    alt="QRIS Toko"
+                    className="w-full h-full object-contain p-1"
+                  />
+                </div>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleQrisUpload}
+                disabled={isUploadingQris}
+                className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+              />
+              {isUploadingQris && <p className="text-xs text-blue-600 animate-pulse">Mengunggah gambar QRIS...</p>}
+            </div>
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
