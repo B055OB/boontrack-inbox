@@ -3890,17 +3890,17 @@ export default function TenantDashboardPage() {
         )
       )}
 
-      {/* TAB: KURIR & EKSPEDISI BITESHIP */}
-      {activeTab === 'biteship' && (
-        <BiteshipCourierConfig
-          tenantSlug={tenantSlug}
-          displayName={displayName}
-          onSaved={(msg) => {
-            setSaveFeedback(msg);
-            setTimeout(() => setSaveFeedback(null), 4000);
-          }}
-        />
-      )}
+      {/* TAB: KURIR & EKSPEDISI (DUAL-ENGINE) */}
+          {(activeTab === 'biteship' || activeTab === 'shipping' || activeTab === 'logistik') && (
+            <BiteshipCourierConfig
+              tenantSlug={tenantSlug}
+              displayName={displayName}
+              onSaved={(msg) => {
+                setSaveFeedback(msg);
+                setTimeout(() => setSaveFeedback(null), 4000);
+              }}
+            />
+          )}
 
       {/* TAB: WHATSAPP BROADCAST MANAGER */}
       {activeTab === 'broadcast' && (
