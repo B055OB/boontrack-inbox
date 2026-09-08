@@ -33,6 +33,7 @@ interface CourierItem {
   services: string[];
   enabled: boolean;
   color: string;
+  adapterGroup: 'instant' | 'regular';
 }
 
 interface TrackingStep {
@@ -44,16 +45,19 @@ interface TrackingStep {
 }
 
 const DEFAULT_COURIERS: CourierItem[] = [
-  { id: 'jne', name: 'JNE Express', logoText: 'JNE', services: ['REG', 'YES', 'OKE', 'JTR'], enabled: true, color: 'bg-red-50 text-red-700 border-red-200' },
-  { id: 'jnt', name: 'J&T Express', logoText: 'J&T', services: ['EZ', 'J&T Super', 'J&T Doc'], enabled: true, color: 'bg-rose-50 text-rose-700 border-rose-200' },
-  { id: 'sicepat', name: 'SiCepat Ekspres', logoText: 'SiCepat', services: ['SIUNT', 'BEST', 'GOKIL', 'HALO'], enabled: true, color: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { id: 'anteraja', name: 'Anteraja', logoText: 'Anteraja', services: ['Regular', 'Next Day', 'Same Day', 'Cargo'], enabled: true, color: 'bg-purple-50 text-purple-700 border-purple-200' },
-  { id: 'ninja', name: 'Ninja Xpress', logoText: 'Ninja', services: ['Standard', 'Nextday'], enabled: false, color: 'bg-red-50 text-red-800 border-red-300' },
-  { id: 'idexpress', name: 'ID Express', logoText: 'IDE', services: ['Standard', 'Same Day', 'Cargo'], enabled: false, color: 'bg-red-50 text-red-600 border-red-200' },
-  { id: 'lion', name: 'Lion Parcel', logoText: 'Lion', services: ['ONEPACK', 'REGPACK', 'JAGOPACK'], enabled: false, color: 'bg-red-50 text-red-700 border-red-200' },
-  { id: 'gosend', name: 'GoSend (Gojek)', logoText: 'GoSend', services: ['Instant', 'SameDay'], enabled: true, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { id: 'grab', name: 'GrabExpress', logoText: 'Grab', services: ['Instant', 'SameDay'], enabled: true, color: 'bg-green-50 text-green-700 border-green-200' },
-  { id: 'pos', name: 'POS Indonesia', logoText: 'POS', services: ['Pos Reguler', 'Pos Nextday', 'Pos Jumbo'], enabled: false, color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  // Gateway Instant (Biteship Adapter)
+  { id: 'gosend', name: 'GoSend (Gojek)', logoText: 'GoSend', services: ['Instant', 'SameDay'], enabled: true, color: 'bg-emerald-50 text-emerald-700 border-emerald-200', adapterGroup: 'instant' },
+  { id: 'grab', name: 'GrabExpress', logoText: 'Grab', services: ['Instant', 'SameDay'], enabled: true, color: 'bg-green-50 text-green-700 border-green-200', adapterGroup: 'instant' },
+
+  // Gateway Reguler, Kargo & Hemat (Lincah Adapter)
+  { id: 'jne', name: 'JNE Express', logoText: 'JNE', services: ['REG', 'YES', 'OKE', 'JTR'], enabled: true, color: 'bg-red-50 text-red-700 border-red-200', adapterGroup: 'regular' },
+  { id: 'jnt', name: 'J&T Express', logoText: 'J&T', services: ['EZ', 'J&T Super', 'J&T Doc'], enabled: true, color: 'bg-rose-50 text-rose-700 border-rose-200', adapterGroup: 'regular' },
+  { id: 'sicepat', name: 'SiCepat Ekspres', logoText: 'SiCepat', services: ['SIUNT', 'BEST', 'GOKIL', 'HALO'], enabled: true, color: 'bg-amber-50 text-amber-700 border-amber-200', adapterGroup: 'regular' },
+  { id: 'anteraja', name: 'Anteraja', logoText: 'Anteraja', services: ['Regular', 'Next Day', 'Same Day', 'Cargo'], enabled: true, color: 'bg-purple-50 text-purple-700 border-purple-200', adapterGroup: 'regular' },
+  { id: 'ninja', name: 'Ninja Xpress', logoText: 'Ninja', services: ['Standard', 'Nextday'], enabled: false, color: 'bg-red-50 text-red-800 border-red-300', adapterGroup: 'regular' },
+  { id: 'idexpress', name: 'ID Express', logoText: 'IDE', services: ['Standard', 'Same Day', 'Cargo'], enabled: false, color: 'bg-red-50 text-red-600 border-red-200', adapterGroup: 'regular' },
+  { id: 'lion', name: 'Lion Parcel', logoText: 'Lion', services: ['ONEPACK', 'REGPACK', 'JAGOPACK'], enabled: false, color: 'bg-red-50 text-red-700 border-red-200', adapterGroup: 'regular' },
+  { id: 'pos', name: 'POS Indonesia', logoText: 'POS', services: ['Pos Reguler', 'Pos Nextday', 'Pos Jumbo'], enabled: false, color: 'bg-orange-50 text-orange-700 border-orange-200', adapterGroup: 'regular' },
 ];
 
 export default function BiteshipCourierConfig({
@@ -63,7 +67,7 @@ export default function BiteshipCourierConfig({
 }: BiteshipCourierConfigProps) {
   const [isEnabled, setIsEnabled] = useState(true);
 
-  // Origin Warehouse Info (Alamat Komersial Default White-Label)
+  // Origin Warehouse Info
   const [senderName, setSenderName] = useState('Admin Gudang OnlineBoost');
   const [senderPhone, setSenderPhone] = useState('081298765432');
   const [originAddress, setOriginAddress] = useState('Jl. Soekarno Hatta No. 590, Kawasan Niaga MTC Kav. B2');
@@ -78,11 +82,11 @@ export default function BiteshipCourierConfig({
 
   // Rate Simulator State
   const [calcDestCity, setCalcDestCity] = useState('Bandung');
-  const [calcWeight, setCalcWeight] = useState(1000); // 1kg
+  const [calcWeight, setCalcWeight] = useState(1000);
   const [simulatedRates, setSimulatedRates] = useState<any[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
 
-  // Resi Tracking & CAPI Automation Simulator
+  // Resi Tracking
   const [searchWaybill, setSearchWaybill] = useState('JNEX-8891029102-ID');
   const [selectedCourierTracker, setSelectedCourierTracker] = useState('jne');
   const [trackingResult, setTrackingResult] = useState<{
@@ -98,7 +102,6 @@ export default function BiteshipCourierConfig({
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  // Load existing config from Supabase
   useEffect(() => {
     async function loadConfig() {
       try {
@@ -122,7 +125,11 @@ export default function BiteshipCourierConfig({
               setOriginPostalCode(cfg.origin.postal_code || '40286');
             }
             if (cfg.couriers && Array.isArray(cfg.couriers)) {
-              setCouriers(cfg.couriers);
+              // Merge dengan adapter group baru
+              setCouriers(DEFAULT_COURIERS.map((dc) => {
+                const existing = cfg.couriers.find((c: any) => c.id === dc.id);
+                return existing ? { ...dc, enabled: existing.enabled } : dc;
+              }));
             }
             setAutoPickup(cfg.auto_pickup ?? true);
             setFreeShippingThreshold(cfg.free_shipping_threshold || 0);
@@ -159,6 +166,10 @@ export default function BiteshipCourierConfig({
       couriers,
       auto_pickup: autoPickup,
       free_shipping_threshold: freeShippingThreshold,
+      routing_rules: {
+        instant: 'biteship',
+        regular: 'lincah',
+      },
       updated_at: new Date().toISOString(),
     };
 
@@ -177,8 +188,8 @@ export default function BiteshipCourierConfig({
           );
       }
 
-      setFeedback('✅ Pengaturan Pengiriman & Kurir berhasil disimpan!');
-      if (onSaved) onSaved('✅ Pengaturan Pengiriman & Kurir berhasil disimpan!');
+      setFeedback('✅ Pengaturan Logistik & Ekspedisi berhasil disimpan!');
+      if (onSaved) onSaved('✅ Pengaturan Logistik & Ekspedisi berhasil disimpan!');
       setTimeout(() => setFeedback(null), 4000);
     } catch {
       setFeedback('✅ Pengaturan disimpan secara lokal.');
@@ -196,9 +207,9 @@ export default function BiteshipCourierConfig({
       const generated = active.map((c, i) => ({
         courier_name: c.name,
         service: c.services[0] || 'Regular',
-        price: 12000 + i * 2500,
-        etd: i === 0 ? '1 - 2 Hari' : i < 3 ? '2 - 3 Hari' : 'Same Day (3-6 Jam)',
-        type: c.id === 'gosend' || c.id === 'grab' ? 'Instant / Sameday' : 'Reguler',
+        price: c.adapterGroup === 'instant' ? 20000 + i * 5000 : 11000 + i * 2000,
+        etd: c.adapterGroup === 'instant' ? '1 - 3 Jam (Instant)' : i === 0 ? '1 - 2 Hari' : '2 - 3 Hari',
+        type: c.adapterGroup === 'instant' ? 'Instant / Sameday' : 'Reguler & Kargo',
       }));
       setSimulatedRates(generated);
     }, 600);
@@ -248,11 +259,13 @@ export default function BiteshipCourierConfig({
         ],
       });
 
-      // Auto CAPI server-side sync log
       const log = `[CAPI Automation] Webhook status DELIVERED terverifikasi. Dispatched Meta CAPI & TikTok Events API with eventID: PURCHASE_${searchWaybill.slice(-8)}`;
       setCapiTriggeredLog(log);
     }, 700);
   };
+
+  const instantCouriers = couriers.filter((c) => c.adapterGroup === 'instant');
+  const regularCouriers = couriers.filter((c) => c.adapterGroup === 'regular');
 
   return (
     <div className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full space-y-6 text-slate-900">
@@ -267,14 +280,14 @@ export default function BiteshipCourierConfig({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                  Pengaturan Pengiriman & Kurir
+                  Pengaturan Logistik & Ekspedisi
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
-                  Multi-Courier Realtime
+                  Multi-Adapter Realtime
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Hitung ongkir otomatis di halaman checkout, integrasi resi otomatis, dan request pickup kurir (JNE, J&T, SiCepat, GoSend, Grab, dll).
+                Hitung ongkir otomatis checkout, cetak resi otomatis, dan request pickup kurir (Instant, Reguler, & Kargo).
               </p>
             </div>
           </div>
@@ -370,7 +383,6 @@ export default function BiteshipCourierConfig({
           </div>
         </div>
 
-        {/* Tracking result progress visualizer */}
         {trackingResult && (
           <div className="bg-slate-950/80 border border-slate-800 p-5 rounded-2xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
@@ -385,7 +397,6 @@ export default function BiteshipCourierConfig({
               </span>
             </div>
 
-            {/* Timeline history */}
             <div className="space-y-3 pl-2">
               {trackingResult.history.map((step, idx) => (
                 <div key={idx} className="flex items-start gap-3 relative">
@@ -401,7 +412,6 @@ export default function BiteshipCourierConfig({
               ))}
             </div>
 
-            {/* CAPI Server trigger notification */}
             {capiTriggeredLog && (
               <div className="p-3 bg-indigo-950/70 border border-indigo-700/60 rounded-xl text-xs text-indigo-200 font-mono flex items-center gap-2">
                 <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
@@ -417,7 +427,6 @@ export default function BiteshipCourierConfig({
         {/* ROW 2: BANNER STATUS BOONTRACK & ORIGIN ADDRESS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
-          {/* Banner Status Jaringan Ekspedisi BoonTrack (White-Label) */}
           <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 text-white border border-slate-800 rounded-3xl p-6 shadow-md flex flex-col justify-between space-y-5">
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
@@ -427,7 +436,7 @@ export default function BiteshipCourierConfig({
                   </div>
                   <div>
                     <h3 className="font-bold text-sm text-white">Jaringan Ekspedisi BoonTrack</h3>
-                    <p className="text-[11px] text-slate-400">Gateway Logistik Platform Terintegrasi</p>
+                    <p className="text-[11px] text-slate-400">Gateway Logistik Platform Multi-Adapter</p>
                   </div>
                 </div>
 
@@ -438,7 +447,7 @@ export default function BiteshipCourierConfig({
               </div>
 
               <p className="text-xs text-slate-300 leading-relaxed">
-                Sistem kalkulasi ongkir real-time dan pelacakan resi dikelola langsung oleh platform BoonTrack.
+                Routing otomatis cerdas: Layanan kurir instant (GoSend & Grab) diarahkan via gateway cepat, sedangkan reguler dan kargo diarahkan via jaringan aggregator logistik.
               </p>
             </div>
 
@@ -454,7 +463,7 @@ export default function BiteshipCourierConfig({
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Multi-Kurir Instant & Reguler</span>
+                  <span>Dual Adapter (Instant + Reguler)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -468,7 +477,7 @@ export default function BiteshipCourierConfig({
             </div>
           </div>
 
-          {/* Origin Warehouse Address (Alamat Asal Gudang / Titik Jemput) */}
+          {/* Origin Warehouse Address */}
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
@@ -549,55 +558,111 @@ export default function BiteshipCourierConfig({
 
         </div>
 
-        {/* ROW 3: ACTIVE COURIERS SELECTION (Checklist Pilihan Ekspedisi) */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-            <div>
-              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                <Box className="w-4 h-4 text-emerald-600" />
-                <span>Pilihan Ekspedisi & Layanan yang Diaktifkan</span>
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                Pilih jasa kirim yang akan ditampilkan sebagai opsi pengiriman kepada pembeli saat checkout (JNE, J&T, SiCepat, GoSend Instant, GrabExpress, dll).
-              </p>
-            </div>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 self-start sm:self-auto">
-              {couriers.filter((c) => c.enabled).length} dari {couriers.length} Ekspedisi Aktif
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {couriers.map((c) => (
-              <div
-                key={c.id}
-                onClick={() => toggleCourier(c.id)}
-                className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                  c.enabled
-                    ? 'border-emerald-500 bg-emerald-50/40 shadow-xs'
-                    : 'border-slate-200 bg-slate-50/60 opacity-60 hover:opacity-100'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`w-12 py-1 rounded-lg text-center font-black text-xs border ${c.color}`}>
-                    {c.logoText}
-                  </span>
-                  <div>
-                    <h4 className="font-bold text-xs text-slate-900">{c.name}</h4>
-                    <p className="text-[10px] text-slate-500 font-mono">
-                      {c.services.slice(0, 3).join(', ')}
-                    </p>
-                  </div>
-                </div>
-
-                <input
-                  type="checkbox"
-                  checked={c.enabled}
-                  onChange={() => {}}
-                  className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                />
+        {/* ROW 3: COURIERS SELECTION (Dikelompokkan Berdasarkan Adapter) */}
+        <div className="space-y-6">
+          
+          {/* GRUP 1: INSTANT / SAMEDAY */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-emerald-600" />
+                  <span>Pengiriman Instan & Same-Day</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Pengantaran point-to-point cepat untuk pesanan dalam kota yang sama.
+                </p>
               </div>
-            ))}
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 self-start sm:self-auto">
+                {instantCouriers.filter((c) => c.enabled).length} dari {instantCouriers.length} Instan Aktif
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3">
+              {instantCouriers.map((c) => (
+                <div
+                  key={c.id}
+                  onClick={() => toggleCourier(c.id)}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    c.enabled
+                      ? 'border-emerald-500 bg-emerald-50/40 shadow-xs'
+                      : 'border-slate-200 bg-slate-50/60 opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`w-14 py-1 rounded-lg text-center font-black text-xs border ${c.color}`}>
+                      {c.logoText}
+                    </span>
+                    <div>
+                      <h4 className="font-bold text-xs text-slate-900">{c.name}</h4>
+                      <p className="text-[10px] text-slate-500 font-mono">
+                        {c.services.join(', ')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <input
+                    type="checkbox"
+                    checked={c.enabled}
+                    onChange={() => {}}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* GRUP 2: REGULER, HEMAT & KARGO */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <Box className="w-4 h-4 text-emerald-600" />
+                  <span>Pengiriman Reguler, Hemat & Kargo</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Ekspedisi jangkauan antar kota dan seluruh wilayah Indonesia dengan tarif otomatis.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 self-start sm:self-auto">
+                {regularCouriers.filter((c) => c.enabled).length} dari {regularCouriers.length} Ekspedisi Aktif
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {regularCouriers.map((c) => (
+                <div
+                  key={c.id}
+                  onClick={() => toggleCourier(c.id)}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    c.enabled
+                      ? 'border-emerald-500 bg-emerald-50/40 shadow-xs'
+                      : 'border-slate-200 bg-slate-50/60 opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`w-12 py-1 rounded-lg text-center font-black text-xs border ${c.color}`}>
+                      {c.logoText}
+                    </span>
+                    <div>
+                      <h4 className="font-bold text-xs text-slate-900">{c.name}</h4>
+                      <p className="text-[10px] text-slate-500 font-mono">
+                        {c.services.slice(0, 3).join(', ')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <input
+                    type="checkbox"
+                    checked={c.enabled}
+                    onChange={() => {}}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
 
         {/* ROW 4: RATE CALCULATOR SANDBOX */}
@@ -656,7 +721,6 @@ export default function BiteshipCourierConfig({
             </div>
           </div>
 
-          {/* Results table */}
           {simulatedRates.length > 0 && (
             <div className="mt-3 space-y-2">
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
