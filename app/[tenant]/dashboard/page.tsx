@@ -3891,15 +3891,17 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: KURIR & EKSPEDISI (DUAL-ENGINE) */}
-          {((activeTab as string) === 'biteship' || (activeTab as string) === 'shipping' || (activeTab as string) === 'logistik' || (activeTab as string) === 'courier') && (
-            <BiteshipCourierConfig
-              tenantSlug={tenantSlug}
-              displayName={displayName}
-              onSaved={(msg) => {
-                setSaveFeedback(msg);
-                setTimeout(() => setSaveFeedback(null), 4000);
-              }}
-            />
+          {(['shipping', 'biteship', 'logistik', 'courier'].includes(activeTab as string)) && (
+            <div className="w-full">
+              <BiteshipCourierConfig
+                tenantSlug={(tenantSlug as string) || (params?.tenant as string) || ''}
+                displayName={(displayName as string) || (storeName as string) || 'BoonTrack Shop'}
+                onSaved={(msg) => {
+                  setSaveFeedback(msg);
+                  setTimeout(() => setSaveFeedback(null), 4000);
+                }}
+              />
+            </div>
           )}
 
       {/* TAB: WHATSAPP BROADCAST MANAGER */}
