@@ -3112,6 +3112,10 @@ export default function TenantDashboardPage() {
               <span>{isSavingAi ? 'Menyimpan...' : 'Simpan Persona AI'}</span>
             </button>
           </div>
+          {/* Form Konfigurasi Mandiri Jasa (LOCAL_SERVICE) */}
+          <div className="mb-6">
+            <LocalServiceConfigForm tenantSlug={tenantSlug} />
+          </div>
 
           {isLoadingAi && (
             <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 animate-pulse">
