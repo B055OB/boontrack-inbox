@@ -227,7 +227,7 @@ export default function NavTabs({
             </span>
           </button>
 
-          {/* TAB 7: LOGISTIK LINCAH */}
+          {/* TAB 7: LOGISTIK & EKSPEDISI */}
           <button
             type="button"
             role="tab"
@@ -240,9 +240,9 @@ export default function NavTabs({
             }`}
           >
             <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Logistik Lincah.id</span>
+            <span>Logistik & Ekspedisi</span>
             <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
-              ONGKIR
+              MULTI-KURIR
             </span>
           </button>
 
