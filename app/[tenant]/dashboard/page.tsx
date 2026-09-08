@@ -3891,7 +3891,7 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: KURIR & EKSPEDISI (DUAL-ENGINE) */}
-          {(activeTab === 'biteship' || activeTab === 'shipping' || activeTab === 'logistik') && (
+          {((activeTab as string) === 'biteship' || (activeTab as string) === 'shipping' || (activeTab as string) === 'logistik' || (activeTab as string) === 'courier') && (
             <BiteshipCourierConfig
               tenantSlug={tenantSlug}
               displayName={displayName}
