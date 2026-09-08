@@ -1215,8 +1215,8 @@ export default function TenantDashboardPage() {
 
         {/* TABS NAVIGATION */}
           <NavTabs
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            activeTab={activeTab as any}
+            setActiveTab={setActiveTab as any}
             isTeamScale={isTeamScale}
           />
 
