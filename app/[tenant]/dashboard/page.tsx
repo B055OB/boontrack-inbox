@@ -225,14 +225,12 @@ export default function TenantDashboardPage() {
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
   // State Edit Profil Toko & Validasi Unik
   const [isStoreSettingsOpen, setIsStoreSettingsOpen] = useState(false);
-  const [storeDisplayName, setStoreDisplayName] = useState(tenant || 'KURASKORENKRW');
+  const [storeDisplayName, setStoreDisplayName] = useState(tenantSlug || '');
   const [storeBio, setStoreBio] = useState('');
   const [storeWhatsapp, setStoreWhatsapp] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [isSavingStore, setIsSavingStore] = useState(false);
-
-  const handleSelectTab = (tab: DashboardTab) => {
     hasUserSelectedTabRef.current = true;
     setActiveTab(tab);
   };
