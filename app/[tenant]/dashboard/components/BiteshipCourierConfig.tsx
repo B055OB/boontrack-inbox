@@ -17,6 +17,7 @@ import {
   Check,
   Activity,
   Navigation,
+  ExternalLink,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -125,7 +126,6 @@ export default function BiteshipCourierConfig({
               setOriginPostalCode(cfg.origin.postal_code || '40286');
             }
             if (cfg.couriers && Array.isArray(cfg.couriers)) {
-              // Merge dengan adapter group baru
               setCouriers(DEFAULT_COURIERS.map((dc) => {
                 const existing = cfg.couriers.find((c: any) => c.id === dc.id);
                 return existing ? { ...dc, enabled: existing.enabled } : dc;
@@ -199,10 +199,33 @@ export default function BiteshipCourierConfig({
     }
   };
 
-  const handleSimulateShipping = () => {
+  const handleSimulateShipping = async () => {
     setIsCalculating(true);
-    setTimeout(() => {
-      setIsCalculating(false);
+    try {
+      const res = await fetch(`/api/v1/${tenantSlug}/shipping/rates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          city: calcDestCity,
+          weight_grams: calcWeight,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.rates)) {
+        setSimulatedRates(data.rates);
+      } else {
+        // Fallback jika simulasi endpoint offline
+        const active = couriers.filter((c) => c.enabled);
+        const generated = active.map((c, i) => ({
+          courier_name: c.name,
+          service: c.services[0] || 'Regular',
+          price: c.adapterGroup === 'instant' ? 20000 + i * 5000 : 11000 + i * 2000,
+          etd: c.adapterGroup === 'instant' ? '1 - 3 Jam (Instant)' : i === 0 ? '1 - 2 Hari' : '2 - 3 Hari',
+          type: c.adapterGroup === 'instant' ? 'Instant / Sameday' : 'Reguler & Kargo',
+        }));
+        setSimulatedRates(generated);
+      }
+    } catch {
       const active = couriers.filter((c) => c.enabled);
       const generated = active.map((c, i) => ({
         courier_name: c.name,
@@ -212,7 +235,9 @@ export default function BiteshipCourierConfig({
         type: c.adapterGroup === 'instant' ? 'Instant / Sameday' : 'Reguler & Kargo',
       }));
       setSimulatedRates(generated);
-    }, 600);
+    } finally {
+      setIsCalculating(false);
+    }
   };
 
   const handleLookupTracking = () => {
@@ -315,6 +340,35 @@ export default function BiteshipCourierConfig({
           <span>{feedback}</span>
         </div>
       )}
+
+      {/* ── BANNER PARTNER EKSPEDISI RESMI ── */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-md bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+                Koneksi Ekspedisi Otomatis
+              </span>
+              <span className="text-xs font-medium text-slate-400">Terintegrasi Sistem</span>
+            </div>
+            <h4 className="text-sm font-semibold text-slate-900">
+              Aktifkan Penjemputan Paket & Cetak Resi Otomatis
+            </h4>
+            <p className="text-xs text-slate-500 max-w-xl leading-relaxed">
+              Hubungkan akun logistik toko Anda untuk menikmati layanan pickup langsung ke lokasi dan sinkronisasi resi pesanan otomatis.
+            </p>
+          </div>
+          <a
+            href="https://app.lincah.id/register?referal=BOONTRACK"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 active:scale-95"
+          >
+            <span>Hubungkan Akun Logistik</span>
+            <ExternalLink className="ml-1.5 w-3.5 h-3.5" />
+          </a>
+        </div>
+      </div>
 
       {/* ── ROW 1: RESI TRACKING & CAPI AUTOMATION SANDBOX ── */}
       <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl p-6 shadow-xl space-y-5">
@@ -558,7 +612,7 @@ export default function BiteshipCourierConfig({
 
         </div>
 
-        {/* ROW 3: COURIERS SELECTION (Dikelompokkan Berdasarkan Adapter) */}
+        {/* ROW 3: COURIERS SELECTION */}
         <div className="space-y-6">
           
           {/* GRUP 1: INSTANT / SAMEDAY */}
