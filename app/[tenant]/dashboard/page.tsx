@@ -1225,7 +1225,6 @@ export default function TenantDashboardPage() {
               {saveFeedback}
             </div>
           )}
-        </div>
       </div>
 
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
