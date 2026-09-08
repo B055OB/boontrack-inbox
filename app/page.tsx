@@ -196,20 +196,20 @@ export default function ShopLandingPage() {
         {/* Grid 3 Kartu Paket */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-stretch max-w-6xl mx-auto">
           
-          {/* PAKET 1: Growth */}
+          {/* PAKET 1: Solo */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 flex flex-col justify-between shadow-sm hover:shadow-md transition">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold px-3 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-200">
-                  Growth Plan
+                <span className="text-xs font-bold px-3 py-1 bg-slate-100 text-slate-700 rounded-full border border-slate-200">
+                  Solo
                 </span>
-                <span className="text-xs text-slate-500 font-medium">Bisnis Berkembang</span>
+                <span className="text-xs text-slate-500 font-medium">Katalog & WhatsApp Manual</span>
               </div>
 
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Growth</h3>
+                <h3 className="text-xl font-bold text-slate-900">Solo</h3>
                 <p className="text-xs text-slate-600 mt-1 font-medium leading-relaxed">
-                  WhatsApp Multi Admin & Otomasi Toko Online
+                  Katalog & WhatsApp Manual
                 </p>
               </div>
 
@@ -231,20 +231,20 @@ export default function ShopLandingPage() {
                 </div>
                 <ul className="space-y-2.5">
                   <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Multi-Agent Live CS:</strong> Kolaborasi tim CS dalam satu nomor WhatsApp</span>
+                    <CheckCircle2 className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                    <span><strong>Katalog Produk Digital:</strong> Tampilkan produk dengan halaman toko profesional</span>
                   </li>
                   <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <CheckCircle2 className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                    <span><strong>Direct WhatsApp Checkout:</strong> Order langsung via WA tanpa bot otomatis</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+                    <span><strong>Dynamic QRIS Otomatis:</strong> Pembayaran instan kode unik verifikasi real-time</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
                     <span><strong>Bot Balas Otomatis 24/7:</strong> Respon pesan masuk otomatis berbasis AI persona</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Dynamic QRIS Otomatis:</strong> Pembayaran instan kode unik real-time verifikasi</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>BoonTrack Direct Connect:</strong> Sambungkan WhatsApp nomor bisnis via Scan QR instan</span>
                   </li>
                 </ul>
               </div>
@@ -262,7 +262,7 @@ export default function ShopLandingPage() {
                 <ArrowUpRight className="w-4 h-4" />
               </a>
               <Link
-                href="/register?plan=growth&amount=199000"
+                href="/register?plan=solo&amount=199000"
                 className="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold text-center block transition border border-slate-200"
               >
                 Daftar Online Mandiri
@@ -270,7 +270,7 @@ export default function ShopLandingPage() {
             </div>
           </div>
 
-          {/* PAKET 2: Growth + Ads Tracking (Highlight/Terpopuler) */}
+          {/* PAKET 2: Ads Performance (Highlight/Terpopuler) */}
           <div className="bg-white rounded-2xl border-2 border-blue-600 p-6 sm:p-7 flex flex-col justify-between shadow-xl relative ring-1 ring-blue-600/20">
             <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-3.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wide shadow-md flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-amber-300" />
@@ -280,15 +280,15 @@ export default function ShopLandingPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold px-3 py-1 bg-blue-100 text-blue-800 rounded-full border border-blue-200">
-                  Growth + Ads Tracking
+                  Ads Performance
                 </span>
-                <span className="text-xs text-blue-600 font-bold">Scale-Up Ads</span>
+                <span className="text-xs text-blue-600 font-bold">Khusus Pengiklan Meta & TikTok</span>
               </div>
 
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Growth + Ads Tracking</h3>
+                <h3 className="text-xl font-bold text-slate-900">Ads Performance</h3>
                 <p className="text-xs text-slate-600 mt-1 font-medium leading-relaxed">
-                  Tracking Iklan Meta & TikTok ke WhatsApp (Auto CAPI)
+                  Khusus Pengiklan Meta & TikTok
                 </p>
               </div>
 
@@ -299,7 +299,7 @@ export default function ShopLandingPage() {
                   <span className="text-xs text-slate-500 font-medium">/ bulan</span>
                 </div>
                 <div className="text-[11px] text-blue-600 font-semibold mt-0.5">
-                  ✓ Hemat Rp201.000 • Solusi ROI & CAPI Server-Side
+                  ✓ Hemat Rp201.000 • Solusi ROAS & CAPI Server-Side
                 </div>
               </div>
 
@@ -311,15 +311,15 @@ export default function ShopLandingPage() {
                 <ul className="space-y-2.5">
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Semua Fitur Growth:</strong> Termasuk Multi-CS, Bot AI 24/7, dan Dynamic QRIS</span>
+                    <span><strong>Semua Fitur Solo:</strong> Katalog produk, Direct WA Checkout, Dynamic QRIS otomatis</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Lacak Iklan WhatsApp Closing:</strong> Atribusi konversi akurat dari kampanye iklan ke kasir WA</span>
+                    <span><strong>Meta CAPI & TikTok Pixel Tracking:</strong> Server-Side conversion API tanpa terhalang iOS update</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span><strong>Meta CAPI & TikTok Event Tracking:</strong> Server-Side conversion API tanpa terhalang iOS update</span>
+                    <span><strong>Reader APK Otomatis:</strong> Baca mutasi rekening & konfirmasi bayar instan</span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
@@ -341,7 +341,7 @@ export default function ShopLandingPage() {
                 <ArrowUpRight className="w-4 h-4" />
               </a>
               <Link
-                href="/register?plan=growth_tracking&amount=299000"
+                href="/register?plan=ads_performance&amount=299000"
                 className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-semibold text-center block transition border border-blue-200"
               >
                 Daftar Online Mandiri
@@ -349,20 +349,20 @@ export default function ShopLandingPage() {
             </div>
           </div>
 
-          {/* PAKET 3: ProScale */}
+          {/* PAKET 3: Team Scale */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-7 flex flex-col justify-between shadow-sm hover:shadow-md transition">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
-                  ProScale
+                  Team Scale
                 </span>
-                <span className="text-xs text-emerald-600 font-bold">Enterprise & Tim CS</span>
+                <span className="text-xs text-emerald-600 font-bold">Skala Tim & Broadcast Resmi</span>
               </div>
 
               <div>
-                <h3 className="text-xl font-bold text-slate-900">ProScale</h3>
+                <h3 className="text-xl font-bold text-slate-900">Team Scale</h3>
                 <p className="text-xs text-slate-600 mt-1 font-medium leading-relaxed">
-                  WhatsApp Broadcast Massal & Centang Biru Resmi
+                  Skala Tim & Broadcast Resmi
                 </p>
               </div>
 

@@ -14,17 +14,35 @@ import {
   Sparkle,
   UtensilsCrossed,
   GraduationCap,
-  Layers
+  Layers,
+  Wrench
 } from "lucide-react";
 
 const CATEGORIES = [
-  { id: "fashion", label: "Fashion & Hijab", icon: ShoppingBag },
-  { id: "skincare", label: "Skincare & Herbal", icon: Sparkle },
-  { id: "fnb", label: "Kuliner & F&B", icon: UtensilsCrossed },
-  { id: "digital", label: "Digital Course & E-Book", icon: GraduationCap },
-  { id: "general", label: "Retail & Toko Fisik", icon: Store },
-  { id: "other", label: "Jasa & Bisnis Lainnya", icon: Layers },
+  { id: "fashion",       label: "Fashion & Hijab",              desc: "Baju, jilbab, mukena & aksesoris",              icon: ShoppingBag },
+  { id: "skincare",      label: "Skincare & Herbal",             desc: "Skincare, herbal, suplemen & kecantikan",        icon: Sparkle },
+  { id: "fnb",           label: "Kuliner & F&B",                 desc: "Makanan, minuman, katering & cloud kitchen",     icon: UtensilsCrossed },
+  { id: "digital",       label: "Digital Course & E-Book",       desc: "Kelas online, ebook & produk digital",           icon: GraduationCap },
+  { id: "general",       label: "Retail & Toko Fisik",           desc: "Toko multi-kategori & produk fisik umum",        icon: Store },
+  { id: "local_service", label: "Jasa Rumah Tangga & Servis",    desc: "Cuci toren, service AC, sedot WC & tukang harian", icon: Wrench },
+  { id: "other",         label: "Jasa & Bisnis Lainnya",         desc: "Freelancer, konsultan & bisnis jasa lain",       icon: Layers },
 ];
+
+/**
+ * Maps UI category id → backend vertical enum (LOCAL_SERVICE_V1 spec)
+ * - LOCAL_SERVICE : Jasa Rumah Tangga & Servis
+ * - RETAIL        : Fashion, Skincare, F&B, Retail & Toko Fisik
+ * - DIGITAL       : Digital Course & E-Book
+ */
+const VERTICAL_MAP: Record<string, "LOCAL_SERVICE" | "RETAIL" | "DIGITAL"> = {
+  local_service: "LOCAL_SERVICE",
+  digital:       "DIGITAL",
+  fashion:       "RETAIL",
+  skincare:      "RETAIL",
+  fnb:           "RETAIL",
+  general:       "RETAIL",
+  other:         "RETAIL",
+};
 
 export default function RegisterShopPage() {
   const [storeName, setStoreName] = useState("");
@@ -104,6 +122,7 @@ export default function RegisterShopPage() {
           plan_tier: selectedPlan,
           amount: planAmount,
           business_category: category,
+          vertical_type: VERTICAL_MAP[category] ?? "RETAIL",
           merchant_name: merchantData.name,
           merchant_phone: merchantData.phone,
           customer_email: merchantData.email
@@ -204,6 +223,7 @@ export default function RegisterShopPage() {
                 {CATEGORIES.map((cat) => {
                   const Icon = cat.icon;
                   const isSelected = category === cat.id;
+                  const vertical = VERTICAL_MAP[cat.id] ?? "RETAIL";
                   return (
                     <button
                       type="button"
@@ -211,12 +231,28 @@ export default function RegisterShopPage() {
                       onClick={() => setCategory(cat.id)}
                       className={`p-3 rounded-xl border text-left flex flex-col gap-1.5 transition-all cursor-pointer ${
                         isSelected
-                          ? "border-blue-600 bg-blue-50/70 text-blue-950 font-bold shadow-sm ring-1 ring-blue-600"
+                          ? cat.id === "local_service"
+                            ? "border-amber-500 bg-amber-50/70 text-amber-950 font-bold shadow-sm ring-1 ring-amber-500"
+                            : "border-blue-600 bg-blue-50/70 text-blue-950 font-bold shadow-sm ring-1 ring-blue-600"
                           : "border-slate-200 hover:border-slate-300 bg-slate-50 text-slate-600 text-xs"
                       }`}
                     >
-                      <Icon className={`w-4 h-4 ${isSelected ? "text-blue-600" : "text-slate-400"}`} />
-                      <span className="text-[11px] leading-tight">{cat.label}</span>
+                      <div className="flex items-center justify-between gap-1">
+                        <Icon className={`w-4 h-4 shrink-0 ${
+                          isSelected
+                            ? cat.id === "local_service" ? "text-amber-600" : "text-blue-600"
+                            : "text-slate-400"
+                        }`} />
+                        {isSelected && (
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide ${
+                            cat.id === "local_service"
+                              ? "bg-amber-100 text-amber-700 border border-amber-300"
+                              : "bg-blue-100 text-blue-700 border border-blue-300"
+                          }`}>{vertical}</span>
+                        )}
+                      </div>
+                      <span className="text-[11px] leading-tight font-semibold">{cat.label}</span>
+                      <span className="text-[10px] leading-snug text-slate-400 font-normal">{cat.desc}</span>
                     </button>
                   );
                 })}

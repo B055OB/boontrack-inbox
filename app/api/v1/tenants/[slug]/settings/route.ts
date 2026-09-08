@@ -4,6 +4,26 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { DEFAULT_TENANT_CONFIGS, normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
 
+/**
+ * Canonical tier enum → display label + feature flags mapping.
+ * Covers both new (ADS_PERFORMANCE, TEAM_SCALE, SOLO) and legacy slugs.
+ */
+type TierEnum = 'SOLO' | 'ADS_PERFORMANCE' | 'TEAM_SCALE';
+
+function normalizeTierEnum(raw: string | undefined | null): TierEnum {
+  if (!raw) return 'SOLO';
+  const t = raw.toLowerCase();
+  if (t.includes('team_scale') || t.includes('proscale') || t.includes('enterprise')) return 'TEAM_SCALE';
+  if (t.includes('ads_performance') || t.includes('growth_tracking') || t.includes('growth_plus') || t.includes('pro_scale') || t.includes('tracking') || t.includes('plus')) return 'ADS_PERFORMANCE';
+  return 'SOLO';
+}
+
+const TIER_FEATURE_MAP: Record<TierEnum, { has_capi: boolean; has_reader: boolean; multi_cs: boolean }> = {
+  SOLO:            { has_capi: false, has_reader: false, multi_cs: false },
+  ADS_PERFORMANCE: { has_capi: true,  has_reader: true,  multi_cs: false },
+  TEAM_SCALE:      { has_capi: true,  has_reader: true,  multi_cs: true  },
+};
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
@@ -55,6 +75,16 @@ export async function GET(
 
     const defCfg = DEFAULT_TENANT_CONFIGS[slug];
     const isSuhu = slug.includes('suhu') || slug === 'digital-marketing';
+
+    // Resolve plan_tier from DB metadata → canonical enum
+    const rawTierFromDb =
+      dbMetadata.plan_tier ||
+      dbMetadata.tier ||
+      defCfg?.pricing?.tier ||
+      null;
+    const planTierEnum: TierEnum = normalizeTierEnum(rawTierFromDb);
+    const features = TIER_FEATURE_MAP[planTierEnum];
+
 
     const defaultName = isSuhu
       ? 'Suhu Ads Masterclass'
@@ -224,6 +254,8 @@ export async function GET(
         slug,
         name: defaultName,
         category: category || (isSuhu ? 'digital' : 'retail'),
+        plan_tier: planTierEnum,
+        features,
         bot_strategy: botStrategy,
         product: products[0] || product,
         products,
@@ -259,7 +291,13 @@ export async function PUT(
       bank,
       integration,
       bot_strategy,
+      plan_tier,
+      features: featuresBody,
     } = body;
+
+    // Derive canonical tier + features from PUT body (allow caller to pass either)
+    const putTierEnum: TierEnum = normalizeTierEnum(plan_tier);
+    const resolvedFeatures = featuresBody ?? TIER_FEATURE_MAP[putTierEnum];
 
     let resolvedBotStrategy =
       bot_strategy ||
@@ -282,6 +320,8 @@ export async function PUT(
       const updatedMetadata = {
         ...(existing?.metadata || {}),
         bot_strategy: resolvedBotStrategy,
+        plan_tier: putTierEnum,
+        features: resolvedFeatures,
         product: {
           ...(existing?.metadata?.product || {}),
           ...(product || {}),
@@ -345,6 +385,8 @@ export async function PUT(
         slug,
         name,
         category,
+        plan_tier: putTierEnum,
+        features: resolvedFeatures,
         bot_strategy: resolvedBotStrategy,
         product,
         ai_knowledge: {
