@@ -1,38 +1,18 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
-import { DEFAULT_TENANT_CONFIGS, normalizeTenantSlug } from '@/lib/tenant-config';
+import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
 
-/**
- * Canonical tier enum → display label + feature flags mapping.
- * Covers both new (ADS_PERFORMANCE, TEAM_SCALE, SOLO) and legacy slugs.
- */
 type TierEnum = 'SOLO' | 'ADS_PERFORMANCE' | 'TEAM_SCALE';
 
-function normalizeTierEnum(raw: string | undefined | null): TierEnum {
-  if (!raw) return 'SOLO';
-  const t = raw.toLowerCase();
-  if (t.includes('team_scale') || t.includes('enterprise')) return 'TEAM_SCALE';
-  if (
-    t.includes('ads_performance') ||
-    t.includes('growth_tracking') ||
-    t.includes('growth_plus') ||
-    t.includes('pro_scale') ||
-    t.includes('proscale') ||
-    t.includes('tracking') ||
-    t.includes('plus')
-  ) {
-    return 'ADS_PERFORMANCE';
-  }
+function resolvePlanTier(tier: string | undefined | null): TierEnum {
+  if (!tier) return 'SOLO';
+  const t = tier.toUpperCase();
+  if (t === 'TEAM_SCALE' || t === 'ENTERPRISE') return 'TEAM_SCALE';
+  if (t === 'ADS_PERFORMANCE' || t === 'PRO_SCALE') return 'ADS_PERFORMANCE';
   return 'SOLO';
 }
-
-const TIER_FEATURE_MAP: Record<TierEnum, { has_capi: boolean; has_reader: boolean; multi_cs: boolean; ads_tracking: boolean }> = {
-  SOLO:            { has_capi: false, has_reader: false, multi_cs: false, ads_tracking: false },
-  ADS_PERFORMANCE: { has_capi: true,  has_reader: true,  multi_cs: false, ads_tracking: true  },
-  TEAM_SCALE:      { has_capi: true,  has_reader: true,  multi_cs: true,  ads_tracking: true  },
-};
 
 export async function GET(
   _req: NextRequest,
@@ -42,247 +22,76 @@ export async function GET(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    // Try Railway Production Core Backend first
+    // 1. Coba sync dari Core Backend (Railway) jika online
     try {
-      const railwayRes = await fetch(
+      const coreRes = await fetch(
         getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/settings`),
         {
           headers: { 'X-Tenant-ID': slug },
           cache: 'no-store',
         }
       );
-      if (railwayRes.ok) {
-        const rData = await railwayRes.json();
-        if (rData && rData.settings) {
-          return NextResponse.json(rData);
-        }
+      if (coreRes.ok) {
+        const data = await coreRes.json();
+        if (data?.settings) return NextResponse.json(data);
       }
     } catch {
-      // fallback to Supabase / defaults
+      // Lanjut ke Supabase database murni
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let dbMetadata: Record<string, any> = {};
-    let storeName = '';
-    let category = 'digital';
-    let dbTier = '';
+    // 2. Query murni ke Supabase Database
+    const supabase = getSupabase();
+    const { data: tenantRow, error: dbError } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('slug', slug)
+      .maybeSingle();
 
-    try {
-      const supabase = getSupabase();
-      const { data: tenantRow } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('slug', slug)
-        .maybeSingle();
-
-      if (tenantRow) {
-        storeName = tenantRow.name || '';
-        category = tenantRow.category || 'digital';
-        dbTier = tenantRow.tier || '';
-        dbMetadata = tenantRow.metadata || {};
-      }
-    } catch (e) {
-      console.warn('Supabase fetch settings failed, using defaults:', e);
+    if (dbError) {
+      return NextResponse.json({ success: false, error: dbError.message }, { status: 500 });
     }
 
-    const defCfg = DEFAULT_TENANT_CONFIGS[slug];
-    const isSuhu = slug.includes('suhu') || slug === 'digital-marketing';
+    if (!tenantRow) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
+    }
 
-    // Prioritaskan kolom fisik tenantRow.tier, lalu metadata, lalu default config
-    const rawTierFromDb =
-      dbTier ||
-      dbMetadata.plan_tier ||
-      dbMetadata.tier ||
-      defCfg?.pricing?.tier ||
-      null;
+    // 3. Resolusi murni dari kolom DB & metadata JSONB
+    const metadata = tenantRow.metadata || {};
+    const planTier: TierEnum = resolvePlanTier(tenantRow.tier || metadata.plan_tier);
 
-    const planTierEnum: TierEnum = normalizeTierEnum(rawTierFromDb);
+    // Feature flag murni dari kolom database metadata.features
+    const rawFeatures = metadata.features || {};
+    const isHighTier = planTier === 'ADS_PERFORMANCE' || planTier === 'TEAM_SCALE';
 
-    // Ambil flag features langsung dari metadata DB jika ada, gunakan map sebagai fallback
     const features = {
-      ...TIER_FEATURE_MAP[planTierEnum],
-      ...(dbMetadata.features || {}),
+      has_capi: Boolean(rawFeatures.has_capi ?? isHighTier),
+      has_reader: Boolean(rawFeatures.has_reader ?? isHighTier),
+      ads_tracking: Boolean(rawFeatures.ads_tracking ?? isHighTier),
+      multi_cs: Boolean(rawFeatures.multi_cs ?? (planTier === 'TEAM_SCALE')),
     };
 
-    const defaultName = isSuhu
-      ? 'Suhu Ads Masterclass'
-      : storeName || defCfg?.name || slug.replace(/[-_]/g, ' ').toUpperCase();
-
-    const defaultDesc = isSuhu
-      ? 'Pusat pelatihan Meta Ads praktis untuk media buyer & pebisnis online. Dapatkan strategi scale-up campaign, riset audience, dan optimasi konversi terbukti.'
-      : defCfg?.persona?.system_prompt || 'Toko & Layanan Resmi Terverifikasi';
-
-    const product = {
-      name:
-        dbMetadata.product?.name ||
-        (isSuhu
-          ? 'Suhu Ads Masterclass 2026 - Full Lifetime Access'
-          : defCfg?.pricing.custom_packages[0]?.name || `${defaultName} Paket Utama`),
-      price: Number(
-        dbMetadata.product?.price ||
-          (isSuhu ? 99000 : defCfg?.pricing.custom_packages[0]?.price || 50000)
-      ),
-      promo_price: Number(
-        dbMetadata.product?.promo_price ||
-          (isSuhu ? 149000 : defCfg?.pricing.custom_packages[1]?.price || 75000)
-      ),
-      variants:
-        dbMetadata.product?.variants ||
-        (isSuhu ? 'Format Digital • Video HD + Template Canva' : 'Standar Akses'),
-      promo:
-        dbMetadata.product?.promo ||
-        (isSuhu ? 'Diskon 35% Bulan Ini' : 'Promo Terbatas'),
-      description: dbMetadata.product?.description || defaultDesc,
-      download_url:
-        dbMetadata.product?.download_url ||
-        'https://drive.google.com/drive/folders/suhu-ads-masterclass-2026',
-      type: dbMetadata.product?.type || (category === 'digital' ? 'digital' : 'physical'),
-    };
-
-    const defaultProducts = isSuhu
-      ? [
-          {
-            id: 'suhu-prod-1',
-            name: 'Suhu Ads Masterclass 2026 - Full Lifetime Access',
-            category: 'course',
-            price: 99000,
-            promo_price: 149000,
-            variants: 'Format Digital • Video HD + Template Canva',
-            promo: 'Diskon 35% Bulan Ini',
-            description:
-              'Pusat pelatihan Meta Ads praktis untuk media buyer & pebisnis online. Dapatkan strategi scale-up campaign, riset audience, dan optimasi konversi terbukti.',
-            download_url: 'https://drive.google.com/drive/folders/suhu-ads-masterclass-2026',
-            type: 'digital',
-          },
-          {
-            id: 'suhu-prod-2',
-            name: '50+ High-Converting Copywriting Swipe File Toolkit',
-            category: 'template',
-            price: 49000,
-            promo_price: 75000,
-            variants: 'Notion Database + PDF Cheat Sheet',
-            promo: 'Best Seller Add-On',
-            description:
-              'Kumpulan 50+ formula headline, angle penawaran, dan skrip copywriting iklan teruji tembus ROAS 4x.',
-            download_url: 'https://drive.google.com/drive/folders/suhu-ads-toolkit-2026',
-            type: 'digital',
-          },
-          {
-            id: 'suhu-prod-3',
-            name: 'E-Book Blueprint Riset Winning Audience 2026',
-            category: 'ebook',
-            price: 35000,
-            promo_price: 50000,
-            variants: 'E-Book PDF 85 Halaman',
-            promo: 'Flash Sale',
-            description:
-              'Panduan langkah demi langkah membedah interest, broad targeting, dan custom audience Meta tanpa boncos.',
-            download_url: 'https://drive.google.com/drive/folders/suhu-ads-ebook-blueprint',
-            type: 'digital',
-          },
-          {
-            id: 'suhu-prod-4',
-            name: 'Private 1-on-1 Meta Ads Mentoring & Audit Campaign',
-            category: 'membership',
-            price: 299000,
-            promo_price: 450000,
-            variants: '1 Jam Sesi Zoom + Recording + Audit Ads Manager',
-            promo: 'Slot Terbatas 5 Peserta/Bulan',
-            description:
-              'Bedah langsung dashboard Ads Manager Anda bersama praktisi senior untuk menemukan kebocoran budget iklan.',
-            download_url: 'https://cal.com/suhu-ads/mentoring-session',
-            type: 'digital',
-          },
-        ]
-      : [
-          {
-            id: `${slug}-prod-1`,
-            name: product.name,
-            category: category === 'digital' ? 'course' : 'physical',
-            price: product.price,
-            promo_price: product.promo_price,
-            variants: product.variants,
-            promo: product.promo,
-            description: product.description,
-            download_url: product.download_url,
-            type: product.type,
-          },
-        ];
-
-    const products =
-      Array.isArray(dbMetadata.products) && dbMetadata.products.length > 0
-        ? dbMetadata.products
-        : defaultProducts;
-
-    const aiKnowledge = {
-      ai_name:
-        dbMetadata.ai_knowledge?.ai_name ||
-        defCfg?.persona?.ai_name ||
-        (isSuhu ? 'Suhu Ads AI Consultant' : `${defaultName} Assistant`),
-      tone: dbMetadata.ai_knowledge?.tone || defCfg?.persona?.tone || 'casual',
-      system_prompt:
-        dbMetadata.ai_knowledge?.system_prompt ||
-        defCfg?.persona?.system_prompt ||
-        `Anda adalah asisten konsultan resmi ${defaultName}.`,
-      syllabus: dbMetadata.ai_knowledge?.syllabus || [
-        'Modul 1: Mindset & Riset Winning Product Meta Ads',
-        'Modul 2: Struktur Campaign CBO/ABO & Budgeting Strategy',
-        'Modul 3: Creative Angle & Copywriting High-Converting',
-        'Modul 4: Scale-Up Campaign & Optimasi Biaya Iklan (ROAS > 4x)',
-      ],
-      faq: dbMetadata.ai_knowledge?.faq || [
-        {
-          q: 'Apakah materi ini bisa diakses selamanya?',
-          a: 'Ya, Anda mendapatkan akses seumur hidup (lifetime access) dan gratis update materi 2026.',
-        },
-        {
-          q: 'Bagaimana cara mengakses file setelah bayar?',
-          a: 'Setelah pembayaran QRIS berhasil diverifikasi, sistem otomatis memberikan tautan Google Drive resmi dan link grup diskusi.',
-        },
-        {
-          q: 'Apakah pemula bisa mengikuti materi ini?',
-          a: 'Sangat bisa! Materi disusun dari nol, langkah demi langkah dengan panduan praktis.',
-        },
-      ],
-      promo_bundling:
-        dbMetadata.ai_knowledge?.promo_bundling ||
-        'Beli 2 Kelas Digital Gratis 1 Toolkit Copywriting Siap Pakai.',
-    };
-
-    const bank = {
-      name: dbMetadata.bank?.name || 'BCA (Bank Central Asia)',
-      account: dbMetadata.bank?.account || '8820199201',
-      holder: dbMetadata.bank?.holder || 'PT BOONTRACK MEDIA DIGITAL',
-    };
-
-    const integration = {
-      whatsapp_status: 'CONNECTED',
-      bot_number: process.env.NEXT_PUBLIC_META_BOT_NUMBER || '15556769563',
-      webhook_verified: true,
-    };
-
-    const botStrategy =
-      dbMetadata.bot_strategy ||
-      dbMetadata.ai_knowledge?.bot_strategy ||
-      'trust_builder';
-
+    // 4. Return data asli database tanpa data dummy
     return NextResponse.json({
       success: true,
       settings: {
-        slug,
-        name: defaultName,
-        category: category || (isSuhu ? 'digital' : 'retail'),
-        plan_tier: planTierEnum,
+        slug: tenantRow.slug,
+        name: tenantRow.name,
+        category: tenantRow.category || 'retail',
+        tier: tenantRow.tier,
+        plan_tier: planTier,
         features,
-        bot_strategy: botStrategy,
-        product: products[0] || product,
-        products,
-        ai_knowledge: {
-          ...aiKnowledge,
-          bot_strategy: botStrategy,
+        bot_strategy: metadata.bot_strategy || 'trust_builder',
+        product: metadata.product || null,
+        products: Array.isArray(metadata.products) ? metadata.products : (metadata.product ? [metadata.product] : []),
+        ai_knowledge: metadata.ai_knowledge || {
+          ai_name: `${tenantRow.name} Assistant`,
+          system_prompt: `Anda adalah asisten resmi untuk ${tenantRow.name}.`,
         },
-        bank,
-        integration,
+        bank: metadata.bank || null,
+        integration: metadata.integration || {
+          whatsapp_status: 'DISCONNECTED',
+          webhook_verified: false,
+        },
       },
     });
   } catch (err: unknown) {
@@ -310,89 +119,63 @@ export async function PUT(
       integration,
       bot_strategy,
       plan_tier,
-      features: featuresBody,
+      features,
     } = body;
 
-    // Derive canonical tier + features from PUT body
-    const putTierEnum: TierEnum = normalizeTierEnum(plan_tier);
-    const resolvedFeatures = featuresBody ?? TIER_FEATURE_MAP[putTierEnum];
+    const supabase = getSupabase();
+    const { data: existing } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('slug', slug)
+      .maybeSingle();
 
-    let resolvedBotStrategy =
-      bot_strategy ||
-      ai_knowledge?.bot_strategy ||
-      'trust_builder';
-
-    try {
-      const supabase = getSupabase();
-      const { data: existing } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('slug', slug)
-        .maybeSingle();
-
-      if (!bot_strategy && !ai_knowledge?.bot_strategy && existing?.metadata?.bot_strategy) {
-        resolvedBotStrategy = existing.metadata.bot_strategy;
-      }
-
-      const updatedMetadata = {
-        ...(existing?.metadata || {}),
-        bot_strategy: resolvedBotStrategy,
-        plan_tier: putTierEnum,
-        features: resolvedFeatures,
-        product: {
-          ...(existing?.metadata?.product || {}),
-          ...(product || {}),
-        },
-        products: products !== undefined ? products : existing?.metadata?.products,
-        ai_knowledge: {
-          ...(existing?.metadata?.ai_knowledge || {}),
-          ...(ai_knowledge || {}),
-          bot_strategy: resolvedBotStrategy,
-        },
-        persona: {
-          ...(existing?.metadata?.persona || {}),
-          bot_strategy: resolvedBotStrategy,
-        },
-        bank: {
-          ...(existing?.metadata?.bank || {}),
-          ...(bank || {}),
-        },
-        integration: {
-          ...(existing?.metadata?.integration || {}),
-          ...(integration || {}),
-        },
-      };
-
-      await supabase.from('tenants').upsert({
-        slug,
-        name: name || existing?.name || slug,
-        category: category || existing?.category || 'digital',
-        metadata: updatedMetadata,
-        updated_at: new Date().toISOString(),
-      });
-    } catch (dbErr) {
-      console.warn('Supabase update tenant settings error:', dbErr);
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
-    // Forward/Sync to Railway Production Core Backend
+    const updatedTier = plan_tier || existing.tier;
+    const updatedFeatures = features || existing.metadata?.features || {};
+
+    const updatedMetadata = {
+      ...(existing.metadata || {}),
+      ...(bot_strategy ? { bot_strategy } : {}),
+      ...(plan_tier ? { plan_tier } : {}),
+      features: updatedFeatures,
+      ...(product ? { product } : {}),
+      ...(products !== undefined ? { products } : {}),
+      ...(ai_knowledge ? { ai_knowledge } : {}),
+      ...(bank ? { bank } : {}),
+      ...(integration ? { integration } : {}),
+    };
+
+    const { error: updateError } = await supabase
+      .from('tenants')
+      .update({
+        name: name || existing.name,
+        category: category || existing.category,
+        tier: updatedTier,
+        metadata: updatedMetadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('slug', slug);
+
+    if (updateError) {
+      return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
+    }
+
+    // Sync ke Core Backend jika diperlukan
     try {
       await fetch(
         getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/settings`),
         {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Tenant-ID': slug,
-          },
-          body: JSON.stringify({
-            ...body,
-            bot_strategy: resolvedBotStrategy,
-          }),
+          headers: { 'Content-Type': 'application/json', 'X-Tenant-ID': slug },
+          body: JSON.stringify(body),
           cache: 'no-store',
         }
       );
-    } catch (railwayErr) {
-      console.warn('Railway backend update settings sync note:', railwayErr);
+    } catch {
+      // Abaikan jika core backend offline
     }
 
     return NextResponse.json({
@@ -400,16 +183,14 @@ export async function PUT(
       message: 'Pengaturan toko berhasil diperbarui.',
       settings: {
         slug,
-        name,
-        category,
-        plan_tier: putTierEnum,
-        features: resolvedFeatures,
-        bot_strategy: resolvedBotStrategy,
+        name: name || existing.name,
+        category: category || existing.category,
+        tier: updatedTier,
+        plan_tier: resolvePlanTier(updatedTier),
+        features: updatedFeatures,
         product,
-        ai_knowledge: {
-          ...(ai_knowledge || {}),
-          bot_strategy: resolvedBotStrategy,
-        },
+        products,
+        ai_knowledge,
         bank,
         integration,
       },
