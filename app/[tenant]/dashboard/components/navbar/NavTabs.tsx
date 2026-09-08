@@ -14,19 +14,34 @@ import {
   Truck,
   Radio,
 } from 'lucide-react';
-import { DashboardTab } from '../../hooks/useDashboardData';
+
+export type DashboardTab =
+  | 'inbox'
+  | 'catalog'
+  | 'products'
+  | 'orders'
+  | 'finance'
+  | 'ai_knowledge'
+  | 'ads_tracking'
+  | 'shipping'
+  | 'broadcast'
+  | 'whatsapp'
+  | 'settings';
+
+export interface NavTabsPermissions {
+  hasInbox?: boolean;
+  hasCapi?: boolean;
+  hasBroadcast?: boolean;
+  isSolo?: boolean;
+  isAdsPerformance?: boolean;
+  isTeamScale?: boolean;
+}
 
 interface NavTabsProps {
-  activeTab: DashboardTab;
-  setActiveTab: (tab: DashboardTab) => void;
-  permissions: {
-    hasInbox: boolean;
-    hasCapi: boolean;
-    hasBroadcast: boolean;
-    isSolo: boolean;
-    isAdsPerformance: boolean;
-    isTeamScale: boolean;
-  };
+  activeTab: any;
+  setActiveTab: (tab: any) => void;
+  isTeamScale?: boolean;
+  permissions?: NavTabsPermissions;
   productCount?: number;
   orderCount?: number;
 }
@@ -34,13 +49,23 @@ interface NavTabsProps {
 export default function NavTabs({
   activeTab,
   setActiveTab,
-  permissions,
+  isTeamScale = false,
+  permissions = {
+    hasInbox: true,
+    hasCapi: true,
+    hasBroadcast: true,
+    isSolo: false,
+    isAdsPerformance: false,
+    isTeamScale: false,
+  },
   productCount = 0,
   orderCount = 0,
 }: NavTabsProps) {
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const teamScaleActive = isTeamScale || permissions.isTeamScale;
 
   const checkTabsScroll = () => {
     if (tabsRef.current) {
@@ -107,7 +132,7 @@ export default function NavTabs({
               <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-extrabold flex items-center gap-1">
                 <Lock className="w-2.5 h-2.5 text-amber-500" /> 199k
               </span>
-            ) : permissions.isTeamScale ? (
+            ) : teamScaleActive ? (
               <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 border border-purple-200 rounded text-[10px] font-extrabold">PRO</span>
             ) : (
               <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">2 SEATS</span>
@@ -118,10 +143,10 @@ export default function NavTabs({
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === 'catalog'}
+            aria-selected={activeTab === 'catalog' || activeTab === 'products'}
             onClick={() => setActiveTab('catalog')}
             className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-              activeTab === 'catalog'
+              activeTab === 'catalog' || activeTab === 'products'
                 ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
@@ -130,7 +155,7 @@ export default function NavTabs({
             <span>Katalog Produk ({productCount})</span>
           </button>
 
-          {/* TAB 3: PESANAN / ORDER (Task #2) */}
+          {/* TAB 3: PESANAN / ORDER */}
           <button
             type="button"
             role="tab"
