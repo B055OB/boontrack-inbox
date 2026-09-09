@@ -48,11 +48,11 @@ export async function POST(req: NextRequest) {
     if (isService || bookingSchema) {
       if (lower.includes("harga") || lower.includes("biaya") || lower.includes("tarif") || lower.includes("layanan")) {
         const listText = pricingMatrix
-          .map((p: any) => `• ${p.label || p.capacity || "Kuras Toren"}: Rp ${Number(p.price || 0).toLocaleString("id-ID")}`)
+          .map((p: any) => `• *${p.label || p.capacity || "Kuras Toren"}*: Rp ${Number(p.price || 0).toLocaleString("id-ID")}`)
           .join("\n");
 
         return NextResponse.json({
-          reply_text: `Berikut adalah rincian tarif layanan ${storeName} bergaransi bersih tuntas:\n\n${listText}\n\nUntuk toren di lokasi Kakak, kapasitas berapa liter ya?`,
+          reply_text: `Berikut adalah rincian tarif resmi layanan *${storeName}* bergaransi bersih tuntas:\n\n${listText}\n\nUntuk toren di lokasi Kakak, kapasitas berapa liter ya? 💧`,
           action: "ASK_CAPACITY",
           type: "TEXT"
         });
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
         const capPrice = Number(matched.price || 0);
 
         return NextResponse.json({
-          reply_text: `Siap Kak! Untuk kapasitas *${capName}*, biayanya *Rp ${capPrice.toLocaleString("id-ID")}* (sudah termasuk kuras tuntas & sterilisasi). Silakan klik tombol di bawah untuk pesan langsung ya.`,
+          reply_text: `Siap Kak! Untuk kapasitas *${capName}*, biayanya *Rp ${capPrice.toLocaleString("id-ID")}* (sudah termasuk kuras tuntas & sterilisasi bebas lumut).\n\nBoleh kami bantu atur jadwal pengerjaannya hari ini atau besok? 📅`,
           action: "SHOW_CHECKOUT",
           type: "SHOW_CHECKOUT",
           product: {
@@ -83,31 +83,31 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      if (lower.includes("aman") || lower.includes("garansi") || lower.includes("sabun") || lower.includes("kimia")) {
+      if (lower.includes("aman") || lower.includes("garansi") || lower.includes("sabun") || lower.includes("kimia") || lower.includes("minum")) {
         return NextResponse.json({
-          reply_text: `Dijamin 100% aman Kak! Pembersihan dilakukan tanpa bahan kimia keras berbahaya sehingga air langsung aman digunakan kembali, lengkap dengan garansi bersih tuntas. Ada jadwal yang ingin dipilih?`,
-          action: "NONE",
+          reply_text: `Dijamin *100% aman* Kak! Pembersihan dilakukan tanpa bahan kimia keras berbahaya sehingga air langsung aman digunakan kembali, lengkap dengan garansi bersih tuntas.\n\nNgomong-ngomong, untuk toren di tempat Kakak kapasitasnya berapa liter supaya kami hitungkan estimasi biayanya? 🔍`,
+          action: "ASK_CAPACITY",
           type: "TEXT"
         });
       }
 
       if (lower.includes("area") || lower.includes("jangkauan") || lower.includes("lokasi") || lower.includes("karawang")) {
         return NextResponse.json({
-          reply_text: `Tim teknisi kami melayani seluruh area Karawang dan sekitarnya. Boleh diinfokan lokasi kecamatan atau patokan tempat tinggal Kakak?`,
-          action: "NONE",
+          reply_text: `Tim teknisi kami melayani seluruh area Karawang dan sekitarnya. Teknisi datang langsung membawa peralatan lengkap.\n\nBoleh diinfokan patokan kecamatan lokasi Kakak? Sekalian mau dibersihkan untuk toren ukuran berapa liter? 📍`,
+          action: "ASK_CAPACITY",
           type: "TEXT"
         });
       }
 
       return NextResponse.json({
-        reply_text: `Halo! Selamat datang di layanan ${storeName} 👋 Ada yang bisa kami bantu seputar estimasi biaya atau penjadwalan pembersihan toren hari ini?`,
+        reply_text: `Halo! Selamat datang di layanan *${storeName}* 👋 Ada yang bisa kami bantu seputar estimasi biaya pembersihan toren hari ini?`,
         action: "NONE",
         type: "TEXT"
       });
     }
 
     return NextResponse.json({
-      reply_text: `Halo! Selamat datang di ${storeName}. Ada yang bisa kami bantu terkait produk kami?`,
+      reply_text: `Halo! Selamat datang di ${storeName}. Ada yang bisa kami bantu?`,
       action: "NONE",
       type: "TEXT"
     });
