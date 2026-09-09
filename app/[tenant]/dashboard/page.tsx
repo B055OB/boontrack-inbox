@@ -285,17 +285,23 @@ export default function TenantDashboardPage() {
           }
         );
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const setting = data[0];
-          if (setting.store_name) setStoreDisplayName(setting.store_name);
-          if (setting.bio) setStoreBio(setting.bio);
-          if (setting.whatsapp) setStoreWhatsapp(setting.whatsapp);
-          if (setting.qris_image_url) setStoreQrisUrl(setting.qris_image_url);
 
-          // Dynamic Category assignment from database
-          const cat = setting.category || setting.business_type || 'DIGITAL';
-          setStoreCategory(String(cat).toUpperCase());
+        // 1. Jika slug toko tidak ada di Supabase, tendang langsung
+        if (!Array.isArray(data) || data.length === 0) {
+          router.replace('/login');
+          return;
         }
+
+        // 2. Jika toko terdaftar, muat datanya
+        const setting = data[0];
+        if (setting.store_name) setStoreDisplayName(setting.store_name);
+        if (setting.bio) setStoreBio(setting.bio);
+        if (setting.whatsapp) setStoreWhatsapp(setting.whatsapp);
+        if (setting.qris_image_url) setStoreQrisUrl(setting.qris_image_url);
+
+        // 3. Baca kategori vertikal secara dinamis
+        const cat = setting.category || setting.business_type || 'DIGITAL';
+        setStoreCategory(String(cat).toUpperCase());
       } catch (err) {
         console.error('Gagal memuat setting tenant:', err);
       }
