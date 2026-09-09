@@ -1698,16 +1698,16 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                       <h3 className="font-bold text-slate-900 text-sm mt-1 line-clamp-1">
                         {p.name}
                       </h3>
-                      <div className="flex items-baseline gap-2 mt-1">
-                        <span className="text-sm font-black text-blue-600">
+                      <div className="flex items-baseline gap-1 mt-1">
+                      <span className="text-xs font-black text-blue-600">
+                        Rp {(p.promo_price || p.price).toLocaleString("id-ID")}
+                      </span>
+                      {p.promo_price ? (
+                        <span className="text-[11px] text-slate-400 line-through">
                           Rp {p.price.toLocaleString("id-ID")}
                         </span>
-                        {p.promo_price && p.promo_price > 0 && (
-                          <span className="text-[11px] text-slate-400 line-through">
-                            Rp {p.promo_price.toLocaleString("id-ID")}
-                          </span>
-                        )}
-                      </div>
+                      ) : null}
+                    </div>
                       <p className="text-xs text-slate-500 line-clamp-2 mt-1.5">
                         {p.description}
                       </p>
