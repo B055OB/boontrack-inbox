@@ -102,8 +102,7 @@ export default function TenantDashboardPage() {
 
   const isProTenant = ["demo", "onlineboost"].includes(tenantSlug);
 
-  // FEATURE GATING — tier state now covers legacy slugs + new enum values
-  // 'solo' | 'growth' | 'ads_performance' (legacy: growth_tracking) | 'team_scale' (legacy: proscale)
+  // FEATURE GATING
   const isTenantGrowthPlus = tenantSlug === 'growthplus' || tenantSlug.includes('growthplus') || tenantSlug === 'growth-plus' || tenantSlug === 'growth_plus';
   const isTenantProScale = tenantSlug === 'proscale' || tenantSlug.includes('proscale') || tenantSlug === 'enterprise' || ["demo", "onlineboost", "suhu-ads-masterclass"].includes(tenantSlug);
 
@@ -141,6 +140,9 @@ export default function TenantDashboardPage() {
     tier?: string;
   }>({});
 
+  // Dynamic Vertical Category (DIGITAL, PHYSICAL, LOCAL_SERVICE, etc.)
+  const [storeCategory, setStoreCategory] = useState<string>('DIGITAL');
+
   const isTeamScale = planTier === 'team_scale' || isTenantProScale
     || tenantFeatureFlags.tier === 'TEAM_SCALE'
     || tenantFeatureFlags.tier === 'PRO_SCALE';
@@ -148,19 +150,10 @@ export default function TenantDashboardPage() {
     || tenantFeatureFlags.tier === 'ADS_PERFORMANCE'
     || tenantFeatureFlags.tier === 'GROWTH_PLUS'
     || tenantFeatureFlags.tier === 'PRO_SCALE') && !isTeamScale;
-  // Legacy aliases for backward compatibility
   const isProScale = isTeamScale;
   const isGrowthPlus = isAdsPerformance;
   const isGrowth = planTier === 'growth' && !isAdsPerformance && !isTeamScale;
 
-  /**
-   * isAdsTrackingUnlocked — Feature-flag-first gate.
-   * Grants access if any of:
-   *   • features.has_capi is true
-   *   • features.ads_tracking is true
-   *   • tier enum === ADS_PERFORMANCE or PRO_SCALE/TEAM_SCALE
-   *   • legacy planTier is ads_performance or team_scale
-   */
   const isAdsTrackingUnlocked =
     Boolean(
       tenantFeatureFlags.has_capi ||
@@ -226,7 +219,8 @@ export default function TenantDashboardPage() {
   const hasUserSelectedTabRef = useRef(false);
   const [isStoreReadinessEvaluated, setIsStoreReadinessEvaluated] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
-// State Edit Profil Toko & Validasi Unik
+
+  // State Edit Profil Toko & Validasi Unik
   const [isStoreSettingsOpen, setIsStoreSettingsOpen] = useState(false);
   const [storeDisplayName, setStoreDisplayName] = useState(tenantSlug || '');
   const [storeBio, setStoreBio] = useState('');
@@ -236,7 +230,8 @@ export default function TenantDashboardPage() {
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [storeQrisUrl, setStoreQrisUrl] = useState<string>('');
   const [isUploadingQris, setIsUploadingQris] = useState(false);
-const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+
+  const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -275,6 +270,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       setIsUploadingQris(false);
     }
   };
+
   useEffect(() => {
     if (!tenantSlug) return;
     const fetchTenantSettings = async () => {
@@ -295,6 +291,10 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
           if (setting.bio) setStoreBio(setting.bio);
           if (setting.whatsapp) setStoreWhatsapp(setting.whatsapp);
           if (setting.qris_image_url) setStoreQrisUrl(setting.qris_image_url);
+
+          // Dynamic Category assignment from database
+          const cat = setting.category || setting.business_type || 'DIGITAL';
+          setStoreCategory(String(cat).toUpperCase());
         }
       } catch (err) {
         console.error('Gagal memuat setting tenant:', err);
@@ -302,9 +302,22 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     };
     fetchTenantSettings();
   }, [tenantSlug]);
+
   const handleSelectTab = (tab: DashboardTab) => {
     hasUserSelectedTabRef.current = true;
     setActiveTab(tab);
+  };
+
+  // Dynamic Vertical Form Rendering
+  const renderVerticalModule = () => {
+    if (storeCategory === 'LOCAL_SERVICE') {
+      return (
+        <div className="mb-6 animate-in fade-in duration-200">
+          <LocalServiceConfigForm tenantSlug={tenantSlug} />
+        </div>
+      );
+    }
+    return null;
   };
 
   // Desktop Navigation Tab Scroll Controls
@@ -370,7 +383,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const [pairingCodeResult, setPairingCodeResult] = useState<string | null>(null);
   const [isPairingLoading, setIsPairingLoading] = useState(false);
 
-  // Live Chat Console State (Strictly isolated per tenant)
+  // Live Chat Console State
   interface ConversationMessage {
     id: number | string;
     sender: 'customer' | 'agent' | 'bot';
@@ -460,7 +473,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const el = builderTabsRef.current;
     if (!el) return;
     setCanScrollTabsLeft(el.scrollLeft > 2);
-    setCanScrollTabsRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
   };
 
   const handleScrollBuilderTabs = (direction: 'left' | 'right') => {
@@ -508,7 +521,6 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   }, [tenantSlug]);
 
-  // Strict Tenant Isolation: Muat riwayat chat khusus tenant dari storage / API
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -556,12 +568,10 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const [isSavingAi, setIsSavingAi] = useState(false);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
 
-  // Strategi Respon & Persona Bot WhatsApp State
   const [botStrategy, setBotStrategy] = useState<'trust_builder' | 'balanced' | 'hard_selling'>('trust_builder');
   const [isSavingStrategy, setIsSavingStrategy] = useState(false);
   const [strategyFeedback, setStrategyFeedback] = useState<string | null>(null);
 
-  // Load existing AI Knowledge and Persona settings from backend / BoonTrack Secure Cloud Engine
   useEffect(() => {
     let isMounted = true;
     async function loadTenantAiSettings() {
@@ -575,7 +585,9 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
           const aiK = s.ai_knowledge || s.persona || {};
           const loadedStrategy = s.bot_strategy || aiK.bot_strategy || 'trust_builder';
           if (isMounted) {
-            // Hydrate feature flags from settings payload
+            if (s.category || data.category) {
+              setStoreCategory(String(s.category || data.category).toUpperCase());
+            }
             if (s.features) {
               setTenantFeatureFlags(prev => ({
                 ...prev,
@@ -586,7 +598,6 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
             }
             if (s.plan_tier || s.tier || s.pricing?.tier) {
               const rawTier = (s.plan_tier || s.tier || s.pricing?.tier || '').toLowerCase();
-              // Also propagate raw tier string into feature flags for gate evaluation
               setTenantFeatureFlags(prev => ({ ...prev, tier: s.plan_tier || s.tier || s.pricing?.tier || prev.tier }));
               if (rawTier.includes('team_scale') || rawTier.includes('proscale') || rawTier.includes('pro_scale') || rawTier.includes('enterprise')) setPlanTier('team_scale');
               else if (rawTier.includes('ads_performance') || rawTier.includes('tracking') || rawTier.includes('plus') || rawTier === 'pro' || rawTier.includes('growth+')) setPlanTier('ads_performance');
@@ -723,13 +734,11 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     holder: '',
   });
 
-  // Financial Ledger & Payout State
   const [transactions, setTransactions] = useState<any[]>(INITIAL_TRANSACTIONS);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState<number>(0);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
 
-  // Sync Data Riil Orders ke Laporan Keuangan
   useEffect(() => {
     const fetchTransactions = async () => {
       try {
@@ -928,7 +937,6 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     return [];
   };
 
-  // 1. Initial URL query param tab check (?tab=catalog, ?tab=products, ?tab=whatsapp, etc.)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -944,7 +952,6 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   }, []);
 
-  // 2. Evaluasi kesiapan toko (Store Readiness) & Smart Dynamic Initial Tab
   useEffect(() => {
     let isMounted = true;
 
@@ -1305,16 +1312,16 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 onClick={() => {
                   setNameError(null);
                   setIsStoreSettingsOpen(true);
-              }}
-              className="group flex items-center gap-1.5 px-2 py-0.5 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-left"
-              title="Klik untuk ubah nama & profil toko"
-             >
-              <span className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-wider truncate group-hover:text-blue-600">
-               {storeDisplayName || displayName}
-              </span>
-              <span className="text-[11px] text-slate-400 group-hover:text-blue-600">
-                ✏️
-              </span>
+                }}
+                className="group flex items-center gap-1.5 px-2 py-0.5 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-left"
+                title="Klik untuk ubah nama & profil toko"
+              >
+                <span className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-wider truncate group-hover:text-blue-600">
+                  {storeDisplayName || displayName}
+                </span>
+                <span className="text-[11px] text-slate-400 group-hover:text-blue-600">
+                  ✏️
+                </span>
               </button>
               <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 ${
                 isTeamScale
@@ -1342,18 +1349,18 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         </header>
 
         {/* TABS NAVIGATION */}
-          <NavTabs
-            activeTab={activeTab as any}
-            setActiveTab={setActiveTab as any}
-            isTeamScale={isTeamScale}
-          />
+        <NavTabs
+          activeTab={activeTab as any}
+          setActiveTab={setActiveTab as any}
+          isTeamScale={isTeamScale}
+        />
 
-          {saveFeedback && (
-            <div className="hidden md:block text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
-              {saveFeedback}
-            </div>
-          )}
-        </div>
+        {saveFeedback && (
+          <div className="hidden md:block text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
+            {saveFeedback}
+          </div>
+        )}
+      </div>
 
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
       {activeTab === 'inbox' && (
@@ -1546,14 +1553,15 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 </form>
               </div>
             )}
-            </div>
           </div>
+        </div>
       )}
 
       {/* TAB: PESANAN / ORDERS */}
-          {(activeTab as any) === 'orders' && (
-            <OrdersTab tenantSlug={tenantSlug} />
-          )}
+      {(activeTab as any) === 'orders' && (
+        <OrdersTab tenantSlug={tenantSlug} />
+      )}
+
       {/* TAB 2: KATALOG MULTI-PRODUK */}
       {(activeTab === 'catalog' || activeTab === 'products') && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
@@ -1699,15 +1707,15 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                         {p.name}
                       </h3>
                       <div className="flex items-baseline gap-1 mt-1">
-                      <span className="text-xs font-black text-blue-600">
-                        Rp {(p.promo_price || p.price).toLocaleString("id-ID")}
-                      </span>
-                      {p.promo_price ? (
-                        <span className="text-[11px] text-slate-400 line-through">
-                          Rp {p.price.toLocaleString("id-ID")}
+                        <span className="text-xs font-black text-blue-600">
+                          Rp {(p.promo_price || p.price).toLocaleString("id-ID")}
                         </span>
-                      ) : null}
-                    </div>
+                        {p.promo_price ? (
+                          <span className="text-[11px] text-slate-400 line-through">
+                            Rp {p.price.toLocaleString("id-ID")}
+                          </span>
+                        ) : null}
+                      </div>
                       <p className="text-xs text-slate-500 line-clamp-2 mt-1.5">
                         {p.description}
                       </p>
@@ -1786,10 +1794,10 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                   <div className="pt-2.5 mt-1 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
                       {p.category === 'digital' && (
-  <div className="pt-2.5 mt-3 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-mono text-[11px] truncate max-w-[200px]">
-    <span>{p.download_url || "Tanpa Link Download"}</span>
-  </div>
-)}
+                        <div className="pt-2.5 mt-3 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-mono text-[11px] truncate max-w-[200px]">
+                          <span>{p.download_url || "Tanpa Link Download"}</span>
+                        </div>
+                      )}
                     </span>
 
                     <div className="flex items-center gap-1.5">
@@ -1816,7 +1824,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         </div>
       )}
 
-      {/* MODAL IMPORT MASSAL (.xlsx / .csv) */}
+      {/* MODAL IMPORT MASSAL */}
       {isBulkImportModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
@@ -2135,17 +2143,17 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
               </div>
 
               {productForm.category === 'digital' && (
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1.5">Link Akses Digital</label>
-              <input
-                type="url"
-                value={productForm.download_url || ""}
-                onChange={(e) => setProductForm((p: any) => ({ ...p, download_url: e.target.value }))}
-                placeholder="https://drive.google.com/..."
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-blue-600 transition"
-              />
-            </div>
-          )}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">Link Akses Digital</label>
+                  <input
+                    type="url"
+                    value={productForm.download_url || ""}
+                    onChange={(e) => setProductForm((p: any) => ({ ...p, download_url: e.target.value }))}
+                    placeholder="https://drive.google.com/..."
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-blue-600 transition"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">Deskripsi Produk</label>
@@ -2172,7 +2180,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         </div>
       )}
 
-      {/* MODAL / DRAWER BUILDER SINGLE PAGE CHECKOUT */}
+      {/* BUILDER SINGLE PAGE CHECKOUT */}
       {isSinglePageModalOpen && activeSinglePageProduct && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] my-auto">
@@ -2476,7 +2484,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 </div>
               )}
 
-              {/* TAB 3: COMPARISON (US VS THEM) */}
+              {/* TAB 3: COMPARISON */}
               {activeBuilderTab === 'comparison' && (
                 <div className="space-y-3.5 animate-fadeIn">
                   <div className="flex items-center justify-between">
@@ -2571,7 +2579,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 </div>
               )}
 
-              {/* TAB 4: SOCIAL PROOF / TESTIMONI */}
+              {/* TAB 4: SOCIAL PROOF */}
               {activeBuilderTab === 'social_proof' && (
                 <div className="space-y-3.5 animate-fadeIn">
                   <div>
@@ -3047,10 +3055,9 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
               <span>{isSavingAi ? 'Menyimpan...' : 'Simpan Persona AI'}</span>
             </button>
           </div>
-          {/* Form Konfigurasi Mandiri Jasa (LOCAL_SERVICE) */}
-          <div className="mb-6">
-            <LocalServiceConfigForm tenantSlug={tenantSlug} />
-          </div>
+
+          {/* DYNAMIC VERTICAL MODULE (Hanya dirender jika kategori LOCAL_SERVICE) */}
+          {renderVerticalModule()}
 
           {isLoadingAi && (
             <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 animate-pulse">
@@ -3078,35 +3085,35 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5">
-                      <button
-                        type="button"
-                        onClick={() => setIsSimulatorOpen(true)}
-                        className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-md cursor-pointer"
-                      >
-                        <Bot className="w-4 h-4 text-emerald-400" />
-                        <span>Test Simulator Bot</span>
-                      </button>
+                <button
+                  type="button"
+                  onClick={() => setIsSimulatorOpen(true)}
+                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-md cursor-pointer"
+                >
+                  <Bot className="w-4 h-4 text-emerald-400" />
+                  <span>Test Simulator Bot</span>
+                </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleSaveBotStrategy()}
-                        disabled={isSavingStrategy || isLoadingAi}
-                        className="self-start sm:self-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
-                      >
-                        {isSavingStrategy ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                        ) : (
-                          <Save className="w-3.5 h-3.5 text-white" />
-                        )}
-                        <span>{isSavingStrategy ? 'Menyimpan...' : 'Simpan Pengaturan Persona'}</span>
-                      </button>
-                    </div>
+                <button
+                  type="button"
+                  onClick={() => handleSaveBotStrategy()}
+                  disabled={isSavingStrategy || isLoadingAi}
+                  className="self-start sm:self-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+                >
+                  {isSavingStrategy ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5 text-white" />
+                  )}
+                  <span>{isSavingStrategy ? 'Menyimpan...' : 'Simpan Pengaturan Persona'}</span>
+                </button>
+              </div>
 
-                    <BotSimulatorModal
-                      tenantSlug={tenantSlug}
-                      isOpen={isSimulatorOpen}
-                      onClose={() => setIsSimulatorOpen(false)}
-                    />
+              <BotSimulatorModal
+                tenantSlug={tenantSlug}
+                isOpen={isSimulatorOpen}
+                onClose={() => setIsSimulatorOpen(false)}
+              />
             </div>
 
             {strategyFeedback && (
@@ -3330,7 +3337,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
               />
               <p className="text-[11px] text-slate-400 mt-1.5">
-                Instruksi ini akan diinjeksikan langsung sebagai <span className="font-semibold text-slate-600">system instruction</span> ke model LLM (Gemini / Groq) pada setiap pesan WhatsApp masuk.
+                Instruksi ini akan diinjeksikan langsung sebagai <span className="font-semibold text-slate-600">system instruction</span> ke model LLM pada setiap pesan WhatsApp masuk.
               </p>
             </div>
 
@@ -3357,10 +3364,9 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         </div>
       )}
 
-      {/* TAB 4: LAPORAN PENJUALAN, SALDO & REKENING (FINANCIAL LEDGER) */}
+      {/* TAB 4: LAPORAN PENJUALAN */}
       {(activeTab === 'integration' || activeTab === 'overview' || activeTab === 'analytics') && (
         <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
-          
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
             <div>
               <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
@@ -3547,11 +3553,10 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
               </div>
             </div>
           </div>
-
         </div>
       )}
 
-      {/* MODAL TARIK SALDO (PAYOUT) */}
+      {/* MODAL TARIK SALDO */}
       {isWithdrawModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col">
@@ -3666,7 +3671,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
             </div>
           </div>
 
-          {/* KARTU PENGATURAN STRATEGI RESPON & PERSONA BOT WHATSAPP (SYNCED) */}
+          {/* KARTU PENGATURAN STRATEGI RESPON & PERSONA BOT WHATSAPP */}
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
@@ -3993,11 +3998,6 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
               })
             ) : (
               <div className="space-y-4">
-                {/* Form Konfigurasi Mandiri Vertical Jasa / LOCAL_SERVICE */}
-                <div className="mb-6">
-                  <LocalServiceConfigForm tenantSlug={tenantSlug} />
-                </div>
-
                 <WhatsAppWabaConfig 
                   tenantSlug={tenantSlug}
                   displayName={displayName}
@@ -4041,19 +4041,19 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         )
       )}
 
-      {/* TAB: KURIR & EKSPEDISI (DUAL-ENGINE) */}
-          {(['shipping', 'biteship', 'logistik', 'courier'].includes(activeTab as string)) && (
-            <div className="w-full">
-              <BiteshipCourierConfig
-                tenantSlug={(tenantSlug as string) || (params?.tenant as string) || ''}
-                displayName={(displayName as string) || 'BoonTrack Shop'}
-                onSaved={(msg) => {
-                  setSaveFeedback(msg);
-                  setTimeout(() => setSaveFeedback(null), 4000);
-                }}
-              />
-            </div>
-          )}
+      {/* TAB: KURIR & EKSPEDISI */}
+      {(['shipping', 'biteship', 'logistik', 'courier'].includes(activeTab as string)) && (
+        <div className="w-full">
+          <BiteshipCourierConfig
+            tenantSlug={(tenantSlug as string) || (params?.tenant as string) || ''}
+            displayName={(displayName as string) || 'BoonTrack Shop'}
+            onSaved={(msg) => {
+              setSaveFeedback(msg);
+              setTimeout(() => setSaveFeedback(null), 4000);
+            }}
+          />
+        </div>
+      )}
 
       {/* TAB: WHATSAPP BROADCAST MANAGER */}
       {activeTab === 'broadcast' && (
@@ -4089,7 +4089,8 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         }}
         onOpenNewProduct={openNewProductModal}
       />
-      {/* Modal Edit Profil Toko */}
+
+      {/* MODAL EDIT PROFIL TOKO */}
       {isStoreSettingsOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
@@ -4151,7 +4152,8 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 />
               </div>
             </div>
-             {/* Input & Preview QRIS */}
+
+            {/* Input & Preview QRIS */}
             <div className="space-y-2 pt-2 border-t border-slate-100">
               <label className="block text-xs font-semibold text-slate-700">Gambar QRIS Toko</label>
               {storeQrisUrl && (
@@ -4172,6 +4174,7 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
               />
               {isUploadingQris && <p className="text-xs text-blue-600 animate-pulse">Mengunggah gambar QRIS...</p>}
             </div>
+
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
