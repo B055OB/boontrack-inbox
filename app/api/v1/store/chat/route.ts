@@ -45,12 +45,10 @@ export async function POST(req: NextRequest) {
         { label: "1000 Liter", price: 200000 }
       ];
 
-    // SKENARIO: LOCAL SERVICE (Kuras Toren)
     if (isService || bookingSchema) {
-      // 1. Tanya Harga / Tarif
       if (lower.includes("harga") || lower.includes("biaya") || lower.includes("tarif") || lower.includes("layanan")) {
         const listText = pricingMatrix
-          .map((p) => `• ${p.label || p.capacity || "Kuras Toren"}: Rp ${Number(p.price || 0).toLocaleString("id-ID")}`)
+          .map((p: any) => `• ${p.label || p.capacity || "Kuras Toren"}: Rp ${Number(p.price || 0).toLocaleString("id-ID")}`)
           .join("\n");
 
         return NextResponse.json({
@@ -60,8 +58,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // 2. User Sebut Ukuran Toren -> Muncul Kartu Interaktif
-      const matched = pricingMatrix.find((item) => {
+      const matched = pricingMatrix.find((item: any) => {
         const str = `${item.label || ""} ${item.capacity || ""}`.toLowerCase();
         const numMatch = str.match(/\d+/);
         return numMatch ? lower.includes(numMatch[0]) : false;
@@ -86,7 +83,6 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // 3. Tanya Garansi / Keamanan
       if (lower.includes("aman") || lower.includes("garansi") || lower.includes("sabun") || lower.includes("kimia")) {
         return NextResponse.json({
           reply_text: `Dijamin 100% aman Kak! Pembersihan dilakukan tanpa bahan kimia keras berbahaya sehingga air langsung aman digunakan kembali, lengkap dengan garansi bersih tuntas. Ada jadwal yang ingin dipilih?`,
@@ -95,7 +91,6 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // 4. Tanya Area Jangkauan
       if (lower.includes("area") || lower.includes("jangkauan") || lower.includes("lokasi") || lower.includes("karawang")) {
         return NextResponse.json({
           reply_text: `Tim teknisi kami melayani seluruh area Karawang dan sekitarnya. Boleh diinfokan lokasi kecamatan atau patokan tempat tinggal Kakak?`,
@@ -104,7 +99,6 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // SAPAAN AWAL NATURAL (Tanpa Menu Kaku)
       return NextResponse.json({
         reply_text: `Halo! Selamat datang di layanan ${storeName} 👋 Ada yang bisa kami bantu seputar estimasi biaya atau penjadwalan pembersihan toren hari ini?`,
         action: "NONE",
@@ -112,13 +106,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // SKENARIO: RETAIL REGULER
     return NextResponse.json({
       reply_text: `Halo! Selamat datang di ${storeName}. Ada yang bisa kami bantu terkait produk kami?`,
       action: "NONE",
       type: "TEXT"
     });
-
   } catch (err: any) {
     console.error("[Store Chat Error]:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
