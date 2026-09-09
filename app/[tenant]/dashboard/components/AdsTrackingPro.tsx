@@ -161,7 +161,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
   const [copiedScript, setCopiedScript] = useState(false);
   const [testLog, setTestLog] = useState<string[]>([]);
 
-  // Dynamic campaigns fetcher from GET /api/v1/analytics/campaigns?tenant_slug={tenant}
   const fetchCampaigns = useCallback(async () => {
     if (!tenantSlug) return;
     setLoadingCampaigns(true);
@@ -203,7 +202,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
     fetchCampaigns();
   }, [fetchCampaigns]);
 
-  // Load configuration from Supabase or API
   useEffect(() => {
     async function loadConfig() {
       try {
@@ -234,7 +232,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
     loadConfig();
   }, [tenantSlug]);
 
-  // Filtered campaigns
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter((c) => {
       const matchPlat = selectedPlatform === 'all' || c.utmSource === selectedPlatform;
@@ -245,7 +242,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
     });
   }, [campaigns, selectedPlatform, searchCampaign]);
 
-  // Aggregated KPI metrics
   const totals = useMemo(() => {
     const totalSpend = campaigns.reduce((acc, curr) => acc + (curr.adSpend || 0), 0);
     const totalClicks = campaigns.reduce((acc, curr) => acc + curr.clicks, 0);
@@ -264,7 +260,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
     };
   }, [campaigns]);
 
-  // Daily trend data (graceful zero base for new tenants)
   const trendData = useMemo(() => {
     if (campaigns.length === 0) {
       return [
@@ -337,7 +332,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
     setTimeout(() => setCopiedScript(false), 2000);
   };
 
-  // Max value calculation for interactive SVG chart
   const maxMetricVal = useMemo(() => {
     if (activeChartMetric === 'revenue') return 8000000;
     if (activeChartMetric === 'leads') return 450;
@@ -393,6 +387,36 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
           <span>{feedback}</span>
         </div>
       )}
+
+      {/* ── BANNER ORDER AKUN FB WHITELIST (MELANGKAH.ID) ── */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-950 via-slate-900 to-indigo-950 p-6 text-white shadow-xl border border-blue-500/30">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-[11px] font-black uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+              <span>Agency Whitelist Dedicated</span>
+            </div>
+            <h3 className="text-lg font-black tracking-tight text-white">
+              Butuh Akun Iklan Anti-Ame & Limit Harian Tanpa Batas?
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Order Akun FB Whitelist resmi via Melangkah.id. Dapatkan akun agency Meta bergaransi replace, siap scale-up konversi tinggi tanpa khawatir terkena restriksi harian.
+            </p>
+          </div>
+
+          <div className="shrink-0 flex items-center gap-3">
+            <a
+              href="https://melangkah.id"
+              target="_blank"
+              rel="noreferrer"
+              className="px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-blue-500/30 transition transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+            >
+              <span>Order Akun FB Whitelist</span>
+              <ArrowUpRight className="w-4 h-4" />
+            </a>
+          </div>
+        </div>
+      </div>
 
       {/* ── FITUR UNGGULAN: EMQ SCORE & LEAD QUALITY SUMMARY CARDS ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -511,8 +535,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
 
       {/* ── 1. TAB GRAFIK ANALITIK INTERAKTIF REAL-TIME ── */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6">
-        
-        {/* Chart Header Toolbar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <div className="flex items-center gap-2">
@@ -527,7 +549,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Metric Switcher */}
             <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
               <button
                 type="button"
@@ -575,7 +596,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
               </button>
             </div>
 
-            {/* Time range switcher */}
             <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
               <button
                 type="button"
@@ -599,7 +619,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
           </div>
         </div>
 
-        {/* Visual Interactive Bar & Area Chart (SVG Driven) */}
         <div className="space-y-4">
           <div className="h-64 w-full flex items-end justify-between gap-2 sm:gap-4 px-2 pt-6 pb-2 bg-slate-50/60 rounded-2xl border border-slate-100">
             {trendData.map((d, index) => {
@@ -616,8 +635,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
 
               return (
                 <div key={index} className="flex-1 flex flex-col items-center h-full justify-end group relative">
-                  
-                  {/* Tooltip Hover Bubble */}
                   <div className="absolute -top-12 z-20 hidden group-hover:flex flex-col items-center bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-xl shadow-xl whitespace-nowrap pointer-events-none transition-all">
                     <span>
                       {activeChartMetric === 'revenue'
@@ -632,7 +649,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
                     <div className="w-2 h-2 bg-slate-900 rotate-45 -mb-1 mt-0.5" />
                   </div>
 
-                  {/* Chart Bar */}
                   <div className="w-full max-w-[48px] bg-slate-200/80 rounded-t-xl overflow-hidden flex flex-col justify-end transition-all group-hover:bg-slate-300">
                     <div
                       style={{ height: `${heightPct}%` }}
@@ -648,7 +664,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
                     />
                   </div>
 
-                  {/* Day Label */}
                   <span className="text-[11px] font-bold text-slate-500 mt-2 group-hover:text-blue-600">
                     {d.day}
                   </span>
@@ -673,13 +688,10 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
             </span>
           </div>
         </div>
-
       </div>
 
       {/* ── 2. TABEL ATRIBUSI CAMPAIGN DINAMIS (UTM SOURCE & ADS) ── */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
-        
-        {/* Table Header & Controls */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
@@ -692,7 +704,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-2.5">
-            {/* Refresh Button */}
             <button
               type="button"
               onClick={() => fetchCampaigns()}
@@ -704,7 +715,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
               <span className="sm:hidden text-xs">Refresh Data</span>
             </button>
 
-            {/* Platform Filter */}
             <select
               value={selectedPlatform}
               onChange={(e) => setSelectedPlatform(e.target.value)}
@@ -718,7 +728,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
               <option value="affiliate">Affiliate Referral</option>
             </select>
 
-            {/* Search input */}
             <div className="relative w-full sm:w-64">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -732,14 +741,12 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
           </div>
         </div>
 
-        {/* Content Area: Loading State vs Empty State vs Dynamic Table */}
         {loadingCampaigns ? (
           <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-500">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
             <p className="text-xs font-bold text-slate-600">Memuat data atribusi campaign iklan...</p>
           </div>
         ) : campaigns.length === 0 ? (
-          /* Empty State untuk Tenant Baru */
           <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-b from-slate-50/80 via-white to-slate-50/40 border-2 border-dashed border-slate-200 text-center flex flex-col items-center justify-center space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shadow-xs">
               <Target className="w-8 h-8" />
@@ -775,7 +782,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
             </div>
           </div>
         ) : (
-          /* Dynamic Attribution Table */
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-600">
               <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-black tracking-wider border-y border-slate-200">
@@ -1124,7 +1130,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
             </div>
           </div>
 
-          {/* Code Snippet Box */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px] text-slate-400">
               <span>Universal Tracking Script Toko:</span>
@@ -1142,7 +1147,6 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
             </div>
           </div>
 
-          {/* Test Event Logs */}
           {testLog.length > 0 && (
             <div className="space-y-1.5 pt-2">
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Live Event Logs:</span>

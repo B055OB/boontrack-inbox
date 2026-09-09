@@ -721,12 +721,49 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   });
 
   // Financial Ledger & Payout State
-  const [transactions, setTransactions] = useState<TransactionItem[]>(INITIAL_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<any[]>(INITIAL_TRANSACTIONS);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState<number>(0);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
 
-  const totalOmzet = transactions.filter(t => t.status === 'PAID').reduce((acc, curr) => acc + curr.amount, 0);
+  // Sync Data Riil Orders ke Laporan Keuangan
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      try {
+        const pathSegments = typeof window !== 'undefined' ? window.location.pathname.split('/') : [];
+        const activeSlug = pathSegments[1] || '';
+        if (!activeSlug) return;
+
+        const res = await fetch(`/api/orders?tenant=${activeSlug}`).catch(() => null);
+        if (res && res.ok) {
+          const json = await res.json();
+          const list = json.orders || json.data || [];
+          if (Array.isArray(list) && list.length > 0) {
+            const mapped = list.map((order: any) => {
+              const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS'].includes(
+                (order.payment_status || order.status || '').toUpperCase()
+              );
+              return {
+                id: order.id || order.invoice_no,
+                date: new Date(order.created_at || Date.now()).toLocaleDateString('id-ID'),
+                description: `Pesanan ${order.invoice_no || ''} - ${order.customer_name || 'Customer'}`,
+                amount: Number(order.total_amount || order.total_price || 0),
+                status: isPaid ? 'PAID' : 'PENDING',
+                type: 'INCOME',
+              };
+            });
+            setTransactions(mapped);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching transactions:', err);
+      }
+    };
+
+    fetchTransactions();
+  }, []);
+
+  const totalOmzet = transactions.filter((t: any) => t.status === 'PAID').reduce((acc: number, curr: any) => acc + curr.amount, 0);
   const readyBalance = totalOmzet;
 
   const openNewProductModal = () => {
@@ -734,10 +771,10 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setProductForm({
       id: Date.now(),
       name: "",
-      category: "digital",
+      category: "fisik",
       price: 99000,
       promo_price: 0,
-      variants: "Format Digital",
+      variants: "Standar",
       promo: "",
       description: "",
       download_url: "",
@@ -1745,7 +1782,11 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
                   <div className="pt-2.5 mt-1 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
-                      {p.download_url || "Tanpa Link Download"}
+                      {p.category === 'digital' && (
+  <div className="pt-2.5 mt-3 border-t border-slate-100 flex items-center gap-1.5 text-slate-400 font-mono text-[11px] truncate max-w-[200px]">
+    <span>{p.download_url || "Tanpa Link Download"}</span>
+  </div>
+)}
                     </span>
 
                     <div className="flex items-center gap-1.5">
@@ -2090,16 +2131,18 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">Link Akses Digital</label>
-                <input
-                  type="url"
-                  value={productForm.download_url || ""}
-                  onChange={(e) => setProductForm(p => ({ ...p, download_url: e.target.value }))}
-                  placeholder="https://drive.google.com/..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-blue-600 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
-                />
-              </div>
+              {productForm.category === 'digital' && (
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">Link Akses Digital</label>
+              <input
+                type="url"
+                value={productForm.download_url || ""}
+                onChange={(e) => setProductForm((p: any) => ({ ...p, download_url: e.target.value }))}
+                placeholder="https://drive.google.com/..."
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-blue-600 transition"
+              />
+            </div>
+          )}
 
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">Deskripsi Produk</label>
