@@ -48,13 +48,15 @@ import {
   Copy,
   Zap,
   FileSpreadsheet,
-  Upload
+  Upload,
+  Bot,
 } from 'lucide-react';
 import WhatsAppWabaConfig from './components/WhatsAppWabaConfig';
 import AdsTrackingPro from './components/AdsTrackingPro';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
 import BoonPilotWidget from '@/components/BoonPilotWidget';
+import BotSimulatorModal from './components/BotSimulatorModal';
 import ImageUpload from '@/components/ImageUpload';
 import { getBackendApiUrl } from '@/lib/api-config';
 import LocalServiceConfigForm from "@/app/components/LocalServiceConfigForm";
@@ -81,7 +83,6 @@ const BotSandboxModal = dynamic(() => import('./components/ai-bot/BotSandboxModa
 const CustomDomainCard = dynamic(() => import('./components/settings/CustomDomainCard'), { ssr: false });
 const InboxLockedCard = dynamic(() => import('./components/inbox/InboxLockedCard'), { ssr: false });
 
-
 const INITIAL_TRANSACTIONS: TransactionItem[] = [];
 
 export default function TenantDashboardPage() {
@@ -90,6 +91,8 @@ export default function TenantDashboardPage() {
   const rawTenant = (params?.tenant as string) || "growth";
   const tenantSlug = rawTenant.toLowerCase();
   const displayName = tenantSlug.replace(/-/g, " ");
+
+  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
 
   useEffect(() => {
     if (tenantSlug === 'login' || tenantSlug === 'auth') {
@@ -3074,19 +3077,36 @@ const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleSaveBotStrategy()}
-                disabled={isSavingStrategy || isLoadingAi}
-                className="self-start sm:self-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
-              >
-                {isSavingStrategy ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                ) : (
-                  <Save className="w-3.5 h-3.5 text-white" />
-                )}
-                <span>{isSavingStrategy ? 'Menyimpan...' : 'Simpan Pengaturan Persona'}</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setIsSimulatorOpen(true)}
+                        className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-md cursor-pointer"
+                      >
+                        <Bot className="w-4 h-4 text-emerald-400" />
+                        <span>Test Simulator Bot</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSaveBotStrategy()}
+                        disabled={isSavingStrategy || isLoadingAi}
+                        className="self-start sm:self-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+                      >
+                        {isSavingStrategy ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                        ) : (
+                          <Save className="w-3.5 h-3.5 text-white" />
+                        )}
+                        <span>{isSavingStrategy ? 'Menyimpan...' : 'Simpan Pengaturan Persona'}</span>
+                      </button>
+                    </div>
+
+                    <BotSimulatorModal
+                      tenantSlug={tenantSlug}
+                      isOpen={isSimulatorOpen}
+                      onClose={() => setIsSimulatorOpen(false)}
+                    />
             </div>
 
             {strategyFeedback && (
