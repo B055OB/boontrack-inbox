@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ConversationEngine, ProcessMessagePayload } from '@/lib/conversationEngine';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const body: ProcessMessagePayload = await req.json();
@@ -16,7 +18,6 @@ export async function POST(req: NextRequest) {
 
     // Kirim CAPI INITIATE_CHECKOUT jika state berpindah ke BOOKING_READY
     if (result.is_booking_ready) {
-      // Background trigger: Server CAPI Dispatcher (Non-blocking)
       fetch(`${req.nextUrl.origin}/api/tracking/capi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

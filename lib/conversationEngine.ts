@@ -1,8 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+function getEngineSupabase() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    'placeholder-anon-key';
+  return createClient(supabaseUrl, supabaseKey);
+}
 
 export interface ProcessMessagePayload {
   tenant_id: string;
@@ -20,8 +25,15 @@ export interface EngineResult {
   is_booking_ready: boolean;
 }
 
+interface ServiceConfigItem {
+  capacity: number;
+  price: number;
+  [key: string]: any;
+}
+
 export class ConversationEngine {
   static async process(payload: ProcessMessagePayload): Promise<EngineResult> {
+    const supabase = getEngineSupabase();
     const { tenant_id, channel, session_id, user_identifier, message } = payload;
     const cleanMsg = message.trim();
     const trace: string[] = [];
@@ -59,7 +71,16 @@ export class ConversationEngine {
       .maybeSingle();
 
     if (!entities) {
-      entities = { session_id, tenant_id, capacity: null, price: null, customer_name: null, address: null, scheduled_date: null, scheduled_time: null };
+      entities = {
+        session_id,
+        tenant_id,
+        capacity: null,
+        price: null,
+        customer_name: null,
+        address: null,
+        scheduled_date: null,
+        scheduled_time: null
+      };
     }
 
     // 3. Ambil Daftar Harga Resmi Deterministic
@@ -69,15 +90,17 @@ export class ConversationEngine {
       .eq('tenant_id', tenant_id)
       .order('capacity', { ascending: true });
 
-    const services = serviceList || [];
+    const services: ServiceConfigItem[] = (serviceList as ServiceConfigItem[]) || [];
 
     // --- STEP A: DETERMINISTIC ROUTER (ON-TRACK FLOW) ---
     
     // GREETING -> Tampilkan Opsi Kapasitas
     if (session.current_state === 'GREETING') {
-      const optionsText = services
-        .map((s) => `• *${s.capacity} Liter* : Rp ${Number(s.price).toLocaleString('id-ID')}`)
-        .join('\n');
+      const optionsText = services.length > 0
+        ? services
+            .map((s: ServiceConfigItem) => `• *${s.capacity} Liter* : Rp ${Number(s.price).toLocaleString('id-ID')}`)
+            .join('\n')
+        : '• *350 Liter* : Rp 130.000\n• *520 Liter* : Rp 160.000\n• *1000 Liter* : Rp 200.000';
 
       await supabase
         .from('conversation_sessions')
@@ -98,8 +121,8 @@ export class ConversationEngine {
     const matchedNumber = cleanMsg.match(/\b(250|300|350|500|520|650|1000|1500|2000)\b/);
     if (session.current_state === 'ASK_CAPACITY' && matchedNumber) {
       const selectedCap = parseInt(matchedNumber[0], 10);
-      const matchedService = services.find((s) => s.capacity === selectedCap) || services[0];
-      const price = matchedService ? Number(matchedService.price) : 150000;
+      const matchedService = services.find((s: ServiceConfigItem) => s.capacity === selectedCap);
+      const price = matchedService ? Number(matchedService.price) : 160000;
 
       entities.capacity = selectedCap;
       entities.price = price;
@@ -118,7 +141,6 @@ export class ConversationEngine {
     }
 
     // --- STEP B: SMART AI INTERCEPTOR (OFF-TRACK / SIDE QUESTION) ---
-    // Deteksi jika user bertanya di luar format atau menanyakan hal teknis/garansi
     const isQuestion = cleanMsg.includes('?') || cleanMsg.length > 25 || /(aman|kimia|garansi|kotor|bau|lumut|berapa lama|sabun|kuras)/i.test(cleanMsg);
 
     if (isQuestion && session.current_state !== 'GREETING') {
@@ -132,7 +154,6 @@ export class ConversationEngine {
         sideAnswer = 'Estimasi pengerjaan kuras toren biasanya memakan waktu sekitar 45 - 60 menit per toren sampai kering dan bersih total Kak.';
       }
 
-      // Format Pullback deterministik sesuai state aktif
       let pullbackText = 'Mau kami jadwalkan untuk toren ukuran berapa liter ya Kak?';
       if (session.current_state === 'COLLECT_BOOKING') {
         pullbackText = 'Boleh dibantu kirim nama dan alamat lokasinya Kak agar kami cek rute teknisi hari ini?';
@@ -149,7 +170,6 @@ export class ConversationEngine {
 
     // --- STEP C: PARSING BOOKING DATA & STRICT BOUNDARY CHECK ---
     if (session.current_state === 'COLLECT_BOOKING') {
-      // Parsing deterministik sederhana (Bisa diekstrak dari multiline text)
       if (!entities.customer_name && cleanMsg.length > 3) {
         entities.address = cleanMsg;
         entities.customer_name = user_identifier || 'Pelanggan';
@@ -173,7 +193,7 @@ export class ConversationEngine {
       }
     }
 
-    // Fallback response jika input tidak dikenali
+    // Fallback response
     return {
       reply: 'Boleh dibantu info ukuran torennya Kak (misal: 350, 520, atau 1000 liter)?',
       next_state: session.current_state,
