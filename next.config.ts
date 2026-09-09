@@ -5,8 +5,8 @@ const nextConfig: NextConfig = {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.boontrack.com";
     return [
       {
-        source: "/api/v1/:path*",
-        destination: `${apiUrl}/api/v1/:path*`,
+        source: "/api/:path*",
+        destination: `${apiUrl}/api/:path*`,
       },
     ];
   },
