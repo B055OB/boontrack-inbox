@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function getSupabaseAdmin() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const supabaseKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    "";
-  return createClient(supabaseUrl, supabaseKey);
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -18,15 +16,11 @@ export async function POST(req: NextRequest) {
     const lower = rawMessage.toLowerCase();
 
     if (!tenantSlug) {
-      return NextResponse.json(
-        { error: "tenant_slug is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "tenant_slug is required" }, { status: 400 });
     }
 
     const supabase = getSupabaseAdmin();
 
-    // 1. Ambil data tenant
     const { data: tenant } = await supabase
       .from("tenants")
       .select("id, slug, name, category, metadata")
@@ -34,20 +28,16 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     const storeName = tenant?.name || tenantSlug.replace(/[-_]/g, " ").toUpperCase();
-    const isService =
-      tenant?.category === "service" ||
-      tenant?.category === "LOCAL_SERVICE" ||
-      tenantSlug.includes("kuras");
+    const isService = tenant?.category === "service" || tenant?.category === "LOCAL_SERVICE" || tenantSlug.includes("kuras");
 
-    // 2. Ambil skema booking jika ada
     const { data: bookingSchema } = await supabase
       .from("tenant_booking_schemas")
       .select("*")
       .eq("tenant_slug", tenantSlug)
       .maybeSingle();
 
-    const pricingMatrix: Array<{ label?: string; capacity?: string; price: number }> =
-      bookingSchema?.pricing_matrix ||
+    const pricingMatrix = 
+      bookingSchema?.pricing_matrix || 
       tenant?.metadata?.products || [
         { label: "520 Liter", price: 160000 },
         { label: "650 Liter", price: 170000 },
@@ -55,59 +45,22 @@ export async function POST(req: NextRequest) {
         { label: "1000 Liter", price: 200000 }
       ];
 
-    const defaultQuickActions = [
-      "💧 Daftar Harga Layanan",
-      "📍 Area Jangkauan Layanan",
-      "📅 Jadwal & Cara Pesan",
-      "🛡️ Garansi Kebersihan"
-    ];
-
-    // SKENARIO: TENANT JASA (LOCAL SERVICE)
+    // SKENARIO: LOCAL SERVICE (Kuras Toren)
     if (isService || bookingSchema) {
-      // Pertanyaan Keamanan Air & Garansi
-      if (
-        lower.includes("aman") ||
-        lower.includes("garansi") ||
-        lower.includes("sabun") ||
-        lower.includes("kimia") ||
-        lower.includes("minum")
-      ) {
-        return NextResponse.json({
-          reply_text: `Dijamin 100% aman Kak! Proses kuras toren di ${storeName} menggunakan teknik khusus tanpa bahan kimia keras berbahaya, sehingga air aman untuk langsung digunakan kembali. Kami juga memberikan garansi bersih tuntas.\n\nBoleh kami bantu atur jadwal kunjungan teknisi ke rumah?`,
-          action: "NONE",
-          type: "TEXT",
-          quick_actions: ["💧 Daftar Harga Layanan", "📅 Jadwal & Cara Pesan"]
-        });
-      }
-
-      // Pertanyaan Harga / Tarif
-      if (
-        lower.includes("harga") ||
-        lower.includes("biaya") ||
-        lower.includes("tarif") ||
-        lower.includes("layanan") ||
-        lower.includes("daftar")
-      ) {
+      // 1. Tanya Harga / Tarif
+      if (lower.includes("harga") || lower.includes("biaya") || lower.includes("tarif") || lower.includes("layanan")) {
         const listText = pricingMatrix
-          .map(
-            (p) =>
-              `• ${p.label || p.capacity || "Kuras Toren"}: Rp ${Number(
-                p.price || 0
-              ).toLocaleString("id-ID")}`
-          )
+          .map((p) => `• ${p.label || p.capacity || "Kuras Toren"}: Rp ${Number(p.price || 0).toLocaleString("id-ID")}`)
           .join("\n");
 
         return NextResponse.json({
-          reply_text: `Berikut daftar tarif resmi kuras toren di ${storeName}:\n\n${listText}\n\nSemua pengerjaan sudah termasuk pembersihan lumut tuntas dan garansi bersih. Untuk toren di rumah Kakak, ukuran berapa liter ya?`,
+          reply_text: `Berikut adalah rincian tarif layanan ${storeName} bergaransi bersih tuntas:\n\n${listText}\n\nUntuk toren di lokasi Kakak, kapasitas berapa liter ya?`,
           action: "ASK_CAPACITY",
-          type: "TEXT",
-          quick_actions: pricingMatrix
-            .slice(0, 4)
-            .map((p) => p.label || p.capacity || "Kuras Toren")
+          type: "TEXT"
         });
       }
 
-      // User Menyebut Ukuran Literan (520, 650, 800, 1000, dst)
+      // 2. User Sebut Ukuran Toren -> Muncul Kartu Interaktif
       const matched = pricingMatrix.find((item) => {
         const str = `${item.label || ""} ${item.capacity || ""}`.toLowerCase();
         const numMatch = str.match(/\d+/);
@@ -119,9 +72,7 @@ export async function POST(req: NextRequest) {
         const capPrice = Number(matched.price || 0);
 
         return NextResponse.json({
-          reply_text: `Siap Kak! Untuk kapasitas *${capName}*, biayanya *Rp ${capPrice.toLocaleString(
-            "id-ID"
-          )}* bersih tuntas.\n\nSilakan klik tombol di bawah untuk pesan langsung atau pilih jadwal kunjungan teknisi kami.`,
+          reply_text: `Siap Kak! Untuk kapasitas *${capName}*, biayanya *Rp ${capPrice.toLocaleString("id-ID")}* (sudah termasuk kuras tuntas & sterilisasi). Silakan klik tombol di bawah untuk pesan langsung ya.`,
           action: "SHOW_CHECKOUT",
           type: "SHOW_CHECKOUT",
           product: {
@@ -129,80 +80,47 @@ export async function POST(req: NextRequest) {
             name: `${storeName} - ${capName}`,
             price: capPrice,
             badge: "Layanan Rekomendasi",
-            image:
-              "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60",
-            description: `Pengerjaan kuras toren tuntas bergaransi bersih untuk kapasitas ${capName}.`
-          },
-          quick_actions: [
-            "📅 Jadwal Hari Ini",
-            "📅 Jadwal Besok",
-            "📍 Tanya Area Layanan"
-          ]
+            image: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60",
+            description: `Pembersihan & kuras toren tuntas bergaransi bersih untuk kapasitas ${capName}.`
+          }
         });
       }
 
-      // Pertanyaan Area Jangkauan
-      if (
-        lower.includes("area") ||
-        lower.includes("jangkauan") ||
-        lower.includes("lokasi") ||
-        lower.includes("karawang") ||
-        lower.includes("alamat")
-      ) {
+      // 3. Tanya Garansi / Keamanan
+      if (lower.includes("aman") || lower.includes("garansi") || lower.includes("sabun") || lower.includes("kimia")) {
         return NextResponse.json({
-          reply_text: `Tim teknisi ${storeName} melayani seluruh area Karawang dan sekitarnya (perumahan, ruko, maupun instansi). Teknisi datang langsung membawa perlengkapan lengkap.\n\nBoleh diinfokan patokan perumahan atau kecamatan lokasi Kakak?`,
-          action: "ASK_LOCATION",
-          type: "TEXT",
-          quick_actions: ["💧 Daftar Harga Layanan", "📅 Jadwal & Cara Pesan"]
+          reply_text: `Dijamin 100% aman Kak! Pembersihan dilakukan tanpa bahan kimia keras berbahaya sehingga air langsung aman digunakan kembali, lengkap dengan garansi bersih tuntas. Ada jadwal yang ingin dipilih?`,
+          action: "NONE",
+          type: "TEXT"
         });
       }
 
-      // Pertanyaan Jadwal & Cara Pesan
-      if (
-        lower.includes("jadwal") ||
-        lower.includes("pesan") ||
-        lower.includes("booking") ||
-        lower.includes("order")
-      ) {
+      // 4. Tanya Area Jangkauan
+      if (lower.includes("area") || lower.includes("jangkauan") || lower.includes("lokasi") || lower.includes("karawang")) {
         return NextResponse.json({
-          reply_text: `Cara pesan di ${storeName} sangat mudah:\n1. Tentukan ukuran toren Kakak.\n2. Tentukan hari dan jam kunjungan.\n3. Teknisi datang dan pembayaran bisa via QRIS atau bayar tunai di tempat setelah pengerjaan beres.\n\nRencana mau dibersihkan hari apa Kak?`,
-          action: "ASK_SCHEDULE",
-          type: "TEXT",
-          quick_actions: [
-            "📅 Jadwal Hari Ini",
-            "📅 Jadwal Besok",
-            "💧 Daftar Harga Layanan"
-          ]
+          reply_text: `Tim teknisi kami melayani seluruh area Karawang dan sekitarnya. Boleh diinfokan lokasi kecamatan atau patokan tempat tinggal Kakak?`,
+          action: "NONE",
+          type: "TEXT"
         });
       }
 
-      // Default Balasan Jasa
+      // SAPAAN AWAL NATURAL (Tanpa Menu Kaku)
       return NextResponse.json({
-        reply_text: `Halo! Selamat datang di layanan ${storeName} 👋 Ada yang bisa kami bantu seputar tarif estimasi, jadwal kunjungan, atau jangkauan area kami?`,
+        reply_text: `Halo! Selamat datang di layanan ${storeName} 👋 Ada yang bisa kami bantu seputar estimasi biaya atau penjadwalan pembersihan toren hari ini?`,
         action: "NONE",
-        type: "TEXT",
-        quick_actions: defaultQuickActions
+        type: "TEXT"
       });
     }
 
-    // SKENARIO: TENANT RETAIL BIASA
-    const { data: prods } = await supabase
-      .from("products")
-      .select("id, name, price, promo_price")
-      .eq("tenant_id", tenant?.id)
-      .limit(4);
-
+    // SKENARIO: RETAIL REGULER
     return NextResponse.json({
-      reply_text: `Selamat datang di ${storeName}! Ada yang bisa kami bantu terkait produk atau pesanan Anda?`,
+      reply_text: `Halo! Selamat datang di ${storeName}. Ada yang bisa kami bantu terkait produk kami?`,
       action: "NONE",
-      type: "TEXT",
-      quick_actions: (prods || []).map((p) => p.name)
+      type: "TEXT"
     });
+
   } catch (err: any) {
-    console.error("[Store Chat Fatal Error]:", err);
-    return NextResponse.json(
-      { error: "Internal Server Error", message: err?.message || String(err) },
-      { status: 500 }
-    );
+    console.error("[Store Chat Error]:", err);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
