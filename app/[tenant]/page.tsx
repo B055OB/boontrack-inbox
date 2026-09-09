@@ -17,6 +17,7 @@ import {
   Check 
 } from "lucide-react";
 import ShopClaimSection from "@/app/components/ShopClaimSection";
+import BarcodeScannerModal from './dashboard/components/BarcodeScannerModal';
 import CheckoutModal from "@/app/components/CheckoutModal";
 import { 
   captureAffiliateReferral, 
@@ -101,6 +102,7 @@ export default function TenantStorefrontPage() {
   const rawTenant = (params?.tenant as string) || "";
   const tenantSlug = rawTenant.toLowerCase().trim();
   const displayName = tenantSlug.replace(/[-_]/g, " ");
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   // 0. CAPTURE AFFILIATE REFERRAL & SELLER TRACKING
   useEffect(() => {
@@ -295,6 +297,22 @@ export default function TenantStorefrontPage() {
       }
       return [...prev, { product, qty: 1 }];
     });
+  };
+  const handleBarcodeDetected = (code: string) => {
+    const matched = storeProducts.find(
+      (p: any) =>
+        p.barcode === code ||
+        p.sku === code ||
+        String(p.id) === code ||
+        p.name?.toLowerCase().includes(code.toLowerCase())
+    );
+
+    if (matched) {
+      addToCart(matched);
+      alert(`Produk "${matched.name}" berhasil ditambahkan ke keranjang!`);
+    } else {
+      alert(`Produk dengan barcode/kode "${code}" tidak ditemukan.`);
+    }
   };
 
   const updateCartQty = (productId: number | string, delta: number) => {
@@ -612,6 +630,18 @@ export default function TenantStorefrontPage() {
         {/* KOLOM KANAN: KATALOG LAYANAN DARI SUPABASE */}
         <section className="lg:col-span-7 space-y-5">
           <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
+            {/* Tombol Scan Barcode / QR */}
+            <button
+              type="button"
+              onClick={() => setIsScannerOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-medium rounded-xl shadow-sm transition active:scale-95 shrink-0"
+              title="Scan Barcode / QR Produk"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              <span>Scan</span>
+            </button>
             <button
               onClick={() => setActiveCategory("all")}
               className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
@@ -791,7 +821,12 @@ export default function TenantStorefrontPage() {
         tenantSlug={tenantSlug}
         product={productForCheckout}
       />
-
+      {/* Modal Barcode Scanner */}
+      <BarcodeScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanSuccess={handleBarcodeDetected}
+      />
       <footer className="py-8 px-4 text-center text-xs text-slate-500 bg-slate-900 border-t border-slate-800 mt-auto space-y-4">
         <div className="max-w-4xl mx-auto space-y-3">
           <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1 text-slate-400 font-medium">
