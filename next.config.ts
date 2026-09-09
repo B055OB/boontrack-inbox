@@ -1,12 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   async rewrites() {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://api.boontrack.com";
     return [
       {
-        source: '/api/railway/:path*',
-        destination: 'https://boontrack-core-production.up.railway.app/api/:path*',
+        source: "/api/v1/:path*",
+        destination: `${apiUrl}/api/v1/:path*`,
       },
     ];
   },
