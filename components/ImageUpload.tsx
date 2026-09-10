@@ -10,66 +10,171 @@ interface ImageUploadProps {
   className?: string;
   placeholder?: string;
   description?: string;
+  tenantSlug?: string;
+}
+
+// Client-side auto-converter ke format WebP & auto-resize max 1200px
+async function optimizeImageToWebP(file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<File> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.FileReader) {
+      return resolve(file);
+    }
+
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(file);
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const cleanName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
+                const webpFile = new File([blob], cleanName, { type: 'image/webp' });
+                resolve(webpFile);
+              } else {
+                resolve(file);
+              }
+            },
+            'image/webp',
+            quality
+          );
+        } catch {
+          resolve(file);
+        }
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function ImageUpload({
-  label = "Upload Foto",
-  value = "",
+  label = 'Upload Foto',
+  value = '',
   onChange,
-  className = "",
-  placeholder = "Pilih gambar (JPG, PNG, WebP maks 5 MB)",
-  description = "Auto-convert ke WebP & resize max width 1200px"
+  className = '',
+  placeholder = 'Pilih gambar (JPG, PNG, WebP maks 5 MB)',
+  description = 'Auto-convert ke WebP & resize max width 1200px',
+  tenantSlug,
 }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Deteksi otomatis tenant slug dari URL jika tidak di-pass sebagai props
+  const getResolvedTenantSlug = (): string => {
+    if (tenantSlug) return tenantSlug;
+    if (typeof window !== 'undefined') {
+      const segments = window.location.pathname.split('/').filter(Boolean);
+      if (segments.length > 0 && !['dashboard', 'api', 'login', 'admin'].includes(segments[0])) {
+        return segments[0];
+      }
+      const hostParts = window.location.hostname.split('.');
+      if (hostParts.length > 2 && !['shop', 'www'].includes(hostParts[0])) {
+        return hostParts[0];
+      }
+    }
+    return 'sandbox';
+  };
+
   const coreApiUrl =
     process.env.NEXT_PUBLIC_CORE_API_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
     'https://boontrack-core-production.up.railway.app';
 
-  const handleUploadFile = async (file: File) => {
+  const handleUploadFile = async (rawFile: File) => {
     setErrorMsg(null);
 
-    // Client-side MIME validation
-    if (!file.type.startsWith('image/')) {
+    // Validasi tipe file
+    if (!rawFile.type.startsWith('image/')) {
       setErrorMsg('File harus berupa gambar (JPG, PNG, WebP, dll.)');
       return;
     }
 
-    // Client-side Size validation (5 MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setErrorMsg(`Ukuran file melebihi 5 MB (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
+    // Validasi ukuran file (5 MB)
+    if (rawFile.size > 5 * 1024 * 1024) {
+      setErrorMsg(`Ukuran file melebihi 5 MB (${(rawFile.size / (1024 * 1024)).toFixed(2)} MB)`);
       return;
     }
 
     setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
 
     try {
-      const endpoint = `${coreApiUrl.replace(/\/+$/, '')}/api/v1/media/upload`;
-      const res = await fetch(endpoint, {
+      // 1. Kompres & ubah file menjadi WebP 1200px
+      const processedFile = await optimizeImageToWebP(rawFile);
+      const activeTenant = getResolvedTenantSlug();
+
+      // 2. Susun FormData & tenant payload
+      const formData = new FormData();
+      formData.append('file', processedFile, processedFile.name);
+      formData.append('tenant_slug', activeTenant);
+      formData.append('tenant_id', activeTenant);
+      formData.append('folder', 'products');
+
+      // 3. Susun URL dengan query param fallback
+      const baseEndpoint = `${coreApiUrl.replace(/\/+$/, '')}/api/v1/media/upload`;
+      const uploadUrl = new URL(baseEndpoint);
+      uploadUrl.searchParams.set('tenant_slug', activeTenant);
+
+      const res = await fetch(uploadUrl.toString(), {
         method: 'POST',
+        headers: {
+          'X-Tenant-Slug': activeTenant,
+          'X-Tenant-ID': activeTenant,
+        },
         body: formData,
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Upload gagal (${res.status})`);
+        let serverError = `Upload gagal (${res.status})`;
+        try {
+          const resText = await res.text();
+          const errJson = JSON.parse(resText);
+          if (typeof errJson.detail === 'string') {
+            serverError = errJson.detail;
+          } else if (Array.isArray(errJson.detail)) {
+            serverError = errJson.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ');
+          } else if (errJson.message) {
+            serverError = errJson.message;
+          }
+        } catch {}
+        throw new Error(serverError);
       }
 
       const data = await res.json();
-      if (data && data.url) {
-        onChange(data.url, {
-          width: data.width,
-          height: data.height,
-          file_size_kb: data.file_size_kb,
+      const finalUrl = data?.url || data?.image_url || data?.file_url || (typeof data === 'string' ? data : '');
+
+      if (finalUrl) {
+        onChange(finalUrl, {
+          width: data?.width,
+          height: data?.height,
+          file_size_kb: data?.file_size_kb || Math.round(processedFile.size / 1024),
         });
       } else {
-        throw new Error('Response upload tidak memiliki URL gambar');
+        throw new Error('Server tidak mengembalikan URL gambar yang valid.');
       }
     } catch (err: any) {
       console.error('Error uploading image:', err);
@@ -123,7 +228,6 @@ export default function ImageUpload({
         </div>
       )}
 
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -185,8 +289,8 @@ export default function ImageUpload({
           {isUploading ? (
             <div className="flex flex-col items-center gap-1.5 py-2">
               <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-              <span className="text-xs font-bold text-slate-700">Mengunggah & Mengonversi ke WebP...</span>
-              <span className="text-[10px] text-slate-400">Sedang auto-resize & kompresi</span>
+              <span className="text-xs font-bold text-slate-700">Mengunggah &amp; Mengonversi ke WebP...</span>
+              <span className="text-[10px] text-slate-400">Sedang auto-resize 1200px &amp; optimasi</span>
             </div>
           ) : (
             <>
