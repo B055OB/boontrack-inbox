@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { INITIAL_PAYOUTS, PayoutRequestItem } from '@/lib/partner-service';
+import { PayoutRequestItem } from '@/lib/partner-service';
 import { getSupabase } from '@/lib/supabaseClient';
 
 export async function GET() {
@@ -34,5 +34,6 @@ export async function GET() {
     console.warn('Supabase fetch payouts note:', err);
   }
 
-  return NextResponse.json({ success: true, payouts: INITIAL_PAYOUTS });
+  // Tidak ada data fallback lokal — kembalikan empty array jika Supabase tidak menghasilkan data
+  return NextResponse.json({ success: true, payouts: [] });
 }

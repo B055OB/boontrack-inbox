@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const tenantSlug = searchParams.get("tenant") || "onlineboost";
+    const tenantSlug = searchParams.get("tenant") || "growth";
 
     const BACKEND_URL =
       process.env.CORE_BACKEND_URL ||
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     // Graceful fallback agar frontend tetap memunculkan QR Code untuk pairing
     const { searchParams } = new URL(req.url);
-    const tenantSlug = searchParams.get("tenant") || "onlineboost";
+    const tenantSlug = searchParams.get("tenant") || "growth";
     
     return NextResponse.json({
       success: true,

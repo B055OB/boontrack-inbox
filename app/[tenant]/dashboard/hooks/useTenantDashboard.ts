@@ -25,6 +25,8 @@ export type DashboardTab =
   | 'ads_tracking'
   | 'biteship'
   | 'shipping'
+  | 'booking'
+  | 'downloads'
   | 'broadcast'
   | 'whatsapp'
   | 'settings';
@@ -65,6 +67,12 @@ export function useTenantDashboard() {
     ads_tracking?: boolean;
     tier?: string;
   }>({});
+
+  // Reverse Trial Days Left
+  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
+
+  // Upsell Modal State for Locked Features
+  const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false);
 
   // Plan Tier (growth / ads_performance / team_scale)
   const [planTier, setPlanTier] = useState<'growth' | 'ads_performance' | 'team_scale'>(() => {
@@ -115,7 +123,13 @@ export function useTenantDashboard() {
 
   const isBroadcastUnlocked = isTeamScale;
 
-  const handleUpgradeTier = (targetTier: 'ads_performance' | 'team_scale') => {
+  const isAiBotAllowed = Boolean(
+    isAdsPerformance ||
+    isTeamScale ||
+    (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial'))
+  );
+
+  const handleUpgradeTier = (targetTier: 'ads_performance' | 'team_scale' = 'ads_performance') => {
     const tierLabel = targetTier === 'team_scale' ? 'Team Scale (Official WABA & Unlimited)' : 'Ads Performance (CAPI Server-Side & ROAS)';
     const text = encodeURIComponent(`Halo Tim BoonTrack, saya ingin upgrade paket toko "${displayName}" (${tenantSlug}) ke paket ${tierLabel}. Mohon panduannya.`);
     window.open(`https://wa.me/${getPlatformWhatsApp()}?text=${text}`, '_blank');
@@ -342,6 +356,21 @@ export function useTenantDashboard() {
           } else {
             setPlanTier('growth');
           }
+
+          // Reverse Trial: hitung sisa hari dari trial_ends_at atau created_at + 14 hari
+          if (rawTier.includes('trial')) {
+            const trialEndTimestamp = tenant.trial_ends_at
+              ? new Date(tenant.trial_ends_at).getTime()
+              : tenant.metadata?.trial_ends_at
+              ? new Date(tenant.metadata.trial_ends_at).getTime()
+              : new Date(tenant.created_at || Date.now()).getTime() + 14 * 86400000;
+
+            const diffMs = trialEndTimestamp - Date.now();
+            const days = Math.max(0, Math.ceil(diffMs / 86400000));
+            setTrialDaysLeft(days);
+          } else {
+            setTrialDaysLeft(null);
+          }
         }
       } catch (err) {
         console.error('Gagal memuat data tenant:', err);
@@ -384,6 +413,15 @@ export function useTenantDashboard() {
                 setPlanTier('ads_performance');
               } else if (rawTier.includes('growth') || rawTier === 'starter' || rawTier === 'solo') {
                 setPlanTier('growth');
+              }
+
+              if (rawTier.includes('trial')) {
+                const endAt = s.trial_ends_at || data.trial_ends_at;
+                const trialEndTimestamp = endAt
+                  ? new Date(endAt).getTime()
+                  : new Date(s.created_at || data.created_at || Date.now()).getTime() + 14 * 86400000;
+                const diffMs = trialEndTimestamp - Date.now();
+                setTrialDaysLeft(Math.max(0, Math.ceil(diffMs / 86400000)));
               }
             }
             setBotStrategy(loadedStrategy as 'trust_builder' | 'balanced' | 'hard_selling');
@@ -1132,6 +1170,12 @@ export function useTenantDashboard() {
     replyText,
     setReplyText,
     handleSendMessage,
+
+    // Reverse Trial & Entitlement
+    trialDaysLeft,
+    isAiBotAllowed,
+    isUpsellModalOpen,
+    setIsUpsellModalOpen,
 
     // Finance & Transactions
     bankForm,

@@ -6,11 +6,14 @@ import dynamic from 'next/dynamic';
 import {
   Store,
   ExternalLink,
+  Calendar,
+  Download,
 } from 'lucide-react';
 import LockedFeatureCard from './components/LockedFeatureCard';
 
 import NavTabs from './components/navbar/NavTabs';
 import OrderNotificationBell from './components/navbar/OrderNotificationBell';
+import TrialBanner from './components/navbar/TrialBanner';
 import ProductsTab from './components/tabs/ProductsTab';
 import AdsTrackingTab from './components/tabs/AdsTrackingTab';
 import TeamChatTab from './components/tabs/TeamChatTab';
@@ -24,6 +27,7 @@ import BoonPilotWidget from '@/components/BoonPilotWidget';
 import ProductFormModal from './components/ProductFormModal';
 import SinglePageBuilderModal from './components/SinglePageBuilderModal';
 import BulkImportModal from './components/modals/BulkImportModal';
+import UpsellModal from './components/modals/UpsellModal';
 import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
 import { useTenantDashboard } from './hooks/useTenantDashboard';
 
@@ -42,6 +46,12 @@ export default function TenantDashboardPage() {
     isGrowth,
     isAdsTrackingUnlocked,
     handleUpgradeTier,
+
+    trialDaysLeft,
+    tenantFeatureFlags,
+    isAiBotAllowed,
+    isUpsellModalOpen,
+    setIsUpsellModalOpen,
 
     storeCategory,
     storeDisplayName,
@@ -218,11 +228,21 @@ export default function TenantDashboardPage() {
           </div>
         </header>
 
+        {/* REVERSE TRIAL WARNING BANNER */}
+        <TrialBanner
+          daysLeft={trialDaysLeft}
+          tier={tenantFeatureFlags?.tier}
+          onUpgrade={handleUpgradeTier}
+        />
+
         {/* TABS NAVIGATION */}
         <NavTabs
           activeTab={activeTab as any}
           setActiveTab={setActiveTab as any}
           isTeamScale={isTeamScale}
+          storeCategory={storeCategory}
+          productCount={products.length}
+          orderCount={transactions.length}
         />
 
         {saveFeedback && (
@@ -332,88 +352,166 @@ export default function TenantDashboardPage() {
         />
       )}
 
-      {/* TAB 5: WhatsApp Gateway */}
-      {activeTab === 'whatsapp' && (
-        <WhatsAppTab
-          tenantSlug={tenantSlug}
-          displayName={displayName}
-          waMode={waMode}
-          setWaMode={setWaMode}
-          waStatus={waStatus}
-          setWaStatus={setWaStatus}
-          qrCodeUrl={qrCodeUrl}
-          setQrCodeUrl={setQrCodeUrl}
-          isQrLoading={isQrLoading}
-          waErrorMessage={waErrorMessage}
-          connectedPhone={connectedPhone}
-          setConnectedPhone={setConnectedPhone}
-          pairingPhone={pairingPhone}
-          setPairingPhone={setPairingPhone}
-          pairingCodeResult={pairingCodeResult}
-          isPairingLoading={isPairingLoading}
-          handleConnectGrowthSession={handleConnectGrowthSession}
-          handleRequestPairingCode={handleRequestPairingCode}
-          botStrategy={botStrategy}
-          setBotStrategy={setBotStrategy}
-          handleSaveBotStrategy={handleSaveBotStrategy}
-          isSavingStrategy={isSavingStrategy}
-          isLoadingAi={isLoadingAi}
-          strategyFeedback={strategyFeedback}
-          isProScale={isProScale}
-          renderLockedFeatureCard={renderLockedFeatureCard}
-          setSaveFeedback={setSaveFeedback}
-        />
-      )}
+      {/* TAB 5: WHATSAPP & BROADCAST UNIFIED HUB */}
+      {(activeTab === 'whatsapp' || activeTab === 'broadcast') && (
+        <div className="flex-1 flex flex-col">
+          {/* Sub Navigation Hub */}
+          <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center justify-between gap-3">
+            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 items-center">
+              <button
+                type="button"
+                onClick={() => setActiveTab('whatsapp')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'whatsapp'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Koneksi Gateway & Bot
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('broadcast')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'broadcast'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Broadcast WA Massal
+              </button>
+            </div>
+            <span className="text-[11px] text-slate-500 hidden sm:inline">
+              Pusat automasi & penyiaran pesan pelanggan WhatsApp
+            </span>
+          </div>
 
-      {/* TAB: ADS TRACKING PRO */}
-      {activeTab === 'ads_tracking' && (
-        <AdsTrackingTab
-          isAdsTrackingUnlocked={isAdsTrackingUnlocked}
-          tenantSlug={tenantSlug}
-          displayName={displayName}
-          onSaved={(msg) => {
-            setSaveFeedback(msg);
-            setTimeout(() => setSaveFeedback(null), 4000);
-          }}
-          renderLockedFeatureCard={renderLockedFeatureCard}
-        />
-      )}
+          {activeTab === 'whatsapp' && (
+            <WhatsAppTab
+              tenantSlug={tenantSlug}
+              displayName={displayName}
+              waMode={waMode}
+              setWaMode={setWaMode}
+              waStatus={waStatus}
+              setWaStatus={setWaStatus}
+              qrCodeUrl={qrCodeUrl}
+              setQrCodeUrl={setQrCodeUrl}
+              isQrLoading={isQrLoading}
+              waErrorMessage={waErrorMessage}
+              connectedPhone={connectedPhone}
+              setConnectedPhone={setConnectedPhone}
+              pairingPhone={pairingPhone}
+              setPairingPhone={setPairingPhone}
+              pairingCodeResult={pairingCodeResult}
+              isPairingLoading={isPairingLoading}
+              handleConnectGrowthSession={handleConnectGrowthSession}
+              handleRequestPairingCode={handleRequestPairingCode}
+              botStrategy={botStrategy}
+              setBotStrategy={setBotStrategy}
+              handleSaveBotStrategy={handleSaveBotStrategy}
+              isSavingStrategy={isSavingStrategy}
+              isLoadingAi={isLoadingAi}
+              strategyFeedback={strategyFeedback}
+              isProScale={isProScale}
+              renderLockedFeatureCard={renderLockedFeatureCard}
+              setSaveFeedback={setSaveFeedback}
+            />
+          )}
 
-      {/* TAB: KURIR & EKSPEDISI */}
-      {['shipping', 'biteship', 'logistik', 'courier'].includes(activeTab as string) && (
-        <div className="w-full">
-          <BiteshipCourierConfig
-            tenantSlug={tenantSlug}
-            displayName={displayName || 'BoonTrack Shop'}
-            onSaved={(msg) => {
-              setSaveFeedback(msg);
-              setTimeout(() => setSaveFeedback(null), 4000);
-            }}
-          />
+          {activeTab === 'broadcast' &&
+            (!isProScale ? (
+              <div className="p-6 md:p-8 max-w-5xl mx-auto w-full">
+                {renderLockedFeatureCard({
+                  title: 'Broadcast WA Massal (Meta Cloud API)',
+                  badge: 'Fitur Eksklusif Team Scale (Official WABA)',
+                  description:
+                    'Fitur Eksklusif Team Scale (Official WABA). Kirim pesan promosi massal resmi anti-banned langsung lewat Meta Cloud API.',
+                  targetTier: 'team_scale',
+                  targetTierLabel: 'Team Scale',
+                })}
+              </div>
+            ) : (
+              <WhatsAppBroadcastManager
+                tenantSlug={tenantSlug}
+                displayName={displayName}
+                onSaved={(msg) => {
+                  setSaveFeedback(msg);
+                  setTimeout(() => setSaveFeedback(null), 4000);
+                }}
+              />
+            ))}
         </div>
       )}
 
-      {/* TAB: WHATSAPP BROADCAST MANAGER */}
-      {activeTab === 'broadcast' &&
-        (!isProScale ? (
-          renderLockedFeatureCard({
-            title: 'Broadcast WA Massal (Meta Cloud API)',
-            badge: 'Fitur Eksklusif Team Scale (Official WABA)',
-            description:
-              'Fitur Eksklusif Team Scale (Official WABA). Kirim pesan promosi massal resmi anti-banned langsung lewat Meta Cloud API.',
-            targetTier: 'team_scale',
-            targetTierLabel: 'Team Scale',
-          })
-        ) : (
-          <WhatsAppBroadcastManager
-            tenantSlug={tenantSlug}
-            displayName={displayName}
-            onSaved={(msg) => {
-              setSaveFeedback(msg);
-              setTimeout(() => setSaveFeedback(null), 4000);
-            }}
-          />
-        ))}
+      {/* TAB: BOOKING & JADWAL (HANYA FIELD SERVICE / LOCAL SERVICE) */}
+      {activeTab === 'booking' && (
+        <div className="flex-1 p-6 md:p-8 max-w-5xl mx-auto w-full space-y-6">
+          <div className="border-b border-slate-200 pb-4">
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-blue-600" />
+              <span>Manajemen Booking & Jadwal Layanan</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Atur ketersediaan slot waktu, area jangkauan, dan teknisi untuk pesanan jasa lapangan.
+            </p>
+          </div>
+          <LocalServiceConfigForm tenantSlug={tenantSlug} />
+        </div>
+      )}
+
+      {/* TAB: AKSES UNDUH & DIGITAL DELIVERY (HANYA PRODUK DIGITAL) */}
+      {activeTab === 'downloads' && (
+        <div className="flex-1 p-6 md:p-8 max-w-5xl mx-auto w-full space-y-6">
+          <div className="border-b border-slate-200 pb-4">
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Download className="w-5 h-5 text-indigo-600" />
+              <span>Akses Unduh & Delivery Materi Digital</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Pantau tautan pengiriman otomatis dan link akses materi digital pelanggan setelah pembayaran terverifikasi.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {products
+              .filter((p) => p.download_url || p.category === 'digital')
+              .map((p) => (
+                <div
+                  key={p.id}
+                  className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 truncate">{p.name}</h3>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Auto-Deliver
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 truncate">
+                    Link Akses:{' '}
+                    {p.download_url ? (
+                      <a
+                        href={p.download_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 underline font-medium hover:text-blue-800"
+                      >
+                        {p.download_url}
+                      </a>
+                    ) : (
+                      <span className="italic text-slate-400">
+                        Belum diatur URL (buka tab Katalog untuk mengedit)
+                      </span>
+                    )}
+                  </p>
+                </div>
+              ))}
+            {products.filter((p) => p.download_url || p.category === 'digital').length === 0 && (
+              <div className="col-span-full p-8 text-center bg-white rounded-2xl border border-slate-200 text-xs text-slate-500">
+                Belum ada produk digital dengan tautan unduh. Tambahkan atau edit produk di tab Katalog Produk.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* BOONPILOT AI COPILOT FLOATING WIDGET */}
       <BoonPilotWidget
@@ -482,6 +580,13 @@ export default function TenantDashboardPage() {
           }}
         />
       )}
+
+      {/* MODAL UPSELL REVERSE TRIAL / FITUR RESTRICTED */}
+      <UpsellModal
+        isOpen={isUpsellModalOpen}
+        onClose={() => setIsUpsellModalOpen(false)}
+        onUpgrade={() => handleUpgradeTier('ads_performance')}
+      />
     </main>
   );
 }

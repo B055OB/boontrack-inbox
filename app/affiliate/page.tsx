@@ -57,7 +57,8 @@ function AffiliatePortalContent() {
 
   // URL parameters or defaults
   const initialTenant = searchParams.get('tenant') || 'cornvest';
-  const initialRef = searchParams.get('ref') || searchParams.get('code') || 'ANDI';
+  // Tidak ada default referral code — harus berasal dari URL param atau sesi localStorage
+  const initialRef = searchParams.get('ref') || searchParams.get('code') || '';
 
   const [tenantSlug, setTenantSlug] = useState(initialTenant);
   const [affiliateCode, setAffiliateCode] = useState(initialRef);
@@ -80,7 +81,7 @@ function AffiliatePortalContent() {
   } | null>(null);
 
   // 1. Slug Customization States
-  const [customSlugInput, setCustomSlugInput] = useState(initialRef);
+  const [customSlugInput, setCustomSlugInput] = useState('');
   const [isRefCustomized, setIsRefCustomized] = useState(false);
   const [slugCheckStatus, setSlugCheckStatus] = useState<'idle' | 'checking' | 'available' | 'unavailable'>('idle');
   const [slugFeedback, setSlugFeedback] = useState('');
@@ -165,37 +166,10 @@ function AffiliatePortalContent() {
         if (json.data.affiliate.bank_account_holder) setAccountHolder(json.data.affiliate.bank_account_holder);
       }
     } catch (err: unknown) {
-      // Fallback realistic metrics if API demo endpoint is temporarily unreachable
-      const fallbackCustomized = authSession?.is_ref_customized || (aCode.toUpperCase() === 'ANDI');
-      setIsRefCustomized(Boolean(fallbackCustomized));
-      setData({
-        affiliate: {
-          id: `aff_${aCode.toLowerCase()}`,
-          name: authSession?.name || `Partner ${aCode.toUpperCase()}`,
-          phone_number: authSession?.phone || '0812-3456-7890',
-          referral_code: aCode.toUpperCase(),
-          commission_rate: 20,
-          status: 'ACTIVE',
-          is_ref_customized: Boolean(fallbackCustomized),
-          bank_name: authSession?.bank_name || 'BCA',
-          bank_account_number: authSession?.bank_account_number || '8820199201',
-          bank_account_holder: authSession?.bank_account_holder || (authSession?.name || `PARTNER ${aCode.toUpperCase()}`),
-        },
-        referral_url: `https://shop.boontrack.com/?ref=${aCode.toUpperCase()}`,
-        metrics: {
-          total_clicks: 142,
-          total_orders: 18,
-          ready_to_withdraw: 360000,
-          already_paid: 1250000,
-        },
-      });
-
-      if (!accountNumber) {
-        setAccountNumber(authSession?.bank_account_number || '8820199201');
-      }
-      if (!accountHolder) {
-        setAccountHolder(authSession?.bank_account_holder || authSession?.name || `PARTNER ${aCode.toUpperCase()}`);
-      }
+      // Tidak ada fallback data dummy — tampilkan error apa adanya
+      const msg = err instanceof Error ? err.message : 'Gagal memuat data affiliate.';
+      setErrorMsg(msg);
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -565,7 +539,7 @@ function AffiliatePortalContent() {
                 setAffiliateCode(e.target.value);
                 if (!isRefCustomized) setCustomSlugInput(e.target.value);
               }}
-              placeholder="ANDI"
+              placeholder="Masukkan kode referral"
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-base md:text-xs text-white font-mono focus:outline-none focus:border-emerald-500 uppercase"
             />
           </div>

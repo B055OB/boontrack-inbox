@@ -441,14 +441,23 @@ export default function AffiliateLoginPage() {
 
         </div>
 
-        {/* Whitelist Partner Only Notice */}
-        <div className="text-center text-xs text-slate-400 p-4 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-1">
+        {/* Register Partnership Link Banner */}
+        <div className="text-center text-xs text-slate-400 p-4 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-2">
           <p className="font-semibold text-slate-300">
-            Akses Pendaftaran Eksklusif Account Manager (AM)
+            Belum Menjadi Mitra Affiliate BoonTrack?
           </p>
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            Portal ini tertutup untuk pendaftaran publik mandiri. Hubungi Account Manager (AM) BoonTrack Anda jika nomor WhatsApp belum masuk ke whitelist partner.
+            Dapatkan komisi flat 25%, sistem toko otomatis 24/7, dan dukungan kurasi Account Manager (AM).
           </p>
+          <div className="pt-1">
+            <Link
+              href="/affiliate/register"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 underline underline-offset-4 transition"
+            >
+              <span>Daftar Kemitraan Affiliate Resmi</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         </div>
 
       </div>

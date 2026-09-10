@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { INITIAL_PARTNERS, PartnerItem, isValidSlugFormat } from '@/lib/partner-service';
+import { PartnerItem, isValidSlugFormat } from '@/lib/partner-service';
 import { getSupabase } from '@/lib/supabaseClient';
 
 export async function GET() {
@@ -22,7 +22,7 @@ export async function GET() {
           referral_code: a.referral_code || 'PARTNER',
           is_ref_customized: Boolean(a.is_ref_customized),
           status: (a.status as 'ACTIVE' | 'SUSPENDED') || 'ACTIVE',
-          am_pembina: a.metadata?.am_pembina || (a.role === 'AM' ? undefined : 'Andi Pratama'),
+          am_pembina: a.metadata?.am_pembina || (a.role === 'AM' ? undefined : undefined),
           commission_rate: a.commission_rate || 15,
           bank_name: a.metadata?.bank_name,
           bank_account_number: a.metadata?.bank_account_number,
@@ -38,7 +38,8 @@ export async function GET() {
     console.warn('Supabase fetch partners note:', err);
   }
 
-  return NextResponse.json({ success: true, partners: INITIAL_PARTNERS });
+  // Tidak ada data fallback lokal — kembalikan empty array jika Supabase tidak menghasilkan data
+  return NextResponse.json({ success: true, partners: [] });
 }
 
 export async function POST(req: NextRequest) {
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
       referral_code: cleanCode,
       is_ref_customized: Boolean(ref_code),
       status: 'ACTIVE',
-      am_pembina: role === 'AM' ? undefined : (am_pembina || 'Andi Pratama'),
+      am_pembina: role === 'AM' ? undefined : (am_pembina || undefined),
       commission_rate: role === 'AM' ? 20 : 15,
       balance: 0,
       total_withdrawn: 0,

@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { getTenantBaseUrl, getTenantCheckoutUrl } from "@/lib/checkout-link";
 
 function getSupabaseAdmin() {
   return createClient(
@@ -18,6 +19,7 @@ export interface ChatCoreResponse {
   action: string;
   type: string;
   product?: any;
+  checkout_url?: string;
 }
 
 export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatCoreResponse> {
@@ -27,24 +29,29 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
 
   const supabase = getSupabaseAdmin();
 
-  // 1. Ambil data tenant
+  // 1. Ambil data tenant termasuk custom_domain
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("id, slug, name, category, metadata")
+    .select("id, slug, name, category, metadata, custom_domain")
     .eq("slug", cleanSlug)
     .maybeSingle();
 
   const storeName = tenant?.name || cleanSlug.replace(/[-_]/g, " ").toUpperCase();
   const isService = tenant?.category === "service" || tenant?.category === "LOCAL_SERVICE" || cleanSlug.includes("kuras");
 
-  // 2. Ambil skema booking dari DB (Shared Schema)
+  const tenantDomainInfo = {
+    slug: tenant?.slug || cleanSlug,
+    custom_domain: tenant?.custom_domain || null,
+  };
+
+  // 2. Ambil skema booking dari DB (Shared Schema untuk Service/Jasa)
   const { data: bookingSchema } = await supabase
     .from("tenant_booking_schemas")
     .select("*")
     .eq("tenant_slug", cleanSlug)
     .maybeSingle();
 
-  const pricingMatrix: Array<{ label?: string; capacity?: string; price: number }> =
+  const pricingMatrix: Array<{ label?: string; capacity?: string; price: number; slug?: string }> =
     bookingSchema?.pricing_matrix ||
     tenant?.metadata?.products || [
       { label: "520 Liter", price: 160000 },
@@ -77,19 +84,23 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
     if (matched) {
       const capName = matched.label || matched.capacity || "Kuras Toren";
       const capPrice = Number(matched.price || 0);
+      const serviceId = `srv-${cleanSlug}-${Date.now()}`;
+      const checkoutUrl = getTenantCheckoutUrl(tenantDomainInfo, { id: serviceId, slug: matched.slug });
 
       return {
-        reply_text: `Siap Kak! Untuk kapasitas *${capName}*, biayanya *Rp ${capPrice.toLocaleString("id-ID")}* (sudah termasuk kuras tuntas & sterilisasi bebas lumut).\n\nBoleh kami bantu atur jadwal pengerjaannya hari ini atau besok? 📅`,
+        reply_text: `Siap Kak! Untuk kapasitas *${capName}*, biayanya *Rp ${capPrice.toLocaleString("id-ID")}* (sudah termasuk kuras tuntas & sterilisasi bebas lumut).\n\nBoleh kami bantu atur jadwal pengerjaannya hari ini atau besok? 📅\n\n👉 *Link Pemesanan Langsung:*\n${checkoutUrl}`,
         action: "SHOW_CHECKOUT",
         type: "SHOW_CHECKOUT",
         product: {
-          id: `srv-${cleanSlug}-${Date.now()}`,
+          id: serviceId,
           name: `${storeName} - ${capName}`,
           price: capPrice,
           badge: "Layanan Rekomendasi",
           image: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60",
-          description: `Pembersihan & kuras toren tuntas bergaransi bersih untuk kapasitas ${capName}.`
-        }
+          description: `Pembersihan & kuras toren tuntas bergaransi bersih untuk kapasitas ${capName}.`,
+          checkout_url: checkoutUrl,
+        },
+        checkout_url: checkoutUrl,
       };
     }
 
@@ -105,23 +116,95 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
     // Alur 4: Area Jangkauan + Pullback
     if (lower.includes("area") || lower.includes("jangkauan") || lower.includes("lokasi") || lower.includes("karawang")) {
       return {
-        reply_text: `Tim teknisi kami melayani seluruh area Karawang dan sekitarnya. Teknisi datang langsung membawa peralatan lengkap.\n\nBoleh diinfokan patokan kecamatan lokasi Kakak? Sekalian mau dibersihkan untuk toren ukuran berapa liter? 📍`,
+        reply_text: `Tim teknisi kami melayani seluruh area jangkauan operasional toko. Teknisi datang langsung membawa peralatan lengkap.\n\nBoleh diinfokan patokan kecamatan lokasi Kakak? Sekalian mau dibersihkan untuk toren ukuran berapa liter? 📍`,
         action: "ASK_CAPACITY",
         type: "TEXT"
       };
     }
 
     // Default Greeting Sapaan Awal Natural
+    const storeBaseUrl = getTenantBaseUrl(tenantDomainInfo);
     return {
-      reply_text: `Halo! Selamat datang di layanan *${storeName}* 👋 Ada yang bisa kami bantu seputar estimasi biaya pembersihan toren hari ini?`,
+      reply_text: `Halo! Selamat datang di layanan *${storeName}* 👋 Ada yang bisa kami bantu seputar estimasi biaya pembersihan toren hari ini?\n\nInfo layanan: ${storeBaseUrl}`,
       action: "NONE",
-      type: "TEXT"
+      type: "TEXT",
+      checkout_url: storeBaseUrl,
     };
   }
 
+  // 3. Alur Toko Ritel / Digital / Produk Fisik Umum
+  const products: any[] = Array.isArray(tenant?.metadata?.products) ? tenant.metadata.products : [];
+  const isBuyIntent = /beli|order|pesan|checkout|bayar|qris|ambil|mau/i.test(lower);
+
+  if (products.length > 0) {
+    const matchedProd = products.find((p) => {
+      const pName = String(p.name || "").toLowerCase();
+      if (!pName) return false;
+      if (lower.includes(pName)) return true;
+      const words = pName.split(/\s+/).filter((w) => w.length > 3);
+      return words.some((w) => lower.includes(w));
+    });
+
+    if (matchedProd && isBuyIntent) {
+      const checkoutUrl = getTenantCheckoutUrl(tenantDomainInfo, {
+        id: matchedProd.id,
+        slug: matchedProd.slug,
+      });
+
+      return {
+        reply_text: `Siap Kak! Untuk pemesanan *${matchedProd.name}* (Rp ${Number(matchedProd.price || matchedProd.promo_price || 0).toLocaleString("id-ID")}), Kakak dapat langsung menyelesaikan transaksi melalui link checkout resmi kami berikut:\n\n👉 ${checkoutUrl}\n\nPembayaran otomatis via QRIS / Transfer Bank dan pesanan langsung diproses.`,
+        action: "SHOW_CHECKOUT",
+        type: "SHOW_CHECKOUT",
+        product: {
+          ...matchedProd,
+          checkout_url: checkoutUrl,
+        },
+        checkout_url: checkoutUrl,
+      };
+    }
+
+    if (matchedProd) {
+      const checkoutUrl = getTenantCheckoutUrl(tenantDomainInfo, {
+        id: matchedProd.id,
+        slug: matchedProd.slug,
+      });
+
+      return {
+        reply_text: `Berikut rincian untuk *${matchedProd.name}*:\n• Harga: *Rp ${Number(matchedProd.price || matchedProd.promo_price || 0).toLocaleString("id-ID")}*\n${matchedProd.description ? `• Info: ${matchedProd.description}\n` : ""}\n🔗 Link Pembelian Resmi:\n${checkoutUrl}`,
+        action: "SHOW_PRODUCT",
+        type: "SHOW_PRODUCT",
+        product: {
+          ...matchedProd,
+          checkout_url: checkoutUrl,
+        },
+        checkout_url: checkoutUrl,
+      };
+    }
+
+    if (lower.includes("katalog") || lower.includes("produk") || lower.includes("daftar") || lower.includes("harga")) {
+      const baseUrl = getTenantBaseUrl(tenantDomainInfo);
+      const topList = products
+        .slice(0, 4)
+        .map((p) => {
+          const itemUrl = getTenantCheckoutUrl(tenantDomainInfo, { id: p.id, slug: p.slug });
+          return `• *${p.name}* (Rp ${Number(p.price || p.promo_price || 0).toLocaleString("id-ID")})\n  👉 ${itemUrl}`;
+        })
+        .join("\n\n");
+
+      return {
+        reply_text: `Berikut adalah pilihan produk unggulan di *${storeName}*:\n\n${topList}\n\nKunjungi etalase lengkap di: ${baseUrl}`,
+        action: "SHOW_CATALOG",
+        type: "TEXT",
+        checkout_url: baseUrl,
+      };
+    }
+  }
+
+  const defaultBaseUrl = getTenantBaseUrl(tenantDomainInfo);
   return {
-    reply_text: `Halo! Selamat datang di ${storeName}. Ada yang bisa kami bantu?`,
+    reply_text: `Halo! Selamat datang di ${storeName}. Ada yang bisa kami bantu seputar produk atau layanan kami?\n\nKunjungi etalase toko kami di: ${defaultBaseUrl}`,
     action: "NONE",
-    type: "TEXT"
+    type: "TEXT",
+    checkout_url: defaultBaseUrl,
   };
 }

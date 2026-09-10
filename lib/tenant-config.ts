@@ -762,7 +762,7 @@ export function appendTenantConfigHistory(slug: string, entry: TenantConfigHisto
 }
 
 export function getTenantWhatsApp(slug?: string): string {
-  const normSlug = slug ? normalizeTenantSlug(slug) : 'onlineboost';
+  const normSlug = slug ? normalizeTenantSlug(slug) : 'growth';
   const envKey = `NEXT_PUBLIC_${normSlug.toUpperCase().replace(/-/g, '_')}_BOT_NUMBER`;
 
   if (typeof process !== 'undefined' && process.env) {
@@ -782,6 +782,6 @@ export function getPlatformWhatsApp(): string {
     if (process.env.NEXT_PUBLIC_SUPPORT_PHONE) return process.env.NEXT_PUBLIC_SUPPORT_PHONE.replace(/\D/g, '');
     if (process.env.NEXT_PUBLIC_META_BOT_NUMBER) return process.env.NEXT_PUBLIC_META_BOT_NUMBER.replace(/\D/g, '');
   }
-  return getTenantWhatsApp('onlineboost');
+  return getTenantWhatsApp('growth') || '6281237450222';
 }
 

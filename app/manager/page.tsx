@@ -26,9 +26,7 @@ import {
 import { getSupabase } from '@/lib/supabaseClient';
 import { 
   PartnerItem, 
-  PayoutRequestItem, 
-  INITIAL_PARTNERS, 
-  INITIAL_PAYOUTS 
+  PayoutRequestItem 
 } from '@/lib/partner-service';
 
 interface OrderRow {
@@ -62,8 +60,8 @@ export default function ManagerControlCenter() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [affiliates, setAffiliates] = useState<AffiliateSummary[]>([]);
 
-  // 1. Mitra Whitelist State
-  const [partners, setPartners] = useState<PartnerItem[]>(INITIAL_PARTNERS);
+  // 1. Mitra Whitelist State — diisi dari API, bukan dari data lokal
+  const [partners, setPartners] = useState<PartnerItem[]>([]);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isSubmittingPartner, setIsSubmittingPartner] = useState(false);
   const [partnerErrorMsg, setPartnerErrorMsg] = useState('');
@@ -75,10 +73,10 @@ export default function ManagerControlCenter() {
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<'AM' | 'AFFILIATE'>('AFFILIATE');
   const [newRefCode, setNewRefCode] = useState('');
-  const [newAmPembina, setNewAmPembina] = useState('Andi Pratama');
+  const [newAmPembina, setNewAmPembina] = useState('');
 
-  // 2. Antrean Payout State
-  const [payouts, setPayouts] = useState<PayoutRequestItem[]>(INITIAL_PAYOUTS);
+  // 2. Antrean Payout State — diisi dari API, bukan dari data lokal
+  const [payouts, setPayouts] = useState<PayoutRequestItem[]>([]);
   const [selectedPayout, setSelectedPayout] = useState<PayoutRequestItem | null>(null);
   const [proofUrl, setProofUrl] = useState('');
   const [payoutNotes, setPayoutNotes] = useState('');
@@ -114,8 +112,9 @@ export default function ManagerControlCenter() {
       if (commissions && commissions.length > 0) {
         const mappedOrders: OrderRow[] = commissions.map((c: any) => {
           const gross = Number(c.amount) * 10;
-          const affCode = c.affiliates?.referral_code || 'ANDI';
-          const affName = c.affiliates?.name || 'Andi Pratama';
+          // Gunakan data dari Supabase apa adanya; jika tidak tersedia tampilkan placeholder kosong
+          const affCode = c.affiliates?.referral_code || '—';
+          const affName = c.affiliates?.name || 'Mitra Tidak Dikenal';
 
           return {
             id: c.order_id || `ORD-${c.id.slice(0, 8)}`,
@@ -138,7 +137,7 @@ export default function ManagerControlCenter() {
         mappedOrders.forEach((ord) => {
           const existing = affMap.get(ord.affiliateCode) || {
             code: ord.affiliateCode,
-            name: ord.affiliateCode === 'ANDI' ? 'Andi Pratama' : 'Mitra Marketer',
+            name: ord.affiliateCode,  // gunakan kode sebagai label jika nama tidak tersedia
             totalOrders: 0,
             grossSales: 0,
             affiliatePayout: 0,
@@ -750,7 +749,7 @@ export default function ManagerControlCenter() {
                               <span className="text-slate-500 italic text-[11px]">Head AM / Mandiri</span>
                             ) : (
                               <span className="font-medium text-slate-200 text-xs">
-                                {p.am_pembina || 'Andi Pratama'}
+                                {p.am_pembina || <span className="text-slate-500 italic">Belum ditetapkan</span>}
                               </span>
                             )}
                           </td>
@@ -1066,8 +1065,8 @@ export default function ManagerControlCenter() {
                             </option>
                           ))
                         ) : (
-                          <option value="Andi Pratama" className="bg-slate-900 text-white">
-                            Andi Pratama (AM Utama)
+                          <option value="" disabled className="bg-slate-900 text-slate-500">
+                            Belum ada AM terdaftar — daftarkan AM terlebih dahulu
                           </option>
                         )}
                       </select>

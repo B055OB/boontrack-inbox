@@ -12,6 +12,8 @@ import {
   Lock,
   Target,
   Truck,
+  Calendar,
+  Download,
   Radio,
 } from 'lucide-react';
 
@@ -24,6 +26,8 @@ export type DashboardTab =
   | 'ai_knowledge'
   | 'ads_tracking'
   | 'shipping'
+  | 'booking'
+  | 'downloads'
   | 'broadcast'
   | 'whatsapp'
   | 'settings';
@@ -44,6 +48,8 @@ interface NavTabsProps {
   permissions?: NavTabsPermissions;
   productCount?: number;
   orderCount?: number;
+  storeCategory?: string;
+  businessType?: string;
 }
 
 export default function NavTabs({
@@ -60,12 +66,28 @@ export default function NavTabs({
   },
   productCount = 0,
   orderCount = 0,
+  storeCategory = 'DIGITAL',
+  businessType,
 }: NavTabsProps) {
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
   const teamScaleActive = isTeamScale || permissions.isTeamScale;
+
+  const rawCat = (businessType || storeCategory || '').toUpperCase();
+  const isPhysical =
+    ['RETAIL', 'PHYSICAL', 'FNB', 'RETAIL_PHYSICAL'].includes(rawCat) ||
+    rawCat.includes('PHYSICAL') ||
+    rawCat.includes('RETAIL');
+  const isService =
+    ['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'PROFESSIONAL_CONSULT'].includes(rawCat) ||
+    rawCat.includes('SERVICE') ||
+    rawCat.includes('LOCAL');
+  const isDigital =
+    ['DIGITAL', 'DOWNLOAD', 'COURSE'].includes(rawCat) ||
+    rawCat.includes('DIGITAL') ||
+    (!isPhysical && !isService);
 
   const checkTabsScroll = () => {
     if (tabsRef.current) {
@@ -227,58 +249,93 @@ export default function NavTabs({
             </span>
           </button>
 
-          {/* TAB 7: LOGISTIK & EKSPEDISI */}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'shipping'}
-            onClick={() => setActiveTab('shipping')}
-            className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-              activeTab === 'shipping'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Logistik & Ekspedisi</span>
-            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
-              MULTI-KURIR
-            </span>
-          </button>
+          {/* CONDITIONAL TAB: LOGISTIK & EKSPEDISI (HANYA PRODUK FISIK) */}
+          {isPhysical && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'shipping' || activeTab === 'biteship'}
+              onClick={() => setActiveTab('shipping')}
+              className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+                activeTab === 'shipping' || activeTab === 'biteship'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Logistik & Ekspedisi</span>
+              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+                MULTI-KURIR
+              </span>
+            </button>
+          )}
 
-          {/* TAB 8: BROADCAST */}
+          {/* CONDITIONAL TAB: BOOKING / JADWAL (HANYA JASA / FIELD SERVICE) */}
+          {isService && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'booking'}
+              onClick={() => setActiveTab('booking')}
+              className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+                activeTab === 'booking'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Booking & Jadwal</span>
+              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
+                JASA
+              </span>
+            </button>
+          )}
+
+          {/* CONDITIONAL TAB: AKSES UNDUH (HANYA PRODUK DIGITAL) */}
+          {isDigital && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'downloads'}
+              onClick={() => setActiveTab('downloads')}
+              className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+                activeTab === 'downloads'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Download className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>Akses Unduh</span>
+              <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 border border-indigo-200 rounded text-[10px] font-extrabold">
+                DIGITAL
+              </span>
+            </button>
+          )}
+
+          {/* UNIFIED TAB: WHATSAPP & BROADCAST */}
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === 'broadcast'}
-            onClick={() => setActiveTab('broadcast')}
+            aria-selected={activeTab === 'whatsapp' || activeTab === 'broadcast'}
+            onClick={() => setActiveTab('whatsapp')}
             className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-              activeTab === 'broadcast'
+              activeTab === 'whatsapp' || activeTab === 'broadcast'
                 ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
             <Radio className="w-4 h-4 text-emerald-600 shrink-0" />
             <span className="flex items-center gap-1">
-              Broadcast WA
-              {!permissions.hasBroadcast && <Lock className="w-3 h-3 text-amber-500" />}
+              WhatsApp & Broadcast
+              {!permissions.hasBroadcast && !teamScaleActive && (
+                <Lock className="w-3 h-3 text-amber-500" />
+              )}
             </span>
-          </button>
-
-          {/* TAB 9: KONEKSI WA */}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'whatsapp'}
-            onClick={() => setActiveTab('whatsapp')}
-            className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-              activeTab === 'whatsapp'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Koneksi WhatsApp</span>
+            {teamScaleActive && (
+              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+                WABA
+              </span>
+            )}
           </button>
         </div>
 

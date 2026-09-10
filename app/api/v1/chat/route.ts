@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
+import { getTenantCheckoutUrl } from '@/lib/checkout-link';
 
 interface ProductContext {
   name?: string;
@@ -33,6 +34,29 @@ export async function POST(req: NextRequest) {
     const product: ProductContext = product_context || context?.product || {};
     const packages = context?.packages || [];
     const category = context?.category || 'retail';
+
+    let tenantDomainInfo = { slug, custom_domain: null as string | null };
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data: t } = await supabase
+          .from('tenants')
+          .select('slug, custom_domain')
+          .eq('slug', slug)
+          .maybeSingle();
+        if (t) {
+          tenantDomainInfo = {
+            slug: t.slug || slug,
+            custom_domain: t.custom_domain || null,
+          };
+        }
+      }
+    } catch {}
+
+    const checkoutUrl = getTenantCheckoutUrl(tenantDomainInfo, {
+      id: (product as any).id || (packages[0] as any)?.id,
+      slug: (product as any).slug || (packages[0] as any)?.slug,
+    });
 
     let reply = '';
 
@@ -75,10 +99,11 @@ Detail Produk & Layanan:
 - Promo/Bundling: ${product.promo || 'Tersedia promo pembayaran via QRIS'}
 - Tipe: ${product.type || 'Fisik / Digital'}
 - Silabus/Materi: ${Array.isArray(product.syllabus) ? product.syllabus.join(', ') : 'Modul 1 (Dasar), Modul 2 (Praktek), Modul 3 (Template), Modul 4 (Evaluasi)'}
+- Link Checkout Resmi: ${checkoutUrl}
 
 Instruksi:
 1. Jawab pertanyaan pengguna dengan ramah, jelas, ringkas, dan persuasif dalam bahasa Indonesia.
-2. Selalu dorong pengguna untuk melakukan pembayaran instan melalui tombol QRIS di katalog webchat.
+2. Selalu dorong pengguna untuk melakukan pembayaran instan melalui link checkout resmi: ${checkoutUrl}
 3. Jangan pernah memberikan informasi palsu di luar data produk yang ada.`;
 
         const geminiMessages = [
@@ -159,15 +184,15 @@ Instruksi:
           reply = `Saat ini tersedia promo transaksi instan dan kemudahan pembayaran otomatis via QRIS. Cek daftar paket di panel samping untuk promo terbaru.`;
         }
       }
-      // 4. QRIS / Pembayaran / Beli / Order
-      else if (q.includes('qris') || q.includes('bayar') || q.includes('beli') || q.includes('order')) {
+      // 4. QRIS / Pembayaran / Beli / Order / Checkout
+      else if (q.includes('qris') || q.includes('bayar') || q.includes('beli') || q.includes('order') || q.includes('checkout')) {
         if (product.name) {
-          reply = `Tentu! Anda dapat memesan "${product.name}" seharga Rp ${Number(product.price || 0).toLocaleString('id-ID')}. Pembayaran diproses otomatis melalui QRIS. Silakan klik tombol "Bayar QRIS" di panel samping.`;
+          reply = `Tentu! Anda dapat memesan "${product.name}" seharga Rp ${Number(product.price || 0).toLocaleString('id-ID')}. Pembayaran diproses otomatis melalui QRIS / Transfer Bank.\n\n👉 *Link Checkout Resmi:*\n${checkoutUrl}`;
         } else if (packages.length > 0) {
           const p0 = packages[0];
-          reply = `Tentu! Untuk pembayaran paket "${p0.name}" (Rp ${Number(p0.price || 0).toLocaleString('id-ID')}), Anda dapat langsung menggunakan QRIS instan di panel katalog samping.`;
+          reply = `Tentu! Untuk pembayaran paket "${p0.name}" (Rp ${Number(p0.price || 0).toLocaleString('id-ID')}), Anda dapat langsung menyelesaikan pesanan melalui link checkout resmi:\n\n👉 ${checkoutUrl}`;
         } else {
-          reply = `Pembayaran di ${storeName} dapat dilakukan secara praktis menggunakan QRIS. Silakan klik tombol QRIS di samping untuk memulai.`;
+          reply = `Pembayaran di ${storeName} dapat dilakukan secara praktis menggunakan QRIS atau Transfer Bank.\n\n👉 *Link Checkout Resmi:*\n${checkoutUrl}`;
         }
       }
       // 5. Harga & Biaya
@@ -221,6 +246,7 @@ Instruksi:
       reply,
       tenant_id: slug,
       tenant_slug: slug,
+      checkout_url: checkoutUrl,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Chat error';

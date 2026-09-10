@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getTenantCheckoutUrl } from '@/lib/checkout-link';
 
 function getEngineSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
@@ -180,11 +181,24 @@ export class ConversationEngine {
       if (isComplete) {
         trace.push('VALIDATE_BOOKING', 'BOOKING_READY');
         entities.status = 'BOOKING_READY';
+
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('slug, custom_domain')
+          .eq('slug', tenant_id)
+          .maybeSingle();
+
+        const checkoutUrl = getTenantCheckoutUrl(
+          { slug: tenant_id, custom_domain: tenant?.custom_domain },
+          { id: entities.capacity }
+        );
+        entities.checkout_url = checkoutUrl;
+
         await supabase.from('conversation_entities').upsert(entities);
         await supabase.from('conversation_sessions').update({ current_state: 'BOOKING_READY' }).eq('session_id', session_id);
 
         return {
-          reply: `Terima kasih banyak Kak! Data booking sudah kami rekap:\n\n📋 *Rincian Booking Kuras Toren:*\n• Layanan: *Toren ${entities.capacity} Liter*\n• Total Biaya: *Rp ${Number(entities.price).toLocaleString('id-ID')}*\n• Alamat Lokasi: *${entities.address}*\n• Metode: *Bayar di Tempat (Tunai/QRIS setelah selesai)*\n\nTeknisi kami akan segera mengonfirmasi jadwal keberangkatan ke WhatsApp Kakak ya. Terima kasih! 🙏`,
+          reply: `Terima kasih banyak Kak! Data booking sudah kami rekap:\n\n📋 *Rincian Booking Kuras Toren:*\n• Layanan: *Toren ${entities.capacity} Liter*\n• Total Biaya: *Rp ${Number(entities.price).toLocaleString('id-ID')}*\n• Alamat Lokasi: *${entities.address}*\n• Metode: *Bayar di Tempat (Tunai/QRIS setelah selesai)*\n\n🔗 *Invoice & Tracking Pesanan:*\n${checkoutUrl}\n\nTeknisi kami akan segera mengonfirmasi jadwal keberangkatan ke WhatsApp Kakak ya. Terima kasih! 🙏`,
           next_state: 'BOOKING_READY',
           state_trace: trace,
           entities,

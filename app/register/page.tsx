@@ -383,7 +383,7 @@ export default function RegisterShopPage() {
   const [category, setCategory] = useState("retail_physical");
   const [selectedPlan, setSelectedPlan] = useState<
     "solo" | "ads_performance" | "team_scale"
-  >("ads_performance");
+  >("solo");
   const [merchantData, setMerchantData] = useState({
     name: "",
     phone: "",
@@ -466,6 +466,7 @@ export default function RegisterShopPage() {
     setPayError(null);
 
     const planAmount = PLAN_PRICING[selectedPlan] ?? 299000;
+    const targetPlanTier = selectedPlan === 'solo' ? 'solo_trial' : selectedPlan;
 
     try {
       const res = await fetch(
@@ -475,8 +476,9 @@ export default function RegisterShopPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             tenant_slug: slug,
-            plan_tier: selectedPlan,
+            plan_tier: targetPlanTier,
             amount: planAmount,
+            trial_days: selectedPlan === 'solo' ? 14 : 0,
             business_category: category,
             vertical_type: VERTICAL_MAP[category] ?? "RETAIL",
             merchant_name: merchantData.name,
@@ -770,10 +772,10 @@ export default function RegisterShopPage() {
                     <div>
                       <div className="flex justify-between items-start mb-1">
                         <span className="font-black text-slate-900 text-xs">
-                          Solo
+                          Solo (Trial 14 Hari)
                         </span>
                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                          Hemat 43%
+                          Reverse Trial
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-500 font-semibold mb-1.5">

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { isValidSlugFormat, INITIAL_PARTNERS } from '@/lib/partner-service';
+import { isValidSlugFormat } from '@/lib/partner-service';
 import { getSupabase } from '@/lib/supabaseClient';
 
 export async function POST(req: NextRequest) {
@@ -53,18 +53,8 @@ export async function POST(req: NextRequest) {
       // Fallback to local check
     }
 
-    // Cek seed partners
-    const inSeed = INITIAL_PARTNERS.some(
-      (p) => p.referral_code.toUpperCase() === rawSlug && p.referral_code.toUpperCase() !== currentCode
-    );
-
-    if (inSeed) {
-      return NextResponse.json({
-        available: false,
-        message: 'Kode sudah dipakai oleh mitra lain.',
-      });
-    }
-
+    // Jika Supabase tidak dapat dicek (tidak terhubung), kembalikan available=true
+    // sebagai best-effort — uniqueness akan divalidasi saat klaim berlangsung
     return NextResponse.json({
       available: true,
       message: 'Kode tersedia untuk diklaim!',
