@@ -319,22 +319,35 @@ export default function TenantDashboardPage() {
         />
       )}
 
-      {/* TAB 4: LAPORAN PENJUALAN */}
-      {(activeTab === 'integration' || activeTab === 'overview' || activeTab === 'analytics') && (
-        <OverviewTab
-          totalOmzet={totalOmzet}
-          readyBalance={readyBalance}
-          bankForm={bankForm}
-          setBankForm={setBankForm}
-          displayName={displayName}
-          transactions={transactions}
-          isWithdrawModalOpen={isWithdrawModalOpen}
-          setIsWithdrawModalOpen={setIsWithdrawModalOpen}
-          withdrawAmount={withdrawAmount}
-          setWithdrawAmount={setWithdrawAmount}
-          handleProcessWithdraw={handleProcessWithdraw}
-          isWithdrawing={isWithdrawing}
-        />
+      {/* TAB: LAPORAN & KEUANGAN */}
+      {(activeTab === 'finance' || activeTab === 'integration' || activeTab === 'overview' || activeTab === 'analytics') && (
+        isSoloOrTrial ? (
+          <div className="p-6 md:p-8 max-w-5xl mx-auto w-full">
+            {renderLockedFeatureCard({
+              title: 'Laporan & Keuangan',
+              badge: 'Fitur Eksklusif Ads Performance & Team Scale',
+              description:
+                'Akses laporan omzet, riwayat transaksi, analitik konversi, dan manajemen penarikan saldo. Tersedia di paket Ads Performance (Rp 299k) atau Team Scale.',
+              targetTier: 'ads_performance',
+              targetTierLabel: 'Ads Performance',
+            })}
+          </div>
+        ) : (
+          <OverviewTab
+            totalOmzet={totalOmzet}
+            readyBalance={readyBalance}
+            bankForm={bankForm}
+            setBankForm={setBankForm}
+            displayName={displayName}
+            transactions={transactions}
+            isWithdrawModalOpen={isWithdrawModalOpen}
+            setIsWithdrawModalOpen={setIsWithdrawModalOpen}
+            withdrawAmount={withdrawAmount}
+            setWithdrawAmount={setWithdrawAmount}
+            handleProcessWithdraw={handleProcessWithdraw}
+            isWithdrawing={isWithdrawing}
+          />
+        )
       )}
 
       {/* TAB: SETTINGS & PROFIL TOKO */}

@@ -102,6 +102,9 @@ export default function NavTabs({
     ? isAdsTrackingUnlocked
     : Boolean(permissions?.hasCapi && !permissions?.isSolo && !isSoloOrTrial && (isAdsPerformance || teamScaleActive));
 
+  // Entitlement Laporan & Keuangan: terkunci untuk Solo/Trial
+  const financeUnlocked = !isSoloOrTrial;
+
   const checkTabsScroll = () => {
     if (tabsRef.current) {
       const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
@@ -149,32 +152,7 @@ export default function NavTabs({
           ref={tabsRef}
           className="flex items-center gap-1 sm:gap-2 overflow-x-auto whitespace-nowrap scrollbar-none no-scrollbar text-xs font-bold w-full max-w-full min-w-0 py-1 relative z-30"
         >
-          {/* TAB 1: INBOX */}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'inbox'}
-            onClick={() => setActiveTab('inbox')}
-            className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-              activeTab === 'inbox'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 text-blue-600 shrink-0" />
-            <span>BoonTrack Inbox (Live CS)</span>
-            {!permissions.hasInbox ? (
-              <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-extrabold flex items-center gap-1">
-                <Lock className="w-2.5 h-2.5 text-amber-500" /> 199k
-              </span>
-            ) : teamScaleActive ? (
-              <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 border border-purple-200 rounded text-[10px] font-extrabold">PRO</span>
-            ) : (
-              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">2 SEATS</span>
-            )}
-          </button>
-
-          {/* TAB 2: KATALOG PRODUK */}
+          {/* TAB 1: KATALOG PRODUK & LAYANAN */}
           <button
             type="button"
             role="tab"
@@ -190,7 +168,110 @@ export default function NavTabs({
             <span>Katalog Produk ({productCount})</span>
           </button>
 
-          {/* TAB 3: PESANAN / ORDER */}
+          {/* TAB 2: AI KNOWLEDGE & BOT */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'ai_knowledge'}
+            onClick={() => setActiveTab('ai_knowledge')}
+            className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              activeTab === 'ai_knowledge'
+                ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Brain className="w-4 h-4 shrink-0" />
+            <span>AI Knowledge & Bot</span>
+          </button>
+
+          {/* TAB 3: WHATSAPP & BROADCAST */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'whatsapp' || activeTab === 'broadcast'}
+            onClick={() => setActiveTab('whatsapp')}
+            className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              activeTab === 'whatsapp' || activeTab === 'broadcast'
+                ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Radio className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="flex items-center gap-1">
+              WhatsApp & Broadcast
+              {!permissions.hasBroadcast && !teamScaleActive && (
+                <Lock className="w-3 h-3 text-amber-500" />
+              )}
+            </span>
+            {teamScaleActive && (
+              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+                WABA
+              </span>
+            )}
+          </button>
+
+          {/* TAB 4: CONDITIONAL — LOGISTIK (Fisik) / BOOKING (Jasa) / AKSES UNDUH (Digital) */}
+          {isPhysical && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'shipping' || activeTab === 'biteship'}
+              onClick={() => setActiveTab('shipping')}
+              className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+                activeTab === 'shipping' || activeTab === 'biteship'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Logistik & Ekspedisi</span>
+              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
+                MULTI-KURIR
+              </span>
+            </button>
+          )}
+
+          {isService && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'booking'}
+              onClick={() => setActiveTab('booking')}
+              className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+                activeTab === 'booking'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Booking & Jadwal</span>
+              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
+                JASA
+              </span>
+            </button>
+          )}
+
+          {isDigital && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'downloads'}
+              onClick={() => setActiveTab('downloads')}
+              className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+                activeTab === 'downloads'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                  : 'border-transparent text-slate-500 hover:text-slate-900'
+              }`}
+            >
+              <Download className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>Akses Unduh</span>
+              <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 border border-indigo-200 rounded text-[10px] font-extrabold">
+                DIGITAL
+              </span>
+            </button>
+          )}
+
+          {/* TAB 5: PESANAN / ORDER */}
           <button
             type="button"
             role="tab"
@@ -211,39 +292,31 @@ export default function NavTabs({
             )}
           </button>
 
-          {/* TAB 4: LAPORAN & KEUANGAN */}
+          {/* TAB 6: LAPORAN & KEUANGAN (🔒 untuk Solo/Trial) */}
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === 'finance'}
+            aria-selected={activeTab === 'finance' || activeTab === 'integration' || activeTab === 'overview'}
             onClick={() => setActiveTab('finance')}
             className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-              activeTab === 'finance'
+              activeTab === 'finance' || activeTab === 'integration' || activeTab === 'overview'
                 ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
             <CreditCard className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Laporan & Keuangan</span>
+            <span className="flex items-center gap-1.5">
+              <span>Laporan & Keuangan</span>
+              {!financeUnlocked && (
+                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-0.5">
+                  <Lock className="w-2.5 h-2.5 text-amber-600" />
+                  <span>PRO</span>
+                </span>
+              )}
+            </span>
           </button>
 
-          {/* TAB 5: AI KNOWLEDGE */}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'ai_knowledge'}
-            onClick={() => setActiveTab('ai_knowledge')}
-            className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-              activeTab === 'ai_knowledge'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Brain className="w-4 h-4 shrink-0" />
-            <span>AI Knowledge & Bot</span>
-          </button>
-
-          {/* TAB 6: ADS TRACKING PRO */}
+          {/* TAB 7: ADS TRACKING PRO (🔒 untuk Solo/Trial) */}
           <button
             type="button"
             role="tab"
@@ -267,92 +340,28 @@ export default function NavTabs({
             </span>
           </button>
 
-          {/* CONDITIONAL TAB: LOGISTIK & EKSPEDISI (HANYA PRODUK FISIK) */}
-          {isPhysical && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'shipping' || activeTab === 'biteship'}
-              onClick={() => setActiveTab('shipping')}
-              className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-                activeTab === 'shipping' || activeTab === 'biteship'
-                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Logistik & Ekspedisi</span>
-              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
-                MULTI-KURIR
-              </span>
-            </button>
-          )}
-
-          {/* CONDITIONAL TAB: BOOKING / JADWAL (HANYA JASA / FIELD SERVICE) */}
-          {isService && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'booking'}
-              onClick={() => setActiveTab('booking')}
-              className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-                activeTab === 'booking'
-                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>Booking & Jadwal</span>
-              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
-                JASA
-              </span>
-            </button>
-          )}
-
-          {/* CONDITIONAL TAB: AKSES UNDUH (HANYA PRODUK DIGITAL) */}
-          {isDigital && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'downloads'}
-              onClick={() => setActiveTab('downloads')}
-              className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-                activeTab === 'downloads'
-                  ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              <Download className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>Akses Unduh</span>
-              <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 border border-indigo-200 rounded text-[10px] font-extrabold">
-                DIGITAL
-              </span>
-            </button>
-          )}
-
-          {/* UNIFIED TAB: WHATSAPP & BROADCAST */}
+          {/* TAB 8: BOONTRACK INBOX (Live CS) — Paling Kanan */}
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === 'whatsapp' || activeTab === 'broadcast'}
-            onClick={() => setActiveTab('whatsapp')}
+            aria-selected={activeTab === 'inbox'}
+            onClick={() => setActiveTab('inbox')}
             className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-              activeTab === 'whatsapp' || activeTab === 'broadcast'
+              activeTab === 'inbox'
                 ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            <Radio className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="flex items-center gap-1">
-              WhatsApp & Broadcast
-              {!permissions.hasBroadcast && !teamScaleActive && (
-                <Lock className="w-3 h-3 text-amber-500" />
-              )}
-            </span>
-            {teamScaleActive && (
-              <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
-                WABA
+            <MessageSquare className="w-4 h-4 text-blue-600 shrink-0" />
+            <span>BoonTrack Inbox (Live CS)</span>
+            {!permissions.hasInbox ? (
+              <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-extrabold flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5 text-amber-500" /> 199k
               </span>
+            ) : teamScaleActive ? (
+              <span className="px-1.5 py-0.5 bg-purple-100 text-purple-800 border border-purple-200 rounded text-[10px] font-extrabold">PRO</span>
+            ) : (
+              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">2 SEATS</span>
             )}
           </button>
         </div>

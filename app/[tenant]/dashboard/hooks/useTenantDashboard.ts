@@ -18,6 +18,7 @@ export type DashboardTab =
   | 'catalog'
   | 'products'
   | 'orders'
+  | 'finance'
   | 'ai_knowledge'
   | 'integration'
   | 'overview'
