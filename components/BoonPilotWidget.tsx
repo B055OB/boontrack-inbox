@@ -351,6 +351,25 @@ export default function BoonPilotWidget({
   const getSmartLocalResponse = (q: string): { text: string; quick_actions: string[] } => {
     const query = q.toLowerCase();
 
+
+    // 0. Fungsi QR Meja Toko Fisik
+    if (
+      query.includes('qr meja') ||
+      query.includes('qr toko') ||
+      query.includes('download qr') ||
+      query.includes('qr (png)') ||
+      (query.includes('qr') && query.includes('meja')) ||
+      (query.includes('qr') && query.includes('fungsi'))
+    ) {
+      return {
+        text: `📌 **Fungsi Download QR Meja Toko (PNG):**\n\nTombol ini digunakan untuk mencetak **QR Code etalase digital toko Anda** yang bisa dipasang di:\n- Meja kasir atau meja gerai fisik\n- Kemasan produk / packaging\n- Brosur atau banner promosi offline\n\n**Cara Kerjanya:**\nBegitu pelanggan/pembeli offline men-scan QR tersebut menggunakan kamera HP, mereka akan **langsung diarahkan ke halaman etalase online toko Anda** tanpa perlu mengetik alamat *link*. Sangat praktis untuk mendatangkan repeat order dari pelanggan offline!`,
+        quick_actions: [
+          '5 Checklist Wajib Siap Jual',
+          '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
+          'Kenapa toko online tidak butuh FAQ panjang?',
+        ],
+      };
+    }
     // 1. Checklist Wajib Siap Jual
     if (query.includes('checklist') || query.includes('siap jual') || query.includes('roadmap') || query.includes('langkah')) {
       return {
