@@ -7,13 +7,13 @@ import {
   Lock,
   ShieldCheck,
   Sparkles,
-  Save,
   Loader2,
   CheckCircle2,
   QrCode,
   AlertTriangle,
   RefreshCw,
   PhoneCall,
+  ArrowRight,
 } from 'lucide-react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 
@@ -134,49 +134,38 @@ export default function WhatsAppTab({
 
       {/* KARTU PENGATURAN STRATEGI RESPON & PERSONA BOT WHATSAPP */}
       <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs sm:text-sm font-black text-slate-900">
-                  Strategi Respon & Persona Bot WhatsApp
-                </h3>
+        <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+          <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-xs sm:text-sm font-black text-slate-900">
+                Strategi Respon &amp; Persona Bot WhatsApp
+              </h3>
+              {isSavingStrategy ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-700 border border-blue-200">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Menyimpan...
+                </span>
+              ) : strategyFeedback ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Tersimpan otomatis
+                </span>
+              ) : (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
                   {botStrategy === 'trust_builder' && 'Mode Toko Baru'}
                   {botStrategy === 'balanced' && 'Mode Seimbang'}
                   {botStrategy === 'hard_selling' && 'Mode Penjualan Cepat'}
                 </span>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Pilih gaya interaksi AI bot otomatis untuk menangani pesan masuk pelanggan di WhatsApp ini.
-              </p>
+              )}
             </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Klik mode yang sesuai — tersimpan otomatis tanpa tombol Simpan.
+            </p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => handleSaveBotStrategy()}
-            disabled={isSavingStrategy || isLoadingAi}
-            className="self-start sm:self-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-          >
-            {isSavingStrategy ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-            ) : (
-              <Save className="w-3.5 h-3.5 text-white" />
-            )}
-            <span>{isSavingStrategy ? 'Menyimpan...' : 'Simpan Persona'}</span>
-          </button>
         </div>
-
-        {strategyFeedback && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{strategyFeedback}</span>
-          </div>
-        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div
@@ -266,6 +255,20 @@ export default function WhatsAppTab({
             </div>
           </div>
         </div>
+
+        {/* Nudge: Langkah selanjutnya → Scan QR */}
+        {waMode === 'qr' && waStatus !== 'CONNECTED' && (
+          <div className="mt-2 flex items-center justify-between gap-3 p-3.5 bg-blue-50 border border-blue-100 rounded-2xl">
+            <div className="flex items-center gap-2.5">
+              <QrCode className="w-5 h-5 text-blue-600 shrink-0" />
+              <div>
+                <p className="text-xs font-black text-blue-900">Langkah Selanjutnya: Aktifkan Bot CS 24/7</p>
+                <p className="text-[11px] text-blue-700">Scan QR di kartu "BoonTrack Direct Connect" di bawah agar bot langsung aktif melayani pembeli.</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-blue-500 shrink-0" />
+          </div>
+        )}
       </div>
 
       {/* GROWTH PLAN PANEL */}
