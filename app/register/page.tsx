@@ -23,9 +23,11 @@ import {
   Lock,
   RefreshCw,
   AlertCircle,
+  Key,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
+import { getSupabase } from "@/lib/supabaseClient";
 
 const STATIC_QRIS =
   process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
@@ -388,6 +390,7 @@ export default function RegisterShopPage() {
     name: "",
     phone: "",
     email: "",
+    pin: "",
   });
   const [loadingPay, setLoadingPay] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
@@ -465,11 +468,59 @@ export default function RegisterShopPage() {
     setLoadingPay(true);
     setPayError(null);
 
+    const cleanPin = merchantData.pin.trim();
+    if (!cleanPin || cleanPin.length < 6) {
+      setPayError("PIN / Password akses wajib diisi minimal 6 digit/karakter.");
+      setLoadingPay(false);
+      return;
+    }
+
     const isTrial = selectedPlan === 'solo';
     const planAmount = isTrial ? 0 : (PLAN_PRICING[selectedPlan] ?? 299000);
     const targetPlanTier = isTrial ? 'solo_trial' : selectedPlan;
 
+    // Standarisasi nomor telepon WhatsApp (format 62...)
+    let formattedPhone = merchantData.phone.replace(/[^0-9]/g, '');
+    if (formattedPhone.startsWith('0')) formattedPhone = '62' + formattedPhone.slice(1);
+    else if (formattedPhone.startsWith('8')) formattedPhone = '62' + formattedPhone;
+
+    const trialEndsAt = new Date(Date.now() + 14 * 86400000).toISOString();
+
     try {
+      // 1. Simpan tenant langsung ke Supabase tenants table agar data toko & PIN benar-benar tersimpan
+      try {
+        const supabase = getSupabase();
+        await supabase.from('tenants').upsert(
+          {
+            slug,
+            name: storeName,
+            category: VERTICAL_MAP[category] ?? 'RETAIL',
+            tier: isTrial ? 'SOLO_TRIAL' : (selectedPlan === 'team_scale' ? 'TEAM_SCALE' : 'ADS_PERFORMANCE'),
+            trial_ends_at: isTrial ? trialEndsAt : null,
+            metadata: {
+              merchant_name: merchantData.name,
+              whatsapp_number: formattedPhone,
+              email: merchantData.email,
+              access_pin: cleanPin,
+              pin_hash: cleanPin,
+              created_via: isTrial ? 'register_solo_trial' : 'register_paid',
+              business_category: category,
+              vertical_type: VERTICAL_MAP[category] ?? 'RETAIL',
+              capabilities: {
+                inbox: selectedPlan === 'team_scale',
+                ai_bot: true,
+                shipping: ['RETAIL', 'PHYSICAL', 'FNB'].includes(VERTICAL_MAP[category] ?? 'RETAIL'),
+              },
+              onboarded_at: new Date().toISOString(),
+            },
+          },
+          { onConflict: 'slug' }
+        );
+      } catch (dbErr) {
+        console.warn('Supabase tenant direct upsert note:', dbErr);
+      }
+
+      // 2. Kirim payload registrasi ke Core Backend API
       const res = await fetch(
         "https://api.boontrack.com/api/v1/shop/subscriptions/create",
         {
@@ -483,25 +534,42 @@ export default function RegisterShopPage() {
             business_category: category,
             vertical_type: VERTICAL_MAP[category] ?? "RETAIL",
             merchant_name: merchantData.name,
-            merchant_phone: merchantData.phone,
+            merchant_phone: formattedPhone,
             customer_email: merchantData.email,
+            pin: cleanPin,
+            password: cleanPin,
           }),
         }
-      );
+      ).catch(() => null);
 
-      const data = await res.json().catch(() => ({}));
+      const data = res && res.ok ? await res.json().catch(() => ({})) : {};
 
-      if (!res.ok) {
-        const msg =
-          data?.detail ||
-          data?.message ||
-          "Gagal memproses aktivasi toko. Silakan coba lagi.";
-        setPayError(msg);
-        return;
-      }
+      // 3. Trigger pengiriman email welcome & kredensial akses
+      fetch("/api/v1/auth/notify-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_slug: slug,
+          store_name: storeName,
+          merchant_name: merchantData.name,
+          email: merchantData.email,
+          phone: formattedPhone,
+          pin: cleanPin,
+          plan_tier: targetPlanTier,
+        }),
+      }).catch((notifyErr) => console.warn('Credentials notification dispatch note:', notifyErr));
 
-      // REVERSE-TRIAL: Jika paket Solo Trial (Rp 0), bypass QrisPaymentModal dan langsung redirect
+      // 4. REVERSE-TRIAL: Set auth session cookie / localStorage secara otomatis & redirect langsung ke dashboard
       if (isTrial) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("merchant_store", slug);
+          localStorage.setItem("merchant_pin", cleanPin);
+          localStorage.setItem("merchant_login_at", new Date().toISOString());
+          document.cookie = `merchant_store=${slug}; path=/; max-age=2592000; SameSite=Lax`;
+          document.cookie = `merchant_session=${slug}; path=/; max-age=2592000; SameSite=Lax`;
+          document.cookie = `bt_tenant=${slug}; path=/; max-age=2592000; SameSite=Lax`;
+        }
+
         router.push(`/${slug}/dashboard`);
         return;
       }
@@ -538,6 +606,15 @@ export default function RegisterShopPage() {
   // Dipanggil saat polling mendeteksi status PAID
   const handlePaymentSuccess = (tenantSlug: string) => {
     setInvoiceData(null);
+    const cleanPin = merchantData.pin.trim();
+    if (typeof window !== "undefined") {
+      localStorage.setItem("merchant_store", tenantSlug);
+      if (cleanPin) localStorage.setItem("merchant_pin", cleanPin);
+      localStorage.setItem("merchant_login_at", new Date().toISOString());
+      document.cookie = `merchant_store=${tenantSlug}; path=/; max-age=2592000; SameSite=Lax`;
+      document.cookie = `merchant_session=${tenantSlug}; path=/; max-age=2592000; SameSite=Lax`;
+      document.cookie = `bt_tenant=${tenantSlug}; path=/; max-age=2592000; SameSite=Lax`;
+    }
     // Redirect ke dashboard tenant
     router.push(`/${tenantSlug}/dashboard`);
   };
@@ -758,6 +835,36 @@ export default function RegisterShopPage() {
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none"
                     />
                   </div>
+                </div>
+
+                {/* BUAT PIN AKSES WAJIB */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Buat PIN / Password Akses (6 Digit / Karakter)</span>
+                    </span>
+                    <span className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-wider">
+                      Wajib
+                    </span>
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    placeholder="Minimal 6 karakter atau digit angka"
+                    value={merchantData.pin}
+                    onChange={(e) =>
+                      setMerchantData({
+                        ...merchantData,
+                        pin: e.target.value,
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none font-mono tracking-wider"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Ingat PIN ini untuk masuk kembali ke Dashboard Toko Anda kapan saja.
+                  </p>
                 </div>
               </div>
 

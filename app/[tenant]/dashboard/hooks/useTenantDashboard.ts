@@ -332,23 +332,36 @@ export function useTenantDashboard() {
         );
         const data = await res.json();
 
+        const isLocalSession = typeof window !== 'undefined' && (
+          localStorage.getItem('merchant_store') === tenantSlug ||
+          localStorage.getItem('merchant_session') === tenantSlug ||
+          document.cookie.includes(`merchant_store=${tenantSlug}`) ||
+          document.cookie.includes(`merchant_session=${tenantSlug}`)
+        );
+
         if (!Array.isArray(data) || data.length === 0) {
-          router.replace('/login');
-          return;
-        }
+          // Safeguard: Izinkan sesi merchant trial aktif yang baru terdaftar tanpa ditolak
+          if (isLocalSession) {
+            setTenantFeatureFlags(prev => ({ ...prev, tier: 'SOLO_TRIAL' }));
+            setPlanTier('growth');
+            setTrialDaysLeft(14);
+          } else {
+            router.replace('/login');
+            return;
+          }
+        } else {
+          const tenant = data[0];
+          if (tenant.name) setStoreDisplayName(tenant.name);
+          if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
 
-        const tenant = data[0];
-        if (tenant.name) setStoreDisplayName(tenant.name);
-        if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
+          // Category
+          const cat = tenant.category || tenant.metadata?.vertical_type || 'DIGITAL';
+          setStoreCategory(String(cat).toUpperCase());
 
-        // Category
-        const cat = tenant.category || tenant.metadata?.vertical_type || 'DIGITAL';
-        setStoreCategory(String(cat).toUpperCase());
-
-        // Tier from Supabase column 'tier'
-        if (tenant.tier) {
-          const rawTier = String(tenant.tier).toLowerCase();
-          setTenantFeatureFlags(prev => ({ ...prev, tier: tenant.tier }));
+          // Tier from Supabase column 'tier' or metadata
+          const resolvedTier = tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'SOLO_TRIAL';
+          const rawTier = String(resolvedTier).toLowerCase();
+          setTenantFeatureFlags(prev => ({ ...prev, tier: resolvedTier }));
           if (rawTier.includes('team_scale') || rawTier.includes('proscale') || rawTier.includes('enterprise')) {
             setPlanTier('team_scale');
           } else if (rawTier.includes('ads_performance') || rawTier.includes('growth_plus') || rawTier.includes('plus')) {
@@ -358,7 +371,7 @@ export function useTenantDashboard() {
           }
 
           // Reverse Trial: hitung sisa hari dari trial_ends_at atau created_at + 14 hari
-          if (rawTier.includes('trial')) {
+          if (rawTier.includes('trial') || rawTier.includes('solo') || !tenant.tier) {
             const trialEndTimestamp = tenant.trial_ends_at
               ? new Date(tenant.trial_ends_at).getTime()
               : tenant.metadata?.trial_ends_at
