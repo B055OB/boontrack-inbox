@@ -45,6 +45,9 @@ interface NavTabsProps {
   activeTab: any;
   setActiveTab: (tab: any) => void;
   isTeamScale?: boolean;
+  isAdsPerformance?: boolean;
+  isAdsTrackingUnlocked?: boolean;
+  isSoloOrTrial?: boolean;
   permissions?: NavTabsPermissions;
   productCount?: number;
   orderCount?: number;
@@ -56,6 +59,9 @@ export default function NavTabs({
   activeTab,
   setActiveTab,
   isTeamScale = false,
+  isAdsPerformance = false,
+  isAdsTrackingUnlocked,
+  isSoloOrTrial = false,
   permissions = {
     hasInbox: true,
     hasCapi: true,
@@ -66,7 +72,7 @@ export default function NavTabs({
   },
   productCount = 0,
   orderCount = 0,
-  storeCategory = 'DIGITAL',
+  storeCategory = 'PHYSICAL',
   businessType,
 }: NavTabsProps) {
   const tabsRef = useRef<HTMLDivElement | null>(null);
@@ -75,19 +81,26 @@ export default function NavTabs({
 
   const teamScaleActive = isTeamScale || permissions.isTeamScale;
 
-  const rawCat = (businessType || storeCategory || '').toUpperCase();
+  // Resolusi kategori toko fisik vs digital vs jasa yang ketat
+  const rawCat = (businessType || storeCategory || 'PHYSICAL').toUpperCase();
   const isPhysical =
-    ['RETAIL', 'PHYSICAL', 'FNB', 'RETAIL_PHYSICAL'].includes(rawCat) ||
+    ['PHYSICAL', 'RETAIL', 'FNB', 'RETAIL_PHYSICAL'].includes(rawCat) ||
     rawCat.includes('PHYSICAL') ||
     rawCat.includes('RETAIL');
+
   const isService =
-    ['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'PROFESSIONAL_CONSULT'].includes(rawCat) ||
-    rawCat.includes('SERVICE') ||
-    rawCat.includes('LOCAL');
-  const isDigital =
-    ['DIGITAL', 'DOWNLOAD', 'COURSE'].includes(rawCat) ||
-    rawCat.includes('DIGITAL') ||
-    (!isPhysical && !isService);
+    !isPhysical && (
+      ['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'PROFESSIONAL_CONSULT'].includes(rawCat) ||
+      rawCat.includes('SERVICE') ||
+      rawCat.includes('LOCAL')
+    );
+
+  const isDigital = !isPhysical && !isService;
+
+  // Entitlement Ads Tracking Pro: terkunci untuk Solo/Trial
+  const capiUnlocked = typeof isAdsTrackingUnlocked === 'boolean'
+    ? isAdsTrackingUnlocked
+    : Boolean(permissions?.hasCapi && !permissions?.isSolo && !isSoloOrTrial && (isAdsPerformance || teamScaleActive));
 
   const checkTabsScroll = () => {
     if (tabsRef.current) {
@@ -243,9 +256,14 @@ export default function NavTabs({
             }`}
           >
             <Target className="w-4 h-4 text-blue-600 shrink-0" />
-            <span className="flex items-center gap-1">
-              Ads Tracking Pro
-              {!permissions.hasCapi && <Lock className="w-3 h-3 text-amber-500" />}
+            <span className="flex items-center gap-1.5">
+              <span>Ads Tracking Pro</span>
+              {!capiUnlocked && (
+                <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[10px] font-extrabold flex items-center gap-0.5">
+                  <Lock className="w-2.5 h-2.5 text-amber-600" />
+                  <span>299k</span>
+                </span>
+              )}
             </span>
           </button>
 

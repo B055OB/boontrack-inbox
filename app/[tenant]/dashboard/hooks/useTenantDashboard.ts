@@ -58,8 +58,8 @@ export function useTenantDashboard() {
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
-  // Dynamic Vertical Category (DIGITAL, PHYSICAL, LOCAL_SERVICE, etc.)
-  const [storeCategory, setStoreCategory] = useState<string>('DIGITAL');
+  // Dynamic Vertical Category (PHYSICAL, DIGITAL, LOCAL_SERVICE, etc.)
+  const [storeCategory, setStoreCategory] = useState<string>('PHYSICAL');
 
   // Feature flags resolved from settings API response
   const [tenantFeatureFlags, setTenantFeatureFlags] = useState<{
@@ -112,13 +112,20 @@ export function useTenantDashboard() {
   const isGrowthPlus = isAdsPerformance;
   const isGrowth = planTier === 'growth' && !isAdsPerformance && !isTeamScale;
 
-  const isAdsTrackingUnlocked = Boolean(
-    tenantFeatureFlags.has_capi ||
-    tenantFeatureFlags.ads_tracking ||
+  // Merchant di paket Solo / Trial tidak memiliki akses ke Ads Tracking Pro
+  const isSoloOrTrial = Boolean(
+    tenantFeatureFlags.tier === 'SOLO_TRIAL' ||
+    tenantFeatureFlags.tier === 'SOLO' ||
+    (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial')) ||
+    isGrowth
+  );
+
+  const isAdsTrackingUnlocked = !isSoloOrTrial && Boolean(
+    isAdsPerformance ||
+    isTeamScale ||
     tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
     tenantFeatureFlags.tier === 'PRO_SCALE' ||
-    isAdsPerformance ||
-    isTeamScale
+    tenantFeatureFlags.tier === 'TEAM_SCALE'
   );
 
   const isBroadcastUnlocked = isTeamScale;
@@ -129,10 +136,16 @@ export function useTenantDashboard() {
     (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial'))
   );
 
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [targetUpgradeTier, setTargetUpgradeTier] = useState<'ads_performance' | 'team_scale'>('ads_performance');
+
+  const openUpgradeModal = (targetTier: 'ads_performance' | 'team_scale' = 'ads_performance') => {
+    setTargetUpgradeTier(targetTier);
+    setIsPaymentModalOpen(true);
+  };
+
   const handleUpgradeTier = (targetTier: 'ads_performance' | 'team_scale' = 'ads_performance') => {
-    const tierLabel = targetTier === 'team_scale' ? 'Team Scale (Official WABA & Unlimited)' : 'Ads Performance (CAPI Server-Side & ROAS)';
-    const text = encodeURIComponent(`Halo Tim BoonTrack, saya ingin upgrade paket toko "${displayName}" (${tenantSlug}) ke paket ${tierLabel}. Mohon panduannya.`);
-    window.open(`https://wa.me/${getPlatformWhatsApp()}?text=${text}`, '_blank');
+    openUpgradeModal(targetTier);
   };
 
   // State Edit Profil Toko & Validasi Unik
@@ -355,8 +368,14 @@ export function useTenantDashboard() {
           if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
 
           // Category
-          const cat = tenant.category || tenant.metadata?.vertical_type || 'DIGITAL';
-          setStoreCategory(String(cat).toUpperCase());
+          const rawCat = (tenant.category || tenant.metadata?.vertical_type || tenant.metadata?.business_category || 'PHYSICAL').toUpperCase();
+          if (['PHYSICAL', 'RETAIL', 'FNB', 'RETAIL_PHYSICAL'].includes(rawCat) || rawCat.includes('PHYSICAL') || rawCat.includes('RETAIL')) {
+            setStoreCategory('PHYSICAL');
+          } else if (['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'PROFESSIONAL_CONSULT'].includes(rawCat) || rawCat.includes('SERVICE') || rawCat.includes('LOCAL')) {
+            setStoreCategory('LOCAL_SERVICE');
+          } else {
+            setStoreCategory('DIGITAL');
+          }
 
           // Tier from Supabase column 'tier' or metadata
           const resolvedTier = tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'SOLO_TRIAL';
@@ -407,7 +426,14 @@ export function useTenantDashboard() {
           const loadedStrategy = s.bot_strategy || aiK.bot_strategy || 'trust_builder';
           if (isMounted) {
             if (s.category || data.category) {
-              setStoreCategory(String(s.category || data.category).toUpperCase());
+              const c = String(s.category || data.category).toUpperCase();
+              if (['PHYSICAL', 'RETAIL', 'FNB', 'RETAIL_PHYSICAL'].includes(c) || c.includes('PHYSICAL') || c.includes('RETAIL')) {
+                setStoreCategory('PHYSICAL');
+              } else if (['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'PROFESSIONAL_CONSULT'].includes(c) || c.includes('SERVICE')) {
+                setStoreCategory('LOCAL_SERVICE');
+              } else {
+                setStoreCategory('DIGITAL');
+              }
             }
             if (s.features) {
               setTenantFeatureFlags(prev => ({
@@ -1087,8 +1113,13 @@ export function useTenantDashboard() {
     isGrowthPlus,
     isGrowth,
     isAdsTrackingUnlocked,
+    isSoloOrTrial,
     isBroadcastUnlocked,
     handleUpgradeTier,
+    isPaymentModalOpen,
+    setIsPaymentModalOpen,
+    targetUpgradeTier,
+    openUpgradeModal,
 
     // Store & Vertical
     storeCategory,

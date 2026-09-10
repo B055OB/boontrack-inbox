@@ -28,6 +28,7 @@ import ProductFormModal from './components/ProductFormModal';
 import SinglePageBuilderModal from './components/SinglePageBuilderModal';
 import BulkImportModal from './components/modals/BulkImportModal';
 import UpsellModal from './components/modals/UpsellModal';
+import UpgradePaymentModal from './components/modals/UpgradePaymentModal';
 import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
 import { useTenantDashboard } from './hooks/useTenantDashboard';
 
@@ -45,7 +46,12 @@ export default function TenantDashboardPage() {
     isGrowthPlus,
     isGrowth,
     isAdsTrackingUnlocked,
+    isSoloOrTrial,
     handleUpgradeTier,
+    isPaymentModalOpen,
+    setIsPaymentModalOpen,
+    targetUpgradeTier,
+    openUpgradeModal,
 
     trialDaysLeft,
     tenantFeatureFlags,
@@ -240,6 +246,9 @@ export default function TenantDashboardPage() {
           activeTab={activeTab as any}
           setActiveTab={setActiveTab as any}
           isTeamScale={isTeamScale}
+          isAdsPerformance={isAdsPerformance}
+          isAdsTrackingUnlocked={isAdsTrackingUnlocked}
+          isSoloOrTrial={isSoloOrTrial}
           storeCategory={storeCategory}
           productCount={products.length}
           orderCount={transactions.length}
@@ -443,6 +452,33 @@ export default function TenantDashboardPage() {
         </div>
       )}
 
+      {/* TAB: ADS TRACKING PRO & CAPI */}
+      {activeTab === 'ads_tracking' && (
+        <AdsTrackingTab
+          isAdsTrackingUnlocked={isAdsTrackingUnlocked}
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          onUpgradeTier={handleUpgradeTier}
+          renderLockedFeatureCard={renderLockedFeatureCard}
+          onSaved={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 3000);
+          }}
+        />
+      )}
+
+      {/* TAB: LOGISTIK & EKSPEDISI MULTI-KURIR (HANYA PRODUK FISIK) */}
+      {(activeTab === 'shipping' || activeTab === 'biteship') && (
+        <BiteshipCourierConfig
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          onSaved={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 3000);
+          }}
+        />
+      )}
+
       {/* TAB: BOOKING & JADWAL (HANYA FIELD SERVICE / LOCAL SERVICE) */}
       {activeTab === 'booking' && (
         <div className="flex-1 p-6 md:p-8 max-w-5xl mx-auto w-full space-y-6">
@@ -586,6 +622,15 @@ export default function TenantDashboardPage() {
         isOpen={isUpsellModalOpen}
         onClose={() => setIsUpsellModalOpen(false)}
         onUpgrade={() => handleUpgradeTier('ads_performance')}
+      />
+
+      {/* MODAL PEMBAYARAN UPGRADE LANGSUNG (QRIS) */}
+      <UpgradePaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => setIsPaymentModalOpen(false)}
+        tenantSlug={tenantSlug}
+        displayName={displayName}
+        targetTier={targetUpgradeTier}
       />
     </main>
   );

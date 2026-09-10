@@ -32,11 +32,11 @@ export default function AdsTrackingTab({
       return (
         <>
           {renderLockedFeatureCard({
-            title: "Ads Tracking Pro (Meta CAPI & ROAS)",
-            badge: "Fitur Eksklusif Ads Performance & Team Scale",
-            description: "Fitur Eksklusif Ads Performance & Team Scale. Aktifkan integrasi CAPI Server-Side dan pelacakan ROAS iklan riil.",
+            title: "Server-Side CAPI & Ads Tracking Pro",
+            badge: "Fitur Eksklusif Ads Performance (Rp 299k)",
+            description: "Fitur Server-Side CAPI & Ads Tracking Pro eksklusif untuk paket Ads Performance (Rp 299k). Aktifkan sinyal konversi Meta Pixel anti-adblocker iOS 14+ dan pelacakan ROAS iklan riil secara akurat.",
             targetTier: 'ads_performance',
-            targetTierLabel: 'Ads Performance',
+            targetTierLabel: 'Ads Performance (Rp 299k)',
           })}
         </>
       );
@@ -50,13 +50,13 @@ export default function AdsTrackingTab({
           </div>
           <div>
             <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 inline-block mb-2">
-              Fitur Eksklusif Ads Performance & Team Scale
+              Fitur Eksklusif Ads Performance (Rp 299k)
             </span>
             <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">
-              Ads Tracking Pro (Meta CAPI & ROAS)
+              Server-Side CAPI & Ads Tracking Pro
             </h2>
             <p className="text-slate-500 text-xs sm:text-sm max-w-md mx-auto leading-relaxed">
-              Fitur Eksklusif Ads Performance & Team Scale. Aktifkan integrasi CAPI Server-Side dan pelacakan ROAS iklan riil.
+              Fitur Server-Side CAPI & Ads Tracking Pro eksklusif untuk paket Ads Performance (Rp 299k). Aktifkan sinyal konversi Meta Pixel anti-adblocker iOS 14+ dan pelacakan ROAS iklan riil secara akurat.
             </p>
           </div>
 
@@ -64,9 +64,9 @@ export default function AdsTrackingTab({
             <button
               type="button"
               onClick={() => onUpgradeTier?.('ads_performance')}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-xs shadow-lg shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-black px-6 py-3.5 rounded-xl text-xs shadow-lg shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
             >
-              <span>Upgrade ke Ads Performance</span>
+              <span>Upgrade Sekarang</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

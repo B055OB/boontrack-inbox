@@ -40,9 +40,9 @@ export default function LockedFeatureCard({
           <button
             type="button"
             onClick={() => onUpgrade(targetTier)}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-xs shadow-lg shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-black px-6 py-3.5 rounded-xl text-xs shadow-lg shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
           >
-            <span>Upgrade ke {targetTierLabel}</span>
+            <span>Upgrade Sekarang ({targetTierLabel})</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

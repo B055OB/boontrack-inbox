@@ -72,13 +72,13 @@ const CATEGORIES = [
   },
 ];
 
-const VERTICAL_MAP: Record<string, "LOCAL_SERVICE" | "RETAIL" | "DIGITAL"> = {
-  retail_physical: "RETAIL",
+const VERTICAL_MAP: Record<string, "LOCAL_SERVICE" | "PHYSICAL" | "DIGITAL"> = {
+  retail_physical: "PHYSICAL",
   digital: "DIGITAL",
-  fnb: "RETAIL",
+  fnb: "PHYSICAL",
   local_service: "LOCAL_SERVICE",
   professional_consult: "LOCAL_SERVICE",
-  affiliate_creator: "RETAIL",
+  affiliate_creator: "PHYSICAL",
 };
 
 export const PLAN_PRICING: Record<
@@ -494,7 +494,7 @@ export default function RegisterShopPage() {
           {
             slug,
             name: storeName,
-            category: VERTICAL_MAP[category] ?? 'RETAIL',
+            category: VERTICAL_MAP[category] ?? 'PHYSICAL',
             tier: isTrial ? 'SOLO_TRIAL' : (selectedPlan === 'team_scale' ? 'TEAM_SCALE' : 'ADS_PERFORMANCE'),
             trial_ends_at: isTrial ? trialEndsAt : null,
             metadata: {
@@ -505,11 +505,11 @@ export default function RegisterShopPage() {
               pin_hash: cleanPin,
               created_via: isTrial ? 'register_solo_trial' : 'register_paid',
               business_category: category,
-              vertical_type: VERTICAL_MAP[category] ?? 'RETAIL',
+              vertical_type: VERTICAL_MAP[category] ?? 'PHYSICAL',
               capabilities: {
                 inbox: selectedPlan === 'team_scale',
                 ai_bot: true,
-                shipping: ['RETAIL', 'PHYSICAL', 'FNB'].includes(VERTICAL_MAP[category] ?? 'RETAIL'),
+                shipping: ['PHYSICAL', 'RETAIL', 'FNB'].includes(VERTICAL_MAP[category] ?? 'PHYSICAL'),
               },
               onboarded_at: new Date().toISOString(),
             },
@@ -532,7 +532,7 @@ export default function RegisterShopPage() {
             amount: planAmount,
             trial_days: isTrial ? 14 : 0,
             business_category: category,
-            vertical_type: VERTICAL_MAP[category] ?? "RETAIL",
+            vertical_type: VERTICAL_MAP[category] ?? "PHYSICAL",
             merchant_name: merchantData.name,
             merchant_phone: formattedPhone,
             customer_email: merchantData.email,
