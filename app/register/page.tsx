@@ -83,7 +83,7 @@ export const PLAN_PRICING: Record<
   "solo" | "ads_performance" | "team_scale",
   number
 > = {
-  solo: 199000,
+  solo: 0,
   ads_performance: 299000,
   team_scale: 499000,
 };
@@ -459,14 +459,15 @@ export default function RegisterShopPage() {
     verifySlugApi(slug);
   };
 
-  // ── SUBMIT: buat invoice, tampilkan modal — JANGAN redirect ──────────────
+  // ── SUBMIT: buat invoice atau aktifkan trial langsung tanpa modal ─────────
   const handleRegisterAndPay = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoadingPay(true);
     setPayError(null);
 
-    const planAmount = PLAN_PRICING[selectedPlan] ?? 299000;
-    const targetPlanTier = selectedPlan === 'solo' ? 'solo_trial' : selectedPlan;
+    const isTrial = selectedPlan === 'solo';
+    const planAmount = isTrial ? 0 : (PLAN_PRICING[selectedPlan] ?? 299000);
+    const targetPlanTier = isTrial ? 'solo_trial' : selectedPlan;
 
     try {
       const res = await fetch(
@@ -478,7 +479,7 @@ export default function RegisterShopPage() {
             tenant_slug: slug,
             plan_tier: targetPlanTier,
             amount: planAmount,
-            trial_days: selectedPlan === 'solo' ? 14 : 0,
+            trial_days: isTrial ? 14 : 0,
             business_category: category,
             vertical_type: VERTICAL_MAP[category] ?? "RETAIL",
             merchant_name: merchantData.name,
@@ -488,18 +489,24 @@ export default function RegisterShopPage() {
         }
       );
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         const msg =
           data?.detail ||
           data?.message ||
-          "Gagal menerbitkan invoice aktivasi toko.";
+          "Gagal memproses aktivasi toko. Silakan coba lagi.";
         setPayError(msg);
         return;
       }
 
-      // Ambil ID invoice (berbagai kemungkinan field name dari backend)
+      // REVERSE-TRIAL: Jika paket Solo Trial (Rp 0), bypass QrisPaymentModal dan langsung redirect
+      if (isTrial) {
+        router.push(`/${slug}/dashboard`);
+        return;
+      }
+
+      // PAKET BERBAYAR LANGSUNG (Ads Performance / Team Scale): Tampilkan modal QRIS
       const invoiceId: string =
         data?.id ||
         data?.invoice_id ||
@@ -522,7 +529,7 @@ export default function RegisterShopPage() {
         tenantSlug: slug,
       });
     } catch {
-      setPayError("Terjadi gangguan koneksi saat menyiapkan pembayaran. Coba lagi.");
+      setPayError("Terjadi gangguan koneksi saat menyiapkan pendaftaran. Coba lagi.");
     } finally {
       setLoadingPay(false);
     }
@@ -536,7 +543,7 @@ export default function RegisterShopPage() {
   };
 
   const planLabel = {
-    solo: "Rp 199 ribu",
+    solo: "Gratis Rp 0 (Trial 14 Hari)",
     ads_performance: "Rp 299 ribu",
     team_scale: "Rp 499 ribu",
   };
@@ -778,24 +785,24 @@ export default function RegisterShopPage() {
                           Reverse Trial
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-500 font-semibold mb-1.5">
-                        Starter Mandiri
+                      <p className="text-[10px] text-emerald-600 font-semibold mb-1.5">
+                        Starter Mandiri (Coba Gratis)
                       </p>
                       <div className="flex items-baseline gap-1.5 flex-wrap">
                         <span className="text-xs text-slate-400 line-through">
-                          Rp 349k
-                        </span>
-                        <span className="text-sm font-black text-blue-600">
                           Rp 199k
                         </span>
+                        <span className="text-sm font-black text-emerald-600">
+                          Rp 0
+                        </span>
                         <span className="text-[10px] text-slate-400 font-normal">
-                          /bln
+                          /14 hari trial
                         </span>
                       </div>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2 leading-tight">
                       Katalog Tanpa Batas, Cek Ongkir Otomatis Multi-Ekspedisi,
-                      Tanpa CS Inbox
+                      Akses Gratis 14 Hari Tanpa Biaya Awal
                     </p>
                   </div>
 
@@ -893,13 +900,21 @@ export default function RegisterShopPage() {
                 disabled={loadingPay || !slug}
                 className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <CreditCard className="w-4 h-4" />
+                {selectedPlan === "solo" ? (
+                  <Sparkles className="w-4 h-4 text-yellow-300" />
+                ) : (
+                  <CreditCard className="w-4 h-4" />
+                )}
                 <span>
                   {loadingPay
-                    ? "Menyiapkan Invoice QRIS..."
+                    ? selectedPlan === "solo"
+                      ? "Mengaktifkan Toko Gratis..."
+                      : "Menyiapkan Invoice QRIS..."
+                    : selectedPlan === "solo"
+                    ? "Mulai Coba Gratis 14 Hari (Rp 0) ->"
                     : `Aktivasi & Bayar (${planLabel[selectedPlan]})`}
                 </span>
-                <ArrowRight className="w-4 h-4 ml-1" />
+                {selectedPlan !== "solo" && <ArrowRight className="w-4 h-4 ml-1" />}
               </button>
 
               <p className="text-[11px] text-center text-slate-500 leading-relaxed pt-1">
