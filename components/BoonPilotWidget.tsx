@@ -50,6 +50,11 @@ interface BoonPilotWidgetProps {
   isProductsEmpty?: boolean;
   onOpenBulkImport?: () => void;
   onOpenNewProduct?: () => void;
+  // Dynamic tenant state for personalized BoonPilot context
+  productsCount?: number;
+  botConnected?: boolean;
+  isQrisUploaded?: boolean;
+  subscriptionPlan?: string;
 }
 
 const STARTER_CHIPS = [
@@ -202,7 +207,11 @@ export default function BoonPilotWidget({
   tenantSlug, 
   isProductsEmpty = false,
   onOpenBulkImport,
-  onOpenNewProduct
+  onOpenNewProduct,
+  productsCount = 0,
+  botConnected = false,
+  isQrisUploaded = false,
+  subscriptionPlan = 'SOLO_TRIAL',
 }: BoonPilotWidgetProps) {
   const normalizedSlug = Array.isArray(tenantSlug)
     ? tenantSlug[0]
@@ -216,18 +225,58 @@ export default function BoonPilotWidget({
   const storageKey = `boonpilot_history_${normalizedSlug}`;
   const sessionKey = `boonpilot_session_id_${normalizedSlug}`;
 
+  // Build dynamic persona-aware welcome based on tenant state
+  const buildWelcomeText = (): string => {
+    const isTrial = subscriptionPlan === 'SOLO_TRIAL' || subscriptionPlan === 'solo_trial' || subscriptionPlan === 'SOLO';
+    if (productsCount === 0) {
+      return `Halo! Saya **BoonPilot Copilot**, konsultan penjualan AI toko Anda. 🚀\n\n📦 **Etalase toko Anda masih kosong.** Mari mulai dengan menambahkan produk pertama Anda — ini adalah langkah paling penting sebelum bisa menerima pesanan!\n\nKlik **\'Import Massal (.xlsx / .csv)\'** untuk upload ratusan produk sekaligus, atau **\'+ Tambah Produk Baru\'** untuk entri manual.`;
+    }
+    if (!isQrisUploaded) {
+      return `Halo! Saya **BoonPilot Copilot**, konsultan penjualan AI toko Anda. 🚀\n\n✅ Katalog produk Anda sudah siap (${productsCount} produk).\n\n⚡ **Langkah berikutnya: Upload QRIS statis** ke Pengaturan Toko agar Anda bisa menerima pembayaran otomatis via BoonTrack Reader. Download APK Reader dari tab **Pengaturan**.`;
+    }
+    if (isTrial && productsCount > 0) {
+      return `Halo! Saya **BoonPilot Copilot**, konsultan penjualan AI toko Anda. 🚀\n\n🎯 Toko Anda aktif dengan **${productsCount} produk**. Masa trial Anda sedang berjalan.\n\nIngin meningkatkan penjualan lebih cepat? Tanya saya tentang strategi *impulse buying*, optimasi deskripsi produk, atau upgrade ke **Ads Performance** untuk akses CAPI & analitik lanjutan.`;
+    }
+    return `Halo! Saya **BoonPilot Copilot**, AI Copilot & Asisten Toko Anda. 🚀\n\nSaya siap membantu Anda memantau performa penjualan, memeriksa ketersediaan stok, konfigurasi kurir gudang, hingga mengelola otomasi WhatsApp toko Anda.`;
+  };
+
+  const buildWelcomeQuickActions = (): string[] => {
+    if (productsCount === 0) {
+      return [
+        'Bagaimana cara import file Tokopedia/Shopee?',
+        'Panduan format spreadsheet import produk',
+        'Cara membuat foto produk yang menarik pembeli',
+      ];
+    }
+    if (!isQrisUploaded) {
+      return [
+        'Cara upload QRIS ke BoonTrack?',
+        'Cara download & setup BoonTrack Reader?',
+        'Apa itu QRIS Dinamis vs Statis?',
+      ];
+    }
+    const isTrial = subscriptionPlan === 'SOLO_TRIAL' || subscriptionPlan === 'solo_trial' || subscriptionPlan === 'SOLO';
+    if (isTrial) {
+      return [
+        'Tips meningkatkan penjualan hari ini?',
+        'Strategi impulse buying untuk toko online',
+        'Apa yang bisa upgrade ke Ads Performance?',
+      ];
+    }
+    return [
+      'Bagaimana performa penjualan toko saya minggu ini?',
+      'Cek stok produk yang hampir habis',
+      'Jelaskan strategi bot WhatsApp & fitur otomasi',
+    ];
+  };
+
   // Default welcome message for active store
   const defaultWelcome: ChatMessage = {
     id: 'welcome-1',
     sender: 'assistant',
-    text: `Halo! Saya **BoonPilot Copilot**, AI Copilot & Asisten Toko Anda. 🚀\n\nSaya siap membantu Anda memantau performa penjualan, memeriksa ketersediaan stok, konfigurasi kurir gudang, hingga mengelola otomasi WhatsApp toko Anda.`,
+    text: buildWelcomeText(),
     timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-    quick_actions: [
-      'Bagaimana performa penjualan toko saya minggu ini?',
-      'Cek stok produk yang hampir habis',
-      'Bantu atur titik penjemputan gudang kurir',
-      'Jelaskan strategi bot WhatsApp & fitur otomasi'
-    ]
+    quick_actions: buildWelcomeQuickActions(),
   };
 
   // Onboarding welcome message when products are empty
@@ -350,6 +399,34 @@ export default function BoonPilotWidget({
       quick_actions: m.quick_actions || undefined,
     }));
 
+    // Build dynamic tenant context for personalized AI responses
+    const isTrial = subscriptionPlan === 'SOLO_TRIAL' || subscriptionPlan === 'solo_trial' || subscriptionPlan === 'SOLO';
+    const tenant_context = {
+      products_count: productsCount,
+      bot_connected: botConnected,
+      is_qris_uploaded: isQrisUploaded,
+      subscription_plan: subscriptionPlan,
+      persona_hint: productsCount === 0
+        ? 'ONBOARDING_EMPTY_CATALOG'
+        : !isQrisUploaded
+        ? 'ONBOARDING_MISSING_QRIS'
+        : isTrial
+        ? 'UPSELL_TRIAL_ACTIVE'
+        : 'ACTIVE_MERCHANT',
+      system_instruction: [
+        `Kamu adalah BoonPilot, konsultan penjualan AI & asisten toko untuk platform BoonTrack.`,
+        `Data toko saat ini: ${productsCount} produk aktif, bot WhatsApp ${botConnected ? 'terhubung' : 'belum terhubung'}, QRIS ${isQrisUploaded ? 'sudah diupload' : 'belum diupload'}, paket: ${subscriptionPlan}.`,
+        productsCount === 0
+          ? `PRIORITAS: Dorong seller untuk menambahkan produk pertama via import massal atau tambah manual. Jangan membahas fitur lain sebelum katalog terisi.`
+          : !isQrisUploaded
+          ? `PRIORITAS: Ingatkan seller untuk upload QRIS statis dan download BoonTrack Reader agar bisa menerima pembayaran otomatis.`
+          : isTrial
+          ? `Seller aktif dalam masa trial. Jika bertanya tentang scale-up, analitik, atau iklan, rekomendasikan upgrade ke paket Ads Performance (Rp 299k/bulan) atau Team Scale.`
+          : `Berikan analisis performa dan rekomendasi strategi penjualan berbasis data toko.`,
+        `Gaya komunikasi: ramah, lugas, berorientasi aksi, gunakan emoji secukupnya. Selalu akhiri dengan satu pertanyaan lanjutan atau CTA konkret.`,
+      ].join(' '),
+    };
+
     try {
       const tenantForRequest = normalizedSlug || 'growth';
       const res = await fetch('/api/v1/merchant/copilot', {
@@ -364,6 +441,7 @@ export default function BoonPilotWidget({
           session_id: sessionId,
           message: userText,
           conversation_history,
+          tenant_context,
         }),
       });
 

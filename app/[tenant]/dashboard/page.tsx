@@ -568,6 +568,10 @@ export default function TenantDashboardPage() {
         isProductsEmpty={products.length === 0}
         onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
         onOpenNewProduct={openNewProductModal}
+        productsCount={products.length}
+        botConnected={waStatus === 'CONNECTED' || !!connectedPhone}
+        isQrisUploaded={!!storeQrisUrl}
+        subscriptionPlan={tenantFeatureFlags.tier || (isSoloOrTrial ? 'SOLO_TRIAL' : 'GROWTH')}
       />
 
       {/* MODAL BULK IMPORT */}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Store, Globe, Image as ImageIcon, Save, X, Phone, FileText } from 'lucide-react';
+import { Store, Image as ImageIcon, Save, X, Package } from 'lucide-react';
 import CustomDomainCard from '../settings/CustomDomainCard';
 
 export interface SettingsTabProps {
@@ -43,10 +43,8 @@ export default function SettingsTab({
   onClose,
   onSavedSuccess,
 }: SettingsTabProps) {
-  const [isSavingStore, setIsSavingStore] = useState(false);
   const [isCheckingName, setIsCheckingName] = useState(false);
-
-  if (isModal && !isOpen) return null;
+  const [isSavingStore, setIsSavingStore] = useState(false);
 
   const handleSave = async () => {
     const trimmed = storeDisplayName.trim();
@@ -110,13 +108,14 @@ export default function SettingsTab({
 
   const formContent = (
     <div className="space-y-6">
+      {/* Profil & Identitas Toko */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
           <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
             <Store className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-bold text-sm text-slate-900">Profil & Identitas Toko</h3>
+            <h3 className="font-bold text-sm text-slate-900">Profil &amp; Identitas Toko</h3>
             <p className="text-[11px] text-slate-500">Sesuaikan nama toko dan informasi CS Anda.</p>
           </div>
         </div>
@@ -212,6 +211,91 @@ export default function SettingsTab({
         </div>
       </div>
 
+      {/* QR Meja Toko Fisik */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+          <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+            <ImageIcon className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm text-slate-900">QR Meja Toko Fisik</h3>
+            <p className="text-[11px] text-slate-500">
+              Cetak QR code toko Anda untuk dipajang di kasir atau meja.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 flex-wrap">
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://shop.boontrack.com/${tenantSlug}`}
+            alt="QR Toko"
+            className="w-24 h-24 rounded-xl object-contain border border-slate-200 bg-slate-50 p-1"
+          />
+          <div className="space-y-2">
+            <p className="text-[11px] text-slate-500">
+              URL Toko:{' '}
+              <span className="font-semibold text-indigo-600">
+                shop.boontrack.com/{tenantSlug}
+              </span>
+            </p>
+            <a
+              href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://shop.boontrack.com/${tenantSlug}`}
+              download={`qr-toko-${tenantSlug}.png`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 transition-all active:scale-95"
+            >
+              <ImageIcon className="w-3.5 h-3.5" />
+              Download QR Toko (.PNG)
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Otomasi Pembayaran QRIS - BoonTrack Reader */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
+          <div className="p-2 rounded-xl bg-green-50 text-green-600">
+            <Package className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm text-slate-900">
+              Otomasi Pembayaran QRIS (BoonTrack Reader)
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              Ubah QRIS statis toko menjadi QRIS Dinamis otomatis tanpa potongan MDR.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <p className="text-[11px] font-semibold text-slate-600 mb-1.5">
+              Kompatibel dengan parser:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <span className="px-2.5 py-1 text-[11px] font-semibold bg-blue-50 text-blue-700 rounded-lg border border-blue-100">
+                BCA Mobile / myBCA
+              </span>
+              <span className="px-2.5 py-1 text-[11px] font-semibold bg-cyan-50 text-cyan-700 rounded-lg border border-cyan-100">
+                DANA Bisnis
+              </span>
+              <span className="px-2.5 py-1 text-[11px] font-semibold bg-green-50 text-green-700 rounded-lg border border-green-100">
+                GoPay Usaha
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              * Bank / e-wallet lain belum didukung.
+            </p>
+          </div>
+          <a
+            href="https://api.boontrack.com/dl-reader-x9k2m/BoonTrackReader.apk"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold hover:bg-green-700 transition-all active:scale-95 shadow-sm shadow-green-500/20"
+          >
+            <Package className="w-4 h-4" />
+            Download APK BoonTrack Reader
+          </a>
+        </div>
+      </div>
+
       {/* Domain Setting Card */}
       <CustomDomainCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
     </div>
@@ -223,7 +307,7 @@ export default function SettingsTab({
         <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 my-auto">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="font-bold text-base text-slate-900">Profil & Identitas Toko</h3>
+              <h3 className="font-bold text-base text-slate-900">Profil &amp; Identitas Toko</h3>
               <p className="text-[11px] text-slate-500">Sesuaikan nama toko dan informasi CS Anda.</p>
             </div>
             {onClose && (
@@ -247,7 +331,7 @@ export default function SettingsTab({
       <div className="border-b border-slate-200 pb-4">
         <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
           <Store className="w-5 h-5 text-blue-600" />
-          <span>Pengaturan Profil & Domain Toko</span>
+          <span>Pengaturan Profil &amp; Domain Toko</span>
         </h2>
         <p className="text-xs text-slate-500 mt-1">
           Kelola profil identitas toko, nomor WhatsApp CS, QRIS resmi, dan custom domain.
