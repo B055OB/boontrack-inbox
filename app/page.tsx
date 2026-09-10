@@ -58,7 +58,7 @@ export default function ShopLandingPage() {
       <div className="bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 px-4 py-2.5 text-center text-xs font-semibold text-white flex flex-wrap items-center justify-center gap-1.5 shadow-sm">
         <span className="flex items-center gap-1">
           <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-          <span>Platform WhatsApp Commerce & Checkout Terintegrasi Resmi Midtrans & Meta Cloud API.</span>
+          <span>Platform WhatsApp Commerce & Checkout Terintegrasi Sistem Pembayaran Otomatis & QRIS Nasional.</span>
         </span>
         <Link href="/register" className="underline hover:text-blue-100 font-bold ml-1 inline-flex items-center gap-0.5">
           Coba Sekarang &rarr;
@@ -201,15 +201,15 @@ export default function ShopLandingPage() {
             </span>
             <span className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-slate-100 border border-slate-200">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Midtrans Payment Gateway</span>
+              <span>Payment Gateway Terlisensi Bank Indonesia</span>
             </span>
             <span className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-slate-100 border border-slate-200">
               <Smartphone className="w-4 h-4 text-green-600" />
-              <span>WhatsApp Official Cloud API (Meta)</span>
+              <span>WhatsApp Official Cloud API</span>
             </span>
             <span className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-slate-100 border border-slate-200">
               <Truck className="w-4 h-4 text-orange-600" />
-              <span>Biteship Multi-Courier</span>
+              <span>Multi-Ekspedisi (Reguler, Kargo & Instant)</span>
             </span>
           </div>
         </div>
@@ -356,7 +356,7 @@ export default function ShopLandingPage() {
                   </div>
                   <div className="flex items-start gap-2.5">
                     <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span>Integrasi Ongkir Otomatis & Biteship Logistics</span>
+                    <span>Cek Ongkir Otomatis Multi-Ekspedisi (Reguler, Kargo & Instant)</span>
                   </div>
                   <div className="flex items-start gap-2.5">
                     <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
@@ -512,13 +512,13 @@ export default function ShopLandingPage() {
           </div>
         </section>
 
-        {/* 8. MIDTRANS & LEGAL COMPLIANCE HIGHLIGHT SECTION */}
+        {/* 8. LEGAL COMPLIANCE HIGHLIGHT SECTION */}
         <section id="kepatuhan" className="pt-12 text-left space-y-6 scroll-mt-20">
           <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-10 shadow-xl border border-slate-800">
             <div className="max-w-3xl space-y-3">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs font-bold">
                 <ShieldCheck className="w-4 h-4" />
-                <span>Standar Kepatuhan Midtrans & Regulasi PMSE Kemendag RI</span>
+                <span>Standar Kepatuhan Sistem Pembayaran & Regulasi PMSE Kemendag RI</span>
               </div>
               <h2 className="text-xl sm:text-3xl font-black tracking-tight text-white">
                 Keamanan Transaksi & Perlindungan Hukum Terjamin
@@ -588,7 +588,7 @@ export default function ShopLandingPage() {
             <div className="bg-white border border-slate-200 p-4 rounded-2xl">
               <h4 className="font-bold text-slate-900 text-sm mb-1">Bagaimana metode pembayaran QRIS di BoonTrack diproses?</h4>
               <p className="text-slate-600 leading-relaxed">
-                Pembayaran diproses secara instan melalui gateway resmi berlisensi Bank Indonesia (Midtrans/Xendit). Setiap transaksi menghasilkan barcode QRIS dinamis unik yang mendeteksi pelunasan secara real-time tanpa upload bukti transfer.
+                Pembayaran diproses secara instan melalui Payment Gateway terlisensi Bank Indonesia dan jaringan QRIS Nasional. Setiap transaksi menghasilkan barcode QRIS dinamis unik yang mendeteksi pelunasan secara real-time tanpa upload bukti transfer.
               </p>
             </div>
 
@@ -610,7 +610,7 @@ export default function ShopLandingPage() {
 
       </main>
 
-      {/* 10. MODAL INTERAKTIF CONTACT US (MIDTRANS REQUIREMENT POPUP) */}
+      {/* 10. MODAL INTERAKTIF CONTACT US (LEGAL COMPLIANCE POPUP) */}
       {isContactModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -703,7 +703,7 @@ export default function ShopLandingPage() {
         </div>
       )}
 
-      {/* 11. FOOTER KEPATUHAN MIDTRANS LENGKAP */}
+      {/* 11. FOOTER KEPATUHAN & LEGAL LENGKAP */}
       <Footer />
 
       {/* 12. STICKY BOTTOM BAR (MOBILE ONLY) */}

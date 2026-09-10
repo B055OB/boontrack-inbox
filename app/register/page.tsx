@@ -360,7 +360,7 @@ export default function RegisterShopPage() {
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-2 leading-tight">
-                    Katalog Tanpa Batas, Cek Ongkir Lincah & Biteship Instant, Tanpa CS Inbox
+                    Katalog Tanpa Batas, Cek Ongkir Otomatis Multi-Ekspedisi, Tanpa CS Inbox
                   </p>
                 </div>
 

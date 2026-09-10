@@ -108,7 +108,7 @@ export default function TermsPage() {
             </p>
             <ul className="list-disc pl-5 space-y-1 text-slate-600 pt-1">
               <li>Meta Platforms Inc. / WhatsApp Cloud API / Meta Graph API outage.</li>
-              <li>Mitra Payment Gateway resmi (Midtrans, Xendit, jaringan QRIS ASPI, Bank Indonesia).</li>
+              <li>Mitra Payment Gateway resmi terlisensi Bank Indonesia dan jaringan QRIS Nasional (ASPI).</li>
               <li>Penyedia Server Hosting & CDN (Railway, Cloudflare, AWS).</li>
               <li>Gangguan jaringan Internet Service Provider (ISP) dan telekomunikasi seluler nasional.</li>
             </ul>
