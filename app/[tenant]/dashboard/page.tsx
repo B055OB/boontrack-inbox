@@ -271,12 +271,13 @@ export default function TenantDashboardPage() {
     }
   };
 
-  useEffect(() => {
+ useEffect(() => {
     if (!tenantSlug) return;
     const fetchTenantSettings = async () => {
       try {
+        // Cek langsung ke tabel utama: tenants
         const res = await fetch(
-          `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?tenant_slug=eq.${tenantSlug}&select=*`,
+          `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenants?slug=eq.${tenantSlug}&select=*`,
           {
             headers: {
               apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
@@ -286,24 +287,22 @@ export default function TenantDashboardPage() {
         );
         const data = await res.json();
 
-        // 1. Jika slug toko tidak ada di Supabase, tendang langsung
+        // 1. Jika slug toko tidak terdaftar di tabel tenants, baru tendang ke login
         if (!Array.isArray(data) || data.length === 0) {
           router.replace('/login');
           return;
         }
 
-        // 2. Jika toko terdaftar, muat datanya
-        const setting = data[0];
-        if (setting.store_name) setStoreDisplayName(setting.store_name);
-        if (setting.bio) setStoreBio(setting.bio);
-        if (setting.whatsapp) setStoreWhatsapp(setting.whatsapp);
-        if (setting.qris_image_url) setStoreQrisUrl(setting.qris_image_url);
+        // 2. Muat data toko resmi
+        const tenant = data[0];
+        if (tenant.name) setStoreDisplayName(tenant.name);
+        if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
 
-        // 3. Baca kategori vertikal secara dinamis
-        const cat = setting.category || setting.business_type || 'DIGITAL';
+        // 3. Baca kategori
+        const cat = tenant.category || tenant.metadata?.vertical_type || 'DIGITAL';
         setStoreCategory(String(cat).toUpperCase());
       } catch (err) {
-        console.error('Gagal memuat setting tenant:', err);
+        console.error('Gagal memuat data tenant:', err);
       }
     };
     fetchTenantSettings();
