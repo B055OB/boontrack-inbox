@@ -19,6 +19,7 @@ import {
   FileSpreadsheet,
   FileText
 } from 'lucide-react';
+import { searchPlatformKnowledge } from '@/lib/boonpilotKnowledge';
 
 export interface ActionProposal {
   id: string;
@@ -50,7 +51,6 @@ interface BoonPilotWidgetProps {
   isProductsEmpty?: boolean;
   onOpenBulkImport?: () => void;
   onOpenNewProduct?: () => void;
-  // Dynamic tenant state for personalized BoonPilot context
   productsCount?: number;
   botConnected?: boolean;
   isQrisUploaded?: boolean;
@@ -67,7 +67,7 @@ const STARTER_CHIPS = [
     icon: MessageSquare,
   },
   {
-    label: 'Cara aktifkan konfirmasi QRIS otomatis?',
+    label: 'Apa fungsi download QR meja toko?',
     icon: Zap,
   },
   {
@@ -95,7 +95,6 @@ const EMPTY_PRODUCTS_STARTER_CHIPS = [
   },
 ];
 
-// Helper to parse bold, italics, and inline code
 function parseInlineMarkdown(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
   const regex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g;
@@ -139,7 +138,6 @@ function parseInlineMarkdown(text: string): React.ReactNode[] {
   return parts;
 }
 
-// Markdown Renderer supporting code blocks, bold, italics, and bullet/numbered lists
 function MarkdownContent({ content }: { content: string }) {
   const blockRegex = /```([\s\S]*?)```/g;
   const blocks: Array<{ type: 'code' | 'text'; content: string }> = [];
@@ -229,7 +227,6 @@ export default function BoonPilotWidget({
   const storageKey = `boonpilot_history_${normalizedSlug}`;
   const sessionKey = `boonpilot_session_id_${normalizedSlug}`;
 
-  // Build dynamic persona-aware welcome based on tenant state
   const buildWelcomeText = (): string => {
     const isTrial = subscriptionPlan === 'SOLO_TRIAL' || subscriptionPlan === 'solo_trial' || subscriptionPlan === 'SOLO';
 
@@ -242,10 +239,10 @@ export default function BoonPilotWidget({
     }
 
     if (isTrial && productsCount > 0) {
-      return `Halo! Saya **BoonPilot Copilot**, konsultan penjualan AI toko Anda. 🚀\n\n🎯 Toko Anda aktif dengan **${productsCount} produk** (Paket Solo/Trial).\n\n💡 **Tips Penjualan Cepat & Impulse Buying:**\n- Etalase toko cukup berisi deskripsi singkat, benefit emosional produk, dan tombol checkout instan tanpa FAQ panjang.\n- Serahkan edukasi dan penanganan keraguan pembeli ke AI Knowledge & Bot WhatsApp.\n- Siap scale-up iklan berbayar (Meta/TikTok Ads)? Tanyakan saya tentang upgrade ke **Ads Performance (Rp 299k/bln)** untuk Server-Side CAPI tracking akurat!`;
+      return `Halo! Saya **BoonPilot Copilot**, konsultan penjualan AI toko Anda[cite: 1]. 🚀\n\n🎯 Toko Anda aktif dengan **${productsCount} produk** (Paket Solo/Trial).\n\n💡 **Tips Penjualan Cepat & Impulse Buying:**\n- Etalase toko cukup berisi deskripsi singkat, benefit emosional produk, dan tombol checkout instan tanpa FAQ panjang.\n- Serahkan edukasi dan penanganan keraguan pembeli ke AI Knowledge & Bot WhatsApp.\n- Siap scale-up iklan berbayar (Meta/TikTok Ads)? Tanyakan saya tentang upgrade ke **Ads Performance (Rp 299k/bln)** untuk Server-Side CAPI tracking akurat!`;
     }
 
-    return `Halo! Saya **BoonPilot Copilot**, konsultan penjualan AI & asisten toko cerdas Anda. 🚀\n\nSaya siap membantu Anda meninjau 5 Checklist Wajib Siap Jual, strategi *impulse buying* tanpa FAQ panjang, analisa stok, hingga otomasi closing di WhatsApp.`;
+    return `Halo! Saya **BoonPilot Copilot**, konsultan penjualan AI & asisten toko cerdas Anda[cite: 1]. 🚀\n\nSaya siap membantu Anda meninjau 5 Checklist Wajib Siap Jual, strategi *impulse buying* tanpa FAQ panjang, analisa stok, hingga otomasi closing di WhatsApp.`;
   };
 
   const buildWelcomeQuickActions = (): string[] => {
@@ -253,14 +250,14 @@ export default function BoonPilotWidget({
       return [
         '5 Checklist Wajib Siap Jual',
         '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
-        '🤖 Cara ubah gaya bahasa Bot CS WhatsApp?',
+        'Apa fungsi download QR meja toko?',
         '🔥 Bikin promo bundling biar orderan banjir!',
       ];
     }
     if (!isQrisUploaded) {
       return [
         '5 Checklist Wajib Siap Jual',
-        '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
+        'Apa fungsi download QR meja toko?',
         'Cara melatih AI Knowledge Toko',
         'Kenapa toko online tidak butuh FAQ panjang?',
       ];
@@ -271,7 +268,7 @@ export default function BoonPilotWidget({
         '5 Checklist Wajib Siap Jual',
         '🔥 Bikin promo bundling biar orderan banjir!',
         'Keunggulan paket Ads Performance (Rp 299k)',
-        'Kenapa toko online tidak butuh FAQ panjang?',
+        'Apa fungsi download QR meja toko?',
       ];
     }
     return [
@@ -282,7 +279,6 @@ export default function BoonPilotWidget({
     ];
   };
 
-  // Initial welcome message configured
   const initialWelcome: ChatMessage = {
     id: 'welcome-1',
     sender: 'assistant',
@@ -291,7 +287,6 @@ export default function BoonPilotWidget({
     quick_actions: buildWelcomeQuickActions(),
   };
 
-  // Persistent session ID
   const [sessionId, setSessionId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -300,14 +295,11 @@ export default function BoonPilotWidget({
         const newId = `bp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
         sessionStorage.setItem(sessionKey, newId);
         return newId;
-      } catch {
-        // Ignore
-      }
+      } catch {}
     }
     return `bp_${Date.now()}`;
   });
 
-  // Lazy-initialize messages state directly from sessionStorage
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -318,25 +310,19 @@ export default function BoonPilotWidget({
             return parsed;
           }
         }
-      } catch {
-        // Ignore parse error
-      }
+      } catch {}
     }
     return [initialWelcome];
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Sync to sessionStorage whenever messages change
   useEffect(() => {
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(messages));
-    } catch {
-      // Ignore quota error
-    }
+    } catch {}
   }, [messages, storageKey]);
 
-  // Auto scroll to bottom
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
@@ -347,104 +333,6 @@ export default function BoonPilotWidget({
     }
   }, [messages, isOpen, scrollToBottom]);
 
-  // Smart local responder function for instant guidance
-  const getSmartLocalResponse = (q: string): { text: string; quick_actions: string[] } => {
-    const query = q.toLowerCase();
-
-
-    // 0. Fungsi QR Meja Toko Fisik
-    if (
-      query.includes('qr meja') ||
-      query.includes('qr toko') ||
-      query.includes('download qr') ||
-      query.includes('qr (png)') ||
-      (query.includes('qr') && query.includes('meja')) ||
-      (query.includes('qr') && query.includes('fungsi'))
-    ) {
-      return {
-        text: `📌 **Fungsi Download QR Meja Toko (PNG):**\n\nTombol ini digunakan untuk mencetak **QR Code etalase digital toko Anda** yang bisa dipasang di:\n- Meja kasir atau meja gerai fisik\n- Kemasan produk / packaging\n- Brosur atau banner promosi offline\n\n**Cara Kerjanya:**\nBegitu pelanggan/pembeli offline men-scan QR tersebut menggunakan kamera HP, mereka akan **langsung diarahkan ke halaman etalase online toko Anda** tanpa perlu mengetik alamat *link*. Sangat praktis untuk mendatangkan repeat order dari pelanggan offline!`,
-        quick_actions: [
-          '5 Checklist Wajib Siap Jual',
-          '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
-          'Kenapa toko online tidak butuh FAQ panjang?',
-        ],
-      };
-    }
-    // 1. Checklist Wajib Siap Jual
-    if (query.includes('checklist') || query.includes('siap jual') || query.includes('roadmap') || query.includes('langkah')) {
-      return {
-        text: `Berikut adalah **5 Checklist Wajib Siap Jual** sebelum Anda mulai beriklan atau membagikan link toko:\n\n1. 📦 **Katalog Produk & Etalase Rapi:** Pastikan foto produk menarik, harga pas, dan cantumkan penawaran bundling.\n2. 🧠 **Isi AI Knowledge Toko (WAJIB):** Latih bot dengan pengetahuan produk, FAQ spesifik, dan kebijakan toko agar bot **tidak halu** saat membalas chat pembeli.\n3. 💬 **Scan WhatsApp Gateway:** Hubungkan nomor via *BoonTrack Direct Connect* agar bot CS otomatis menjawab chat 24/7.\n4. 🚚 **Aktivasi Logistik & Multi-Ekspedisi:** Nikmati diskon ongkir & cashback otomatis tanpa perlu antre di loket kurir.\n5. ⚡ **Otomasi QRIS Dinamis & BoonTrack Reader:** Pasang QRIS dan unduh APK BoonTrack Reader agar pembayaran pembeli terverifikasi instan tanpa cek mutasi manual!`,
-        quick_actions: [
-          '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
-          'Kenapa toko online tidak butuh FAQ panjang?',
-          'Cara melatih AI Knowledge Toko',
-          '🔥 Bikin promo bundling biar orderan banjir!',
-        ],
-      };
-    }
-
-    // 2. Positioning No-FAQ & Impulse Buying
-    if (query.includes('faq') || query.includes('impulse') || query.includes('panjang') || query.includes('kenapa')) {
-      return {
-        text: `💡 **Filosofi Toko Modern: Kenapa Tidak Butuh FAQ Panjang di Halaman Produk?**\n\n1. **Pembeli Malas Membaca Teks Panjang:** Menaruh deretan FAQ hanya membuat pembeli terdistraksi dan batal belanja (*drop off*).\n2. **Fokus ke Impulse Buying:** Etalase yang efektif hanya butuh foto memikat, promo bundling menarik, dan benefit produk yang langsung menggerakkan emosi untuk checkout.\n3. **Bot WhatsApp Sebagai CS Penutup:** Pertanyaan spesifik dan keraguan pembeli diselesaikan langsung oleh **AI Knowledge Toko & Bot WhatsApp** secara cepat dan personal!\n\nDengan formula ini, konversi penjualan Anda akan jauh lebih tinggi! 🚀`,
-        quick_actions: [
-          '5 Checklist Wajib Siap Jual',
-          '🔥 Bikin promo bundling biar orderan banjir!',
-          'Cara melatih AI Knowledge Toko',
-          '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
-        ],
-      };
-    }
-
-    // 3. Logistik Diskon
-    if (query.includes('logistik') || query.includes('ekspedisi') || query.includes('ongkir') || query.includes('diskon')) {
-      return {
-        text: `🚚 **Keuntungan Logistik Multi-Ekspedisi di BoonTrack:**\n\n- **Diskon Ongkir & Cashback:** Dapatkan potongan ongkir s/d puluhan persen dibanding tarif reguler di counter ekspedisi.\n- **Pick-up Kurir Otomatis:** Kurir langsung datang menjemput paket ke alamat Anda tanpa perlu antre di agen kurir.\n- **Resi Otomatis ke WhatsApp Pembeli:** Nomor resi langsung terkirim otomatis ke WhatsApp pelanggan begitu paket di-pick up!`,
-        quick_actions: [
-          '5 Checklist Wajib Siap Jual',
-          '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
-          'Kenapa toko online tidak butuh FAQ panjang?',
-        ],
-      };
-    }
-
-    // 4. QRIS Dinamis & BoonTrack Reader
-    if (query.includes('qris') || query.includes('reader') || query.includes('pembayaran') || query.includes('statis')) {
-      return {
-        text: `⚡ **Otomasi Pembayaran QRIS Dinamis (BoonTrack Reader):**\n\n1. **Upload QRIS Toko:** Masuk ke tab **Pengaturan** dan unggah gambar QRIS Anda (BCA, DANA Bisnis, GoPay Usaha, dll).\n2. **Unduh BoonTrack Reader APK:** Pasang aplikasi Android BoonTrack Reader di HP yang menerima notifikasi mutasi rekening/e-wallet.\n3. **Otomasi Tanpa Fee (0% MDR):** Begitu pembeli scan kode QRIS unik di checkout, notifikasi mutasi dibaca oleh Reader dan status pesanan langsung berubah jadi **LUNAS** secara otomatis tanpa biaya potongan gateway!`,
-        quick_actions: [
-          '5 Checklist Wajib Siap Jual',
-          'Cara melatih AI Knowledge Toko',
-          'Kenapa toko online tidak butuh FAQ panjang?',
-        ],
-      };
-    }
-
-    // 5. Upsell Paket Ads Performance
-    if (query.includes('ads') || query.includes('iklan') || query.includes('capi') || query.includes('scale') || query.includes('upgrade') || query.includes('paket')) {
-      return {
-        text: `🚀 **Scale-Up dengan Paket Ads Performance (Rp 299.000/bulan):**\n\n- **Server-Side Meta CAPI & TikTok Events:** Kirim data konversi purchase langsung dari server toko, kebal terhadap iOS 14+ / ad-blocker.\n- **ROAS & Attribution Analytics:** Lacak kampanye iklan mana yang menghasilkan profit nyata hingga ke level omset bersih.\n- **Fitur Tanpa Batas:** Kapasitas produk tak terbatas dan broadcast WhatsApp terintegrasi.\n\nKlik tombol **Upgrade Sekarang** di dashboard toko Anda untuk mengaktifkannya!`,
-        quick_actions: [
-          '5 Checklist Wajib Siap Jual',
-          '🔥 Bikin promo bundling biar orderan banjir!',
-          'Kenapa toko online tidak butuh FAQ panjang?',
-        ],
-      };
-    }
-
-    // Default Fallback
-    return {
-      text: `Halo! Saya **BoonPilot Copilot** siap membantu toko Anda. 🚀\n\nUntuk memastikan toko siap menghasilkan penjualan optimal, pastikan Anda telah menyelesaikan **5 Checklist Wajib Siap Jual**:\n1. 📦 Katalog Produk Rapi\n2. 🧠 AI Knowledge Toko Terisi Lengkap\n3. 💬 WhatsApp Bot Gateway Terhubung\n4. 🚚 Logistik Multi-Ekspedisi Aktif\n5. ⚡ Otomasi QRIS Dinamis & BoonTrack Reader Siap\n\nAda langkah yang ingin Anda tanyakan lebih lanjut?`,
-      quick_actions: [
-        '5 Checklist Wajib Siap Jual',
-        '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
-        '🔥 Bikin promo bundling biar orderan banjir!',
-        'Kenapa toko online tidak butuh FAQ panjang?',
-      ],
-    };
-  };
-
-  // Send message handler
   const handleSendMessage = useCallback(async (textToSend?: string) => {
     const userText = (textToSend || inputText).trim();
     if (!userText || loading) return;
@@ -455,6 +343,22 @@ export default function BoonPilotWidget({
       text: userText,
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     };
+
+    // ── CENTRALIZED PLATFORM KNOWLEDGE CHECK ──
+    const matchedKnowledge = searchPlatformKnowledge(userText);
+    if (matchedKnowledge) {
+      const localAssistantMsg: ChatMessage = {
+        id: `ast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        sender: 'assistant',
+        text: matchedKnowledge.text,
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        quick_actions: matchedKnowledge.quick_actions,
+      };
+      setMessages((prev) => [...prev, userMessage, localAssistantMsg]);
+      setInputText('');
+      setLoading(false);
+      return;
+    }
 
     let historySnapshot: ChatMessage[] = [];
     setMessages((prev) => {
@@ -557,28 +461,26 @@ export default function BoonPilotWidget({
           const next = [...prev, assistantMessage];
           try {
             sessionStorage.setItem(storageKey, JSON.stringify(next));
-          } catch { }
+          } catch {}
           return next;
         });
       } else {
-        const fallback = getSmartLocalResponse(userText);
         const errMessage: ChatMessage = {
           id: `ast_${Date.now()}`,
           sender: 'assistant',
-          text: fallback.text,
+          text: `Halo! Saya **BoonPilot Copilot** siap membantu toko Anda. 🚀\n\nPastikan Anda telah menyelesaikan **5 Checklist Wajib Siap Jual**. Ada yang ingin didiskusikan?`,
           timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-          quick_actions: fallback.quick_actions,
+          quick_actions: ['5 Checklist Wajib Siap Jual', '⚡ Cara aktifkan konfirmasi QRIS otomatis?'],
         };
         setMessages((prev) => [...prev, errMessage]);
       }
     } catch {
-      const fallback = getSmartLocalResponse(userText);
       const errMessage: ChatMessage = {
         id: `ast_${Date.now()}`,
         sender: 'assistant',
-        text: fallback.text,
+        text: `Halo! Saya **BoonPilot Copilot** siap membantu toko Anda. 🚀\n\nKoneksi terputus saat memproses pesan. Silakan coba tanyakan kembali atau pilih panduan cepat di bawah.`,
         timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        quick_actions: fallback.quick_actions,
+        quick_actions: ['5 Checklist Wajib Siap Jual', '⚡ Cara aktifkan konfirmasi QRIS otomatis?'],
       };
       setMessages((prev) => [...prev, errMessage]);
     } finally {
@@ -586,7 +488,6 @@ export default function BoonPilotWidget({
     }
   }, [inputText, loading, normalizedSlug, sessionId, storageKey, productsCount, botConnected, isQrisUploaded, subscriptionPlan]);
 
-  // Listen for open-boonpilot custom events
   useEffect(() => {
     const handleOpenEvent = (e: Event) => {
       const customEvent = e as CustomEvent<{ prompt?: string }>;
@@ -599,7 +500,6 @@ export default function BoonPilotWidget({
     return () => window.removeEventListener('open-boonpilot', handleOpenEvent);
   }, [handleSendMessage]);
 
-  // Action Proposal Approval/Rejection
   const handleActionDecision = async (
     messageId: string,
     proposal: ActionProposal,
@@ -690,7 +590,6 @@ export default function BoonPilotWidget({
     }
   };
 
-  // Reset conversation
   const handleResetChat = () => {
     const newSessionId = `bp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     setSessionId(newSessionId);
@@ -698,28 +597,23 @@ export default function BoonPilotWidget({
     try {
       sessionStorage.setItem(sessionKey, newSessionId);
       sessionStorage.setItem(storageKey, JSON.stringify([initialWelcome]));
-    } catch {
-      // Ignore
-    }
+    } catch {}
   };
 
   const hasUserMessages = messages.some((m) => m.sender === 'user');
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-
-      {/* ── CHAT WINDOW ── */}
+      
       {isOpen && (
         <div className="mb-3.5 w-[calc(100vw-32px)] sm:w-[420px] h-[580px] max-h-[85vh] bg-white rounded-3xl shadow-2xl border border-slate-200/80 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200 isolate">
-
-          {/* Header */}
+          
           <div className="px-5 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between border-b border-indigo-900/40 shrink-0">
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
                   <Sparkles className="w-5 h-5" />
                 </div>
-                {/* Green Online Indicator */}
                 <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-slate-900" />
@@ -758,13 +652,13 @@ export default function BoonPilotWidget({
             </div>
           </div>
 
-          {/* Messages Feed */}
           <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50/50">
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'
-                  }`}
+                className={`flex flex-col ${
+                  m.sender === 'user' ? 'items-end' : 'items-start'
+                }`}
               >
                 <div className="flex items-end gap-2 max-w-[90%]">
                   {m.sender === 'assistant' && (
@@ -774,10 +668,11 @@ export default function BoonPilotWidget({
                   )}
 
                   <div
-                    className={`rounded-2xl px-4 py-3 shadow-xs ${m.sender === 'user'
-                      ? 'bg-blue-600 text-white rounded-br-xs'
-                      : 'bg-white border border-slate-200/80 text-slate-800 rounded-bl-xs'
-                      }`}
+                    className={`rounded-2xl px-4 py-3 shadow-xs ${
+                      m.sender === 'user'
+                        ? 'bg-blue-600 text-white rounded-br-xs'
+                        : 'bg-white border border-slate-200/80 text-slate-800 rounded-bl-xs'
+                    }`}
                   >
                     {m.sender === 'user' ? (
                       <p className="text-xs leading-relaxed whitespace-pre-wrap">{m.text}</p>
@@ -787,7 +682,6 @@ export default function BoonPilotWidget({
                   </div>
                 </div>
 
-                {/* Interactive Action Approval Card */}
                 {m.action_proposal && (
                   <div className="mt-2.5 ml-8 max-w-[85%] w-full bg-white border border-indigo-200 rounded-2xl p-3.5 shadow-sm space-y-3 animate-in fade-in slide-in-from-top-2">
                     <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
@@ -819,7 +713,6 @@ export default function BoonPilotWidget({
                       </div>
                     )}
 
-                    {/* Action Execution Buttons / Status State */}
                     {m.action_proposal.status === 'pending' && (
                       <div className="pt-1 flex items-center gap-2">
                         <button
@@ -883,7 +776,6 @@ export default function BoonPilotWidget({
                   </div>
                 )}
 
-                {/* Quick Action Chips from Assistant Response */}
                 {m.sender === 'assistant' && m.quick_actions && m.quick_actions.length > 0 && (
                   <div className="mt-2.5 ml-8 flex flex-wrap gap-1.5 animate-in fade-in slide-in-from-top-1">
                     {m.quick_actions.map((item, aIdx) => {
@@ -925,7 +817,6 @@ export default function BoonPilotWidget({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Starter Chips */}
           {!hasUserMessages && (
             <div className="p-3 bg-slate-100/70 border-t border-slate-200/80 space-y-1.5">
               <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block px-1">
@@ -953,7 +844,6 @@ export default function BoonPilotWidget({
             </div>
           )}
 
-          {/* Footer Input */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -982,7 +872,6 @@ export default function BoonPilotWidget({
         </div>
       )}
 
-      {/* ── FLOATING TOGGLE BUBBLE ── */}
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
