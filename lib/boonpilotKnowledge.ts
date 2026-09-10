@@ -53,6 +53,17 @@ export const PLATFORM_KNOWLEDGE_BASE: KnowledgeItem[] = [
             'Kenapa toko online tidak butuh FAQ panjang?',
         ],
     },
+    {
+    id: 'ai_knowledge_training',
+    keywords: ['ai knowledge', 'latih bot', 'knowledge toko', 'cara melatih', 'faq toko', 'agar bot tidak halu'],
+    title: 'Cara Melatih AI Knowledge Toko',
+    text: `🧠 **Cara Melatih AI Knowledge Toko:**\n\n1. Masuk ke dashboard merchant BoonTrack Shop Anda dan buka tab **AI Knowledge & Bot**.\n2. Tuliskan informasi penting seputar toko Anda seperti deskripsi produk, bahan, ukuran, kebijakan garansi, ketentuan retur, dan FAQ spesifik.\n3. Klik simpan. Sistem AI akan langsung mempelajari data tersebut sehingga Bot WhatsApp CS Anda menjadi sangat pintar, akurat, dan **tidak halu** saat melayani calon pembeli 24/7!`,
+    quick_actions: [
+      '5 Checklist Wajib Siap Jual',
+      'Kenapa toko online tidak butuh FAQ panjang?',
+      '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
+    ],
+  },
 ];
 
 export function searchPlatformKnowledge(query: string): KnowledgeItem | null {
