@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Brain,
   Save,
@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   MessageSquare,
   Target,
+  BookOpen,
+  Check,
 } from 'lucide-react';
 import BotSimulatorModal from './BotSimulatorModal';
 import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
@@ -22,6 +24,32 @@ export interface AiKnowledgeForm {
 }
 
 export type BotStrategy = 'trust_builder' | 'balanced' | 'hard_selling';
+
+export interface SellerConversationPlaybook {
+  persona: {
+    greetingStyle: string; // contoh: "Sapaan ramah, panggil 'Kak', gaya santai bersahabat"
+    tone: 'casual' | 'semi-formal' | 'formal';
+  };
+  scenarios: {
+    priceObjection: string;   // Arahan saat pembeli menawar/komplain mahal
+    closingHook: string;      // Pemicu urgensi agar segera transfer/checkout
+    outOfStockHandling: string; // Solusi jika produk/varian habis
+  };
+  customDoAndDonts: string;  // Larangan atau instruksi khusus seller
+}
+
+export const DEFAULT_SELLER_PLAYBOOK: SellerConversationPlaybook = {
+  persona: {
+    greetingStyle: "Sapaan ramah, panggil 'Kak', gaya santai bersahabat",
+    tone: 'casual',
+  },
+  scenarios: {
+    priceObjection: 'Jelaskan nilai, kualitas bahan, dan garansi resmi tanpa terkesan defensif. Tawarkan bonus atau promo aktif jika tersedia.',
+    closingHook: 'Informasikan batas jam pengiriman hari ini dan kuota promo terbatas untuk memicu transfer / checkout segera.',
+    outOfStockHandling: 'Sampaikan permohonan maaf dengan tulus, tawarkan varian/produk alternatif terbaik yang serupa, atau opsi pre-order.',
+  },
+  customDoAndDonts: 'Dilarang memberikan nomor kontak pribadi selain nomor resmi toko. Selalu pastikan konfirmasi data penerima sebelum checkout.',
+};
 
 export interface AiKnowledgeTabProps {
   tenantSlug: string;
@@ -39,6 +67,9 @@ export interface AiKnowledgeTabProps {
   setIsSimulatorOpen?: React.Dispatch<React.SetStateAction<boolean>>;
   storeCategory?: string;
   renderVerticalModule?: () => React.ReactNode;
+  playbook?: SellerConversationPlaybook;
+  setPlaybook?: React.Dispatch<React.SetStateAction<SellerConversationPlaybook>>;
+  onSavePlaybook?: (playbook: SellerConversationPlaybook) => void | Promise<void>;
 }
 
 export default function AiKnowledgeTab({
@@ -57,10 +88,90 @@ export default function AiKnowledgeTab({
   setIsSimulatorOpen,
   storeCategory,
   renderVerticalModule,
+  playbook: propPlaybook,
+  setPlaybook: propSetPlaybook,
+  onSavePlaybook,
 }: AiKnowledgeTabProps) {
   const [internalSimulatorOpen, setInternalSimulatorOpen] = useState(false);
   const simulatorOpen = isSimulatorOpen !== undefined ? isSimulatorOpen : internalSimulatorOpen;
   const setSimulatorOpen = setIsSimulatorOpen || setInternalSimulatorOpen;
+
+  // Seller Conversation Playbook State
+  const [internalPlaybook, setInternalPlaybook] = useState<SellerConversationPlaybook>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(`bt_seller_playbook_${tenantSlug}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.persona && parsed?.scenarios) return parsed;
+        }
+      } catch (err) {
+        console.warn('Gagal membaca playbook dari storage:', err);
+      }
+    }
+    return DEFAULT_SELLER_PLAYBOOK;
+  });
+
+  const currentPlaybook = propPlaybook ?? internalPlaybook;
+  const updatePlaybook = propSetPlaybook ?? setInternalPlaybook;
+
+  const [isSavingPlaybook, setIsSavingPlaybook] = useState(false);
+  const [playbookFeedback, setPlaybookFeedback] = useState<string | null>(null);
+  const [appliedToPrompt, setAppliedToPrompt] = useState(false);
+
+  // Sync to localStorage if using internal state
+  useEffect(() => {
+    if (!propPlaybook && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`bt_seller_playbook_${tenantSlug}`, JSON.stringify(internalPlaybook));
+      } catch (err) {
+        console.warn('Gagal menyimpan playbook ke storage:', err);
+      }
+    }
+  }, [internalPlaybook, propPlaybook, tenantSlug]);
+
+  const handleSavePlaybook = async () => {
+    setIsSavingPlaybook(true);
+    try {
+      if (onSavePlaybook) {
+        await onSavePlaybook(currentPlaybook);
+      } else if (typeof window !== 'undefined') {
+        localStorage.setItem(`bt_seller_playbook_${tenantSlug}`, JSON.stringify(currentPlaybook));
+      }
+      setPlaybookFeedback('✅ Playbook skema percakapan seller berhasil disimpan!');
+      setTimeout(() => setPlaybookFeedback(null), 3500);
+    } catch (err) {
+      console.error('Gagal menyimpan playbook:', err);
+    } finally {
+      setIsSavingPlaybook(false);
+    }
+  };
+
+  const handleApplyPlaybookToPrompt = () => {
+    const playbookSnippet = `\n\n[PLAYBOOK PERCAKAPAN SELLER - UNIFIED NATURAL ENGINE]
+• Gaya Persona: ${currentPlaybook.persona.greetingStyle} (Tone: ${currentPlaybook.persona.tone})
+• Skenario Tawar/Komplain Harga: ${currentPlaybook.scenarios.priceObjection}
+• Pemicu Urgensi Closing/Checkout: ${currentPlaybook.scenarios.closingHook}
+• Skenario Produk/Varian Habis: ${currentPlaybook.scenarios.outOfStockHandling}
+• Larangan & Instruksi Khusus: ${currentPlaybook.customDoAndDonts}`;
+
+    setAiForm((prev) => {
+      // If already contains previous playbook snippet, replace it; otherwise append
+      let cleanPrompt = prev.system_prompt;
+      const marker = '[PLAYBOOK PERCAKAPAN SELLER - UNIFIED NATURAL ENGINE]';
+      if (cleanPrompt.includes(marker)) {
+        const parts = cleanPrompt.split(marker);
+        cleanPrompt = parts[0].trim();
+      }
+      return {
+        ...prev,
+        system_prompt: cleanPrompt ? `${cleanPrompt}${playbookSnippet}` : playbookSnippet.trim(),
+      };
+    });
+
+    setAppliedToPrompt(true);
+    setTimeout(() => setAppliedToPrompt(false), 3000);
+  };
 
   const verticalContent = renderVerticalModule 
     ? renderVerticalModule() 
@@ -79,7 +190,7 @@ export default function AiKnowledgeTab({
             <span>AI Knowledge & Bot Persona</span>
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Atur identitas asisten, gaya komunikasi, dan instruksi sistem (system prompt) yang digunakan model LLM saat membalas pesan WhatsApp.
+            Atur identitas asisten, gaya komunikasi, playbook percakapan seller, dan instruksi sistem (system prompt) yang digunakan model LLM saat membalas pesan WhatsApp.
           </p>
         </div>
         <button
@@ -322,6 +433,228 @@ export default function AiKnowledgeTab({
         </div>
       </div>
 
+      {/* KARTU PLAYBOOK SKEMA PERCAKAPAN SELLER (UNIFIED NATURAL ENGINE) */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-sm sm:text-base font-black text-slate-900">
+                Playbook Skema Percakapan Seller (Unified Natural Engine)
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                Natural Flow Engine
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Standarisasi skenario interaksi CS otomatis: gaya sapaan, penanganan tawar-menawar harga, pemicu closing, dan batasan do&apos;s & don&apos;ts toko.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              type="button"
+              onClick={handleApplyPlaybookToPrompt}
+              className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Kompilasi dan sinkronkan aturan playbook ini ke kolom System Prompt"
+            >
+              {appliedToPrompt ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="text-emerald-700">Tersinkron ke Prompt!</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Terapkan ke System Prompt</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSavePlaybook}
+              disabled={isSavingPlaybook}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              {isSavingPlaybook ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+              ) : (
+                <Save className="w-3.5 h-3.5 text-white" />
+              )}
+              <span>{isSavingPlaybook ? 'Menyimpan...' : 'Simpan Playbook'}</span>
+            </button>
+          </div>
+        </div>
+
+        {playbookFeedback && (
+          <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{playbookFeedback}</span>
+          </div>
+        )}
+
+        {/* 1. Persona & Gaya Sapaan */}
+        <div className="space-y-3">
+          <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-indigo-600" />
+            <span>1. Persona & Gaya Sapaan</span>
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Panduan Sapaan & Panggilan (Greeting Style)
+              </label>
+              <input
+                type="text"
+                value={currentPlaybook.persona.greetingStyle}
+                onChange={(e) =>
+                  updatePlaybook((prev) => ({
+                    ...prev,
+                    persona: { ...prev.persona, greetingStyle: e.target.value },
+                  }))
+                }
+                placeholder="Contoh: Sapaan ramah, panggil 'Kak', gaya santai bersahabat"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Cara bot menyapa pembeli di awal obrolan (contoh: &quot;Halo Kak, ada yang bisa kami bantu?&quot;).
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">
+                Gaya Bahasa (Tone)
+              </label>
+              <select
+                value={currentPlaybook.persona.tone}
+                onChange={(e) =>
+                  updatePlaybook((prev) => ({
+                    ...prev,
+                    persona: {
+                      ...prev.persona,
+                      tone: e.target.value as 'casual' | 'semi-formal' | 'formal',
+                    },
+                  }))
+                }
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition cursor-pointer"
+              >
+                <option value="casual">Santai & Bersahabat (Casual)</option>
+                <option value="semi-formal">Sopan & Seimbang (Semi-Formal)</option>
+                <option value="formal">Resmi & Baku (Formal)</option>
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Menentukan level formalitas tata bahasa bot.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Skenario Penanganan Pembeli */}
+        <div className="space-y-3 pt-4 border-t border-slate-100">
+          <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-600" />
+            <span>2. Skenario Penanganan Pembeli (Handling Scenarios)</span>
+          </h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Price Objection */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <label className="text-xs font-bold text-slate-800 block">
+                Penanganan Tawar/Harga Mahal (Price Objection)
+              </label>
+              <textarea
+                rows={3}
+                value={currentPlaybook.scenarios.priceObjection}
+                onChange={(e) =>
+                  updatePlaybook((prev) => ({
+                    ...prev,
+                    scenarios: { ...prev.scenarios, priceObjection: e.target.value },
+                  }))
+                }
+                placeholder="Arahan saat pembeli menawar atau mengeluh harga mahal..."
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 leading-relaxed"
+              />
+              <p className="text-[10px] text-slate-400">
+                Fokus pada nilai, kualitas, dan keuntungan produk tanpa menurunkan harga sembarangan.
+              </p>
+            </div>
+
+            {/* Closing Hook */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <label className="text-xs font-bold text-slate-800 block">
+                Pemicu Urgensi Closing (Closing Hook)
+              </label>
+              <textarea
+                rows={3}
+                value={currentPlaybook.scenarios.closingHook}
+                onChange={(e) =>
+                  updatePlaybook((prev) => ({
+                    ...prev,
+                    scenarios: { ...prev.scenarios, closingHook: e.target.value },
+                  }))
+                }
+                placeholder="Pemicu urgensi agar pembeli segera menyelesaikan pembayaran..."
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 leading-relaxed"
+              />
+              <p className="text-[10px] text-slate-400">
+                Pemicu psikologis seperti sisa kuota, batas jam pengiriman, atau bonus berbatas waktu.
+              </p>
+            </div>
+
+            {/* Out of Stock Handling */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <label className="text-xs font-bold text-slate-800 block">
+                Penanganan Stok Habis (Out of Stock)
+              </label>
+              <textarea
+                rows={3}
+                value={currentPlaybook.scenarios.outOfStockHandling}
+                onChange={(e) =>
+                  updatePlaybook((prev) => ({
+                    ...prev,
+                    scenarios: { ...prev.scenarios, outOfStockHandling: e.target.value },
+                  }))
+                }
+                placeholder="Arahan respon jika produk atau varian yang dicari sedang kosong..."
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 leading-relaxed"
+              />
+              <p className="text-[10px] text-slate-400">
+                Tawarkan varian terdekat, produk alternatif sekelas, atau daftar antrean pre-order.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Do's & Don'ts */}
+        <div className="space-y-2 pt-4 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-rose-500" />
+              <span>3. Batasan & Larangan Seller (Custom Do&apos;s & Don&apos;ts)</span>
+            </h4>
+            <span className="text-[10px] text-slate-400">Instruksi Kepatuhan Bot</span>
+          </div>
+
+          <textarea
+            rows={2}
+            value={currentPlaybook.customDoAndDonts}
+            onChange={(e) =>
+              updatePlaybook((prev) => ({
+                ...prev,
+                customDoAndDonts: e.target.value,
+              }))
+            }
+            placeholder="Contoh: Dilarang menjanjikan diskon selain voucher resmi. Selalu konfirmasi alamat lengkap sebelum checkout."
+            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition leading-relaxed"
+          />
+          <p className="text-[11px] text-slate-400">
+            Instruksi ketat yang WAJIB ditaati bot saat berdialog dengan pembeli.
+          </p>
+        </div>
+      </div>
+
+      {/* FORM IDENTITAS AI & SYSTEM PROMPT */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -331,7 +664,7 @@ export default function AiKnowledgeTab({
             <input
               type="text"
               value={aiForm.ai_name}
-              onChange={(e) => setAiForm(a => ({ ...a, ai_name: e.target.value }))}
+              onChange={(e) => setAiForm((a) => ({ ...a, ai_name: e.target.value }))}
               placeholder="Contoh: Maya - Asisten Resmi"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
             />
@@ -346,8 +679,8 @@ export default function AiKnowledgeTab({
             </label>
             <select
               value={aiForm.tone}
-              onChange={(e) => setAiForm(a => ({ ...a, tone: e.target.value }))}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+              onChange={(e) => setAiForm((a) => ({ ...a, tone: e.target.value }))}
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
             >
               <option value="casual">Santai, Luwes & Ramah (Casual Human-like)</option>
               <option value="professional">Formal, Sopan & Profesional (Corporate Standard)</option>
@@ -370,9 +703,9 @@ export default function AiKnowledgeTab({
             </span>
           </div>
           <textarea
-            rows={6}
+            rows={7}
             value={aiForm.system_prompt}
-            onChange={(e) => setAiForm(a => ({ ...a, system_prompt: e.target.value }))}
+            onChange={(e) => setAiForm((a) => ({ ...a, system_prompt: e.target.value }))}
             placeholder="Tuliskan instruksi sistem, persona bisnis, aturan penawaran, atau instruksi khusus untuk asisten AI..."
             className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
           />
