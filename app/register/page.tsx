@@ -69,6 +69,12 @@ const VERTICAL_MAP: Record<string, "LOCAL_SERVICE" | "RETAIL" | "DIGITAL"> = {
   affiliate_creator:    "RETAIL",
 };
 
+export const PLAN_PRICING: Record<"solo" | "ads_performance" | "team_scale", number> = {
+  solo: 199000,
+  ads_performance: 299000,
+  team_scale: 499000,
+};
+
 export default function RegisterShopPage() {
   const [storeName, setStoreName] = useState("");
   const [slug, setSlug] = useState("");
@@ -138,7 +144,7 @@ export default function RegisterShopPage() {
     e.preventDefault();
     setLoadingPay(true);
 
-    const planAmount = selectedPlan === 'solo' ? 199000 : selectedPlan === 'ads_performance' ? 299000 : 499000;
+    const planAmount = PLAN_PRICING[selectedPlan] ?? 299000;
 
     try {
       const res = await fetch("https://api.boontrack.com/api/v1/shop/subscriptions/create", {

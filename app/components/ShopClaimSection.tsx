@@ -1,6 +1,15 @@
 'use client';
 import { useState } from 'react';
 
+export const PLAN_PRICING = {
+  solo: 199000,
+  growth: 199000,
+  ads_performance: 299000,
+  growth_tracking: 299000,
+  team_scale: 499000,
+  pro_scale: 499000,
+} as const;
+
 export default function ShopClaimSection() {
   const [storeName, setStoreName] = useState('');
   const [slug, setSlug] = useState('');
@@ -32,7 +41,7 @@ export default function ShopClaimSection() {
     e.preventDefault();
     setLoadingPay(true);
 
-    const planAmount = selectedPlan === 'growth' ? 199000 : selectedPlan === 'growth_tracking' ? 299000 : 499000;
+    const planAmount = PLAN_PRICING[selectedPlan] ?? 299000;
 
     try {
       const res = await fetch('https://api.boontrack.com/api/v1/shop/subscriptions/create', {
