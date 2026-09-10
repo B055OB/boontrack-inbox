@@ -66,11 +66,55 @@ export interface SinglePageConfig {
   whatsapp_number?: string;
 }
 
+export type ProductType = 'PHYSICAL' | 'DIGITAL' | 'FOOD' | 'FIELD_SERVICE' | 'PROFESSIONAL_SERVICE' | 'AGENCY';
+
+export interface FulfillmentMetadata {
+  delivery_type?: 'DOWNLOAD_LINK' | 'LICENSE_KEY' | 'BRIEF_FORM';
+  access_url?: string;
+  instructions?: string;
+  license_key?: string;
+  [key: string]: any;
+}
+
+export interface FulfillmentRequirements {
+  requiresAddress: boolean;
+  requiresShipping: boolean;
+  requiresWeight: boolean;
+  requiresDeliveryPayload: boolean;
+}
+
+export function resolveFulfillmentRequirements(productType?: ProductType | string): FulfillmentRequirements {
+  const normType = (productType || '').toUpperCase();
+  switch (normType) {
+    case 'PHYSICAL':
+    case 'FOOD':
+    case 'FISIK':
+      return {
+        requiresAddress: true,
+        requiresShipping: true,
+        requiresWeight: true,
+        requiresDeliveryPayload: false,
+      };
+    case 'DIGITAL':
+    case 'AGENCY':
+    case 'PROFESSIONAL_SERVICE':
+    case 'FIELD_SERVICE':
+    default:
+      return {
+        requiresAddress: false,
+        requiresShipping: false,
+        requiresWeight: false,
+        requiresDeliveryPayload: true,
+      };
+  }
+}
+
 export interface ProductItem {
   id: number;
   name: string;
   slug?: string;
-  category: 'terlaris' | 'digital' | 'fisik';
+  category: 'terlaris' | 'digital' | 'fisik' | string;
+  product_type?: ProductType;
   price: number;
   promo_price?: number;
   variants?: string;
@@ -81,6 +125,8 @@ export interface ProductItem {
   stock: number;
   sku?: string;
   is_unlimited?: boolean;
+  weight_grams?: number;
+  fulfillment_metadata?: FulfillmentMetadata;
   single_page_config?: SinglePageConfig;
 }
 

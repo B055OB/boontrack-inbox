@@ -25,6 +25,8 @@ export interface CreateOrderPayload {
   netShippingCost?: number;
   shippingAddress?: string;
   shippingCourier?: string;
+  productType?: string;
+  fulfillmentMetadata?: any;
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
@@ -64,6 +66,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     voucher_code: payload.voucherCode || null,
     shipping_address: payload.shippingAddress || null,
     shipping_courier: payload.shippingCourier || null,
+    product_type: payload.productType || null,
+    fulfillment_metadata: payload.fulfillmentMetadata || null,
     admin_fee: adminFee,
     unique_code: uniqueCode,
     payment_method: paymentMethod,

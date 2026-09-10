@@ -13,7 +13,11 @@ import {
   ExternalLink, 
   AlertTriangle,
   Truck,
-  Zap 
+  Zap,
+  Sparkles,
+  Key,
+  FileText,
+  Download
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
@@ -21,6 +25,7 @@ import { getBackendApiUrl } from '@/lib/api-config';
 import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
 import { generateDynamicQRIS, INTERNAL_TENANTS } from '@/lib/qris-dynamic';
 import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
+import { resolveFulfillmentRequirements } from '@/lib/product-catalog';
 
 const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
 
@@ -198,6 +203,10 @@ export default function CheckoutPage({ params }: Props) {
   const shippingSubsidy = Number(order?.shipping_subsidy || 0);
   const netShippingCost = Number(order?.net_shipping_cost || Math.max(0, shippingCost - shippingSubsidy));
 
+  const orderProductType = order?.product_type || (order?.shipping_address ? 'PHYSICAL' : 'DIGITAL');
+  const orderRequirements = resolveFulfillmentRequirements(orderProductType);
+  const isPaidOrder = order?.status === 'PAID' || order?.status === 'COMPLETED' || order?.status === 'SUCCESS' || order?.status === 'SETTLED';
+
   const fallbackQrisString = STATIC_QRIS;
   const tenantSlug = (order?.tenant_slug || order?.tenant_id || '').toLowerCase();
   const isInternalTenant = INTERNAL_TENANTS.includes(tenantSlug);
@@ -217,7 +226,12 @@ export default function CheckoutPage({ params }: Props) {
         
         {/* Header Order */}
         <div className="text-center space-y-1">
-          {isManual ? (
+          {isPaidOrder ? (
+            <span className="text-xs uppercase tracking-wider font-bold text-emerald-400 bg-emerald-950/80 px-3.5 py-1 rounded-full border border-emerald-800/60 inline-flex items-center gap-1.5 shadow-sm">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Pembayaran Telah Terverifikasi (LUNAS)</span>
+            </span>
+          ) : isManual ? (
             <span className="text-xs uppercase tracking-wider font-semibold text-blue-400 bg-blue-950/60 px-3 py-1 rounded-full border border-blue-800/40 inline-flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5" />
               <span>Menunggu Transfer Bank Manual (Bebas Biaya Admin)</span>
@@ -234,102 +248,175 @@ export default function CheckoutPage({ params }: Props) {
           <p className="text-xs text-slate-400 font-mono">Order ID: {orderId}</p>
         </div>
 
-        {/* Timer Bar */}
-        <div className="flex items-center justify-center gap-2 bg-slate-950/80 border border-slate-800 rounded-2xl py-2.5 text-amber-400 font-mono text-sm font-semibold">
-          <Clock className="w-4 h-4" />
-          <span>Sisa Waktu Pembayaran: {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</span>
-        </div>
+        {/* Timer Bar (Hanya jika belum bayar) */}
+        {!isPaidOrder && (
+          <div className="flex items-center justify-center gap-2 bg-slate-950/80 border border-slate-800 rounded-2xl py-2.5 text-amber-400 font-mono text-sm font-semibold">
+            <Clock className="w-4 h-4" />
+            <span>Sisa Waktu Pembayaran: {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</span>
+          </div>
+        )}
 
-        {/* Payment Detail Section (QRIS vs Transfer Manual) */}
-        {isManual ? (
-          <div className="space-y-4">
-            {/* Rekening Tujuan Transfer */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
-              <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-blue-400" />
-                <span>Rekening Tujuan Pembayaran</span>
+        {/* Kartu Akses Delivery Payload Jika Status Lunas (PAID) */}
+        {isPaidOrder && (orderRequirements.requiresDeliveryPayload || order?.fulfillment_metadata) && (
+          <div className="bg-emerald-950/50 border-2 border-emerald-500/60 rounded-2xl p-5 space-y-4 shadow-xl text-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center shrink-0 font-bold">
+                <CheckCircle2 className="w-5 h-5 text-slate-950" />
               </div>
-
-              {/* Bank BCA */}
-              <div className="bg-slate-900 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-3">
-                <div>
-                  <span className="text-[10px] font-bold text-blue-400 block">BANK BCA</span>
-                  <span className="text-sm font-mono font-bold text-white tracking-wider">847-019-2344</span>
-                  <span className="text-[10px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleCopy('8470192344', 'bca')}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
-                >
-                  {copiedField === 'bca' ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="text-emerald-400">Tersalin</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Salin</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Bank Mandiri */}
-              <div className="bg-slate-900 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-3">
-                <div>
-                  <span className="text-[10px] font-bold text-amber-400 block">BANK MANDIRI</span>
-                  <span className="text-sm font-mono font-bold text-white tracking-wider">131-00-1892834-1</span>
-                  <span className="text-[10px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleCopy('1310018928341', 'mandiri')}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
-                >
-                  {copiedField === 'mandiri' ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="text-emerald-400">Tersalin</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Salin</span>
-                    </>
-                  )}
-                </button>
+              <div>
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2.5 py-0.5 rounded-full uppercase border border-emerald-800/60">
+                  Akses Produk Aktif
+                </span>
+                <h3 className="text-sm font-bold text-white mt-0.5">
+                  Pengiriman &amp; Akses Layanan Anda
+                </h3>
               </div>
             </div>
 
-            {/* Peringatan Kode Unik */}
-            <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-amber-300">
-              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <span className="font-bold block">PENTING: Transfer Tepat Sesuai Nominal</span>
-                <p className="text-[11px] text-amber-200/90 leading-relaxed">
-                  Harap transfer tepat hingga 3 digit terakhir (<strong>Rp {grossAmount.toLocaleString('id-ID')}</strong>) agar pesanan Anda dapat diverifikasi otomatis tanpa kendala.
-                </p>
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-medium">Metode Akses:</span>
+                <span className="font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-md border border-emerald-800/60 text-[11px]">
+                  {order?.fulfillment_metadata?.delivery_type === 'DOWNLOAD_LINK'
+                    ? '📥 Link Download Instan'
+                    : order?.fulfillment_metadata?.delivery_type === 'LICENSE_KEY'
+                    ? '🔑 Lisensi / Kode Akses'
+                    : '📋 Form Brief Klien'}
+                </span>
               </div>
+
+              {order?.fulfillment_metadata?.license_key && (
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                  <span className="text-[11px] font-bold text-slate-400 block flex items-center gap-1">
+                    <Key className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Kunci Lisensi / Akses:</span>
+                  </span>
+                  <div className="font-mono text-sm font-bold text-blue-400 select-all bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+                    {order.fulfillment_metadata.license_key}
+                  </div>
+                </div>
+              )}
+
+              {order?.fulfillment_metadata?.instructions && (
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                  <span className="text-[11px] font-bold text-slate-400 block flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Petunjuk Penggunaan:</span>
+                  </span>
+                  <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
+                    {order.fulfillment_metadata.instructions}
+                  </p>
+                </div>
+              )}
+
+              {(order?.fulfillment_metadata?.access_url || order?.download_url) && (
+                <a
+                  href={order?.fulfillment_metadata?.access_url || order?.download_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Buka Akses / Unduh Materi Sekarang</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
             </div>
           </div>
-        ) : (
-          /* QR Code Container (QRIS Standar Nasional) */
-          <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center shadow-inner">
-            <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
-              <QRCodeSVG
-                value={rawQrisValue}
-                size={220}
-                level="M"
-                includeMargin={true}
-              />
+        )}
+
+        {/* Payment Detail Section (QRIS vs Transfer Manual - hanya jika belum lunas) */}
+        {!isPaidOrder && (
+          isManual ? (
+            <div className="space-y-4">
+              {/* Rekening Tujuan Transfer */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-blue-400" />
+                  <span>Rekening Tujuan Pembayaran</span>
+                </div>
+
+                {/* Bank BCA */}
+                <div className="bg-slate-900 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold text-blue-400 block">BANK BCA</span>
+                    <span className="text-sm font-mono font-bold text-white tracking-wider">847-019-2344</span>
+                    <span className="text-[10px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy('8470192344', 'bca')}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedField === 'bca' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400">Tersalin</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Salin</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Bank Mandiri */}
+                <div className="bg-slate-900 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold text-amber-400 block">BANK MANDIRI</span>
+                    <span className="text-sm font-mono font-bold text-white tracking-wider">131-00-1892834-1</span>
+                    <span className="text-[10px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy('1310018928341', 'mandiri')}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedField === 'mandiri' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400">Tersalin</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Salin</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Peringatan Kode Unik */}
+              <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-amber-300">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold block">PENTING: Transfer Tepat Sesuai Nominal</span>
+                  <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                    Harap transfer tepat hingga 3 digit terakhir (<strong>Rp {grossAmount.toLocaleString('id-ID')}</strong>) agar pesanan Anda dapat diverifikasi otomatis tanpa kendala.
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
-              QRIS STANDAR PEMBAYARAN NASIONAL
+          ) : (
+            /* QR Code Container (QRIS Standar Nasional) */
+            <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center shadow-inner">
+              <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
+                <QRCodeSVG
+                  value={rawQrisValue}
+                  size={220}
+                  level="M"
+                  includeMargin={true}
+                />
+              </div>
+              <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
+                QRIS STANDAR PEMBAYARAN NASIONAL
+              </div>
+              <p className="text-[10px] text-slate-500 text-center">BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay</p>
             </div>
-            <p className="text-[10px] text-slate-500 text-center">BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay</p>
-          </div>
+          )
         )}
 
         {/* Detail Pengiriman & Kurir Instan (Jika Produk Fisik) */}

@@ -26,7 +26,11 @@ import {
   Scale,
   Flame,
   Zap,
-  MessageCircle
+  MessageCircle,
+  ExternalLink,
+  FileText,
+  Key,
+  Download
 } from 'lucide-react';
 import { syncAttributionSession } from '@/lib/attribution';
 import { getTenantWhatsApp } from '@/lib/tenant-config';
@@ -43,7 +47,18 @@ import {
   getTrackingData
 } from '@/lib/tracking';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
-import { resolveSinglePageProduct, SinglePageConfig, ProductItem, VoucherConfig, ComparisonItem, BonusItem, slugify } from '@/lib/product-catalog';
+import { 
+  resolveSinglePageProduct, 
+  SinglePageConfig, 
+  ProductItem, 
+  VoucherConfig, 
+  ComparisonItem, 
+  BonusItem, 
+  slugify,
+  resolveFulfillmentRequirements,
+  ProductType,
+  FulfillmentMetadata
+} from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 
 function SingleProductContent() {
@@ -133,16 +148,19 @@ function SingleProductContent() {
               name: dynamicConfig.headline || match.title || match.name || 'Produk Eksklusif',
               slug: match.slug || slug,
               category: match.category || 'digital',
+              product_type: match.product_type || (match.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
               price: Number(match.price ?? ob.price ?? 1000),
               promo_price: Number(match.promo_price ?? ob.promo_price ?? match.price ?? 1000),
               variants: match.variants || 'Format Digital • Akses Instan',
               promo: dynamicConfig.badge_text,
               description: dynamicConfig.subheadline,
-              download_url: match.download_url || match.link_digital || match.delivery_url || '',
+              download_url: match.download_url || match.link_digital || match.delivery_url || match.fulfillment_metadata?.access_url || '',
               image: dynamicConfig.banner_url,
               stock: match.stock || 999,
               sku: match.sku || '',
-              is_unlimited: true,
+              is_unlimited: match.is_unlimited ?? true,
+              weight_grams: match.weight_grams,
+              fulfillment_metadata: match.fulfillment_metadata,
               single_page_config: dynamicConfig,
             };
 
@@ -188,8 +206,19 @@ function SingleProductContent() {
   const [errorMessage, setErrorMessage] = useState('');
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
 
-  // Deteksi Tipe Produk & Pengiriman (Khusus Produk Fisik)
-  const isPhysical = product.category === 'fisik';
+  // Resolusi Deterministik via Fulfillment Requirements (Boundary Strategy)
+  const productType: ProductType = product.product_type || (product.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL');
+  const requirements = resolveFulfillmentRequirements(productType);
+  const requiresShipping = requirements.requiresShipping;
+  const requiresAddress = requirements.requiresAddress;
+  const requiresWeight = requirements.requiresWeight;
+  const requiresDeliveryPayload = requirements.requiresDeliveryPayload;
+  const isPhysical = requiresShipping; // Backward-compatible alias
+
+  // Status Pembayaran dari query param (jika redirect sukses dari invoice/gateway)
+  const statusParam = (searchParams.get('status') || searchParams.get('order_status') || '').toUpperCase();
+  const isPaid = statusParam === 'PAID' || statusParam === 'SUCCESS' || statusParam === 'SETTLED' || statusParam === 'COMPLETED';
+
   const BASE_SHIPPING_OPTIONS = [
     { id: 'reg', name: 'J&T / SiCepat Regular', price: 20000, eta: '2-3 hari', type: 'regular', badge: 'Reguler' },
     { id: 'exp', name: 'Kurir Express Next Day', price: 35000, eta: '1 hari', type: 'express', badge: 'Express' },
@@ -205,9 +234,9 @@ function SingleProductContent() {
     return [...BASE_SHIPPING_OPTIONS, ...instantCouriers];
   }, [instantCouriers]);
 
-  // Efek pemanggilan tarif instan Biteship saat pembeli memasukkan kota Bandung atau kode pos 40xxx
+  // Efek pemanggilan tarif instan Biteship saat pembeli memasukkan kota Bandung atau kode pos 40xxx (khusus bila requiresShipping)
   useEffect(() => {
-    if (!isPhysical) return;
+    if (!requiresShipping) return;
 
     const queryCity = shippingCity.trim();
     const queryAddress = shippingAddress.trim();
@@ -256,7 +285,7 @@ function SingleProductContent() {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [isPhysical, shippingCity, shippingAddress]);
+  }, [requiresShipping, shippingCity, shippingAddress]);
 
   // Modul Voucher Diskon Fleksibel (Hanya aktif jika voucher valid diberikan secara eksplisit)
   const initialVoucher: VoucherConfig | null = config.voucher && config.voucher.discount_value > 0 ? config.voucher : null;
@@ -300,7 +329,7 @@ function SingleProductContent() {
             code: config.discount_coupon.toUpperCase(),
             discount_type: 'nominal',
             discount_value: 20000,
-            shipping_discount_type: isPhysical ? 'free' : 'none',
+            shipping_discount_type: requiresShipping ? 'free' : 'none',
             shipping_discount_value: 0,
             min_spend: 0
           }
@@ -309,7 +338,7 @@ function SingleProductContent() {
             code,
             discount_type: code === 'DISKON20K' ? 'percentage' : 'nominal',
             discount_value: code === 'DISKON20K' ? 20 : 50000,
-            shipping_discount_type: code === 'FREESHIP' ? 'free' : 'none',
+            shipping_discount_type: code === 'FREESHIP' ? (requiresShipping ? 'free' : 'none') : 'none',
             shipping_discount_value: 0,
             min_spend: 0
           }
@@ -356,11 +385,11 @@ function SingleProductContent() {
   productDiscount = Math.min(productDiscount, Math.max(0, basePrice - 1000));
   const netProductPrice = Math.max(0, basePrice - (appliedVoucher ? productDiscount : 0));
 
-  // 2. Ongkos Kirim & Subsidi (Khusus Produk Fisik)
+  // 2. Ongkos Kirim & Subsidi (Khusus Produk Fisik / requiresShipping)
   const selectedShipping = availableShippingOptions.find(s => s.id === selectedShippingId) || availableShippingOptions[0];
-  const baseShippingCost = isPhysical ? selectedShipping.price : 0;
+  const baseShippingCost = requiresShipping ? selectedShipping.price : 0;
   let shippingSubsidy = 0;
-  if (isPhysical && appliedVoucher) {
+  if (requiresShipping && appliedVoucher) {
     if (appliedVoucher.shipping_discount_type === 'free') {
       shippingSubsidy = baseShippingCost;
     } else if (appliedVoucher.shipping_discount_type === 'flat') {
@@ -474,8 +503,8 @@ function SingleProductContent() {
     e.preventDefault();
     if (loading) return;
 
-    if (isPhysical && (!shippingAddress || !shippingCity)) {
-      setErrorMessage('Silakan lengkapi alamat dan kota pengiriman produk fisik.');
+    if (requiresAddress && (!shippingAddress || !shippingCity)) {
+      setErrorMessage('Silakan lengkapi alamat dan kota pengiriman.');
       return;
     }
 
@@ -494,11 +523,13 @@ function SingleProductContent() {
         basePrice,
         productDiscount,
         netProductPrice,
-        shippingCost: baseShippingCost,
-        shippingSubsidy,
-        netShippingCost,
-        shippingAddress: isPhysical ? `${shippingAddress}, ${shippingCity}` : undefined,
-        shippingCourier: isPhysical ? (selectedShipping.eta ? `${selectedShipping.name} (${selectedShipping.eta})` : selectedShipping.name) : undefined,
+        shippingCost: requiresShipping ? baseShippingCost : 0,
+        shippingSubsidy: requiresShipping ? shippingSubsidy : 0,
+        netShippingCost: requiresShipping ? netShippingCost : 0,
+        shippingAddress: requiresAddress ? `${shippingAddress}, ${shippingCity}` : undefined,
+        shippingCourier: requiresShipping ? (selectedShipping.eta ? `${selectedShipping.name} (${selectedShipping.eta})` : selectedShipping.name) : undefined,
+        productType,
+        fulfillmentMetadata: product.fulfillment_metadata,
         voucherCode: appliedVoucher?.code || undefined,
         adminFee: 0,
         uniqueCode: currentUniqueCode,
@@ -523,6 +554,87 @@ function SingleProductContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const renderDeliveryPayloadCard = () => {
+    if (!requiresDeliveryPayload) return null;
+    const meta: FulfillmentMetadata = product.fulfillment_metadata || {
+      delivery_type: 'DOWNLOAD_LINK',
+      access_url: product.download_url || '',
+      instructions: '',
+    };
+    const accessUrl = meta.access_url || product.download_url;
+
+    return (
+      <div className="bg-emerald-50/90 border-2 border-emerald-500/80 rounded-2xl p-4 sm:p-5 shadow-lg space-y-3.5 animate-in fade-in duration-300 text-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/20">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+              Status: Pesanan Lunas (PAID)
+            </span>
+            <h3 className="text-sm sm:text-base font-black text-slate-900 mt-0.5">
+              Akses Langsung Produk &amp; Layanan Anda
+            </h3>
+          </div>
+        </div>
+
+        <div className="bg-white border border-emerald-200 rounded-xl p-3.5 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-slate-700 text-xs flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Metode Akses:</span>
+            </span>
+            <span className="font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 text-[11px]">
+              {meta.delivery_type === 'DOWNLOAD_LINK'
+                ? '📥 Link Download Instan'
+                : meta.delivery_type === 'LICENSE_KEY'
+                ? '🔑 Kunci Lisensi / Akses'
+                : '📋 Form Brief Klien'}
+            </span>
+          </div>
+
+          {meta.license_key && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <span className="text-[11px] font-bold text-slate-500 block flex items-center gap-1">
+                <Key className="w-3.5 h-3.5 text-blue-600" />
+                <span>Kunci Lisensi / Kode Akses:</span>
+              </span>
+              <div className="font-mono text-sm font-bold text-blue-600 select-all bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                {meta.license_key}
+              </div>
+            </div>
+          )}
+
+          {meta.instructions && (
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <span className="text-[11px] font-bold text-slate-500 block flex items-center gap-1">
+                <FileText className="w-3.5 h-3.5 text-slate-600" />
+                <span>Petunjuk Penggunaan:</span>
+              </span>
+              <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                {meta.instructions}
+              </p>
+            </div>
+          )}
+
+          {accessUrl && (
+            <a
+              href={accessUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-md shadow-emerald-600/25 transition cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Buka Akses / Unduh Materi Sekarang</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )}
+        </div>
+      </div>
+    );
   };
 
   const renderCheckoutForm = () => (
@@ -654,12 +766,12 @@ function SingleProductContent() {
         )}
       </div>
 
-      {/* Khusus Produk Fisik: Alamat & Opsi Pengiriman */}
-      {isPhysical && (
+      {/* Khusus Produk yang Memerlukan Pengiriman: Alamat & Opsi Pengiriman */}
+      {requiresAddress && (
         <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
           <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
             <Package className="w-4 h-4 text-amber-700" />
-            <span>Alamat & Ekspedisi Pengiriman Produk Fisik</span>
+            <span>Alamat & Ekspedisi Pengiriman Produk</span>
           </div>
 
           <div className="space-y-2">
@@ -669,7 +781,7 @@ function SingleProductContent() {
               </label>
               <textarea
                 rows={2}
-                required={isPhysical}
+                required={requiresAddress}
                 placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan, Kecamatan"
                 value={shippingAddress}
                 onChange={(e) => setShippingAddress(e.target.value)}
@@ -683,7 +795,7 @@ function SingleProductContent() {
               </label>
               <input
                 type="text"
-                required={isPhysical}
+                required={requiresAddress}
                 placeholder="Contoh: Bandung, 40286"
                 value={shippingCity}
                 onChange={(e) => setShippingCity(e.target.value)}
@@ -851,14 +963,14 @@ function SingleProductContent() {
           </div>
         )}
 
-        {isPhysical && (
+        {requiresShipping && (
           <div className="flex justify-between text-slate-600">
             <span>Ongkos Kirim ({selectedShipping.name})</span>
             <span className="font-semibold text-slate-900">Rp {baseShippingCost.toLocaleString('id-ID')}</span>
           </div>
         )}
 
-        {isPhysical && shippingSubsidy > 0 && (
+        {requiresShipping && shippingSubsidy > 0 && (
           <div className="flex justify-between text-emerald-600 font-semibold">
             <span>Subsidi Bebas Ongkir</span>
             <span>-Rp {shippingSubsidy.toLocaleString('id-ID')}</span>
@@ -947,6 +1059,9 @@ function SingleProductContent() {
 
       {/* 2. Main Offer Content (Formula Konversi Tinggi) */}
       <main className="max-w-2xl mx-auto px-4 pt-6 space-y-7">
+        {/* Kartu Akses Delivery Payload Jika Status Lunas (PAID) */}
+        {isPaid && requiresDeliveryPayload && renderDeliveryPayloadCard()}
+
         {/* 1. Hero Section (Hook + Banner) */}
         <section className="space-y-4">
           <div className="aspect-video w-full rounded-3xl bg-gradient-to-tr from-slate-900 via-slate-900 to-blue-950 flex items-center justify-center text-white overflow-hidden shadow-xl border border-slate-200 relative">
@@ -1231,15 +1346,27 @@ function SingleProductContent() {
         <section id="checkout-section" className="bg-white border-2 border-blue-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
           <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
             <div>
-              <h2 className="text-base font-black text-slate-900">Form Pemesanan &amp; Pembayaran</h2>
+              <h2 className="text-base font-black text-slate-900">
+                {isPaid ? 'Status Pemesanan & Akses Layanan' : 'Form Pemesanan & Pembayaran'}
+              </h2>
             </div>
             <div className="text-right">
-              <span className="text-[10px] text-slate-400 block font-semibold">Total Tagihan</span>
-              <span className="text-sm font-black text-emerald-600">Rp {totalAmount.toLocaleString('id-ID')}</span>
+              <span className="text-[10px] text-slate-400 block font-semibold">
+                {isPaid ? 'Status Tagihan' : 'Total Tagihan'}
+              </span>
+              <span className="text-sm font-black text-emerald-600">
+                {isPaid ? 'LUNAS (PAID)' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
+              </span>
             </div>
           </div>
 
-          {renderCheckoutForm()}
+          {isPaid && requiresDeliveryPayload ? (
+            <div className="space-y-3">
+              {renderDeliveryPayloadCard()}
+            </div>
+          ) : (
+            renderCheckoutForm()
+          )}
         </section>
       </main>
 
