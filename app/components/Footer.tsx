@@ -94,6 +94,11 @@ export default function Footer({ className = "" }: { className?: string }) {
                   Kebijakan Pengembalian Dana (Refund)
                 </Link>
               </li>
+              <li>
+                <Link href="/contact" className="text-slate-300 hover:text-white transition">
+                  Hubungi Kami (Contact Us)
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -157,6 +162,7 @@ export default function Footer({ className = "" }: { className?: string }) {
             <Link href="/privacy" className="hover:text-white transition">Privacy</Link>
             <Link href="/acceptable-use" className="hover:text-white transition">AUP</Link>
             <Link href="/refund" className="hover:text-white transition">Refund</Link>
+            <Link href="/contact" className="hover:text-white transition">Contact</Link>
           </div>
         </div>
       </div>
