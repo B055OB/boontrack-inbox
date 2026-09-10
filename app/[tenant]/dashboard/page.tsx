@@ -1,295 +1,151 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
-  Save,
-  Edit,
   Store,
   ExternalLink,
-  MessageSquare,
-  Lock,
-  ArrowRight,
-  X,
-  QrCode,
-  Smartphone,
-  CheckCircle2,
-  RefreshCw,
-  ShieldCheck,
-  Loader2,
-  PhoneCall,
-  AlertTriangle,
-  Sparkles,
-  FileSpreadsheet,
-  Upload,
-  Bot,
 } from 'lucide-react';
-import WhatsAppWabaConfig from './components/WhatsAppWabaConfig';
-import BiteshipCourierConfig from './components/BiteshipCourierConfig';
-import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
-import BoonPilotWidget from '@/components/BoonPilotWidget';
-import BotSimulatorModal from './components/BotSimulatorModal';
-import ProductFormModal from './components/ProductFormModal';
-import AiKnowledgeTab from './components/AiKnowledgeTab';
-import SinglePageBuilderModal from './components/SinglePageBuilderModal';
+import LockedFeatureCard from './components/LockedFeatureCard';
+
+import NavTabs from './components/navbar/NavTabs';
+import OrderNotificationBell from './components/navbar/OrderNotificationBell';
 import ProductsTab from './components/tabs/ProductsTab';
 import AdsTrackingTab from './components/tabs/AdsTrackingTab';
 import TeamChatTab from './components/tabs/TeamChatTab';
 import OverviewTab from './components/tabs/OverviewTab';
 import SettingsTab from './components/tabs/SettingsTab';
-import ImageUpload from '@/components/ImageUpload';
-import { getBackendApiUrl } from '@/lib/api-config';
-import LocalServiceConfigForm from "@/app/components/LocalServiceConfigForm";
-import { getPlatformWhatsApp } from '@/lib/tenant-config';
-import { 
-  ProductItem, 
-  SinglePageConfig, 
-  VoucherConfig,
-  TransactionItem,
-  DEFAULT_PRODUCTS,
-  DEFAULT_ONLINEBOOST_PRODUCTS,
-  slugify 
-} from '@/lib/product-catalog';
-import dynamic from 'next/dynamic';
-import NavTabs from './components/navbar/NavTabs';
-import OrderNotificationBell from './components/navbar/OrderNotificationBell';
+import WhatsAppTab from './components/tabs/WhatsAppTab';
+import AiKnowledgeTab from './components/AiKnowledgeTab';
+import BiteshipCourierConfig from './components/BiteshipCourierConfig';
+import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
+import BoonPilotWidget from '@/components/BoonPilotWidget';
+import ProductFormModal from './components/ProductFormModal';
+import SinglePageBuilderModal from './components/SinglePageBuilderModal';
+import BulkImportModal from './components/modals/BulkImportModal';
+import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
+import { useTenantDashboard } from './hooks/useTenantDashboard';
 
 const OrdersTab = dynamic(() => import('./components/tabs/OrdersTab'), {
   loading: () => <div className="p-8 text-center text-xs text-slate-400">Memuat Pesanan...</div>,
 });
 
-const INITIAL_TRANSACTIONS: TransactionItem[] = [];
-
 export default function TenantDashboardPage() {
-  const params = useParams();
-  const router = useRouter();
-  const rawTenant = (params?.tenant as string) || "growth";
-  const tenantSlug = rawTenant.toLowerCase();
-  const displayName = tenantSlug.replace(/-/g, " ");
+  const {
+    tenantSlug,
+    displayName,
+    isTeamScale,
+    isAdsPerformance,
+    isProScale,
+    isGrowthPlus,
+    isGrowth,
+    isAdsTrackingUnlocked,
+    handleUpgradeTier,
 
-  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
+    storeCategory,
+    storeDisplayName,
+    setStoreDisplayName,
+    storeBio,
+    setStoreBio,
+    storeWhatsapp,
+    setStoreWhatsapp,
+    nameError,
+    setNameError,
+    storeQrisUrl,
+    handleQrisUpload,
+    isUploadingQris,
+    isStoreSettingsOpen,
+    setIsStoreSettingsOpen,
 
-  useEffect(() => {
-    if (tenantSlug === 'login' || tenantSlug === 'auth') {
-      router.replace('/login');
-    }
-  }, [tenantSlug, router]);
+    activeTab,
+    setActiveTab,
+    saveFeedback,
+    setSaveFeedback,
+    isSimulatorOpen,
+    setIsSimulatorOpen,
 
-  const isProTenant = ["demo", "onlineboost"].includes(tenantSlug);
+    products,
+    refreshProducts,
+    isProductModalOpen,
+    setIsProductModalOpen,
+    editingProductId,
+    productForm,
+    setProductForm,
+    openNewProductModal,
+    openEditProductModal,
+    handleQuickStockChange,
+    handleSaveProductForm,
+    handleDeleteProduct,
 
-  // FEATURE GATING
-  const isTenantGrowthPlus = tenantSlug === 'growthplus' || tenantSlug.includes('growthplus') || tenantSlug === 'growth-plus' || tenantSlug === 'growth_plus';
-  const isTenantProScale = tenantSlug === 'proscale' || tenantSlug.includes('proscale') || tenantSlug === 'enterprise' || ["demo", "onlineboost", "suhu-ads-masterclass"].includes(tenantSlug);
+    isBulkImportModalOpen,
+    setIsBulkImportModalOpen,
 
-  const [planTier, setPlanTier] = useState<'growth' | 'ads_performance' | 'team_scale'>(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const tierParam = urlParams.get('tier')?.toLowerCase();
-      if (tierParam) {
-        if (['ads_performance', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
-          return 'ads_performance';
-        }
-        if (['team_scale', 'proscale', 'enterprise', 'pro'].some(t => tierParam.includes(t))) {
-          return 'team_scale';
-        }
-        if (['growth', 'starter', 'solo'].some(t => tierParam.includes(t))) {
-          return 'growth';
-        }
-      }
-      const stored = localStorage.getItem(`bt_tier_${tenantSlug}`) as 'growth' | 'ads_performance' | 'team_scale' | null;
-      if (stored && ['growth', 'ads_performance', 'team_scale'].includes(stored)) return stored;
-    }
-    if (isTenantProScale) {
-      return 'team_scale';
-    }
-    if (isTenantGrowthPlus) {
-      return 'ads_performance';
-    }
-    return 'growth';
-  });
+    isSinglePageModalOpen,
+    setIsSinglePageModalOpen,
+    activeSinglePageProduct,
+    singlePageForm,
+    setSinglePageForm,
+    openSinglePageBuilder,
+    handleSaveSinglePageConfig,
 
-  // Feature flags resolved from settings API response
-  const [tenantFeatureFlags, setTenantFeatureFlags] = useState<{
-    has_capi?: boolean;
-    ads_tracking?: boolean;
-    tier?: string;
-  }>({});
+    aiForm,
+    setAiForm,
+    botStrategy,
+    setBotStrategy,
+    isSavingAi,
+    isLoadingAi,
+    isSavingStrategy,
+    strategyFeedback,
+    handleSaveBotStrategy,
+    handleSaveAiKnowledge,
 
-  // Dynamic Vertical Category (DIGITAL, PHYSICAL, LOCAL_SERVICE, etc.)
-  const [storeCategory, setStoreCategory] = useState<string>('DIGITAL');
+    waMode,
+    setWaMode,
+    waStatus,
+    setWaStatus,
+    qrCodeUrl,
+    setQrCodeUrl,
+    isQrLoading,
+    waErrorMessage,
+    connectedPhone,
+    setConnectedPhone,
+    pairingPhone,
+    setPairingPhone,
+    pairingCodeResult,
+    isPairingLoading,
+    handleConnectGrowthSession,
+    handleRequestPairingCode,
 
-  const isTeamScale = planTier === 'team_scale' || isTenantProScale
-    || tenantFeatureFlags.tier === 'TEAM_SCALE'
-    || tenantFeatureFlags.tier === 'PRO_SCALE';
-  const isAdsPerformance = (planTier === 'ads_performance' || isTenantGrowthPlus
-    || tenantFeatureFlags.tier === 'ADS_PERFORMANCE'
-    || tenantFeatureFlags.tier === 'GROWTH_PLUS'
-    || tenantFeatureFlags.tier === 'PRO_SCALE') && !isTeamScale;
-  const isProScale = isTeamScale;
-  const isGrowthPlus = isAdsPerformance;
-  const isGrowth = planTier === 'growth' && !isAdsPerformance && !isTeamScale;
+    conversations,
+    activeConversationId,
+    setActiveConversationId,
+    activeConversation,
+    replyText,
+    setReplyText,
+    handleSendMessage,
 
-  const isAdsTrackingUnlocked =
-    Boolean(
-      tenantFeatureFlags.has_capi ||
-      tenantFeatureFlags.ads_tracking ||
-      tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
-      tenantFeatureFlags.tier === 'PRO_SCALE' ||
-      isAdsPerformance ||
-      isTeamScale
-    );
-  const isBroadcastUnlocked = isTeamScale;
+    bankForm,
+    setBankForm,
+    transactions,
+    totalOmzet,
+    readyBalance,
+    isWithdrawModalOpen,
+    setIsWithdrawModalOpen,
+    withdrawAmount,
+    setWithdrawAmount,
+    isWithdrawing,
+    handleProcessWithdraw,
+  } = useTenantDashboard();
 
-  const handleUpgradeTier = (targetTier: 'ads_performance' | 'team_scale') => {
-    const tierLabel = targetTier === 'team_scale' ? 'Team Scale (Official WABA & Unlimited)' : 'Ads Performance (CAPI Server-Side & ROAS)';
-    const text = encodeURIComponent(`Halo Tim BoonTrack, saya ingin upgrade paket toko "${displayName}" (${tenantSlug}) ke paket ${tierLabel}. Mohon panduannya.`);
-    window.open(`https://wa.me/${getPlatformWhatsApp()}?text=${text}`, '_blank');
-  };
-
-  const renderLockedFeatureCard = ({
-    title,
-    badge,
-    description,
-    targetTier,
-    targetTierLabel,
-  }: {
+  const renderLockedFeatureCard = (cardProps: {
     title: string;
     badge: string;
     description: string;
     targetTier: 'ads_performance' | 'team_scale';
     targetTierLabel: string;
-  }) => (
-    <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
-      <div className="max-w-xl w-full bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 shadow-xl text-center space-y-6">
-        <div className="w-16 h-16 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
-          <Lock className="w-8 h-8" />
-        </div>
-        <div>
-          <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 inline-block mb-2">
-            {badge}
-          </span>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">{title}</h2>
-          <p className="text-slate-500 text-xs sm:text-sm max-w-md mx-auto leading-relaxed">
-            {description}
-          </p>
-        </div>
+  }) => <LockedFeatureCard {...cardProps} onUpgrade={handleUpgradeTier} />;
 
-        <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={() => handleUpgradeTier(targetTier)}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-xs shadow-lg shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
-          >
-            <span>Upgrade ke {targetTierLabel}</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  type DashboardTab = 'inbox' | 'catalog' | 'products' | 'ai_knowledge' | 'integration' | 'overview' | 'analytics' | 'ads_tracking' | 'biteship' | 'broadcast' | 'whatsapp' | 'settings';
-
-  const [activeTab, setActiveTab] = useState<DashboardTab>('catalog');
-  const hasUserSelectedTabRef = useRef(false);
-  const [isStoreReadinessEvaluated, setIsStoreReadinessEvaluated] = useState(false);
-  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
-
-  // State Edit Profil Toko & Validasi Unik
-  const [isStoreSettingsOpen, setIsStoreSettingsOpen] = useState(false);
-  const [storeDisplayName, setStoreDisplayName] = useState(tenantSlug || '');
-  const [storeBio, setStoreBio] = useState('');
-  const [storeWhatsapp, setStoreWhatsapp] = useState('');
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [isCheckingName, setIsCheckingName] = useState(false);
-  const [isSavingStore, setIsSavingStore] = useState(false);
-  const [storeQrisUrl, setStoreQrisUrl] = useState<string>('');
-  const [isUploadingQris, setIsUploadingQris] = useState(false);
-
-  const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Ukuran file maksimal 2 MB');
-      return;
-    }
-
-    setIsUploadingQris(true);
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${tenantSlug}-qris-${Date.now()}.${fileExt}`;
-      const filePath = `qris/${fileName}`;
-
-      const uploadRes = await fetch(
-        `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/tenants/${filePath}`,
-        {
-          method: 'POST',
-          headers: {
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-            'Content-Type': file.type,
-          },
-          body: file,
-        }
-      );
-
-      if (!uploadRes.ok) throw new Error('Gagal upload gambar QRIS ke storage');
-
-      const publicUrl = `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/tenants/${filePath}`;
-      setStoreQrisUrl(publicUrl);
-    } catch (err: any) {
-      console.error(err);
-      alert(err.message || 'Gagal mengunggah QRIS');
-    } finally {
-      setIsUploadingQris(false);
-    }
-  };
-
- useEffect(() => {
-    if (!tenantSlug) return;
-    const fetchTenantSettings = async () => {
-      try {
-        // Cek langsung ke tabel utama: tenants
-        const res = await fetch(
-          `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenants?slug=eq.${tenantSlug}&select=*`,
-          {
-            headers: {
-              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-            },
-          }
-        );
-        const data = await res.json();
-
-        // 1. Jika slug toko tidak terdaftar di tabel tenants, baru tendang ke login
-        if (!Array.isArray(data) || data.length === 0) {
-          router.replace('/login');
-          return;
-        }
-
-        // 2. Muat data toko resmi
-        const tenant = data[0];
-        if (tenant.name) setStoreDisplayName(tenant.name);
-        if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
-
-        // 3. Baca kategori
-        const cat = tenant.category || tenant.metadata?.vertical_type || 'DIGITAL';
-        setStoreCategory(String(cat).toUpperCase());
-      } catch (err) {
-        console.error('Gagal memuat data tenant:', err);
-      }
-    };
-    fetchTenantSettings();
-  }, [tenantSlug]);
-
-  const handleSelectTab = (tab: DashboardTab) => {
-    hasUserSelectedTabRef.current = true;
-    setActiveTab(tab);
-  };
-
-  // Dynamic Vertical Form Rendering
   const renderVerticalModule = () => {
     if (storeCategory === 'LOCAL_SERVICE') {
       return (
@@ -301,938 +157,8 @@ export default function TenantDashboardPage() {
     return null;
   };
 
-  // Desktop Navigation Tab Scroll Controls
-  const tabsRef = useRef<HTMLDivElement | null>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const checkTabsScroll = () => {
-    if (tabsRef.current) {
-      const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
-      setCanScrollLeft(scrollLeft > 4);
-      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 4);
-    }
-  };
-
-  useEffect(() => {
-    const el = tabsRef.current;
-    if (!el) return;
-
-    checkTabsScroll();
-
-    const onWheelHandler = (e: WheelEvent) => {
-      if (e.deltaY !== 0 && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        e.preventDefault();
-        el.scrollLeft += e.deltaY;
-      }
-    };
-
-    el.addEventListener('scroll', checkTabsScroll, { passive: true });
-    el.addEventListener('wheel', onWheelHandler, { passive: false });
-    window.addEventListener('resize', checkTabsScroll);
-
-    const timer = setTimeout(checkTabsScroll, 250);
-
-    return () => {
-      el.removeEventListener('scroll', checkTabsScroll);
-      el.removeEventListener('wheel', onWheelHandler);
-      window.removeEventListener('resize', checkTabsScroll);
-      clearTimeout(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    checkTabsScroll();
-  }, [activeTab]);
-
-  const scrollTabs = (offset: number) => {
-    if (tabsRef.current) {
-      tabsRef.current.scrollBy({ left: offset, behavior: 'smooth' });
-    }
-  };
-
-  // WhatsApp Tab Mode
-  const [waMode, setWaMode] = useState<'qr' | 'meta'>('qr');
-  const [isQrLoading, setIsQrLoading] = useState(false);
-  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-  const [waStatus, setWaStatus] = useState<"CONNECTING" | "CONNECTED" | "DISCONNECTED" | "DEGRADED">("DISCONNECTED");
-  const [waErrorMessage, setWaErrorMessage] = useState<string | null>(null);
-  const [connectedPhone, setConnectedPhone] = useState<string | null>(null);
-
-  // Pairing Code
-  const [pairingPhone, setPairingPhone] = useState("");
-  const [pairingCodeResult, setPairingCodeResult] = useState<string | null>(null);
-  const [isPairingLoading, setIsPairingLoading] = useState(false);
-
-  // Live Chat Console State
-  interface ConversationMessage {
-    id: number | string;
-    sender: 'customer' | 'agent' | 'bot';
-    text: string;
-    time: string;
-  }
-
-  interface ChatConversation {
-    id: string;
-    customerPhone: string;
-    customerName?: string;
-    lastMessage: string;
-    time: string;
-    status: 'online' | 'offline';
-    messages: ConversationMessage[];
-  }
-
-  const [conversations, setConversations] = useState<ChatConversation[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(`bt_conversations_${tenantSlug}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return parsed;
-        }
-      } catch (err) {
-        console.warn('Gagal memuat percakapan dari storage:', err);
-      }
-    }
-    return [];
-  });
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState("");
-
-  // Products State
-  const [products, setProducts] = useState<ProductItem[]>(
-    tenantSlug === 'onlineboost'
-      ? DEFAULT_ONLINEBOOST_PRODUCTS
-      : isProTenant
-      ? DEFAULT_PRODUCTS
-      : []
-  );
-  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-  const [editingProductId, setEditingProductId] = useState<number | null>(null);
-
-  // Bulk Import Products State
-  const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{
-    total_imported: number;
-    skipped: number;
-    errors?: Array<any>;
-  } | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
-
-  // Single Page Checkout Builder State
-  const [isSinglePageModalOpen, setIsSinglePageModalOpen] = useState(false);
-  const [activeSinglePageProduct, setActiveSinglePageProduct] = useState<ProductItem | null>(null);
-  const [singlePageForm, setSinglePageForm] = useState<SinglePageConfig>({
-    slug: '',
-    headline: '',
-    subheadline: '',
-    banner_url: '',
-    badge_text: 'Direct Access Offer',
-    problem_title: 'Apakah Anda Sering Menghadapi Masalah Ini?',
-    pain_points: [],
-    problem_image_url: '',
-    solution_title: 'Kini Hadir Solusi Tepat untuk Anda',
-    solution_points: [],
-    comparison_rows: [],
-    testimonial_images: [],
-    bonus_items: [],
-    enable_qris: true,
-    enable_manual_transfer: true,
-    discount_coupon: 'HEMAT50',
-    affiliate_commission_rate: 0,
-  });
-
-  // Load persisted products from localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(`bt_products_${tenantSlug}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setProducts(parsed);
-            return;
-          }
-        }
-        if (tenantSlug === 'onlineboost') {
-          setProducts(DEFAULT_ONLINEBOOST_PRODUCTS);
-          try {
-            localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(DEFAULT_ONLINEBOOST_PRODUCTS));
-          } catch {}
-        }
-      } catch (err) {
-        console.warn('Failed to load products from localStorage:', err);
-      }
-    }
-  }, [tenantSlug]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(`bt_conversations_${tenantSlug}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setConversations(parsed);
-            setActiveConversationId(parsed[0].id);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Gagal memuat percakapan tenant:', err);
-      }
-      setConversations([]);
-      setActiveConversationId(null);
-    }
-  }, [tenantSlug]);
-
-  const activeConversation = conversations.find(c => c.id === activeConversationId) || (conversations.length > 0 ? conversations[0] : null);
-
-  const [productForm, setProductForm] = useState<ProductItem>({
-    id: 0,
-    name: "",
-    category: "digital",
-    price: 99000,
-    promo_price: 0,
-    variants: "Format Digital",
-    promo: "",
-    description: "",
-    download_url: "",
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
-    stock: 100,
-    sku: "OB-SKU-001",
-    is_unlimited: false,
-  });
-
-  const [aiForm, setAiForm] = useState({
-    ai_name: `${displayName.toUpperCase()} AI Assistant`,
-    tone: 'casual',
-    system_prompt: `Anda adalah asisten resmi untuk toko ${displayName.toUpperCase()}. Bantu pelanggan mengenai katalog produk, materi, dan transaksi pembayaran QRIS otomatis.`,
-  });
-
-  const [isSavingAi, setIsSavingAi] = useState(false);
-  const [isLoadingAi, setIsLoadingAi] = useState(false);
-
-  const [botStrategy, setBotStrategy] = useState<'trust_builder' | 'balanced' | 'hard_selling'>('trust_builder');
-  const [isSavingStrategy, setIsSavingStrategy] = useState(false);
-  const [strategyFeedback, setStrategyFeedback] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function loadTenantAiSettings() {
-      if (!tenantSlug || tenantSlug === 'login' || tenantSlug === 'auth') return;
-      try {
-        setIsLoadingAi(true);
-        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
-        if (res.ok) {
-          const data = await res.json();
-          const s = data.settings || {};
-          const aiK = s.ai_knowledge || s.persona || {};
-          const loadedStrategy = s.bot_strategy || aiK.bot_strategy || 'trust_builder';
-          if (isMounted) {
-            if (s.category || data.category) {
-              setStoreCategory(String(s.category || data.category).toUpperCase());
-            }
-            if (s.features) {
-              setTenantFeatureFlags(prev => ({
-                ...prev,
-                has_capi: Boolean(s.features.has_capi),
-                ads_tracking: Boolean(s.features.ads_tracking),
-                tier: s.features.tier || prev.tier,
-              }));
-            }
-            if (s.plan_tier || s.tier || s.pricing?.tier) {
-              const rawTier = (s.plan_tier || s.tier || s.pricing?.tier || '').toLowerCase();
-              setTenantFeatureFlags(prev => ({ ...prev, tier: s.plan_tier || s.tier || s.pricing?.tier || prev.tier }));
-              if (rawTier.includes('team_scale') || rawTier.includes('proscale') || rawTier.includes('pro_scale') || rawTier.includes('enterprise')) setPlanTier('team_scale');
-              else if (rawTier.includes('ads_performance') || rawTier.includes('tracking') || rawTier.includes('plus') || rawTier === 'pro' || rawTier.includes('growth+')) setPlanTier('ads_performance');
-              else if (rawTier.includes('growth') || rawTier === 'starter' || rawTier === 'solo') setPlanTier(isTenantProScale ? 'team_scale' : isTenantGrowthPlus ? 'ads_performance' : 'growth');
-            } else if (isTenantProScale) {
-              setPlanTier('team_scale');
-            } else if (isTenantGrowthPlus) {
-              setPlanTier('ads_performance');
-            }
-            setBotStrategy(loadedStrategy as 'trust_builder' | 'balanced' | 'hard_selling');
-            setAiForm(prev => ({
-              ...prev,
-              ai_name: aiK.ai_name || aiK.assistant_name || s.assistant_name || prev.ai_name,
-              system_prompt: aiK.system_prompt || s.system_prompt || prev.system_prompt,
-              tone: aiK.tone || prev.tone,
-            }));
-            const payout = s.payout || {};
-            if (payout.bank_name || payout.account_number || payout.account_holder) {
-              setBankForm({
-                name: payout.bank_name || '',
-                account: payout.account_number || '',
-                holder: payout.account_holder || '',
-              });
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Gagal memuat pengaturan AI tenant:', err);
-      } finally {
-        if (isMounted) setIsLoadingAi(false);
-      }
-    }
-    loadTenantAiSettings();
-    return () => {
-      isMounted = false;
-    };
-  }, [tenantSlug]);
-
-  const handleSaveBotStrategy = async (strategyOverride?: 'trust_builder' | 'balanced' | 'hard_selling') => {
-    const targetStrategy = strategyOverride || botStrategy;
-    setIsSavingStrategy(true);
-    try {
-      const payload = {
-        name: displayName,
-        bot_strategy: targetStrategy,
-        ai_knowledge: {
-          ...aiForm,
-          bot_strategy: targetStrategy,
-        },
-        persona: {
-          ...aiForm,
-          bot_strategy: targetStrategy,
-        },
-      };
-
-      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      }
-
-      setStrategyFeedback('✅ Strategi respon & persona bot berhasil disimpan!');
-      setSaveFeedback('✅ Persona Bot Tersimpan');
-      setTimeout(() => {
-        setStrategyFeedback(null);
-        setSaveFeedback(null);
-      }, 4000);
-    } catch (err) {
-      alert('Gagal menyimpan strategi persona bot: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setIsSavingStrategy(false);
-    }
-  };
-
-  const handleSaveAiKnowledge = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setIsSavingAi(true);
-    try {
-      const payload = {
-        name: displayName,
-        assistant_name: aiForm.ai_name,
-        system_prompt: aiForm.system_prompt,
-        bot_strategy: botStrategy,
-        ai_knowledge: {
-          ai_name: aiForm.ai_name,
-          assistant_name: aiForm.ai_name,
-          system_prompt: aiForm.system_prompt,
-          tone: aiForm.tone,
-          bot_strategy: botStrategy,
-        },
-        persona: {
-          ai_name: aiForm.ai_name,
-          assistant_name: aiForm.ai_name,
-          system_prompt: aiForm.system_prompt,
-          tone: aiForm.tone,
-          bot_strategy: botStrategy,
-        },
-      };
-
-      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      }
-
-      setSaveFeedback('✅ Pengaturan Bot Persona & System Prompt AI berhasil disimpan!');
-      setTimeout(() => setSaveFeedback(null), 4000);
-    } catch (err) {
-      alert('Gagal menyimpan pengaturan AI: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setIsSavingAi(false);
-    }
-  };
-
-  const [bankForm, setBankForm] = useState({
-    name: '',
-    account: '',
-    holder: '',
-  });
-
-  const [transactions, setTransactions] = useState<any[]>(INITIAL_TRANSACTIONS);
-  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
-  const [withdrawAmount, setWithdrawAmount] = useState<number>(0);
-  const [isWithdrawing, setIsWithdrawing] = useState(false);
-
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const pathSegments = typeof window !== 'undefined' ? window.location.pathname.split('/') : [];
-        const activeSlug = pathSegments[1] || '';
-        if (!activeSlug) return;
-
-        const res = await fetch(`/api/orders?tenant=${activeSlug}`).catch(() => null);
-        if (res && res.ok) {
-          const json = await res.json();
-          const list = json.orders || json.data || [];
-          if (Array.isArray(list) && list.length > 0) {
-            const mapped = list.map((order: any) => {
-              const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS'].includes(
-                (order.payment_status || order.status || '').toUpperCase()
-              );
-              return {
-                id: order.id || order.invoice_no,
-                date: new Date(order.created_at || Date.now()).toLocaleDateString('id-ID'),
-                description: `Pesanan ${order.invoice_no || ''} - ${order.customer_name || 'Customer'}`,
-                amount: Number(order.total_amount || order.total_price || 0),
-                status: isPaid ? 'PAID' : 'PENDING',
-                type: 'INCOME',
-              };
-            });
-            setTransactions(mapped);
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching transactions:', err);
-      }
-    };
-
-    fetchTransactions();
-  }, []);
-
-  const totalOmzet = transactions.filter((t: any) => t.status === 'PAID').reduce((acc: number, curr: any) => acc + curr.amount, 0);
-  const readyBalance = totalOmzet;
-
-  const openNewProductModal = () => {
-    setEditingProductId(null);
-    setProductForm({
-      id: Date.now(),
-      name: "",
-      category: "fisik",
-      price: 99000,
-      promo_price: 0,
-      variants: "Standar",
-      promo: "",
-      description: "",
-      download_url: "",
-      image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
-      stock: 100,
-      sku: `SKU-${Date.now().toString().slice(-4)}`,
-      is_unlimited: false,
-    });
-    setIsProductModalOpen(true);
-  };
-
-  const openEditProductModal = (prod: ProductItem) => {
-    setEditingProductId(prod.id);
-    setProductForm({
-      ...prod,
-      stock: prod.stock ?? 100,
-      sku: prod.sku || `SKU-${prod.id}`,
-      is_unlimited: prod.is_unlimited ?? false,
-    });
-    setIsProductModalOpen(true);
-  };
-
-  const handleQuickStockChange = (productId: number, delta: number) => {
-    setProducts(prev =>
-      prev.map(p => {
-        if (p.id === productId) {
-          const newStock = Math.max(0, (p.stock || 0) + delta);
-          return { ...p, stock: newStock };
-        }
-        return p;
-      })
-    );
-  };
-
-  const handleSaveProductForm = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!productForm.name) return;
-
-    if (editingProductId) {
-      setProducts(prev => prev.map(p => p.id === editingProductId ? productForm : p));
-      setSaveFeedback("✅ Produk berhasil diperbarui!");
-    } else {
-      setProducts(prev => [...prev, { ...productForm, id: Date.now() }]);
-      setSaveFeedback("✅ Produk baru berhasil ditambahkan!");
-    }
-
-    setIsProductModalOpen(false);
-    setTimeout(() => setSaveFeedback(null), 3000);
-  };
-
-  const handleDeleteProduct = (id: number) => {
-    if (confirm("Hapus produk ini dari etalase toko?")) {
-      const updated = products.filter(p => p.id !== id);
-      setProducts(updated);
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updated));
-        } catch {}
-      }
-      setSaveFeedback("🗑️ Produk telah dihapus.");
-      setTimeout(() => setSaveFeedback(null), 3000);
-    }
-  };
-
-  const refreshProducts = async (): Promise<ProductItem[]> => {
-    try {
-      const res = await fetch(getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`), {
-        headers: { 'X-Tenant-ID': tenantSlug },
-        cache: 'no-store'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.products) && data.products.length > 0) {
-          const mappedProducts: ProductItem[] = data.products.map((p: any, idx: number) => ({
-            id: typeof p.id === 'number' ? p.id : (Date.now() + idx),
-            name: p.name || p.title || `Produk ${idx + 1}`,
-            category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
-            price: Number(p.price) || 0,
-            promo_price: p.promo_price ? Number(p.promo_price) : 0,
-            variants: p.variants || '',
-            promo: p.promo || '',
-            description: p.description || '',
-            download_url: p.download_url || p.delivery_url || '',
-            image: p.image || (Array.isArray(p.images) && p.images[0]) || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
-            stock: p.stock !== undefined ? Number(p.stock) : 100,
-            sku: p.sku || `SKU-${idx + 1}`,
-            is_unlimited: p.is_unlimited || false,
-          }));
-          setProducts(mappedProducts);
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mappedProducts));
-            } catch {}
-          }
-          return mappedProducts;
-        }
-      }
-    } catch (err) {
-      console.warn('Backend products fetch fallback note:', err);
-    }
-
-    try {
-      const localRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`);
-      if (localRes.ok) {
-        const localData = await localRes.json();
-        if (Array.isArray(localData.products) && localData.products.length > 0) {
-          const mappedProducts: ProductItem[] = localData.products.map((p: any, idx: number) => ({
-            id: typeof p.id === 'number' ? p.id : (Date.now() + idx),
-            name: p.name || p.title || `Produk ${idx + 1}`,
-            category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
-            price: Number(p.price) || 0,
-            promo_price: p.promo_price ? Number(p.promo_price) : 0,
-            variants: p.variants || '',
-            promo: p.promo || '',
-            description: p.description || '',
-            download_url: p.download_url || p.delivery_url || '',
-            image: p.image || (Array.isArray(p.images) && p.images[0]) || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
-            stock: p.stock !== undefined ? Number(p.stock) : 100,
-            sku: p.sku || `SKU-${idx + 1}`,
-            is_unlimited: p.is_unlimited || false,
-          }));
-          setProducts(mappedProducts);
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mappedProducts));
-            } catch {}
-          }
-          return mappedProducts;
-        }
-      }
-    } catch (err) {
-      console.warn('Local products fetch fallback note:', err);
-    }
-
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(`bt_products_${tenantSlug}`);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            setProducts(parsed);
-            return parsed;
-          }
-        } catch {}
-      }
-    }
-
-    return [];
-  };
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const tabParam = urlParams.get('tab')?.toLowerCase();
-      if (tabParam) {
-        hasUserSelectedTabRef.current = true;
-        if (tabParam === 'products' || tabParam === 'catalog') setActiveTab('catalog');
-        else if (tabParam === 'overview' || tabParam === 'analytics' || tabParam === 'finance' || tabParam === 'laporan') setActiveTab('integration');
-        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'broadcast', 'whatsapp'].includes(tabParam)) {
-          setActiveTab(tabParam as DashboardTab);
-        }
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function evaluateStoreReadiness() {
-      const fetchedProducts = await refreshProducts();
-      const currentProductsCount = Array.isArray(fetchedProducts) ? fetchedProducts.length : (products?.length || 0);
-
-      try {
-        const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/status?tenant=${encodeURIComponent(tenantSlug)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'CONNECTED' && isMounted) {
-            setWaStatus('CONNECTED');
-            if (data.phone_number) setConnectedPhone(data.phone_number);
-          }
-        }
-      } catch (err) {
-        console.debug('WhatsApp status readiness check note:', err);
-      }
-
-      const currentTxCount = transactions.length;
-
-      if (!hasUserSelectedTabRef.current && isMounted) {
-        if (currentProductsCount === 0) {
-          setActiveTab('catalog');
-        } else if (currentProductsCount > 0 && currentTxCount === 0) {
-          setActiveTab('catalog');
-        } else if (currentProductsCount > 0 && currentTxCount > 0) {
-          setActiveTab('integration');
-        }
-      }
-
-      if (isMounted) {
-        setIsStoreReadinessEvaluated(true);
-      }
-    }
-
-    evaluateStoreReadiness();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [tenantSlug]);
-
-  const handleBulkImport = async () => {
-    if (!importFile || isImporting) return;
-
-    setIsImporting(true);
-    setImportError(null);
-    setImportResult(null);
-
-    const formData = new FormData();
-    formData.append('file', importFile);
-
-    try {
-      const targetUrl = getBackendApiUrl(
-        `/api/v1/products/bulk-upload?tenant_slug=${encodeURIComponent(tenantSlug)}`
-      );
-
-      let res: Response;
-      try {
-        res = await fetch(targetUrl, {
-          method: 'POST',
-          headers: {
-            'X-Tenant-ID': tenantSlug,
-          },
-          body: formData,
-        });
-      } catch (directErr) {
-        console.warn('Direct upload to backend failed, trying local proxy:', directErr);
-        res = await fetch(`/api/v1/products/bulk-upload?tenant_slug=${encodeURIComponent(tenantSlug)}`, {
-          method: 'POST',
-          body: formData,
-        });
-      }
-
-      if (!res.ok) {
-        let errDetail = 'Gagal mengimpor file spreadsheet.';
-        try {
-          const errJson = await res.json();
-          errDetail = errJson.detail || errJson.error || errJson.message || errDetail;
-        } catch {
-          const errText = await res.text();
-          if (errText) errDetail = errText;
-        }
-        throw new Error(errDetail);
-      }
-
-      const data = await res.json();
-      setImportResult({
-        total_imported: data.total_imported ?? 0,
-        skipped: data.skipped ?? 0,
-        errors: data.errors || [],
-      });
-
-      setSaveFeedback(`✅ Berhasil mengimpor ${data.total_imported ?? 0} produk baru!`);
-      setTimeout(() => setSaveFeedback(null), 4000);
-
-      await refreshProducts();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan saat memproses file spreadsheet.';
-      console.error('[Bulk Import Error]:', err);
-      setImportError(msg);
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
-  const openSinglePageBuilder = (prod: ProductItem) => {
-    setActiveSinglePageProduct(prod);
-    const prodSlug = prod.slug || slugify(prod.name);
-    const existingVoucher = prod.single_page_config?.voucher;
-    const defaultVoucher: VoucherConfig = existingVoucher || {
-      code: prod.single_page_config?.discount_coupon || (prod.category === 'fisik' ? 'FREESHIP' : 'HEMAT50'),
-      discount_type: 'nominal',
-      discount_value: prod.category === 'fisik' ? 20000 : 50000,
-      shipping_discount_type: prod.category === 'fisik' ? 'free' : 'none',
-      shipping_discount_value: 0,
-      min_spend: 50000,
-    };
-
-    const cfg = prod.single_page_config;
-
-    setSinglePageForm({
-      slug: prodSlug,
-      headline: cfg?.headline || prod.name,
-      subheadline: cfg?.subheadline || prod.description,
-      banner_url: cfg?.banner_url || prod.image,
-      badge_text: cfg?.badge_text || (prod.category === 'fisik' ? 'Produk Fisik Kirim Langsung' : 'Direct Access Offer'),
-      
-      problem_title: cfg?.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
-      pain_points: cfg?.pain_points && cfg.pain_points.length > 0 ? [...cfg.pain_points] : [
-        'Biaya promosi terus naik tapi hasil omset penjualan belum maksimal.',
-        'Sulit meyakinkan calon pembeli karena penawaran terlihat sama dengan kompetitor.',
-        'Kurang formula teruji yang bisa langsung dicontek dan dipraktekkan sekarang juga.'
-      ],
-      problem_image_url: cfg?.problem_image_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500&auto=format&fit=crop&q=60',
-      solution_title: cfg?.solution_title || 'Kini Hadir Solusi Tepat untuk Melejitkan Konversi',
-      solution_points: cfg?.solution_points && cfg.solution_points.length > 0 ? [...cfg.solution_points] : [
-        'Langkah praktis teruji berbasis data riil tanpa tebak-tebakan.',
-        'Framework closing instan yang meningkatkan retensi dan repeat order.',
-        'Dukungan penuh dengan materi yang adaptif dan siap diaplikasikan.'
-      ],
-
-      comparison_rows: cfg?.comparison_rows && cfg.comparison_rows.length > 0 ? [...cfg.comparison_rows] : [
-        { id: '1', feature: 'Kejelasan Strategi', others: 'Materi teori panjang tanpa alur jelas', us: 'Actionable blueprint langkah demi langkah' },
-        { id: '2', feature: 'Efisiensi Biaya', others: 'Bakar anggaran promosi tanpa tracking', us: 'Optimalisasi presisi hemat biaya hingga 50%' },
-        { id: '3', feature: 'Dukungan & Komunitas', others: 'Dibiarkan bingung sendiri setelah bayar', us: 'Grup diskusi & update materi berkala' }
-      ],
-
-      testimonial_images: cfg?.testimonial_images && cfg.testimonial_images.length > 0 ? [...cfg.testimonial_images] : [
-        'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60',
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=60'
-      ],
-
-      bonus_items: cfg?.bonus_items && cfg.bonus_items.length > 0 ? [...cfg.bonus_items] : [
-        { id: 'b1', title: 'Private Consultation & Community Access', value: 499000, description: 'Akses jaringan pebisnis & sesi tanya jawab' },
-        { id: 'b2', title: 'Template SOP & Checklist Praktis', value: 299000, description: 'Dokumen kerja siap pakai langsung' }
-      ],
-
-      discount_coupon: defaultVoucher.code,
-      voucher: defaultVoucher,
-
-      enable_qris: cfg?.enable_qris ?? true,
-      enable_manual_transfer: cfg?.enable_manual_transfer ?? true,
-      affiliate_commission_rate: 0,
-    });
-    setIsSinglePageModalOpen(true);
-  };
-
-  const handleSaveSinglePageConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeSinglePageProduct) return;
-
-    const prodSlug = singlePageForm.slug?.trim() || slugify(activeSinglePageProduct.name);
-    const updatedConfig: SinglePageConfig = {
-      ...singlePageForm,
-      slug: prodSlug,
-      discount_coupon: singlePageForm.voucher?.code || singlePageForm.discount_coupon || 'HEMAT50',
-    };
-
-    const updatedProducts = products.map((p) => {
-      if (p.id === activeSinglePageProduct.id) {
-        return {
-          ...p,
-          slug: prodSlug,
-          single_page_config: updatedConfig,
-        };
-      }
-      return p;
-    });
-
-    setProducts(updatedProducts);
-
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
-        localStorage.setItem(
-          `bt_single_page_${tenantSlug}_${prodSlug}`,
-          JSON.stringify({
-            ...updatedConfig,
-            product: {
-              ...activeSinglePageProduct,
-              slug: prodSlug,
-            },
-          })
-        );
-      } catch (err) {
-        console.warn('Failed to save to localStorage:', err);
-      }
-    }
-
-    setIsSinglePageModalOpen(false);
-    setSaveFeedback(`✅ Single Page Checkout untuk "${activeSinglePageProduct.name}" berhasil disimpan & diterapkan!`);
-    setTimeout(() => setSaveFeedback(null), 4000);
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!replyText.trim() || !activeConversation) return;
-    const newMsg: ConversationMessage = {
-      id: Date.now(),
-      sender: "agent",
-      text: replyText.trim(),
-      time: "Baru Saja"
-    };
-    const updatedConversations = conversations.map(c => {
-      if (c.id === activeConversation.id) {
-        return {
-          ...c,
-          lastMessage: newMsg.text,
-          time: newMsg.time,
-          messages: [...c.messages, newMsg]
-        };
-      }
-      return c;
-    });
-    setConversations(updatedConversations);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`bt_conversations_${tenantSlug}`, JSON.stringify(updatedConversations));
-      } catch (err) {
-        console.warn('Gagal menyimpan percakapan:', err);
-      }
-    }
-    setReplyText("");
-  };
-
-  const handleProcessWithdraw = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (withdrawAmount <= 0 || withdrawAmount > readyBalance) {
-      return alert("Nominal penarikan tidak valid atau melebihi saldo tersedia.");
-    }
-
-    setIsWithdrawing(true);
-    setTimeout(() => {
-      setIsWithdrawing(false);
-      setIsWithdrawModalOpen(false);
-      setSaveFeedback(`💸 Permintaan penarikan Rp ${withdrawAmount.toLocaleString('id-ID')} berhasil diteruskan ke bank!`);
-      setTimeout(() => setSaveFeedback(null), 4000);
-    }, 1200);
-  };
-
-  const handleConnectGrowthSession = async () => {
-    setIsQrLoading(true);
-    setWaErrorMessage(null);
-    setPairingCodeResult(null);
-
-    try {
-      const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/status?tenant=${tenantSlug}`);
-      const data = await res.json();
-      
-      if (!data.success || data.status === "DEGRADED") {
-        setWaStatus("DEGRADED");
-        setQrCodeUrl(null);
-        setWaErrorMessage(
-          data.disconnect_reason === "GATEWAY_UNREACHABLE"
-            ? "BoonTrack WhatsApp Engine belum aktif / offline. QR Code tidak dapat dimuat sampai engine dinyalakan."
-            : "Layanan BoonTrack WhatsApp Engine sedang dalam pemeliharaan."
-        );
-      } else if (data.status === "CONNECTED") {
-        setWaStatus("CONNECTED");
-        setConnectedPhone(data.phone_number || null);
-        setQrCodeUrl(null);
-      } else if (data.qr_image || data.qr_raw) {
-        setWaStatus("CONNECTING");
-        setQrCodeUrl(data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.qr_raw)}`);
-      } else {
-        setWaStatus("DISCONNECTED");
-        setQrCodeUrl(null);
-      }
-    } catch (err) {
-      setWaStatus("DEGRADED");
-      setQrCodeUrl(null);
-      setWaErrorMessage("Gagal tersambung ke BoonTrack WhatsApp Engine.");
-    } finally {
-      setIsQrLoading(false);
-    }
-  };
-
-  const handleRequestPairingCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pairingPhone.trim()) return alert("Masukkan nomor WhatsApp terlebih dahulu!");
-
-    setIsPairingLoading(true);
-    setPairingCodeResult(null);
-    try {
-      const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/reconnect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant: tenantSlug, phone: pairingPhone })
-      });
-      const data = await res.json();
-      if (data.success && data.pairing_code) {
-        setPairingCodeResult(data.pairing_code);
-      } else {
-        alert(data.detail || "Gateway cluster belum siap menerima pairing code.");
-      }
-    } catch (err) {
-      alert("Tidak dapat menghubungi cluster gateway.");
-    } finally {
-      setIsPairingLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'whatsapp' && waMode === 'qr') {
-      handleConnectGrowthSession();
-    }
-  }, [activeTab, waMode, tenantSlug]);
-
   return (
     <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
-      
       {/* STICKY TOP WRAPPER (HEADER + TABS NAVIGATION) */}
       <div className="sticky top-0 z-50 isolate bg-white border-b border-slate-200 shadow-xs">
         {/* TOP NAVBAR */}
@@ -1269,18 +195,16 @@ export default function TenantDashboardPage() {
                   ✏️
                 </span>
               </button>
-              <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 ${
-                isTeamScale
-                  ? 'bg-purple-50 text-purple-700 border-purple-200'
-                  : isAdsPerformance
-                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                  : 'bg-slate-100 text-slate-700 border-slate-200'
-              }`}>
-                {isTeamScale
-                  ? 'Team Scale'
-                  : isAdsPerformance
-                  ? 'Ads Performance'
-                  : 'Solo'}
+              <span
+                className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 ${
+                  isTeamScale
+                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    : isAdsPerformance
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+              >
+                {isTeamScale ? 'Team Scale' : isAdsPerformance ? 'Ads Performance' : 'Solo'}
               </span>
             </div>
           </div>
@@ -1328,9 +252,7 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: PESANAN / ORDERS */}
-      {(activeTab as any) === 'orders' && (
-        <OrdersTab tenantSlug={tenantSlug} />
-      )}
+      {activeTab === 'orders' && <OrdersTab tenantSlug={tenantSlug} />}
 
       {/* TAB 2: KATALOG MULTI-PRODUK */}
       {(activeTab === 'catalog' || activeTab === 'products') && (
@@ -1342,232 +264,10 @@ export default function TenantDashboardPage() {
           handleDeleteProduct={handleDeleteProduct}
           handleQuickStockChange={handleQuickStockChange}
           openSinglePageBuilder={openSinglePageBuilder}
-          onOpenBulkImport={() => {
-            setImportFile(null);
-            setImportResult(null);
-            setImportError(null);
-            setIsBulkImportModalOpen(true);
-          }}
+          onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
           storeCategory={storeCategory}
         />
       )}
-
-      {/* MODAL IMPORT MASSAL */}
-      {isBulkImportModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-                  <FileSpreadsheet className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-900">Import Massal Spreadsheet</h3>
-                  <p className="text-[11px] text-slate-400 font-medium">Format .xlsx, .xls, atau .csv (Tokopedia, Shopee, Excel standar)</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isImporting) {
-                    setIsBulkImportModalOpen(false);
-                    setImportFile(null);
-                    setImportResult(null);
-                    setImportError(null);
-                  }
-                }}
-                disabled={isImporting}
-                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-200/60 transition disabled:opacity-50 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-4 flex-1">
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 text-xs text-slate-600 space-y-1.5">
-                <p className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-600" /> Kolom Spreadsheet yang Didukung:
-                </p>
-                <ul className="list-disc list-inside text-[11px] text-slate-500 space-y-0.5">
-                  <li><span className="font-semibold text-slate-700">Wajib:</span> Nama Produk (Product Name, title), Harga (Price).</li>
-                  <li><span className="font-semibold text-slate-700">Opsional:</span> Stok (Stock, qty), Deskripsi (Description), Foto / Gambar.</li>
-                  <li>Mendukung impor ratusan SKU sekaligus secara instan ke etalase toko.</li>
-                </ul>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  Pilih File Spreadsheet (.csv, .xlsx, .xls)
-                </label>
-
-                <div className="relative border-2 border-dashed border-slate-200 hover:border-blue-400 rounded-2xl p-6 transition-all text-center bg-slate-50/50 hover:bg-blue-50/20 group cursor-pointer">
-                  <input
-                    type="file"
-                    accept=".csv, .xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv"
-                    disabled={isImporting}
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        setImportFile(e.target.files[0]);
-                        setImportResult(null);
-                        setImportError(null);
-                      }
-                    }}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                  />
-
-                  {importFile ? (
-                    <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-3 shadow-xs">
-                      <div className="flex items-center gap-3 text-left min-w-0">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                          <FileSpreadsheet className="w-5 h-5" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-800 truncate">{importFile.name}</p>
-                          <p className="text-[11px] text-slate-400">{(importFile.size / 1024).toFixed(1)} KB</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setImportFile(null);
-                          setImportResult(null);
-                          setImportError(null);
-                        }}
-                        disabled={isImporting}
-                        className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="w-12 h-12 bg-white rounded-2xl shadow-xs border border-slate-200 flex items-center justify-center mx-auto text-blue-600 group-hover:scale-105 transition-transform">
-                        <Upload className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-700">
-                          Klik untuk memilih file atau seret file ke sini
-                        </p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          Format: .XLSX, .XLS, atau .CSV (Maks 15 MB)
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {isImporting && (
-                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center gap-3 text-blue-800 animate-pulse">
-                  <Loader2 className="w-5 h-5 animate-spin shrink-0 text-blue-600" />
-                  <div className="text-xs">
-                    <p className="font-bold">Sedang memproses ratusan SKU...</p>
-                    <p className="text-[11px] text-blue-600 mt-0.5">Sistem sedang memvalidasi data dan menyimpannya ke etalase katalog.</p>
-                  </div>
-                </div>
-              )}
-
-              {importResult && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-900 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <h4 className="text-xs font-bold">Import Produk Berhasil!</h4>
-                  </div>
-                  <p className="text-xs text-emerald-800 leading-relaxed">
-                    Total <span className="font-black text-emerald-900">{importResult.total_imported}</span> produk berhasil ditambahkan ke katalog etalase.
-                    {importResult.skipped > 0 && (
-                      <span> ({importResult.skipped} baris dilewati karena kosong atau format tidak sesuai).</span>
-                    )}
-                  </p>
-                  {importResult.errors && importResult.errors.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-emerald-200/60 text-[11px] text-emerald-700 max-h-24 overflow-y-auto space-y-1">
-                      <p className="font-semibold">Catatan baris yang dilewati:</p>
-                      {importResult.errors.slice(0, 5).map((err: any, idx: number) => (
-                        <p key={idx} className="truncate">
-                          • Baris {err.row || idx + 2}: {err.error || err.product || JSON.stringify(err)}
-                        </p>
-                      ))}
-                      {importResult.errors.length > 5 && (
-                        <p className="italic">...dan {importResult.errors.length - 5} baris lainnya.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {importError && (
-                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-rose-900 flex items-start gap-2.5">
-                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                  <div className="text-xs space-y-1">
-                    <p className="font-bold">Gagal Mengimpor File</p>
-                    <p className="text-[11px] text-rose-700 leading-normal">{importError}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsBulkImportModalOpen(false);
-                  setImportFile(null);
-                  setImportResult(null);
-                  setImportError(null);
-                }}
-                disabled={isImporting}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200/70 transition disabled:opacity-50 cursor-pointer"
-              >
-                {importResult ? "Selesai" : "Batal"}
-              </button>
-
-              {!importResult && (
-                <button
-                  type="button"
-                  onClick={handleBulkImport}
-                  disabled={!importFile || isImporting}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer disabled:cursor-not-allowed"
-                >
-                  {isImporting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Mengimpor...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4" />
-                      <span>Mulai Import Produk</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL POPUP FORM PRODUK */}
-      <ProductFormModal
-        isOpen={isProductModalOpen}
-        onClose={() => setIsProductModalOpen(false)}
-        onSave={handleSaveProductForm}
-        productForm={productForm}
-        setProductForm={setProductForm}
-        editingProductId={editingProductId}
-        storeCategory={storeCategory}
-      />
-
-      {/* BUILDER SINGLE PAGE CHECKOUT */}
-      <SinglePageBuilderModal
-        isOpen={isSinglePageModalOpen}
-        onClose={() => setIsSinglePageModalOpen(false)}
-        activeProduct={activeSinglePageProduct}
-        singlePageForm={singlePageForm}
-        setSinglePageForm={setSinglePageForm}
-        onSave={handleSaveSinglePageConfig}
-        tenantSlug={tenantSlug}
-      />
 
       {/* TAB 3: AI Knowledge */}
       {activeTab === 'ai_knowledge' && (
@@ -1626,409 +326,43 @@ export default function TenantDashboardPage() {
           isTeamScale={isTeamScale}
           isModal={false}
           onSavedSuccess={() => {
-            setSaveFeedback("Profil toko berhasil disimpan.");
+            setSaveFeedback('Profil toko berhasil disimpan.');
             setTimeout(() => setSaveFeedback(null), 3000);
           }}
         />
       )}
 
-      {/* TAB 5: WhatsApp Hybrid Connection */}
+      {/* TAB 5: WhatsApp Gateway */}
       {activeTab === 'whatsapp' && (
-        <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-emerald-600" />
-                <span>Pengaturan Gateway WhatsApp Bot</span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Pilih metode koneksi bot sesuai dengan kebutuhan dan paket langganan Anda.
-              </p>
-            </div>
-
-            <div className="inline-flex p-1 bg-slate-100 rounded-2xl border border-slate-200 self-start sm:self-auto items-center">
-              <button
-                type="button"
-                onClick={() => setWaMode('qr')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  waMode === 'qr'
-                    ? 'bg-white text-blue-600 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>BoonTrack Direct Connect</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setWaMode('meta')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  waMode === 'meta'
-                    ? 'bg-white text-emerald-600 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {!isProScale ? (
-                  <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                ) : (
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                )}
-                <span>Meta Cloud API (WABA)</span>
-                {!isProScale && (
-                  <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
-                    PROSCALE
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* KARTU PENGATURAN STRATEGI RESPON & PERSONA BOT WHATSAPP */}
-          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xs sm:text-sm font-black text-slate-900">
-                      Strategi Respon & Persona Bot WhatsApp
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      {botStrategy === 'trust_builder' && 'Mode Toko Baru'}
-                      {botStrategy === 'balanced' && 'Mode Seimbang'}
-                      {botStrategy === 'hard_selling' && 'Mode Penjualan Cepat'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    Pilih gaya interaksi AI bot otomatis untuk menangani pesan masuk pelanggan di WhatsApp ini.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleSaveBotStrategy()}
-                disabled={isSavingStrategy || isLoadingAi}
-                className="self-start sm:self-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-              >
-                {isSavingStrategy ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                ) : (
-                  <Save className="w-3.5 h-3.5 text-white" />
-                )}
-                <span>{isSavingStrategy ? 'Menyimpan...' : 'Simpan Persona'}</span>
-              </button>
-            </div>
-
-            {strategyFeedback && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{strategyFeedback}</span>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div
-                onClick={() => {
-                  setBotStrategy('trust_builder');
-                  handleSaveBotStrategy('trust_builder');
-                }}
-                className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
-                  botStrategy === 'trust_builder'
-                    ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                }`}
-              >
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      Rekomendasi Toko Baru
-                    </span>
-                    {botStrategy === 'trust_builder' ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                    ) : (
-                      <div className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                    )}
-                  </div>
-                  <h4 className="text-xs font-black text-slate-900">Mode Toko Baru (Konsultatif)</h4>
-                  <p className="text-[11px] text-slate-600 leading-snug">
-                    Menjawab ramah & empati, edukasi calon pembeli, serta tegaskan garansi tanpa buru-buru menyodorkan link pembayaran.
-                  </p>
-                </div>
-              </div>
-
-              <div
-                onClick={() => {
-                  setBotStrategy('balanced');
-                  handleSaveBotStrategy('balanced');
-                }}
-                className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
-                  botStrategy === 'balanced'
-                    ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                }`}
-              >
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-                      Default
-                    </span>
-                    {botStrategy === 'balanced' ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                    ) : (
-                      <div className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                    )}
-                  </div>
-                  <h4 className="text-xs font-black text-slate-900">Mode Seimbang (Tanya Jawab)</h4>
-                  <p className="text-[11px] text-slate-600 leading-snug">
-                    Menjawab dalam 2-3 kalimat ringkas, jelaskan manfaat utama, lalu tawarkan konfirmasi untuk mengamankan stok produk.
-                  </p>
-                </div>
-              </div>
-
-              <div
-                onClick={() => {
-                  setBotStrategy('hard_selling');
-                  handleSaveBotStrategy('hard_selling');
-                }}
-                className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
-                  botStrategy === 'hard_selling'
-                    ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-                }`}
-              >
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                      Cocok Iklan Berbayar
-                    </span>
-                    {botStrategy === 'hard_selling' ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                    ) : (
-                      <div className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                    )}
-                  </div>
-                  <h4 className="text-xs font-black text-slate-900">Mode Penjualan Cepat (Hard Selling)</h4>
-                  <p className="text-[11px] text-slate-600 leading-snug">
-                    Respon 1-2 kalimat, konfirmasi stok ready, dan langsung berikan tautan checkout/QRIS instan untuk pangkas drop-off.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* GROWTH PLAN PANEL */}
-          {waMode === 'qr' && (
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 shadow-xs space-y-6">
-              <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black text-slate-900">BoonTrack Direct Connect</h3>
-                    <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
-                      BoonTrack WhatsApp Engine
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
-                    Koneksi mandiri via BoonTrack WhatsApp Engine untuk menghasilkan sesi perangkat QR aktif dan sinkronisasi chat real-time.
-                  </p>
-                </div>
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
-                  <QrCode className="w-5 h-5" />
-                </div>
-              </div>
-
-              {waStatus === "DEGRADED" && (
-                <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
-                      <AlertTriangle className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-black text-amber-900">BoonTrack WhatsApp Engine Belum Terjangkau</h4>
-                      <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                        {waErrorMessage || "Layanan BoonTrack WhatsApp Engine sedang offline. QR Code tidak dapat dimuat sampai engine diaktifkan."}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="pt-1">
-                    <button
-                      onClick={handleConnectGrowthSession}
-                      disabled={isQrLoading}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white text-xs font-bold rounded-xl flex items-center gap-2 transition cursor-pointer"
-                    >
-                      {isQrLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                      <span>Cek Ulang Koneksi Engine</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {waStatus !== "CONNECTED" && waStatus !== "DEGRADED" && (
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
-                  <div className="md:col-span-6 space-y-4">
-                    <div className="space-y-3">
-                      <div className="flex items-start gap-3 text-xs text-slate-700 font-medium">
-                        <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
-                        <span>Buka aplikasi <strong>WhatsApp</strong> di HP Anda.</span>
-                      </div>
-                      <div className="flex items-start gap-3 text-xs text-slate-700 font-medium">
-                        <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
-                        <span>Ketuk menu titik tiga (Android) atau <strong>Pengaturan</strong> (iPhone) &gt; pilih <strong>Perangkat Tertaut</strong>.</span>
-                      </div>
-                      <div className="flex items-start gap-3 text-xs text-slate-700 font-medium">
-                        <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
-                        <span>Arahkan kamera HP Anda ke QR Code atau gunakan opsi nomor telepon di bawah.</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 pt-2">
-                      <button
-                        onClick={handleConnectGrowthSession}
-                        disabled={isQrLoading}
-                        className="px-5 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer"
-                      >
-                        {isQrLoading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Menghubungkan ke BoonTrack WhatsApp Engine...</span>
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-4 h-4" />
-                            <span>Muat Ulang Sesi & QR Code</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 mt-4 space-y-3">
-                      <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
-                        <PhoneCall className="w-4 h-4 text-blue-600" />
-                        <span>Atau Tautkan dengan Nomor WhatsApp Saja</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">
-                        Solusi jika kamera HP bermasalah saat scan QR. Masukkan nomor WhatsApp aktif Anda (awali 62):
-                      </p>
-
-                      <form onSubmit={handleRequestPairingCode} className="flex gap-2">
-                        <input
-                          type="text"
-                          required
-                          value={pairingPhone}
-                          onChange={(e) => setPairingPhone(e.target.value)}
-                          placeholder="628xxxxxxxxxx"
-                          className="flex-1 bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-mono"
-                        />
-                        <button
-                          type="submit"
-                          disabled={isPairingLoading}
-                          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-bold text-xs rounded-xl transition cursor-pointer shrink-0"
-                        >
-                          {isPairingLoading ? "Memproses..." : "Dapatkan Kode"}
-                        </button>
-                      </form>
-
-                      {pairingCodeResult && (
-                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center space-y-1 mt-2">
-                          <p className="text-[11px] text-emerald-800 font-medium">Masukkan kode 8-digit ini di WhatsApp HP Anda:</p>
-                          <div className="text-lg font-black font-mono tracking-widest text-emerald-700 bg-white py-1 px-3 rounded-lg border border-emerald-200 inline-block">
-                            {pairingCodeResult}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                  </div>
-
-                  <div className="md:col-span-6 flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                    {isQrLoading ? (
-                      <div className="flex flex-col items-center gap-3 py-12 text-xs text-slate-500 font-medium">
-                        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                        <span>Mengambil token autentikasi dari proxy server...</span>
-                      </div>
-                    ) : qrCodeUrl ? (
-                      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-md text-center space-y-3">
-                        <img
-                          src={qrCodeUrl}
-                          alt="Backend WhatsApp QR Code"
-                          className="w-44 h-44 mx-auto rounded-lg object-contain"
-                        />
-                        <p className="text-[11px] font-bold text-slate-400 font-mono">
-                          SESI TENANT: {tenantSlug.toUpperCase()}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 space-y-2">
-                        <Smartphone className="w-12 h-12 text-slate-300 mx-auto" />
-                        <p className="text-xs font-bold text-slate-400">
-                          Sesi belum diinisialisasi
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {waStatus === "CONNECTED" && (
-                <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
-                      <CheckCircle2 className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-black text-emerald-900">WhatsApp Nomor Pribadi / Toko Terhubung Aktif</h4>
-                      <p className="text-[11px] text-emerald-700 mt-0.5">
-                        Nomor: <strong>+{connectedPhone || "-"}</strong> • Status: <strong>CONNECTED</strong>
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setWaStatus("DISCONNECTED");
-                      setQrCodeUrl(null);
-                    }}
-                    className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer"
-                  >
-                    Putuskan Sesi
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* PRO SCALE PANEL */}
-          {waMode === 'meta' && (
-            !isProScale ? (
-              renderLockedFeatureCard({
-                title: "Koneksi Resmi Meta Cloud API (Official WABA)",
-                badge: "Fitur Eksklusif Team Scale",
-                description: "Integrasikan nomor WhatsApp bisnis resmi dengan Meta Cloud API (Official WABA) centang hijau, webhook instan berkecepatan tinggi, dan proteksi anti-banned.",
-                targetTier: 'team_scale',
-                targetTierLabel: 'Team Scale',
-              })
-            ) : (
-              <div className="space-y-4">
-                <WhatsAppWabaConfig 
-                  tenantSlug={tenantSlug}
-                  displayName={displayName}
-                  onSuccess={(data) => {
-                    setConnectedPhone(data.phone_number || 'Official WABA');
-                    setWaStatus("CONNECTED");
-                    setSaveFeedback(`✅ Kredensial Resmi WABA berhasil diaktifkan!`);
-                    setTimeout(() => setSaveFeedback(null), 4000);
-                  }}
-                  onSaved={(msg) => {
-                    setSaveFeedback(msg);
-                    setTimeout(() => setSaveFeedback(null), 4000);
-                  }}
-                />
-              </div>
-            )
-          )}
-
-        </div>
+        <WhatsAppTab
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          waMode={waMode}
+          setWaMode={setWaMode}
+          waStatus={waStatus}
+          setWaStatus={setWaStatus}
+          qrCodeUrl={qrCodeUrl}
+          setQrCodeUrl={setQrCodeUrl}
+          isQrLoading={isQrLoading}
+          waErrorMessage={waErrorMessage}
+          connectedPhone={connectedPhone}
+          setConnectedPhone={setConnectedPhone}
+          pairingPhone={pairingPhone}
+          setPairingPhone={setPairingPhone}
+          pairingCodeResult={pairingCodeResult}
+          isPairingLoading={isPairingLoading}
+          handleConnectGrowthSession={handleConnectGrowthSession}
+          handleRequestPairingCode={handleRequestPairingCode}
+          botStrategy={botStrategy}
+          setBotStrategy={setBotStrategy}
+          handleSaveBotStrategy={handleSaveBotStrategy}
+          isSavingStrategy={isSavingStrategy}
+          isLoadingAi={isLoadingAi}
+          strategyFeedback={strategyFeedback}
+          isProScale={isProScale}
+          renderLockedFeatureCard={renderLockedFeatureCard}
+          setSaveFeedback={setSaveFeedback}
+        />
       )}
 
       {/* TAB: ADS TRACKING PRO */}
@@ -2046,11 +380,11 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: KURIR & EKSPEDISI */}
-      {(['shipping', 'biteship', 'logistik', 'courier'].includes(activeTab as string)) && (
+      {['shipping', 'biteship', 'logistik', 'courier'].includes(activeTab as string) && (
         <div className="w-full">
           <BiteshipCourierConfig
-            tenantSlug={(tenantSlug as string) || (params?.tenant as string) || ''}
-            displayName={(displayName as string) || 'BoonTrack Shop'}
+            tenantSlug={tenantSlug}
+            displayName={displayName || 'BoonTrack Shop'}
             onSaved={(msg) => {
               setSaveFeedback(msg);
               setTimeout(() => setSaveFeedback(null), 4000);
@@ -2060,12 +394,13 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: WHATSAPP BROADCAST MANAGER */}
-      {activeTab === 'broadcast' && (
-        !isProScale ? (
+      {activeTab === 'broadcast' &&
+        (!isProScale ? (
           renderLockedFeatureCard({
-            title: "Broadcast WA Massal (Meta Cloud API)",
-            badge: "Fitur Eksklusif Team Scale (Official WABA)",
-            description: "Fitur Eksklusif Team Scale (Official WABA). Kirim pesan promosi massal resmi anti-banned langsung lewat Meta Cloud API.",
+            title: 'Broadcast WA Massal (Meta Cloud API)',
+            badge: 'Fitur Eksklusif Team Scale (Official WABA)',
+            description:
+              'Fitur Eksklusif Team Scale (Official WABA). Kirim pesan promosi massal resmi anti-banned langsung lewat Meta Cloud API.',
             targetTier: 'team_scale',
             targetTierLabel: 'Team Scale',
           })
@@ -2078,20 +413,48 @@ export default function TenantDashboardPage() {
               setTimeout(() => setSaveFeedback(null), 4000);
             }}
           />
-        )
-      )}
+        ))}
 
       {/* BOONPILOT AI COPILOT FLOATING WIDGET */}
-      <BoonPilotWidget 
-        tenantSlug={params.tenant} 
+      <BoonPilotWidget
+        tenantSlug={tenantSlug}
         isProductsEmpty={products.length === 0}
-        onOpenBulkImport={() => {
-          setImportFile(null);
-          setImportResult(null);
-          setImportError(null);
-          setIsBulkImportModalOpen(true);
-        }}
+        onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
         onOpenNewProduct={openNewProductModal}
+      />
+
+      {/* MODAL BULK IMPORT */}
+      <BulkImportModal
+        isOpen={isBulkImportModalOpen}
+        onClose={() => setIsBulkImportModalOpen(false)}
+        tenantSlug={tenantSlug}
+        onSuccess={(count) => {
+          setSaveFeedback(`✅ Berhasil mengimpor ${count} produk baru!`);
+          setTimeout(() => setSaveFeedback(null), 4000);
+        }}
+        refreshProducts={refreshProducts}
+      />
+
+      {/* MODAL FORM PRODUK */}
+      <ProductFormModal
+        isOpen={isProductModalOpen}
+        onClose={() => setIsProductModalOpen(false)}
+        onSave={handleSaveProductForm}
+        productForm={productForm}
+        setProductForm={setProductForm}
+        editingProductId={editingProductId}
+        storeCategory={storeCategory}
+      />
+
+      {/* MODAL BUILDER SINGLE PAGE CHECKOUT */}
+      <SinglePageBuilderModal
+        isOpen={isSinglePageModalOpen}
+        onClose={() => setIsSinglePageModalOpen(false)}
+        activeProduct={activeSinglePageProduct}
+        singlePageForm={singlePageForm}
+        setSinglePageForm={setSinglePageForm}
+        onSave={handleSaveSinglePageConfig}
+        tenantSlug={tenantSlug}
       />
 
       {/* MODAL EDIT PROFIL TOKO */}
@@ -2114,7 +477,7 @@ export default function TenantDashboardPage() {
           isOpen={isStoreSettingsOpen}
           onClose={() => setIsStoreSettingsOpen(false)}
           onSavedSuccess={() => {
-            setSaveFeedback("Profil toko berhasil disimpan.");
+            setSaveFeedback('Profil toko berhasil disimpan.');
             setTimeout(() => setSaveFeedback(null), 3000);
           }}
         />
