@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useState, useRef } from 'react';
-import { Upload, X, Loader2, Image as ImageIcon, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Upload, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface ImageUploadProps {
   label?: string;
@@ -13,7 +13,6 @@ interface ImageUploadProps {
   tenantSlug?: string;
 }
 
-// Client-side auto-converter ke format WebP & auto-resize max 1200px
 async function optimizeImageToWebP(file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<File> {
   return new Promise((resolve) => {
     if (typeof window === 'undefined' || !window.FileReader) {
@@ -84,7 +83,6 @@ export default function ImageUpload({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Deteksi otomatis tenant slug dari URL jika tidak di-pass sebagai props
   const getResolvedTenantSlug = (): string => {
     if (tenantSlug) return tenantSlug;
     if (typeof window !== 'undefined') {
@@ -100,21 +98,14 @@ export default function ImageUpload({
     return 'sandbox';
   };
 
-  const coreApiUrl =
-    process.env.NEXT_PUBLIC_CORE_API_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    'https://boontrack-core-production.up.railway.app';
-
   const handleUploadFile = async (rawFile: File) => {
     setErrorMsg(null);
 
-    // Validasi tipe file
     if (!rawFile.type.startsWith('image/')) {
       setErrorMsg('File harus berupa gambar (JPG, PNG, WebP, dll.)');
       return;
     }
 
-    // Validasi ukuran file (5 MB)
     if (rawFile.size > 5 * 1024 * 1024) {
       setErrorMsg(`Ukuran file melebihi 5 MB (${(rawFile.size / (1024 * 1024)).toFixed(2)} MB)`);
       return;
@@ -123,23 +114,16 @@ export default function ImageUpload({
     setIsUploading(true);
 
     try {
-      // 1. Kompres & ubah file menjadi WebP 1200px
       const processedFile = await optimizeImageToWebP(rawFile);
       const activeTenant = getResolvedTenantSlug();
 
-      // 2. Susun FormData & tenant payload
       const formData = new FormData();
       formData.append('file', processedFile, processedFile.name);
       formData.append('tenant_slug', activeTenant);
       formData.append('tenant_id', activeTenant);
       formData.append('folder', 'products');
 
-      // 3. Susun URL dengan query param fallback
-      const baseEndpoint = `${coreApiUrl.replace(/\/+$/, '')}/api/v1/media/upload`;
-      const uploadUrl = new URL(baseEndpoint);
-      uploadUrl.searchParams.set('tenant_slug', activeTenant);
-
-      const res = await fetch(uploadUrl.toString(), {
+      const res = await fetch('/api/v1/upload', {
         method: 'POST',
         headers: {
           'X-Tenant-Slug': activeTenant,
