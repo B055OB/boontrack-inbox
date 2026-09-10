@@ -34,3 +34,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## UX Checkout & Payment Flow
+- **In-House Modal QRIS**: Form pendaftaran tenant/langganan menggunakan popup modal native (`QrisPaymentModal`) dengan QRIS dinamis tanpa redirect ke halaman eksternal.
+- **Auto-Polling Status**: Frontend mengecek status pelunasan invoice ke endpoint `/api/v1/shop/subscriptions/status/{tenant_slug}` setiap 3 detik.
+- **Auto-Redirect**: Saat status berubah menjadi `PAID`, sistem menampilkan animasi sukses dan mengarahkan pengguna langsung ke dashboard toko dalam 2,2 detik.
