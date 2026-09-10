@@ -16,7 +16,7 @@ import {
   Search,
   Filter,
 } from 'lucide-react';
-import { ProductItem, slugify } from '@/lib/product-catalog';
+import { ProductItem, slugify, resolveFulfillmentRequirements } from '@/lib/product-catalog';
 
 export interface ProductsTabProps {
   products: ProductItem[];
@@ -320,11 +320,24 @@ export default function ProductsTab({
 
                   <div className="pt-2.5 mt-1 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-[11px] text-slate-400 font-mono truncate max-w-[200px]">
-                      {p.category === 'digital' && (
-                        <span className="text-slate-400 font-mono text-[11px] truncate">
-                          {p.download_url || "Tanpa Link Download"}
-                        </span>
-                      )}
+                      {(() => {
+                        const reqs = resolveFulfillmentRequirements(p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'));
+                        if (reqs.requiresDeliveryPayload) {
+                          return (
+                            <span className="text-slate-400 font-mono text-[11px] truncate">
+                              {p.download_url || p.fulfillment_metadata?.access_url || "Akses Langsung (Digital)"}
+                            </span>
+                          );
+                        }
+                        if (reqs.requiresWeight) {
+                          return (
+                            <span className="text-slate-500 font-mono text-[11px] truncate">
+                              Berat: {p.weight_grams || 1000}g
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </span>
 
                     <div className="flex items-center gap-1.5">

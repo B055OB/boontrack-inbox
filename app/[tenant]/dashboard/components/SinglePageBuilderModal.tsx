@@ -18,6 +18,7 @@ import {
   ProductItem,
   SinglePageConfig,
   slugify,
+  resolveFulfillmentRequirements,
 } from '@/lib/product-catalog';
 
 export type BuilderTab =
