@@ -21,7 +21,10 @@ import {
   Building2,
   X,
   FileCheck2,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  KeyRound,
+  LogOut
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { 
@@ -53,7 +56,15 @@ interface AffiliateSummary {
   managerPayout: number;
 }
 
+const EXPECTED_PIN = process.env.NEXT_PUBLIC_MANAGER_PIN || '882200';
+
 export default function ManagerControlCenter() {
+  // Auth Guard States
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [pinInput, setPinInput] = useState('');
+  const [authError, setAuthError] = useState('');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'orders' | 'marketers' | 'partners' | 'payouts'>('orders');
   const [loading, setLoading] = useState(true);
@@ -191,11 +202,58 @@ export default function ManagerControlCenter() {
     }
   }, []);
 
+  // Periksa sesi auth manager di sessionStorage / cookie
   useEffect(() => {
-    loadLiveTransactions();
-    loadPartners();
-    loadPayouts();
-  }, [loadLiveTransactions, loadPartners, loadPayouts]);
+    if (typeof window !== 'undefined') {
+      try {
+        const sessionAuth = sessionStorage.getItem('bt_manager_auth');
+        const cookieAuth = document.cookie.includes('bt_manager_auth=verified');
+        if (sessionAuth === 'verified' || cookieAuth) {
+          setIsAuthenticated(true);
+        }
+      } catch (e) {
+        console.warn('Error reading manager auth session:', e);
+      } finally {
+        setIsAuthChecking(false);
+      }
+    } else {
+      setIsAuthChecking(false);
+    }
+  }, []);
+
+  const handleVerifyPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    if (pinInput.trim() === EXPECTED_PIN) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('bt_manager_auth', 'verified');
+        document.cookie = 'bt_manager_auth=verified; path=/; max-age=86400; SameSite=Lax';
+      }
+      setIsAuthenticated(true);
+      setPinInput('');
+    } else {
+      setAuthError('PIN akses salah. Akses ditolak.');
+    }
+  };
+
+  const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('bt_manager_auth');
+      document.cookie = 'bt_manager_auth=; path=/; max-age=0; SameSite=Lax';
+    }
+    setIsAuthenticated(false);
+    setPinInput('');
+    setAuthError('');
+  };
+
+  // Hanya fetch data jika sudah terverifikasi (Zero Data Leak)
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadLiveTransactions();
+      loadPartners();
+      loadPayouts();
+    }
+  }, [isAuthenticated, loadLiveTransactions, loadPartners, loadPayouts]);
 
   // Toggle Status Mitra (ACTIVE / SUSPENDED)
   const handleToggleStatus = async (partner: PartnerItem) => {
@@ -375,6 +433,86 @@ export default function ManagerControlCenter() {
     p.status.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-[100dvh] bg-slate-950 text-slate-100 flex items-center justify-center p-4 selection:bg-blue-500 selection:text-white relative overflow-hidden">
+        {/* Background Glows */}
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative z-10 space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto shadow-inner">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 border border-slate-700">
+              <Lock className="w-3 h-3 text-blue-400" />
+              <span>Restricted Access Control</span>
+            </div>
+            <h1 className="text-xl font-black text-white tracking-tight">
+              Manager Control Center
+            </h1>
+            <p className="text-xs text-slate-400 max-w-xs mx-auto">
+              Masukkan PIN Superadmin / Manager untuk membuka akses data komisi, whitelist mitra, dan antrean payout.
+            </p>
+          </div>
+
+          <form onSubmit={handleVerifyPin} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300 block">
+                PIN Verifikasi (6 Digit)
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={10}
+                  autoFocus
+                  required
+                  value={pinInput}
+                  onChange={(e) => {
+                    setPinInput(e.target.value);
+                    if (authError) setAuthError('');
+                  }}
+                  placeholder="••••••"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-center text-lg tracking-[0.4em] font-mono text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
+              {authError && (
+                <div className="text-[11px] font-semibold text-rose-400 flex items-center gap-1.5 pt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{authError}</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 cursor-pointer active:scale-95"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>Verifikasi &amp; Buka Dashboard</span>
+            </button>
+          </form>
+
+          <div className="pt-2 border-t border-slate-800/80 text-center">
+            <p className="text-[10px] text-slate-500 font-mono">
+              BoonTrack Agency Control Plane &bull; manager.boontrack.com
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[100dvh] bg-slate-950 text-slate-100 p-4 md:p-8 font-sans selection:bg-blue-500 selection:text-white">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -420,6 +558,15 @@ export default function ManagerControlCenter() {
               title="Refresh All Data"
             >
               <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-400' : ''}`} />
+            </button>
+
+            <button 
+              onClick={handleLogout}
+              className="px-3 py-2.5 bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 rounded-xl border border-slate-800 hover:border-rose-900/50 flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer"
+              title="Kunci Dashboard (Logout)"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Kunci Panel</span>
             </button>
           </div>
         </div>
