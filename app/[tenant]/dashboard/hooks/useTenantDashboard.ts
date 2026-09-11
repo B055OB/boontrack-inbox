@@ -783,8 +783,16 @@ export function useTenantDashboard() {
               }
             }
             setBotStrategy(loadedStrategy as 'trust_builder' | 'balanced' | 'hard_selling');
-
-            const proposal = (s.boonpilot_proposal || s.boonpilot_configuration || null) as BusinessConfigurationProposal | null;
+            let proposal = (s.boonpilot_proposal || s.boonpilot_configuration || null) as BusinessConfigurationProposal | null;
+            if (!proposal && typeof window !== 'undefined') {
+              try {
+                const cached =
+                  localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug.toLowerCase()}`) ||
+                  localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug}`) ||
+                  (tenantSlug.toLowerCase() === 'sandbox' ? localStorage.getItem('bt_boonpilot_published_proposal_sandbox') : null);
+                if (cached) proposal = JSON.parse(cached);
+              } catch {}
+            }
             const proposalAi = proposal ? mapProposalToAiForm(proposal) : null;
 
             setAiForm(prev => ({
@@ -804,7 +812,25 @@ export function useTenantDashboard() {
           }
         }
       } catch (err) {
-        console.warn('Gagal memuat pengaturan AI tenant:', err);
+        console.error('Gagal memuat setting AI:', err);
+        if (typeof window !== 'undefined') {
+          try {
+            const cached =
+              localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug.toLowerCase()}`) ||
+              localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug}`) ||
+              (tenantSlug.toLowerCase() === 'sandbox' ? localStorage.getItem('bt_boonpilot_published_proposal_sandbox') : null);
+            if (cached) {
+              const proposal = JSON.parse(cached);
+              const proposalAi = mapProposalToAiForm(proposal);
+              setAiForm(prev => ({
+                ...prev,
+                ai_name: proposalAi.ai_name,
+                system_prompt: proposalAi.system_prompt,
+                tone: proposalAi.tone,
+              }));
+            }
+          } catch {}
+        }
       } finally {
         if (isMounted) setIsLoadingAi(false);
       }

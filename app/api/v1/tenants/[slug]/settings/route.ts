@@ -33,7 +33,21 @@ export async function GET(
       );
       if (coreRes.ok) {
         const data = await coreRes.json();
-        if (data?.settings) return NextResponse.json(data);
+        if (data?.settings) {
+          try {
+            const supabase = getSupabase();
+            const { data: tenantRow } = await supabase
+              .from('tenants')
+              .select('metadata')
+              .eq('slug', slug)
+              .maybeSingle();
+            if (tenantRow?.metadata?.boonpilot_proposal) {
+              data.settings.boonpilot_proposal = tenantRow.metadata.boonpilot_proposal;
+              data.settings.boonpilot_configuration = tenantRow.metadata.boonpilot_configuration || tenantRow.metadata.boonpilot_proposal;
+            }
+          } catch {}
+          return NextResponse.json(data);
+        }
       }
     } catch {
       // Lanjut ke Supabase database murni

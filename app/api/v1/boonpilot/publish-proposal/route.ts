@@ -46,42 +46,73 @@ export async function POST(req: NextRequest) {
           .eq('slug', tenantSlug)
           .maybeSingle();
 
+        const currentMetadata = tenantData?.metadata || {};
+        const updatedMetadata = {
+          ...currentMetadata,
+          boonpilot_proposal: publishedProposal,
+          boonpilot_configuration: publishedProposal,
+          business_category: publishedProposal.business_profile?.business_category || currentMetadata.business_category || 'FIELD_SERVICE',
+          business_type: publishedProposal.template_code,
+          vertical_type: publishedProposal.template_code,
+          last_configured_at: new Date().toISOString(),
+          // Sync AI knowledge, persona, and playbook so all endpoints reflect it immediately
+          ai_knowledge: {
+            ...(currentMetadata.ai_knowledge || {}),
+            ...mappedAi,
+            assistant_name: mappedAi.ai_name,
+          },
+          persona: {
+            ...(currentMetadata.persona || {}),
+            ...mappedAi,
+            assistant_name: mappedAi.ai_name,
+          },
+          playbook: mappedPlaybook,
+          seller_playbook: mappedPlaybook,
+        };
+
         if (tenantData) {
-          const currentMetadata = tenantData.metadata || {};
-          const updatedMetadata = {
-            ...currentMetadata,
-            boonpilot_proposal: publishedProposal,
-            boonpilot_configuration: publishedProposal,
-            business_category: publishedProposal.business_profile?.business_category || currentMetadata.business_category,
-            business_type: publishedProposal.template_code,
-            last_configured_at: new Date().toISOString(),
-            // Sync AI knowledge, persona, and playbook so all endpoints reflect it immediately
-            ai_knowledge: {
-              ...(currentMetadata.ai_knowledge || {}),
-              ...mappedAi,
-              assistant_name: mappedAi.ai_name,
+          const updatePayload: Record<string, any> = {
+            metadata: updatedMetadata,
+            updated_at: new Date().toISOString(),
+          };
+          if (publishedProposal.business_profile?.store_name) {
+            updatePayload.name = publishedProposal.business_profile.store_name;
+          }
+
+          const { error: updateErr } = await supabase
+            .from('tenants')
+            .update(updatePayload)
+            .eq('slug', tenantSlug);
+
+          if (updateErr) {
+            console.error('[BoonPilot Publish] Supabase update error:', updateErr);
+          }
+        } else {
+          // Auto-insert trial tenant if not yet in database (e.g. sandbox or new registration)
+          const insertPayload = {
+            slug: tenantSlug,
+            name: publishedProposal.business_profile?.store_name || `${tenantSlug.toUpperCase()} Store`,
+            tier: 'STARTER',
+            is_active: true,
+            category: 'service',
+            metadata: {
+              plan_tier: 'SOLO_TRIAL',
+              ...updatedMetadata,
             },
-            persona: {
-              ...(currentMetadata.persona || {}),
-              ...mappedAi,
-              assistant_name: mappedAi.ai_name,
-            },
-            playbook: mappedPlaybook,
-            seller_playbook: mappedPlaybook,
+            updated_at: new Date().toISOString(),
           };
 
-          await supabase
+          const { error: insertErr } = await supabase
             .from('tenants')
-            .update({
-              metadata: updatedMetadata,
-              business_category: publishedProposal.business_profile?.business_category || undefined,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('slug', tenantSlug);
+            .insert(insertPayload);
+
+          if (insertErr) {
+            console.error('[BoonPilot Publish] Supabase insert error:', insertErr);
+          }
         }
       }
     } catch (dbErr) {
-      console.warn('[BoonPilot Publish] Supabase persistence note:', dbErr);
+      console.error('[BoonPilot Publish] Supabase persistence error:', dbErr);
     }
 
     return NextResponse.json({

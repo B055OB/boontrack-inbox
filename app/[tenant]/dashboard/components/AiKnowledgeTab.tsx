@@ -140,7 +140,9 @@ export default function AiKnowledgeTab({
       const customEvt = e as CustomEvent<{ proposal: BusinessConfigurationProposal; tenantSlug: string }>;
       const proposal = customEvt.detail?.proposal;
       if (!proposal) return;
-      if (customEvt.detail.tenantSlug && customEvt.detail.tenantSlug !== tenantSlug) return;
+      const targetSlug = (customEvt.detail.tenantSlug || '').trim().toLowerCase();
+      const currentSlug = (tenantSlug || '').trim().toLowerCase();
+      if (targetSlug && targetSlug !== currentSlug) return;
 
       setActiveProposal(proposal);
 
@@ -160,8 +162,8 @@ export default function AiKnowledgeTab({
       // Persist to local storage
       if (typeof window !== 'undefined') {
         try {
-          localStorage.setItem(`bt_seller_playbook_${tenantSlug}`, JSON.stringify(mappedPlaybook));
-          localStorage.setItem(`bt_boonpilot_published_proposal_${tenantSlug}`, JSON.stringify(proposal));
+          localStorage.setItem(`bt_seller_playbook_${currentSlug}`, JSON.stringify(mappedPlaybook));
+          localStorage.setItem(`bt_boonpilot_published_proposal_${currentSlug}`, JSON.stringify(proposal));
         } catch (err) {
           console.warn('Gagal menyimpan playbook terpetakan:', err);
         }
@@ -179,12 +181,16 @@ export default function AiKnowledgeTab({
   useEffect(() => {
     if (!tenantSlug) return;
     let isMounted = true;
+    const currentSlug = (tenantSlug || '').trim().toLowerCase();
 
     const loadProposalFromStorageOrApi = async () => {
       let loadedProposal: BusinessConfigurationProposal | null = null;
       if (typeof window !== 'undefined') {
         try {
-          const cached = localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug}`);
+          const cached =
+            localStorage.getItem(`bt_boonpilot_published_proposal_${currentSlug}`) ||
+            localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug}`) ||
+            (currentSlug === 'sandbox' ? localStorage.getItem('bt_boonpilot_published_proposal_sandbox') : null);
           if (cached) {
             loadedProposal = JSON.parse(cached);
           }
@@ -193,7 +199,7 @@ export default function AiKnowledgeTab({
 
       if (!loadedProposal) {
         try {
-          const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
+          const res = await fetch(`/api/v1/tenants/${encodeURIComponent(currentSlug)}/settings`);
           if (res.ok) {
             const data = await res.json();
             loadedProposal = data.settings?.boonpilot_proposal || data.settings?.boonpilot_configuration || null;
@@ -206,25 +212,21 @@ export default function AiKnowledgeTab({
         const mappedAi = mapProposalToAiForm(loadedProposal);
         const mappedPlaybook = mapProposalToPlaybook(loadedProposal);
 
-        setAiForm((prev) => {
-          const isDefaultPrompt = !prev.system_prompt || prev.system_prompt.includes('Anda adalah asisten resmi untuk toko');
-          return {
-            ...prev,
-            ai_name: prev.ai_name && !prev.ai_name.includes('AI Assistant') ? prev.ai_name : mappedAi.ai_name,
-            tone: prev.tone && prev.tone !== 'casual' ? prev.tone : mappedAi.tone,
-            system_prompt: isDefaultPrompt && mappedAi.system_prompt ? mappedAi.system_prompt : prev.system_prompt,
-          };
-        });
+        setAiForm((prev) => ({
+          ...prev,
+          ai_name: mappedAi.ai_name || prev.ai_name,
+          tone: mappedAi.tone || prev.tone,
+          system_prompt: mappedAi.system_prompt || prev.system_prompt,
+        }));
 
-        updatePlaybook((prev) => {
-          const isDefaultPlaybook =
-            prev.persona.greetingStyle === DEFAULT_SELLER_PLAYBOOK.persona.greetingStyle &&
-            prev.scenarios.priceObjection === DEFAULT_SELLER_PLAYBOOK.scenarios.priceObjection;
-          if (isDefaultPlaybook) {
-            return mappedPlaybook;
-          }
-          return prev;
-        });
+        updatePlaybook(mappedPlaybook);
+
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(`bt_seller_playbook_${currentSlug}`, JSON.stringify(mappedPlaybook));
+            localStorage.setItem(`bt_boonpilot_published_proposal_${currentSlug}`, JSON.stringify(loadedProposal));
+          } catch {}
+        }
       }
     };
 
