@@ -98,6 +98,7 @@ interface InvoiceData {
   invoiceId: string;
   amount: number;
   tenantSlug: string;
+  initialStatus?: "polling" | "paid" | "expired";
 }
 
 // ── QRIS PAYMENT MODAL ───────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ function QrisPaymentModal({
   const [timeLeft, setTimeLeft] = useState(INVOICE_EXPIRE_SECONDS);
   const [pollStatus, setPollStatus] = useState<
     "polling" | "paid" | "expired" | "error"
-  >("polling");
+  >(data.initialStatus || "polling");
   const [pollError, setPollError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -144,7 +145,7 @@ function QrisPaymentModal({
 
   // Polling status setiap 3 detik
   useEffect(() => {
-    if (pollStatus !== "polling") return;
+    if (pollStatus !== "polling" || data.initialStatus === "paid") return;
 
     const checkStatus = async () => {
       try {
@@ -173,9 +174,11 @@ function QrisPaymentModal({
           stopAll();
           setPollStatus("paid");
           // Tunggu 2 detik tampilkan animasi sukses lalu redirect
-          setTimeout(() => {
-            onPaid(data.tenantSlug);
-          }, 2200);
+          if (!data.initialStatus) {
+            setTimeout(() => {
+              onPaid(data.tenantSlug);
+            }, 2200);
+          }
         } else if (upper === "EXPIRED" || upper === "FAILED") {
           stopAll();
           setPollStatus("expired");
@@ -227,22 +230,45 @@ function QrisPaymentModal({
           {/* ── PAID SUCCESS STATE ──────────────────────────────── */}
           {pollStatus === "paid" && (
             <div className="text-center space-y-4 py-4">
-              <div className="w-20 h-20 mx-auto rounded-full bg-emerald-500/15 border-2 border-emerald-400 flex items-center justify-center">
+              <div className="w-20 h-20 mx-auto rounded-full bg-emerald-500/15 border-2 border-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
                 <CheckCircle2 className="w-10 h-10 text-emerald-400" />
               </div>
               <div>
                 <h3 className="text-xl font-extrabold text-white">
                   Pembayaran Berhasil! 🎉
                 </h3>
-                <p className="text-sm text-slate-300 mt-1">
+                <p className="text-xs text-emerald-400 font-bold mt-1">
+                  Terima Kasih, Akun Anda Telah Aktif
+                </p>
+                <p className="text-sm text-slate-300 mt-2">
                   Toko{" "}
                   <span className="font-mono font-bold text-emerald-400">
                     shop.boontrack.com/{data.tenantSlug}
                   </span>{" "}
-                  kini aktif.
+                  kini siap digunakan.
                 </p>
               </div>
-              <p className="text-xs text-slate-400 animate-pulse">
+
+              <div className="p-3.5 bg-slate-800/80 rounded-2xl border border-slate-700/80 text-left text-xs space-y-1.5 shadow-inner">
+                <div className="flex justify-between text-slate-400">
+                  <span>Paket Langganan:</span>
+                  <span className="text-white font-bold">Ads Performance (1 Bulan)</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>Total Tagihan:</span>
+                  <span className="text-white font-bold">Rp {data.amount.toLocaleString('id-ID')}</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>Status Pembayaran:</span>
+                  <span className="text-emerald-400 font-black">LUNAS / BERHASIL</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>Metode:</span>
+                  <span className="text-slate-200 font-medium">QRIS Standar Nasional</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-400 animate-pulse pt-1">
                 Mengalihkan ke dashboard toko Anda...
               </p>
             </div>
@@ -432,6 +458,30 @@ export default function RegisterShopPage() {
         setStoreName(initialStore);
         setSlug(clean);
         verifySlugApi(clean);
+      }
+
+      const mockStep = params.get("mock_step");
+      if (mockStep === "3" || mockStep === "4") {
+        const mockStoreName = params.get("store") || "Distro Keren Bandung";
+        const mockSlug = params.get("slug") || "distro-keren-bandung";
+        setStoreName(mockStoreName);
+        setSlug(mockSlug);
+        setStatus("available");
+        setCategory("retail_physical");
+        setSelectedPlan("ads_performance");
+        setMerchantData({
+          name: "Budi Santoso",
+          phone: "081234567890",
+          email: "budi.distro@gmail.com",
+          pin: "123456",
+        });
+        setInvoiceData({
+          invoiceUrl: "https://checkout.xendit.co/web/6aa4090d539f6883d50c2042",
+          invoiceId: "INV-DEMO-299000",
+          amount: 299000,
+          tenantSlug: mockSlug,
+          initialStatus: mockStep === "4" ? "paid" : "polling",
+        });
       }
     }
   }, []);
