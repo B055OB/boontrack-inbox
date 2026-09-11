@@ -132,6 +132,7 @@ export async function GET(
                   }))
               : []),
         interactive_menus: Array.isArray(metadata.interactive_menus) ? metadata.interactive_menus : [],
+        theme: metadata.theme || (slug === 'ombudi' ? { template: 'personal', chat_enabled: true, chat_position: 'bottom-right' } : { template: 'default', chat_enabled: true, chat_position: 'bottom-right' }),
       },
     });
   } catch (err: unknown) {
@@ -168,6 +169,7 @@ export async function PUT(
       whatsapp_number,
       faqs,
       interactive_menus,
+      theme,
     } = body;
 
     const supabase = getSupabase();
@@ -214,6 +216,7 @@ export async function PUT(
       ...(integration ? { integration } : {}),
       ...(faqs !== undefined ? { faqs } : {}),
       ...(interactive_menus !== undefined ? { interactive_menus } : {}),
+      ...(theme !== undefined ? { theme } : {}),
       ...(updatedProposal ? { boonpilot_proposal: updatedProposal, boonpilot_configuration: updatedProposal } : {}),
       ...(qris_image_url !== undefined ? { qris_image_url, qris_url: qris_image_url } : {}),
       ...(logo_url !== undefined ? { logo_url } : {}),
@@ -229,7 +232,6 @@ export async function PUT(
         category: category || existing.category,
         tier: updatedTier,
         metadata: updatedMetadata,
-        updated_at: new Date().toISOString(),
       })
       .eq('slug', slug);
 
@@ -269,6 +271,7 @@ export async function PUT(
         bot_mode: updatedMetadata.bot_mode || 'HYBRID',
         faqs: updatedMetadata.faqs || [],
         interactive_menus: updatedMetadata.interactive_menus || [],
+        theme: updatedMetadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
         bank,
         integration,
         qris_image_url:

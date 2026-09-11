@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Store, Image as ImageIcon, Save, X, Package, QrCode, CheckCircle2 } from 'lucide-react';
 import CustomDomainCard from '../settings/CustomDomainCard';
+import StorefrontThemeCard from '../settings/StorefrontThemeCard';
 
 export interface SettingsTabProps {
   tenantSlug: string;
@@ -416,6 +417,9 @@ export default function SettingsTab({
           </a>
         </div>
       </div>
+
+      {/* Template Tampilan Toko Card */}
+      <StorefrontThemeCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
 
       {/* Domain Setting Card */}
       <CustomDomainCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
