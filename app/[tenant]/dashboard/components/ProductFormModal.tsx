@@ -10,6 +10,16 @@ import {
   FulfillmentMetadata,
 } from '@/lib/product-catalog';
 
+export function mapBusinessCategoryToProductType(storeCategory?: string): ProductType {
+  const cat = (storeCategory || '').toUpperCase();
+  if (['FOOD', 'FNB', 'KULINER', 'RESTO', 'MAKANAN'].some((k) => cat.includes(k))) return 'FOOD';
+  if (['DIGITAL', 'COURSE', 'SOFTWARE', 'CREATOR_SERVICE', 'KONTEN'].some((k) => cat.includes(k))) return 'DIGITAL';
+  if (['FIELD_SERVICE', 'LOCAL_SERVICE', 'REPAIR', 'LAUNDRY', 'SALON', 'JASA_LAPANGAN'].some((k) => cat.includes(k))) return 'FIELD_SERVICE';
+  if (['PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'ACCOUNTING'].some((k) => cat.includes(k))) return 'PROFESSIONAL_SERVICE';
+  if (['AGENCY', 'MARKETING_AGENCY', 'DEV_AGENCY'].some((k) => cat.includes(k))) return 'AGENCY';
+  return 'PHYSICAL';
+}
+
 export interface ProductFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -18,6 +28,7 @@ export interface ProductFormModalProps {
   setProductForm: React.Dispatch<React.SetStateAction<ProductItem>>;
   editingProductId: number | null;
   storeCategory?: string;
+  tenantSlug?: string;
 }
 
 export default function ProductFormModal({
@@ -28,36 +39,47 @@ export default function ProductFormModal({
   setProductForm,
   editingProductId,
   storeCategory,
+  tenantSlug,
 }: ProductFormModalProps) {
   const isDigitalOnly = storeCategory === 'DIGITAL' || storeCategory === 'CREATOR_SERVICE';
 
-  // Infer default product_type
+  // Set default product_type following tenant.business_category when modal opens for new product
   useEffect(() => {
     if (isOpen) {
       setProductForm((prev) => {
         let defaultType: ProductType = prev.product_type || 'PHYSICAL';
-        if (!prev.product_type) {
+        if (!editingProductId && !prev.product_type) {
+          defaultType = mapBusinessCategoryToProductType(storeCategory);
+        } else if (!prev.product_type) {
           if (isDigitalOnly || prev.category === 'digital') {
             defaultType = 'DIGITAL';
-          } else if (prev.category === 'fisik') {
+          } else {
             defaultType = 'PHYSICAL';
           }
         }
+        const reqs = resolveFulfillmentRequirements(defaultType);
         return {
           ...prev,
           product_type: defaultType,
-          category: defaultType === 'PHYSICAL' || defaultType === 'FOOD' ? 'fisik' : 'digital',
-          is_unlimited: prev.is_unlimited !== undefined ? prev.is_unlimited : defaultType !== 'PHYSICAL' && defaultType !== 'FOOD',
+          category: reqs.requiresShipping ? 'fisik' : 'digital',
+          is_unlimited:
+            prev.is_unlimited !== undefined
+              ? prev.is_unlimited
+              : !reqs.requiresShipping,
         };
       });
     }
-  }, [isOpen, isDigitalOnly, setProductForm]);
+  }, [isOpen, isDigitalOnly, storeCategory, editingProductId, setProductForm]);
 
   if (!isOpen) return null;
 
   const currentType: ProductType =
     productForm.product_type ||
-    (isDigitalOnly || productForm.category === 'digital' ? 'DIGITAL' : 'PHYSICAL');
+    (!editingProductId
+      ? mapBusinessCategoryToProductType(storeCategory)
+      : isDigitalOnly || productForm.category === 'digital'
+      ? 'DIGITAL'
+      : 'PHYSICAL');
 
   const requirements = resolveFulfillmentRequirements(currentType);
   const metadata: FulfillmentMetadata = productForm.fulfillment_metadata || {
@@ -348,6 +370,7 @@ export default function ProductFormModal({
               onChange={(url) => setProductForm((p) => ({ ...p, image: url }))}
               placeholder="Upload foto produk (Auto-convert WebP)"
               description="Auto-convert WebP & resize max width 1200px"
+              tenantSlug={tenantSlug}
             />
           </div>
 

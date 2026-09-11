@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useRef } from 'react';
 import { Upload, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -98,6 +98,14 @@ export default function ImageUpload({
     return 'sandbox';
   };
 
+  const getApiBaseUrl = (): string => {
+    return (
+      process.env.NEXT_PUBLIC_API_URL ||
+      process.env.NEXT_PUBLIC_CORE_API_URL ||
+      'https://api.boontrack.com'
+    ).replace(/\/+$/, '');
+  };
+
   const handleUploadFile = async (rawFile: File) => {
     setErrorMsg(null);
 
@@ -116,21 +124,57 @@ export default function ImageUpload({
     try {
       const processedFile = await optimizeImageToWebP(rawFile);
       const activeTenant = getResolvedTenantSlug();
+      const baseUrl = getApiBaseUrl();
+      const primaryUrl = `${baseUrl}/api/v1/upload`;
+      const fallbackUrl = `${baseUrl}/api/v1/media/upload`;
 
       const formData = new FormData();
       formData.append('file', processedFile, processedFile.name);
+      formData.append('image', processedFile, processedFile.name);
       formData.append('tenant_slug', activeTenant);
       formData.append('tenant_id', activeTenant);
       formData.append('folder', 'products');
 
-      const res = await fetch('/api/v1/upload', {
-        method: 'POST',
-        headers: {
-          'X-Tenant-Slug': activeTenant,
-          'X-Tenant-ID': activeTenant,
-        },
-        body: formData,
-      });
+      let authToken: string | null = null;
+      if (typeof window !== 'undefined') {
+        authToken =
+          localStorage.getItem('sb-access-token') ||
+          localStorage.getItem('merchant_token') ||
+          localStorage.getItem('token') ||
+          null;
+      }
+
+      const headers: Record<string, string> = {
+        'X-Tenant-Slug': activeTenant,
+        'X-Tenant-ID': activeTenant,
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
+      // Do NOT explicitly set Content-Type header on FormData so browser creates boundary
+      let res: Response;
+      try {
+        res = await fetch(primaryUrl, {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+      } catch {
+        res = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+      }
+
+      if (res.status === 404) {
+        res = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+      }
 
       if (!res.ok) {
         let serverError = `Upload gagal (${res.status})`;
@@ -149,7 +193,12 @@ export default function ImageUpload({
       }
 
       const data = await res.json();
-      const finalUrl = data?.url || data?.image_url || data?.file_url || (typeof data === 'string' ? data : '');
+      const finalUrl =
+        data?.url ||
+        data?.image_url ||
+        data?.public_url ||
+        data?.file_url ||
+        (typeof data === 'string' ? data : '');
 
       if (finalUrl) {
         onChange(finalUrl, {

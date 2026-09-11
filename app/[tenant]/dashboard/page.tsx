@@ -595,6 +595,7 @@ export default function TenantDashboardPage() {
         setProductForm={setProductForm}
         editingProductId={editingProductId}
         storeCategory={storeCategory}
+        tenantSlug={tenantSlug}
       />
 
       {/* MODAL BUILDER SINGLE PAGE CHECKOUT */}

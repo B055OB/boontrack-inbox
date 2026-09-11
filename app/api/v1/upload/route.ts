@@ -5,12 +5,14 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const coreApiUrl =
       process.env.CORE_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
       process.env.NEXT_PUBLIC_CORE_API_URL ||
-      'https://boontrack-core-production.up.railway.app';
+      'https://api.boontrack.com';
 
     const tenantSlug = req.headers.get('x-tenant-slug') || 'sandbox';
+    const baseUrl = coreApiUrl.replace(/\/+$/, '');
 
-    const backendRes = await fetch(`${coreApiUrl.replace(/\/+$/, '')}/api/v1/media/upload`, {
+    let backendRes = await fetch(`${baseUrl}/api/v1/upload`, {
       method: 'POST',
       headers: {
         'X-Tenant-Slug': tenantSlug,
@@ -18,6 +20,17 @@ export async function POST(req: NextRequest) {
       },
       body: formData,
     });
+
+    if (backendRes.status === 404) {
+      backendRes = await fetch(`${baseUrl}/api/v1/media/upload`, {
+        method: 'POST',
+        headers: {
+          'X-Tenant-Slug': tenantSlug,
+          'X-Tenant-ID': tenantSlug,
+        },
+        body: formData,
+      });
+    }
 
     const resData = await backendRes.json().catch(() => ({}));
 

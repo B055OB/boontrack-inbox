@@ -327,6 +327,7 @@ export default function SinglePageBuilderModal({
                     value={singlePageForm.problem_image_url || ''}
                     onChange={(url) => setSinglePageForm(p => ({ ...p, problem_image_url: url }))}
                     placeholder="Upload gambar ilustrasi masalah (Auto-convert WebP)"
+                    tenantSlug={tenantSlug}
                   />
                 </div>
               </div>
@@ -508,6 +509,7 @@ export default function SinglePageBuilderModal({
                           setSinglePageForm(p => ({ ...p, testimonial_images: imgs.filter(Boolean) }));
                         }}
                         placeholder={`Upload bukti review / testimoni #${idx + 1}`}
+                        tenantSlug={tenantSlug}
                       />
                     </div>
                   );

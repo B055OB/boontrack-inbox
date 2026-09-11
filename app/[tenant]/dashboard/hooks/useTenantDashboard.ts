@@ -12,6 +12,7 @@ import {
   slugify,
   resolveFulfillmentRequirements,
 } from '@/lib/product-catalog';
+import { mapBusinessCategoryToProductType } from '../components/ProductFormModal';
 
 export type DashboardTab =
   | 'inbox'
@@ -682,20 +683,24 @@ export function useTenantDashboard() {
 
   const openNewProductModal = () => {
     setEditingProductId(null);
+    const defaultProductType = mapBusinessCategoryToProductType(storeCategory);
+    const reqs = resolveFulfillmentRequirements(defaultProductType);
     setProductForm({
       id: Date.now(),
       name: '',
-      category: 'fisik',
+      product_type: defaultProductType,
+      category: reqs.requiresShipping ? 'fisik' : 'digital',
       price: 99000,
       promo_price: 0,
       variants: 'Standar',
       promo: '',
       description: '',
       download_url: '',
-      image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
-      stock: 100,
+      image: '',
+      stock: reqs.requiresShipping ? 100 : 9999,
       sku: `SKU-${Date.now().toString().slice(-4)}`,
-      is_unlimited: false,
+      is_unlimited: !reqs.requiresShipping,
+      weight_grams: reqs.requiresWeight ? 1000 : undefined,
     });
     setIsProductModalOpen(true);
   };
