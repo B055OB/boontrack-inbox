@@ -264,7 +264,68 @@ export async function GET(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    // 1. Coba dari Railway Backend Core
+    // 1. Single Source of Truth: Supabase (tenants.metadata.products & products table)
+    try {
+      const supabase = getSupabase();
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('id, metadata')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      let products: any[] = Array.isArray(tenantRow?.metadata?.products)
+        ? tenantRow.metadata.products
+        : tenantRow?.metadata?.product
+        ? [tenantRow.metadata.product]
+        : [];
+
+      // Query juga dari tabel SQL `products` jika ada
+      if (tenantRow?.id) {
+        const { data: sqlProds } = await supabase
+          .from('products')
+          .select('*')
+          .eq('tenant_id', tenantRow.id);
+
+        if (Array.isArray(sqlProds) && sqlProds.length > 0) {
+          const sqlMapped = sqlProds.map((sp: any, idx: number) => ({
+            id: sp.id,
+            name: sp.title || `Produk ${idx + 1}`,
+            title: sp.title || `Produk ${idx + 1}`,
+            slug: sp.slug,
+            category: sp.category || (sp.product_type === 'PHYSICAL' ? 'physical' : 'digital'),
+            product_type: sp.product_type || (sp.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
+            price: Number(sp.price) || 0,
+            promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
+            description: sp.description || '',
+            download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+            image: sp.image || sp.fulfillment_metadata?.single_page_config?.banner_url || '',
+            stock: sp.stock !== undefined ? Number(sp.stock) : 999,
+            sku: sp.sku || '',
+            is_unlimited: sp.is_unlimited_stock ?? true,
+            fulfillment_metadata: sp.fulfillment_metadata,
+            single_page_config: sp.fulfillment_metadata?.single_page_config,
+          }));
+
+          const existingSlugs = new Set(products.map((p) => (p.slug || '').toLowerCase()));
+          for (const sp of sqlMapped) {
+            if (!existingSlugs.has((sp.slug || '').toLowerCase())) {
+              products.push(sp);
+            }
+          }
+        }
+      }
+
+      if (products.length > 0) {
+        return NextResponse.json({
+          success: true,
+          products,
+        });
+      }
+    } catch (supabaseErr) {
+      console.warn('Supabase products fetch note:', supabaseErr);
+    }
+
+    // 2. Fallback jika Supabase kosong: Coba Railway Backend Core
     try {
       const railwayRes = await fetch(
         getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(slug)}/products`),
@@ -275,7 +336,7 @@ export async function GET(
       );
       if (railwayRes.ok) {
         const rData = await railwayRes.json();
-        if (Array.isArray(rData.products)) {
+        if (Array.isArray(rData.products) && rData.products.length > 0) {
           return NextResponse.json({
             success: true,
             products: rData.products,
@@ -286,23 +347,9 @@ export async function GET(
       console.warn('Railway backend products fetch note:', railwayErr);
     }
 
-    // 2. Fallback ke Supabase tenants table
-    const supabase = getSupabase();
-    const { data: tenantRow } = await supabase
-      .from('tenants')
-      .select('metadata')
-      .eq('slug', slug)
-      .maybeSingle();
-
-    const products = Array.isArray(tenantRow?.metadata?.products)
-      ? tenantRow.metadata.products
-      : tenantRow?.metadata?.product
-      ? [tenantRow.metadata.product]
-      : [];
-
     return NextResponse.json({
       success: true,
-      products,
+      products: [],
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error fetching products';

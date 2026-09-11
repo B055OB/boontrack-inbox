@@ -687,6 +687,37 @@ export function useTenantDashboard() {
           const logoUrlFromDb = tenant.metadata?.logo_url || tenant.logo_url || '';
           if (logoUrlFromDb) setStoreLogoUrl(logoUrlFromDb);
 
+          // Hydrate Products from Supabase (Single Source of Truth)
+          const metaProducts = Array.isArray(tenant.metadata?.products) ? tenant.metadata.products : [];
+          if (metaProducts.length > 0) {
+            const mapped = metaProducts.map((p: any, idx: number) => ({
+              id: typeof p.id === 'number' ? p.id : Date.now() + idx,
+              name: p.name || p.title || `Produk ${idx + 1}`,
+              slug: p.slug || p.single_page_config?.slug || slugify(p.name || p.title || `produk-${idx + 1}`),
+              category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
+              product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
+              price: Number(p.price) || 0,
+              promo_price: p.promo_price ? Number(p.promo_price) : 0,
+              variants: p.variants || '',
+              promo: p.promo || '',
+              description: p.description || '',
+              download_url: p.download_url || p.delivery_url || p.link_digital || '',
+              image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
+              stock: p.stock !== undefined ? Number(p.stock) : 100,
+              sku: p.sku || `SKU-${idx + 1}`,
+              is_unlimited: p.is_unlimited || false,
+              weight_grams: p.weight_grams,
+              fulfillment_metadata: p.fulfillment_metadata,
+              single_page_config: p.single_page_config,
+            }));
+            setProducts(mapped);
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mapped));
+              } catch {}
+            }
+          }
+
           // Category
           const rawCat = (tenant.category || tenant.metadata?.vertical_type || tenant.metadata?.business_category || 'PHYSICAL').toUpperCase();
           if (['PHYSICAL', 'RETAIL', 'FNB', 'RETAIL_PHYSICAL'].includes(rawCat) || rawCat.includes('PHYSICAL') || rawCat.includes('RETAIL')) {
@@ -960,15 +991,59 @@ export function useTenantDashboard() {
 
   // 5. Products Handlers
   const refreshProducts = async (): Promise<ProductItem[]> => {
+    // 1. Direct Supabase Query (Single Source of Truth: tenants.metadata.products & products table)
     try {
-      const res = await fetch(getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`), {
-        headers: { 'X-Tenant-ID': tenantSlug },
-        cache: 'no-store',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.products) && data.products.length > 0) {
-          const mappedProducts: ProductItem[] = data.products.map((p: any, idx: number) => ({
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('id, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        let rawProducts: any[] = Array.isArray(tenantRow?.metadata?.products)
+          ? tenantRow.metadata.products
+          : tenantRow?.metadata?.product
+          ? [tenantRow.metadata.product]
+          : [];
+
+        if (tenantRow?.id) {
+          const { data: sqlProds } = await supabase
+            .from('products')
+            .select('*')
+            .eq('tenant_id', tenantRow.id);
+
+          if (Array.isArray(sqlProds) && sqlProds.length > 0) {
+            const sqlMapped = sqlProds.map((sp: any, idx: number) => ({
+              id: sp.id,
+              name: sp.title || `Produk ${idx + 1}`,
+              title: sp.title || `Produk ${idx + 1}`,
+              slug: sp.slug,
+              category: sp.category || (sp.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
+              product_type: sp.product_type || (sp.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
+              price: Number(sp.price) || 0,
+              promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
+              description: sp.description || '',
+              download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+              image: sp.image || sp.fulfillment_metadata?.single_page_config?.banner_url || '',
+              stock: sp.stock !== undefined ? Number(sp.stock) : 999,
+              sku: sp.sku || '',
+              is_unlimited: sp.is_unlimited_stock ?? true,
+              fulfillment_metadata: sp.fulfillment_metadata,
+              single_page_config: sp.fulfillment_metadata?.single_page_config,
+            }));
+
+            const existingSlugs = new Set(rawProducts.map((p: any) => (p.slug || '').toLowerCase()));
+            for (const sp of sqlMapped) {
+              if (!existingSlugs.has((sp.slug || '').toLowerCase())) {
+                rawProducts.push(sp);
+              }
+            }
+          }
+        }
+
+        if (rawProducts.length > 0) {
+          const mappedProducts: ProductItem[] = rawProducts.map((p: any, idx: number) => ({
             id: typeof p.id === 'number' ? p.id : Date.now() + idx,
             name: p.name || p.title || `Produk ${idx + 1}`,
             slug: p.slug || (p.single_page_config?.slug) || slugify(p.name || p.title || `produk-${idx + 1}`),
@@ -979,8 +1054,8 @@ export function useTenantDashboard() {
             variants: p.variants || '',
             promo: p.promo || '',
             description: p.description || '',
-            download_url: p.download_url || p.delivery_url || '',
-            image: p.image || (Array.isArray(p.images) && p.images[0]) || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
+            download_url: p.download_url || p.delivery_url || p.link_digital || '',
+            image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
             stock: p.stock !== undefined ? Number(p.stock) : 100,
             sku: p.sku || `SKU-${idx + 1}`,
             is_unlimited: p.is_unlimited || false,
@@ -997,8 +1072,8 @@ export function useTenantDashboard() {
           return mappedProducts;
         }
       }
-    } catch (err) {
-      console.warn('Backend products fetch fallback note:', err);
+    } catch (supabaseErr) {
+      console.warn('Supabase direct products sync note:', supabaseErr);
     }
 
     try {
@@ -1017,8 +1092,8 @@ export function useTenantDashboard() {
             variants: p.variants || '',
             promo: p.promo || '',
             description: p.description || '',
-            download_url: p.download_url || p.delivery_url || '',
-            image: p.image || (Array.isArray(p.images) && p.images[0]) || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
+            download_url: p.download_url || p.delivery_url || p.link_digital || '',
+            image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
             stock: p.stock !== undefined ? Number(p.stock) : 100,
             sku: p.sku || `SKU-${idx + 1}`,
             is_unlimited: p.is_unlimited || false,
@@ -1039,12 +1114,53 @@ export function useTenantDashboard() {
       console.warn('Local products fetch fallback note:', err);
     }
 
+    try {
+      const res = await fetch(getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`), {
+        headers: { 'X-Tenant-ID': tenantSlug },
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.products) && data.products.length > 0) {
+          const mappedProducts: ProductItem[] = data.products.map((p: any, idx: number) => ({
+            id: typeof p.id === 'number' ? p.id : Date.now() + idx,
+            name: p.name || p.title || `Produk ${idx + 1}`,
+            slug: p.slug || (p.single_page_config?.slug) || slugify(p.name || p.title || `produk-${idx + 1}`),
+            category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
+            product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
+            price: Number(p.price) || 0,
+            promo_price: p.promo_price ? Number(p.promo_price) : 0,
+            variants: p.variants || '',
+            promo: p.promo || '',
+            description: p.description || '',
+            download_url: p.download_url || p.delivery_url || p.link_digital || '',
+            image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
+            stock: p.stock !== undefined ? Number(p.stock) : 100,
+            sku: p.sku || `SKU-${idx + 1}`,
+            is_unlimited: p.is_unlimited || false,
+            weight_grams: p.weight_grams,
+            fulfillment_metadata: p.fulfillment_metadata,
+            single_page_config: p.single_page_config,
+          }));
+          setProducts(mappedProducts);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mappedProducts));
+            } catch {}
+          }
+          return mappedProducts;
+        }
+      }
+    } catch (err) {
+      console.warn('Backend products fetch fallback note:', err);
+    }
+
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(`bt_products_${tenantSlug}`);
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
             setProducts(parsed);
             return parsed;
           }
@@ -1054,6 +1170,13 @@ export function useTenantDashboard() {
 
     return [];
   };
+
+  // Auto-refresh produk ketika user membuka tab katalog/produk
+  useEffect(() => {
+    if (activeTab === 'catalog' || activeTab === 'products') {
+      refreshProducts();
+    }
+  }, [activeTab]);
 
   // Readiness evaluation
   useEffect(() => {
