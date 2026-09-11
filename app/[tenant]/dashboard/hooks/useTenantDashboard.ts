@@ -15,6 +15,8 @@ import {
 import { mapBusinessCategoryToProductType } from '../components/ProductFormModal';
 import { getSupabase } from '@/lib/supabaseClient';
 import { optimizeImageToWebP } from '@/components/ImageUpload';
+import type { BusinessConfigurationProposal } from '@/types/boonpilot';
+import { mapProposalToAiForm } from '@/lib/boonpilotMapper';
 
 export type DashboardTab =
   | 'inbox'
@@ -781,11 +783,15 @@ export function useTenantDashboard() {
               }
             }
             setBotStrategy(loadedStrategy as 'trust_builder' | 'balanced' | 'hard_selling');
+
+            const proposal = (s.boonpilot_proposal || s.boonpilot_configuration || null) as BusinessConfigurationProposal | null;
+            const proposalAi = proposal ? mapProposalToAiForm(proposal) : null;
+
             setAiForm(prev => ({
               ...prev,
-              ai_name: aiK.ai_name || aiK.assistant_name || s.assistant_name || prev.ai_name,
-              system_prompt: aiK.system_prompt || s.system_prompt || prev.system_prompt,
-              tone: aiK.tone || prev.tone,
+              ai_name: proposalAi?.ai_name || aiK.ai_name || aiK.assistant_name || s.assistant_name || prev.ai_name,
+              system_prompt: proposalAi?.system_prompt || aiK.system_prompt || s.system_prompt || prev.system_prompt,
+              tone: proposalAi?.tone || aiK.tone || prev.tone,
             }));
             const payout = s.payout || {};
             if (payout.bank_name || payout.account_number || payout.account_holder) {
@@ -807,6 +813,25 @@ export function useTenantDashboard() {
     return () => {
       isMounted = false;
     };
+  }, [tenantSlug]);
+
+  // Real-time listener for BoonPilot proposal published event
+  useEffect(() => {
+    const handleProposalPublished = (e: Event) => {
+      const customEvt = e as CustomEvent<{ proposal: BusinessConfigurationProposal; tenantSlug: string }>;
+      const proposal = customEvt.detail?.proposal;
+      if (proposal && (!customEvt.detail.tenantSlug || customEvt.detail.tenantSlug === tenantSlug)) {
+        const mapped = mapProposalToAiForm(proposal);
+        setAiForm({
+          ai_name: mapped.ai_name,
+          tone: mapped.tone,
+          system_prompt: mapped.system_prompt,
+        });
+      }
+    };
+
+    window.addEventListener('boonpilot-proposal-published', handleProposalPublished);
+    return () => window.removeEventListener('boonpilot-proposal-published', handleProposalPublished);
   }, [tenantSlug]);
 
   // 3. Sync URL Tab Param (?tab=...)

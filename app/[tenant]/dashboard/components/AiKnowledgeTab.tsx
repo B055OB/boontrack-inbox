@@ -13,9 +13,12 @@ import {
   Target,
   BookOpen,
   Check,
+  RotateCcw,
 } from 'lucide-react';
 import BotSimulatorModal from './BotSimulatorModal';
 import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
+import type { BusinessConfigurationProposal } from '@/types/boonpilot';
+import { mapProposalToAiForm, mapProposalToPlaybook } from '@/lib/boonpilotMapper';
 
 export interface AiKnowledgeForm {
   ai_name: string;
@@ -118,8 +121,9 @@ export default function AiKnowledgeTab({
   const [isSavingPlaybook, setIsSavingPlaybook] = useState(false);
   const [playbookFeedback, setPlaybookFeedback] = useState<string | null>(null);
   const [appliedToPrompt, setAppliedToPrompt] = useState(false);
+  const [activeProposal, setActiveProposal] = useState<BusinessConfigurationProposal | null>(null);
 
-  // Sync to localStorage if using internal state
+  // 1. Sync to localStorage if using internal state
   useEffect(() => {
     if (!propPlaybook && typeof window !== 'undefined') {
       try {
@@ -129,6 +133,106 @@ export default function AiKnowledgeTab({
       }
     }
   }, [internalPlaybook, propPlaybook, tenantSlug]);
+
+  // 2. Real-time listener for BoonPilot proposal published event
+  useEffect(() => {
+    const handleProposalPublished = (e: Event) => {
+      const customEvt = e as CustomEvent<{ proposal: BusinessConfigurationProposal; tenantSlug: string }>;
+      const proposal = customEvt.detail?.proposal;
+      if (!proposal) return;
+      if (customEvt.detail.tenantSlug && customEvt.detail.tenantSlug !== tenantSlug) return;
+
+      setActiveProposal(proposal);
+
+      // Hydrate AI Form
+      const mappedAi = mapProposalToAiForm(proposal);
+      setAiForm((prev) => ({
+        ...prev,
+        ai_name: mappedAi.ai_name,
+        tone: mappedAi.tone,
+        system_prompt: mappedAi.system_prompt,
+      }));
+
+      // Hydrate Playbook
+      const mappedPlaybook = mapProposalToPlaybook(proposal);
+      updatePlaybook(mappedPlaybook);
+
+      // Persist to local storage
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(`bt_seller_playbook_${tenantSlug}`, JSON.stringify(mappedPlaybook));
+          localStorage.setItem(`bt_boonpilot_published_proposal_${tenantSlug}`, JSON.stringify(proposal));
+        } catch (err) {
+          console.warn('Gagal menyimpan playbook terpetakan:', err);
+        }
+      }
+
+      setPlaybookFeedback('✨ Form AI Knowledge, Persona, & Playbook berhasil diperbarui otomatis dari BoonPilot Proposal!');
+      setTimeout(() => setPlaybookFeedback(null), 5000);
+    };
+
+    window.addEventListener('boonpilot-proposal-published', handleProposalPublished);
+    return () => window.removeEventListener('boonpilot-proposal-published', handleProposalPublished);
+  }, [tenantSlug, setAiForm, updatePlaybook]);
+
+  // 3. Hydrate from storage or settings API on mount
+  useEffect(() => {
+    if (!tenantSlug) return;
+    let isMounted = true;
+
+    const loadProposalFromStorageOrApi = async () => {
+      let loadedProposal: BusinessConfigurationProposal | null = null;
+      if (typeof window !== 'undefined') {
+        try {
+          const cached = localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug}`);
+          if (cached) {
+            loadedProposal = JSON.parse(cached);
+          }
+        } catch {}
+      }
+
+      if (!loadedProposal) {
+        try {
+          const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
+          if (res.ok) {
+            const data = await res.json();
+            loadedProposal = data.settings?.boonpilot_proposal || data.settings?.boonpilot_configuration || null;
+          }
+        } catch {}
+      }
+
+      if (loadedProposal && isMounted) {
+        setActiveProposal(loadedProposal);
+        const mappedAi = mapProposalToAiForm(loadedProposal);
+        const mappedPlaybook = mapProposalToPlaybook(loadedProposal);
+
+        setAiForm((prev) => {
+          const isDefaultPrompt = !prev.system_prompt || prev.system_prompt.includes('Anda adalah asisten resmi untuk toko');
+          return {
+            ...prev,
+            ai_name: prev.ai_name && !prev.ai_name.includes('AI Assistant') ? prev.ai_name : mappedAi.ai_name,
+            tone: prev.tone && prev.tone !== 'casual' ? prev.tone : mappedAi.tone,
+            system_prompt: isDefaultPrompt && mappedAi.system_prompt ? mappedAi.system_prompt : prev.system_prompt,
+          };
+        });
+
+        updatePlaybook((prev) => {
+          const isDefaultPlaybook =
+            prev.persona.greetingStyle === DEFAULT_SELLER_PLAYBOOK.persona.greetingStyle &&
+            prev.scenarios.priceObjection === DEFAULT_SELLER_PLAYBOOK.scenarios.priceObjection;
+          if (isDefaultPlaybook) {
+            return mappedPlaybook;
+          }
+          return prev;
+        });
+      }
+    };
+
+    loadProposalFromStorageOrApi();
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug, setAiForm, updatePlaybook]);
 
   const handleSavePlaybook = async () => {
     setIsSavingPlaybook(true);
@@ -206,6 +310,56 @@ export default function AiKnowledgeTab({
           <span>{isSavingAi ? 'Menyimpan...' : 'Simpan Persona AI'}</span>
         </button>
       </div>
+
+      {/* BOONPILOT ACTIVE PROPOSAL BANNER */}
+      {activeProposal && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50 via-blue-50 to-emerald-50 border border-indigo-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Sparkles className="w-4 h-4 text-amber-300" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-black text-slate-900">
+                  Konfigurasi Aktif BoonPilot
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  {activeProposal.status} ({activeProposal.template_code})
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                Profil Toko: <strong>{activeProposal.business_profile.store_name}</strong> • Sapaan, gaya bahasa, penanganan tawar harga, dan SOP booking telah disinkronkan.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const mappedAi = mapProposalToAiForm(activeProposal);
+              const mappedPlaybook = mapProposalToPlaybook(activeProposal);
+              setAiForm((prev) => ({
+                ...prev,
+                ai_name: mappedAi.ai_name,
+                tone: mappedAi.tone,
+                system_prompt: mappedAi.system_prompt,
+              }));
+              updatePlaybook(mappedPlaybook);
+              if (typeof window !== 'undefined') {
+                try {
+                  localStorage.setItem(`bt_seller_playbook_${tenantSlug}`, JSON.stringify(mappedPlaybook));
+                } catch {}
+              }
+              setPlaybookFeedback('✨ Nilai form berhasil disinkronkan ulang dari proposal BoonPilot!');
+              setTimeout(() => setPlaybookFeedback(null), 3500);
+            }}
+            className="px-3.5 py-2 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs self-start sm:self-auto cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Terapkan Ulang Proposal</span>
+          </button>
+        </div>
+      )}
 
       {/* DYNAMIC VERTICAL MODULE (Hanya dirender jika kategori LOCAL_SERVICE) */}
       {verticalContent}

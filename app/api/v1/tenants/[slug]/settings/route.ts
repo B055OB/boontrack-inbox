@@ -87,6 +87,9 @@ export async function GET(
           ai_name: `${tenantRow.name} Assistant`,
           system_prompt: `Anda adalah asisten resmi untuk ${tenantRow.name}.`,
         },
+        boonpilot_proposal: metadata.boonpilot_proposal || metadata.boonpilot_configuration || null,
+        boonpilot_configuration: metadata.boonpilot_configuration || metadata.boonpilot_proposal || null,
+        playbook: metadata.playbook || metadata.seller_playbook || null,
         bank: metadata.bank || null,
         integration: metadata.integration || {
           whatsapp_status: 'DISCONNECTED',

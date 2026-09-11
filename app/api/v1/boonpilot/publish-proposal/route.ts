@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
+import { mapProposalToAiForm, mapProposalToPlaybook } from '@/lib/boonpilotMapper';
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,6 +32,9 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
+    const mappedAi = mapProposalToAiForm(publishedProposal);
+    const mappedPlaybook = mapProposalToPlaybook(publishedProposal);
+
     // Update in Supabase (Single Source of Truth)
     try {
       const supabase = getSupabase();
@@ -46,17 +50,31 @@ export async function POST(req: NextRequest) {
           const currentMetadata = tenantData.metadata || {};
           const updatedMetadata = {
             ...currentMetadata,
+            boonpilot_proposal: publishedProposal,
             boonpilot_configuration: publishedProposal,
-            business_category: publishedProposal.business_profile.business_category || currentMetadata.business_category,
+            business_category: publishedProposal.business_profile?.business_category || currentMetadata.business_category,
             business_type: publishedProposal.template_code,
             last_configured_at: new Date().toISOString(),
+            // Sync AI knowledge, persona, and playbook so all endpoints reflect it immediately
+            ai_knowledge: {
+              ...(currentMetadata.ai_knowledge || {}),
+              ...mappedAi,
+              assistant_name: mappedAi.ai_name,
+            },
+            persona: {
+              ...(currentMetadata.persona || {}),
+              ...mappedAi,
+              assistant_name: mappedAi.ai_name,
+            },
+            playbook: mappedPlaybook,
+            seller_playbook: mappedPlaybook,
           };
 
           await supabase
             .from('tenants')
             .update({
               metadata: updatedMetadata,
-              business_category: publishedProposal.business_profile.business_category || undefined,
+              business_category: publishedProposal.business_profile?.business_category || undefined,
               updated_at: new Date().toISOString(),
             })
             .eq('slug', tenantSlug);

@@ -60,6 +60,23 @@ export default function ProposalPreviewCard({
           published_at: new Date().toISOString(),
         };
         setCurrentProposal(published);
+
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(`bt_boonpilot_published_proposal_${tenantSlug}`, JSON.stringify(published));
+            window.dispatchEvent(
+              new CustomEvent('boonpilot-proposal-published', {
+                detail: {
+                  proposal: published,
+                  tenantSlug,
+                },
+              })
+            );
+          } catch (storageErr) {
+            console.warn('Gagal simpan published proposal ke storage:', storageErr);
+          }
+        }
+
         if (onPublishedSuccess) {
           onPublishedSuccess(published);
         }
