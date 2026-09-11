@@ -1,4 +1,23 @@
+const fs = require('fs');
+const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+
+['.env.local', '.env'].forEach((file) => {
+  const fullPath = path.resolve(process.cwd(), file);
+  if (fs.existsSync(fullPath)) {
+    const lines = fs.readFileSync(fullPath, 'utf-8').split('\n');
+    lines.forEach((line) => {
+      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+      if (match) {
+        let val = (match[2] || '').trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        process.env[match[1]] = val;
+      }
+    });
+  }
+});
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
