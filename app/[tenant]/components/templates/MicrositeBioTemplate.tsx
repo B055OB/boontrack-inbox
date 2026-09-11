@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Sparkles,
   ShoppingBag,
@@ -42,10 +42,17 @@ export default function MicrositeBioTemplate({
   onOutboundClick,
 }: MicrositeBioTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
-  const avatarUrl =
-    tenantMetadata?.logo_url ||
-    tenantMetadata?.avatar_url ||
-    'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=400&auto=format&fit=crop&q=80';
+  const avatarUrl = tenantMetadata?.logo_url || tenantMetadata?.avatar_url || '';
+  const [avatarError, setAvatarError] = useState(false);
+
+  const initials =
+    (activeName || 'Store')
+      .split(' ')
+      .map((w: string) => w[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() || 'ST';
 
   const bioText =
     tenantMetadata?.bio ||
@@ -110,8 +117,19 @@ export default function MicrositeBioTemplate({
         {/* Header Profil Brand */}
         <div className="flex flex-col items-center text-center space-y-3 pt-4">
           <div className="relative">
-            <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white shadow-lg shadow-slate-300/40 bg-white">
-              <img src={avatarUrl} alt={activeName} className="w-full h-full object-cover" />
+            <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white shadow-lg shadow-slate-300/40 bg-white flex items-center justify-center">
+              {avatarUrl && !avatarError ? (
+                <img
+                  src={avatarUrl}
+                  alt={activeName}
+                  onError={() => setAvatarError(true)}
+                  className="w-full h-full object-cover rounded-2xl"
+                />
+              ) : (
+                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-center text-white text-2xl font-black shadow-inner">
+                  {initials}
+                </div>
+              )}
             </div>
             <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white rounded-full p-1 border-2 border-white shadow-xs">
               <CheckCircle2 className="w-3.5 h-3.5" />

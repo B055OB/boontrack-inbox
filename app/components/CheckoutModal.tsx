@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock } from "lucide-react";
+import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, trackClientPurchase } from "@/lib/tracking";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
+import { getSupabase } from "@/lib/supabaseClient";
 
 const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
 
@@ -38,6 +39,17 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   } | null>(null);
   const qrData = paymentData;
   const [errorMessage, setErrorMessage] = useState("");
+  const [qrisError, setQrisError] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [tenantPhone, setTenantPhone] = useState<string>("");
+
+  const handleCopy = (text: string, field: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2500);
+    }
+  };
 
   const basePrice = product?.price || 0;
   // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
@@ -51,7 +63,25 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     if (activeRef) {
       setAffiliateCode(activeRef);
     }
-  }, [isOpen]);
+    if (isOpen && tenantSlug) {
+      setQrisError(false);
+      async function loadTenant() {
+        try {
+          const supabase = getSupabase();
+          if (supabase) {
+            const { data } = await supabase
+              .from('tenants')
+              .select('metadata')
+              .eq('slug', tenantSlug)
+              .maybeSingle();
+            const phone = data?.metadata?.whatsapp_number || data?.metadata?.whatsapp || '';
+            if (phone) setTenantPhone(phone);
+          }
+        } catch {}
+      }
+      loadTenant();
+    }
+  }, [isOpen, tenantSlug]);
 
   if (!isOpen || !product) return null;
 
@@ -138,25 +168,94 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 ? generateDynamicQRIS(candidateQris, totalAmount)
                 : candidateQris;
 
+              const cleanWa = (tenantPhone || '6281237450222').replace(/\D/g, '');
+              const waConfirmUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(
+                `Halo Admin, saya ingin konfirmasi pembayaran untuk Order ID: ${paymentData.orderId}\nProduk: ${product.title}\nNominal: Rp ${totalAmount.toLocaleString('id-ID')}`
+              )}`;
+
               return (
-                <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
-                  <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
-                    <QRCodeSVG
-                      value={qrisValue}
-                      size={220}
-                      level="M"
-                      includeMargin={true}
-                    />
+                <div className="space-y-3">
+                  <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
+                    <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
+                      {paymentData.qrCodeUrl && !qrisError ? (
+                        <img
+                          src={paymentData.qrCodeUrl}
+                          alt="QRIS Pembayaran"
+                          onError={() => setQrisError(true)}
+                          className="w-56 h-56 object-contain rounded-xl"
+                        />
+                      ) : (
+                        <QRCodeSVG
+                          value={qrisValue}
+                          size={220}
+                          level="M"
+                          includeMargin={true}
+                        />
+                      )}
+                    </div>
+                    <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
+                      QRIS STANDAR PEMBAYARAN NASIONAL
+                    </div>
+                    <p className="text-[10px] text-slate-500 text-center">
+                      BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
+                    </p>
+                    <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
+                      Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
+                    </p>
                   </div>
-                  <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
-                    QRIS STANDAR PEMBAYARAN NASIONAL
+
+                  {/* Fallback Rekening & Bantuan Transfer Manual jika QRIS berkendala */}
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 text-left text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-blue-400" /> Alternatif Transfer Manual
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">Bebas Biaya</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between p-2 bg-slate-900 rounded-xl border border-slate-800/80">
+                        <div>
+                          <span className="text-[9px] font-bold text-blue-400 block">BANK BCA</span>
+                          <span className="font-mono font-bold text-white text-xs">847-019-2344</span>
+                          <span className="text-[9px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy('8470192344', 'bca')}
+                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                        >
+                          {copiedField === 'bca' ? <><Check className="w-3 h-3 text-emerald-400" /> Tersalin</> : <><Copy className="w-3 h-3" /> Salin</>}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between p-2 bg-slate-900 rounded-xl border border-slate-800/80">
+                        <div>
+                          <span className="text-[9px] font-bold text-amber-400 block">BANK MANDIRI</span>
+                          <span className="font-mono font-bold text-white text-xs">131-00-1892834-1</span>
+                          <span className="text-[9px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy('1310018928341', 'mandiri')}
+                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                        >
+                          {copiedField === 'mandiri' ? <><Check className="w-3 h-3 text-emerald-400" /> Tersalin</> : <><Copy className="w-3 h-3" /> Salin</>}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Tombol Konfirmasi Instan WhatsApp */}
+                    <a
+                      href={waConfirmUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-600/25 cursor-pointer mt-1"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      <span>Konfirmasi Pembayaran via WhatsApp</span>
+                    </a>
                   </div>
-                  <p className="text-[10px] text-slate-500 text-center">
-                    BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
-                  </p>
-                  <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
-                    Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
-                  </p>
                 </div>
               );
             })()}

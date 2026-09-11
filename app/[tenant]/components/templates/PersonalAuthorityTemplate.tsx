@@ -1,11 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Sparkles,
   Award,
   BookOpen,
   Users,
+  User,
   Calendar,
   CheckCircle2,
   ArrowRight,
@@ -94,10 +95,17 @@ export default function PersonalAuthorityTemplate({
   onOutboundClick,
 }: PersonalAuthorityTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
-  const avatarUrl =
-    tenantMetadata?.logo_url ||
-    tenantMetadata?.avatar_url ||
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80';
+  const avatarUrl = tenantMetadata?.logo_url || tenantMetadata?.avatar_url || '';
+  const [avatarError, setAvatarError] = useState(false);
+
+  const initials =
+    (activeName || 'Om Budi')
+      .split(' ')
+      .map((w: string) => w[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() || 'OB';
 
   const headline =
     tenantMetadata?.bio ||
@@ -143,8 +151,19 @@ export default function PersonalAuthorityTemplate({
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/70 sticky top-0 z-30 transition">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl overflow-hidden border border-purple-200/80 shadow-xs bg-purple-50 shrink-0">
-              <img src={avatarUrl} alt={activeName} className="w-full h-full object-cover" />
+            <div className="w-10 h-10 rounded-2xl overflow-hidden border border-purple-200/80 shadow-xs bg-purple-50 shrink-0 flex items-center justify-center">
+              {avatarUrl && !avatarError ? (
+                <img
+                  src={avatarUrl}
+                  alt={activeName}
+                  onError={() => setAvatarError(true)}
+                  className="w-full h-full object-cover rounded-2xl"
+                />
+              ) : (
+                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-center text-white text-xs font-black shadow-inner">
+                  {initials}
+                </div>
+              )}
             </div>
             <div>
               <div className="flex items-center gap-1.5">
@@ -189,12 +208,19 @@ export default function PersonalAuthorityTemplate({
 
           {/* Profile Avatar Showcase */}
           <div className="py-2 flex flex-col items-center justify-center">
-            <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-3xl overflow-hidden p-1 bg-gradient-to-tr from-purple-600 via-indigo-500 to-amber-400 shadow-xl shadow-purple-600/20">
-              <img
-                src={avatarUrl}
-                alt={activeName}
-                className="w-full h-full object-cover rounded-[22px] bg-white"
-              />
+            <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-3xl overflow-hidden p-1 bg-gradient-to-tr from-purple-600 via-indigo-500 to-amber-400 shadow-xl shadow-purple-600/20 flex items-center justify-center">
+              {avatarUrl && !avatarError ? (
+                <img
+                  src={avatarUrl}
+                  alt={activeName}
+                  onError={() => setAvatarError(true)}
+                  className="w-full h-full object-cover rounded-2xl bg-white"
+                />
+              ) : (
+                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-center text-white shadow-inner">
+                  <span className="text-3xl sm:text-4xl font-black tracking-tight">{initials}</span>
+                </div>
+              )}
             </div>
             <div className="mt-3 flex items-center gap-2">
               <span className="text-xs font-bold text-slate-800">{activeName}</span>
@@ -428,8 +454,19 @@ export default function PersonalAuthorityTemplate({
       <footer className="mt-auto bg-slate-900 text-slate-400 py-10 px-4 sm:px-6 border-t border-slate-800 text-xs">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-xl overflow-hidden bg-purple-600 shrink-0">
-              <img src={avatarUrl} alt={activeName} className="w-full h-full object-cover" />
+            <div className="w-7 h-7 rounded-xl overflow-hidden bg-purple-600 shrink-0 flex items-center justify-center">
+              {avatarUrl && !avatarError ? (
+                <img
+                  src={avatarUrl}
+                  alt={activeName}
+                  onError={() => setAvatarError(true)}
+                  className="w-full h-full object-cover rounded-xl"
+                />
+              ) : (
+                <div className="w-full h-full rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-center text-white text-[10px] font-black">
+                  {initials}
+                </div>
+              )}
             </div>
             <span className="font-bold text-white text-sm">{activeName} Official</span>
           </div>

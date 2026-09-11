@@ -324,66 +324,43 @@ export function useTenantDashboard() {
         processedFile = file;
       }
 
-      const baseUrl = (
-        process.env.NEXT_PUBLIC_API_URL ||
-        process.env.NEXT_PUBLIC_CORE_API_URL ||
-        'https://api.boontrack.com'
-      ).replace(/\/+$/, '');
+      let publicUrl = '';
 
-      const primaryUrl = `${baseUrl}/api/v1/upload`;
-      const fallbackUrl = `${baseUrl}/api/v1/media/upload`;
-
-      const formData = new FormData();
-      formData.append('file', processedFile, processedFile.name);
-      formData.append('image', processedFile, processedFile.name);
-      formData.append('tenant_slug', tenantSlug);
-      formData.append('tenant_id', tenantSlug);
-      formData.append('folder', 'qris');
-
-      let authToken: string | null = null;
-      if (typeof window !== 'undefined') {
-        authToken =
-          localStorage.getItem('sb-access-token') ||
-          localStorage.getItem('merchant_token') ||
-          localStorage.getItem('token') ||
-          null;
-      }
-
-      const headers: Record<string, string> = {
-        'X-Tenant-Slug': tenantSlug,
-        'X-Tenant-ID': tenantSlug,
-      };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-
-      let uploadRes: Response;
+      // 1. Direct Supabase Storage Upload (Primary & Permanent)
       try {
-        uploadRes = await fetch(primaryUrl, {
-          method: 'POST',
-          headers,
-          body: formData,
-        });
-      } catch {
-        uploadRes = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers,
-          body: formData,
-        });
+        const supabase = getSupabase();
+        if (supabase) {
+          const sanitizedName = (processedFile.name || 'qris.webp').replace(/[^a-zA-Z0-9.-]/g, '_');
+          const storagePath = `${tenantSlug}/qris/${Date.now()}_${sanitizedName}`;
+          const { data: sbData, error: sbErr } = await supabase.storage
+            .from('store-assets')
+            .upload(storagePath, processedFile, {
+              contentType: processedFile.type || 'image/webp',
+              upsert: true,
+            });
+
+          if (!sbErr && sbData) {
+            const { data: pubData } = supabase.storage
+              .from('store-assets')
+              .getPublicUrl(storagePath);
+            if (pubData?.publicUrl) {
+              publicUrl = pubData.publicUrl;
+            }
+          }
+        }
+      } catch (directErr) {
+        console.warn('Direct Supabase upload error:', directErr);
       }
 
-      if (uploadRes.status === 404) {
-        try {
-          uploadRes = await fetch(fallbackUrl, {
-            method: 'POST',
-            headers,
-            body: formData,
-          });
-        } catch {}
-      }
+      // 2. Fallback via /api/v1/upload
+      if (!publicUrl) {
+        const formData = new FormData();
+        formData.append('file', processedFile, processedFile.name);
+        formData.append('image', processedFile, processedFile.name);
+        formData.append('tenant_slug', tenantSlug);
+        formData.append('tenant_id', tenantSlug);
+        formData.append('folder', 'qris');
 
-      // Fallback ke Next.js proxy /api/v1/upload jika direct core call gagal
-      if (!uploadRes.ok) {
         try {
           const proxyRes = await fetch('/api/v1/upload', {
             method: 'POST',
@@ -394,35 +371,21 @@ export function useTenantDashboard() {
             body: formData,
           });
           if (proxyRes.ok) {
-            uploadRes = proxyRes;
+            const uploadData = await proxyRes.json();
+            publicUrl =
+              uploadData?.url ||
+              uploadData?.image_url ||
+              uploadData?.public_url ||
+              uploadData?.file_url ||
+              (typeof uploadData === 'string' ? uploadData : '');
           }
-        } catch {}
+        } catch (proxyErr) {
+          console.warn('Fallback upload proxy error:', proxyErr);
+        }
       }
-
-      if (!uploadRes.ok) {
-        let serverError = `Upload gagal (${uploadRes.status})`;
-        try {
-          const resText = await uploadRes.text();
-          const errJson = JSON.parse(resText);
-          if (errJson.detail) {
-            serverError = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
-          } else if (errJson.message) {
-            serverError = errJson.message;
-          }
-        } catch {}
-        throw new Error(serverError);
-      }
-
-      const uploadData = await uploadRes.json();
-      const publicUrl =
-        uploadData?.url ||
-        uploadData?.image_url ||
-        uploadData?.public_url ||
-        uploadData?.file_url ||
-        (typeof uploadData === 'string' ? uploadData : '');
 
       if (!publicUrl) {
-        throw new Error('Server tidak mengembalikan URL QRIS yang valid');
+        throw new Error('Gagal mengunggah gambar QRIS ke storage');
       }
 
       setStoreQrisUrl(publicUrl);
@@ -495,65 +458,43 @@ export function useTenantDashboard() {
         processedFile = file;
       }
 
-      const baseUrl = (
-        process.env.NEXT_PUBLIC_API_URL ||
-        process.env.NEXT_PUBLIC_CORE_API_URL ||
-        'https://api.boontrack.com'
-      ).replace(/\/+$/, '');
+      let publicUrl = '';
 
-      const primaryUrl = `${baseUrl}/api/v1/upload`;
-      const fallbackUrl = `${baseUrl}/api/v1/media/upload`;
-
-      const formData = new FormData();
-      formData.append('file', processedFile, processedFile.name);
-      formData.append('image', processedFile, processedFile.name);
-      formData.append('tenant_slug', tenantSlug);
-      formData.append('tenant_id', tenantSlug);
-      formData.append('folder', 'logos');
-
-      let authToken: string | null = null;
-      if (typeof window !== 'undefined') {
-        authToken =
-          localStorage.getItem('sb-access-token') ||
-          localStorage.getItem('merchant_token') ||
-          localStorage.getItem('token') ||
-          null;
-      }
-
-      const headers: Record<string, string> = {
-        'X-Tenant-Slug': tenantSlug,
-        'X-Tenant-ID': tenantSlug,
-      };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
-      }
-
-      let uploadRes: Response;
+      // 1. Direct Supabase Storage Upload (Primary & Permanent)
       try {
-        uploadRes = await fetch(primaryUrl, {
-          method: 'POST',
-          headers,
-          body: formData,
-        });
-      } catch {
-        uploadRes = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers,
-          body: formData,
-        });
+        const supabase = getSupabase();
+        if (supabase) {
+          const sanitizedName = (processedFile.name || 'logo.webp').replace(/[^a-zA-Z0-9.-]/g, '_');
+          const storagePath = `${tenantSlug}/logos/${Date.now()}_${sanitizedName}`;
+          const { data: sbData, error: sbErr } = await supabase.storage
+            .from('store-assets')
+            .upload(storagePath, processedFile, {
+              contentType: processedFile.type || 'image/webp',
+              upsert: true,
+            });
+
+          if (!sbErr && sbData) {
+            const { data: pubData } = supabase.storage
+              .from('store-assets')
+              .getPublicUrl(storagePath);
+            if (pubData?.publicUrl) {
+              publicUrl = pubData.publicUrl;
+            }
+          }
+        }
+      } catch (directErr) {
+        console.warn('Direct Supabase upload error:', directErr);
       }
 
-      if (uploadRes.status === 404) {
-        try {
-          uploadRes = await fetch(fallbackUrl, {
-            method: 'POST',
-            headers,
-            body: formData,
-          });
-        } catch {}
-      }
+      // 2. Fallback via /api/v1/upload
+      if (!publicUrl) {
+        const formData = new FormData();
+        formData.append('file', processedFile, processedFile.name);
+        formData.append('image', processedFile, processedFile.name);
+        formData.append('tenant_slug', tenantSlug);
+        formData.append('tenant_id', tenantSlug);
+        formData.append('folder', 'logos');
 
-      if (!uploadRes.ok) {
         try {
           const proxyRes = await fetch('/api/v1/upload', {
             method: 'POST',
@@ -564,35 +505,21 @@ export function useTenantDashboard() {
             body: formData,
           });
           if (proxyRes.ok) {
-            uploadRes = proxyRes;
+            const uploadData = await proxyRes.json();
+            publicUrl =
+              uploadData?.url ||
+              uploadData?.image_url ||
+              uploadData?.public_url ||
+              uploadData?.file_url ||
+              (typeof uploadData === 'string' ? uploadData : '');
           }
-        } catch {}
+        } catch (proxyErr) {
+          console.warn('Fallback upload proxy error:', proxyErr);
+        }
       }
-
-      if (!uploadRes.ok) {
-        let serverError = `Upload logo gagal (${uploadRes.status})`;
-        try {
-          const resText = await uploadRes.text();
-          const errJson = JSON.parse(resText);
-          if (errJson.detail) {
-            serverError = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
-          } else if (errJson.message) {
-            serverError = errJson.message;
-          }
-        } catch {}
-        throw new Error(serverError);
-      }
-
-      const uploadData = await uploadRes.json();
-      const publicUrl =
-        uploadData?.url ||
-        uploadData?.image_url ||
-        uploadData?.public_url ||
-        uploadData?.file_url ||
-        (typeof uploadData === 'string' ? uploadData : '');
 
       if (!publicUrl) {
-        throw new Error('Server tidak mengembalikan URL logo yang valid');
+        throw new Error('Gagal mengunggah logo ke storage');
       }
 
       setStoreLogoUrl(publicUrl);
