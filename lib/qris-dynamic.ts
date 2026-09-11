@@ -6,8 +6,7 @@
  * Spec reference: QRIS National Standard (Bank Indonesia), EMV QR Code Specification.
  */
 
-/** INTERNAL_TENANTS whose checkout should use BoonTrack's own QRIS with dynamic amount injection. */
-export const INTERNAL_TENANTS = ['onlineboost', 'growth', 'growthplus', 'proscale'];
+// Dynamic QRIS Generator for any standard Indonesian QRIS (EMVCo specification)
 
 /**
  * CRC16-CCITT (polynomial 0x1021, initial 0xFFFF).

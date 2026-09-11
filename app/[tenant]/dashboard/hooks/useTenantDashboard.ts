@@ -162,6 +162,8 @@ export function useTenantDashboard() {
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [storeQrisUrl, setStoreQrisUrl] = useState<string>('');
   const [isUploadingQris, setIsUploadingQris] = useState(false);
+  const [storeLogoUrl, setStoreLogoUrl] = useState<string>('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<DashboardTab>('catalog');
@@ -463,6 +465,175 @@ export function useTenantDashboard() {
     }
   };
 
+  // Logo Toko Upload via Centralized Upload Pipeline
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('File logo harus berupa gambar (JPG, PNG, WebP, dll.)');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert(`Ukuran file logo melebihi 5 MB (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      let processedFile: File;
+      try {
+        processedFile = await optimizeImageToWebP(file, 600, 600, 0.9);
+      } catch {
+        processedFile = file;
+      }
+
+      const baseUrl = (
+        process.env.NEXT_PUBLIC_API_URL ||
+        process.env.NEXT_PUBLIC_CORE_API_URL ||
+        'https://api.boontrack.com'
+      ).replace(/\/+$/, '');
+
+      const primaryUrl = `${baseUrl}/api/v1/upload`;
+      const fallbackUrl = `${baseUrl}/api/v1/media/upload`;
+
+      const formData = new FormData();
+      formData.append('file', processedFile, processedFile.name);
+      formData.append('image', processedFile, processedFile.name);
+      formData.append('tenant_slug', tenantSlug);
+      formData.append('tenant_id', tenantSlug);
+      formData.append('folder', 'logos');
+
+      let authToken: string | null = null;
+      if (typeof window !== 'undefined') {
+        authToken =
+          localStorage.getItem('sb-access-token') ||
+          localStorage.getItem('merchant_token') ||
+          localStorage.getItem('token') ||
+          null;
+      }
+
+      const headers: Record<string, string> = {
+        'X-Tenant-Slug': tenantSlug,
+        'X-Tenant-ID': tenantSlug,
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
+      let uploadRes: Response;
+      try {
+        uploadRes = await fetch(primaryUrl, {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+      } catch {
+        uploadRes = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+      }
+
+      if (uploadRes.status === 404) {
+        try {
+          uploadRes = await fetch(fallbackUrl, {
+            method: 'POST',
+            headers,
+            body: formData,
+          });
+        } catch {}
+      }
+
+      if (!uploadRes.ok) {
+        try {
+          const proxyRes = await fetch('/api/v1/upload', {
+            method: 'POST',
+            headers: {
+              'X-Tenant-Slug': tenantSlug,
+              'X-Tenant-ID': tenantSlug,
+            },
+            body: formData,
+          });
+          if (proxyRes.ok) {
+            uploadRes = proxyRes;
+          }
+        } catch {}
+      }
+
+      if (!uploadRes.ok) {
+        let serverError = `Upload logo gagal (${uploadRes.status})`;
+        try {
+          const resText = await uploadRes.text();
+          const errJson = JSON.parse(resText);
+          if (errJson.detail) {
+            serverError = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+          } else if (errJson.message) {
+            serverError = errJson.message;
+          }
+        } catch {}
+        throw new Error(serverError);
+      }
+
+      const uploadData = await uploadRes.json();
+      const publicUrl =
+        uploadData?.url ||
+        uploadData?.image_url ||
+        uploadData?.public_url ||
+        uploadData?.file_url ||
+        (typeof uploadData === 'string' ? uploadData : '');
+
+      if (!publicUrl) {
+        throw new Error('Server tidak mengembalikan URL logo yang valid');
+      }
+
+      setStoreLogoUrl(publicUrl);
+
+      // Simpan langsung URL logo ke settings API route
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ logo_url: publicUrl }),
+        });
+      } catch (settingsErr) {
+        console.warn('Gagal sync logo_url via API route settings:', settingsErr);
+      }
+
+      try {
+        const supabase = getSupabase();
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        const existingMeta = tenantData?.metadata || {};
+        await supabase
+          .from('tenants')
+          .update({
+            metadata: {
+              ...existingMeta,
+              logo_url: publicUrl,
+            },
+          })
+          .eq('slug', tenantSlug);
+      } catch (supabaseErr) {
+        console.warn('Gagal direct update Supabase metadata logo:', supabaseErr);
+      }
+
+      setSaveFeedback('✅ Logo toko berhasil diupload dan disimpan!');
+      setTimeout(() => setSaveFeedback(null), 3500);
+    } catch (err: any) {
+      console.error('Error uploading logo:', err);
+      alert(err.message || 'Gagal mengunggah logo toko');
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
   // 1. Fetch Tenant Settings from Supabase Directly
   useEffect(() => {
     if (!tenantSlug) return;
@@ -507,6 +678,8 @@ export function useTenantDashboard() {
             tenant.qris_image_url ||
             '';
           if (qrisUrlFromDb) setStoreQrisUrl(qrisUrlFromDb);
+          const logoUrlFromDb = tenant.metadata?.logo_url || tenant.logo_url || '';
+          if (logoUrlFromDb) setStoreLogoUrl(logoUrlFromDb);
 
           // Category
           const rawCat = (tenant.category || tenant.metadata?.vertical_type || tenant.metadata?.business_category || 'PHYSICAL').toUpperCase();
@@ -564,6 +737,7 @@ export function useTenantDashboard() {
           const data = await res.json();
           const s = data.settings || {};
           if (s.qris_image_url) setStoreQrisUrl(s.qris_image_url);
+          if (s.logo_url) setStoreLogoUrl(s.logo_url);
           if (s.bio) setStoreBio(s.bio);
           const aiK = s.ai_knowledge || s.persona || {};
           const loadedStrategy = s.bot_strategy || aiK.bot_strategy || 'trust_builder';
@@ -870,16 +1044,35 @@ export function useTenantDashboard() {
     setIsProductModalOpen(true);
   };
 
-  const handleQuickStockChange = (productId: number, delta: number) => {
-    setProducts(prev =>
-      prev.map(p => {
-        if (p.id === productId) {
+  const handleQuickStockChange = async (productId: number | string, delta: number) => {
+    let updatedProducts: ProductItem[] = [];
+    setProducts(prev => {
+      updatedProducts = prev.map(p => {
+        if (String(p.id) === String(productId)) {
           const newStock = Math.max(0, (p.stock || 0) + delta);
           return { ...p, stock: newStock };
         }
         return p;
-      })
-    );
+      });
+      return updatedProducts;
+    });
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
+      } catch {}
+    }
+
+    const changedProduct = updatedProducts.find(p => String(p.id) === String(productId));
+    if (changedProduct) {
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(changedProduct),
+        });
+      } catch {}
+    }
   };
 
   const handleSaveProductForm = async (e: React.FormEvent) => {
@@ -940,9 +1133,9 @@ export function useTenantDashboard() {
     setTimeout(() => setSaveFeedback(null), 3000);
   };
 
-  const handleDeleteProduct = (id: number) => {
+  const handleDeleteProduct = async (id: number | string) => {
     if (confirm('Hapus produk ini dari etalase toko?')) {
-      const updated = products.filter(p => p.id !== id);
+      const updated = products.filter(p => String(p.id) !== String(id));
       setProducts(updated);
       if (typeof window !== 'undefined') {
         try {
@@ -950,6 +1143,25 @@ export function useTenantDashboard() {
         } catch {}
       }
       setSaveFeedback('🗑️ Produk telah dihapus.');
+
+      // 1. Sync DELETE ke backend API route
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products?id=${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        console.warn('Gagal panggil DELETE produk:', err);
+      }
+
+      // 2. Sync sisa daftar produk ke metadata settings Supabase
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ products: updated }),
+        });
+      } catch {}
+
       setTimeout(() => setSaveFeedback(null), 3000);
     }
   };
@@ -1360,6 +1572,10 @@ export function useTenantDashboard() {
     setStoreQrisUrl,
     isUploadingQris,
     handleQrisUpload,
+    storeLogoUrl,
+    setStoreLogoUrl,
+    isUploadingLogo,
+    handleLogoUpload,
     isStoreSettingsOpen,
     setIsStoreSettingsOpen,
 

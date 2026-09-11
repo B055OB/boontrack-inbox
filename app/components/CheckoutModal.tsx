@@ -5,7 +5,7 @@ import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, L
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, trackClientPurchase } from "@/lib/tracking";
-import { generateDynamicQRIS, INTERNAL_TENANTS } from "@/lib/qris-dynamic";
+import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 
 const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
 
@@ -133,12 +133,10 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
             </div>
 
             {paymentData.paymentMethod === 'qris' && (() => {
-              // Tenant Isolation: Internal tenants use BoonTrack Dynamic QRIS with amount.
-              // External merchants use their own qr_string from backend.
-              const isInternal = INTERNAL_TENANTS.includes(tenantSlug.toLowerCase());
-              const qrisValue = isInternal
-                ? generateDynamicQRIS(STATIC_QRIS, totalAmount)
-                : (paymentData.qr_string || paymentData.qrString || STATIC_QRIS);
+              const candidateQris = paymentData.qr_string || paymentData.qrString || STATIC_QRIS;
+              const qrisValue = candidateQris.includes('010211')
+                ? generateDynamicQRIS(candidateQris, totalAmount)
+                : candidateQris;
 
               return (
                 <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
@@ -156,11 +154,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                   <p className="text-[10px] text-slate-500 text-center">
                     BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
                   </p>
-                  {isInternal && (
-                    <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
-                      Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
-                    </p>
-                  )}
+                  <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
+                    Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
+                  </p>
                 </div>
               );
             })()}

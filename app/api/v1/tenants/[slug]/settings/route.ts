@@ -93,6 +93,7 @@ export async function GET(
           webhook_verified: false,
         },
         qris_image_url: metadata.qris_image_url || metadata.qris_url || null,
+        logo_url: metadata.logo_url || null,
         bio: metadata.bio || null,
         whatsapp_number: metadata.whatsapp_number || metadata.whatsapp || null,
       },
@@ -124,6 +125,7 @@ export async function PUT(
       plan_tier,
       features,
       qris_image_url,
+      logo_url,
       bio,
       whatsapp,
       whatsapp_number,
@@ -154,6 +156,7 @@ export async function PUT(
       ...(bank ? { bank } : {}),
       ...(integration ? { integration } : {}),
       ...(qris_image_url !== undefined ? { qris_image_url, qris_url: qris_image_url } : {}),
+      ...(logo_url !== undefined ? { logo_url } : {}),
       ...(bio !== undefined ? { bio } : {}),
       ...(whatsapp !== undefined ? { whatsapp_number: whatsapp, whatsapp } : {}),
       ...(whatsapp_number !== undefined ? { whatsapp_number, whatsapp: whatsapp_number } : {}),
@@ -208,6 +211,10 @@ export async function PUT(
           qris_image_url !== undefined
             ? qris_image_url
             : (existing.metadata?.qris_image_url || existing.metadata?.qris_url || null),
+        logo_url:
+          logo_url !== undefined
+            ? logo_url
+            : (existing.metadata?.logo_url || null),
       },
     });
   } catch (err: unknown) {

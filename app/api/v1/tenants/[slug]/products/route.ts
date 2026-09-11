@@ -208,7 +208,7 @@ export async function DELETE(
         ? [existing.metadata.product]
         : [];
 
-      remainingProducts = existingProducts.filter((p) => p.id !== id);
+      remainingProducts = existingProducts.filter((p) => String(p.id) !== String(id));
 
       const updatedMetadata = {
         ...(existing?.metadata || {}),

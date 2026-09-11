@@ -23,7 +23,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/tracking';
-import { generateDynamicQRIS, INTERNAL_TENANTS } from '@/lib/qris-dynamic';
+import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 import { resolveFulfillmentRequirements } from '@/lib/product-catalog';
 
@@ -209,12 +209,11 @@ export default function CheckoutPage({ params }: Props) {
 
   const fallbackQrisString = STATIC_QRIS;
   const tenantSlug = (order?.tenant_slug || order?.tenant_id || '').toLowerCase();
-  const isInternalTenant = INTERNAL_TENANTS.includes(tenantSlug);
-  // For internal tenants: generate dynamic QRIS with amount embedded
-  // For external merchants: use their own qr_string from backend as-is
-  const rawQrisValue = isInternalTenant
-    ? generateDynamicQRIS(order?.qr_string || fallbackQrisString, grossAmount)
-    : (order?.qr_string || fallbackQrisString);
+  // Dynamic QRIS: jika QRIS merupakan format statis (010211), ubah jadi dinamis dengan tag amount
+  const candidateQris = order?.qr_string || fallbackQrisString;
+  const rawQrisValue = candidateQris.includes('010211')
+    ? generateDynamicQRIS(candidateQris, grossAmount)
+    : candidateQris;
   const targetWaNumber = getTenantWhatsApp(tenantSlug) || getPlatformWhatsApp();
   const waConfirmUrl = `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(
     `Halo Tim BoonTrack, saya sudah melakukan pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Produk Digital'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\nMohon dicek dan aktivasi akses saya. Terima kasih!`
