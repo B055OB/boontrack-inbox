@@ -20,6 +20,9 @@ import {
   FileText
 } from 'lucide-react';
 import { searchPlatformKnowledge } from '@/lib/boonpilotKnowledge';
+import type { BusinessConfigurationProposal } from '@/types/boonpilot';
+import GuidedSetupInterview from './boonpilot/GuidedSetupInterview';
+import ProposalPreviewCard from './boonpilot/ProposalPreviewCard';
 
 export interface ActionProposal {
   id: string;
@@ -43,6 +46,7 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   action_proposal?: ActionProposal | null;
+  configuration_proposal?: BusinessConfigurationProposal | null;
   quick_actions?: Array<string | QuickActionItem> | null;
 }
 
@@ -58,6 +62,10 @@ interface BoonPilotWidgetProps {
 }
 
 const STARTER_CHIPS = [
+  {
+    label: '🎯 Mulai Guided Setup Toko (AI Interview)',
+    icon: Sparkles,
+  },
   {
     label: '5 Checklist Wajib Siap Jual',
     icon: TrendingUp,
@@ -77,6 +85,10 @@ const STARTER_CHIPS = [
 ];
 
 const EMPTY_PRODUCTS_STARTER_CHIPS = [
+  {
+    label: '🎯 Mulai Guided Setup Toko (AI Interview)',
+    icon: Sparkles,
+  },
   {
     label: '5 Checklist Wajib Siap Jual',
     icon: TrendingUp,
@@ -220,6 +232,7 @@ export default function BoonPilotWidget({
     : tenantSlug || 'onlineboost';
 
   const [isOpen, setIsOpen] = useState(false);
+  const [activeMode, setActiveMode] = useState<'chat' | 'guided_setup'>('chat');
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [executingActionId, setExecutingActionId] = useState<string | null>(null);
@@ -248,6 +261,7 @@ export default function BoonPilotWidget({
   const buildWelcomeQuickActions = (): string[] => {
     if (productsCount === 0) {
       return [
+        '🎯 Mulai Guided Setup Toko (AI Interview)',
         '5 Checklist Wajib Siap Jual',
         '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
         'Apa fungsi download QR meja toko?',
@@ -256,6 +270,7 @@ export default function BoonPilotWidget({
     }
     if (!isQrisUploaded) {
       return [
+        '🎯 Mulai Guided Setup Toko (AI Interview)',
         '5 Checklist Wajib Siap Jual',
         'Apa fungsi download QR meja toko?',
         'Cara melatih AI Knowledge Toko',
@@ -265,6 +280,7 @@ export default function BoonPilotWidget({
     const isTrial = subscriptionPlan === 'SOLO_TRIAL' || subscriptionPlan === 'solo_trial' || subscriptionPlan === 'SOLO';
     if (isTrial) {
       return [
+        '🎯 Mulai Guided Setup Toko (AI Interview)',
         '5 Checklist Wajib Siap Jual',
         '🔥 Bikin promo bundling biar orderan banjir!',
         'Keunggulan paket Ads Performance (Rp 299k)',
@@ -272,6 +288,7 @@ export default function BoonPilotWidget({
       ];
     }
     return [
+      '🎯 Mulai Guided Setup Toko (AI Interview)',
       '5 Checklist Wajib Siap Jual',
       'Performa penjualan toko minggu ini',
       'Optimasi closing rate bot WhatsApp',
@@ -328,14 +345,24 @@ export default function BoonPilotWidget({
   }, []);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && activeMode === 'chat') {
       scrollToBottom();
     }
-  }, [messages, isOpen, scrollToBottom]);
+  }, [messages, isOpen, activeMode, scrollToBottom]);
 
   const handleSendMessage = useCallback(async (textToSend?: string) => {
     const userText = (textToSend || inputText).trim();
     if (!userText || loading) return;
+
+    if (
+      userText.includes('Guided Setup') ||
+      userText.toLowerCase().includes('guided setup') ||
+      userText.toLowerCase().includes('setup terpandu')
+    ) {
+      setActiveMode('guided_setup');
+      setInputText('');
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -608,15 +635,15 @@ export default function BoonPilotWidget({
       {isOpen && (
         <div className="mb-3.5 w-[calc(100vw-32px)] sm:w-[420px] h-[580px] max-h-[85vh] bg-white rounded-3xl shadow-2xl border border-slate-200/80 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200 isolate">
           
-          <div className="px-5 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between border-b border-indigo-900/40 shrink-0">
+          <div className="px-5 py-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between border-b border-indigo-900/40 shrink-0">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                  <Sparkles className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                  <Sparkles className="w-4 h-4" />
                 </div>
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5">
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-slate-900" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-slate-900" />
                 </span>
               </div>
               <div>
@@ -626,9 +653,32 @@ export default function BoonPilotWidget({
                     AI PRO
                   </span>
                 </h3>
-                <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
-                  <span>Copilot &amp; Asisten Toko Anda • Online</span>
-                </p>
+                <div className="flex items-center gap-1 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveMode('chat')}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                      activeMode === 'chat'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-400 hover:text-white bg-slate-800/60'
+                    }`}
+                  >
+                    <MessageSquare className="w-2.5 h-2.5" />
+                    <span>Chat</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveMode('guided_setup')}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                      activeMode === 'guided_setup'
+                        ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-2xs'
+                        : 'text-slate-400 hover:text-white bg-slate-800/60'
+                    }`}
+                  >
+                    <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                    <span>Setup Terpandu</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -637,7 +687,7 @@ export default function BoonPilotWidget({
                 type="button"
                 onClick={handleResetChat}
                 title="Mulai Sesi Baru"
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -645,229 +695,279 @@ export default function BoonPilotWidget({
                 type="button"
                 onClick={() => setIsOpen(false)}
                 title="Tutup BoonPilot Copilot"
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50/50">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex flex-col ${
-                  m.sender === 'user' ? 'items-end' : 'items-start'
-                }`}
-              >
-                <div className="flex items-end gap-2 max-w-[90%]">
-                  {m.sender === 'assistant' && (
-                    <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 mb-1 shadow-xs text-[10px]">
-                      <Bot className="w-3.5 h-3.5" />
-                    </div>
-                  )}
-
+          {activeMode === 'guided_setup' ? (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <GuidedSetupInterview
+                tenantSlug={normalizedSlug}
+                onFinish={(publishedProposal) => {
+                  const successMsg: ChatMessage = {
+                    id: `ast_${Date.now()}`,
+                    sender: 'assistant',
+                    text: `🎉 **Konfigurasi Bisnis Toko Berhasil Diaktifkan (PUBLISHED)!**\n\n` +
+                      `• **Template Bisnis:** \`${publishedProposal.template_code}\`\n` +
+                      `• **Profil Bisnis:** ${publishedProposal.business_profile.store_name}\n` +
+                      `• **Aturan Pembayaran:** Waktu & metode pelunasan telah tersimpan.\n` +
+                      `• **Syarat Booking:** Form reservasi pelanggan telah disinkronkan.\n` +
+                      `• **Knowledge Base:** Kebijakan garansi & penanganan harga mahal siap dipakai Bot WhatsApp.\n\n` +
+                      `Bot WhatsApp dan sistem checkout Anda kini beroperasi dengan konfigurasi baru!`,
+                    timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                    configuration_proposal: publishedProposal,
+                  };
+                  setMessages((prev) => [...prev, successMsg]);
+                  setActiveMode('chat');
+                }}
+                onCancel={() => setActiveMode('chat')}
+              />
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50/50">
+                {messages.map((m) => (
                   <div
-                    className={`rounded-2xl px-4 py-3 shadow-xs ${
-                      m.sender === 'user'
-                        ? 'bg-blue-600 text-white rounded-br-xs'
-                        : 'bg-white border border-slate-200/80 text-slate-800 rounded-bl-xs'
+                    key={m.id}
+                    className={`flex flex-col ${
+                      m.sender === 'user' ? 'items-end' : 'items-start'
                     }`}
                   >
-                    {m.sender === 'user' ? (
-                      <p className="text-xs leading-relaxed whitespace-pre-wrap">{m.text}</p>
-                    ) : (
-                      <MarkdownContent content={m.text} />
-                    )}
-                  </div>
-                </div>
+                    <div className="flex items-end gap-2 max-w-[90%]">
+                      {m.sender === 'assistant' && (
+                        <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 mb-1 shadow-xs text-[10px]">
+                          <Bot className="w-3.5 h-3.5" />
+                        </div>
+                      )}
 
-                {m.action_proposal && (
-                  <div className="mt-2.5 ml-8 max-w-[85%] w-full bg-white border border-indigo-200 rounded-2xl p-3.5 shadow-sm space-y-3 animate-in fade-in slide-in-from-top-2">
-                    <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="p-1 rounded-lg bg-indigo-50 text-indigo-600">
-                          <Zap className="w-4 h-4" />
-                        </span>
-                        <h4 className="font-black text-xs text-indigo-950">
-                          {m.action_proposal.title}
-                        </h4>
+                      <div
+                        className={`rounded-2xl px-4 py-3 shadow-xs ${
+                          m.sender === 'user'
+                            ? 'bg-blue-600 text-white rounded-br-xs'
+                            : 'bg-white border border-slate-200/80 text-slate-800 rounded-bl-xs'
+                        }`}
+                      >
+                        {m.sender === 'user' ? (
+                          <p className="text-xs leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                        ) : (
+                          <MarkdownContent content={m.text} />
+                        )}
                       </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">
-                        Proposal
-                      </span>
                     </div>
 
-                    <div className="text-xs font-semibold text-slate-800 leading-snug">
-                      {m.action_proposal.description}
-                    </div>
+                    {m.configuration_proposal && (
+                      <div className="mt-2.5 ml-8 max-w-[92%] w-full">
+                        <ProposalPreviewCard
+                          proposal={m.configuration_proposal}
+                          tenantSlug={normalizedSlug}
+                          onEdit={() => setActiveMode('guided_setup')}
+                        />
+                      </div>
+                    )}
 
-                    {m.action_proposal.details && (
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1 text-[11px]">
-                        {Object.entries(m.action_proposal.details).map(([k, v]) => (
-                          <div key={k} className="flex justify-between gap-2">
-                            <span className="text-slate-500 font-medium">{k}:</span>
-                            <span className="text-slate-900 font-bold truncate">{String(v)}</span>
+                    {m.action_proposal && (
+                      <div className="mt-2.5 ml-8 max-w-[85%] w-full bg-white border border-indigo-200 rounded-2xl p-3.5 shadow-sm space-y-3 animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="p-1 rounded-lg bg-indigo-50 text-indigo-600">
+                              <Zap className="w-4 h-4" />
+                            </span>
+                            <h4 className="font-black text-xs text-indigo-950">
+                              {m.action_proposal.title}
+                            </h4>
                           </div>
-                        ))}
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">
+                            Proposal
+                          </span>
+                        </div>
+
+                        <div className="text-xs font-semibold text-slate-800 leading-snug">
+                          {m.action_proposal.description}
+                        </div>
+
+                        {m.action_proposal.details && (
+                          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1 text-[11px]">
+                            {Object.entries(m.action_proposal.details).map(([k, v]) => (
+                              <div key={k} className="flex justify-between gap-2">
+                                <span className="text-slate-500 font-medium">{k}:</span>
+                                <span className="text-slate-900 font-bold truncate">{String(v)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {m.action_proposal.status === 'pending' && (
+                          <div className="pt-1 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleActionDecision(m.id, m.action_proposal!, true)}
+                              disabled={executingActionId === m.action_proposal.id}
+                              className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                            >
+                              {executingActionId === m.action_proposal.id ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Mengeksekusi...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Eksekusi Sekarang</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleActionDecision(m.id, m.action_proposal!, false)}
+                              disabled={executingActionId === m.action_proposal.id}
+                              className="py-2 px-3 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 rounded-xl text-xs font-bold transition cursor-pointer"
+                            >
+                              ✕ Batalkan
+                            </button>
+                          </div>
+                        )}
+
+                        {m.action_proposal.status === 'executing' && (
+                          <div className="p-2 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold flex items-center justify-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                            <span>Menerapkan perubahan ke sistem toko...</span>
+                          </div>
+                        )}
+
+                        {m.action_proposal.status === 'executed' && (
+                          <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                            <span className="leading-snug">
+                              {m.action_proposal.result_message || 'Aksi berhasil dieksekusi secara instan!'}
+                            </span>
+                          </div>
+                        )}
+
+                        {m.action_proposal.status === 'rejected' && (
+                          <div className="p-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-2">
+                            <X className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Aksi dibatalkan. Tidak ada perubahan data.</span>
+                          </div>
+                        )}
+
+                        {m.action_proposal.status === 'failed' && (
+                          <div className="p-2 rounded-xl bg-rose-50 text-rose-700 text-xs font-semibold flex items-center gap-2">
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                            <span>{m.action_proposal.result_message || 'Gagal mengeksekusi aksi.'}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {m.action_proposal.status === 'pending' && (
-                      <div className="pt-1 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleActionDecision(m.id, m.action_proposal!, true)}
-                          disabled={executingActionId === m.action_proposal.id}
-                          className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-                        >
-                          {executingActionId === m.action_proposal.id ? (
-                            <>
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              <span>Mengeksekusi...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Eksekusi Sekarang</span>
-                            </>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleActionDecision(m.id, m.action_proposal!, false)}
-                          disabled={executingActionId === m.action_proposal.id}
-                          className="py-2 px-3 bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 rounded-xl text-xs font-bold transition cursor-pointer"
-                        >
-                          ✕ Batalkan
-                        </button>
+                    {m.sender === 'assistant' && m.quick_actions && m.quick_actions.length > 0 && (
+                      <div className="mt-2.5 ml-8 flex flex-wrap gap-1.5 animate-in fade-in slide-in-from-top-1">
+                        {m.quick_actions.map((item, aIdx) => {
+                          const label = typeof item === 'string' ? item : item.label;
+                          return (
+                            <button
+                              key={aIdx}
+                              type="button"
+                              disabled={loading}
+                              onClick={() => {
+                                if (label.includes('Guided Setup') || label.toLowerCase().includes('guided setup')) {
+                                  setActiveMode('guided_setup');
+                                } else {
+                                  handleSendMessage(label);
+                                }
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-blue-50/90 hover:bg-blue-100 text-blue-700 border border-blue-200/90 text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                            >
+                              <Sparkles className="w-3 h-3 text-blue-600 shrink-0" />
+                              <span>{label}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
 
-                    {m.action_proposal.status === 'executing' && (
-                      <div className="p-2 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold flex items-center justify-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                        <span>Menerapkan perubahan ke sistem toko...</span>
-                      </div>
-                    )}
+                    <span className="text-[10px] text-slate-400 mt-1 px-1">
+                      {m.timestamp}
+                    </span>
+                  </div>
+                ))}
 
-                    {m.action_proposal.status === 'executed' && (
-                      <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <span className="leading-snug">
-                          {m.action_proposal.result_message || 'Aksi berhasil dieksekusi secara instan!'}
-                        </span>
-                      </div>
-                    )}
-
-                    {m.action_proposal.status === 'rejected' && (
-                      <div className="p-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-semibold flex items-center gap-2">
-                        <X className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Aksi dibatalkan. Tidak ada perubahan data.</span>
-                      </div>
-                    )}
-
-                    {m.action_proposal.status === 'failed' && (
-                      <div className="p-2 rounded-xl bg-rose-50 text-rose-700 text-xs font-semibold flex items-center gap-2">
-                        <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
-                        <span>{m.action_proposal.result_message || 'Gagal mengeksekusi aksi.'}</span>
-                      </div>
-                    )}
+                {loading && (
+                  <div className="flex items-end gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 mb-1 text-[10px]">
+                      <Bot className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-xs flex items-center gap-2 text-slate-500 text-xs font-medium">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                      <span>BoonPilot sedang menganalisis...</span>
+                    </div>
                   </div>
                 )}
 
-                {m.sender === 'assistant' && m.quick_actions && m.quick_actions.length > 0 && (
-                  <div className="mt-2.5 ml-8 flex flex-wrap gap-1.5 animate-in fade-in slide-in-from-top-1">
-                    {m.quick_actions.map((item, aIdx) => {
-                      const label = typeof item === 'string' ? item : item.label;
+                <div ref={messagesEndRef} />
+              </div>
+
+              {!hasUserMessages && (
+                <div className="p-3 bg-slate-100/70 border-t border-slate-200/80 space-y-1.5">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block px-1">
+                    Saran Pertanyaan Cepat:
+                  </span>
+                  <div className="flex flex-col gap-1.5">
+                    {(isProductsEmpty ? EMPTY_PRODUCTS_STARTER_CHIPS : STARTER_CHIPS).map((chip, idx) => {
+                      const Icon = chip.icon;
                       return (
                         <button
-                          key={aIdx}
+                          key={idx}
                           type="button"
                           disabled={loading}
-                          onClick={() => handleSendMessage(label)}
-                          className="px-2.5 py-1.5 rounded-xl bg-blue-50/90 hover:bg-blue-100 text-blue-700 border border-blue-200/90 text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                          onClick={() => {
+                            if (chip.label.includes('Guided Setup') || chip.label.toLowerCase().includes('guided setup')) {
+                              setActiveMode('guided_setup');
+                            } else {
+                              handleSendMessage(chip.label);
+                            }
+                          }}
+                          className="w-full text-left p-2 rounded-xl bg-white hover:bg-blue-50/80 hover:text-blue-700 border border-slate-200/80 text-slate-700 text-xs font-semibold transition flex items-center gap-2 shadow-2xs group cursor-pointer disabled:opacity-50"
                         >
-                          <Sparkles className="w-3 h-3 text-blue-600 shrink-0" />
-                          <span>{label}</span>
+                          <span className="p-1 rounded-lg bg-slate-50 group-hover:bg-blue-100 text-slate-500 group-hover:text-blue-600 shrink-0">
+                            <Icon className="w-3.5 h-3.5" />
+                          </span>
+                          <span className="truncate">{chip.label}</span>
                         </button>
                       );
                     })}
                   </div>
-                )}
-
-                <span className="text-[10px] text-slate-400 mt-1 px-1">
-                  {m.timestamp}
-                </span>
-              </div>
-            ))}
-
-            {loading && (
-              <div className="flex items-end gap-2">
-                <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 mb-1 text-[10px]">
-                  <Bot className="w-3.5 h-3.5" />
                 </div>
-                <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-xs flex items-center gap-2 text-slate-500 text-xs font-medium">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                  <span>BoonPilot sedang menganalisis...</span>
-                </div>
-              </div>
-            )}
+              )}
 
-            <div ref={messagesEndRef} />
-          </div>
-
-          {!hasUserMessages && (
-            <div className="p-3 bg-slate-100/70 border-t border-slate-200/80 space-y-1.5">
-              <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block px-1">
-                Saran Pertanyaan Cepat:
-              </span>
-              <div className="flex flex-col gap-1.5">
-                {(isProductsEmpty ? EMPTY_PRODUCTS_STARTER_CHIPS : STARTER_CHIPS).map((chip, idx) => {
-                  const Icon = chip.icon;
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      disabled={loading}
-                      onClick={() => handleSendMessage(chip.label)}
-                      className="w-full text-left p-2 rounded-xl bg-white hover:bg-blue-50/80 hover:text-blue-700 border border-slate-200/80 text-slate-700 text-xs font-semibold transition flex items-center gap-2 shadow-2xs group cursor-pointer disabled:opacity-50"
-                    >
-                      <span className="p-1 rounded-lg bg-slate-50 group-hover:bg-blue-100 text-slate-500 group-hover:text-blue-600 shrink-0">
-                        <Icon className="w-3.5 h-3.5" />
-                      </span>
-                      <span className="truncate">{chip.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMessage();
+                }}
+                className="p-3 bg-white border-t border-slate-200 flex items-center gap-2 shrink-0"
+              >
+                <input
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder="Tanya BoonPilot seputar jualan &amp; otomasi toko..."
+                  disabled={loading}
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 transition"
+                />
+                <button
+                  type="submit"
+                  disabled={!inputText.trim() || loading}
+                  className="p-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl transition cursor-pointer shadow-sm disabled:cursor-not-allowed"
+                  title="Kirim Pesan"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+            </>
           )}
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendMessage();
-            }}
-            className="p-3 bg-white border-t border-slate-200 flex items-center gap-2 shrink-0"
-          >
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="Tanya BoonPilot seputar jualan &amp; otomasi toko..."
-              disabled={loading}
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 transition"
-            />
-            <button
-              type="submit"
-              disabled={!inputText.trim() || loading}
-              className="p-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl transition cursor-pointer shadow-sm disabled:cursor-not-allowed"
-              title="Kirim Pesan"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
 
         </div>
       )}
