@@ -17,6 +17,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { optimizeImageToWebP } from '@/components/ImageUpload';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm } from '@/lib/boonpilotMapper';
+import type { InteractiveMenu } from '@/lib/whatsappFormatter';
 
 export type DashboardTab =
   | 'inbox'
@@ -273,6 +274,7 @@ export function useTenantDashboard() {
     system_prompt: `Anda adalah asisten resmi untuk toko ${displayName.toUpperCase()}. Bantu pelanggan mengenai katalog produk, materi, dan transaksi pembayaran QRIS otomatis.`,
   });
   const [faqs, setFaqs] = useState<Array<{ id: string; question: string; answer: string }>>([]);
+  const [interactiveMenus, setInteractiveMenus] = useState<InteractiveMenu[]>([]);
   const [isSavingAi, setIsSavingAi] = useState(false);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [botStrategy, setBotStrategy] = useState<'trust_builder' | 'balanced' | 'hard_selling'>('trust_builder');
@@ -813,6 +815,9 @@ export function useTenantDashboard() {
                   answer: k.content,
                 }));
               if (faqK.length > 0) setFaqs(faqK);
+            }
+            if (Array.isArray(s.interactive_menus) && s.interactive_menus.length > 0) {
+              setInteractiveMenus(s.interactive_menus);
             }
 
             const payout = s.payout || {};
@@ -1510,6 +1515,7 @@ export function useTenantDashboard() {
         system_prompt: aiForm.system_prompt,
         bot_strategy: botStrategy,
         faqs,
+        interactive_menus: interactiveMenus,
         ai_knowledge: {
           ai_name: aiForm.ai_name,
           assistant_name: aiForm.ai_name,
@@ -1706,6 +1712,8 @@ export function useTenantDashboard() {
     setAiForm,
     faqs,
     setFaqs,
+    interactiveMenus,
+    setInteractiveMenus,
     botStrategy,
     setBotStrategy,
     isSavingAi,

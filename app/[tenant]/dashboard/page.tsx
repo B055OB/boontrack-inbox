@@ -112,6 +112,8 @@ export default function TenantDashboardPage() {
     setAiForm,
     faqs,
     setFaqs,
+    interactiveMenus,
+    setInteractiveMenus,
     botStrategy,
     setBotStrategy,
     isSavingAi,
@@ -311,6 +313,8 @@ export default function TenantDashboardPage() {
           setAiForm={setAiForm}
           faqs={faqs}
           setFaqs={setFaqs}
+          interactiveMenus={interactiveMenus}
+          setInteractiveMenus={setInteractiveMenus}
           botStrategy={botStrategy}
           setBotStrategy={setBotStrategy}
           handleSaveAiKnowledge={handleSaveAiKnowledge}

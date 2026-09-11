@@ -15,11 +15,14 @@ import {
   HelpCircle,
   Plus,
   Trash2,
+  ListOrdered,
 } from 'lucide-react';
 import BotSimulatorModal from './BotSimulatorModal';
 import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm, mapProposalToPlaybook } from '@/lib/boonpilotMapper';
+import type { InteractiveMenu, InteractiveMenuOption } from '@/lib/whatsappFormatter';
+export type { InteractiveMenu, InteractiveMenuOption };
 
 export interface AiKnowledgeForm {
   ai_name: string;
@@ -67,6 +70,8 @@ export interface AiKnowledgeTabProps {
   setAiForm: React.Dispatch<React.SetStateAction<AiKnowledgeForm>>;
   faqs?: FaqItem[];
   setFaqs?: React.Dispatch<React.SetStateAction<FaqItem[]>>;
+  interactiveMenus?: InteractiveMenu[];
+  setInteractiveMenus?: React.Dispatch<React.SetStateAction<InteractiveMenu[]>>;
   botStrategy?: BotStrategy;
   setBotStrategy?: React.Dispatch<React.SetStateAction<BotStrategy>>;
   handleSaveAiKnowledge: (e?: React.FormEvent) => void | Promise<void>;
@@ -90,6 +95,8 @@ export default function AiKnowledgeTab({
   setAiForm,
   faqs: propFaqs,
   setFaqs: propSetFaqs,
+  interactiveMenus: propInteractiveMenus,
+  setInteractiveMenus: propSetInteractiveMenus,
   botStrategy,
   setBotStrategy,
   handleSaveAiKnowledge,
@@ -159,6 +166,118 @@ export default function AiKnowledgeTab({
       } catch {}
     }
   }, [currentFaqs, tenantSlug]);
+
+  // Interactive Menus State & Handlers
+  const [internalInteractiveMenus, setInternalInteractiveMenus] = useState<InteractiveMenu[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const currentSlug = (tenantSlug || '').trim().toLowerCase();
+        const saved =
+          localStorage.getItem(`bt_interactive_menus_${currentSlug}`) ||
+          localStorage.getItem(`bt_interactive_menus_${tenantSlug}`) ||
+          (currentSlug === 'sandbox' ? localStorage.getItem('bt_interactive_menus_sandbox') : null);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const currentInteractiveMenus = propInteractiveMenus ?? internalInteractiveMenus;
+  const updateInteractiveMenus = propSetInteractiveMenus ?? setInternalInteractiveMenus;
+
+  const handleAddMenu = () => {
+    const newMenu: InteractiveMenu = {
+      id: `menu_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      trigger: '',
+      title: '',
+      description: 'Silakan pilih salah satu opsi di bawah ini:',
+      options: [
+        {
+          id: `opt_${Date.now()}_1`,
+          title: '',
+          description: '',
+          responseText: '',
+        },
+      ],
+    };
+    updateInteractiveMenus((prev) => [...prev, newMenu]);
+  };
+
+  const handleDeleteMenu = (menuId: string) => {
+    updateInteractiveMenus((prev) => prev.filter((m) => m.id !== menuId));
+  };
+
+  const handleUpdateMenuField = (
+    menuId: string,
+    field: 'trigger' | 'title' | 'description',
+    value: string
+  ) => {
+    updateInteractiveMenus((prev) =>
+      prev.map((m) => (m.id === menuId ? { ...m, [field]: value } : m))
+    );
+  };
+
+  const handleAddMenuOption = (menuId: string) => {
+    updateInteractiveMenus((prev) =>
+      prev.map((m) => {
+        if (m.id !== menuId) return m;
+        const newOpt: InteractiveMenuOption = {
+          id: `opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          title: '',
+          description: '',
+          responseText: '',
+        };
+        return {
+          ...m,
+          options: [...(m.options || []), newOpt],
+        };
+      })
+    );
+  };
+
+  const handleUpdateMenuOption = (
+    menuId: string,
+    optionId: string,
+    field: keyof InteractiveMenuOption,
+    value: string
+  ) => {
+    updateInteractiveMenus((prev) =>
+      prev.map((m) => {
+        if (m.id !== menuId) return m;
+        return {
+          ...m,
+          options: (m.options || []).map((opt) =>
+            opt.id === optionId ? { ...opt, [field]: value } : opt
+          ),
+        };
+      })
+    );
+  };
+
+  const handleDeleteMenuOption = (menuId: string, optionId: string) => {
+    updateInteractiveMenus((prev) =>
+      prev.map((m) => {
+        if (m.id !== menuId) return m;
+        return {
+          ...m,
+          options: (m.options || []).filter((opt) => opt.id !== optionId),
+        };
+      })
+    );
+  };
+
+  // Sync Interactive Menus to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const currentSlug = (tenantSlug || '').trim().toLowerCase();
+        localStorage.setItem(`bt_interactive_menus_${currentSlug}`, JSON.stringify(currentInteractiveMenus));
+      } catch {}
+    }
+  }, [currentInteractiveMenus, tenantSlug]);
 
   // Seller Conversation Playbook State
   const [internalPlaybook, setInternalPlaybook] = useState<SellerConversationPlaybook>(() => {
@@ -815,6 +934,267 @@ export default function AiKnowledgeTab({
                 <span>+ Tambah Pertanyaan Lainnya</span>
               </button>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* KARTU MENU NAVIGASI BOT & PILIHAN CEPAT (INTERACTIVE MENU) */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
+              <ListOrdered className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-slate-800 tracking-tight">
+                  Menu Navigasi Bot & Pilihan Cepat (Interactive Menu)
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                  {currentInteractiveMenus.length} Menu
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Kelola menu navigasi atau daftar pilihan interaktif (seperti materi Mood Booster atau ukuran toren) yang otomatis disesuaikan dengan gateway WhatsApp Anda.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAddMenu}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-xl text-xs transition border border-emerald-200/80 shadow-2xs cursor-pointer active:scale-95 shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Tambah Menu Baru</span>
+          </button>
+        </div>
+
+        {/* Adapter Format Banner */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-xs">
+          <div className="flex items-start gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+            <div>
+              <span className="font-bold text-slate-700">WABA (Cloud API):</span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Diformat otomatis menjadi <strong className="text-slate-700">Interactive Buttons</strong> jika ≤ 3 opsi, atau <strong className="text-slate-700">Interactive Section List</strong> jika &gt; 3 opsi.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
+            <div>
+              <span className="font-bold text-slate-700">WAHA (Web/Baileys):</span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Diformat otomatis menjadi <strong className="text-slate-700">Teks Berpenomoran (1, 2, 3...)</strong> yang ramah dibaca dan diproses parser chat.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {currentInteractiveMenus.length === 0 ? (
+          <div className="text-center py-8 px-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+            <ListOrdered className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs font-semibold text-slate-600">Belum ada Menu Navigasi Interaktif</p>
+            <p className="text-[11px] text-slate-400 max-w-md mx-auto mt-1 mb-4">
+              Buat menu interaktif untuk mempermudah pembeli memilih materi atau produk cepat tanpa mengetik manual.
+            </p>
+            <button
+              type="button"
+              onClick={handleAddMenu}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition shadow-xs cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Buat Menu Navigasi Pertama</span>
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {currentInteractiveMenus.map((menu, menuIdx) => (
+              <div
+                key={menu.id || `menu-${menuIdx}`}
+                className="p-5 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-200 transition space-y-4"
+              >
+                {/* Menu Header / Trigger Bar */}
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold">
+                      {menuIdx + 1}
+                    </span>
+                    <h4 className="text-xs font-bold text-slate-800">
+                      Menu #{menuIdx + 1}: {menu.trigger || 'Menu Baru'}
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteMenu(menu.id)}
+                    className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer text-xs flex items-center gap-1"
+                    title="Hapus Menu Ini"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-medium">Hapus Menu</span>
+                  </button>
+                </div>
+
+                {/* Input Trigger & Deskripsi */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Header / Trigger Menu <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={menu.trigger}
+                      onChange={(e) => handleUpdateMenuField(menu.id, 'trigger', e.target.value)}
+                      placeholder="Contoh: Pilih Informasi Mood Booster / Pilih Kapasitas Toren"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Header pesan atau topik utama yang ditampilkan saat bot menyajikan menu ini.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Petunjuk Pengantar (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={menu.description || ''}
+                      onChange={(e) => handleUpdateMenuField(menu.id, 'description', e.target.value)}
+                      placeholder="Contoh: Silakan pilih salah satu opsi di bawah ini:"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Teks instruksi singkat untuk pelanggan sebelum memilih opsi.
+                    </p>
+                  </div>
+                </div>
+
+                {/* List Dinamis Pilihan Menu */}
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-700">
+                        Daftar Pilihan ({menu.options?.length || 0} Opsi)
+                      </span>
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-200/70 text-slate-600">
+                        {(menu.options?.length || 0) <= 3 ? 'WABA: Buttons' : 'WABA: Section List'}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAddMenuOption(menu.id)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition border border-emerald-200/60 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Tambah Opsi</span>
+                    </button>
+                  </div>
+
+                  {(!menu.options || menu.options.length === 0) ? (
+                    <div className="text-center py-5 px-3 rounded-xl border border-dashed border-slate-200 bg-white/70">
+                      <p className="text-xs text-slate-500">Belum ada opsi pada menu ini.</p>
+                      <button
+                        type="button"
+                        onClick={() => handleAddMenuOption(menu.id)}
+                        className="mt-2 text-xs font-bold text-emerald-600 hover:underline cursor-pointer"
+                      >
+                        + Tambah Opsi Pertama
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {menu.options.map((opt, optIdx) => (
+                        <div
+                          key={opt.id || `opt-${optIdx}`}
+                          className="p-3.5 bg-white rounded-xl border border-slate-200/90 space-y-2.5 shadow-2xs group"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                              <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-[9px] font-bold">
+                                {optIdx + 1}
+                              </span>
+                              <span>Pilihan #{optIdx + 1}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMenuOption(menu.id, opt.id)}
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer text-xs flex items-center gap-1"
+                              title="Hapus Opsi"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span className="text-[10px] hidden group-hover:inline">Hapus</span>
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                                Judul Opsi (max 24 karakter) <span className="text-rose-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                maxLength={24}
+                                value={opt.title}
+                                onChange={(e) =>
+                                  handleUpdateMenuOption(menu.id, opt.id, 'title', e.target.value)
+                                }
+                                placeholder="Contoh: Tentang Zoom Booster / Toren 250 - 500L"
+                                className="w-full px-3 py-1.5 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                                Deskripsi Singkat / Harga (max 72 karakter)
+                              </label>
+                              <input
+                                type="text"
+                                maxLength={72}
+                                value={opt.description || ''}
+                                onChange={(e) =>
+                                  handleUpdateMenuOption(menu.id, opt.id, 'description', e.target.value)
+                                }
+                                placeholder="Contoh: Penjelasan materi & bedah energi / Rp150.000"
+                                className="w-full px-3 py-1.5 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                              Teks Respons Bot saat opsi dipilih <span className="text-rose-500">*</span>
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={opt.responseText}
+                              onChange={(e) =>
+                                handleUpdateMenuOption(menu.id, opt.id, 'responseText', e.target.value)
+                              }
+                              placeholder="Contoh: Sesi Zoom Booster diadakan setiap Sabtu pagi via Zoom. Materi mencakup pemetaan energi, tanya jawab live, dan rekaman materi seumur hidup."
+                              className="w-full px-3 py-1.5 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition leading-relaxed"
+                            />
+                          </div>
+                        </div>
+                      ))}
+
+                      <div className="pt-1 flex justify-start">
+                        <button
+                          type="button"
+                          onClick={() => handleAddMenuOption(menu.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 rounded-lg transition border border-transparent hover:border-emerald-200 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Tambah Opsi Lainnya</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

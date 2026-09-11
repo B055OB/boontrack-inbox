@@ -48,6 +48,9 @@ export async function GET(
             if (tenantRow?.metadata?.faqs) {
               data.settings.faqs = tenantRow.metadata.faqs;
             }
+            if (tenantRow?.metadata?.interactive_menus) {
+              data.settings.interactive_menus = tenantRow.metadata.interactive_menus;
+            }
           } catch {}
           return NextResponse.json(data);
         }
@@ -127,6 +130,7 @@ export async function GET(
                     answer: k.content,
                   }))
               : []),
+        interactive_menus: Array.isArray(metadata.interactive_menus) ? metadata.interactive_menus : [],
       },
     });
   } catch (err: unknown) {
@@ -161,6 +165,7 @@ export async function PUT(
       whatsapp,
       whatsapp_number,
       faqs,
+      interactive_menus,
     } = body;
 
     const supabase = getSupabase();
@@ -205,6 +210,7 @@ export async function PUT(
       ...(bank ? { bank } : {}),
       ...(integration ? { integration } : {}),
       ...(faqs !== undefined ? { faqs } : {}),
+      ...(interactive_menus !== undefined ? { interactive_menus } : {}),
       ...(updatedProposal ? { boonpilot_proposal: updatedProposal, boonpilot_configuration: updatedProposal } : {}),
       ...(qris_image_url !== undefined ? { qris_image_url, qris_url: qris_image_url } : {}),
       ...(logo_url !== undefined ? { logo_url } : {}),
@@ -257,6 +263,7 @@ export async function PUT(
         products,
         ai_knowledge,
         faqs: updatedMetadata.faqs || [],
+        interactive_menus: updatedMetadata.interactive_menus || [],
         bank,
         integration,
         qris_image_url:
