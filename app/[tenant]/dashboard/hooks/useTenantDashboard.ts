@@ -272,6 +272,7 @@ export function useTenantDashboard() {
     tone: 'casual',
     system_prompt: `Anda adalah asisten resmi untuk toko ${displayName.toUpperCase()}. Bantu pelanggan mengenai katalog produk, materi, dan transaksi pembayaran QRIS otomatis.`,
   });
+  const [faqs, setFaqs] = useState<Array<{ id: string; question: string; answer: string }>>([]);
   const [isSavingAi, setIsSavingAi] = useState(false);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [botStrategy, setBotStrategy] = useState<'trust_builder' | 'balanced' | 'hard_selling'>('trust_builder');
@@ -801,6 +802,19 @@ export function useTenantDashboard() {
               system_prompt: proposalAi?.system_prompt || aiK.system_prompt || s.system_prompt || prev.system_prompt,
               tone: proposalAi?.tone || aiK.tone || prev.tone,
             }));
+            if (Array.isArray(s.faqs) && s.faqs.length > 0) {
+              setFaqs(s.faqs);
+            } else if (proposal?.knowledge) {
+              const faqK = proposal.knowledge
+                .filter(k => k.category === 'FAQ')
+                .map((k, idx) => ({
+                  id: k.id || `faq_${idx}`,
+                  question: k.title,
+                  answer: k.content,
+                }));
+              if (faqK.length > 0) setFaqs(faqK);
+            }
+
             const payout = s.payout || {};
             if (payout.bank_name || payout.account_number || payout.account_holder) {
               setBankForm({
@@ -828,6 +842,16 @@ export function useTenantDashboard() {
                 system_prompt: proposalAi.system_prompt,
                 tone: proposalAi.tone,
               }));
+              if (proposal.knowledge) {
+                const faqK = proposal.knowledge
+                  .filter((k: any) => k.category === 'FAQ')
+                  .map((k: any, idx: number) => ({
+                    id: k.id || `faq_${idx}`,
+                    question: k.title,
+                    answer: k.content,
+                  }));
+                if (faqK.length > 0) setFaqs(faqK);
+              }
             }
           } catch {}
         }
@@ -853,6 +877,16 @@ export function useTenantDashboard() {
           tone: mapped.tone,
           system_prompt: mapped.system_prompt,
         });
+        if (proposal.knowledge) {
+          const faqK = proposal.knowledge
+            .filter(k => k.category === 'FAQ')
+            .map((k, idx) => ({
+              id: k.id || `faq_${idx}`,
+              question: k.title,
+              answer: k.content,
+            }));
+          if (faqK.length > 0) setFaqs(faqK);
+        }
       }
     };
 
@@ -1475,6 +1509,7 @@ export function useTenantDashboard() {
         assistant_name: aiForm.ai_name,
         system_prompt: aiForm.system_prompt,
         bot_strategy: botStrategy,
+        faqs,
         ai_knowledge: {
           ai_name: aiForm.ai_name,
           assistant_name: aiForm.ai_name,
@@ -1669,6 +1704,8 @@ export function useTenantDashboard() {
     // AI Knowledge & Strategy
     aiForm,
     setAiForm,
+    faqs,
+    setFaqs,
     botStrategy,
     setBotStrategy,
     isSavingAi,

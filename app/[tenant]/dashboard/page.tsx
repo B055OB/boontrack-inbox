@@ -110,6 +110,8 @@ export default function TenantDashboardPage() {
 
     aiForm,
     setAiForm,
+    faqs,
+    setFaqs,
     botStrategy,
     setBotStrategy,
     isSavingAi,
@@ -307,6 +309,8 @@ export default function TenantDashboardPage() {
           tenantSlug={tenantSlug}
           aiForm={aiForm}
           setAiForm={setAiForm}
+          faqs={faqs}
+          setFaqs={setFaqs}
           botStrategy={botStrategy}
           setBotStrategy={setBotStrategy}
           handleSaveAiKnowledge={handleSaveAiKnowledge}

@@ -45,6 +45,9 @@ export async function GET(
               data.settings.boonpilot_proposal = tenantRow.metadata.boonpilot_proposal;
               data.settings.boonpilot_configuration = tenantRow.metadata.boonpilot_configuration || tenantRow.metadata.boonpilot_proposal;
             }
+            if (tenantRow?.metadata?.faqs) {
+              data.settings.faqs = tenantRow.metadata.faqs;
+            }
           } catch {}
           return NextResponse.json(data);
         }
@@ -113,6 +116,17 @@ export async function GET(
         logo_url: metadata.logo_url || null,
         bio: metadata.bio || null,
         whatsapp_number: metadata.whatsapp_number || metadata.whatsapp || null,
+        faqs: Array.isArray(metadata.faqs)
+          ? metadata.faqs
+          : (Array.isArray(metadata.boonpilot_proposal?.knowledge)
+              ? metadata.boonpilot_proposal.knowledge
+                  .filter((k: any) => k.category === 'FAQ')
+                  .map((k: any) => ({
+                    id: k.id || `faq_${Math.random().toString(36).substring(2, 7)}`,
+                    question: k.title,
+                    answer: k.content,
+                  }))
+              : []),
       },
     });
   } catch (err: unknown) {
@@ -146,6 +160,7 @@ export async function PUT(
       bio,
       whatsapp,
       whatsapp_number,
+      faqs,
     } = body;
 
     const supabase = getSupabase();
@@ -162,6 +177,23 @@ export async function PUT(
     const updatedTier = plan_tier || existing.tier;
     const updatedFeatures = features || existing.metadata?.features || {};
 
+    let updatedProposal = existing.metadata?.boonpilot_proposal || existing.metadata?.boonpilot_configuration || null;
+    if (faqs !== undefined && updatedProposal) {
+      const faqKnowledgeItems = (Array.isArray(faqs) ? faqs : []).map((f: any, idx: number) => ({
+        id: f.id || `faq_${Date.now()}_${idx}`,
+        category: 'FAQ',
+        title: f.question || '',
+        content: f.answer || '',
+        priority: 8,
+      }));
+      const nonFaqItems = (updatedProposal.knowledge || []).filter((k: any) => k.category !== 'FAQ');
+      updatedProposal = {
+        ...updatedProposal,
+        knowledge: [...nonFaqItems, ...faqKnowledgeItems],
+        updated_at: new Date().toISOString(),
+      };
+    }
+
     const updatedMetadata = {
       ...(existing.metadata || {}),
       ...(bot_strategy ? { bot_strategy } : {}),
@@ -172,6 +204,8 @@ export async function PUT(
       ...(ai_knowledge ? { ai_knowledge } : {}),
       ...(bank ? { bank } : {}),
       ...(integration ? { integration } : {}),
+      ...(faqs !== undefined ? { faqs } : {}),
+      ...(updatedProposal ? { boonpilot_proposal: updatedProposal, boonpilot_configuration: updatedProposal } : {}),
       ...(qris_image_url !== undefined ? { qris_image_url, qris_url: qris_image_url } : {}),
       ...(logo_url !== undefined ? { logo_url } : {}),
       ...(bio !== undefined ? { bio } : {}),
@@ -222,6 +256,7 @@ export async function PUT(
         product,
         products,
         ai_knowledge,
+        faqs: updatedMetadata.faqs || [],
         bank,
         integration,
         qris_image_url:

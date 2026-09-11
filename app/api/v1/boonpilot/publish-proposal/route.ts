@@ -47,10 +47,19 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         const currentMetadata = tenantData?.metadata || {};
+        const faqKnowledge = (publishedProposal.knowledge || [])
+          .filter(k => k.category === 'FAQ')
+          .map((k, idx) => ({
+            id: k.id || `faq_${Date.now()}_${idx}`,
+            question: k.title,
+            answer: k.content,
+          }));
+
         const updatedMetadata = {
           ...currentMetadata,
           boonpilot_proposal: publishedProposal,
           boonpilot_configuration: publishedProposal,
+          faqs: faqKnowledge.length > 0 ? faqKnowledge : (currentMetadata.faqs || []),
           business_category: publishedProposal.business_profile?.business_category || currentMetadata.business_category || 'FIELD_SERVICE',
           business_type: publishedProposal.template_code,
           vertical_type: publishedProposal.template_code,

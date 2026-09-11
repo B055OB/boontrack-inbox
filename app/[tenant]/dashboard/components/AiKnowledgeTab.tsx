@@ -9,11 +9,12 @@ import {
   Bot,
   ShieldCheck,
   CheckCircle2,
-  MessageSquare,
-  Target,
   BookOpen,
   Check,
   RotateCcw,
+  HelpCircle,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import BotSimulatorModal from './BotSimulatorModal';
 import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
@@ -27,6 +28,12 @@ export interface AiKnowledgeForm {
 }
 
 export type BotStrategy = 'trust_builder' | 'balanced' | 'hard_selling';
+
+export interface FaqItem {
+  id: string;
+  question: string;
+  answer: string;
+}
 
 export interface SellerConversationPlaybook {
   persona: {
@@ -58,14 +65,16 @@ export interface AiKnowledgeTabProps {
   tenantSlug: string;
   aiForm: AiKnowledgeForm;
   setAiForm: React.Dispatch<React.SetStateAction<AiKnowledgeForm>>;
-  botStrategy: BotStrategy;
-  setBotStrategy: React.Dispatch<React.SetStateAction<BotStrategy>>;
+  faqs?: FaqItem[];
+  setFaqs?: React.Dispatch<React.SetStateAction<FaqItem[]>>;
+  botStrategy?: BotStrategy;
+  setBotStrategy?: React.Dispatch<React.SetStateAction<BotStrategy>>;
   handleSaveAiKnowledge: (e?: React.FormEvent) => void | Promise<void>;
-  handleSaveBotStrategy: (strategyOverride?: BotStrategy) => void | Promise<void>;
+  handleSaveBotStrategy?: (strategyOverride?: BotStrategy) => void | Promise<void>;
   isSavingAi: boolean;
   isLoadingAi: boolean;
-  isSavingStrategy: boolean;
-  strategyFeedback: string | null;
+  isSavingStrategy?: boolean;
+  strategyFeedback?: string | null;
   isSimulatorOpen?: boolean;
   setIsSimulatorOpen?: React.Dispatch<React.SetStateAction<boolean>>;
   storeCategory?: string;
@@ -79,6 +88,8 @@ export default function AiKnowledgeTab({
   tenantSlug,
   aiForm,
   setAiForm,
+  faqs: propFaqs,
+  setFaqs: propSetFaqs,
   botStrategy,
   setBotStrategy,
   handleSaveAiKnowledge,
@@ -98,6 +109,56 @@ export default function AiKnowledgeTab({
   const [internalSimulatorOpen, setInternalSimulatorOpen] = useState(false);
   const simulatorOpen = isSimulatorOpen !== undefined ? isSimulatorOpen : internalSimulatorOpen;
   const setSimulatorOpen = setIsSimulatorOpen || setInternalSimulatorOpen;
+
+  // FAQ Knowledge Base State
+  const [internalFaqs, setInternalFaqs] = useState<FaqItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const currentSlug = (tenantSlug || '').trim().toLowerCase();
+        const saved =
+          localStorage.getItem(`bt_faqs_${currentSlug}`) ||
+          localStorage.getItem(`bt_faqs_${tenantSlug}`) ||
+          (currentSlug === 'sandbox' ? localStorage.getItem('bt_faqs_sandbox') : null);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const currentFaqs = propFaqs ?? internalFaqs;
+  const updateFaqs = propSetFaqs ?? setInternalFaqs;
+
+  const handleAddFaq = () => {
+    const newFaq: FaqItem = {
+      id: `faq_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      question: '',
+      answer: '',
+    };
+    updateFaqs((prev) => [...prev, newFaq]);
+  };
+
+  const handleUpdateFaq = (id: string, field: 'question' | 'answer', value: string) => {
+    updateFaqs((prev) =>
+      prev.map((faq) => (faq.id === id ? { ...faq, [field]: value } : faq))
+    );
+  };
+
+  const handleDeleteFaq = (id: string) => {
+    updateFaqs((prev) => prev.filter((faq) => faq.id !== id));
+  };
+
+  // Sync FAQs to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const currentSlug = (tenantSlug || '').trim().toLowerCase();
+        localStorage.setItem(`bt_faqs_${currentSlug}`, JSON.stringify(currentFaqs));
+      } catch {}
+    }
+  }, [currentFaqs, tenantSlug]);
 
   // Seller Conversation Playbook State
   const [internalPlaybook, setInternalPlaybook] = useState<SellerConversationPlaybook>(() => {
@@ -159,6 +220,20 @@ export default function AiKnowledgeTab({
       const mappedPlaybook = mapProposalToPlaybook(proposal);
       updatePlaybook(mappedPlaybook);
 
+      // Hydrate FAQs from knowledge
+      if (proposal.knowledge) {
+        const faqKnowledge = proposal.knowledge
+          .filter((k: any) => k.category === 'FAQ')
+          .map((k: any, idx: number) => ({
+            id: k.id || `faq_${idx}`,
+            question: k.title,
+            answer: k.content,
+          }));
+        if (faqKnowledge.length > 0) {
+          updateFaqs(faqKnowledge);
+        }
+      }
+
       // Persist to local storage
       if (typeof window !== 'undefined') {
         try {
@@ -175,7 +250,7 @@ export default function AiKnowledgeTab({
 
     window.addEventListener('boonpilot-proposal-published', handleProposalPublished);
     return () => window.removeEventListener('boonpilot-proposal-published', handleProposalPublished);
-  }, [tenantSlug, setAiForm, updatePlaybook]);
+  }, [tenantSlug, setAiForm, updatePlaybook, updateFaqs]);
 
   // 3. Hydrate from storage or settings API on mount
   useEffect(() => {
@@ -197,15 +272,19 @@ export default function AiKnowledgeTab({
         } catch {}
       }
 
-      if (!loadedProposal) {
-        try {
-          const res = await fetch(`/api/v1/tenants/${encodeURIComponent(currentSlug)}/settings`);
-          if (res.ok) {
-            const data = await res.json();
+      // Query settings API for both proposal and faqs
+      try {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(currentSlug)}/settings`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!loadedProposal) {
             loadedProposal = data.settings?.boonpilot_proposal || data.settings?.boonpilot_configuration || null;
           }
-        } catch {}
-      }
+          if (Array.isArray(data.settings?.faqs) && data.settings.faqs.length > 0) {
+            updateFaqs(data.settings.faqs);
+          }
+        }
+      } catch {}
 
       if (loadedProposal && isMounted) {
         setActiveProposal(loadedProposal);
@@ -221,6 +300,19 @@ export default function AiKnowledgeTab({
 
         updatePlaybook(mappedPlaybook);
 
+        if (loadedProposal.knowledge) {
+          const faqKnowledge = loadedProposal.knowledge
+            .filter((k: any) => k.category === 'FAQ')
+            .map((k: any, idx: number) => ({
+              id: k.id || `faq_${idx}`,
+              question: k.title,
+              answer: k.content,
+            }));
+          if (faqKnowledge.length > 0) {
+            updateFaqs((prev) => (prev.length === 0 ? faqKnowledge : prev));
+          }
+        }
+
         if (typeof window !== 'undefined') {
           try {
             localStorage.setItem(`bt_seller_playbook_${currentSlug}`, JSON.stringify(mappedPlaybook));
@@ -234,7 +326,7 @@ export default function AiKnowledgeTab({
     return () => {
       isMounted = false;
     };
-  }, [tenantSlug, setAiForm, updatePlaybook]);
+  }, [tenantSlug, setAiForm, updatePlaybook, updateFaqs]);
 
   const handleSavePlaybook = async () => {
     setIsSavingPlaybook(true);
@@ -296,22 +388,38 @@ export default function AiKnowledgeTab({
             <span>AI Knowledge & Bot Persona</span>
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Atur identitas asisten, gaya komunikasi, playbook percakapan seller, dan instruksi sistem (system prompt) yang digunakan model LLM saat membalas pesan WhatsApp.
+            Atur identitas asisten, gaya komunikasi, playbook percakapan seller, FAQ knowledge base, dan instruksi sistem (system prompt) yang digunakan model LLM saat membalas pesan WhatsApp.
           </p>
         </div>
-        <button
-          onClick={() => handleSaveAiKnowledge()}
-          disabled={isSavingAi || isLoadingAi}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
-        >
-          {isSavingAi ? (
-            <Loader2 className="w-4 h-4 animate-spin text-white" />
-          ) : (
-            <Save className="w-4 h-4 text-white" />
-          )}
-          <span>{isSavingAi ? 'Menyimpan...' : 'Simpan Persona AI'}</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setSimulatorOpen(true)}
+            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-xs cursor-pointer"
+          >
+            <Bot className="w-4 h-4 text-emerald-400" />
+            <span>Test Simulator Bot</span>
+          </button>
+          <button
+            onClick={() => handleSaveAiKnowledge()}
+            disabled={isSavingAi || isLoadingAi}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+          >
+            {isSavingAi ? (
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
+            ) : (
+              <Save className="w-4 h-4 text-white" />
+            )}
+            <span>{isSavingAi ? 'Menyimpan...' : 'Simpan Persona AI'}</span>
+          </button>
+        </div>
       </div>
+
+      <BotSimulatorModal
+        tenantSlug={tenantSlug}
+        isOpen={simulatorOpen}
+        onClose={() => setSimulatorOpen(false)}
+      />
 
       {/* BOONPILOT ACTIVE PROPOSAL BANNER */}
       {activeProposal && (
@@ -372,222 +480,6 @@ export default function AiKnowledgeTab({
           <span>Memuat konfigurasi AI dari server...</span>
         </div>
       )}
-
-      {/* KARTU PENGATURAN STRATEGI RESPON & PERSONA BOT WHATSAPP */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-emerald-600" />
-              <h3 className="text-sm sm:text-base font-black text-slate-900">
-                Strategi Respon & Persona Bot WhatsApp
-              </h3>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                AI Persona Tuning
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">
-              Pilih gaya interaksi bot WhatsApp yang paling sesuai dengan tahap bisnis, tingkat kepercayaan calon pembeli, dan karakteristik traffic Anda.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => setSimulatorOpen(true)}
-              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-md cursor-pointer"
-            >
-              <Bot className="w-4 h-4 text-emerald-400" />
-              <span>Test Simulator Bot</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSaveBotStrategy()}
-              disabled={isSavingStrategy || isLoadingAi}
-              className="self-start sm:self-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
-            >
-              {isSavingStrategy ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-              ) : (
-                <Save className="w-3.5 h-3.5 text-white" />
-              )}
-              <span>{isSavingStrategy ? 'Menyimpan...' : 'Simpan Pengaturan Persona'}</span>
-            </button>
-          </div>
-
-          <BotSimulatorModal
-            tenantSlug={tenantSlug}
-            isOpen={simulatorOpen}
-            onClose={() => setSimulatorOpen(false)}
-          />
-        </div>
-
-        {strategyFeedback && (
-          <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{strategyFeedback}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div
-            onClick={() => {
-              setBotStrategy('trust_builder');
-              handleSaveBotStrategy('trust_builder');
-            }}
-            className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-4 ${
-              botStrategy === 'trust_builder'
-                ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
-                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-            }`}
-          >
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div className="w-6 h-6 flex items-center justify-center">
-                  {botStrategy === 'trust_builder' ? (
-                    <CheckCircle2 className="w-6 h-6 text-emerald-600 fill-emerald-100" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-slate-300" />
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 mb-2">
-                  Direkomendasikan untuk Toko Baru
-                </span>
-                <h4 className="text-xs font-black text-slate-900 leading-snug">
-                  Mode Toko Baru (Bangun Kepercayaan & Konsultatif)
-                </h4>
-              </div>
-
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Bot menjawab ramah, penuh empati, mengedukasi calon pembeli, serta menegaskan garansi produk tanpa terburu-buru menyodorkan link pembayaran.
-              </p>
-            </div>
-
-            <div className="pt-3 border-t border-emerald-100/70 flex items-center justify-between text-[11px] font-bold text-emerald-700">
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span>value: trust_builder</span>
-              </span>
-              {botStrategy === 'trust_builder' && (
-                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-600 text-white">
-                  TERPILIH
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div
-            onClick={() => {
-              setBotStrategy('balanced');
-              handleSaveBotStrategy('balanced');
-            }}
-            className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-4 ${
-              botStrategy === 'balanced'
-                ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
-                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-            }`}
-          >
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
-                  <MessageSquare className="w-5 h-5" />
-                </div>
-                <div className="w-6 h-6 flex items-center justify-center">
-                  {botStrategy === 'balanced' ? (
-                    <CheckCircle2 className="w-6 h-6 text-emerald-600 fill-emerald-100" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-slate-300" />
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200 mb-2">
-                  Default
-                </span>
-                <h4 className="text-xs font-black text-slate-900 leading-snug">
-                  Mode Seimbang (Tanya Jawab Fleksibel)
-                </h4>
-              </div>
-
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Menjawab dalam 2-3 kalimat ringkas, menjelaskan poin manfaat utama, lalu menawarkan konfirmasi untuk mengamankan stok produk.
-              </p>
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-blue-700">
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                <span>value: balanced</span>
-              </span>
-              {botStrategy === 'balanced' && (
-                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-600 text-white">
-                  TERPILIH
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div
-            onClick={() => {
-              setBotStrategy('hard_selling');
-              handleSaveBotStrategy('hard_selling');
-            }}
-            className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-4 ${
-              botStrategy === 'hard_selling'
-                ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
-                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-            }`}
-          >
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
-                  <Target className="w-5 h-5" />
-                </div>
-                <div className="w-6 h-6 flex items-center justify-center">
-                  {botStrategy === 'hard_selling' ? (
-                    <CheckCircle2 className="w-6 h-6 text-emerald-600 fill-emerald-100" />
-                  ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-slate-300" />
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200 mb-2">
-                  Cocok untuk Iklan Berbayar
-                </span>
-                <h4 className="text-xs font-black text-slate-900 leading-snug">
-                  Mode Penjualan Cepat (Hard Selling / Fast-Track)
-                </h4>
-              </div>
-
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Respon super ringkas 1-2 kalimat, mengonfirmasi stok ready, dan langsung memberikan tautan checkout atau kode QRIS instan untuk memangkas drop-off.
-              </p>
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-amber-700">
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <span>value: hard_selling</span>
-              </span>
-              {botStrategy === 'hard_selling' && (
-                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-600 text-white">
-                  TERPILIH
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* KARTU PLAYBOOK SKEMA PERCAKAPAN SELLER (UNIFIED NATURAL ENGINE) */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-6 shadow-xs">
@@ -808,6 +700,123 @@ export default function AiKnowledgeTab({
             Instruksi ketat yang WAJIB ditaati bot saat berdialog dengan pembeli.
           </p>
         </div>
+      </div>
+
+      {/* KARTU FAQ KNOWLEDGE BASE (TANYA JAWAB PELANGGAN) */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+              <HelpCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-slate-800 tracking-tight">
+                  FAQ Knowledge Base (Tanya Jawab Pelanggan)
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                  {currentFaqs.length} Item
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Daftar pertanyaan umum & jawaban standar agar bot AI merespon dengan cepat, konsisten, dan akurat.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleAddFaq}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl text-xs transition border border-indigo-200/80 shadow-2xs cursor-pointer active:scale-95 shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tambah Tanya Jawab</span>
+          </button>
+        </div>
+
+        {currentFaqs.length === 0 ? (
+          <div className="text-center py-8 px-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+            <HelpCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs font-semibold text-slate-600">Belum ada daftar Tanya Jawab (FAQ)</p>
+            <p className="text-[11px] text-slate-400 max-w-md mx-auto mt-1 mb-4">
+              Tambahkan pertanyaan yang paling sering diajukan pelanggan seperti garansi, waktu respon, jangkauan servis, atau pengiriman.
+            </p>
+            <button
+              type="button"
+              onClick={handleAddFaq}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs transition shadow-xs cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Tambah Tanya Jawab Pertama</span>
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {currentFaqs.map((faq, index) => (
+              <div
+                key={faq.id || `faq-${index}`}
+                className="p-4 bg-slate-50/80 hover:bg-slate-50 rounded-2xl border border-slate-200 transition space-y-3 relative group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                      {index + 1}
+                    </span>
+                    <span>Tanya Jawab #{index + 1}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteFaq(faq.id)}
+                    className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer text-xs flex items-center gap-1"
+                    title="Hapus Tanya Jawab"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-medium hidden group-hover:inline">Hapus</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Pertanyaan Pelanggan
+                    </label>
+                    <input
+                      type="text"
+                      value={faq.question}
+                      onChange={(e) => handleUpdateFaq(faq.id, "question", e.target.value)}
+                      placeholder="Contoh: Apakah melayani perbaikan di hari libur / weekend?"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                      Jawaban Bot
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={faq.answer}
+                      onChange={(e) => handleUpdateFaq(faq.id, "answer", e.target.value)}
+                      placeholder="Contoh: Ya Kak, kami tetap melayani di hari Sabtu dan Minggu tanpa biaya tambahan."
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition leading-relaxed"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <div className="pt-1 flex justify-start">
+              <button
+                type="button"
+                onClick={handleAddFaq}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition border border-transparent hover:border-indigo-200 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Tambah Pertanyaan Lainnya</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* FORM IDENTITAS AI & SYSTEM PROMPT */}
