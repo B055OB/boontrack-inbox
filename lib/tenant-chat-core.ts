@@ -70,7 +70,7 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
   const menuMatch = findMenuResponseAcrossMenus(interactiveMenus, inputKey);
   if (menuMatch) {
     return {
-      reply_text: menuMatch.option.responseText,
+      reply_text: menuMatch.option.responseText || menuMatch.option.response_text || '',
       action: "MENU_OPTION_REPLY",
       type: "TEXT"
     };

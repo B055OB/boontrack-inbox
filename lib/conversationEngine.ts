@@ -118,7 +118,7 @@ export class ConversationEngine {
     if (menuMatch) {
       trace.push('FAST_PATH_MENU_REPLY');
       return {
-        reply: menuMatch.option.responseText,
+        reply: menuMatch.option.responseText || menuMatch.option.response_text || '',
         next_state: session.current_state,
         state_trace: trace,
         entities,

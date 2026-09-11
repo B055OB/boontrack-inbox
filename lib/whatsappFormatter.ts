@@ -9,14 +9,18 @@ export interface InteractiveMenuOption {
   id: string;
   title: string;          // Judul Opsi (max 24 karakter untuk list WABA, 20 untuk button)
   description?: string;    // Deskripsi singkat / harga (max 72 karakter)
-  responseText: string;    // Teks balasan bot ketika opsi ini dipilih
+  responseText?: string;   // Teks balasan bot ketika opsi ini dipilih
+  response_text?: string;  // Dukungan alternatif format snake_case
 }
 
 export interface InteractiveMenu {
   id: string;
-  trigger: string;         // Header / Trigger Menu (misal: "Pilih Informasi Mood Booster" atau "Pilih Kapasitas Toren")
+  trigger?: string;         // Header / Trigger Menu (misal: "Pilih Informasi Mood Booster" atau "Pilih Kapasitas Toren")
+  trigger_keyword?: string; // Dukungan alternatif snake_case
   title?: string;          // Judul display alternatif
+  header_text?: string;    // Dukungan alternatif snake_case
   description?: string;    // Deskripsi pengantar / petunjuk
+  body_text?: string;      // Dukungan alternatif snake_case
   options: InteractiveMenuOption[];
 }
 
@@ -71,9 +75,10 @@ export interface WabaInteractivePayload {
  * - Max buttons: 3, Max rows: 10
  */
 export function formatWabaInteractive(menuData: InteractiveMenu): WabaInteractivePayload {
-  const headerText = String(menuData.trigger || menuData.title || 'Pilih Menu').slice(0, 60);
+  const headerText = String(menuData.trigger || menuData.header_text || menuData.trigger_keyword || menuData.title || 'Pilih Menu').slice(0, 60);
   const bodyText = String(
     menuData.description ||
+    menuData.body_text ||
     'Silakan pilih salah satu opsi di bawah ini untuk melanjutkan:'
   ).slice(0, 1024);
   const footerText = 'BoonTrack AI Assistant'.slice(0, 60);
@@ -117,7 +122,7 @@ export function formatWabaInteractive(menuData: InteractiveMenu): WabaInteractiv
     description: opt.description ? String(opt.description).slice(0, 72) : undefined,
   }));
 
-  const sectionTitle = String(menuData.title || menuData.trigger || 'Daftar Pilihan').slice(0, 24);
+  const sectionTitle = String(menuData.title || menuData.header_text || menuData.trigger || 'Daftar Pilihan').slice(0, 24);
 
   return {
     type: 'interactive',
@@ -150,8 +155,9 @@ export function formatWabaInteractive(menuData: InteractiveMenu): WabaInteractiv
  * Format teks bernomor untuk WAHA / Baileys
  */
 export function formatWahaInteractive(menuData: InteractiveMenu): string {
-  const header = (menuData.trigger || menuData.title || 'PILIHAN MENU').toUpperCase();
-  const desc = menuData.description ? `${menuData.description}\n\n` : '';
+  const header = String(menuData.header_text || menuData.trigger || menuData.trigger_keyword || menuData.title || 'PILIHAN MENU').toUpperCase();
+  const rawDesc = menuData.description || menuData.body_text;
+  const desc = rawDesc ? `${rawDesc}\n\n` : '';
   const options = Array.isArray(menuData.options) ? menuData.options : [];
 
   if (options.length === 0) {
@@ -263,7 +269,7 @@ export function findMatchingMenuTrigger(
   }
 
   for (const menu of menus) {
-    const trigger = (menu.trigger || menu.title || '').trim().toLowerCase();
+    const trigger = String(menu.trigger || menu.trigger_keyword || menu.header_text || menu.title || '').trim().toLowerCase();
     if (trigger && (clean === trigger || clean.includes(trigger) || trigger.includes(clean))) {
       return menu;
     }
@@ -279,11 +285,11 @@ export function formatInteractiveMenusSummary(menus: InteractiveMenu[]): string 
   if (!Array.isArray(menus) || menus.length === 0) return '';
   return menus
     .map((m, idx) => {
-      const header = m.trigger || m.title || `Menu ${idx + 1}`;
+      const header = m.header_text || m.trigger || m.trigger_keyword || m.title || `Menu ${idx + 1}`;
       const opts = (m.options || [])
         .map(
           (o, oIdx) =>
-            `  ${oIdx + 1}. [${o.title}]${o.description ? ` (${o.description})` : ''}: ${o.responseText}`
+            `  ${oIdx + 1}. [${o.title}]${o.description ? ` (${o.description})` : ''}: ${o.responseText || o.response_text || ''}`
         )
         .join('\n');
       return `### Menu ${idx + 1}: ${header}\n${opts}`;
