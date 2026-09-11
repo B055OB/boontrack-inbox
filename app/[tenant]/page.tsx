@@ -19,6 +19,8 @@ import {
 import ShopClaimSection from "@/app/components/ShopClaimSection";
 import BarcodeScannerModal from './dashboard/components/BarcodeScannerModal';
 import CheckoutModal from "@/app/components/CheckoutModal";
+import PersonalAuthorityTemplate from './components/templates/PersonalAuthorityTemplate';
+import MicrositeBioTemplate from './components/templates/MicrositeBioTemplate';
 import { 
   captureAffiliateReferral, 
   initSellerTracking, 
@@ -27,7 +29,7 @@ import {
 } from "@/lib/tracking";
 import { getSupabase } from "@/lib/supabaseClient";
 
-interface Product {
+export interface Product {
   id: number | string;
   name: string;
   category: string;
@@ -103,8 +105,61 @@ export default function TenantStorefrontPage() {
   const tenantSlug = rawTenant.toLowerCase().trim();
   const displayName = tenantSlug.replace(/[-_]/g, " ");
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [tenantMetadata, setTenantMetadata] = useState<any>(null);
 
-  // 0. CAPTURE AFFILIATE REFERRAL & SELLER TRACKING
+  // 0. CAPTURE UTM TRACKING PARAMETERS TO SESSION STORAGE
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const utm_source = urlParams.get("utm_source");
+      const utm_medium = urlParams.get("utm_medium");
+      const utm_campaign = urlParams.get("utm_campaign");
+      const utm_content = urlParams.get("utm_content");
+      const utm_term = urlParams.get("utm_term");
+
+      if (utm_source || utm_medium || utm_campaign) {
+        const utmData = {
+          utm_source: utm_source || "",
+          utm_medium: utm_medium || "",
+          utm_campaign: utm_campaign || "",
+          utm_content: utm_content || "",
+          utm_term: utm_term || "",
+          captured_at: new Date().toISOString(),
+        };
+        sessionStorage.setItem("boontrack_utm", JSON.stringify(utmData));
+      }
+    } catch (err) {
+      console.warn("[Tracking] UTM capture error:", err);
+    }
+  }, []);
+
+  const handleOutboundClick = (url: string, label: string) => {
+    if (typeof window === "undefined") return;
+    let finalUrl = url;
+    try {
+      const storedUtmStr = sessionStorage.getItem("boontrack_utm");
+      if (storedUtmStr) {
+        const utm = JSON.parse(storedUtmStr);
+        if (!url.includes("utm_source")) {
+          const separator = url.includes("?") ? "&" : "?";
+          const paramsObj: Record<string, string> = {};
+          Object.entries(utm).forEach(([k, v]) => {
+            if (k.startsWith("utm_") && typeof v === "string" && v) {
+              paramsObj[k] = v;
+            }
+          });
+          const query = new URLSearchParams(paramsObj).toString();
+          if (query) {
+            finalUrl = `${url}${separator}${query}`;
+          }
+        }
+      }
+    } catch {}
+    window.open(finalUrl, "_blank", "noopener,noreferrer");
+  };
+
+  // 0b. CAPTURE AFFILIATE REFERRAL & SELLER TRACKING
   useEffect(() => {
     if (!tenantSlug) return;
     captureAffiliateReferral();
@@ -169,6 +224,7 @@ export default function TenantStorefrontPage() {
             if (fbData?.success && fbData?.settings) {
               if (isMounted) {
                 setStoreName(fbData.settings.name || displayName);
+                setTenantMetadata(fbData.settings);
                 const prods = Array.isArray(fbData.settings.products) ? fbData.settings.products : [];
                 setStoreProducts(prods.map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx)));
                 setStoreStatus("active");
@@ -183,6 +239,7 @@ export default function TenantStorefrontPage() {
 
         if (isMounted) {
           setStoreName(tenantRow.name || displayName);
+          setTenantMetadata(tenantRow.metadata || null);
           const rawProds = tenantRow.metadata?.products;
           const prodsList = Array.isArray(rawProds) && rawProds.length > 0 
             ? rawProds 
@@ -423,6 +480,133 @@ export default function TenantStorefrontPage() {
     sendChatMessage(msg);
   };
 
+  const currentTheme = tenantMetadata?.theme || (tenantSlug === 'ombudi' ? { template: 'personal', chat_enabled: true, chat_position: 'bottom-right' } : { template: 'default', chat_enabled: true, chat_position: 'bottom-right' });
+  const currentTemplate = currentTheme.template || (tenantSlug === 'ombudi' ? 'personal' : 'default');
+  const isChatEnabled = currentTheme.chat_enabled !== false;
+
+  // ── CONDITIONAL TEMPLATE: PERSONAL (Authority / Personal Brand) ──
+  if (currentTemplate === 'personal') {
+    return (
+      <>
+        <PersonalAuthorityTemplate
+          tenantSlug={tenantSlug}
+          storeName={storeName}
+          displayName={displayName}
+          tenantMetadata={tenantMetadata}
+          storeProducts={storeProducts}
+          dynamicQuickReplies={dynamicQuickReplies}
+          chatEnabled={isChatEnabled}
+          onInitiateCheckout={(p) => {
+            trackInitiateCheckout(p.title, p.price);
+            setProductForCheckout(p);
+            setIsCheckoutOpen(true);
+          }}
+          onOutboundClick={handleOutboundClick}
+        />
+
+        {/* MODAL DETAIL LAYANAN */}
+        {selectedProduct && (
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
+            <div className="bg-white max-w-lg w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
+              <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
+                <X className="w-5 h-5" />
+              </button>
+              <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full aspect-video object-cover rounded-2xl" />
+              <div>
+                <h2 className="text-lg font-black text-slate-900">{selectedProduct.name}</h2>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-xl font-black text-blue-600">Rp {selectedProduct.price.toLocaleString("id-ID")}</span>
+                  {selectedProduct.originalPrice && (
+                    <span className="text-xs text-slate-400 line-through">Rp {selectedProduct.originalPrice.toLocaleString("id-ID")}</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 mt-2 leading-relaxed">{selectedProduct.description}</p>
+              </div>
+
+              {selectedProduct.features && (
+                <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                  <span className="text-xs font-bold text-slate-700">Keunggulan &amp; Cakupan Layanan:</span>
+                  {selectedProduct.features.map((feat, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
+                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>{feat}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="border-t border-slate-100 pt-3">
+                <button
+                  onClick={() => {
+                    addToCart(selectedProduct);
+                    setSelectedProduct(null);
+                    setShowCartModal(true);
+                  }}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  <span>Pilih Layanan Ini</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL CHECKOUT QRIS & WHATSAPP SYNC */}
+        <CheckoutModal
+          isOpen={isCheckoutOpen}
+          onClose={() => setIsCheckoutOpen(false)}
+          tenantSlug={tenantSlug}
+          product={productForCheckout}
+        />
+        {/* Modal Barcode Scanner */}
+        <BarcodeScannerModal
+          isOpen={isScannerOpen}
+          onClose={() => setIsScannerOpen(false)}
+          onScanSuccess={handleBarcodeDetected}
+        />
+      </>
+    );
+  }
+
+  // ── CONDITIONAL TEMPLATE: MICROSITE (Bio-Funnel) ──
+  if (currentTemplate === 'microsite') {
+    return (
+      <>
+        <MicrositeBioTemplate
+          tenantSlug={tenantSlug}
+          storeName={storeName}
+          displayName={displayName}
+          tenantMetadata={tenantMetadata}
+          storeProducts={storeProducts}
+          dynamicQuickReplies={dynamicQuickReplies}
+          chatEnabled={isChatEnabled}
+          onInitiateCheckout={(p) => {
+            trackInitiateCheckout(p.title, p.price);
+            setProductForCheckout(p);
+            setIsCheckoutOpen(true);
+          }}
+          onOutboundClick={handleOutboundClick}
+        />
+
+        {/* MODAL CHECKOUT QRIS & WHATSAPP SYNC */}
+        <CheckoutModal
+          isOpen={isCheckoutOpen}
+          onClose={() => setIsCheckoutOpen(false)}
+          tenantSlug={tenantSlug}
+          product={productForCheckout}
+        />
+        {/* Modal Barcode Scanner */}
+        <BarcodeScannerModal
+          isOpen={isScannerOpen}
+          onClose={() => setIsScannerOpen(false)}
+          onScanSuccess={handleBarcodeDetected}
+        />
+      </>
+    );
+  }
+
+  // ── TEMPLATE 1: DEFAULT (Katalog Commerce) ──
   return (
     <div className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -465,170 +649,10 @@ export default function TenantStorefrontPage() {
         </div>
       </header>
 
-      {/* 2-COLUMN VIEW */}
+      {/* 2-COLUMN VIEW: KATALOG DI KIRI (lg:col-span-7), CHAT ASISTEN DI KANAN (lg:col-span-5) */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
-        {/* KOLOM KIRI: ASSISTANT CHAT BOT SIMULATOR */}
-        <section className="lg:col-span-5 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden h-[580px] lg:h-[calc(100dvh-120px)] lg:sticky lg:top-24">
-          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-              <span className="text-xs font-bold text-slate-800 capitalize">{storeName || displayName} Assistant</span>
-            </div>
-            <span className="text-[11px] text-slate-400 font-medium">Asisten Otomatis</span>
-          </div>
-
-          <div className="flex-1 p-5 overflow-y-auto space-y-3.5 bg-[#F8FAFC]">
-            {messages.map((msg, index) => {
-              const isLatestBotMessage = msg.sender === "bot" && index === messages.length - 1;
-
-              return (
-                <div key={msg.id} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
-                  <div className={`max-w-[88%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-xs ${
-                    msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
-                  }`}>
-                    <p className="whitespace-pre-line">{msg.text}</p>
-
-                    {/* Kartu Rekomendasi Layanan Interaktif */}
-                    {msg.sender === "bot" && msg.product && (msg.action === "SHOW_PRODUCT" || msg.action === "SHOW_CHECKOUT" || msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && (
-                      <div className="mt-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-3 text-slate-900 space-y-2.5">
-                        <div className="flex items-start gap-3">
-                          <img
-                            src={msg.product.image || "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60"}
-                            alt={msg.product.name}
-                            className="w-14 h-14 object-cover rounded-xl shrink-0 border border-slate-200"
-                          />
-                          <div className="flex-1 min-w-0">
-                            {msg.product.badge && (
-                              <span className="inline-block text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 mb-0.5">
-                                {msg.product.badge}
-                              </span>
-                            )}
-                            <h4 className="font-black text-xs text-slate-900 line-clamp-1">
-                              {msg.product.name}
-                            </h4>
-                            <div className="flex items-baseline gap-1.5 mt-0.5">
-                              <span className="font-black text-blue-600 text-xs">
-                                Rp {Number(msg.product.price || 0).toLocaleString("id-ID")}
-                              </span>
-                              {msg.product.originalPrice && (
-                                <span className="text-[10px] text-slate-400 line-through">
-                                  Rp {Number(msg.product.originalPrice).toLocaleString("id-ID")}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {msg.product.description && (
-                          <p className="text-[11px] text-slate-500 line-clamp-2 leading-normal">
-                            {msg.product.description}
-                          </p>
-                        )}
-
-                        <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!msg.product) return;
-                              trackInitiateCheckout(msg.product.name, msg.product.price);
-                              setProductForCheckout({
-                                id: String(msg.product.id),
-                                title: msg.product.name,
-                                price: msg.product.price
-                              });
-                              setIsCheckoutOpen(true);
-                            }}
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
-                          >
-                            <QrCode className="w-3.5 h-3.5" />
-                            <span>Pesan Langsung</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!msg.product) return;
-                              addToCart({
-                                id: msg.product.id,
-                                name: msg.product.name,
-                                category: msg.product.category || "service",
-                                price: msg.product.price,
-                                originalPrice: msg.product.originalPrice,
-                                image: msg.product.image || "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60",
-                                description: msg.product.description || "",
-                                badge: msg.product.badge
-                              });
-                              setShowCartModal(true);
-                            }}
-                            className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-2 px-2.5 rounded-xl border border-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
-                            title="Tambah ke Pilihan"
-                          >
-                            <ShoppingBag className="w-3.5 h-3.5 text-slate-600" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    <span className={`block text-[9px] mt-1 text-right font-medium ${msg.sender === "user" ? "text-blue-200" : "text-slate-400"}`}>
-                      {msg.time}
-                    </span>
-                  </div>
-
-                  {/* Dynamic Quick Action Chips */}
-                  {isLatestBotMessage && Array.isArray(msg.quick_actions) && msg.quick_actions.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2 max-w-[88%]">
-                      {msg.quick_actions.slice(0, 4).map((chip, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => !isBotTyping && sendChatMessage(chip)}
-                          disabled={isBotTyping}
-                          className="text-[11px] font-semibold bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 border border-slate-200 hover:border-blue-300 px-3 py-1.5 rounded-full transition-all active:scale-95 shadow-2xs text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {chip}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {isBotTyping && (
-              <div className="flex flex-col items-start">
-                <div className="bg-white border border-slate-200/80 rounded-2xl rounded-bl-xs px-4 py-3 shadow-xs flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce"></span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]"></span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]"></span>
-                  <span className="text-[11px] text-slate-400 ml-1 font-medium">Asisten sedang merespon...</span>
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
-          <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              disabled={isBotTyping}
-              placeholder={isBotTyping ? "Sedang menunggu respon..." : "Tanya harga kuras toren / jadwal..."}
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-base md:text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={isBotTyping || !inputMessage.trim()}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white p-2.5 rounded-xl transition-all shadow-xs active:scale-95 flex items-center justify-center shrink-0 cursor-pointer"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
-          </form>
-        </section>
-
-        {/* KOLOM KANAN: KATALOG LAYANAN DARI SUPABASE */}
-        <section className="lg:col-span-7 space-y-5">
+        {/* KOLOM KIRI: KATALOG LAYANAN DARI SUPABASE (Posisi Baru di Sisi Kiri) */}
+        <section className={`${isChatEnabled ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-5 order-1`}>
           <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
             {/* Tombol Scan Barcode / QR */}
             <button
@@ -710,6 +734,168 @@ export default function TenantStorefrontPage() {
             </div>
           )}
         </section>
+
+        {/* KOLOM KANAN: ASSISTANT CHAT BOT SIMULATOR (Posisi Baru di Sisi Kanan) */}
+        {isChatEnabled && (
+          <section className="lg:col-span-5 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden h-[580px] lg:h-[calc(100dvh-120px)] lg:sticky lg:top-24 order-2">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                <span className="text-xs font-bold text-slate-800 capitalize">{storeName || displayName} Assistant</span>
+              </div>
+              <span className="text-[11px] text-slate-400 font-medium">Asisten Otomatis</span>
+            </div>
+
+            <div className="flex-1 p-5 overflow-y-auto space-y-3.5 bg-[#F8FAFC]">
+              {messages.map((msg, index) => {
+                const isLatestBotMessage = msg.sender === "bot" && index === messages.length - 1;
+
+                return (
+                  <div key={msg.id} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
+                    <div className={`max-w-[88%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-xs ${
+                      msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
+                    }`}>
+                      <p className="whitespace-pre-line">{msg.text}</p>
+
+                      {/* Kartu Rekomendasi Layanan Interaktif */}
+                      {msg.sender === "bot" && msg.product && (msg.action === "SHOW_PRODUCT" || msg.action === "SHOW_CHECKOUT" || msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && (
+                        <div className="mt-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-3 text-slate-900 space-y-2.5">
+                          <div className="flex items-start gap-3">
+                            <img
+                              src={msg.product.image || "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60"}
+                              alt={msg.product.name}
+                              className="w-14 h-14 object-cover rounded-xl shrink-0 border border-slate-200"
+                            />
+                            <div className="flex-1 min-w-0">
+                              {msg.product.badge && (
+                                <span className="inline-block text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 mb-0.5">
+                                  {msg.product.badge}
+                                </span>
+                              )}
+                              <h4 className="font-black text-xs text-slate-900 line-clamp-1">
+                                {msg.product.name}
+                              </h4>
+                              <div className="flex items-baseline gap-1.5 mt-0.5">
+                                <span className="font-black text-blue-600 text-xs">
+                                  Rp {Number(msg.product.price || 0).toLocaleString("id-ID")}
+                                </span>
+                                {msg.product.originalPrice && (
+                                  <span className="text-[10px] text-slate-400 line-through">
+                                    Rp {Number(msg.product.originalPrice).toLocaleString("id-ID")}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {msg.product.description && (
+                            <p className="text-[11px] text-slate-500 line-clamp-2 leading-normal">
+                              {msg.product.description}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!msg.product) return;
+                                trackInitiateCheckout(msg.product.name, msg.product.price);
+                                setProductForCheckout({
+                                  id: String(msg.product.id),
+                                  title: msg.product.name,
+                                  price: msg.product.price
+                                });
+                                setIsCheckoutOpen(true);
+                              }}
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                              <span>Pesan Langsung</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!msg.product) return;
+                                addToCart({
+                                  id: msg.product.id,
+                                  name: msg.product.name,
+                                  category: msg.product.category || "service",
+                                  price: msg.product.price,
+                                  originalPrice: msg.product.originalPrice,
+                                  image: msg.product.image || "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60",
+                                  description: msg.product.description || "",
+                                  badge: msg.product.badge
+                                });
+                                setShowCartModal(true);
+                              }}
+                              className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-2 px-2.5 rounded-xl border border-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
+                              title="Tambah ke Pilihan"
+                            >
+                              <ShoppingBag className="w-3.5 h-3.5 text-slate-600" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <span className={`block text-[9px] mt-1 text-right font-medium ${msg.sender === "user" ? "text-blue-200" : "text-slate-400"}`}>
+                        {msg.time}
+                      </span>
+                    </div>
+
+                    {/* Dynamic Quick Action Chips */}
+                    {isLatestBotMessage && Array.isArray(msg.quick_actions) && msg.quick_actions.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2 max-w-[88%]">
+                        {msg.quick_actions.slice(0, 4).map((chip, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => !isBotTyping && sendChatMessage(chip)}
+                            disabled={isBotTyping}
+                            className="text-[11px] font-semibold bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 border border-slate-200 hover:border-blue-300 px-3 py-1.5 rounded-full transition-all active:scale-95 shadow-2xs text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {isBotTyping && (
+                <div className="flex flex-col items-start">
+                  <div className="bg-white border border-slate-200/80 rounded-2xl rounded-bl-xs px-4 py-3 shadow-xs flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]"></span>
+                    <span className="text-[11px] text-slate-400 ml-1 font-medium">Asisten sedang merespon...</span>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+
+            <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                disabled={isBotTyping}
+                placeholder={isBotTyping ? "Sedang menunggu respon..." : "Tanya harga kuras toren / jadwal..."}
+                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-base md:text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
+              />
+              <button
+                type="submit"
+                disabled={isBotTyping || !inputMessage.trim()}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white p-2.5 rounded-xl transition-all shadow-xs active:scale-95 flex items-center justify-center shrink-0 cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </section>
+        )}
       </main>
 
       {/* MODAL DETAIL LAYANAN */}
