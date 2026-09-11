@@ -1,3 +1,20 @@
+/**
+ * ======================================================================================
+ * ARCHITECTURAL BOUNDARY: PLATFORM KNOWLEDGE PROVIDER (IMMUTABLE / READ-ONLY)
+ * ======================================================================================
+ * PERINGATAN ARSITEKTUR:
+ * File ini dikunci mutlak sebagai PlatformKnowledgeProvider. File ini HANYA berisi
+ * panduan onboarding, SOP, dan edukasi penggunaan ekosistem platform BoonTrack
+ * (misal: cara download QR meja, 5 checklist siap jual, filosofi No-FAQ, dsb).
+ * 
+ * ATURAN ISOLASI TENANT (ZERO HARDCODING):
+ * 1. DILARANG KERAS menyimpan konfigurasi, persona, FAQ, atau data bisnis milik tenant/toko individual.
+ * 2. Konfigurasi tenant sepenuhnya dinamis dan bersumber langsung dari Supabase (`tenants` table)
+ *    serta dipropose melalui schema `BusinessConfigurationProposal` (lihat types/boonpilot.ts).
+ * 3. Tidak boleh ada hardcoded state, slug toko, katalog produk, atau aturan harga toko di file ini.
+ * ======================================================================================
+ */
+
 export interface KnowledgeItem {
   id: string;
   keywords: string[];
