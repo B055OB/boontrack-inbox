@@ -3,10 +3,12 @@ import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
+import { slugify } from '@/lib/product-catalog';
 
 export interface ProductItem {
-  id: string;
+  id: string | number;
   name: string;
+  slug?: string;
   category: 'ebook' | 'course' | 'template' | 'physical' | 'membership' | string;
   price: number;
   promo_price?: number;
@@ -14,7 +16,15 @@ export interface ProductItem {
   promo?: string;
   description?: string;
   download_url?: string | null;
-  type: 'digital' | 'physical';
+  image?: string;
+  stock?: number;
+  sku?: string;
+  is_unlimited?: boolean;
+  type?: 'digital' | 'physical';
+  product_type?: string;
+  weight_grams?: number;
+  fulfillment_metadata?: any;
+  single_page_config?: any;
   created_at?: string;
   updated_at?: string;
 }
@@ -49,10 +59,13 @@ export async function POST(
     }
 
     const productId = id || `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const finalSlug = body.slug ? slugify(body.slug) : slugify(name);
 
     const newProduct: ProductItem = {
+      ...body,
       id: productId,
       name,
+      slug: finalSlug,
       category: category || 'course',
       price: Number(price),
       promo_price: promo_price ? Number(promo_price) : undefined,
@@ -60,7 +73,13 @@ export async function POST(
       promo: promo || '',
       description: description || '',
       download_url: download_url || null,
-      type: type || 'digital',
+      type: type || (body.product_type === 'PHYSICAL' ? 'physical' : 'digital'),
+      single_page_config: body.single_page_config
+        ? {
+            ...body.single_page_config,
+            slug: finalSlug,
+          }
+        : undefined,
       updated_at: new Date().toISOString(),
       created_at: body.created_at || new Date().toISOString(),
     };
@@ -96,7 +115,7 @@ export async function POST(
           ]
         : [];
 
-      const existingIndex = existingProducts.findIndex((p) => p.id === productId);
+      const existingIndex = existingProducts.findIndex((p: any) => String(p.id) === String(productId));
 
       if (existingIndex >= 0) {
         updatedProducts = [...existingProducts];

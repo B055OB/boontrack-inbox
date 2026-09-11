@@ -15,6 +15,8 @@ import {
   Trash2,
   Search,
   Filter,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { ProductItem, slugify, resolveFulfillmentRequirements } from '@/lib/product-catalog';
 
@@ -43,6 +45,7 @@ export default function ProductsTab({
 }: ProductsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [copiedSlugId, setCopiedSlugId] = useState<number | null>(null);
 
   const categories = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
 
@@ -309,15 +312,50 @@ export default function ProductsTab({
                       <span>Atur Single Page Checkout</span>
                     </button>
 
-                    <Link
-                      href={`/${tenantSlug}/p/${p.slug || slugify(p.name)}`}
-                      target="_blank"
-                      className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-xs cursor-pointer"
-                      title="Buka Halaman Penawaran Publik"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Buka Halaman (Public URL)</span>
-                    </Link>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const productSlug = p.slug || slugify(p.name);
+                          const url = `https://shop.boontrack.com/${tenantSlug}/p/${productSlug}`;
+                          navigator.clipboard.writeText(url);
+                          setCopiedSlugId(p.id);
+                          setTimeout(() => setCopiedSlugId(null), 2500);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition flex items-center gap-1 border border-slate-200 shadow-xs cursor-pointer"
+                        title="Salin URL Salespage Produk"
+                      >
+                        {copiedSlugId === p.id ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-600 font-bold">Tersalin!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Salin URL</span>
+                          </>
+                        )}
+                      </button>
+
+                      <Link
+                        href={`/${tenantSlug}/p/${p.slug || slugify(p.name)}`}
+                        target="_blank"
+                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-xs cursor-pointer"
+                        title="Buka Halaman Penawaran Publik"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Buka Halaman</span>
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* Reactive Public Link URL Preview */}
+                  <div className="pt-2 px-1 flex items-center gap-1.5 text-[11px] text-slate-500 font-mono truncate">
+                    <span className="text-slate-400 font-sans font-medium shrink-0">URL Salespage:</span>
+                    <span className="text-blue-600 font-semibold truncate font-mono">
+                      shop.boontrack.com/{tenantSlug}/p/{p.slug || slugify(p.name)}
+                    </span>
                   </div>
 
                   <div className="pt-2.5 mt-1 border-t border-slate-100 flex items-center justify-between">

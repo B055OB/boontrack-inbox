@@ -12,6 +12,7 @@ import {
   Store,
   ExternalLink,
   Save,
+  RefreshCw,
 } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
 import {
@@ -116,7 +117,21 @@ export default function SinglePageBuilderModal({
 
         <form onSubmit={onSave} className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
           <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
-            <label className="font-bold text-slate-700 block">Tautan Halaman Publik (Public Slug URL) *</label>
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-slate-700 block">Tautan Halaman Publik (Public Slug URL) *</label>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetTitle = singlePageForm.headline?.trim() || activeProduct.name;
+                  setSinglePageForm((p) => ({ ...p, slug: slugify(targetTitle) }));
+                }}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                title="Sinkronkan slug dengan judul/headline produk"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Sinkronkan URL dengan Judul Baru</span>
+              </button>
+            </div>
             <div className="flex items-center gap-1 font-mono text-xs">
               <span className="text-slate-400 shrink-0">/{tenantSlug}/p/</span>
               <input
@@ -129,7 +144,7 @@ export default function SinglePageBuilderModal({
               />
             </div>
             <span className="text-[10px] text-slate-400 block">
-              Akses langsung via browser: <code className="text-blue-600 font-bold">https://{tenantSlug}.boontrack.com/p/{singlePageForm.slug}</code>
+              Akses langsung via browser: <code className="text-blue-600 font-bold">https://shop.boontrack.com/{tenantSlug}/p/{singlePageForm.slug || slugify(activeProduct.name)}</code>
             </span>
           </div>
 

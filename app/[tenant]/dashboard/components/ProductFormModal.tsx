@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { Package, X, Save, Truck, Link as LinkIcon, Key, FileText, Info } from 'lucide-react';
+import { Package, X, Save, Truck, Link as LinkIcon, Key, FileText, Info, RefreshCw } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
 import {
   ProductItem,
   ProductType,
   resolveFulfillmentRequirements,
   FulfillmentMetadata,
+  slugify,
 } from '@/lib/product-catalog';
 
 export function mapBusinessCategoryToProductType(storeCategory?: string): ProductType {
@@ -58,8 +59,10 @@ export default function ProductFormModal({
           }
         }
         const reqs = resolveFulfillmentRequirements(defaultType);
+        const currentSlug = prev.slug?.trim() || (prev.name ? slugify(prev.name) : '');
         return {
           ...prev,
+          slug: currentSlug,
           product_type: defaultType,
           category: reqs.requiresShipping ? 'fisik' : 'digital',
           is_unlimited:
@@ -140,10 +143,75 @@ export default function ProductFormModal({
               type="text"
               required
               value={productForm.name}
-              onChange={(e) => setProductForm((p) => ({ ...p, name: e.target.value }))}
+              onChange={(e) => {
+                const newName = e.target.value;
+                setProductForm((p) => {
+                  const shouldSyncSlug = !editingProductId && (!p.slug || p.slug === slugify(p.name));
+                  const updatedSlug = shouldSyncSlug ? slugify(newName) : p.slug;
+                  return {
+                    ...p,
+                    name: newName,
+                    slug: updatedSlug,
+                    single_page_config: p.single_page_config
+                      ? { ...p.single_page_config, slug: updatedSlug }
+                      : undefined,
+                  };
+                });
+              }}
               placeholder="Contoh: Ecourse Ads Masterclass 2026 / Paket Kopi Arabika"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white font-medium"
             />
+          </div>
+
+          {/* 1b. Slug URL Salespage */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <LinkIcon className="w-3.5 h-3.5 text-blue-600" />
+                <span>URL / Slug Salespage Produk *</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  const generated = slugify(productForm.name || 'produk');
+                  setProductForm((p) => ({
+                    ...p,
+                    slug: generated,
+                    single_page_config: p.single_page_config
+                      ? { ...p.single_page_config, slug: generated }
+                      : undefined,
+                  }));
+                }}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                title="Sinkronkan slug dengan judul produk terbaru"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Sinkronkan URL dengan Judul Baru</span>
+              </button>
+            </div>
+            <div className="flex items-center gap-1 font-mono text-xs">
+              <span className="text-slate-400 shrink-0 font-medium">/{tenantSlug || 'store'}/p/</span>
+              <input
+                type="text"
+                required
+                value={productForm.slug || ''}
+                onChange={(e) => {
+                  const s = slugify(e.target.value);
+                  setProductForm((p) => ({
+                    ...p,
+                    slug: s,
+                    single_page_config: p.single_page_config
+                      ? { ...p.single_page_config, slug: s }
+                      : undefined,
+                  }));
+                }}
+                placeholder="nama-slug-produk"
+                className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold focus:outline-none focus:border-blue-600 font-mono"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400 font-sans">
+              Akses publik: <code className="text-blue-600 font-bold font-mono">https://shop.boontrack.com/{tenantSlug || 'store'}/p/{productForm.slug || slugify(productForm.name || 'produk')}</code>
+            </p>
           </div>
 
           {/* 2. Product Type & Fulfillment Boundary */}

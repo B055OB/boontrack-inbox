@@ -703,7 +703,9 @@ export function useTenantDashboard() {
           const mappedProducts: ProductItem[] = data.products.map((p: any, idx: number) => ({
             id: typeof p.id === 'number' ? p.id : Date.now() + idx,
             name: p.name || p.title || `Produk ${idx + 1}`,
+            slug: p.slug || (p.single_page_config?.slug) || slugify(p.name || p.title || `produk-${idx + 1}`),
             category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
+            product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
             price: Number(p.price) || 0,
             promo_price: p.promo_price ? Number(p.promo_price) : 0,
             variants: p.variants || '',
@@ -714,6 +716,9 @@ export function useTenantDashboard() {
             stock: p.stock !== undefined ? Number(p.stock) : 100,
             sku: p.sku || `SKU-${idx + 1}`,
             is_unlimited: p.is_unlimited || false,
+            weight_grams: p.weight_grams,
+            fulfillment_metadata: p.fulfillment_metadata,
+            single_page_config: p.single_page_config,
           }));
           setProducts(mappedProducts);
           if (typeof window !== 'undefined') {
@@ -736,7 +741,9 @@ export function useTenantDashboard() {
           const mappedProducts: ProductItem[] = localData.products.map((p: any, idx: number) => ({
             id: typeof p.id === 'number' ? p.id : Date.now() + idx,
             name: p.name || p.title || `Produk ${idx + 1}`,
+            slug: p.slug || (p.single_page_config?.slug) || slugify(p.name || p.title || `produk-${idx + 1}`),
             category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
+            product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
             price: Number(p.price) || 0,
             promo_price: p.promo_price ? Number(p.promo_price) : 0,
             variants: p.variants || '',
@@ -747,6 +754,9 @@ export function useTenantDashboard() {
             stock: p.stock !== undefined ? Number(p.stock) : 100,
             sku: p.sku || `SKU-${idx + 1}`,
             is_unlimited: p.is_unlimited || false,
+            weight_grams: p.weight_grams,
+            fulfillment_metadata: p.fulfillment_metadata,
+            single_page_config: p.single_page_config,
           }));
           setProducts(mappedProducts);
           if (typeof window !== 'undefined') {
@@ -829,6 +839,7 @@ export function useTenantDashboard() {
     setProductForm({
       id: Date.now(),
       name: '',
+      slug: '',
       product_type: defaultProductType,
       category: reqs.requiresShipping ? 'fisik' : 'digital',
       price: 99000,
@@ -848,8 +859,10 @@ export function useTenantDashboard() {
 
   const openEditProductModal = (prod: ProductItem) => {
     setEditingProductId(prod.id);
+    const prodSlug = prod.slug || prod.single_page_config?.slug || slugify(prod.name);
     setProductForm({
       ...prod,
+      slug: prodSlug,
       stock: prod.stock ?? 100,
       sku: prod.sku || `SKU-${prod.id}`,
       is_unlimited: prod.is_unlimited ?? false,
@@ -869,17 +882,59 @@ export function useTenantDashboard() {
     );
   };
 
-  const handleSaveProductForm = (e: React.FormEvent) => {
+  const handleSaveProductForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!productForm.name) return;
 
+    const finalSlug = (productForm.slug?.trim() || slugify(productForm.name)).toLowerCase();
+    const updatedProductItem: ProductItem = {
+      ...productForm,
+      slug: finalSlug,
+      single_page_config: productForm.single_page_config
+        ? {
+            ...productForm.single_page_config,
+            slug: finalSlug,
+          }
+        : undefined,
+    };
+
+    let updatedProducts: ProductItem[];
     if (editingProductId) {
-      setProducts(prev => prev.map(p => (p.id === editingProductId ? productForm : p)));
+      updatedProducts = products.map(p => (p.id === editingProductId ? updatedProductItem : p));
+      setProducts(updatedProducts);
       setSaveFeedback('✅ Produk berhasil diperbarui!');
     } else {
-      setProducts(prev => [...prev, { ...productForm, id: Date.now() }]);
+      const newProd = { ...updatedProductItem, id: updatedProductItem.id || Date.now() };
+      updatedProducts = [newProd, ...products];
+      setProducts(updatedProducts);
       setSaveFeedback('✅ Produk baru berhasil ditambahkan!');
     }
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
+      } catch {}
+    }
+
+    // Sync produk ke backend API
+    try {
+      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedProductItem),
+      });
+    } catch (err) {
+      console.warn('Gagal sync produk ke API route:', err);
+    }
+
+    // Sync seluruh daftar produk ke metadata settings
+    try {
+      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ products: updatedProducts }),
+      });
+    } catch {}
 
     setIsProductModalOpen(false);
     setTimeout(() => setSaveFeedback(null), 3000);
@@ -983,7 +1038,7 @@ export function useTenantDashboard() {
     setIsSinglePageModalOpen(true);
   };
 
-  const handleSaveSinglePageConfig = (e: React.FormEvent) => {
+  const handleSaveSinglePageConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeSinglePageProduct) return;
 
@@ -1024,6 +1079,28 @@ export function useTenantDashboard() {
         console.warn('Failed to save to localStorage:', err);
       }
     }
+
+    // Sync ke backend API route
+    try {
+      const targetProd = updatedProducts.find(p => p.id === activeSinglePageProduct.id);
+      if (targetProd) {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(targetProd),
+        });
+      }
+    } catch (err) {
+      console.warn('Gagal sync single page ke backend:', err);
+    }
+
+    try {
+      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ products: updatedProducts }),
+      });
+    } catch {}
 
     setIsSinglePageModalOpen(false);
     setSaveFeedback(`✅ Single Page Checkout untuk "${activeSinglePageProduct.name}" berhasil disimpan & diterapkan!`);
