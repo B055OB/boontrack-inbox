@@ -1,5 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { getTenantBaseUrl, getTenantCheckoutUrl } from "@/lib/checkout-link";
+import {
+  InteractiveMenu,
+  findMenuResponseAcrossMenus,
+  findMatchingMenuTrigger,
+  formatInteractiveMenu,
+  formatInteractiveMenusSummary,
+} from "@/lib/whatsappFormatter";
 
 function getSupabaseAdmin() {
   return createClient(
@@ -12,6 +19,12 @@ export interface ChatCoreRequest {
   tenant_slug: string;
   message: string;
   phone_number?: string;
+  interactive_reply?: {
+    id?: string;
+    title?: string;
+    type?: 'button_reply' | 'list_reply' | string;
+  };
+  channel?: 'WABA' | 'WAHA' | 'WEBCHAT';
 }
 
 export interface ChatCoreResponse {
@@ -20,6 +33,7 @@ export interface ChatCoreResponse {
   type: string;
   product?: any;
   checkout_url?: string;
+  interactive_payload?: any;
 }
 
 export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatCoreResponse> {
@@ -29,7 +43,7 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
 
   const supabase = getSupabaseAdmin();
 
-  // 1. Ambil data tenant termasuk custom_domain
+  // 1. Ambil data tenant termasuk custom_domain dan metadata
   const { data: tenant } = await supabase
     .from("tenants")
     .select("id, slug, name, category, metadata, custom_domain")
@@ -43,6 +57,53 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
     slug: tenant?.slug || cleanSlug,
     custom_domain: tenant?.custom_domain || null,
   };
+
+  const metadata = tenant?.metadata || {};
+  const interactiveMenus: InteractiveMenu[] = Array.isArray(metadata.interactive_menus)
+    ? metadata.interactive_menus
+    : [];
+  const botMode: 'STATIC' | 'HYBRID' | 'AI' = String(metadata.bot_mode || 'HYBRID').toUpperCase() as any;
+  const channel = req.channel || 'WAHA';
+
+  // --- FAST-PATH INTERCEPTOR 1: WABA Interactive Reply & Numbered/Option Match (BYPASS LLM) ---
+  const inputKey = req.interactive_reply?.id || req.interactive_reply?.title || rawMessage;
+  const menuMatch = findMenuResponseAcrossMenus(interactiveMenus, inputKey);
+  if (menuMatch) {
+    return {
+      reply_text: menuMatch.option.responseText,
+      action: "MENU_OPTION_REPLY",
+      type: "TEXT"
+    };
+  }
+
+  // --- FAST-PATH INTERCEPTOR 2: Menu Trigger Match ("menu", "pilihan", atau keyword judul) ---
+  const triggerMatch = findMatchingMenuTrigger(interactiveMenus, rawMessage);
+  if (triggerMatch) {
+    const wabaPayload = formatInteractiveMenu(triggerMatch, 'WABA');
+    const wahaText = formatInteractiveMenu(triggerMatch, 'WAHA');
+    return {
+      reply_text: wahaText,
+      action: "SHOW_INTERACTIVE_MENU",
+      type: channel === 'WABA' ? "INTERACTIVE" : "TEXT",
+      interactive_payload: channel === 'WABA' ? wabaPayload : undefined
+    };
+  }
+
+  // --- HYBRID MODE CONTEXT GUIDANCE: Cek apakah user menanyakan topik pada menu ---
+  if (botMode === 'HYBRID' && interactiveMenus.length > 0) {
+    const allOptions = interactiveMenus.flatMap((m) => m.options || []);
+    const matchedOpt = allOptions.find((opt) => {
+      const t = (opt.title || "").toLowerCase();
+      return t.length > 3 && lower.includes(t);
+    });
+    if (matchedOpt) {
+      return {
+        reply_text: `${matchedOpt.responseText}\n\n👉 *Silakan balas dengan angka atau pilih menu untuk opsi lainnya.*`,
+        action: "HYBRID_MENU_GUIDANCE",
+        type: "TEXT"
+      };
+    }
+  }
 
   // 2. Ambil skema booking dari DB (Shared Schema untuk Service/Jasa)
   const { data: bookingSchema } = await supabase
@@ -198,6 +259,26 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
         checkout_url: baseUrl,
       };
     }
+  }
+
+  if (botMode === 'STATIC') {
+    const primaryMenu = interactiveMenus[0];
+    const fallbackText = "Silakan pilih menu di atas atau hubungi Admin kami.";
+    if (primaryMenu) {
+      const wabaPayload = formatInteractiveMenu(primaryMenu, 'WABA');
+      const wahaText = formatInteractiveMenu(primaryMenu, 'WAHA');
+      return {
+        reply_text: `${wahaText}\n\n${fallbackText}`,
+        action: "STATIC_MENU_FALLBACK",
+        type: channel === 'WABA' ? "INTERACTIVE" : "TEXT",
+        interactive_payload: channel === 'WABA' ? wabaPayload : undefined,
+      };
+    }
+    return {
+      reply_text: fallbackText,
+      action: "STATIC_FALLBACK",
+      type: "TEXT",
+    };
   }
 
   const defaultBaseUrl = getTenantBaseUrl(tenantDomainInfo);

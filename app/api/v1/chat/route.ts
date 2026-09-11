@@ -3,6 +3,13 @@ import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { getTenantCheckoutUrl } from '@/lib/checkout-link';
+import {
+  InteractiveMenu,
+  findMenuResponseAcrossMenus,
+  findMatchingMenuTrigger,
+  formatInteractiveMenu,
+  formatInteractiveMenusSummary,
+} from '@/lib/whatsappFormatter';
 
 interface ProductContext {
   name?: string;
@@ -36,12 +43,14 @@ export async function POST(req: NextRequest) {
     const category = context?.category || 'retail';
 
     let tenantDomainInfo = { slug, custom_domain: null as string | null };
+    let tenantMetadata: any = {};
+
     try {
       const supabase = getSupabase();
       if (supabase) {
         const { data: t } = await supabase
           .from('tenants')
-          .select('slug, custom_domain')
+          .select('slug, custom_domain, metadata')
           .eq('slug', slug)
           .maybeSingle();
         if (t) {
@@ -49,6 +58,7 @@ export async function POST(req: NextRequest) {
             slug: t.slug || slug,
             custom_domain: t.custom_domain || null,
           };
+          tenantMetadata = t.metadata || {};
         }
       }
     } catch {}
@@ -57,6 +67,62 @@ export async function POST(req: NextRequest) {
       id: (product as any).id || (packages[0] as any)?.id,
       slug: (product as any).slug || (packages[0] as any)?.slug,
     });
+
+    const interactiveMenus: InteractiveMenu[] = Array.isArray(tenantMetadata.interactive_menus)
+      ? tenantMetadata.interactive_menus
+      : [];
+    const botMode: 'STATIC' | 'HYBRID' | 'AI' = String(tenantMetadata.bot_mode || 'HYBRID').toUpperCase() as any;
+    const channel = body.channel || 'WAHA';
+
+    // --- INBOUND FAST-PATH 1: WABA Interactive Reply / Numbered Option Match (BYPASS LLM) ---
+    const inputKey = body.interactive_reply?.id || body.interactive_reply?.title || message;
+    const menuMatch = findMenuResponseAcrossMenus(interactiveMenus, inputKey);
+    if (menuMatch) {
+      return NextResponse.json({
+        success: true,
+        reply: menuMatch.option.responseText,
+        tenant_id: slug,
+        tenant_slug: slug,
+        checkout_url: checkoutUrl,
+        type: 'MENU_OPTION_REPLY',
+        interactive_payload: channel === 'WABA' ? formatInteractiveMenu(menuMatch.menu, 'WABA') : undefined,
+      });
+    }
+
+    // --- INBOUND FAST-PATH 2: Menu Trigger Match ("menu", "pilihan", kata kunci trigger) ---
+    const triggerMatch = findMatchingMenuTrigger(interactiveMenus, message);
+    if (triggerMatch) {
+      const wabaPayload = formatInteractiveMenu(triggerMatch, 'WABA');
+      const wahaText = formatInteractiveMenu(triggerMatch, 'WAHA');
+      return NextResponse.json({
+        success: true,
+        reply: wahaText,
+        tenant_id: slug,
+        tenant_slug: slug,
+        checkout_url: checkoutUrl,
+        type: channel === 'WABA' ? 'INTERACTIVE' : 'TEXT',
+        interactive_payload: channel === 'WABA' ? wabaPayload : undefined,
+      });
+    }
+
+    // --- INBOUND FAST-PATH 3: STATIC BOT MODE (JANGAN PANGGIL LLM) ---
+    if (botMode === 'STATIC') {
+      const primaryMenu = interactiveMenus[0];
+      const fallbackText = 'Silakan pilih menu di atas atau hubungi Admin kami.';
+      const replyText = primaryMenu
+        ? `${formatInteractiveMenu(primaryMenu, 'WAHA')}\n\n${fallbackText}`
+        : fallbackText;
+
+      return NextResponse.json({
+        success: true,
+        reply: replyText,
+        tenant_id: slug,
+        tenant_slug: slug,
+        checkout_url: checkoutUrl,
+        type: primaryMenu && channel === 'WABA' ? 'INTERACTIVE' : 'TEXT',
+        interactive_payload: primaryMenu && channel === 'WABA' ? formatInteractiveMenu(primaryMenu, 'WABA') : undefined,
+      });
+    }
 
     let reply = '';
 
@@ -91,6 +157,7 @@ export async function POST(req: NextRequest) {
     // 2. If GEMINI_API_KEY is configured, call Gemini API
     if (!reply && process.env.GEMINI_API_KEY) {
       try {
+        const menuSummary = formatInteractiveMenusSummary(interactiveMenus);
         const systemPrompt = `Anda adalah asisten AI customer service resmi untuk toko "${storeName}" (Kategori: ${category}).
 Detail Produk & Layanan:
 - Nama Produk: ${product.name || 'Produk Unggulan'}
@@ -100,11 +167,12 @@ Detail Produk & Layanan:
 - Tipe: ${product.type || 'Fisik / Digital'}
 - Silabus/Materi: ${Array.isArray(product.syllabus) ? product.syllabus.join(', ') : 'Modul 1 (Dasar), Modul 2 (Praktek), Modul 3 (Template), Modul 4 (Evaluasi)'}
 - Link Checkout Resmi: ${checkoutUrl}
-
+${menuSummary ? `\nMenu Navigasi & Pilihan Cepat Toko:\n${menuSummary}\n` : ''}
 Instruksi:
 1. Jawab pertanyaan pengguna dengan ramah, jelas, ringkas, dan persuasif dalam bahasa Indonesia.
 2. Selalu dorong pengguna untuk melakukan pembayaran instan melalui link checkout resmi: ${checkoutUrl}
-3. Jangan pernah memberikan informasi palsu di luar data produk yang ada.`;
+3. Jika pengguna menanyakan topik yang ada di Menu Navigasi di atas (seperti jadwal, harga, fasilitas, atau materi), jelaskan dengan mengacu pada rincian opsi tersebut dan arahkan pengguna untuk memilih opsi menu terkait.
+4. Jangan pernah memberikan informasi palsu di luar data produk yang ada.`;
 
         const geminiMessages = [
           { role: 'user', parts: [{ text: systemPrompt }] },

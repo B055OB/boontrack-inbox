@@ -72,6 +72,8 @@ export interface AiKnowledgeTabProps {
   setFaqs?: React.Dispatch<React.SetStateAction<FaqItem[]>>;
   interactiveMenus?: InteractiveMenu[];
   setInteractiveMenus?: React.Dispatch<React.SetStateAction<InteractiveMenu[]>>;
+  botMode?: 'STATIC' | 'HYBRID' | 'AI';
+  setBotMode?: React.Dispatch<React.SetStateAction<'STATIC' | 'HYBRID' | 'AI'>>;
   botStrategy?: BotStrategy;
   setBotStrategy?: React.Dispatch<React.SetStateAction<BotStrategy>>;
   handleSaveAiKnowledge: (e?: React.FormEvent) => void | Promise<void>;
@@ -97,6 +99,8 @@ export default function AiKnowledgeTab({
   setFaqs: propSetFaqs,
   interactiveMenus: propInteractiveMenus,
   setInteractiveMenus: propSetInteractiveMenus,
+  botMode: propBotMode,
+  setBotMode: propSetBotMode,
   botStrategy,
   setBotStrategy,
   handleSaveAiKnowledge,
@@ -187,6 +191,10 @@ export default function AiKnowledgeTab({
 
   const currentInteractiveMenus = propInteractiveMenus ?? internalInteractiveMenus;
   const updateInteractiveMenus = propSetInteractiveMenus ?? setInternalInteractiveMenus;
+
+  const [internalBotMode, setInternalBotMode] = useState<'STATIC' | 'HYBRID' | 'AI'>('HYBRID');
+  const currentBotMode = propBotMode ?? internalBotMode;
+  const updateBotMode = propSetBotMode ?? setInternalBotMode;
 
   const handleAddMenu = () => {
     const newMenu: InteractiveMenu = {
@@ -989,6 +997,45 @@ export default function AiKnowledgeTab({
                 Diformat otomatis menjadi <strong className="text-slate-700">Teks Berpenomoran (1, 2, 3...)</strong> yang ramah dibaca dan diproses parser chat.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Mode Operasional Bot Selector */}
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+          <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+            <span>Mode Operasional Bot WhatsApp:</span>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${currentBotMode === 'STATIC' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+              {currentBotMode === 'STATIC' ? 'Mode Statis / Deterministik' : 'Mode Hybrid (AI + Interactive Menu)'}
+            </span>
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => updateBotMode('HYBRID')}
+              className={`p-3 rounded-xl border text-left transition cursor-pointer ${currentBotMode === 'HYBRID' ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs' : 'bg-white/60 border-slate-200 hover:bg-white'}`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>HYBRID (AI + Menu Cepat)</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                Percakapan fleksibel dengan AI sekaligus menyajikan menu pilihan cepat (Hemat token + Respons cerdas).
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => updateBotMode('STATIC')}
+              className={`p-3 rounded-xl border text-left transition cursor-pointer ${currentBotMode === 'STATIC' ? 'bg-white border-amber-500 ring-2 ring-amber-500/20 shadow-xs' : 'bg-white/60 border-slate-200 hover:bg-white'}`}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span>STATIC (Deterministik Penuh)</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                Murni berbasis pilihan menu &amp; booking tanpa pemanggilan LLM (Hemat token 100% &amp; Anti halusinasi).
+              </p>
+            </button>
           </div>
         </div>
 

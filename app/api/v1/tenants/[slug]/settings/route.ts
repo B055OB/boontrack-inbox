@@ -101,6 +101,7 @@ export async function GET(
         plan_tier: planTier,
         features,
         bot_strategy: metadata.bot_strategy || 'trust_builder',
+        bot_mode: metadata.bot_mode || 'HYBRID',
         product: metadata.product || null,
         products: Array.isArray(metadata.products) ? metadata.products : (metadata.product ? [metadata.product] : []),
         ai_knowledge: metadata.ai_knowledge || {
@@ -157,6 +158,7 @@ export async function PUT(
       bank,
       integration,
       bot_strategy,
+      bot_mode,
       plan_tier,
       features,
       qris_image_url,
@@ -202,6 +204,7 @@ export async function PUT(
     const updatedMetadata = {
       ...(existing.metadata || {}),
       ...(bot_strategy ? { bot_strategy } : {}),
+      ...(bot_mode ? { bot_mode } : {}),
       ...(plan_tier ? { plan_tier } : {}),
       features: updatedFeatures,
       ...(product ? { product } : {}),
@@ -262,6 +265,8 @@ export async function PUT(
         product,
         products,
         ai_knowledge,
+        bot_strategy,
+        bot_mode: updatedMetadata.bot_mode || 'HYBRID',
         faqs: updatedMetadata.faqs || [],
         interactive_menus: updatedMetadata.interactive_menus || [],
         bank,

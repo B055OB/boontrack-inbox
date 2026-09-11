@@ -278,6 +278,7 @@ export function useTenantDashboard() {
   const [isSavingAi, setIsSavingAi] = useState(false);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [botStrategy, setBotStrategy] = useState<'trust_builder' | 'balanced' | 'hard_selling'>('trust_builder');
+  const [botMode, setBotMode] = useState<'STATIC' | 'HYBRID' | 'AI'>('HYBRID');
   const [isSavingStrategy, setIsSavingStrategy] = useState(false);
   const [strategyFeedback, setStrategyFeedback] = useState<string | null>(null);
 
@@ -786,6 +787,9 @@ export function useTenantDashboard() {
               }
             }
             setBotStrategy(loadedStrategy as 'trust_builder' | 'balanced' | 'hard_selling');
+            if (s.bot_mode) {
+              setBotMode(s.bot_mode as 'STATIC' | 'HYBRID' | 'AI');
+            }
             let proposal = (s.boonpilot_proposal || s.boonpilot_configuration || null) as BusinessConfigurationProposal | null;
             if (!proposal && typeof window !== 'undefined') {
               try {
@@ -1514,6 +1518,7 @@ export function useTenantDashboard() {
         assistant_name: aiForm.ai_name,
         system_prompt: aiForm.system_prompt,
         bot_strategy: botStrategy,
+        bot_mode: botMode,
         faqs,
         interactive_menus: interactiveMenus,
         ai_knowledge: {
@@ -1716,6 +1721,8 @@ export function useTenantDashboard() {
     setInteractiveMenus,
     botStrategy,
     setBotStrategy,
+    botMode,
+    setBotMode,
     isSavingAi,
     isLoadingAi,
     isSavingStrategy,

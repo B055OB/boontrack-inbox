@@ -1,5 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { getTenantCheckoutUrl } from '@/lib/checkout-link';
+import {
+  InteractiveMenu,
+  findMenuResponseAcrossMenus,
+  findMatchingMenuTrigger,
+  formatInteractiveMenu,
+  formatInteractiveMenusSummary,
+} from '@/lib/whatsappFormatter';
 
 function getEngineSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
@@ -16,6 +23,12 @@ export interface ProcessMessagePayload {
   session_id: string;
   user_identifier: string;
   message: string;
+  interactive_reply?: {
+    id?: string;
+    title?: string;
+    type?: string;
+  };
+  channel_type?: 'WABA' | 'WAHA';
 }
 
 export interface EngineResult {
@@ -24,6 +37,7 @@ export interface EngineResult {
   state_trace: string[];
   entities: Record<string, any>;
   is_booking_ready: boolean;
+  interactive_payload?: any;
 }
 
 interface ServiceConfigItem {
@@ -38,6 +52,20 @@ export class ConversationEngine {
     const { tenant_id, channel, session_id, user_identifier, message } = payload;
     const cleanMsg = message.trim();
     const trace: string[] = [];
+
+    // 0. Ambil Data Tenant & Konfigurasi Interactive Menu / Bot Mode
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('id, slug, name, category, metadata, custom_domain')
+      .eq('slug', tenant_id)
+      .maybeSingle();
+
+    const metadata = tenant?.metadata || {};
+    const interactiveMenus: InteractiveMenu[] = Array.isArray(metadata.interactive_menus)
+      ? metadata.interactive_menus
+      : [];
+    const botMode: 'STATIC' | 'HYBRID' | 'AI' = String(metadata.bot_mode || 'HYBRID').toUpperCase() as any;
+    const channelType: 'WABA' | 'WAHA' = payload.channel_type || (payload.channel === 'WHATSAPP' ? 'WABA' : 'WAHA');
 
     // 1. Ambil Sesi & State Saat Ini
     let { data: session } = await supabase
@@ -81,6 +109,49 @@ export class ConversationEngine {
         address: null,
         scheduled_date: null,
         scheduled_time: null
+      };
+    }
+
+    // --- INBOUND FAST-PATH 1: WABA Interactive Reply / Numbered Option Match (BYPASS LLM) ---
+    const inputKey = payload.interactive_reply?.id || payload.interactive_reply?.title || cleanMsg;
+    const menuMatch = findMenuResponseAcrossMenus(interactiveMenus, inputKey);
+    if (menuMatch) {
+      trace.push('FAST_PATH_MENU_REPLY');
+      return {
+        reply: menuMatch.option.responseText,
+        next_state: session.current_state,
+        state_trace: trace,
+        entities,
+        is_booking_ready: false,
+        interactive_payload: channelType === 'WABA' ? formatInteractiveMenu(menuMatch.menu, 'WABA') : undefined
+      };
+    }
+
+    // --- INBOUND FAST-PATH 2: Menu Trigger Match ("menu", "pilihan", kata kunci trigger) ---
+    const triggerMatch = findMatchingMenuTrigger(interactiveMenus, cleanMsg);
+    if (triggerMatch) {
+      trace.push('TRIGGER_INTERACTIVE_MENU');
+      return {
+        reply: formatInteractiveMenu(triggerMatch, 'WAHA'),
+        next_state: session.current_state,
+        state_trace: trace,
+        entities,
+        is_booking_ready: false,
+        interactive_payload: channelType === 'WABA' ? formatInteractiveMenu(triggerMatch, 'WABA') : undefined
+      };
+    }
+
+    // --- MODE STATIC ON GREETING: Kirim Menu Interaktif Awal ---
+    if (botMode === 'STATIC' && session.current_state === 'GREETING' && interactiveMenus.length > 0) {
+      const primaryMenu = interactiveMenus[0];
+      trace.push('STATIC_PRIMARY_MENU');
+      return {
+        reply: `${formatInteractiveMenu(primaryMenu, 'WAHA')}\n\nSilakan pilih menu di atas atau hubungi Admin kami.`,
+        next_state: 'AWAIT_MENU_SELECTION',
+        state_trace: trace,
+        entities,
+        is_booking_ready: false,
+        interactive_payload: channelType === 'WABA' ? formatInteractiveMenu(primaryMenu, 'WABA') : undefined
       };
     }
 
@@ -142,6 +213,27 @@ export class ConversationEngine {
     }
 
     // --- STEP B: SMART AI INTERCEPTOR (OFF-TRACK / SIDE QUESTION) ---
+    // Context Injection Mode HYBRID: Jika user bertanya tentang topik yang ada di menu (jadwal, harga, paket)
+    if (botMode === 'HYBRID' && interactiveMenus.length > 0) {
+      const lowerClean = cleanMsg.toLowerCase();
+      const allOptions = interactiveMenus.flatMap((m) => m.options || []);
+      const matchedOpt = allOptions.find((opt) => {
+        const t = (opt.title || '').toLowerCase();
+        return t.length > 3 && (lowerClean.includes(t) || t.includes(lowerClean));
+      });
+
+      if (matchedOpt) {
+        trace.push('HYBRID_MENU_CONTEXT_INJECTION');
+        return {
+          reply: `${matchedOpt.responseText}\n\n👉 *Ketik angka atau nama pilihan untuk detail pemesanan.*`,
+          next_state: session.current_state,
+          state_trace: trace,
+          entities,
+          is_booking_ready: false,
+        };
+      }
+    }
+
     const isQuestion = cleanMsg.includes('?') || cleanMsg.length > 25 || /(aman|kimia|garansi|kotor|bau|lumut|berapa lama|sabun|kuras)/i.test(cleanMsg);
 
     if (isQuestion && session.current_state !== 'GREETING') {
@@ -208,6 +300,21 @@ export class ConversationEngine {
     }
 
     // Fallback response
+    if (botMode === 'STATIC') {
+      trace.push('STATIC_FALLBACK');
+      const primaryMenu = interactiveMenus[0];
+      return {
+        reply: primaryMenu
+          ? `${formatInteractiveMenu(primaryMenu, 'WAHA')}\n\nSilakan pilih menu di atas atau hubungi Admin kami.`
+          : 'Silakan pilih menu di atas atau hubungi Admin kami.',
+        next_state: session.current_state,
+        state_trace: trace,
+        entities,
+        is_booking_ready: false,
+        interactive_payload: primaryMenu && channelType === 'WABA' ? formatInteractiveMenu(primaryMenu, 'WABA') : undefined,
+      };
+    }
+
     return {
       reply: 'Boleh dibantu info ukuran torennya Kak (misal: 350, 520, atau 1000 liter)?',
       next_state: session.current_state,

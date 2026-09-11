@@ -116,6 +116,8 @@ export default function TenantDashboardPage() {
     setInteractiveMenus,
     botStrategy,
     setBotStrategy,
+    botMode,
+    setBotMode,
     isSavingAi,
     isLoadingAi,
     isSavingStrategy,
@@ -317,6 +319,8 @@ export default function TenantDashboardPage() {
           setInteractiveMenus={setInteractiveMenus}
           botStrategy={botStrategy}
           setBotStrategy={setBotStrategy}
+          botMode={botMode}
+          setBotMode={setBotMode}
           handleSaveAiKnowledge={handleSaveAiKnowledge}
           handleSaveBotStrategy={handleSaveBotStrategy}
           isSavingAi={isSavingAi}
