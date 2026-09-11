@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Store, Image as ImageIcon, Save, X, Package } from 'lucide-react';
+import { Store, Image as ImageIcon, Save, X, Package, QrCode, CheckCircle2 } from 'lucide-react';
 import CustomDomainCard from '../settings/CustomDomainCard';
 
 export interface SettingsTabProps {
@@ -77,24 +77,47 @@ export default function SettingsTab({
       }
 
       setIsSavingStore(true);
-      await fetch(
-        `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?tenant_slug=eq.${tenantSlug}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-            Prefer: 'return=minimal',
-          },
+      // 1. Simpan ke Supabase tenant_settings
+      try {
+        await fetch(
+          `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?tenant_slug=eq.${tenantSlug}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+              Prefer: 'return=minimal',
+            },
+            body: JSON.stringify({
+              store_name: trimmed,
+              bio: storeBio,
+              whatsapp: storeWhatsapp,
+              updated_at: new Date().toISOString(),
+            }),
+          }
+        );
+      } catch (err) {
+        console.warn('Gagal PATCH tenant_settings:', err);
+      }
+
+      // 2. Simpan ke database tenants & sync metadata melalui unified settings route
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            store_name: trimmed,
+            name: trimmed,
             bio: storeBio,
             whatsapp: storeWhatsapp,
-            updated_at: new Date().toISOString(),
+            whatsapp_number: storeWhatsapp,
+            qris_image_url: storeQrisUrl || undefined,
           }),
-        }
-      );
+        });
+      } catch (err) {
+        console.warn('Gagal sync route settings:', err);
+      }
+
       if (onClose) onClose();
       if (onSavedSuccess) onSavedSuccess();
     } catch (err) {
@@ -166,27 +189,60 @@ export default function SettingsTab({
         </div>
 
         {/* Input & Preview QRIS */}
-        <div className="space-y-2 pt-3 border-t border-slate-100">
-          <label className="block text-xs font-semibold text-slate-700">Gambar QRIS Toko</label>
+        <div className="space-y-3 pt-3 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <QrCode className="w-4 h-4 text-slate-700" />
+              <label className="text-xs font-semibold text-slate-700">Gambar QRIS Toko</label>
+            </div>
+            {storeQrisUrl ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3" />
+                QRIS Terpasang
+              </span>
+            ) : (
+              <span className="text-[11px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                Belum diupload
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Upload gambar barcode QRIS statis toko Anda (BCA, GoPay, DANA, dll). Gambar akan otomatis dioptimasi ke WebP.
+          </p>
+
           {storeQrisUrl && (
-            <div className="relative w-32 h-32 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center">
-              <img
-                src={storeQrisUrl}
-                alt="QRIS Toko"
-                className="w-full h-full object-contain p-1"
-              />
+            <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+              <div className="relative w-24 h-24 rounded-xl border border-slate-200 bg-white overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={storeQrisUrl}
+                  alt="QRIS Toko"
+                  className="w-full h-full object-contain p-1.5"
+                />
+              </div>
+              <div className="space-y-1 min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-800">QRIS Toko Aktif</p>
+                <p className="text-[11px] text-slate-500 truncate font-mono">{storeQrisUrl}</p>
+                <p className="text-[10px] text-slate-400">Pembeli dapat melakukan scan QRIS untuk pembayaran langsung.</p>
+              </div>
             </div>
           )}
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleQrisUpload}
-            disabled={isUploadingQris}
-            className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-          />
-          {isUploadingQris && (
-            <p className="text-xs text-blue-600 animate-pulse">Mengunggah gambar QRIS...</p>
-          )}
+
+          <div className="relative">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleQrisUpload}
+              disabled={isUploadingQris}
+              className="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-50"
+            />
+            {isUploadingQris && (
+              <p className="text-xs text-blue-600 font-medium animate-pulse mt-1.5 flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+                Mengunggah &amp; mengonversi gambar QRIS ke WebP...
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">

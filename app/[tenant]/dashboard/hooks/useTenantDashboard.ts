@@ -13,6 +13,8 @@ import {
   resolveFulfillmentRequirements,
 } from '@/lib/product-catalog';
 import { mapBusinessCategoryToProductType } from '../components/ProductFormModal';
+import { getSupabase } from '@/lib/supabaseClient';
+import { optimizeImageToWebP } from '@/components/ImageUpload';
 
 export type DashboardTab =
   | 'inbox'
@@ -290,41 +292,171 @@ export function useTenantDashboard() {
     }
   }, [tenantSlug, router]);
 
-  // QRIS Upload
+  // QRIS Upload via Centralized Upload Pipeline
   const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Ukuran file maksimal 2 MB');
+    if (!file.type.startsWith('image/')) {
+      alert('File harus berupa gambar (JPG, PNG, WebP, dll.)');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert(`Ukuran file melebihi 5 MB (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
       return;
     }
 
     setIsUploadingQris(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${tenantSlug}-qris-${Date.now()}.${fileExt}`;
-      const filePath = `qris/${fileName}`;
+      let processedFile: File;
+      try {
+        processedFile = await optimizeImageToWebP(file);
+      } catch {
+        processedFile = file;
+      }
 
-      const uploadRes = await fetch(
-        `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/tenants/${filePath}`,
-        {
+      const baseUrl = (
+        process.env.NEXT_PUBLIC_API_URL ||
+        process.env.NEXT_PUBLIC_CORE_API_URL ||
+        'https://api.boontrack.com'
+      ).replace(/\/+$/, '');
+
+      const primaryUrl = `${baseUrl}/api/v1/upload`;
+      const fallbackUrl = `${baseUrl}/api/v1/media/upload`;
+
+      const formData = new FormData();
+      formData.append('file', processedFile, processedFile.name);
+      formData.append('image', processedFile, processedFile.name);
+      formData.append('tenant_slug', tenantSlug);
+      formData.append('tenant_id', tenantSlug);
+      formData.append('folder', 'qris');
+
+      let authToken: string | null = null;
+      if (typeof window !== 'undefined') {
+        authToken =
+          localStorage.getItem('sb-access-token') ||
+          localStorage.getItem('merchant_token') ||
+          localStorage.getItem('token') ||
+          null;
+      }
+
+      const headers: Record<string, string> = {
+        'X-Tenant-Slug': tenantSlug,
+        'X-Tenant-ID': tenantSlug,
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
+      let uploadRes: Response;
+      try {
+        uploadRes = await fetch(primaryUrl, {
           method: 'POST',
-          headers: {
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-            'Content-Type': file.type,
-          },
-          body: file,
-        }
-      );
+          headers,
+          body: formData,
+        });
+      } catch {
+        uploadRes = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+      }
 
-      if (!uploadRes.ok) throw new Error('Gagal upload gambar QRIS ke storage');
+      if (uploadRes.status === 404) {
+        try {
+          uploadRes = await fetch(fallbackUrl, {
+            method: 'POST',
+            headers,
+            body: formData,
+          });
+        } catch {}
+      }
 
-      const publicUrl = `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/tenants/${filePath}`;
+      // Fallback ke Next.js proxy /api/v1/upload jika direct core call gagal
+      if (!uploadRes.ok) {
+        try {
+          const proxyRes = await fetch('/api/v1/upload', {
+            method: 'POST',
+            headers: {
+              'X-Tenant-Slug': tenantSlug,
+              'X-Tenant-ID': tenantSlug,
+            },
+            body: formData,
+          });
+          if (proxyRes.ok) {
+            uploadRes = proxyRes;
+          }
+        } catch {}
+      }
+
+      if (!uploadRes.ok) {
+        let serverError = `Upload gagal (${uploadRes.status})`;
+        try {
+          const resText = await uploadRes.text();
+          const errJson = JSON.parse(resText);
+          if (errJson.detail) {
+            serverError = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+          } else if (errJson.message) {
+            serverError = errJson.message;
+          }
+        } catch {}
+        throw new Error(serverError);
+      }
+
+      const uploadData = await uploadRes.json();
+      const publicUrl =
+        uploadData?.url ||
+        uploadData?.image_url ||
+        uploadData?.public_url ||
+        uploadData?.file_url ||
+        (typeof uploadData === 'string' ? uploadData : '');
+
+      if (!publicUrl) {
+        throw new Error('Server tidak mengembalikan URL QRIS yang valid');
+      }
+
       setStoreQrisUrl(publicUrl);
+
+      // Simpan langsung URL publik ke field qris_image_url profil toko
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ qris_image_url: publicUrl }),
+        });
+      } catch (settingsErr) {
+        console.warn('Gagal sync qris_image_url via API route settings:', settingsErr);
+      }
+
+      try {
+        const supabase = getSupabase();
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        const existingMeta = tenantData?.metadata || {};
+        await supabase
+          .from('tenants')
+          .update({
+            metadata: {
+              ...existingMeta,
+              qris_image_url: publicUrl,
+              qris_url: publicUrl,
+            },
+          })
+          .eq('slug', tenantSlug);
+      } catch (supabaseErr) {
+        console.warn('Gagal direct update Supabase metadata QRIS:', supabaseErr);
+      }
+
+      setSaveFeedback('✅ Gambar QRIS berhasil diupload dan disimpan!');
+      setTimeout(() => setSaveFeedback(null), 3500);
     } catch (err: any) {
-      console.error(err);
+      console.error('Error uploading QRIS:', err);
       alert(err.message || 'Gagal mengunggah QRIS');
     } finally {
       setIsUploadingQris(false);
@@ -368,6 +500,13 @@ export function useTenantDashboard() {
           const tenant = data[0];
           if (tenant.name) setStoreDisplayName(tenant.name);
           if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
+          if (tenant.metadata?.bio) setStoreBio(tenant.metadata.bio);
+          const qrisUrlFromDb =
+            tenant.metadata?.qris_image_url ||
+            tenant.metadata?.qris_url ||
+            tenant.qris_image_url ||
+            '';
+          if (qrisUrlFromDb) setStoreQrisUrl(qrisUrlFromDb);
 
           // Category
           const rawCat = (tenant.category || tenant.metadata?.vertical_type || tenant.metadata?.business_category || 'PHYSICAL').toUpperCase();
@@ -424,6 +563,8 @@ export function useTenantDashboard() {
         if (res.ok) {
           const data = await res.json();
           const s = data.settings || {};
+          if (s.qris_image_url) setStoreQrisUrl(s.qris_image_url);
+          if (s.bio) setStoreBio(s.bio);
           const aiK = s.ai_knowledge || s.persona || {};
           const loadedStrategy = s.bot_strategy || aiK.bot_strategy || 'trust_builder';
           if (isMounted) {

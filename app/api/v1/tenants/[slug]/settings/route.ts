@@ -92,6 +92,9 @@ export async function GET(
           whatsapp_status: 'DISCONNECTED',
           webhook_verified: false,
         },
+        qris_image_url: metadata.qris_image_url || metadata.qris_url || null,
+        bio: metadata.bio || null,
+        whatsapp_number: metadata.whatsapp_number || metadata.whatsapp || null,
       },
     });
   } catch (err: unknown) {
@@ -120,6 +123,10 @@ export async function PUT(
       bot_strategy,
       plan_tier,
       features,
+      qris_image_url,
+      bio,
+      whatsapp,
+      whatsapp_number,
     } = body;
 
     const supabase = getSupabase();
@@ -146,6 +153,10 @@ export async function PUT(
       ...(ai_knowledge ? { ai_knowledge } : {}),
       ...(bank ? { bank } : {}),
       ...(integration ? { integration } : {}),
+      ...(qris_image_url !== undefined ? { qris_image_url, qris_url: qris_image_url } : {}),
+      ...(bio !== undefined ? { bio } : {}),
+      ...(whatsapp !== undefined ? { whatsapp_number: whatsapp, whatsapp } : {}),
+      ...(whatsapp_number !== undefined ? { whatsapp_number, whatsapp: whatsapp_number } : {}),
     };
 
     const { error: updateError } = await supabase
@@ -193,6 +204,10 @@ export async function PUT(
         ai_knowledge,
         bank,
         integration,
+        qris_image_url:
+          qris_image_url !== undefined
+            ? qris_image_url
+            : (existing.metadata?.qris_image_url || existing.metadata?.qris_url || null),
       },
     });
   } catch (err: unknown) {

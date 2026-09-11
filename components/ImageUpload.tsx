@@ -13,7 +13,7 @@ interface ImageUploadProps {
   tenantSlug?: string;
 }
 
-async function optimizeImageToWebP(file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<File> {
+export async function optimizeImageToWebP(file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.85): Promise<File> {
   return new Promise((resolve) => {
     if (typeof window === 'undefined' || !window.FileReader) {
       return resolve(file);
