@@ -11,6 +11,8 @@ export interface InteractiveMenuOption {
   description?: string;    // Deskripsi singkat / harga (max 72 karakter)
   responseText?: string;   // Teks balasan bot ketika opsi ini dipilih
   response_text?: string;  // Dukungan alternatif format snake_case
+  image_url?: string | null; // URL gambar / banner opsi menu
+  imageUrl?: string | null;  // Dukungan alternatif format camelCase
 }
 
 export interface InteractiveMenu {
