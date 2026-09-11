@@ -87,33 +87,65 @@ function SingleProductContent() {
 
         const { data: tenantRow } = await supabase
           .from("tenants")
-          .select("metadata")
+          .select("id, metadata")
           .eq("slug", tenant)
           .maybeSingle();
 
         const prods = tenantRow?.metadata?.products;
-        if (Array.isArray(prods) && prods.length > 0) {
-          const norm = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const match = prods.find((p: any) => {
-            const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            const pNameSlug = slugify(p.name || p.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            const pAliases: string[] = Array.isArray(p.aliases)
-              ? p.aliases.map((a: string) => a.toLowerCase().replace(/[^a-z0-9]/g, ''))
-              : [];
+        const norm = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
+        let match = Array.isArray(prods) && prods.length > 0
+          ? prods.find((p: any) => {
+              const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const pNameSlug = slugify(p.name || p.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const pAliases: string[] = Array.isArray(p.aliases)
+                ? p.aliases.map((a: string) => a.toLowerCase().replace(/[^a-z0-9]/g, ''))
+                : [];
 
-            if (pSlug === norm || pNameSlug === norm || pAliases.includes(norm)) return true;
-            if (pSlug && (norm.includes(pSlug) || pSlug.includes(norm))) return true;
-            if (pNameSlug && (norm.includes(pNameSlug) || pNameSlug.includes(norm))) return true;
-            if (pAliases.some((a) => a && (norm.includes(a) || a.includes(norm)))) return true;
+              if (pSlug === norm || pNameSlug === norm || pAliases.includes(norm)) return true;
+              if (pSlug && (norm.includes(pSlug) || pSlug.includes(norm))) return true;
+              if (pNameSlug && (norm.includes(pNameSlug) || pNameSlug.includes(norm))) return true;
+              if (pAliases.some((a) => a && (norm.includes(a) || a.includes(norm)))) return true;
 
-            const isCpmNorm = norm.includes('cpm') && (norm.includes('24') || norm.includes('modul') || norm.includes('praktis'));
-            const isCpmProd = (pSlug.includes('cpm') || pNameSlug.includes('cpm'));
-            if (isCpmNorm && isCpmProd) return true;
+              const isCpmNorm = norm.includes('cpm') && (norm.includes('24') || norm.includes('modul') || norm.includes('praktis'));
+              const isCpmProd = (pSlug.includes('cpm') || pNameSlug.includes('cpm'));
+              if (isCpmNorm && isCpmProd) return true;
 
-            return false;
-          });
+              return false;
+            })
+          : null;
 
-          if (match && isMounted) {
+        // Fallback: Query langsung dari tabel SQL `products` jika belum ada di metadata.products
+        if (!match && tenantRow?.id) {
+          const { data: sqlProd } = await supabase
+            .from("products")
+            .select("*")
+            .eq("tenant_id", tenantRow.id)
+            .eq("slug", slug)
+            .maybeSingle();
+
+          if (sqlProd) {
+            match = {
+              id: sqlProd.id,
+              name: sqlProd.title,
+              title: sqlProd.title,
+              slug: sqlProd.slug,
+              price: sqlProd.price,
+              promo_price: sqlProd.promo_price,
+              category: sqlProd.category,
+              product_type: sqlProd.product_type,
+              description: sqlProd.description,
+              image: sqlProd.image,
+              stock: sqlProd.stock,
+              is_unlimited: sqlProd.is_unlimited_stock,
+              download_url: sqlProd.link_digital,
+              fulfillment_metadata: sqlProd.fulfillment_metadata,
+              ...(sqlProd.fulfillment_metadata?.single_page_config || {}),
+              single_page_config: sqlProd.fulfillment_metadata?.single_page_config || {}
+            };
+          }
+        }
+
+        if (match && isMounted) {
             const cfg = match.single_page_config || {};
             const builder = match.builder_metadata || match.metadata?.builder || match.metadata || {};
             const hero = match.hook_hero || builder.hook_hero || {};
@@ -169,8 +201,7 @@ function SingleProductContent() {
               config: dynamicConfig,
             });
           }
-        }
-      } catch (err) {
+        } catch (err) {
         console.warn('[SingleProductContent] Supabase sync note:', err);
       }
     }
