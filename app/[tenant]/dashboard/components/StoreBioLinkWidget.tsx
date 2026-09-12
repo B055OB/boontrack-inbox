@@ -35,23 +35,23 @@ export default function StoreBioLinkWidget({ tenantSlug }: StoreBioLinkWidgetPro
   };
 
   return (
-    <div className="w-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-2xl border border-slate-700/80 shadow-md p-4 sm:p-5 text-white animate-in fade-in duration-200">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    <div className="w-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-xl border border-slate-700/80 shadow-xs px-3.5 py-2.5 sm:px-4 sm:py-2 text-white animate-in fade-in duration-200">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3">
         {/* Left Section: Icon & Labels */}
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-xs">
-            <Share2 className="w-5 h-5" />
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-xs">
+            <Share2 className="w-4 h-4" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xs sm:text-sm font-bold text-slate-100 tracking-tight">
+              <h3 className="text-xs font-bold text-slate-100 tracking-tight">
                 Tautan Bio Toko (TikTok, IG, WA)
               </h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/90 text-emerald-400 border border-emerald-700/60 shrink-0">
+              <span className="text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-emerald-950/90 text-emerald-400 border border-emerald-700/60 shrink-0">
                 Official Shortlink
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 truncate">
+            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.2 truncate hidden sm:block">
               Salin tautan resmi ini untuk dipasang di bio media sosial agar calon pembeli langsung menuju toko Anda.
             </p>
           </div>

@@ -248,6 +248,11 @@ export default function TenantDashboardPage() {
           </div>
         </header>
 
+        {/* STORE SHORT BIO LINK WIDGET (GLOBAL DASHBOARD HEADER) */}
+        <div className="px-4 sm:px-6 py-2 bg-slate-50/70 border-b border-slate-100">
+          <StoreBioLinkWidget tenantSlug={tenantSlug} />
+        </div>
+
         {/* REVERSE TRIAL WARNING BANNER */}
         <TrialBanner
           daysLeft={trialDaysLeft}
@@ -273,11 +278,6 @@ export default function TenantDashboardPage() {
             {saveFeedback}
           </div>
         )}
-      </div>
-
-      {/* SHORTLINK BIO TOKO WIDGET */}
-      <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 md:px-8 pt-5 -mb-2 sm:-mb-3">
-        <StoreBioLinkWidget tenantSlug={tenantSlug} />
       </div>
 
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
