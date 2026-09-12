@@ -96,14 +96,18 @@ function SingleProductContent() {
           setTenantCategory(tenantRow.category);
         }
 
-        const prods = tenantRow?.metadata?.products;
+        const rawProds = tenantRow?.metadata?.products;
+        const prods = Array.isArray(rawProds)
+          ? rawProds.filter((p: any) => p !== null && typeof p === 'object')
+          : (tenantRow?.metadata?.product && typeof tenantRow.metadata.product === 'object' ? [tenantRow.metadata.product] : []);
         const norm = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
-        let match = Array.isArray(prods) && prods.length > 0
+        let match = prods.length > 0
           ? prods.find((p: any) => {
+              if (!p || typeof p !== 'object') return false;
               const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
               const pNameSlug = slugify(p.name || p.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
               const pAliases: string[] = Array.isArray(p.aliases)
-                ? p.aliases.map((a: string) => a.toLowerCase().replace(/[^a-z0-9]/g, ''))
+                ? p.aliases.filter(Boolean).map((a: string) => String(a).toLowerCase().replace(/[^a-z0-9]/g, ''))
                 : [];
 
               if (pSlug === norm || pNameSlug === norm || pAliases.includes(norm)) return true;

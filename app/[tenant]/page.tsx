@@ -98,10 +98,10 @@ export interface StoreChatMessage {
 
 // Helper to format category label for badges & display
 export function formatCategoryBadge(category?: string, productType?: string, customBadge?: string): string {
-  if (customBadge && customBadge.trim()) {
+  if (customBadge && typeof customBadge === "string" && customBadge.trim()) {
     return customBadge.trim();
   }
-  if (category && category.trim()) {
+  if (category && typeof category === "string" && category.trim()) {
     const trimmed = category.trim();
     const lower = trimmed.toLowerCase();
     if (lower === "field_service" || lower === "service" || lower === "jasa" || lower === "local_service" || lower === "jasa lapangan") {
@@ -125,7 +125,7 @@ export function formatCategoryBadge(category?: string, productType?: string, cus
     // Preserve custom merchant category (e.g. "E-Course", "Fashion", "Buku")
     return trimmed;
   }
-  const pt = (productType || "").toUpperCase();
+  const pt = typeof productType === "string" ? productType.toUpperCase() : "";
   if (pt === "FIELD_SERVICE" || pt === "SERVICE") return "Jasa Lapangan";
   if (pt === "PROFESSIONAL_SERVICE") return "Konsultasi";
   if (pt === "AGENCY") return "Agency & Kreator";
@@ -137,32 +137,53 @@ export function formatCategoryBadge(category?: string, productType?: string, cus
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProductItemToStoreProduct(p: any, idx: number): Product {
-  const price = p.promo_price ? Number(p.promo_price) : (Number(p.price) || 0);
-  const originalPrice = p.promo_price && Number(p.price) > Number(p.promo_price) ? Number(p.price) : (p.originalPrice ? Number(p.originalPrice) : undefined);
-  const categoryBadge = formatCategoryBadge(p.category, p.product_type || p.type, p.custom_badge);
-  const rawCat = (p.category || p.type || categoryBadge).toLowerCase();
+  if (!p || typeof p !== "object") {
+    return {
+      id: `prod-${idx + 1}`,
+      name: `Layanan ${idx + 1}`,
+      category: "Fisik",
+      type: "physical",
+      price: 0,
+      image: "/logo-shop.png",
+      description: "",
+      stock: 999,
+      sku: `SKU-${idx + 1}`
+    };
+  }
+
+  const rawPrice = Number(p.price) || 0;
+  const rawPromoPrice = p.promo_price !== undefined && p.promo_price !== null && p.promo_price !== "" ? Number(p.promo_price) : undefined;
+  const hasValidPromo = rawPromoPrice !== undefined && !isNaN(rawPromoPrice) && rawPromoPrice > 0 && rawPrice > rawPromoPrice;
+  const price = hasValidPromo ? rawPromoPrice : (rawPrice > 0 ? rawPrice : (rawPromoPrice || 0));
+  const originalPrice = hasValidPromo ? rawPrice : (p.originalPrice ? Number(p.originalPrice) : undefined);
+
+  const categoryBadge = formatCategoryBadge(
+    typeof p.category === "string" ? p.category : undefined,
+    typeof (p.product_type || p.type) === "string" ? (p.product_type || p.type) : undefined,
+    typeof p.custom_badge === "string" ? p.custom_badge : undefined
+  );
 
   return {
-    id: p.id || `prod-${idx + 1}`,
+    id: p.id !== undefined && p.id !== null ? p.id : `prod-${idx + 1}`,
     name: p.name || p.title || `Layanan ${idx + 1}`,
     category: p.category || categoryBadge,
-    type: p.type || (p.product_type === 'PHYSICAL' ? 'physical' : (p.product_type === 'SERVICE' ? 'service' : 'digital')),
+    type: p.type || (p.product_type === 'PHYSICAL' ? 'physical' : (p.product_type === 'SERVICE' || p.product_type === 'FIELD_SERVICE' ? 'service' : 'digital')),
     price,
     originalPrice,
     image: sanitizeImageUrl(p.image || (Array.isArray(p.images) && p.images[0]) || "/logo-shop.png"),
-    description: p.description || "",
+    description: typeof p.description === "string" ? p.description : "",
     badge: categoryBadge,
-    promo: p.promo || "",
-    custom_badge: p.custom_badge,
+    promo: typeof p.promo === "string" ? p.promo : "",
+    custom_badge: typeof p.custom_badge === "string" ? p.custom_badge : undefined,
     features: Array.isArray(p.features) && p.features.length > 0 ? p.features : [
       "Pengerjaan Profesional",
       "Garansi Bersih Tuntas",
       "Peralatan Lengkap & Higienis"
     ],
-    modules: p.modules,
-    promo_price: p.promo_price ? Number(p.promo_price) : undefined,
+    modules: Array.isArray(p.modules) ? p.modules : undefined,
+    promo_price: rawPromoPrice,
     download_url: p.download_url || p.delivery_url || "",
-    stock: p.stock !== undefined ? Number(p.stock) : 999,
+    stock: p.stock !== undefined && p.stock !== null ? Number(p.stock) : 999,
     sku: p.sku || `SKU-${idx + 1}`
   };
 }
@@ -287,19 +308,24 @@ export default function TenantStorefrontPage() {
 
         if (dbErr || !tenantRow) {
           // Fallback coba query endpoint settings lokal jika direct Supabase client network issue
-          const fallbackRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
-          if (fallbackRes.ok) {
-            const fbData = await fallbackRes.json();
-            if (fbData?.success && fbData?.settings) {
-              if (isMounted) {
-                setStoreName(fbData.settings.name || displayName);
-                setTenantMetadata(fbData.settings);
-                const prods = Array.isArray(fbData.settings.products) ? fbData.settings.products : [];
-                setStoreProducts(prods.map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx)));
-                setStoreStatus("active");
+          try {
+            const fallbackRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
+            if (fallbackRes.ok) {
+              const fbData = await fallbackRes.json();
+              if (fbData?.success && fbData?.settings) {
+                if (isMounted) {
+                  setStoreName(fbData.settings.name || displayName);
+                  setTenantMetadata(fbData.settings);
+                  const rawProds = fbData.settings.products;
+                  const prods = Array.isArray(rawProds) ? rawProds : [];
+                  setStoreProducts(prods.filter(Boolean).map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx)));
+                  setStoreStatus("active");
+                }
+                return;
               }
-              return;
             }
+          } catch (fbErr) {
+            console.warn("[Storefront] Fallback settings fetch failed:", fbErr);
           }
 
           if (isMounted) setStoreStatus("not_found");
@@ -310,9 +336,9 @@ export default function TenantStorefrontPage() {
           setStoreName(tenantRow.name || displayName);
           setTenantMetadata(tenantRow.metadata || null);
           const rawProds = tenantRow.metadata?.products;
-          const prodsList = Array.isArray(rawProds) && rawProds.length > 0 
-            ? rawProds 
-            : (tenantRow.metadata?.product ? [tenantRow.metadata.product] : []);
+          const prodsList = Array.isArray(rawProds)
+            ? rawProds.filter((p: any) => p !== null && typeof p === "object")
+            : (tenantRow.metadata?.product && typeof tenantRow.metadata.product === "object" ? [tenantRow.metadata.product] : []);
 
           setStoreProducts(prodsList.map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx)));
           setStoreStatus("active");
@@ -411,8 +437,8 @@ export default function TenantStorefrontPage() {
   const uniqueCategories = useMemo(() => {
     const set = new Set<string>();
     storeProducts.forEach((p) => {
-      if (p.category) {
-        set.add(formatCategoryBadge(p.category, p.type));
+      if (p && p.category) {
+        set.add(formatCategoryBadge(String(p.category), p.type));
       }
     });
     return Array.from(set);
@@ -420,11 +446,14 @@ export default function TenantStorefrontPage() {
 
   const filteredProducts = activeCategory === "all"
     ? storeProducts
-    : storeProducts.filter((p) =>
-        p.category?.toLowerCase() === activeCategory.toLowerCase() ||
-        p.badge?.toLowerCase() === activeCategory.toLowerCase() ||
-        p.type?.toLowerCase() === activeCategory.toLowerCase()
-      );
+    : storeProducts.filter((p) => {
+        if (!p) return false;
+        const cat = (p.category || "").toLowerCase();
+        const badge = (p.badge || "").toLowerCase();
+        const type = (p.type || "").toLowerCase();
+        const active = activeCategory.toLowerCase();
+        return cat === active || badge === active || type === active;
+      });
 
   const addToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -441,10 +470,12 @@ export default function TenantStorefrontPage() {
   const handleBarcodeDetected = (code: string) => {
     const matched = storeProducts.find(
       (p: any) =>
-        p.barcode === code ||
-        p.sku === code ||
-        String(p.id) === code ||
-        p.name?.toLowerCase().includes(code.toLowerCase())
+        p && (
+          p.barcode === code ||
+          p.sku === code ||
+          String(p.id) === code ||
+          p.name?.toLowerCase().includes(code.toLowerCase())
+        )
     );
 
     if (matched) {
@@ -469,12 +500,12 @@ export default function TenantStorefrontPage() {
     );
   };
 
-  const totalCartCount = cart.reduce((sum, item) => sum + item.qty, 0);
-  const totalCartPrice = cart.reduce((sum, item) => sum + item.product.price * item.qty, 0);
+  const totalCartCount = cart.reduce((sum, item) => sum + (Number(item?.qty) || 0), 0);
+  const totalCartPrice = cart.reduce((sum, item) => sum + ((Number(item?.product?.price) || 0) * (Number(item?.qty) || 0)), 0);
 
   const handleCartCheckout = () => {
     if (cart.length === 0) return;
-    const combinedTitles = cart.map(c => `${c.product.name} (${c.qty}x)`).join(", ");
+    const combinedTitles = cart.map(c => `${c.product?.name || 'Produk'} (${c.qty || 1}x)`).join(", ");
     
     trackInitiateCheckout(combinedTitles, totalCartPrice);
 
@@ -598,10 +629,10 @@ export default function TenantStorefrontPage() {
               <div>
                 <h2 className="text-lg font-black text-slate-900">{selectedProduct.name}</h2>
                 <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-xl font-black text-blue-600">Rp {selectedProduct.price.toLocaleString("id-ID")}</span>
-                  {selectedProduct.originalPrice && (
-                    <span className="text-xs text-slate-400 line-through">Rp {selectedProduct.originalPrice.toLocaleString("id-ID")}</span>
-                  )}
+                  <span className="text-xl font-black text-blue-600">Rp {Number(selectedProduct.price ?? 0).toLocaleString("id-ID")}</span>
+                  {selectedProduct.originalPrice ? (
+                    <span className="text-xs text-slate-400 line-through">Rp {Number(selectedProduct.originalPrice).toLocaleString("id-ID")}</span>
+                  ) : null}
                 </div>
                 <p className="text-xs text-slate-600 mt-2 leading-relaxed">{selectedProduct.description}</p>
               </div>
@@ -815,8 +846,8 @@ export default function TenantStorefrontPage() {
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                     <div>
-                      {p.originalPrice && <span className="text-[10px] text-slate-400 line-through block font-medium">Rp {p.originalPrice.toLocaleString("id-ID")}</span>}
-                      <span className="text-sm font-black text-blue-600">Rp {p.price.toLocaleString("id-ID")}</span>
+                      {p.originalPrice ? <span className="text-[10px] text-slate-400 line-through block font-medium">Rp {Number(p.originalPrice).toLocaleString("id-ID")}</span> : null}
+                      <span className="text-sm font-black text-blue-600">Rp {Number(p.price ?? 0).toLocaleString("id-ID")}</span>
                     </div>
                     <button 
                       onClick={(e) => {
@@ -1008,10 +1039,10 @@ export default function TenantStorefrontPage() {
             <div>
               <h2 className="text-lg font-black text-slate-900">{selectedProduct.name}</h2>
               <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-xl font-black text-blue-600">Rp {selectedProduct.price.toLocaleString("id-ID")}</span>
-                {selectedProduct.originalPrice && (
-                  <span className="text-xs text-slate-400 line-through">Rp {selectedProduct.originalPrice.toLocaleString("id-ID")}</span>
-                )}
+                <span className="text-xl font-black text-blue-600">Rp {Number(selectedProduct.price ?? 0).toLocaleString("id-ID")}</span>
+                {selectedProduct.originalPrice ? (
+                  <span className="text-xs text-slate-400 line-through">Rp {Number(selectedProduct.originalPrice).toLocaleString("id-ID")}</span>
+                ) : null}
               </div>
               <p className="text-xs text-slate-600 mt-2 leading-relaxed">{selectedProduct.description}</p>
             </div>
@@ -1064,7 +1095,7 @@ export default function TenantStorefrontPage() {
                   <div key={item.product.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <div className="flex-1 pr-2">
                       <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{item.product.name}</h4>
-                      <span className="text-xs text-blue-600 font-bold">Rp {(item.product.price * item.qty).toLocaleString("id-ID")}</span>
+                      <span className="text-xs text-blue-600 font-bold">Rp {((Number(item.product?.price) || 0) * (Number(item.qty) || 1)).toLocaleString("id-ID")}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
@@ -1084,7 +1115,7 @@ export default function TenantStorefrontPage() {
               <div className="space-y-3 pt-2">
                 <div className="flex justify-between items-center text-xs font-black text-slate-900">
                   <span>Total Biaya</span>
-                  <span className="text-sm text-blue-600">Rp {totalCartPrice.toLocaleString("id-ID")}</span>
+                  <span className="text-sm text-blue-600">Rp {Number(totalCartPrice || 0).toLocaleString("id-ID")}</span>
                 </div>
                 <button
                   onClick={handleCartCheckout}
