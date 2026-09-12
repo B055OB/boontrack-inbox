@@ -1,11 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
+const EVOLUTION_API_URL =
+  process.env.EVOLUTION_API_URL ||
+  "https://evolution-api-production-abb7.up.railway.app";
+const EVOLUTION_API_KEY =
+  process.env.EVOLUTION_API_KEY ||
+  "4398809d97f770b1a2b243ed0ee33bf3312d02dec42be8789ea3512f487f4c5e";
+
+async function fetchPairing(instanceName: string, phone: string) {
+  const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${encodeURIComponent(instanceName)}?number=${encodeURIComponent(phone)}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      apikey: EVOLUTION_API_KEY,
+    },
+    cache: "no-store",
+  });
+  const data = await res.json().catch(() => ({}));
+  return { res, data };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const body = await req.json().catch(() => ({}));
-    const tenantSlug = searchParams.get("tenant") || body.tenant || body.tenant_slug || "onlineboost";
-    const rawPhone = body.phone || body.phone_number || body.phoneNumber || searchParams.get("phone") || "";
+
+    const rawTenant = searchParams.get("tenant") || body.tenant || body.tenant_slug;
+    const tenantSlug = typeof rawTenant === "string" ? rawTenant.trim() : "";
+
+    if (!tenantSlug) {
+      return NextResponse.json(
+        { success: false, error: "Missing required parameter: tenant" },
+        { status: 400 }
+      );
+    }
+
+    const rawPhone =
+      body.phone ||
+      body.phone_number ||
+      body.phoneNumber ||
+      searchParams.get("phone") ||
+      "";
 
     let cleanPhone = String(rawPhone).replace(/[^0-9]/g, "");
     if (cleanPhone.startsWith("0")) {
@@ -21,61 +58,75 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const BACKEND_URL =
-      process.env.CORE_BACKEND_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      process.env.NEXT_PUBLIC_API_BASE_URL ||
-      process.env.BACKEND_URL ||
-      "https://boontrack-core-production.up.railway.app";
+    // 1. Coba request pairing code dengan nama instance tenantSlug
+    let pairingResult = await fetchPairing(tenantSlug, cleanPhone);
 
-    const response = await fetch(
-      `${BACKEND_URL.replace(/\/$/, "")}/api/v1/whatsapp/sessions/${encodeURIComponent(tenantSlug)}/pairing-code`,
-      {
+    // Jika 404 dan slug belum memiliki prefix "tenant_", periksa apakah ada instance "tenant_{slug}"
+    if (pairingResult.res.status === 404 && !tenantSlug.startsWith("tenant_")) {
+      const fallbackResult = await fetchPairing(`tenant_${tenantSlug}`, cleanPhone);
+      if (fallbackResult.res.ok || fallbackResult.res.status !== 404) {
+        pairingResult = fallbackResult;
+      }
+    }
+
+    // Jika instance belum ada di Evolution API (404), buat instance terlebih dahulu
+    if (pairingResult.res.status === 404) {
+      await fetch(`${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/create`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant: tenantSlug, phone: cleanPhone }),
-      }
-    );
+        headers: {
+          "Content-Type": "application/json",
+          apikey: EVOLUTION_API_KEY,
+        },
+        body: JSON.stringify({
+          instanceName: tenantSlug,
+          integration: "WHATSAPP-BAILEYS",
+          qrcode: true,
+        }),
+      }).catch(() => null);
 
-    const data = await response.json().catch(() => ({}));
+      pairingResult = await fetchPairing(tenantSlug, cleanPhone);
+    }
 
-    if (response.ok && data.success && data.pairing_code) {
-      const code = String(data.pairing_code).trim();
-      // Pastikan bukan raw QR code
-      if (code.includes("@") || code.includes("=") || code.length > 12) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Gateway mengembalikan raw QR string, bukan kode pairing. Pastikan WhatsApp session berstatus SCAN_QR_CODE.",
-            detail: code,
-          },
-          { status: 502 }
-        );
-      }
+    const { res, data } = pairingResult;
 
+    // Tangkap atribut pairingCode atau code dari Evolution API
+    const code =
+      data.pairingCode ||
+      data.code ||
+      data.pairing_code ||
+      data.qrcode?.pairingCode ||
+      data.qrcode?.code ||
+      null;
+
+    if (code) {
       return NextResponse.json({
         success: true,
-        tenant_slug: tenantSlug,
         pairing_code: code,
-        phone: cleanPhone,
-        instance: data.instance || data.session,
       });
     }
 
-    // Kembalikan status error asli dari Evolution API tanpa silent fallback
+    // Jika Evolution API mengembalikan error
     return NextResponse.json(
       {
         success: false,
-        error: data.error || data.detail || `Server Evolution API Error (${response.status})`,
-        detail: data.detail || data,
-        status_code: response.status,
+        error:
+          data.error ||
+          data.response?.message?.[0] ||
+          data.message ||
+          `Evolution API Error (${res.status})`,
+        detail: data,
       },
-      { status: response.status >= 400 ? response.status : 502 }
+      { status: res.status >= 400 ? res.status : 502 }
     );
   } catch (err: any) {
     return NextResponse.json(
-      { success: false, error: err.message || "Gagal menghubungi backend Evolution API Gateway" },
+      {
+        success: false,
+        error: err.message || "Gagal berkomunikasi dengan Evolution API",
+      },
       { status: 500 }
     );
   }
 }
+
+export const GET = POST;
