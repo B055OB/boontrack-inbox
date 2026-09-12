@@ -1713,37 +1713,23 @@ export function useTenantDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant: tenantSlug, phone: cleanPhone }),
       });
-      const data = await res.json();
-      const rawCode = data?.pairing_code ? String(data.pairing_code).trim() : '';
-      const alphanumeric = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-      let finalCode = '';
-
-      // Validasi resmi: kode pairing WhatsApp HANYA 8 karakter alfanumerik (tolak jika >12 karakter atau ada @, =, ,, ;)
-      if (
-        rawCode &&
-        !rawCode.includes('@') &&
-        !rawCode.includes('=') &&
-        !rawCode.includes(',') &&
-        !rawCode.includes(';') &&
-        rawCode.length <= 12 &&
-        alphanumeric.length === 8
-      ) {
-        finalCode = `${alphanumeric.slice(0, 4)}-${alphanumeric.slice(4)}`;
-      } else {
-        // Jika data dari gateway berupa raw QR atau belum valid 8-digit, gunakan generator fallback resmi 8 karakter Base32
-        console.warn('[handleRequestPairingCode] Gateway returned raw QR or non-8-digit, using official 8-digit fallback:', rawCode);
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        let gen = '';
-        for (let i = 0; i < 8; i++) {
-          gen += chars[Math.floor(Math.random() * chars.length)];
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && data.pairing_code) {
+        const rawCode = String(data.pairing_code).trim();
+        if (rawCode.includes('@') || rawCode.includes('=') || rawCode.length > 12) {
+          alert('Respons gateway berupa raw QR code, bukan kode pairing. Pastikan WhatsApp session berstatus SCAN_QR_CODE.');
+          setPairingCodeResult(null);
+        } else {
+          setPairingCodeResult(rawCode);
         }
-        finalCode = `${gen.slice(0, 4)}-${gen.slice(4)}`;
+      } else {
+        alert(data.error || data.detail || 'Gagal mendapatkan kode pairing dari server WAHA. Periksa status gateway WhatsApp.');
+        setPairingCodeResult(null);
       }
-
-      setPairingCodeResult(finalCode);
     } catch (err) {
       console.error('Pairing code request error:', err);
       alert('Tidak dapat menghubungi gateway WhatsApp.');
+      setPairingCodeResult(null);
     } finally {
       setIsPairingLoading(false);
     }
