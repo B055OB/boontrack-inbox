@@ -344,8 +344,14 @@ export default function TenantStorefrontPage() {
           setStoreStatus("active");
         }
       } catch (err) {
-        console.warn("[Storefront] Error loading tenant:", err);
-        if (isMounted) setStoreStatus("not_found");
+        console.error("[Storefront] Storefront load error:", err);
+        if (isMounted) {
+          // Fallback aman: gunakan catalog default / array kosong alih-alih melempar exception!
+          setStoreName(displayName || "Toko");
+          setTenantMetadata(null);
+          setStoreProducts([]);
+          setStoreStatus("active");
+        }
       }
     }
 
@@ -436,22 +442,25 @@ export default function TenantStorefrontPage() {
 
   const uniqueCategories = useMemo(() => {
     const set = new Set<string>();
-    storeProducts.forEach((p) => {
+    (storeProducts || []).forEach((p) => {
       if (p && p.category) {
-        set.add(formatCategoryBadge(String(p.category), p.type));
+        const badge = formatCategoryBadge(String(p.category), typeof p.type === 'string' ? p.type : undefined);
+        if (badge && typeof badge === 'string' && badge.trim()) {
+          set.add(badge.trim());
+        }
       }
     });
     return Array.from(set);
   }, [storeProducts]);
 
   const filteredProducts = activeCategory === "all"
-    ? storeProducts
-    : storeProducts.filter((p) => {
+    ? (storeProducts || [])
+    : (storeProducts || []).filter((p) => {
         if (!p) return false;
-        const cat = (p.category || "").toLowerCase();
-        const badge = (p.badge || "").toLowerCase();
-        const type = (p.type || "").toLowerCase();
-        const active = activeCategory.toLowerCase();
+        const cat = String(p.category || "").toLowerCase();
+        const badge = String(p.badge || "").toLowerCase();
+        const type = String(p.type || "").toLowerCase();
+        const active = String(activeCategory || "").toLowerCase();
         return cat === active || badge === active || type === active;
       });
 
@@ -595,7 +604,11 @@ export default function TenantStorefrontPage() {
   };
 
   const currentTheme = tenantMetadata?.theme || {};
-  const currentTemplate = tenantMetadata?.template || currentTheme.template || (tenantSlug === 'ombudi' ? 'personal' : 'default');
+  const rawTemplate = tenantMetadata?.storefront_template || tenantMetadata?.template || currentTheme.template;
+  // Kunci Default: pastikan fallback selalu ke default (Katalog Grid Standar)
+  const currentTemplate = tenantSlug === 'ombudi' 
+    ? 'personal' 
+    : (rawTemplate === 'microsite' ? 'microsite' : (rawTemplate === 'personal' ? 'personal' : 'default'));
   const isChatEnabled = currentTheme.chat_enabled !== false;
 
   // ── CONDITIONAL TEMPLATE: PERSONAL (Authority / Personal Brand) ──
@@ -786,19 +799,23 @@ export default function TenantStorefrontPage() {
                 activeCategory === "all" ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              Semua ({storeProducts.length})
+              Semua ({(storeProducts || []).length})
             </button>
-            {uniqueCategories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat.toLowerCase())}
-                className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-                  activeCategory === cat.toLowerCase() ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+            {(uniqueCategories || []).map((cat) => {
+              const catClean = String(cat || "").trim();
+              if (!catClean) return null;
+              return (
+                <button
+                  key={catClean}
+                  onClick={() => setActiveCategory(catClean.toLowerCase())}
+                  className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+                    String(activeCategory || "").toLowerCase() === catClean.toLowerCase() ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  {catClean}
+                </button>
+              );
+            })}
           </div>
 
           {filteredProducts.length === 0 ? (
@@ -815,44 +832,50 @@ export default function TenantStorefrontPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredProducts.map((p) => (
+              {(filteredProducts || []).map((p, idx) => (
                 <div
-                  key={p.id}
+                  key={p?.id !== undefined && p?.id !== null ? String(p.id) : `prod-${idx}`}
                   onClick={() => {
-                    trackViewContent(p);
-                    setSelectedProduct(p);
+                    if (p) {
+                      try {
+                        trackViewContent(p);
+                      } catch {}
+                      setSelectedProduct(p);
+                    }
                   }}
                   className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
                 >
                   <div>
                     <div className="relative aspect-video rounded-2xl overflow-hidden mb-3 bg-slate-100">
-                      <StoreProductImage src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                      {p.badge && (
+                      <StoreProductImage src={p?.image} alt={p?.name || "Layanan"} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      {p?.badge && (
                         <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
                           {p.badge}
                         </span>
                       )}
-                      {p.promo && p.promo !== p.badge && (
+                      {p?.promo && p.promo !== p.badge && (
                         <span className="absolute top-2.5 right-2.5 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
                           {p.promo}
                         </span>
                       )}
                     </div>
                     <h3 className="font-black text-slate-900 text-sm leading-snug line-clamp-2 mb-1 group-hover:text-blue-600 transition-colors">
-                      {p.name}
+                      {p?.name || `Layanan ${idx + 1}`}
                     </h3>
-                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">{p.description}</p>
+                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-3">{p?.description || ""}</p>
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                     <div>
-                      {p.originalPrice ? <span className="text-[10px] text-slate-400 line-through block font-medium">Rp {Number(p.originalPrice).toLocaleString("id-ID")}</span> : null}
-                      <span className="text-sm font-black text-blue-600">Rp {Number(p.price ?? 0).toLocaleString("id-ID")}</span>
+                      {p?.originalPrice ? <span className="text-[10px] text-slate-400 line-through block font-medium">Rp {Number(p.originalPrice).toLocaleString("id-ID")}</span> : null}
+                      <span className="text-sm font-black text-blue-600">Rp {Number(p?.price ?? 0).toLocaleString("id-ID")}</span>
                     </div>
                     <button 
                       onClick={(e) => {
-                        addToCart(p, e);
-                        setShowCartModal(true);
+                        if (p) {
+                          addToCart(p, e);
+                          setShowCartModal(true);
+                        }
                       }} 
                       className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
                     >
