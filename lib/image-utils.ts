@@ -125,3 +125,135 @@ export function sanitizeImageUrl(url?: string | null): string {
 
   return trimmed;
 }
+
+export async function optimizeImageToWebP(
+  file: File,
+  maxWidth = 1200,
+  maxHeight = 1200,
+  quality = 0.85
+): Promise<File> {
+  if (typeof window === 'undefined' || !window.FileReader) {
+    return file;
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(file);
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const cleanName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
+                const webpFile = new File([blob], cleanName, { type: 'image/webp' });
+                resolve(webpFile);
+              } else {
+                resolve(file);
+              }
+            },
+            'image/webp',
+            quality
+          );
+        } catch {
+          resolve(file);
+        }
+      };
+      img.onerror = () => resolve(file);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
+export interface UploadImageOptions {
+  folder?: string;
+  tenantSlug?: string;
+  maxWidth?: number;
+  maxHeight?: number;
+  quality?: number;
+}
+
+export async function uploadImageFile(
+  file: File,
+  options?: UploadImageOptions
+): Promise<string> {
+  const folder = options?.folder || 'media';
+  const tenantSlug = options?.tenantSlug || 'sandbox';
+
+  // 1. Optimize image to WebP
+  let processedFile = file;
+  try {
+    processedFile = await optimizeImageToWebP(
+      file,
+      options?.maxWidth || 1200,
+      options?.maxHeight || 1200,
+      options?.quality || 0.85
+    );
+  } catch (optErr) {
+    console.warn('Image optimization skipped:', optErr);
+    processedFile = file;
+  }
+
+  // 2. Post to /api/v1/upload
+  const formData = new FormData();
+  formData.append('file', processedFile, processedFile.name);
+  formData.append('image', processedFile, processedFile.name);
+  formData.append('tenant_slug', tenantSlug);
+  formData.append('tenant_id', tenantSlug);
+  formData.append('folder', folder);
+
+  const res = await fetch('/api/v1/upload', {
+    method: 'POST',
+    headers: {
+      'X-Tenant-Slug': tenantSlug,
+      'X-Tenant-ID': tenantSlug,
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let errorDetail = `Upload gagal (${res.status})`;
+    try {
+      const errJson = await res.json();
+      errorDetail = errJson.detail || errJson.error || errJson.message || errorDetail;
+    } catch {}
+    throw new Error(errorDetail);
+  }
+
+  const data = await res.json();
+  const rawUrl =
+    data?.public_url ||
+    data?.url ||
+    data?.image_url ||
+    data?.r2_url ||
+    (typeof data === 'string' ? data : '');
+
+  const sanitized = sanitizeImageUrl(rawUrl);
+  if (!sanitized) {
+    throw new Error('Server tidak mengembalikan URL gambar yang valid.');
+  }
+
+  return sanitized;
+}

@@ -17,8 +17,8 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { optimizeImageToWebP } from '@/components/ImageUpload';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm } from '@/lib/boonpilotMapper';
+import { sanitizeImageUrl, uploadImageFile } from '@/lib/image-utils';
 import type { InteractiveMenu } from '@/lib/whatsappFormatter';
-import { sanitizeImageUrl } from '@/lib/image-utils';
 
 export type DashboardTab =
   | 'inbox'
@@ -317,70 +317,10 @@ export function useTenantDashboard() {
 
     setIsUploadingQris(true);
     try {
-      let processedFile: File;
-      try {
-        processedFile = await optimizeImageToWebP(file);
-      } catch {
-        processedFile = file;
-      }
-
-      let publicUrl = '';
-
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const sanitizedName = (processedFile.name || 'qris.webp').replace(/[^a-zA-Z0-9.-]/g, '_');
-          const storagePath = `${tenantSlug}/qris/${Date.now()}_${sanitizedName}`;
-          const { data: sbData, error: sbErr } = await supabase.storage
-            .from('store-assets')
-            .upload(storagePath, processedFile, {
-              contentType: processedFile.type || 'image/webp',
-              upsert: true,
-            });
-
-          if (!sbErr && sbData) {
-            const { data: pubData } = supabase.storage
-              .from('store-assets')
-              .getPublicUrl(storagePath);
-            if (pubData?.publicUrl) {
-              publicUrl = pubData.publicUrl;
-            }
-          }
-        }
-      } catch (directErr) {
-        console.warn('Direct Supabase upload error:', directErr);
-      }
-
-      if (!publicUrl) {
-        const formData = new FormData();
-        formData.append('file', processedFile, processedFile.name);
-        formData.append('image', processedFile, processedFile.name);
-        formData.append('tenant_slug', tenantSlug);
-        formData.append('tenant_id', tenantSlug);
-        formData.append('folder', 'qris');
-
-        try {
-          const proxyRes = await fetch('/api/v1/upload', {
-            method: 'POST',
-            headers: {
-              'X-Tenant-Slug': tenantSlug,
-              'X-Tenant-ID': tenantSlug,
-            },
-            body: formData,
-          });
-          if (proxyRes.ok) {
-            const uploadData = await proxyRes.json();
-            publicUrl =
-              uploadData?.url ||
-              uploadData?.image_url ||
-              uploadData?.public_url ||
-              uploadData?.file_url ||
-              (typeof uploadData === 'string' ? uploadData : '');
-          }
-        } catch (proxyErr) {
-          console.warn('Fallback upload proxy error:', proxyErr);
-        }
-      }
+      const publicUrl = await uploadImageFile(file, {
+        folder: 'qris',
+        tenantSlug,
+      });
 
       if (!publicUrl) {
         throw new Error('Gagal mengunggah gambar QRIS ke storage');
@@ -388,6 +328,33 @@ export function useTenantDashboard() {
 
       setStoreQrisUrl(publicUrl);
 
+      // Direct persist ke database Supabase (tenants.metadata.qris_image_url)
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: tenantRow } = await supabase
+            .from('tenants')
+            .select('id, metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+
+          if (tenantRow?.id) {
+            const updatedMeta = {
+              ...(tenantRow.metadata || {}),
+              qris_image_url: publicUrl,
+              qris_url: publicUrl,
+            };
+            await supabase
+              .from('tenants')
+              .update({ metadata: updatedMeta })
+              .eq('id', tenantRow.id);
+          }
+        }
+      } catch (sbErr) {
+        console.warn('Direct Supabase QRIS sync note:', sbErr);
+      }
+
+      // Sync via settings API route
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
           method: 'PUT',
@@ -423,39 +390,13 @@ export function useTenantDashboard() {
 
     setIsUploadingLogo(true);
     try {
-      let processedFile: File;
-      try {
-        processedFile = await optimizeImageToWebP(file, 600, 600, 0.9);
-      } catch {
-        processedFile = file;
-      }
-
-      let publicUrl = '';
-
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const sanitizedName = (processedFile.name || 'logo.webp').replace(/[^a-zA-Z0-9.-]/g, '_');
-          const storagePath = `${tenantSlug}/logos/${Date.now()}_${sanitizedName}`;
-          const { data: sbData, error: sbErr } = await supabase.storage
-            .from('store-assets')
-            .upload(storagePath, processedFile, {
-              contentType: processedFile.type || 'image/webp',
-              upsert: true,
-            });
-
-          if (!sbErr && sbData) {
-            const { data: pubData } = supabase.storage
-              .from('store-assets')
-              .getPublicUrl(storagePath);
-            if (pubData?.publicUrl) {
-              publicUrl = pubData.publicUrl;
-            }
-          }
-        }
-      } catch (directErr) {
-        console.warn('Direct Supabase upload error:', directErr);
-      }
+      const publicUrl = await uploadImageFile(file, {
+        folder: 'logos',
+        tenantSlug,
+        maxWidth: 600,
+        maxHeight: 600,
+        quality: 0.9,
+      });
 
       if (!publicUrl) {
         throw new Error('Gagal mengunggah logo ke storage');
@@ -463,13 +404,42 @@ export function useTenantDashboard() {
 
       setStoreLogoUrl(publicUrl);
 
+      // Direct persist ke database Supabase (tenants.metadata.logo_url)
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: tenantRow } = await supabase
+            .from('tenants')
+            .select('id, metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+
+          if (tenantRow?.id) {
+            const updatedMeta = {
+              ...(tenantRow.metadata || {}),
+              logo_url: publicUrl,
+              avatar_url: publicUrl,
+            };
+            await supabase
+              .from('tenants')
+              .update({ metadata: updatedMeta })
+              .eq('id', tenantRow.id);
+          }
+        }
+      } catch (sbErr) {
+        console.warn('Direct Supabase logo sync note:', sbErr);
+      }
+
+      // Sync via settings API route
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ logo_url: publicUrl }),
         });
-      } catch { }
+      } catch (settingsErr) {
+        console.warn('Settings API logo update warning:', settingsErr);
+      }
 
       setSaveFeedback('✅ Logo toko berhasil disimpan!');
       setTimeout(() => setSaveFeedback(null), 3500);
@@ -538,9 +508,13 @@ export function useTenantDashboard() {
             tenant.metadata?.qris_url ||
             tenant.qris_image_url ||
             '';
-          if (qrisUrlFromDb) setStoreQrisUrl(qrisUrlFromDb);
-          const logoUrlFromDb = tenant.metadata?.logo_url || tenant.logo_url || '';
-          if (logoUrlFromDb) setStoreLogoUrl(logoUrlFromDb);
+          if (qrisUrlFromDb) setStoreQrisUrl(sanitizeImageUrl(qrisUrlFromDb));
+          const logoUrlFromDb =
+            tenant.metadata?.logo_url ||
+            tenant.metadata?.avatar_url ||
+            tenant.logo_url ||
+            '';
+          if (logoUrlFromDb) setStoreLogoUrl(sanitizeImageUrl(logoUrlFromDb));
 
           // Hydrate Products: Prioritas Supabase (tenants.metadata.products & products table)
           let hydratedProducts: ProductItem[] = [];
@@ -880,6 +854,7 @@ export function useTenantDashboard() {
       stock: !isPhysicalStock ? 999999 : (productForm.stock ?? 100),
       weight_grams: !isPhysicalStock ? 0 : (productForm.weight_grams ?? 0),
       image: cleanImage,
+      image_url: cleanImage,
       slug: finalSlug,
       single_page_config: productForm.single_page_config
         ? {
@@ -944,6 +919,7 @@ export function useTenantDashboard() {
               price: Number(updatedProductItem.price),
               promo_price: updatedProductItem.promo_price ? Number(updatedProductItem.promo_price) : 0,
               image: cleanImage,
+              image_url: cleanImage,
               category: updatedProductItem.category || 'service',
               stock: updatedProductItem.stock !== undefined ? Number(updatedProductItem.stock) : 999999,
               is_unlimited_stock: updatedProductItem.is_unlimited ?? true,

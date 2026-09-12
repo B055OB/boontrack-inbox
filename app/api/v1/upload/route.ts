@@ -3,46 +3,59 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSupabase } from '@/lib/supabaseClient';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 
-const R2_ACCOUNT_ID =
-  process.env.R2_ACCOUNT_ID ||
-  process.env.CLOUDFLARE_ACCOUNT_ID ||
-  '56303bb13200d0980da8695adcf08550';
+function cleanEnv(val?: string | null): string {
+  if (!val) return '';
+  return val.replace(/^["']|["']$/g, '').trim();
+}
 
-const R2_ENDPOINT =
-  process.env.R2_ENDPOINT_URL ||
-  `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
+function getR2Client(): { client: S3Client; bucket: string; publicUrlBase: string } | null {
+  const accountId = cleanEnv(
+    process.env.R2_ACCOUNT_ID ||
+    process.env.CLOUDFLARE_ACCOUNT_ID ||
+    '56303bb13200d0980da8695adcf08550'
+  );
 
-const R2_ACCESS_KEY_ID =
-  process.env.R2_ACCESS_KEY_ID ||
-  process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
-  '';
+  let endpoint = cleanEnv(
+    process.env.R2_ENDPOINT_URL ||
+    `https://${accountId}.r2.cloudflarestorage.com`
+  );
+  if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) {
+    endpoint = `https://${endpoint}`;
+  }
 
-const R2_SECRET_ACCESS_KEY =
-  process.env.R2_SECRET_ACCESS_KEY ||
-  process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
-  '';
+  const accessKeyId = cleanEnv(
+    process.env.R2_ACCESS_KEY_ID ||
+    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID
+  );
 
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'boontrack-media';
+  const secretAccessKey = cleanEnv(
+    process.env.R2_SECRET_ACCESS_KEY ||
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY
+  );
 
-const R2_PUBLIC_URL_BASE = (
-  process.env.R2_PUBLIC_URL ||
-  process.env.NEXT_PUBLIC_R2_URL ||
-  process.env.NEXT_PUBLIC_ASSET_DOMAIN ||
-  'https://assets.boontrack.com'
-).replace(/\/+$/, '');
+  const bucket = cleanEnv(process.env.R2_BUCKET_NAME || 'boontrack-media');
 
-function getR2Client(): S3Client | null {
-  if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
+  const publicUrlBase = cleanEnv(
+    process.env.R2_PUBLIC_URL ||
+    process.env.NEXT_PUBLIC_R2_URL ||
+    process.env.NEXT_PUBLIC_ASSET_DOMAIN ||
+    'https://assets.boontrack.com'
+  ).replace(/\/+$/, '');
+
+  if (!accessKeyId || !secretAccessKey) {
     return null;
   }
-  return new S3Client({
+
+  const client = new S3Client({
     region: 'auto',
-    endpoint: R2_ENDPOINT,
+    endpoint,
     credentials: {
-      accessKeyId: R2_ACCESS_KEY_ID,
-      secretAccessKey: R2_SECRET_ACCESS_KEY,
+      accessKeyId,
+      secretAccessKey,
     },
   });
+
+  return { client, bucket, publicUrlBase };
 }
 
 export async function POST(req: NextRequest) {
@@ -73,24 +86,24 @@ export async function POST(req: NextRequest) {
     let key = `${folder}/${Date.now()}_${sanitizedName}`;
 
     // 1. Direct Cloudflare R2 Upload menggunakan S3 Client (@aws-sdk/client-s3)
-    const r2Client = getR2Client();
-    if (!r2Client) {
+    const r2Config = getR2Client();
+    if (!r2Config) {
       return NextResponse.json(
         { status: 'error', detail: 'Cloudflare R2 Client belum terkonfigurasi (R2_ACCESS_KEY_ID & R2_SECRET_ACCESS_KEY wajib diset)' },
         { status: 500 }
       );
     }
 
-    await r2Client.send(
+    await r2Config.client.send(
       new PutObjectCommand({
-        Bucket: R2_BUCKET_NAME,
+        Bucket: r2Config.bucket,
         Key: key,
         Body: buffer,
         ContentType: file.type || (isQris ? 'image/png' : 'image/webp'),
       })
     );
 
-    // 2. Simpan juga ke Supabase Storage (store-assets) untuk backup
+    // 2. Simpan juga ke Supabase Storage (store-assets) untuk backup jika bucket siap
     try {
       const supabase = getSupabase();
       if (supabase) {
@@ -106,7 +119,7 @@ export async function POST(req: NextRequest) {
     }
 
     // URL publik kanonikal dan proksi internal yang selalu sinkron dengan key penyimpanan
-    const publicUrl = `${R2_PUBLIC_URL_BASE}/${key}`;
+    const publicUrl = `${r2Config.publicUrlBase}/${key}`;
     const canonicalAssetUrl = sanitizeImageUrl(publicUrl) || publicUrl;
     const localProxyUrl = `/api/v1/media/${key}`;
 

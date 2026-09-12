@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Store, Image as ImageIcon, Save, X, Package, QrCode, CheckCircle2, Smartphone, Zap, Download } from 'lucide-react';
+import { getSupabase } from '@/lib/supabaseClient';
 import CustomDomainCard from '../settings/CustomDomainCard';
 
 export interface SettingsTabProps {
@@ -83,7 +84,64 @@ export default function SettingsTab({
       }
 
       setIsSavingStore(true);
-      // 1. Simpan ke Supabase tenant_settings
+
+      // 1. Direct Persist ke database Supabase (tenants table & metadata)
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: tenantRow } = await supabase
+            .from('tenants')
+            .select('id, metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+
+          if (tenantRow?.id) {
+            const updatedMeta = {
+              ...(tenantRow.metadata || {}),
+              bio: storeBio,
+              whatsapp_number: storeWhatsapp,
+              whatsapp: storeWhatsapp,
+              ...(storeLogoUrl ? { logo_url: storeLogoUrl, avatar_url: storeLogoUrl } : {}),
+              ...(storeQrisUrl ? { qris_image_url: storeQrisUrl, qris_url: storeQrisUrl } : {}),
+            };
+
+            const { error: sbUpdateErr } = await supabase
+              .from('tenants')
+              .update({
+                name: trimmed,
+                metadata: updatedMeta,
+              })
+              .eq('id', tenantRow.id);
+
+            if (sbUpdateErr) {
+              console.warn('Direct Supabase update warning:', sbUpdateErr);
+            }
+          }
+        }
+      } catch (sbErr) {
+        console.warn('Direct Supabase save exception:', sbErr);
+      }
+
+      // 2. Simpan ke database tenants & sync metadata melalui unified settings route
+      const settingsRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: trimmed,
+          bio: storeBio,
+          whatsapp: storeWhatsapp,
+          whatsapp_number: storeWhatsapp,
+          qris_image_url: storeQrisUrl || undefined,
+          logo_url: storeLogoUrl || undefined,
+        }),
+      });
+
+      if (!settingsRes.ok) {
+        const errData = await settingsRes.json().catch(() => ({}));
+        throw new Error(errData.error || errData.message || 'Gagal menyimpan profil ke database.');
+      }
+
+      // 3. Simpan juga ke Supabase tenant_settings jika ada tabelnya
       try {
         await fetch(
           `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?tenant_slug=eq.${tenantSlug}`,
@@ -104,32 +162,14 @@ export default function SettingsTab({
           }
         );
       } catch (err) {
-        console.warn('Gagal PATCH tenant_settings:', err);
-      }
-
-      // 2. Simpan ke database tenants & sync metadata melalui unified settings route
-      try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: trimmed,
-            bio: storeBio,
-            whatsapp: storeWhatsapp,
-            whatsapp_number: storeWhatsapp,
-            qris_image_url: storeQrisUrl || undefined,
-            logo_url: storeLogoUrl || undefined,
-          }),
-        });
-      } catch (err) {
-        console.warn('Gagal sync route settings:', err);
+        console.warn('Gagal PATCH tenant_settings note:', err);
       }
 
       if (onClose) onClose();
       if (onSavedSuccess) onSavedSuccess();
-    } catch (err) {
-      console.error(err);
-      setNameError('Terjadi kesalahan koneksi.');
+    } catch (err: any) {
+      console.error('Error saving store profile:', err);
+      setNameError(err.message || 'Terjadi kesalahan saat menyimpan profil toko.');
     } finally {
       setIsCheckingName(false);
       setIsSavingStore(false);

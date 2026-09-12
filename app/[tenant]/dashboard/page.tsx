@@ -401,6 +401,9 @@ export default function TenantDashboardPage() {
           storeQrisUrl={storeQrisUrl}
           handleQrisUpload={handleQrisUpload}
           isUploadingQris={isUploadingQris}
+          storeLogoUrl={storeLogoUrl}
+          handleLogoUpload={handleLogoUpload}
+          isUploadingLogo={isUploadingLogo}
           nameError={nameError}
           setNameError={setNameError}
           isTeamScale={isTeamScale}

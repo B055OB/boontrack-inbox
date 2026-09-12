@@ -159,6 +159,7 @@ export interface ProductItem {
   description: string;
   download_url?: string;
   image: string;
+  image_url?: string;
   stock: number;
   sku?: string;
   is_unlimited?: boolean;

@@ -162,6 +162,7 @@ export async function POST(
             price: Number(price),
             promo_price: promo_price ? Number(promo_price) : 0,
             image: body.image || body.image_url || '',
+            image_url: body.image || body.image_url || '',
             category: resolvedCategory,
             stock: body.stock !== undefined ? Number(body.stock) : 999999,
             is_unlimited_stock: body.is_unlimited ?? true,
