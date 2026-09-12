@@ -270,7 +270,7 @@ async function runCertification() {
   const digiOrder = {
     productType: 'DIGITAL' as ProductType,
     basePrice: 99000,
-    downloadUrl: 'https://asset.boontrack.com/downloads/course-pack.zip',
+    downloadUrl: 'https://assets.boontrack.com/downloads/course-pack.zip',
   };
   const digiReq = resolveFulfillmentRequirements(digiOrder.productType);
   const digiTotal = digiOrder.basePrice;
@@ -355,22 +355,27 @@ async function runCertification() {
     {
       name: 'Legacy API Assets Upgrade',
       input: 'https://api.boontrack.com/assets/uploads/photo_toko_123.webp',
-      expected: 'https://asset.boontrack.com/photo_toko_123.webp',
+      expected: 'https://assets.boontrack.com/photo_toko_123.webp',
     },
     {
       name: 'Dev R2 Subdomain Upgrade',
       input: 'https://pub-cdf9b905df884053a60ef8bdb777d463.r2.dev/products/99120_banner.webp',
-      expected: 'https://asset.boontrack.com/products/99120_banner.webp',
+      expected: 'https://assets.boontrack.com/products/99120_banner.webp',
     },
     {
       name: 'Insecure HTTP to HTTPS Enforce',
-      input: 'http://asset.boontrack.com/qris/qris_static.png',
-      expected: 'https://asset.boontrack.com/qris/qris_static.png',
+      input: 'http://assets.boontrack.com/qris/qris_static.png',
+      expected: 'https://assets.boontrack.com/qris/qris_static.png',
     },
     {
       name: 'Standard Canonical Pass-through',
-      input: 'https://asset.boontrack.com/media/hero.webp',
-      expected: 'https://asset.boontrack.com/media/hero.webp',
+      input: 'https://assets.boontrack.com/media/hero.webp',
+      expected: 'https://assets.boontrack.com/media/hero.webp',
+    },
+    {
+      name: 'Singular to Plural Domain Upgrade',
+      input: 'https://asset.boontrack.com/media/banner.webp',
+      expected: 'https://assets.boontrack.com/media/banner.webp',
     },
   ];
 

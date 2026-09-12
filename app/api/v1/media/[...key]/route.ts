@@ -33,9 +33,9 @@ async function fetchFromR2Direct(joinedKey: string): Promise<Buffer | null> {
   return new Promise((resolve) => {
     const chosenIp = CLOUDFLARE_IPS[0];
     const req = https.get(
-      `https://asset.boontrack.com/${joinedKey}`,
+      `https://assets.boontrack.com/${joinedKey}`,
       {
-        headers: { Host: 'asset.boontrack.com' },
+        headers: { Host: 'assets.boontrack.com' },
         lookup: (hostname, opts, cb) => {
           const callback = typeof opts === 'function' ? opts : cb;
           if (opts && typeof opts === 'object' && (opts as any).all) {

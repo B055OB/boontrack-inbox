@@ -28,7 +28,7 @@ const R2_PUBLIC_URL_BASE = (
   process.env.R2_PUBLIC_URL ||
   process.env.NEXT_PUBLIC_R2_URL ||
   process.env.NEXT_PUBLIC_ASSET_DOMAIN ||
-  'https://asset.boontrack.com'
+  'https://assets.boontrack.com'
 ).replace(/\/+$/, '');
 
 function getR2Client(): S3Client | null {

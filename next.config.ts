@@ -1,6 +1,30 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "assets.boontrack.com",
+      },
+      {
+        protocol: "https",
+        hostname: "asset.boontrack.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.r2.dev",
+      },
+      {
+        protocol: "https",
+        hostname: "mpluzajlzpregmjwpjqr.supabase.co",
+      },
+      {
+        protocol: "https",
+        hostname: "quickchart.io",
+      },
+    ],
+  },
   async rewrites() {
     return [
       {

@@ -1,11 +1,11 @@
 /**
  * Utility to sanitize and normalize image URLs across BoonTrack.
- * - Enforces single source of truth asset domain: https://asset.boontrack.com
+ * - Enforces single source of truth asset domain: https://assets.boontrack.com
  * - Upgrades insecure http:// to https://
- * - Converts legacy api.boontrack.com/assets/uploads/... or dev r2 domains to canonical asset.boontrack.com
+ * - Converts legacy api.boontrack.com/assets/uploads/..., singular asset.boontrack.com, or dev r2 domains to canonical assets.boontrack.com
  */
 export const ASSET_DOMAIN = (
-  process.env.NEXT_PUBLIC_ASSET_DOMAIN || 'https://asset.boontrack.com'
+  process.env.NEXT_PUBLIC_ASSET_DOMAIN || 'https://assets.boontrack.com'
 ).replace(/\/+$/, '');
 
 export function sanitizeImageUrl(url?: string | null): string {
@@ -59,16 +59,27 @@ export function sanitizeImageUrl(url?: string | null): string {
     return ASSET_DOMAIN;
   }
 
-  // 3. Normalisasi plural domain https://assets.boontrack.com -> https://asset.boontrack.com
+  // 3. Normalisasi singular domain https://asset.boontrack.com -> plural https://assets.boontrack.com
+  if (trimmed.includes('asset.boontrack.com') && !trimmed.includes('assets.boontrack.com')) {
+    const afterDomain = trimmed.split(/asset\.boontrack\.com/i)[1] || '';
+    const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    if (cleanPath) {
+      return `${ASSET_DOMAIN}/${cleanPath}`;
+    }
+    return ASSET_DOMAIN;
+  }
+
+  // 4. Pastikan plural domain https://assets.boontrack.com terformat rapi
   if (trimmed.includes('assets.boontrack.com')) {
     const afterDomain = trimmed.split(/assets\.boontrack\.com/i)[1] || '';
     const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
     if (cleanPath) {
       return `${ASSET_DOMAIN}/${cleanPath}`;
     }
+    return ASSET_DOMAIN;
   }
 
-  // 4. Upgrade legacy Cloudflare R2 dev domains (*.r2.dev)
+  // 5. Upgrade legacy Cloudflare R2 dev domains (*.r2.dev)
   if (trimmed.includes('r2.dev')) {
     const afterDomain = trimmed.split(/r2\.dev/i)[1] || '';
     const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
@@ -77,7 +88,7 @@ export function sanitizeImageUrl(url?: string | null): string {
     }
   }
 
-  // 5. Upgrade relative paths yang mengarah ke internal media proxy atau uploads
+  // 6. Upgrade relative paths yang mengarah ke internal media proxy atau uploads
   if (trimmed.startsWith('/api/v1/media/')) {
     const sub = trimmed.replace(/^\/api\/v1\/media\//, '').split('?')[0];
     if (sub) {
@@ -91,7 +102,7 @@ export function sanitizeImageUrl(url?: string | null): string {
     }
   }
 
-  // 6. Upgrade any insecure http:// to https://
+  // 7. Upgrade any insecure http:// to https://
   if (trimmed.startsWith('http://')) {
     trimmed = trimmed.replace(/^http:\/\//i, 'https://');
   }
