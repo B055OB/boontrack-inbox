@@ -33,7 +33,8 @@ export async function GET(
       );
       if (coreRes.ok) {
         const data = await coreRes.json();
-        if (data?.settings) {
+        const settingsObj = data?.settings || (data?.slug || data?.name ? data : null);
+        if (settingsObj) {
           try {
             const supabase = getSupabase();
             const { data: tenantRow } = await supabase
@@ -42,17 +43,17 @@ export async function GET(
               .eq('slug', slug)
               .maybeSingle();
             if (tenantRow?.metadata?.boonpilot_proposal) {
-              data.settings.boonpilot_proposal = tenantRow.metadata.boonpilot_proposal;
-              data.settings.boonpilot_configuration = tenantRow.metadata.boonpilot_configuration || tenantRow.metadata.boonpilot_proposal;
+              settingsObj.boonpilot_proposal = tenantRow.metadata.boonpilot_proposal;
+              settingsObj.boonpilot_configuration = tenantRow.metadata.boonpilot_configuration || tenantRow.metadata.boonpilot_proposal;
             }
             if (tenantRow?.metadata?.faqs) {
-              data.settings.faqs = tenantRow.metadata.faqs;
+              settingsObj.faqs = tenantRow.metadata.faqs;
             }
             if (tenantRow?.metadata?.interactive_menus) {
-              data.settings.interactive_menus = tenantRow.metadata.interactive_menus;
+              settingsObj.interactive_menus = tenantRow.metadata.interactive_menus;
             }
           } catch {}
-          return NextResponse.json(data);
+          return NextResponse.json({ success: true, settings: settingsObj });
         }
       }
     } catch {
@@ -293,3 +294,5 @@ export async function PUT(
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
+
+export const POST = PUT;

@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
         {
           success: false,
           tenant_slug: tenantSlug,
-          status: "DEGRADED",
+          status: "DISCONNECTED",
           error: data.error || data.detail || `Evolution API Gateway Error (${response.status})`,
           disconnect_reason: data.disconnect_reason || "GATEWAY_SESSION_PENDING",
           detail: data,
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        status: "DEGRADED",
+        status: "DISCONNECTED",
         disconnect_reason: "GATEWAY_UNREACHABLE",
         error: err.message || "Gagal menghubungi backend Evolution API Gateway",
       },
@@ -48,3 +48,6 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const GET = POST;
+

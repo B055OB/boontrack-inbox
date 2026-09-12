@@ -331,7 +331,7 @@ export default function WhatsAppTab({
             </div>
           )}
 
-          {waStatus !== 'CONNECTED' && waStatus !== 'DEGRADED' && (
+          {waStatus !== 'CONNECTED' && (
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
               <div className="md:col-span-6 space-y-4">
                 <div className="space-y-3">

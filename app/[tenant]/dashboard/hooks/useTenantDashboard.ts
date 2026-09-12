@@ -1662,35 +1662,43 @@ export function useTenantDashboard() {
     setPairingCodeResult(null);
 
     try {
-      const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`, {
+      const activeTenant = tenantSlug || 'onlineboost';
+      const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(activeTenant)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
-      if (!data.success || data.status === 'DEGRADED') {
-        setWaStatus('DEGRADED');
-        setQrCodeUrl(null);
-        setWaErrorMessage(
-          data.disconnect_reason === 'GATEWAY_UNREACHABLE'
-            ? 'Evolution API v2 belum aktif / offline. QR Code tidak dapat dimuat sampai engine dinyalakan.'
-            : 'Layanan BoonTrack WhatsApp Engine sedang dalam pemeliharaan.'
-        );
-      } else if (data.status === 'CONNECTED') {
+      if (data.status === 'CONNECTED') {
         setWaStatus('CONNECTED');
         setConnectedPhone(data.phone_number || null);
         setQrCodeUrl(null);
+        setWaErrorMessage(null);
       } else if (data.qr_image || data.qr_raw) {
         setWaStatus('CONNECTING');
         setQrCodeUrl(data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.qr_raw)}`);
+        setWaErrorMessage(null);
       } else {
+        // Jangan kunci ke DEGRADED agar form pairing code dan tombol refresh tetap tampil
         setWaStatus('DISCONNECTED');
         setQrCodeUrl(null);
+        if (!data.success) {
+          setWaErrorMessage(
+            data.error ||
+            data.detail ||
+            (data.disconnect_reason === 'GATEWAY_UNREACHABLE'
+              ? 'Evolution API v2 belum siap atau sedang menghubungkan ulang.'
+              : 'Sesi WhatsApp belum terhubung.')
+          );
+        } else {
+          setWaErrorMessage(null);
+        }
       }
     } catch (err) {
-      setWaStatus('DEGRADED');
+      // Jangan kunci ke DEGRADED
+      setWaStatus('DISCONNECTED');
       setQrCodeUrl(null);
-      setWaErrorMessage('Gagal tersambung ke BoonTrack WhatsApp Engine.');
+      setWaErrorMessage('Koneksi ke gateway WhatsApp belum tersambung.');
     } finally {
       setIsQrLoading(false);
     }
@@ -1711,10 +1719,11 @@ export function useTenantDashboard() {
         cleanPhone = '62' + cleanPhone;
       }
 
-      const res = await fetch(`/api/whatsapp/pairing-code?tenant=${encodeURIComponent(tenantSlug)}`, {
+      const activeTenant = tenantSlug || 'onlineboost';
+      const res = await fetch(`/api/whatsapp/pairing-code?tenant=${encodeURIComponent(activeTenant)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant: tenantSlug, phone: cleanPhone }),
+        body: JSON.stringify({ tenant: activeTenant, phone: cleanPhone }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success && data.pairing_code) {
@@ -1739,10 +1748,10 @@ export function useTenantDashboard() {
   };
 
   useEffect(() => {
-    if (activeTab === 'whatsapp' && waMode === 'qr') {
+    if (activeTab === 'whatsapp') {
       handleConnectGrowthSession();
     }
-  }, [activeTab, waMode, tenantSlug]);
+  }, [activeTab, tenantSlug]);
 
   return {
     // Tenant info
