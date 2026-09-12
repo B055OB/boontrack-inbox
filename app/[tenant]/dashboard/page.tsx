@@ -25,6 +25,7 @@ import AiKnowledgeTab from './components/AiKnowledgeTab';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
 import BoonPilotWidget from '@/components/BoonPilotWidget';
+import StoreBioLinkWidget from './components/StoreBioLinkWidget';
 import ProductFormModal from './components/ProductFormModal';
 import SinglePageBuilderModal from './components/SinglePageBuilderModal';
 import BulkImportModal from './components/modals/BulkImportModal';
@@ -272,6 +273,11 @@ export default function TenantDashboardPage() {
             {saveFeedback}
           </div>
         )}
+      </div>
+
+      {/* SHORTLINK BIO TOKO WIDGET */}
+      <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 md:px-8 pt-5 -mb-2 sm:-mb-3">
+        <StoreBioLinkWidget tenantSlug={tenantSlug} />
       </div>
 
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
