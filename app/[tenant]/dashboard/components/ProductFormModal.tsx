@@ -53,7 +53,7 @@ export default function ProductFormModal({
         if (!editingProductId && !prev.product_type) {
           defaultType = mapBusinessCategoryToProductType(storeCategory);
         } else if (!prev.product_type) {
-          if (isDigitalOnly || prev.category === 'digital') {
+          if (isDigitalOnly || prev.category?.toLowerCase() === 'digital') {
             defaultType = 'DIGITAL';
           } else {
             defaultType = 'PHYSICAL';
@@ -61,12 +61,16 @@ export default function ProductFormModal({
         }
         const reqs = resolveFulfillmentRequirements(defaultType);
         const currentSlug = prev.slug?.trim() || (prev.name ? slugify(prev.name) : '');
+        const currentCat = prev.category?.trim();
+        const defaultCategory = currentCat || (
+          reqs.strategy === 'PHYSICAL' ? 'Fisik' : reqs.strategy === 'SERVICE' ? 'Jasa' : 'Digital'
+        );
         return {
           ...prev,
           image: sanitizeImageUrl(prev.image),
           slug: currentSlug,
           product_type: defaultType,
-          category: reqs.strategy === 'PHYSICAL' ? 'fisik' : reqs.strategy === 'SERVICE' ? 'jasa' : 'digital',
+          category: defaultCategory,
           is_unlimited:
             prev.is_unlimited !== undefined
               ? prev.is_unlimited
@@ -82,9 +86,9 @@ export default function ProductFormModal({
     productForm.product_type ||
     (!editingProductId
       ? mapBusinessCategoryToProductType(storeCategory)
-      : productForm.category === 'jasa'
+      : (productForm.category?.toLowerCase() === 'jasa' || productForm.category?.toLowerCase() === 'service')
       ? 'FIELD_SERVICE'
-      : isDigitalOnly || productForm.category === 'digital'
+      : isDigitalOnly || productForm.category?.toLowerCase() === 'digital'
       ? 'DIGITAL'
       : 'PHYSICAL');
 
@@ -97,13 +101,21 @@ export default function ProductFormModal({
 
   const handleTypeChange = (newType: ProductType) => {
     const reqs = resolveFulfillmentRequirements(newType);
-    setProductForm((prev) => ({
-      ...prev,
-      product_type: newType,
-      category: reqs.strategy === 'PHYSICAL' ? 'fisik' : reqs.strategy === 'SERVICE' ? 'jasa' : 'digital',
-      is_unlimited: reqs.strategy === 'DIGITAL' ? (prev.is_unlimited ?? true) : false,
-      weight_grams: reqs.requiresWeight ? (prev.weight_grams || 1000) : undefined,
-    }));
+    setProductForm((prev) => {
+      const prevCat = prev.category?.trim() || '';
+      const isGenericCategory = !prevCat || ['fisik', 'jasa', 'digital', 'physical', 'service', 'Fisik', 'Jasa', 'Digital'].includes(prevCat);
+      const updatedCategory = isGenericCategory
+        ? (reqs.strategy === 'PHYSICAL' ? 'Fisik' : reqs.strategy === 'SERVICE' ? 'Jasa' : 'Digital')
+        : prev.category;
+
+      return {
+        ...prev,
+        product_type: newType,
+        category: updatedCategory,
+        is_unlimited: reqs.strategy === 'DIGITAL' ? (prev.is_unlimited ?? true) : false,
+        weight_grams: reqs.requiresWeight ? (prev.weight_grams || 1000) : undefined,
+      };
+    });
   };
 
   const handleMetadataChange = (key: keyof FulfillmentMetadata, value: string) => {
@@ -218,36 +230,64 @@ export default function ProductFormModal({
             </p>
           </div>
 
-          {/* 2. Product Type & Fulfillment Boundary */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-blue-50/50 border border-blue-100 rounded-2xl">
-            <div>
-              <label className="text-xs font-bold text-slate-800 block mb-1">
-                Tipe Produk (Fulfillment Boundary) *
-              </label>
-              <select
-                value={currentType}
-                onChange={(e) => handleTypeChange(e.target.value as ProductType)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 cursor-pointer"
-              >
-                <option value="PHYSICAL">📦 Produk Fisik (Ekspedisi & Kurir)</option>
-                <option value="DIGITAL">💻 Produk Digital (File / Ecourse / Video)</option>
-                <option value="FOOD">🍲 Makanan / F&B (Instant & Kargo)</option>
-                <option value="FIELD_SERVICE">🛠️ Layanan Jasa Lapangan</option>
-                <option value="PROFESSIONAL_SERVICE">💼 Jasa Profesional / Konsultasi</option>
-                <option value="AGENCY">🏢 Layanan Agency & Klien</option>
-              </select>
-            </div>
-
-            <div className="flex flex-col justify-center text-[11px] text-slate-600">
-              <div className="font-bold flex items-center gap-1 text-slate-800">
-                <Info className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <span>Strategi Checkout:</span>
+          {/* 2. Product Type & Display Category */}
+          <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-slate-800 block mb-1">
+                  Tipe Produk (Fulfillment Boundary) *
+                </label>
+                <select
+                  value={currentType}
+                  onChange={(e) => handleTypeChange(e.target.value as ProductType)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 cursor-pointer"
+                >
+                  <option value="PHYSICAL">📦 Produk Fisik (Ekspedisi & Kurir)</option>
+                  <option value="DIGITAL">💻 Produk Digital (File / Ecourse / Video)</option>
+                  <option value="FOOD">🍲 Makanan / F&B (Instant & Kargo)</option>
+                  <option value="FIELD_SERVICE">🛠️ Layanan Jasa Lapangan</option>
+                  <option value="PROFESSIONAL_SERVICE">💼 Jasa Profesional / Konsultasi</option>
+                  <option value="AGENCY">🏢 Layanan Agency & Klien</option>
+                </select>
+                <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1.5">
+                  <Info className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>
+                    {requirements.requiresShipping
+                      ? 'Wajib alamat & hitung ongkir.'
+                      : 'Checkout kilat tanpa alamat fisik.'}
+                  </span>
+                </div>
               </div>
-              <p className="mt-0.5 leading-snug">
-                {requirements.requiresShipping
-                  ? 'Wajib alamat pengiriman, kalkulasi ongkir & berat paket.'
-                  : 'Checkout kilat (Nama, WA, Email) tanpa form alamat fisik.'}
-              </p>
+
+              <div>
+                <label className="text-xs font-bold text-slate-800 block mb-1">
+                  Kategori / Label Badge Etalase *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={productForm.category || ''}
+                  onChange={(e) => setProductForm((p) => ({ ...p, category: e.target.value }))}
+                  placeholder="Contoh: Jasa, Digital, Fisik, E-Course"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600"
+                />
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {['Jasa', 'Digital', 'Fisik', 'E-Course', 'Konsultasi'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setProductForm((p) => ({ ...p, category: preset }))}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border transition-colors cursor-pointer ${
+                        productForm.category === preset
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 

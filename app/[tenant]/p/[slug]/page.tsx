@@ -179,8 +179,8 @@ function SingleProductContent() {
               id: match.id || Date.now(),
               name: dynamicConfig.headline || match.title || match.name || 'Produk Eksklusif',
               slug: match.slug || slug,
-              category: match.category || 'digital',
-              product_type: match.product_type || (match.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
+              category: match.category || (match.product_type === 'PHYSICAL' ? 'Fisik' : match.product_type === 'SERVICE' ? 'Jasa' : 'Digital'),
+              product_type: match.product_type || (match.category?.toLowerCase() === 'fisik' || match.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (match.category?.toLowerCase() === 'jasa' || match.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
               price: Number(match.price ?? ob.price ?? 1000),
               promo_price: Number(match.promo_price ?? ob.promo_price ?? match.price ?? 1000),
               variants: match.variants || 'Format Digital • Akses Instan',
@@ -239,8 +239,8 @@ function SingleProductContent() {
 
   // Resolusi Deterministik via Fulfillment Requirements (Boundary Strategy)
   const productType: ProductType = product.product_type || (
-    product.category === 'fisik' ? 'PHYSICAL' :
-    (product.category === 'jasa' || product.category === 'service' ? 'SERVICE' : 'DIGITAL')
+    product.category?.toLowerCase() === 'fisik' || product.category?.toLowerCase() === 'physical' ? 'PHYSICAL' :
+    (product.category?.toLowerCase() === 'jasa' || product.category?.toLowerCase() === 'service' ? 'SERVICE' : 'DIGITAL')
   );
   const requirements = resolveFulfillmentRequirements(productType);
   const requiresShipping = requirements.requiresShipping;

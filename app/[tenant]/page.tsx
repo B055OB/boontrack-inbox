@@ -63,6 +63,7 @@ export interface Product {
   image: string;
   description: string;
   badge?: string;
+  promo?: string;
   modules?: string[];
   features?: string[];
   promo_price?: number;
@@ -94,22 +95,40 @@ export interface StoreChatMessage {
   quick_actions?: string[];
 }
 
+// Helper to format category label for badges & display
+export function formatCategoryBadge(category?: string, productType?: string): string {
+  if (category && category.trim()) {
+    const trimmed = category.trim();
+    const lower = trimmed.toLowerCase();
+    if (lower === "digital") return "Digital";
+    if (lower === "fisik" || lower === "physical") return "Fisik";
+    if (lower === "jasa" || lower === "service" || lower === "field_service" || lower === "professional_service") return "Jasa";
+    // Preserve custom merchant category (e.g. "E-Course", "Fashion", "Konsultasi")
+    return trimmed;
+  }
+  if (productType === "PHYSICAL") return "Fisik";
+  if (productType === "SERVICE" || productType === "FIELD_SERVICE" || productType === "PROFESSIONAL_SERVICE") return "Jasa";
+  return "Digital";
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProductItemToStoreProduct(p: any, idx: number): Product {
   const price = p.promo_price ? Number(p.promo_price) : (Number(p.price) || 0);
   const originalPrice = p.promo_price && Number(p.price) > Number(p.promo_price) ? Number(p.price) : (p.originalPrice ? Number(p.originalPrice) : undefined);
-  const rawCat = (p.category || p.type || "service").toLowerCase();
+  const categoryBadge = formatCategoryBadge(p.category, p.product_type || p.type);
+  const rawCat = (p.category || p.type || categoryBadge).toLowerCase();
 
   return {
     id: p.id || `prod-${idx + 1}`,
     name: p.name || p.title || `Layanan ${idx + 1}`,
-    category: rawCat,
-    type: p.type || rawCat,
+    category: p.category || categoryBadge,
+    type: p.type || (p.product_type === 'PHYSICAL' ? 'physical' : (p.product_type === 'SERVICE' ? 'service' : 'digital')),
     price,
     originalPrice,
     image: sanitizeImageUrl(p.image || (Array.isArray(p.images) && p.images[0]) || "/logo-shop.png"),
     description: p.description || "",
-    badge: p.promo || (p.variants ? p.variants : "Layanan Resmi"),
+    badge: categoryBadge,
+    promo: p.promo || "",
     features: Array.isArray(p.features) && p.features.length > 0 ? p.features : [
       "Pengerjaan Profesional",
       "Garansi Bersih Tuntas",
@@ -364,9 +383,23 @@ export default function TenantStorefrontPage() {
     );
   }
 
+  const uniqueCategories = useMemo(() => {
+    const set = new Set<string>();
+    storeProducts.forEach((p) => {
+      if (p.category) {
+        set.add(formatCategoryBadge(p.category, p.type));
+      }
+    });
+    return Array.from(set);
+  }, [storeProducts]);
+
   const filteredProducts = activeCategory === "all"
     ? storeProducts
-    : storeProducts.filter((p) => p.category === activeCategory || p.type === activeCategory);
+    : storeProducts.filter((p) =>
+        p.category?.toLowerCase() === activeCategory.toLowerCase() ||
+        p.badge?.toLowerCase() === activeCategory.toLowerCase() ||
+        p.type?.toLowerCase() === activeCategory.toLowerCase()
+      );
 
   const addToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -697,8 +730,19 @@ export default function TenantStorefrontPage() {
                 activeCategory === "all" ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              Semua Layanan ({storeProducts.length})
+              Semua ({storeProducts.length})
             </button>
+            {uniqueCategories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat.toLowerCase())}
+                className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+                  activeCategory === cat.toLowerCase() ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
           </div>
 
           {filteredProducts.length === 0 ? (
@@ -730,6 +774,11 @@ export default function TenantStorefrontPage() {
                       {p.badge && (
                         <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
                           {p.badge}
+                        </span>
+                      )}
+                      {p.promo && p.promo !== p.badge && (
+                        <span className="absolute top-2.5 right-2.5 bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                          {p.promo}
                         </span>
                       )}
                     </div>

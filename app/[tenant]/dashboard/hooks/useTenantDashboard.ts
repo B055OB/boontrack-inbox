@@ -252,7 +252,7 @@ export function useTenantDashboard() {
   const [productForm, setProductForm] = useState<ProductItem>({
     id: 0,
     name: '',
-    category: 'digital',
+    category: 'Digital',
     price: 99000,
     promo_price: 0,
     variants: 'Format Digital',
@@ -531,8 +531,8 @@ export function useTenantDashboard() {
               id: typeof p.id === 'number' ? p.id : Date.now() + idx,
               name: p.name || p.title || `Produk ${idx + 1}`,
               slug: p.slug || p.single_page_config?.slug || slugify(p.name || p.title || `produk-${idx + 1}`),
-              category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : (p.product_type === 'SERVICE' ? 'jasa' : 'digital')),
-              product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : (p.category === 'jasa' || p.category === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
+              category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'Fisik' : (p.product_type === 'SERVICE' ? 'Jasa' : 'Digital')),
+              product_type: p.product_type || (p.category?.toLowerCase() === 'fisik' ? 'PHYSICAL' : (p.category?.toLowerCase() === 'jasa' || p.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
               price: Number(p.price) || 0,
               promo_price: p.promo_price ? Number(p.promo_price) : 0,
               variants: p.variants || '',
@@ -731,7 +731,7 @@ export function useTenantDashboard() {
       name: '',
       slug: '',
       product_type: defaultProductType,
-      category: reqs.requiresShipping ? 'fisik' : 'digital',
+      category: reqs.strategy === 'PHYSICAL' ? 'Fisik' : reqs.strategy === 'SERVICE' ? 'Jasa' : 'Digital',
       price: 99000,
       promo_price: 0,
       variants: 'Standar',
@@ -752,6 +752,7 @@ export function useTenantDashboard() {
     const prodSlug = prod.slug || prod.single_page_config?.slug || slugify(prod.name);
     setProductForm({
       ...prod,
+      category: prod.category || (prod.product_type === 'PHYSICAL' ? 'Fisik' : prod.product_type === 'SERVICE' ? 'Jasa' : 'Digital'),
       image: sanitizeImageUrl(prod.image),
       slug: prodSlug,
       stock: prod.stock ?? 100,
@@ -856,7 +857,7 @@ export function useTenantDashboard() {
     const prodSlug = prod.slug || slugify(prod.name);
     const existingVoucher = prod.single_page_config?.voucher;
     const fulfillment = resolveFulfillmentRequirements(
-      prod.product_type || (prod.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL')
+      prod.product_type || (prod.category?.toLowerCase() === 'fisik' || prod.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (prod.category?.toLowerCase() === 'jasa' || prod.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'))
     );
     const isPhysical = fulfillment.requiresShipping;
 

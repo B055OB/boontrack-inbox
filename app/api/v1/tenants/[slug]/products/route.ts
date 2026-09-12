@@ -41,14 +41,14 @@ export async function POST(
     const {
       id,
       name,
-      category = 'course',
+      category,
       price,
       promo_price,
       variants,
       promo,
       description,
       download_url,
-      type = 'digital',
+      type,
     } = body;
 
     if (!name || price === undefined || isNaN(Number(price))) {
@@ -60,13 +60,14 @@ export async function POST(
 
     const productId = id || `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const finalSlug = body.slug ? slugify(body.slug) : slugify(name);
+    const resolvedCategory = body.category || category || (body.product_type === 'PHYSICAL' ? 'Fisik' : (body.product_type === 'SERVICE' ? 'Jasa' : 'Digital'));
 
     const newProduct: ProductItem = {
       ...body,
       id: productId,
       name,
       slug: finalSlug,
-      category: category || 'course',
+      category: resolvedCategory,
       price: Number(price),
       promo_price: promo_price ? Number(promo_price) : undefined,
       variants: variants || '',

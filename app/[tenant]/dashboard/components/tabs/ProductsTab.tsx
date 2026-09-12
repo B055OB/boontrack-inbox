@@ -80,7 +80,7 @@ export default function ProductsTab({
       p.name.toLowerCase().includes(q) ||
       (p.sku && p.sku.toLowerCase().includes(q)) ||
       (p.description && p.description.toLowerCase().includes(q));
-    const matchCat = categoryFilter === 'ALL' || p.category === categoryFilter;
+    const matchCat = categoryFilter === 'ALL' || p.category?.toLowerCase() === categoryFilter.toLowerCase();
     return matchSearch && matchCat;
   });
 
