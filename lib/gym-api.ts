@@ -606,7 +606,7 @@ let MOCK_SETTINGS: GymSettings = {
   address: 'Jl. Ahmad Yani No. 88, Kota Baru',
   phone: '0812-3456-7890',
   email: 'admin@atmosfitnes.com',
-  logo_url: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=200&h=200&fit=crop',
+  logo_url: '/logo.png',
   qris_base_url: 'https://api.boontrack.com/qris/atmosfitnes',
   auto_billing_enabled: true,
   billing_cycle_day: 1,

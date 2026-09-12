@@ -179,11 +179,7 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     badge: categoryBadge,
     promo: typeof p.promo === "string" ? p.promo : "",
     custom_badge: typeof p.custom_badge === "string" ? p.custom_badge : undefined,
-    features: Array.isArray(p.features) && p.features.length > 0 ? p.features : [
-      "Pengerjaan Profesional",
-      "Garansi Bersih Tuntas",
-      "Peralatan Lengkap & Higienis"
-    ],
+    features: Array.isArray(p.features) && p.features.length > 0 ? p.features : [],
     modules: Array.isArray(p.modules) ? p.modules : undefined,
     promo_price: rawPromoPrice,
     download_url: p.download_url || p.delivery_url || "",
@@ -217,12 +213,17 @@ export default function TenantStorefrontPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const mobileMessagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const dynamicQuickReplies = useMemo(() => [
-    "💧 Daftar Harga Layanan",
-    "📍 Area Jangkauan Layanan",
-    "📅 Jadwal & Cara Pesan",
-    "🛡️ Garansi Kebersihan"
-  ], []);
+  const dynamicQuickReplies = useMemo(() => {
+    if (Array.isArray(tenantMetadata?.quick_replies) && tenantMetadata.quick_replies.length > 0) {
+      return tenantMetadata.quick_replies;
+    }
+    return [
+      "📦 Daftar Produk & Harga",
+      "💳 Info Pemesanan & Pembayaran",
+      "💬 Chat dengan Admin",
+      "⭐ Info Layanan Resmi"
+    ];
+  }, [tenantMetadata?.quick_replies]);
 
   const uniqueCategories = useMemo(() => {
     const set = new Set<string>();
@@ -520,7 +521,7 @@ export default function TenantStorefrontPage() {
       const data = await res.json();
       const action = data.action || (data.type === 'TEXT' ? 'NONE' : data.type) || 'NONE';
       const type = data.type || (action === 'NONE' ? 'TEXT' : action) || 'TEXT';
-      const text = data.reply_text || data.reply || data.text || "Ada lagi yang bisa kami bantu seputar layanan kuras toren?";
+      const text = data.reply_text || data.reply || data.text || `Ada lagi yang bisa kami bantu seputar produk atau layanan ${storeName || displayName}?`;
 
       const botMsg: StoreChatMessage = {
         id: `bot-${Date.now()}`,
@@ -757,14 +758,21 @@ export default function TenantStorefrontPage() {
   }
 
   // ── TEMPLATE 1: DEFAULT (Katalog Commerce) ──
+  const storeLogoUrl =
+    tenantMetadata?.store_logo_url ||
+    tenantMetadata?.logo_url ||
+    tenantMetadata?.avatar_url ||
+    "";
+  const displayAvatar = storeLogoUrl || "/logo.png";
+
   return (
     <div className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {tenantMetadata?.logo_url ? (
+            {displayAvatar && displayAvatar !== "/logo.png" ? (
               <img
-                src={tenantMetadata.logo_url}
+                src={displayAvatar}
                 alt={storeName || displayName}
                 className="w-9 h-9 rounded-xl object-contain shadow-sm border border-slate-100 bg-white"
               />
@@ -784,7 +792,9 @@ export default function TenantStorefrontPage() {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Buka
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">BoonTrack Official Service</p>
+              <p className="text-[11px] text-slate-400 font-medium">
+                {tenantMetadata?.category ? `${tenantMetadata.category} • Official Store` : "BoonTrack Official Store"}
+              </p>
             </div>
           </div>
 
@@ -1069,7 +1079,7 @@ export default function TenantStorefrontPage() {
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 disabled={isBotTyping}
-                placeholder={isBotTyping ? "Sedang menunggu respon..." : "Tanya harga kuras toren / jadwal..."}
+                placeholder={isBotTyping ? "Sedang menunggu respon..." : "Tulis pertanyaan atau informasi pesanan..."}
                 className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-base md:text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
               />
               <button

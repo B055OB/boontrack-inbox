@@ -208,7 +208,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       slug: "step-by-step-rahasia-menghasilkan-dollar",
       headline: "Formula Hidden Gem Menghasilkan Dollar dari Paid Traffic 2026",
       subheadline: "Panduan praktis mengelola campaign iklan global dan menerima pembayaran langsung dalam USD.",
-      banner_url: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60",
+      banner_url: "",
       badge_text: "Special Blueprint",
       problem_title: "Apakah Anda Sering Menghadapi Masalah Ini?",
       pain_points: [
@@ -216,7 +216,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
         "Biaya iklan Meta & TikTok terus merangkak naik, ROAS drop drastis hingga minus.",
         "Bingung cara menjangkau pasar internasional dan cara aman menerima pencairan dana dalam USD."
       ],
-      problem_image_url: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500&auto=format&fit=crop&q=60",
+      problem_image_url: "",
       solution_title: "Kini Hadir Solusi Teruji: Blueprint Paid Traffic Global",
       solution_points: [
         "Targeting audiens negara Tier-1 dengan daya beli 5x - 10x lipat lebih tinggi.",
@@ -228,10 +228,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
         { id: '2', feature: 'Strategi Campaign', others: 'Tebak-tebakan dan bakar anggaran tanpa arah', us: 'SOP battle-tested siap copy-paste' },
         { id: '3', feature: 'Pencairan Dana', others: 'Rentan kena blokir & transfer ribet', us: 'Pencairan legal & otomatis masuk rekening' }
       ],
-      testimonial_images: [
-        "https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60",
-        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=60"
-      ],
+      testimonial_images: [],
       bonus_items: [
         { id: 'b1', title: 'Private Community & Live Diskusi Mingguan', value: 499000, description: 'Bedah studi kasus iklan dan troubleshooting live tiap pekan' },
         { id: 'b2', title: '50+ High-Converting Ad Creative Templates', value: 299000, description: 'Template visual & hook video siap edit di Canva' }
@@ -261,7 +258,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
     promo: "Diskon 35%",
     description: "Panduan praktis scale-up iklan Meta & TikTok ads dengan optimasi ROAS tinggi.",
     download_url: "https://drive.google.com/drive/folders/masterclass-ads",
-    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
+    image: "",
     stock: 9999,
     sku: "OB-DIG-002",
     is_unlimited: true,
@@ -269,7 +266,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       slug: "masterclass-ads-2026",
       headline: "Kuasai Pola Iklan Anti Boncos & Rahasia Scaling Meta Ads 2026",
       subheadline: "Studi kasus riil mengelola anggaran iklan miliaran rupiah tanpa trik abu-abu. Akses langsung modul video, SOP tim media buyer, dan template dashboard.",
-      banner_url: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
+      banner_url: "",
       badge_text: "Direct Access Class",
       problem_title: "Kenapa Iklan Anda Selalu Boncos?",
       pain_points: [
@@ -277,7 +274,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
         "Sering terkena Restrict / AME akun iklan tanpa alasan yang jelas.",
         "Kesulitan scale up: begitu budget dinaikkan, performa iklan langsung anjlok."
       ],
-      problem_image_url: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&auto=format&fit=crop&q=60",
+      problem_image_url: "",
       solution_title: "Metode Scaling Meta Ads 2026 Terbukti Stabil",
       solution_points: [
         "Struktur campaign CBO & ABO modern yang adaptif dengan algoritma AI Meta terbaru.",
@@ -289,9 +286,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
         { id: '2', feature: 'Pengelolaan Risiko', others: 'Sering panik saat iklan boncos atau AME', us: 'SOP mitigasi risiko & checklist audit harian' },
         { id: '3', feature: 'Support & Konsultasi', others: 'Materi rekaman lama tanpa pembaruan', us: 'Update materi berkala & forum diskusi aktif' }
       ],
-      testimonial_images: [
-        "https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60"
-      ],
+      testimonial_images: [],
       bonus_items: [
         { id: 'b1', title: 'Dashboard Sheet KPI & Media Buying Tracker', value: 199000, description: 'Template Google Sheets otomatis hitung ROAS, CPR, dan Margin' }
       ],
@@ -320,7 +315,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
     promo: "Free Ongkir",
     description: "Buku cetak fisik panduan lengkap membangun funnel penjualan online, automasi closing WhatsApp, dan scaling produk.",
     download_url: "",
-    image: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60",
+    image: "",
     stock: 250,
     sku: "OB-PHY-001",
     is_unlimited: false,
@@ -328,7 +323,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       slug: "buku-fisik-blueprint-bisnis",
       headline: "Buku Fisik Eksklusif: Blueprint Bisnis Online & Funnel Closing 2026",
       subheadline: "Edisi cetak hardcover eksklusif dikirim langsung ke pintu rumah Anda. Dapatkan fasilitas voucher gratis ongkir khusus pemesanan hari ini.",
-      banner_url: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60",
+      banner_url: "",
       badge_text: "Buku Fisik Kirim Langsung",
       problem_title: "Lelah Menatap Layar HP & Mau Belajar Terstruktur?",
       pain_points: [
@@ -336,7 +331,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
         "Tim CS tidak punya buku panduan fisik yang bisa langsung ditaruh di meja kerja.",
         "Biaya ongkir buku tebal seringkali mahal."
       ],
-      problem_image_url: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60",
+      problem_image_url: "",
       solution_title: "Buku Cetak Hardcover 320 Halaman Siap Praktek",
       solution_points: [
         "Kertas bookpaper premium anti silau, dijahit rapi, dan tahan lama.",
@@ -348,9 +343,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
         { id: '2', feature: 'Kesesuaian Tim', others: 'Harus bagi-bagi password akun kursus', us: 'SOP fisik siap pakai di meja kerja CS' },
         { id: '3', feature: 'Ongkos Kirim', others: 'Bayar ongkir penuh mahal', us: 'Subsidi voucher Bebas Ongkir 100%' }
       ],
-      testimonial_images: [
-        "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500&auto=format&fit=crop&q=60"
-      ],
+      testimonial_images: [],
       bonus_items: [
         { id: 'b1', title: 'Akses Audio Book MP3 & Versi E-Book PDF', value: 149000, description: 'Bisa didengarkan di perjalanan lewat smartphone' },
         { id: 'b2', title: 'Pembatas Buku Eksklusif + Sticker Pack', value: 49000, description: 'Merchandise resmi BoonTrack Store' }
@@ -428,7 +421,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
     promo: "Spesial Live Demo Rp1.000",
     description: "Panduan Praktis Setup Traffic CPM: Tembus Impresi Pertama dalam 24 Jam. 3 langkah taktis optimasi traffic instan tanpa teori rumit.",
     download_url: "",
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&auto=format&fit=crop&q=80",
+    image: "",
     stock: 999,
     sku: "OB-CPM-24H",
     is_unlimited: true,
@@ -436,7 +429,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       slug: "modul-praktis-cpm-24-jam",
       headline: "Panduan Praktis Setup Traffic CPM: Tembus Impresi Pertama dalam 24 Jam",
       subheadline: "Rahasia membangun aliran traffic stabil, setup server-side CAPI anti-bocor, dan optimasi konversi kilat tanpa boncos atau akun restrict.",
-      banner_url: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&auto=format&fit=crop&q=80",
+      banner_url: "",
       badge_text: "Penawaran Spesial Live Demo • Diskon 99%",
       whatsapp_number: "",
       discount_coupon: "",
@@ -615,9 +608,28 @@ export function resolveSinglePageProduct(
   }
 
   // 4. Fallback jika slug belum terdaftar sama sekali
-  const fallbackProduct = DEFAULT_PRODUCTS[1]; // Masterclass Ads
+  const fallbackProduct: ProductItem = {
+    id: Date.now(),
+    name: targetSlug.replace(/[-_]/g, ' '),
+    slug: targetSlug,
+    category: 'digital',
+    price: 0,
+    description: '',
+    image: '',
+    stock: 0,
+  };
   return {
     product: fallbackProduct,
-    config: fallbackProduct.single_page_config!,
+    config: {
+      slug: targetSlug,
+      headline: targetSlug.replace(/[-_]/g, ' '),
+      subheadline: '',
+      banner_url: '',
+      enable_qris: true,
+      enable_manual_transfer: false,
+      badge_text: '',
+      discount_coupon: '',
+      affiliate_commission_rate: 0,
+    },
   };
 }

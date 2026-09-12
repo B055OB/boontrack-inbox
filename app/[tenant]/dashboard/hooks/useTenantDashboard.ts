@@ -261,7 +261,7 @@ export function useTenantDashboard() {
     promo: '',
     description: '',
     download_url: '',
-    image: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
+    image: '',
     stock: 100,
     sku: 'SKU-001',
     is_unlimited: false,
@@ -1038,7 +1038,7 @@ export function useTenantDashboard() {
             'Kurang formula teruji yang bisa langsung dicontek dan dipraktekkan sekarang juga.',
           ],
       problem_image_url:
-        cfg?.problem_image_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500&auto=format&fit=crop&q=60',
+        cfg?.problem_image_url || '',
       solution_title: cfg?.solution_title || 'Kini Hadir Solusi Tepat untuk Melejitkan Konversi',
       solution_points:
         cfg?.solution_points && cfg.solution_points.length > 0
@@ -1059,10 +1059,7 @@ export function useTenantDashboard() {
       testimonial_images:
         cfg?.testimonial_images && cfg.testimonial_images.length > 0
           ? [...cfg.testimonial_images]
-          : [
-            'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60',
-            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=60',
-          ],
+          : [],
       bonus_items:
         cfg?.bonus_items && cfg.bonus_items.length > 0
           ? [...cfg.bonus_items]

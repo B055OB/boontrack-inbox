@@ -65,8 +65,8 @@ function SingleProductContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const tenant = (params.tenant as string) || 'onlineboost';
-  const slug = (params.slug as string) || 'masterclass-ads-2026';
+  const tenant = (params?.tenant as string) || '';
+  const slug = (params?.slug as string) || '';
   const [tenantCategory, setTenantCategory] = useState<string>('');
 
   // Resolusi Produk & Konfigurasi Dinamis dari Dasbor & Supabase

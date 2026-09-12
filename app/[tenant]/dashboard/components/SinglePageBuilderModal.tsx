@@ -257,7 +257,7 @@ export default function SinglePageBuilderModal({
                     type="url"
                     value={singlePageForm.banner_url}
                     onChange={(e) => setSinglePageForm((p) => ({ ...p, banner_url: e.target.value }))}
-                    placeholder="https://images.unsplash.com/..."
+                    placeholder="https://..."
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600 focus:bg-white"
                   />
                 </div>

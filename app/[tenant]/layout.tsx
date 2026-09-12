@@ -74,7 +74,7 @@ export async function generateMetadata({
     for (const prod of products) {
       if (prod && typeof prod === 'object') {
         const pImg = prod?.image || (Array.isArray(prod?.images) && prod.images[0]) || prod?.image_url;
-        if (pImg && typeof pImg === 'string' && !pImg.includes('photo-1581578731548')) {
+        if (pImg && typeof pImg === 'string' && !pImg.includes('unsplash.com')) {
           firstProductImage = pImg;
           break;
         }

@@ -157,7 +157,7 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
           name: `${storeName} - ${capName}`,
           price: capPrice,
           badge: "Layanan Rekomendasi",
-          image: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60",
+          image: (matched as any)?.image || metadata?.logo_url || metadata?.avatar_url || "/logo.png",
           description: `Pembersihan & kuras toren tuntas bergaransi bersih untuk kapasitas ${capName}.`,
           checkout_url: checkoutUrl,
         },

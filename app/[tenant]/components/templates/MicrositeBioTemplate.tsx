@@ -65,7 +65,11 @@ export default function MicrositeBioTemplate({
   onOutboundClick,
 }: MicrositeBioTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
-  const avatarUrl = tenantMetadata?.logo_url || tenantMetadata?.avatar_url || '';
+  const displayAvatar =
+    tenantMetadata?.store_logo_url ||
+    tenantMetadata?.logo_url ||
+    tenantMetadata?.avatar_url ||
+    '/logo.png';
   const [avatarError, setAvatarError] = useState(false);
 
   const initials =
@@ -79,10 +83,13 @@ export default function MicrositeBioTemplate({
 
   const bioText =
     tenantMetadata?.bio ||
-    'Official Online Hub & Direct Order. Nikmati kemudahan pemesanan langsung, promo ongkir, dan layanan pelanggan resmi.';
+    tenantMetadata?.description ||
+    '';
 
-  const whatsappNumber = tenantMetadata?.whatsapp_number || tenantMetadata?.whatsapp || '6281234567890';
-  const whatsappUrl = `https://wa.me/${whatsappNumber}?text=Halo%20${encodeURIComponent(activeName)},%20saya%20ingin%20pesan%20menu`;
+  const whatsappNumber = tenantMetadata?.whatsapp_number || tenantMetadata?.whatsapp || '';
+  const whatsappUrl = whatsappNumber
+    ? `https://wa.me/${whatsappNumber}?text=Halo%20${encodeURIComponent(activeName)},%20saya%20tertarik%20dengan%20produk%2Flayanan%20Anda`
+    : '';
 
   // Product Catalog visibility & featured product filtering
   const showProducts = Boolean(
@@ -114,54 +121,87 @@ export default function MicrositeBioTemplate({
     return storeProducts.slice(0, 6);
   }, [showProducts, storeProducts, productMode, featuredIds]);
 
-  // Food delivery CTA links (can be customized from metadata or fallback defaults)
-  const deliveryLinks = [
-    {
-      id: 'gofood',
-      title: 'Pesan via GoFood',
-      subtitle: 'Diskon kilat & pengiriman express',
-      badge: 'Promo Diskon',
-      badgeColor: 'bg-red-50 text-red-700 border-red-200',
-      bgColor: 'hover:bg-red-50/50 hover:border-red-300',
-      iconEmoji: '🛵',
-      url: tenantMetadata?.links?.gofood || `https://gofood.link/u/${tenantSlug}`,
-    },
-    {
-      id: 'grabfood',
-      title: 'Order via GrabFood',
-      subtitle: 'Jaminan cepat sampai & promo GrabUnlimited',
-      badge: 'Paling Cepat',
-      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      bgColor: 'hover:bg-emerald-50/50 hover:border-emerald-300',
-      iconEmoji: '🟢',
-      url: tenantMetadata?.links?.grabfood || `https://food.grab.com/id/r/${tenantSlug}`,
-    },
-    {
-      id: 'shopeefood',
-      title: 'Order via ShopeeFood',
-      subtitle: 'Voucher gratis ongkir & cashback koin',
-      badge: 'Gratis Ongkir',
-      badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
-      bgColor: 'hover:bg-amber-50/50 hover:border-amber-300',
-      iconEmoji: '🛍️',
-      url: tenantMetadata?.links?.shopeefood || `https://shopee.co.id/now-food/${tenantSlug}`,
-    },
-    {
-      id: 'whatsapp',
-      title: 'Chat WhatsApp CS Langsung',
-      subtitle: 'Tanya pesanan katering, reservasi & kendala',
-      badge: 'Respon Cepat',
-      badgeColor: 'bg-green-50 text-green-700 border-green-200',
-      bgColor: 'hover:bg-green-50/50 hover:border-green-300',
-      iconEmoji: '💬',
-      url: whatsappUrl,
-    },
-  ];
+  // Dynamic buttons resolved strictly from metadata without hardcoded fallback links
+  const dynamicButtons = React.useMemo(() => {
+    if (
+      Array.isArray(tenantMetadata?.microsite?.buttons) &&
+      tenantMetadata.microsite.buttons.filter((b: any) => b && b.is_active !== false).length > 0
+    ) {
+      return tenantMetadata.microsite.buttons.filter((b: any) => b && b.is_active !== false);
+    }
 
-  const bannerImg =
-    tenantMetadata?.banner_url ||
-    storeProducts[0]?.image ||
-    'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&auto=format&fit=crop&q=80';
+    const btns: Array<{
+      id: string;
+      label: string;
+      url: string;
+      icon?: string;
+      subtitle?: string;
+      badge?: string;
+    }> = [];
+
+    if (whatsappUrl) {
+      btns.push({
+        id: 'whatsapp',
+        label: 'Chat WhatsApp CS',
+        url: whatsappUrl,
+        icon: 'whatsapp',
+        subtitle: 'Hubungi admin langsung untuk konsultasi & pemesanan',
+        badge: 'Respon Cepat',
+      });
+    }
+
+    if (tenantMetadata?.links?.gofood) {
+      btns.push({
+        id: 'gofood',
+        label: 'Pesan via GoFood',
+        url: tenantMetadata.links.gofood,
+        icon: 'link',
+        subtitle: 'Order langsung melalui GoFood',
+      });
+    }
+
+    if (tenantMetadata?.links?.grabfood) {
+      btns.push({
+        id: 'grabfood',
+        label: 'Order via GrabFood',
+        url: tenantMetadata.links.grabfood,
+        icon: 'link',
+        subtitle: 'Order langsung melalui GrabFood',
+      });
+    }
+
+    if (tenantMetadata?.links?.shopeefood) {
+      btns.push({
+        id: 'shopeefood',
+        label: 'Order via ShopeeFood',
+        url: tenantMetadata.links.shopeefood,
+        icon: 'link',
+        subtitle: 'Order langsung melalui ShopeeFood',
+      });
+    }
+
+    if (tenantMetadata?.links?.instagram) {
+      btns.push({
+        id: 'instagram',
+        label: 'Instagram Resmi',
+        url: tenantMetadata.links.instagram,
+        icon: 'instagram',
+        subtitle: 'Ikuti update & promo terbaru',
+      });
+    }
+
+    if (tenantMetadata?.links?.tiktok) {
+      btns.push({
+        id: 'tiktok',
+        label: 'TikTok Resmi',
+        url: tenantMetadata.links.tiktok,
+        icon: 'tiktok',
+        subtitle: 'Video konten & ulasan produk',
+      });
+    }
+
+    return btns;
+  }, [tenantMetadata, whatsappUrl]);
 
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4 flex flex-col items-center justify-start text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 antialiased">
@@ -171,9 +211,9 @@ export default function MicrositeBioTemplate({
         <div className="flex flex-col items-center text-center space-y-3 pt-2">
           <div className="relative">
             <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-white shadow-md bg-white flex items-center justify-center ring-4 ring-slate-200/80">
-              {avatarUrl && !avatarError ? (
+              {displayAvatar && !avatarError ? (
                 <img
-                  src={avatarUrl}
+                  src={displayAvatar}
                   alt={activeName}
                   onError={() => setAvatarError(true)}
                   className="w-full h-full object-cover rounded-full"
@@ -196,89 +236,63 @@ export default function MicrositeBioTemplate({
             </p>
           </div>
 
-          {bioText && (
+          {bioText ? (
             <p className="text-xs text-slate-600 leading-relaxed max-w-sm px-2">
               {bioText}
             </p>
-          )}
+          ) : null}
         </div>
 
         {/* Action Buttons: Dynamic Microsite Buttons & CTA Links */}
         <div className="space-y-3 pt-2">
-          {Array.isArray(tenantMetadata?.microsite?.buttons) &&
-          tenantMetadata.microsite.buttons.filter((b: any) => b.is_active !== false).length > 0
-            ? tenantMetadata.microsite.buttons
-                .filter((b: any) => b.is_active !== false)
-                .map((btn: any) => {
-                  const iconType = btn.icon || 'link';
-                  let iconElement = '🔗';
-                  let iconBg = 'bg-slate-100 text-slate-700';
+          {dynamicButtons.length > 0 ? (
+            dynamicButtons.map((btn: any) => {
+              const iconType = btn.icon || 'link';
+              let iconElement = '🔗';
+              let iconBg = 'bg-slate-100 text-slate-700';
 
-                  if (iconType === 'whatsapp') {
-                    iconElement = '💬';
-                    iconBg = 'bg-emerald-50 text-emerald-600';
-                  } else if (iconType === 'instagram') {
-                    iconElement = '📸';
-                    iconBg = 'bg-pink-50 text-pink-600';
-                  } else if (iconType === 'tiktok') {
-                    iconElement = '🎵';
-                    iconBg = 'bg-slate-100 text-slate-900';
-                  } else if (iconType === 'maps') {
-                    iconElement = '📍';
-                    iconBg = 'bg-rose-50 text-rose-600';
-                  } else if (iconType === 'phone') {
-                    iconElement = '📞';
-                    iconBg = 'bg-blue-50 text-blue-600';
-                  }
+              if (iconType === 'whatsapp') {
+                iconElement = '💬';
+                iconBg = 'bg-emerald-50 text-emerald-600';
+              } else if (iconType === 'instagram') {
+                iconElement = '📸';
+                iconBg = 'bg-pink-50 text-pink-600';
+              } else if (iconType === 'tiktok') {
+                iconElement = '🎵';
+                iconBg = 'bg-slate-100 text-slate-900';
+              } else if (iconType === 'maps') {
+                iconElement = '📍';
+                iconBg = 'bg-rose-50 text-rose-600';
+              } else if (iconType === 'phone') {
+                iconElement = '📞';
+                iconBg = 'bg-blue-50 text-blue-600';
+              }
 
-                  return (
-                    <button
-                      key={btn.id}
-                      type="button"
-                      onClick={() => onOutboundClick(btn.url, `microsite_${btn.id}`)}
-                      className="w-full bg-white hover:bg-slate-50/90 border border-slate-200/90 hover:border-indigo-300 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all duration-200 flex items-center justify-between text-left cursor-pointer active:scale-[0.98] group"
-                    >
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${iconBg} shadow-2xs`}>
-                          {iconElement}
-                        </div>
-                        <div className="space-y-0.5 min-w-0">
-                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
-                            {btn.label}
-                          </h4>
-                          <p className="text-[10px] text-slate-400 truncate font-mono">{btn.url}</p>
-                        </div>
-                      </div>
-
-                      <div className="w-8 h-8 rounded-full bg-slate-50 group-hover:bg-indigo-50 flex items-center justify-center shrink-0 ml-2 transition-colors">
-                        <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
-                      </div>
-                    </button>
-                  );
-                })
-            : deliveryLinks.map((link) => (
+              return (
                 <button
-                  key={link.id}
+                  key={btn.id}
                   type="button"
-                  onClick={() => onOutboundClick(link.url, `microsite_${link.id}`)}
+                  onClick={() => onOutboundClick(btn.url, `microsite_${btn.id}`)}
                   className="w-full bg-white hover:bg-slate-50/90 border border-slate-200/90 hover:border-indigo-300 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all duration-200 flex items-center justify-between text-left cursor-pointer active:scale-[0.98] group"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-lg shrink-0 shadow-2xs">
-                      {link.iconEmoji}
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${iconBg} shadow-2xs`}>
+                      {iconElement}
                     </div>
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-2">
                         <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
-                          {link.title}
+                          {btn.label || btn.title}
                         </h4>
-                        {link.badge && (
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${link.badgeColor}`}>
-                            {link.badge}
+                        {btn.badge && (
+                          <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">
+                            {btn.badge}
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-slate-400 truncate">{link.subtitle}</p>
+                      {btn.subtitle && (
+                        <p className="text-[10px] text-slate-400 truncate">{btn.subtitle}</p>
+                      )}
                     </div>
                   </div>
 
@@ -286,7 +300,13 @@ export default function MicrositeBioTemplate({
                     <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
                   </div>
                 </button>
-              ))}
+              );
+            })
+          ) : (
+            <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-400">
+              Belum ada tautan yang dikonfigurasi.
+            </div>
+          )}
         </div>
 
         {/* Micro-Catalog: Menu / Produk Terlaris (hanya tampil jika showProducts aktif dan ada produk) */}

@@ -46,7 +46,7 @@ export default function FloatingWebchat({
         id: 'init-floating-1',
         sender: 'bot',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: `Assalamu'alaikum & Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar bimbingan, jadwal, atau informasi program hari ini?`,
+        text: `Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar produk atau layanan kami hari ini?`,
         type: 'TEXT',
         quick_actions: dynamicQuickReplies,
       },
