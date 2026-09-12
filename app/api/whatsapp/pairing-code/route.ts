@@ -99,8 +99,9 @@ export async function POST(req: NextRequest) {
       pairingResult = await fetchPairing(targetInstance, cleanPhone);
     }
 
-    // HANYA ambil data.pairingCode, JANGAN gunakan data.code sebagai fallback
-    let pairingCode = pairingResult.data?.pairingCode || pairingResult.data?.qrcode?.pairingCode || null;
+    // Ekstraksi pairing code (memeriksa pairingCode, code, atau qrcode.pairingCode)
+    const data = pairingResult.data;
+    let pairingCode = data?.pairingCode || data?.code || data?.qrcode?.pairingCode || null;
 
     // Jika pairingCode masih null atau belum terbit:
     if (!pairingCode) {
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
 
       // 3. Panggil ulang GET /instance/connect/${targetInstance}?number=${cleanPhone}
       const retryResult = await fetchPairing(targetInstance, cleanPhone);
-      pairingCode = retryResult.data?.pairingCode || retryResult.data?.qrcode?.pairingCode || null;
+      pairingCode = retryResult.data?.pairingCode || retryResult.data?.code || retryResult.data?.qrcode?.pairingCode || null;
     }
 
     // Validasi dan format pairing code jika valid
