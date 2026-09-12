@@ -762,9 +762,19 @@ export default function TenantStorefrontPage() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-sm shadow-blue-500/20 capitalize">
-              {(storeName || displayName).charAt(0)}
-            </div>
+            {tenantMetadata?.logo_url ? (
+              <img
+                src={tenantMetadata.logo_url}
+                alt={storeName || displayName}
+                className="w-9 h-9 rounded-xl object-contain shadow-sm border border-slate-100 bg-white"
+              />
+            ) : (
+              <img
+                src="/logo.png"
+                alt="BoonTrack Shop"
+                className="w-9 h-9 rounded-xl object-contain shadow-sm"
+              />
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-black text-slate-900 capitalize tracking-tight text-base sm:text-lg">
@@ -1230,9 +1240,19 @@ export default function TenantStorefrontPage() {
                 {/* Drawer Header */}
                 <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/90 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-xs shadow-xs uppercase">
-                      {(storeName || displayName).charAt(0)}
-                    </div>
+                    {tenantMetadata?.logo_url ? (
+                      <img
+                        src={tenantMetadata.logo_url}
+                        alt={storeName || displayName}
+                        className="w-8 h-8 rounded-xl object-contain shadow-xs border border-slate-100 bg-white"
+                      />
+                    ) : (
+                      <img
+                        src="/logo.png"
+                        alt="BoonTrack Shop"
+                        className="w-8 h-8 rounded-xl object-contain shadow-xs"
+                      />
+                    )}
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-bold text-slate-800 capitalize">{storeName || displayName} Assistant</span>

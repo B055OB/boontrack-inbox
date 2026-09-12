@@ -790,13 +790,16 @@ export default function MicrositeTab({ tenantSlug, displayName, onSaved, product
               <div className="w-24 h-4 bg-slate-900 rounded-full mb-4"></div>
 
               {/* Profile Avatar */}
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-600 text-white font-black text-xl flex items-center justify-center shadow-md mb-2 capitalize">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white font-black text-xl flex items-center justify-center shadow-md mb-2 capitalize ring-2 ring-white">
                 {displayName.charAt(0)}
               </div>
 
               <h4 className="text-sm font-black text-slate-900 capitalize tracking-tight">
                 {displayName}
               </h4>
+              <p className="text-[10px] font-bold text-slate-500 font-mono tracking-tight">
+                @{tenantSlug.toLowerCase()}
+              </p>
               <p className="text-[10px] text-slate-500 text-center line-clamp-2 max-w-[240px] mt-0.5">
                 {bioText || 'Pemesanan online praktis & layanan resmi terverifikasi.'}
               </p>

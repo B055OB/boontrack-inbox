@@ -164,65 +164,47 @@ export default function MicrositeBioTemplate({
     'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&auto=format&fit=crop&q=80';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-50 to-slate-100 py-8 px-4 flex flex-col items-center justify-start text-slate-900 font-sans selection:bg-emerald-100 selection:text-emerald-900 antialiased">
-      {/* Container Mobile-First Centered */}
-      <div className="w-full max-w-md mx-auto space-y-6 animate-fadeIn">
+    <div className="min-h-screen bg-slate-50 py-10 px-4 flex flex-col items-center justify-start text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 antialiased">
+      {/* Container Mobile-First Centered (Ala Linktree) */}
+      <div className="w-full max-w-md mx-auto space-y-6">
         {/* Header Profil Brand */}
-        <div className="flex flex-col items-center text-center space-y-3 pt-4">
+        <div className="flex flex-col items-center text-center space-y-3 pt-2">
           <div className="relative">
-            <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white shadow-lg shadow-slate-300/40 bg-white flex items-center justify-center">
+            <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-white shadow-md bg-white flex items-center justify-center ring-4 ring-slate-200/80">
               {avatarUrl && !avatarError ? (
                 <img
                   src={avatarUrl}
                   alt={activeName}
                   onError={() => setAvatarError(true)}
-                  className="w-full h-full object-cover rounded-2xl"
+                  className="w-full h-full object-cover rounded-full"
                 />
               ) : (
-                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-center text-white text-2xl font-black shadow-inner">
+                <div className="w-full h-full rounded-full bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white text-2xl font-black shadow-inner">
                   {initials}
                 </div>
               )}
             </div>
-            <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white rounded-full p-1 border-2 border-white shadow-xs">
+            <div className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-1 border-2 border-white shadow-xs">
               <CheckCircle2 className="w-3.5 h-3.5" />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <div className="flex items-center justify-center gap-1.5">
-              <h1 className="text-xl font-black text-slate-900 tracking-tight">{activeName}</h1>
-            </div>
-            <span className="inline-block text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-              Official Bio-Funnel
-            </span>
+          <div className="space-y-0.5">
+            <h1 className="text-lg font-black text-slate-900 tracking-tight">{activeName}</h1>
+            <p className="text-xs font-bold text-slate-500 font-mono tracking-tight">
+              @{tenantSlug.toLowerCase()}
+            </p>
           </div>
 
-          <p className="text-xs text-slate-500 leading-relaxed max-w-xs">{bioText}</p>
+          {bioText && (
+            <p className="text-xs text-slate-600 leading-relaxed max-w-sm px-2">
+              {bioText}
+            </p>
+          )}
         </div>
 
-        {/* Promo Banner Card */}
-        {bannerImg && (
-          <div className="relative rounded-3xl overflow-hidden border border-slate-200 shadow-md aspect-video bg-slate-900 group">
-            <img
-              src={sanitizeImageUrl(bannerImg)}
-              alt="Promo Banner"
-              onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex flex-col justify-end p-4 text-white">
-              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-500 text-white w-fit mb-1">
-                Menu Andalan &amp; Promo
-              </span>
-              <p className="text-xs font-bold leading-tight line-clamp-1">
-                Pesan Langsung Lebih Hemat Tanpa Antre
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* Action Buttons: Dynamic Microsite Buttons & CTA Links */}
-        <div className="space-y-2.5">
+        <div className="space-y-3 pt-2">
           {Array.isArray(tenantMetadata?.microsite?.buttons) &&
           tenantMetadata.microsite.buttons.filter((b: any) => b.is_active !== false).length > 0
             ? tenantMetadata.microsite.buttons
@@ -230,29 +212,23 @@ export default function MicrositeBioTemplate({
                 .map((btn: any) => {
                   const iconType = btn.icon || 'link';
                   let iconElement = '🔗';
-                  let badgeText = '';
-                  let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
+                  let iconBg = 'bg-slate-100 text-slate-700';
 
                   if (iconType === 'whatsapp') {
                     iconElement = '💬';
-                    badgeText = 'WhatsApp';
-                    badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    iconBg = 'bg-emerald-50 text-emerald-600';
                   } else if (iconType === 'instagram') {
                     iconElement = '📸';
-                    badgeText = 'Instagram';
-                    badgeClass = 'bg-pink-50 text-pink-700 border-pink-200';
+                    iconBg = 'bg-pink-50 text-pink-600';
                   } else if (iconType === 'tiktok') {
                     iconElement = '🎵';
-                    badgeText = 'TikTok';
-                    badgeClass = 'bg-slate-100 text-slate-800 border-slate-300';
+                    iconBg = 'bg-slate-100 text-slate-900';
                   } else if (iconType === 'maps') {
                     iconElement = '📍';
-                    badgeText = 'Lokasi Maps';
-                    badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+                    iconBg = 'bg-rose-50 text-rose-600';
                   } else if (iconType === 'phone') {
                     iconElement = '📞';
-                    badgeText = 'Telepon';
-                    badgeClass = 'bg-blue-50 text-blue-700 border-blue-200';
+                    iconBg = 'bg-blue-50 text-blue-600';
                   }
 
                   return (
@@ -260,26 +236,23 @@ export default function MicrositeBioTemplate({
                       key={btn.id}
                       type="button"
                       onClick={() => onOutboundClick(btn.url, `microsite_${btn.id}`)}
-                      className="w-full bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs transition-all duration-200 flex items-center justify-between text-left cursor-pointer active:scale-98 group hover:bg-slate-50 hover:border-blue-300"
+                      className="w-full bg-white hover:bg-slate-50/90 border border-slate-200/90 hover:border-indigo-300 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all duration-200 flex items-center justify-between text-left cursor-pointer active:scale-[0.98] group"
                     >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl shrink-0">{iconElement}</span>
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${iconBg} shadow-2xs`}>
+                          {iconElement}
+                        </div>
                         <div className="space-y-0.5 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-xs font-black text-slate-900 group-hover:text-blue-700 transition-colors truncate">
-                              {btn.label}
-                            </h4>
-                            {badgeText && (
-                              <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${badgeClass}`}>
-                                {badgeText}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-slate-400 truncate">{btn.url}</p>
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+                            {btn.label}
+                          </h4>
+                          <p className="text-[10px] text-slate-400 truncate font-mono">{btn.url}</p>
                         </div>
                       </div>
 
-                      <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-blue-600 shrink-0 ml-2" />
+                      <div className="w-8 h-8 rounded-full bg-slate-50 group-hover:bg-indigo-50 flex items-center justify-center shrink-0 ml-2 transition-colors">
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
+                      </div>
                     </button>
                   );
                 })
@@ -288,19 +261,19 @@ export default function MicrositeBioTemplate({
                   key={link.id}
                   type="button"
                   onClick={() => onOutboundClick(link.url, `microsite_${link.id}`)}
-                  className={`w-full bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs transition-all duration-200 flex items-center justify-between text-left cursor-pointer active:scale-98 group ${link.bgColor}`}
+                  className="w-full bg-white hover:bg-slate-50/90 border border-slate-200/90 hover:border-indigo-300 rounded-2xl p-3.5 shadow-xs hover:shadow-md transition-all duration-200 flex items-center justify-between text-left cursor-pointer active:scale-[0.98] group"
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl shrink-0">{link.iconEmoji}</span>
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-lg shrink-0 shadow-2xs">
+                      {link.iconEmoji}
+                    </div>
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h4 className="text-xs font-black text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
                           {link.title}
                         </h4>
                         {link.badge && (
-                          <span
-                            className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${link.badgeColor}`}
-                          >
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${link.badgeColor}`}>
                             {link.badge}
                           </span>
                         )}
@@ -309,14 +282,16 @@ export default function MicrositeBioTemplate({
                     </div>
                   </div>
 
-                  <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 shrink-0 ml-2" />
+                  <div className="w-8 h-8 rounded-full bg-slate-50 group-hover:bg-indigo-50 flex items-center justify-center shrink-0 ml-2 transition-colors">
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
+                  </div>
                 </button>
               ))}
         </div>
 
         {/* Micro-Catalog: Menu / Produk Terlaris (hanya tampil jika showProducts aktif dan ada produk) */}
         {showProducts && visibleProducts.length > 0 && (
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 animate-in fade-in duration-200 mt-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-1.5">
                 <Utensils className="w-4 h-4 text-emerald-600" />
@@ -360,10 +335,10 @@ export default function MicrositeBioTemplate({
           </div>
         )}
 
-        {/* Footer */}
-        <div className="text-center pt-2 pb-6 space-y-1">
+        {/* Footer Minimalis */}
+        <div className="text-center pt-4 pb-8 space-y-1">
           <p className="text-[11px] text-slate-400">
-            &copy; {new Date().getFullYear()} {activeName} &bull; Powered by BoonTrack Funnel
+            &copy; {new Date().getFullYear()} {activeName} &bull; Powered by BoonTrack
           </p>
         </div>
       </div>

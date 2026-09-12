@@ -10,9 +10,11 @@ export default function Footer({ className = "" }: { className?: string }) {
           {/* Kolom 1: Profil Entitas */}
           <div className="space-y-3 md:col-span-1">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center font-black text-white text-base shadow-sm">
-                B
-              </div>
+              <img
+                src="/logo.png"
+                alt="BoonTrack Shop"
+                className="w-8 h-8 rounded-xl object-contain shadow-sm"
+              />
               <div>
                 <span className="font-extrabold text-base tracking-tight text-white block leading-tight">
                   BoonTrack <span className="text-blue-400 font-medium text-xs">Shop</span>

@@ -38,12 +38,12 @@ interface WhatsAppTabProps {
   isPairingLoading: boolean;
   handleConnectGrowthSession: () => Promise<void>;
   handleRequestPairingCode: (e: React.FormEvent) => Promise<void>;
-  botStrategy: 'trust_builder' | 'balanced' | 'hard_selling';
-  setBotStrategy: (strategy: 'trust_builder' | 'balanced' | 'hard_selling') => void;
-  handleSaveBotStrategy: (strategyOverride?: 'trust_builder' | 'balanced' | 'hard_selling') => Promise<void>;
-  isSavingStrategy: boolean;
-  isLoadingAi: boolean;
-  strategyFeedback: string | null;
+  botStrategy?: 'trust_builder' | 'balanced' | 'hard_selling';
+  setBotStrategy?: (strategy: 'trust_builder' | 'balanced' | 'hard_selling') => void;
+  handleSaveBotStrategy?: (strategyOverride?: 'trust_builder' | 'balanced' | 'hard_selling') => Promise<void>;
+  isSavingStrategy?: boolean;
+  isLoadingAi?: boolean;
+  strategyFeedback?: string | null;
   isProScale: boolean;
   renderLockedFeatureCard: (props: {
     title: string;
@@ -144,145 +144,6 @@ export default function WhatsAppTab({
             )}
           </button>
         </div>
-      </div>
-
-      {/* KARTU PENGATURAN STRATEGI RESPON & PERSONA BOT WHATSAPP */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-        <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-          <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xs sm:text-sm font-black text-slate-900">
-                Strategi Respon &amp; Persona Bot WhatsApp
-              </h3>
-              {isSavingStrategy ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-700 border border-blue-200">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Menyimpan...
-                </span>
-              ) : strategyFeedback ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  <CheckCircle2 className="w-3 h-3" />
-                  Tersimpan otomatis
-                </span>
-              ) : (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  {botStrategy === 'trust_builder' && 'Mode Toko Baru'}
-                  {botStrategy === 'balanced' && 'Mode Seimbang'}
-                  {botStrategy === 'hard_selling' && 'Mode Penjualan Cepat'}
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Klik mode yang sesuai — tersimpan otomatis tanpa tombol Simpan.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div
-            onClick={() => {
-              setBotStrategy('trust_builder');
-              handleSaveBotStrategy('trust_builder');
-            }}
-            className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
-              botStrategy === 'trust_builder'
-                ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
-                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-            }`}
-          >
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  Rekomendasi Toko Baru
-                </span>
-                {botStrategy === 'trust_builder' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                ) : (
-                  <div className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                )}
-              </div>
-              <h4 className="text-xs font-black text-slate-900">Mode Toko Baru (Konsultatif)</h4>
-              <p className="text-[11px] text-slate-600 leading-snug">
-                Menjawab ramah & empati, edukasi calon pembeli, serta tegaskan garansi tanpa buru-buru menyodorkan link pembayaran.
-              </p>
-            </div>
-          </div>
-
-          <div
-            onClick={() => {
-              setBotStrategy('balanced');
-              handleSaveBotStrategy('balanced');
-            }}
-            className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
-              botStrategy === 'balanced'
-                ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
-                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-            }`}
-          >
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-                  Default
-                </span>
-                {botStrategy === 'balanced' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                ) : (
-                  <div className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                )}
-              </div>
-              <h4 className="text-xs font-black text-slate-900">Mode Seimbang (Tanya Jawab)</h4>
-              <p className="text-[11px] text-slate-600 leading-snug">
-                Menjawab dalam 2-3 kalimat ringkas, jelaskan manfaat utama, lalu tawarkan konfirmasi untuk mengamankan stok produk.
-              </p>
-            </div>
-          </div>
-
-          <div
-            onClick={() => {
-              setBotStrategy('hard_selling');
-              handleSaveBotStrategy('hard_selling');
-            }}
-            className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
-              botStrategy === 'hard_selling'
-                ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20 shadow-xs'
-                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
-            }`}
-          >
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                  Cocok Iklan Berbayar
-                </span>
-                {botStrategy === 'hard_selling' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
-                ) : (
-                  <div className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                )}
-              </div>
-              <h4 className="text-xs font-black text-slate-900">Mode Penjualan Cepat (Hard Selling)</h4>
-              <p className="text-[11px] text-slate-600 leading-snug">
-                Respon 1-2 kalimat, konfirmasi stok ready, dan langsung berikan tautan checkout/QRIS instan untuk pangkas drop-off.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Nudge: Langkah selanjutnya → Scan QR */}
-        {waMode === 'qr' && waStatus !== 'CONNECTED' && (
-          <div className="mt-2 flex items-center justify-between gap-3 p-3.5 bg-blue-50 border border-blue-100 rounded-2xl">
-            <div className="flex items-center gap-2.5">
-              <QrCode className="w-5 h-5 text-blue-600 shrink-0" />
-              <div>
-                <p className="text-xs font-black text-blue-900">Langkah Selanjutnya: Aktifkan Bot CS 24/7</p>
-                <p className="text-[11px] text-blue-700">Scan QR di kartu "BoonTrack Direct Connect" di bawah agar bot langsung aktif melayani pembeli.</p>
-              </div>
-            </div>
-            <ArrowRight className="w-4 h-4 text-blue-500 shrink-0" />
-          </div>
-        )}
       </div>
 
       {/* GROWTH PLAN PANEL */}

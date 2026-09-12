@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Store, Image as ImageIcon, Save, X, Package, QrCode, CheckCircle2 } from 'lucide-react';
+import { Store, Image as ImageIcon, Save, X, Package, QrCode, CheckCircle2, Smartphone, Zap, Download } from 'lucide-react';
 import CustomDomainCard from '../settings/CustomDomainCard';
 
 export interface SettingsTabProps {
@@ -298,6 +298,65 @@ export default function SettingsTab({
               Mengunggah &amp; mengonversi QRIS ke WebP...
             </p>
           )}
+        </div>
+
+        {/* Panduan Verifikasi Otomatis QRIS Statis */}
+        <div className="mt-3 p-4 bg-gradient-to-br from-emerald-50/80 via-teal-50/50 to-blue-50/40 border border-emerald-200/80 rounded-2xl space-y-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-xl bg-emerald-600 text-white shrink-0 shadow-xs">
+              <QrCode className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-emerald-950">
+                Panduan Verifikasi Otomatis QRIS Statis
+              </h4>
+              <p className="text-[10px] text-emerald-700">
+                Verifikasi pembayaran instan 0% potongan MDR tanpa payment gateway perantara
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2 text-[11px] text-slate-700 bg-white/80 p-3 rounded-xl border border-emerald-100/80">
+            <div className="flex items-start gap-2">
+              <Smartphone className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
+              <div>
+                <span className="font-bold text-slate-900">Syarat Utama: </span>
+                Gunakan perangkat smartphone <strong className="text-emerald-800">Android aktif 24 jam</strong> di kasir/toko dan pasang aplikasi <strong className="text-emerald-800">BoonTrack Reader (APK)</strong> agar notifikasi mutasi dapat dibaca otomatis.
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
+              <div>
+                <span className="font-bold text-slate-900">QRIS yang Didukung: </span>
+                <span className="inline-flex flex-wrap gap-1.5 mt-0.5">
+                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold text-[10px] rounded-md border border-blue-100">Merchant BCA</span>
+                  <span className="px-2 py-0.5 bg-cyan-50 text-cyan-700 font-bold text-[10px] rounded-md border border-cyan-100">DANA Bisnis</span>
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold text-[10px] rounded-md border border-emerald-100">GoPay Usaha</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <Zap className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+              <div>
+                <span className="font-bold text-slate-900">Cara Kerja: </span>
+                HP Android menerima notifikasi mutasi &rarr; BoonTrack Reader membaca otomatis &rarr; status pesanan langsung diverifikasi lunas seketika tanpa potongan biaya transaksi (0% MDR).
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-0.5">
+            <a
+              href="https://api.boontrack.com/dl-reader-x9k2m/BoonTrackReader.apk"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download APK BoonTrack Reader</span>
+            </a>
+          </div>
         </div>
       </div>
 
