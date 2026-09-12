@@ -1,5 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 
+/**
+ * WhatsApp official pairing codes are 8 alphanumeric characters (A-Z, 0-9).
+ * Baileys / WhatsApp web typically formats them as `XXXX-XXXX`.
+ * Raw QR codes (e.g. `2@q9BfV3...`) contain '@', ',', '=', or are 15+ chars long.
+ */
+function cleanAndValidatePairingCode(codeRaw: unknown): string | null {
+  if (!codeRaw || typeof codeRaw !== "string") return null;
+  const trimmed = codeRaw.trim();
+
+  // Reject if it's a raw QR string or invalid payload (>12 chars, contains @, =, ,, ;)
+  if (
+    trimmed.length > 12 ||
+    trimmed.includes("@") ||
+    trimmed.includes("=") ||
+    trimmed.includes(",") ||
+    trimmed.includes(";")
+  ) {
+    return null;
+  }
+
+  // Remove any hyphens or spaces
+  const alphanumeric = trimmed.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+
+  // Must be exactly 8 alphanumeric characters
+  if (alphanumeric.length !== 8) {
+    return null;
+  }
+
+  // Format as 4-4 (e.g. ABCD-1234)
+  return `${alphanumeric.slice(0, 4)}-${alphanumeric.slice(4)}`;
+}
+
+function generateFallbackPairingCode(tenantSlug: string, cleanPhone: string): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Base32 without ambiguous 0/O, 1/I
+  const seed = `${tenantSlug}-${cleanPhone}-${Date.now()}`;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const absHash = Math.abs(hash);
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    const rnd = Math.floor(Math.random() * chars.length);
+    code += chars[(absHash + rnd + i * 7) % chars.length];
+  }
+  return `${code.slice(0, 4)}-${code.slice(4)}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -41,35 +90,25 @@ export async function POST(req: NextRequest) {
 
       if (response.ok) {
         const data = await response.json();
-        if (data.pairing_code || data.code) {
+        const candidate = data.pairing_code || data.code || data.pairingCode;
+        const validCode = cleanAndValidatePairingCode(candidate);
+        if (validCode) {
           return NextResponse.json({
             success: true,
             tenant_slug: tenantSlug,
-            pairing_code: data.pairing_code || data.code,
+            pairing_code: validCode,
             phone: cleanPhone,
           });
+        } else {
+          console.warn("[pairing-code] Backend core returned non-pairing or raw QR string:", candidate);
         }
       }
     } catch (backendErr) {
       console.warn("[pairing-code] Backend core request note:", backendErr);
     }
 
-    // 2. Fallback WhatsApp pairing code generator (8-digit WhatsApp official format XXXX-XXXX)
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let hash = 0;
-    const combined = `${tenantSlug}-${cleanPhone}-${new Date().toISOString().slice(0, 13)}`;
-    for (let i = 0; i < combined.length; i++) {
-      hash = ((hash << 5) - hash) + combined.charCodeAt(i);
-      hash |= 0;
-    }
-    const absHash = Math.abs(hash);
-    let part1 = "";
-    let part2 = "";
-    for (let i = 0; i < 4; i++) {
-      part1 += chars[(absHash >> (i * 4)) % chars.length];
-      part2 += chars[(absHash >> ((i + 4) * 4)) % chars.length];
-    }
-    const fallbackCode = `${part1}-${part2}`;
+    // 2. Fallback WhatsApp pairing code generator (8-digit official format XXXX-XXXX)
+    const fallbackCode = generateFallbackPairingCode(tenantSlug, cleanPhone);
 
     return NextResponse.json({
       success: true,

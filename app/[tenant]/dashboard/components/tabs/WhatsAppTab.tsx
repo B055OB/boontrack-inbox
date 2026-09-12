@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   MessageSquare,
   Smartphone,
@@ -14,6 +14,8 @@ import {
   RefreshCw,
   PhoneCall,
   ArrowRight,
+  Copy,
+  Check,
 } from 'lucide-react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 
@@ -82,6 +84,18 @@ export default function WhatsAppTab({
   renderLockedFeatureCard,
   setSaveFeedback,
 }: WhatsAppTabProps) {
+  const [hasCopied, setHasCopied] = useState(false);
+
+  const handleCopyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setHasCopied(true);
+      setTimeout(() => setHasCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy code to clipboard', err);
+    }
+  };
+
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -383,10 +397,48 @@ export default function WhatsAppTab({
                   </form>
 
                   {pairingCodeResult && (
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center space-y-1 mt-2">
-                      <p className="text-[11px] text-emerald-800 font-medium">Masukkan kode 8-digit ini di WhatsApp HP Anda:</p>
-                      <div className="text-lg font-black font-mono tracking-widest text-emerald-700 bg-white py-1 px-3 rounded-lg border border-emerald-200 inline-block">
-                        {pairingCodeResult}
+                    <div className="p-4 bg-emerald-50/90 border border-emerald-200 rounded-2xl text-center space-y-3 mt-3 shadow-xs">
+                      <div>
+                        <span className="inline-block px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider rounded-full mb-1">
+                          Kode Pairing WhatsApp Resmi
+                        </span>
+                        <p className="text-xs text-emerald-900 font-medium">
+                          Masukkan 8 digit kode ini di WhatsApp HP Anda:
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-emerald-900 bg-white py-2.5 px-5 rounded-xl border border-emerald-300 shadow-sm select-all">
+                          {pairingCodeResult}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCode(pairingCodeResult)}
+                          className="flex items-center gap-1.5 px-3 py-2.5 bg-white hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl border border-emerald-300 transition shadow-sm cursor-pointer"
+                          title="Salin Kode Pairing"
+                        >
+                          {hasCopied ? (
+                            <>
+                              <Check className="w-4 h-4 text-emerald-600" />
+                              <span className="text-emerald-700">Tersalin</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4 text-emerald-600" />
+                              <span>Salin</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="text-[11px] text-slate-600 bg-emerald-100/60 p-2.5 rounded-xl text-left space-y-1 border border-emerald-200/60">
+                        <p className="font-semibold text-emerald-900">Cara tautkan di HP:</p>
+                        <ol className="list-decimal list-inside space-y-0.5 text-slate-700 pl-1 text-[11px]">
+                          <li>Buka WhatsApp di HP Anda</li>
+                          <li>Buka <strong>Pengaturan</strong> atau Menu (titik tiga) &gt; <strong>Perangkat Tertaut</strong></li>
+                          <li>Pilih <strong>Tautkan Perangkat</strong> lalu ketuk <strong>Tautkan dengan nomor telepon saja</strong></li>
+                          <li>Ketikkan 8 karakter kode di atas</li>
+                        </ol>
                       </div>
                     </div>
                   )}
