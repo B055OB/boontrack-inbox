@@ -20,8 +20,9 @@ export interface ProductItem {
   stock?: number;
   sku?: string;
   is_unlimited?: boolean;
-  type?: 'digital' | 'physical' | 'service' | string;
+  type?: 'digital' | 'physical' | 'service' | 'fnb' | string;
   product_type?: string;
+  custom_badge?: string;
   weight_grams?: number;
   fulfillment_metadata?: any;
   single_page_config?: any;

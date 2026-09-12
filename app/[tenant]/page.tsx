@@ -64,6 +64,7 @@ export interface Product {
   description: string;
   badge?: string;
   promo?: string;
+  custom_badge?: string;
   modules?: string[];
   features?: string[];
   promo_price?: number;
@@ -96,26 +97,49 @@ export interface StoreChatMessage {
 }
 
 // Helper to format category label for badges & display
-export function formatCategoryBadge(category?: string, productType?: string): string {
+export function formatCategoryBadge(category?: string, productType?: string, customBadge?: string): string {
+  if (customBadge && customBadge.trim()) {
+    return customBadge.trim();
+  }
   if (category && category.trim()) {
     const trimmed = category.trim();
     const lower = trimmed.toLowerCase();
-    if (lower === "digital") return "Digital";
-    if (lower === "fisik" || lower === "physical") return "Fisik";
-    if (lower === "jasa" || lower === "service" || lower === "field_service" || lower === "professional_service") return "Jasa";
-    // Preserve custom merchant category (e.g. "E-Course", "Fashion", "Konsultasi")
+    if (lower === "field_service" || lower === "service" || lower === "jasa" || lower === "local_service" || lower === "jasa lapangan") {
+      return "Jasa Lapangan";
+    }
+    if (lower === "pro_service" || lower === "konsultasi" || lower === "professional_service" || lower === "professional") {
+      return "Konsultasi";
+    }
+    if (lower === "creator_agency" || lower === "agency & kreator" || lower === "agency") {
+      return "Agency & Kreator";
+    }
+    if (lower === "fnb" || lower === "kuliner & f&b" || lower === "kuliner" || lower === "food") {
+      return "Kuliner & F&B";
+    }
+    if (lower === "digital" || lower === "digital_product") {
+      return "Digital";
+    }
+    if (lower === "retail_physical" || lower === "fisik" || lower === "physical") {
+      return "Fisik";
+    }
+    // Preserve custom merchant category (e.g. "E-Course", "Fashion", "Buku")
     return trimmed;
   }
-  if (productType === "PHYSICAL") return "Fisik";
-  if (productType === "SERVICE" || productType === "FIELD_SERVICE" || productType === "PROFESSIONAL_SERVICE") return "Jasa";
-  return "Digital";
+  const pt = (productType || "").toUpperCase();
+  if (pt === "FIELD_SERVICE" || pt === "SERVICE") return "Jasa Lapangan";
+  if (pt === "PROFESSIONAL_SERVICE") return "Konsultasi";
+  if (pt === "AGENCY") return "Agency & Kreator";
+  if (pt === "FOOD") return "Kuliner & F&B";
+  if (pt === "DIGITAL") return "Digital";
+  if (pt === "PHYSICAL") return "Fisik";
+  return "Fisik";
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProductItemToStoreProduct(p: any, idx: number): Product {
   const price = p.promo_price ? Number(p.promo_price) : (Number(p.price) || 0);
   const originalPrice = p.promo_price && Number(p.price) > Number(p.promo_price) ? Number(p.price) : (p.originalPrice ? Number(p.originalPrice) : undefined);
-  const categoryBadge = formatCategoryBadge(p.category, p.product_type || p.type);
+  const categoryBadge = formatCategoryBadge(p.category, p.product_type || p.type, p.custom_badge);
   const rawCat = (p.category || p.type || categoryBadge).toLowerCase();
 
   return {
@@ -129,6 +153,7 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     description: p.description || "",
     badge: categoryBadge,
     promo: p.promo || "",
+    custom_badge: p.custom_badge,
     features: Array.isArray(p.features) && p.features.length > 0 ? p.features : [
       "Pengerjaan Profesional",
       "Garansi Bersih Tuntas",

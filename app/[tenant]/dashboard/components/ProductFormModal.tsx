@@ -12,6 +12,111 @@ import {
 } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 
+export type BoonVerticalOption =
+  | 'retail_physical'
+  | 'digital_product'
+  | 'fnb'
+  | 'field_service'
+  | 'pro_service'
+  | 'creator_agency';
+
+export interface BoonVerticalMeta {
+  key: BoonVerticalOption;
+  label: string;
+  productType: ProductType;
+  backendType: 'physical' | 'digital' | 'fnb' | 'service';
+  defaultBadge: string;
+  description: string;
+}
+
+export const BOON_VERTICAL_OPTIONS: BoonVerticalMeta[] = [
+  {
+    key: 'retail_physical',
+    label: 'Retail & Produk Fisik',
+    productType: 'PHYSICAL',
+    backendType: 'physical',
+    defaultBadge: 'Fisik',
+    description: 'Wajib alamat pengiriman & kalkulasi ongkir kurir ekspedisi.',
+  },
+  {
+    key: 'digital_product',
+    label: 'Produk Digital (File / E-course / Akses)',
+    productType: 'DIGITAL',
+    backendType: 'digital',
+    defaultBadge: 'Digital',
+    description: 'Checkout kilat & pengiriman payload akses otomatis saat lunas.',
+  },
+  {
+    key: 'fnb',
+    label: 'Kuliner & F&B',
+    productType: 'FOOD',
+    backendType: 'fnb',
+    defaultBadge: 'Kuliner & F&B',
+    description: 'Pengiriman instan/kargo makanan dengan alamat tujuan.',
+  },
+  {
+    key: 'field_service',
+    label: 'Layanan Jasa Lapangan',
+    productType: 'FIELD_SERVICE',
+    backendType: 'service',
+    defaultBadge: 'Jasa Lapangan',
+    description: 'Reservasi jadwal kunjungan teknisi/tim ke lokasi pelanggan.',
+  },
+  {
+    key: 'pro_service',
+    label: 'Jasa Profesional & Konsultasi',
+    productType: 'PROFESSIONAL_SERVICE',
+    backendType: 'service',
+    defaultBadge: 'Konsultasi',
+    description: 'Sesi konsultasi, booking kalender, atau audit profesional.',
+  },
+  {
+    key: 'creator_agency',
+    label: 'Layanan Agency & Kreator',
+    productType: 'AGENCY',
+    backendType: 'service',
+    defaultBadge: 'Agency & Kreator',
+    description: 'Paket retainer, brief proyek, dan koordinasi tim agency.',
+  },
+];
+
+export function resolveBoonVertical(
+  product: Partial<ProductItem>,
+  storeCategory?: string
+): BoonVerticalOption {
+  const pt = (product.product_type || '').toUpperCase();
+  if (pt === 'FOOD' || pt === 'FNB') return 'fnb';
+  if (pt === 'DIGITAL') return 'digital_product';
+  if (pt === 'FIELD_SERVICE') return 'field_service';
+  if (pt === 'PROFESSIONAL_SERVICE') return 'pro_service';
+  if (pt === 'AGENCY') return 'creator_agency';
+  if (pt === 'PHYSICAL') return 'retail_physical';
+
+  const rawType = (product.type || '').toLowerCase();
+  const rawCat = (product.category || '').toLowerCase();
+
+  if (rawCat === 'kuliner & f&b' || rawCat === 'fnb' || rawCat === 'food' || rawType === 'fnb') return 'fnb';
+  if (rawCat === 'digital' || rawType === 'digital') return 'digital_product';
+  if (rawCat === 'konsultasi' || rawCat === 'pro_service') return 'pro_service';
+  if (rawCat === 'agency & kreator' || rawCat === 'creator_agency') return 'creator_agency';
+  if (rawCat === 'jasa lapangan' || rawCat === 'field_service' || rawCat === 'jasa' || rawCat === 'service' || rawType === 'service') {
+    const sc = (storeCategory || '').toUpperCase();
+    if (sc.includes('AGENCY') || sc.includes('CREATOR')) return 'creator_agency';
+    if (sc.includes('PROFESSIONAL') || sc.includes('CONSULT')) return 'pro_service';
+    return 'field_service';
+  }
+  if (rawCat === 'fisik' || rawCat === 'physical' || rawType === 'physical') return 'retail_physical';
+
+  const sc = (storeCategory || '').toUpperCase();
+  if (['FOOD', 'FNB', 'KULINER'].some(k => sc.includes(k))) return 'fnb';
+  if (['DIGITAL', 'COURSE', 'SOFTWARE'].some(k => sc.includes(k))) return 'digital_product';
+  if (['PROFESSIONAL', 'CONSULT'].some(k => sc.includes(k))) return 'pro_service';
+  if (['AGENCY', 'CREATOR'].some(k => sc.includes(k))) return 'creator_agency';
+  if (['SERVICE', 'FIELD', 'LOCAL'].some(k => sc.includes(k))) return 'field_service';
+
+  return 'retail_physical';
+}
+
 export function mapBusinessCategoryToProductType(storeCategory?: string): ProductType {
   const cat = (storeCategory || '').toUpperCase();
   if (['FOOD', 'FNB', 'KULINER', 'RESTO', 'MAKANAN'].some((k) => cat.includes(k))) return 'FOOD';
@@ -43,34 +148,25 @@ export default function ProductFormModal({
   storeCategory,
   tenantSlug,
 }: ProductFormModalProps) {
-  const isDigitalOnly = storeCategory === 'DIGITAL' || storeCategory === 'CREATOR_SERVICE';
-
-  // Set default product_type following tenant.business_category when modal opens for new product
+  // Sync vertical option when modal opens
   useEffect(() => {
     if (isOpen) {
       setProductForm((prev) => {
-        let defaultType: ProductType = prev.product_type || 'PHYSICAL';
-        if (!editingProductId && !prev.product_type) {
-          defaultType = mapBusinessCategoryToProductType(storeCategory);
-        } else if (!prev.product_type) {
-          if (isDigitalOnly || prev.category?.toLowerCase() === 'digital') {
-            defaultType = 'DIGITAL';
-          } else {
-            defaultType = 'PHYSICAL';
-          }
-        }
-        const reqs = resolveFulfillmentRequirements(defaultType);
+        const vertical = resolveBoonVertical(prev, storeCategory);
+        const meta = BOON_VERTICAL_OPTIONS.find((o) => o.key === vertical) || BOON_VERTICAL_OPTIONS[0];
+        const reqs = resolveFulfillmentRequirements(meta.productType);
         const currentSlug = prev.slug?.trim() || (prev.name ? slugify(prev.name) : '');
-        const currentCat = prev.category?.trim();
-        const defaultCategory = currentCat || (
-          reqs.strategy === 'PHYSICAL' ? 'Fisik' : reqs.strategy === 'SERVICE' ? 'Jasa' : 'Digital'
-        );
+        const customBadge = prev.custom_badge?.trim();
+        const resolvedBadge = customBadge || (prev.category?.trim() && !['fisik', 'jasa', 'digital', 'service', 'physical'].includes(prev.category.trim().toLowerCase()) ? prev.category.trim() : meta.defaultBadge);
+
         return {
           ...prev,
           image: sanitizeImageUrl(prev.image),
           slug: currentSlug,
-          product_type: defaultType,
-          category: defaultCategory,
+          product_type: meta.productType,
+          type: meta.backendType,
+          category: resolvedBadge,
+          custom_badge: customBadge || (resolvedBadge !== meta.defaultBadge ? resolvedBadge : undefined),
           is_unlimited:
             prev.is_unlimited !== undefined
               ? prev.is_unlimited
@@ -78,42 +174,52 @@ export default function ProductFormModal({
         };
       });
     }
-  }, [isOpen, isDigitalOnly, storeCategory, editingProductId, setProductForm]);
+  }, [isOpen, storeCategory, editingProductId, setProductForm]);
 
   if (!isOpen) return null;
 
-  const currentType: ProductType =
-    productForm.product_type ||
-    (!editingProductId
-      ? mapBusinessCategoryToProductType(storeCategory)
-      : (productForm.category?.toLowerCase() === 'jasa' || productForm.category?.toLowerCase() === 'service')
-      ? 'FIELD_SERVICE'
-      : isDigitalOnly || productForm.category?.toLowerCase() === 'digital'
-      ? 'DIGITAL'
-      : 'PHYSICAL');
+  const currentVerticalKey = resolveBoonVertical(productForm, storeCategory);
+  const activeVerticalMeta = BOON_VERTICAL_OPTIONS.find((o) => o.key === currentVerticalKey) || BOON_VERTICAL_OPTIONS[0];
 
+  const currentType: ProductType = productForm.product_type || activeVerticalMeta.productType;
   const requirements = resolveFulfillmentRequirements(currentType);
+
+  const isServiceCluster = currentVerticalKey === 'field_service' || currentVerticalKey === 'pro_service' || currentVerticalKey === 'creator_agency' || activeVerticalMeta.backendType === 'service';
+  const isDigitalCluster = currentVerticalKey === 'digital_product' || activeVerticalMeta.backendType === 'digital';
+
   const metadata: FulfillmentMetadata = productForm.fulfillment_metadata || {
-    delivery_type: 'DOWNLOAD_LINK',
+    delivery_type: isServiceCluster ? 'WHATSAPP_GROUP' : 'DOWNLOAD_LINK',
     access_url: productForm.download_url || '',
     instructions: '',
   };
 
-  const handleTypeChange = (newType: ProductType) => {
-    const reqs = resolveFulfillmentRequirements(newType);
+  const handleVerticalChange = (newVerticalKey: BoonVerticalOption) => {
+    const meta = BOON_VERTICAL_OPTIONS.find((o) => o.key === newVerticalKey) || BOON_VERTICAL_OPTIONS[0];
+    const reqs = resolveFulfillmentRequirements(meta.productType);
+
     setProductForm((prev) => {
-      const prevCat = prev.category?.trim() || '';
-      const isGenericCategory = !prevCat || ['fisik', 'jasa', 'digital', 'physical', 'service', 'Fisik', 'Jasa', 'Digital'].includes(prevCat);
-      const updatedCategory = isGenericCategory
-        ? (reqs.strategy === 'PHYSICAL' ? 'Fisik' : reqs.strategy === 'SERVICE' ? 'Jasa' : 'Digital')
-        : prev.category;
+      const customBadge = prev.custom_badge?.trim();
+      const resolvedBadge = customBadge || meta.defaultBadge;
 
       return {
         ...prev,
-        product_type: newType,
-        category: updatedCategory,
+        product_type: meta.productType,
+        type: meta.backendType,
+        category: resolvedBadge,
         is_unlimited: reqs.strategy === 'DIGITAL' ? (prev.is_unlimited ?? true) : false,
         weight_grams: reqs.requiresWeight ? (prev.weight_grams || 1000) : undefined,
+      };
+    });
+  };
+
+  const handleCustomBadgeChange = (val: string) => {
+    setProductForm((prev) => {
+      const meta = BOON_VERTICAL_OPTIONS.find((o) => o.key === currentVerticalKey) || BOON_VERTICAL_OPTIONS[0];
+      const trimmed = val.trim();
+      return {
+        ...prev,
+        custom_badge: val,
+        category: trimmed || meta.defaultBadge,
       };
     });
   };
@@ -230,63 +336,49 @@ export default function ProductFormModal({
             </p>
           </div>
 
-          {/* 2. Product Type & Display Category */}
+          {/* 2. Kategori Produk / Layanan & Label Kustom Etalase */}
           <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-bold text-slate-800 block mb-1">
-                  Tipe Produk (Fulfillment Boundary) *
+                  Kategori Produk / Layanan *
                 </label>
                 <select
-                  value={currentType}
-                  onChange={(e) => handleTypeChange(e.target.value as ProductType)}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 cursor-pointer"
+                  value={currentVerticalKey}
+                  onChange={(e) => handleVerticalChange(e.target.value as BoonVerticalOption)}
+                  className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 cursor-pointer shadow-xs"
                 >
-                  <option value="PHYSICAL">📦 Produk Fisik (Ekspedisi & Kurir)</option>
-                  <option value="DIGITAL">💻 Produk Digital (File / Ecourse / Video)</option>
-                  <option value="FOOD">🍲 Makanan / F&B (Instant & Kargo)</option>
-                  <option value="FIELD_SERVICE">🛠️ Layanan Jasa Lapangan</option>
-                  <option value="PROFESSIONAL_SERVICE">💼 Jasa Profesional / Konsultasi</option>
-                  <option value="AGENCY">🏢 Layanan Agency & Klien</option>
+                  {BOON_VERTICAL_OPTIONS.map((opt) => (
+                    <option key={opt.key} value={opt.key}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
-                <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1.5">
+                <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1.5 leading-tight">
                   <Info className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                  <span>
-                    {requirements.requiresShipping
-                      ? 'Wajib alamat & hitung ongkir.'
-                      : 'Checkout kilat tanpa alamat fisik.'}
-                  </span>
+                  <span>{activeVerticalMeta.description}</span>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-800 block mb-1">
-                  Kategori / Label Badge Etalase *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-800">
+                    Label Kustom Etalase (Opsional)
+                  </label>
+                  <span className="text-[10px] font-semibold text-slate-500">
+                    Default: <span className="text-blue-600 font-bold">"{activeVerticalMeta.defaultBadge}"</span>
+                  </span>
+                </div>
                 <input
                   type="text"
-                  required
-                  value={productForm.category || ''}
-                  onChange={(e) => setProductForm((p) => ({ ...p, category: e.target.value }))}
-                  placeholder="Contoh: Jasa, Digital, Fisik, E-Course"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600"
+                  value={productForm.custom_badge || ''}
+                  onChange={(e) => handleCustomBadgeChange(e.target.value)}
+                  placeholder="Biarkan kosong untuk memakai badge default"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-blue-600 shadow-xs"
                 />
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {['Jasa', 'Digital', 'Fisik', 'E-Course', 'Konsultasi'].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setProductForm((p) => ({ ...p, category: preset }))}
-                      className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border transition-colors cursor-pointer ${
-                        productForm.category === preset
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Badge yang tampil: <strong className="text-slate-700">{productForm.custom_badge?.trim() || activeVerticalMeta.defaultBadge}</strong>
+                </p>
               </div>
             </div>
           </div>
@@ -413,13 +505,13 @@ export default function ProductFormModal({
             </div>
           )}
 
-          {/* 7. SYARAT FULFILLMENT: Payload Digital / Service (Hanya jika requiresDeliveryPayload === true) */}
-          {requirements.requiresDeliveryPayload && (
+          {/* 7. SYARAT FULFILLMENT: PAYLOAD FILE / LINK DOWNLOAD (Digital Product) */}
+          {isDigitalCluster && (
             <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs">
                   <Key className="w-4 h-4 text-indigo-700" />
-                  <span>Fulfillment Payload (Akses Digital & Layanan)</span>
+                  <span>Payload File / Link Download (Akses Digital)</span>
                 </div>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
                   Auto-Deliver Saat Lunas
@@ -436,15 +528,15 @@ export default function ProductFormModal({
                     onChange={(e) => handleMetadataChange('delivery_type', e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-indigo-600 cursor-pointer"
                   >
-                    <option value="DOWNLOAD_LINK">🔗 Link Download / Course / Akses URL</option>
+                    <option value="DOWNLOAD_LINK">🔗 Link Download (Google Drive / Cloud)</option>
                     <option value="LICENSE_KEY">🔑 Lisensi / Serial Key / Kupon</option>
-                    <option value="BRIEF_FORM">📝 Form Brief / Konsultasi Layanan</option>
+                    <option value="BRIEF_FORM">📝 Akses Member Area / URL Aplikasi</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Tautan / URL Akses Utama *
+                    Payload File / Link Download *
                   </label>
                   <div className="relative">
                     <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -467,28 +559,71 @@ export default function ProductFormModal({
                   rows={2}
                   value={metadata.instructions || ''}
                   onChange={(e) => handleMetadataChange('instructions', e.target.value)}
-                  placeholder="Contoh: Silakan klik link di atas dan login menggunakan email Anda. Jika ada kendala, hubungi CS kami."
+                  placeholder="Contoh: Silakan klik link di atas dan download file materi Anda. Jika ada kendala, hubungi CS kami."
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-600 leading-relaxed"
                 />
               </div>
             </div>
           )}
 
-          {/* 7b. SYARAT FULFILLMENT: Layanan Jasa & Booking (Hanya jika strategy === 'SERVICE') */}
-          {requirements.strategy === 'SERVICE' && (
-            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+          {/* 7b. SYARAT FULFILLMENT: INSTRUKSI & KOORDINASI LAYANAN (Klaster Service: field_service, pro_service, creator_agency) */}
+          {isServiceCluster && (
+            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
                   <Clock className="w-4 h-4 text-emerald-700" />
-                  <span>Fulfillment Layanan Jasa (Booking Jadwal & Area)</span>
+                  <span>Instruksi & Koordinasi Layanan (Link WA / Briefing / Kalender)</span>
                 </div>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                  Reservasi Jadwal & Kunjungan
+                  Koordinasi Layanan
                 </span>
               </div>
-              <p className="text-[11px] text-emerald-800 leading-relaxed">
-                Produk ini berupa jasa/layanan. Pembeli akan dipandu untuk melengkapi jadwal reservasi dan area pengerjaan, tanpa pengiriman paket fisik dan tanpa link download digital.
-              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Metode Koordinasi Layanan
+                  </label>
+                  <select
+                    value={metadata.delivery_type || 'WHATSAPP_GROUP'}
+                    onChange={(e) => handleMetadataChange('delivery_type', e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-emerald-600 cursor-pointer"
+                  >
+                    <option value="WHATSAPP_GROUP">💬 WhatsApp Konfirmasi / Tim Lapangan</option>
+                    <option value="CALENDAR_LINK">📅 Link Booking Kalender (Cal.com / Calendly)</option>
+                    <option value="BRIEF_FORM">📝 Form Brief / Konsultasi Klien</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Link Koordinasi / Kalender / WA (Opsional)
+                  </label>
+                  <div className="relative">
+                    <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="url"
+                      value={metadata.access_url || productForm.download_url || ''}
+                      onChange={(e) => handleMetadataChange('access_url', e.target.value)}
+                      placeholder="https://wa.me/... atau https://cal.com/..."
+                      className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Petunjuk & Prosedur Layanan untuk Pelanggan
+                </label>
+                <textarea
+                  rows={2}
+                  value={metadata.instructions || ''}
+                  onChange={(e) => handleMetadataChange('instructions', e.target.value)}
+                  placeholder="Contoh: Setelah pembayaran diverifikasi, tim kami akan segera menghubungi nomor WhatsApp Anda untuk konfirmasi jadwal kunjungan ke lokasi."
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-emerald-600 leading-relaxed"
+                />
+              </div>
             </div>
           )}
 

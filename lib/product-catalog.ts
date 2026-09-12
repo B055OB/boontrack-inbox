@@ -80,7 +80,7 @@ export type ProductType =
 export type FulfillmentStrategy = 'PHYSICAL' | 'DIGITAL' | 'SERVICE';
 
 export interface FulfillmentMetadata {
-  delivery_type?: 'DOWNLOAD_LINK' | 'LICENSE_KEY' | 'BRIEF_FORM';
+  delivery_type?: 'DOWNLOAD_LINK' | 'LICENSE_KEY' | 'BRIEF_FORM' | 'WHATSAPP_GROUP' | 'CALENDAR_LINK' | string;
   access_url?: string;
   instructions?: string;
   license_key?: string;
@@ -149,7 +149,9 @@ export interface ProductItem {
   name: string;
   slug?: string;
   category: 'terlaris' | 'digital' | 'fisik' | string;
+  type?: 'physical' | 'digital' | 'fnb' | 'service' | string;
   product_type?: ProductType;
+  custom_badge?: string;
   price: number;
   promo_price?: number;
   variants?: string;
