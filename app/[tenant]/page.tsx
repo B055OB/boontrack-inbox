@@ -201,6 +201,7 @@ export default function TenantStorefrontPage() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [tenantMetadata, setTenantMetadata] = useState<any>(null);
+  const [tenantCategory, setTenantCategory] = useState<string>('');
   const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">("checking");
   const [storeName, setStoreName] = useState("");
   const [storeProducts, setStoreProducts] = useState<Product[]>([]);
@@ -332,6 +333,7 @@ export default function TenantStorefrontPage() {
         if (isMounted) {
           setStoreName(tenantRow.name || displayName);
           setTenantMetadata(tenantRow.metadata || null);
+          if (tenantRow.category) setTenantCategory(tenantRow.category);
           const rawProds = tenantRow.metadata?.products;
           const prodsList = Array.isArray(rawProds)
             ? rawProds.filter((p: any) => p !== null && typeof p === "object")
@@ -1167,6 +1169,18 @@ export default function TenantStorefrontPage() {
                 >
                   <QrCode className="w-4 h-4" />
                   <span>Konfirmasi Pemesanan</span>
+                </button>
+                {/* Tombol Sekunder Adaptif: tutup modal agar pelanggan bisa pilih item lain */}
+                <button
+                  type="button"
+                  onClick={() => setShowCartModal(false)}
+                  className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-800 py-2.5 mt-1 transition-colors cursor-pointer"
+                >
+                  {['service', 'field_service', 'jasa_lapangan', 'creator', 'creator_agency', 'professional', 'pro_service'].some(
+                    (k) => tenantCategory.toLowerCase().includes(k)
+                  )
+                    ? '+ Pilih Layanan Lain'
+                    : '+ Pilih Produk Lain'}
                 </button>
               </div>
             )}
