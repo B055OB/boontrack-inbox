@@ -22,6 +22,17 @@ async function fetchPairing(instanceName: string, phone: string) {
   return { res, data };
 }
 
+async function restartInstance(instanceName: string) {
+  const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/restart/${encodeURIComponent(instanceName)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      apikey: EVOLUTION_API_KEY,
+    },
+  }).catch(() => null);
+  return res;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -44,8 +55,12 @@ export async function POST(req: NextRequest) {
       searchParams.get("phone") ||
       "";
 
-    let cleanPhone = String(rawPhone).replace(/[^0-9]/g, "");
-    if (cleanPhone.startsWith("0")) {
+    // Normalisasi nomor telepon:
+    // Bersihkan karakter non-angka, spasi, tanda plus (+), atau strip (-)
+    let cleanPhone = String(rawPhone).replace(/\D/g, "");
+    if (cleanPhone.startsWith("08")) {
+      cleanPhone = "628" + cleanPhone.slice(2);
+    } else if (cleanPhone.startsWith("0")) {
       cleanPhone = "62" + cleanPhone.slice(1);
     } else if (!cleanPhone.startsWith("62") && cleanPhone.length > 0) {
       cleanPhone = "62" + cleanPhone;
@@ -58,14 +73,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Coba request pairing code dengan nama instance tenantSlug
-    let pairingResult = await fetchPairing(tenantSlug, cleanPhone);
+    // 1. Tentukan target instance dan coba hubungkan
+    let targetInstance = tenantSlug;
+    let pairingResult = await fetchPairing(targetInstance, cleanPhone);
 
     // Jika 404 dan slug belum memiliki prefix "tenant_", periksa apakah ada instance "tenant_{slug}"
-    if (pairingResult.res.status === 404 && !tenantSlug.startsWith("tenant_")) {
-      const fallbackResult = await fetchPairing(`tenant_${tenantSlug}`, cleanPhone);
+    if (pairingResult.res.status === 404 && !targetInstance.startsWith("tenant_")) {
+      const fallbackResult = await fetchPairing(`tenant_${targetInstance}`, cleanPhone);
       if (fallbackResult.res.ok || fallbackResult.res.status !== 404) {
         pairingResult = fallbackResult;
+        targetInstance = `tenant_${targetInstance}`;
       }
     }
 
@@ -78,45 +95,59 @@ export async function POST(req: NextRequest) {
           apikey: EVOLUTION_API_KEY,
         },
         body: JSON.stringify({
-          instanceName: tenantSlug,
+          instanceName: targetInstance,
           integration: "WHATSAPP-BAILEYS",
           qrcode: true,
         }),
       }).catch(() => null);
 
-      pairingResult = await fetchPairing(tenantSlug, cleanPhone);
+      pairingResult = await fetchPairing(targetInstance, cleanPhone);
     }
 
-    const { res, data } = pairingResult;
+    const { data } = pairingResult;
 
-    // Tangkap atribut pairingCode atau code dari Evolution API
-    const code =
-      data.pairingCode ||
-      data.code ||
-      data.pairing_code ||
-      data.qrcode?.pairingCode ||
-      data.qrcode?.code ||
-      null;
+    // HANYA ambil data.pairingCode, JANGAN gunakan data.code sebagai fallback
+    let pairingCode = data.pairingCode || data.qrcode?.pairingCode || null;
 
-    if (code) {
+    // Mekanisme Retry Socket Restart (sesuai backend core):
+    // Jika respons JSON memiliki pairingCode: null atau belum terbit
+    if (!pairingCode) {
+      // 1. Kirim request POST /instance/restart/{instance_name}
+      await restartInstance(targetInstance);
+
+      // 2. Beri jeda 1.5 detik
+      await new Promise((r) => setTimeout(r, 1500));
+
+      // 3. Panggil ulang GET /instance/connect/{instance_name}?number={clean_phone}
+      const retryResult = await fetchPairing(targetInstance, cleanPhone);
+      pairingCode = retryResult.data?.pairingCode || retryResult.data?.qrcode?.pairingCode || null;
+    }
+
+    // Validasi dan format pairing code
+    let cleanPairingCode: string | null = null;
+    if (pairingCode && typeof pairingCode === "string") {
+      const trimmed = pairingCode.trim();
+      // Pastikan bukan raw QR string (tidak mengandung @ atau = dan panjang <= 12)
+      if (!trimmed.includes("@") && !trimmed.includes("=") && trimmed.length <= 12) {
+        cleanPairingCode = trimmed;
+      }
+    }
+
+    if (cleanPairingCode) {
       return NextResponse.json({
         success: true,
-        pairing_code: code,
+        pairing_code: cleanPairingCode,
       });
     }
 
-    // Jika Evolution API mengembalikan error
+    // Jika tetap tidak ada pairingCode
     return NextResponse.json(
       {
         success: false,
         error:
-          data.error ||
-          data.response?.message?.[0] ||
-          data.message ||
-          `Evolution API Error (${res.status})`,
-        detail: data,
+          "Evolution API sedang menyiapkan socket pairing. Silakan klik Dapatkan Kode sekali lagi atau scan barcode QR di sebelah.",
       },
-      { status: res.status >= 400 ? res.status : 502 }
+      { status: 502 }
     );
   } catch (err: any) {
     return NextResponse.json(
