@@ -199,6 +199,7 @@ export default function TenantStorefrontPage() {
   const tenantSlug = rawTenant.toLowerCase().trim();
   const displayName = tenantSlug.replace(/[-_]/g, " ");
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [tenantMetadata, setTenantMetadata] = useState<any>(null);
   const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">("checking");
   const [storeName, setStoreName] = useState("");
@@ -213,6 +214,7 @@ export default function TenantStorefrontPage() {
   const [messages, setMessages] = useState<StoreChatMessage[]>([]);
   const [isBotTyping, setIsBotTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const mobileMessagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const dynamicQuickReplies = useMemo(() => [
     "💧 Daftar Harga Layanan",
@@ -374,7 +376,10 @@ export default function TenantStorefrontPage() {
   // 0e. AUTO SCROLL MESSAGES
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isBotTyping]);
+    if (isMobileChatOpen) {
+      mobileMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isBotTyping, isMobileChatOpen]);
 
   const handleOutboundClick = (url: string, label: string) => {
     if (typeof window === "undefined") return;
@@ -904,9 +909,9 @@ export default function TenantStorefrontPage() {
           )}
         </section>
 
-        {/* KOLOM KANAN: ASSISTANT CHAT BOT SIMULATOR (Posisi Baru di Sisi Kanan) */}
+        {/* KOLOM KANAN: ASSISTANT CHAT BOT SIMULATOR (Desktop Only: lg ke atas) */}
         {isChatEnabled && (
-          <section className="lg:col-span-5 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden h-[580px] lg:h-[calc(100dvh-120px)] lg:sticky lg:top-24 order-2">
+          <section className="hidden lg:flex lg:col-span-5 flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden lg:h-[calc(100dvh-120px)] lg:sticky lg:top-24 order-2">
             <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
@@ -1183,6 +1188,198 @@ export default function TenantStorefrontPage() {
           onClose={() => setIsScannerOpen(false)}
           onScanSuccess={handleBarcodeDetected}
         />
+      )}
+
+      {/* MOBILE FLOATING CHAT BUTTON & INTERACTIVE DRAWER (Mobile Viewport: < lg) */}
+      {isChatEnabled && (
+        <div className="lg:hidden">
+          {/* Floating Pill Button */}
+          {!isMobileChatOpen && (
+            <button
+              type="button"
+              onClick={() => setIsMobileChatOpen(true)}
+              className="fixed bottom-5 right-5 z-40 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-full shadow-xl shadow-blue-600/30 flex items-center gap-2.5 transition-all active:scale-95 cursor-pointer border border-white/40 ring-4 ring-blue-600/20"
+              aria-label="Tanya Admin"
+            >
+              <div className="relative">
+                <Send className="w-4 h-4 rotate-[-10deg]" />
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border border-white animate-pulse" />
+              </div>
+              <span className="text-xs font-black tracking-tight">Tanya Admin</span>
+            </button>
+          )}
+
+          {/* Bottom Sheet Modal / Drawer */}
+          {isMobileChatOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex flex-col justify-end p-0 animate-in fade-in duration-200">
+              <div className="bg-white w-full max-h-[85dvh] h-[85dvh] rounded-t-[32px] border-t border-slate-200 shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-300">
+                {/* Drawer Header */}
+                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/90 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-xs shadow-xs uppercase">
+                      {(storeName || displayName).charAt(0)}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-800 capitalize">{storeName || displayName} Assistant</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-medium">Asisten Otomatis Online</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileChatOpen(false)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Drawer Messages Body */}
+                <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-[#F8FAFC]">
+                  {messages.map((msg, index) => {
+                    const isLatestBotMessage = msg.sender === "bot" && index === messages.length - 1;
+
+                    return (
+                      <div key={`mob-${msg.id}`} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
+                        <div className={`max-w-[88%] rounded-2xl p-3 text-xs leading-relaxed shadow-xs ${
+                          msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
+                        }`}>
+                          <p className="whitespace-pre-line">{msg.text}</p>
+
+                          {/* Interactive Product Card */}
+                          {msg.sender === "bot" && msg.product && (msg.action === "SHOW_PRODUCT" || msg.action === "SHOW_CHECKOUT" || msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && (
+                            <div className="mt-2.5 bg-slate-50 border border-slate-200/90 rounded-2xl p-2.5 text-slate-900 space-y-2">
+                              <div className="flex items-start gap-2.5">
+                                <StoreProductImage
+                                  src={msg.product.image || "/logo-shop.png"}
+                                  alt={msg.product.name}
+                                  className="w-12 h-12 object-cover rounded-xl shrink-0 border border-slate-200"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  {msg.product.badge && (
+                                    <span className="inline-block text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 mb-0.5">
+                                      {msg.product.badge}
+                                    </span>
+                                  )}
+                                  <h4 className="font-black text-xs text-slate-900 line-clamp-1">
+                                    {msg.product.name}
+                                  </h4>
+                                  <div className="flex items-baseline gap-1.5 mt-0.5">
+                                    <span className="font-black text-blue-600 text-xs">
+                                      Rp {Number(msg.product.price || 0).toLocaleString("id-ID")}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-200/60">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!msg.product) return;
+                                    trackInitiateCheckout(msg.product.name, msg.product.price);
+                                    setProductForCheckout({
+                                      id: String(msg.product.id),
+                                      title: msg.product.name,
+                                      price: msg.product.price,
+                                    });
+                                    setIsMobileChatOpen(false);
+                                    setIsCheckoutOpen(true);
+                                  }}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] py-1.5 px-2 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                >
+                                  <QrCode className="w-3.5 h-3.5" />
+                                  <span>Pesan Langsung</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!msg.product) return;
+                                    addToCart({
+                                      id: msg.product.id,
+                                      name: msg.product.name,
+                                      category: msg.product.category || "service",
+                                      price: msg.product.price,
+                                      originalPrice: msg.product.originalPrice,
+                                      image: msg.product.image || "/logo-shop.png",
+                                      description: msg.product.description || "",
+                                      badge: msg.product.badge
+                                    });
+                                    setIsMobileChatOpen(false);
+                                    setShowCartModal(true);
+                                  }}
+                                  className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-1.5 px-2 rounded-xl border border-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
+                                >
+                                  <ShoppingBag className="w-3.5 h-3.5 text-slate-600" />
+                                  <span>Pilihan</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          <span className={`block text-[9px] mt-1 text-right font-medium ${msg.sender === "user" ? "text-blue-200" : "text-slate-400"}`}>
+                            {msg.time}
+                          </span>
+                        </div>
+
+                        {/* Quick action chips */}
+                        {isLatestBotMessage && Array.isArray(msg.quick_actions) && msg.quick_actions.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-2 max-w-[88%]">
+                            {msg.quick_actions.slice(0, 4).map((chip, idx) => (
+                              <button
+                                key={`mob-chip-${idx}`}
+                                type="button"
+                                onClick={() => !isBotTyping && sendChatMessage(chip)}
+                                disabled={isBotTyping}
+                                className="text-[11px] font-semibold bg-white hover:bg-blue-50 hover:text-blue-700 text-slate-700 border border-slate-200 hover:border-blue-300 px-3 py-1.5 rounded-full transition-all active:scale-95 shadow-2xs text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {chip}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {isBotTyping && (
+                    <div className="flex flex-col items-start">
+                      <div className="bg-white border border-slate-200/80 rounded-2xl rounded-bl-xs px-4 py-3 shadow-xs flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]"></span>
+                        <span className="text-[11px] text-slate-400 ml-1 font-medium">Asisten sedang merespon...</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={mobileMessagesEndRef} />
+                </div>
+
+                {/* Drawer Input Form */}
+                <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2 shrink-0">
+                  <input
+                    type="text"
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    disabled={isBotTyping}
+                    placeholder={isBotTyping ? "Menunggu respon..." : "Tulis pertanyaan atau jadwal..."}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isBotTyping || !inputMessage.trim()}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white p-2.5 rounded-xl transition-all shadow-xs active:scale-95 flex items-center justify-center shrink-0 cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
       )}
       <footer className="py-8 px-4 text-center text-xs text-slate-500 bg-slate-900 border-t border-slate-800 mt-auto space-y-4">
         <div className="max-w-4xl mx-auto space-y-3">

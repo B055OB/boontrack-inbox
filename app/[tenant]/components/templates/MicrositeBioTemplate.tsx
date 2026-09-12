@@ -191,37 +191,97 @@ export default function MicrositeBioTemplate({
           </div>
         )}
 
-        {/* Action Buttons: Food & WhatsApp CTA Links */}
+        {/* Action Buttons: Dynamic Microsite Buttons & CTA Links */}
         <div className="space-y-2.5">
-          {deliveryLinks.map((link) => (
-            <button
-              key={link.id}
-              type="button"
-              onClick={() => onOutboundClick(link.url, `microsite_${link.id}`)}
-              className={`w-full bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs transition-all duration-200 flex items-center justify-between text-left cursor-pointer active:scale-98 group ${link.bgColor}`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-xl shrink-0">{link.iconEmoji}</span>
-                <div className="space-y-0.5 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-xs font-black text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
-                      {link.title}
-                    </h4>
-                    {link.badge && (
-                      <span
-                        className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${link.badgeColor}`}
-                      >
-                        {link.badge}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-400 truncate">{link.subtitle}</p>
-                </div>
-              </div>
+          {Array.isArray(tenantMetadata?.microsite?.buttons) &&
+          tenantMetadata.microsite.buttons.filter((b: any) => b.is_active !== false).length > 0
+            ? tenantMetadata.microsite.buttons
+                .filter((b: any) => b.is_active !== false)
+                .map((btn: any) => {
+                  const iconType = btn.icon || 'link';
+                  let iconElement = '🔗';
+                  let badgeText = '';
+                  let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
 
-              <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 shrink-0 ml-2" />
-            </button>
-          ))}
+                  if (iconType === 'whatsapp') {
+                    iconElement = '💬';
+                    badgeText = 'WhatsApp';
+                    badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                  } else if (iconType === 'instagram') {
+                    iconElement = '📸';
+                    badgeText = 'Instagram';
+                    badgeClass = 'bg-pink-50 text-pink-700 border-pink-200';
+                  } else if (iconType === 'tiktok') {
+                    iconElement = '🎵';
+                    badgeText = 'TikTok';
+                    badgeClass = 'bg-slate-100 text-slate-800 border-slate-300';
+                  } else if (iconType === 'maps') {
+                    iconElement = '📍';
+                    badgeText = 'Lokasi Maps';
+                    badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+                  } else if (iconType === 'phone') {
+                    iconElement = '📞';
+                    badgeText = 'Telepon';
+                    badgeClass = 'bg-blue-50 text-blue-700 border-blue-200';
+                  }
+
+                  return (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      onClick={() => onOutboundClick(btn.url, `microsite_${btn.id}`)}
+                      className="w-full bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs transition-all duration-200 flex items-center justify-between text-left cursor-pointer active:scale-98 group hover:bg-slate-50 hover:border-blue-300"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl shrink-0">{iconElement}</span>
+                        <div className="space-y-0.5 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-black text-slate-900 group-hover:text-blue-700 transition-colors truncate">
+                              {btn.label}
+                            </h4>
+                            {badgeText && (
+                              <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${badgeClass}`}>
+                                {badgeText}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 truncate">{btn.url}</p>
+                        </div>
+                      </div>
+
+                      <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-blue-600 shrink-0 ml-2" />
+                    </button>
+                  );
+                })
+            : deliveryLinks.map((link) => (
+                <button
+                  key={link.id}
+                  type="button"
+                  onClick={() => onOutboundClick(link.url, `microsite_${link.id}`)}
+                  className={`w-full bg-white rounded-2xl border border-slate-200 p-3.5 shadow-2xs transition-all duration-200 flex items-center justify-between text-left cursor-pointer active:scale-98 group ${link.bgColor}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl shrink-0">{link.iconEmoji}</span>
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-black text-slate-900 group-hover:text-emerald-700 transition-colors truncate">
+                          {link.title}
+                        </h4>
+                        {link.badge && (
+                          <span
+                            className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${link.badgeColor}`}
+                          >
+                            {link.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 truncate">{link.subtitle}</p>
+                    </div>
+                  </div>
+
+                  <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 shrink-0 ml-2" />
+                </button>
+              ))}
         </div>
 
         {/* Micro-Catalog: Menu / Produk Terlaris */}

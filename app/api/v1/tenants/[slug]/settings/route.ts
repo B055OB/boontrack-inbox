@@ -133,7 +133,8 @@ export async function GET(
                   }))
               : []),
         interactive_menus: Array.isArray(metadata.interactive_menus) ? metadata.interactive_menus : [],
-        theme: metadata.theme || (slug === 'ombudi' ? { template: 'personal', chat_enabled: true, chat_position: 'bottom-right' } : { template: 'default', chat_enabled: true, chat_position: 'bottom-right' }),
+        theme: metadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
+        microsite: metadata.microsite || { buttons: [] },
       },
     });
   } catch (err: unknown) {
@@ -172,6 +173,7 @@ export async function PUT(
       interactive_menus,
       theme,
       template,
+      microsite,
     } = body;
 
     const supabase = getSupabase();
@@ -228,6 +230,7 @@ export async function PUT(
       ...(bio !== undefined ? { bio } : {}),
       ...(whatsapp !== undefined ? { whatsapp_number: whatsapp, whatsapp } : {}),
       ...(whatsapp_number !== undefined ? { whatsapp_number, whatsapp: whatsapp_number } : {}),
+      ...(microsite !== undefined ? { microsite } : {}),
     };
 
     const { error: updateError } = await supabase
@@ -277,6 +280,7 @@ export async function PUT(
         faqs: updatedMetadata.faqs || [],
         interactive_menus: updatedMetadata.interactive_menus || [],
         theme: updatedMetadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
+        microsite: updatedMetadata.microsite || { buttons: [] },
         bank,
         integration,
         qris_image_url:

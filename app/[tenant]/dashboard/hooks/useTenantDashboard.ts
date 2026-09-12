@@ -25,6 +25,8 @@ export type DashboardTab =
   | 'catalog'
   | 'products'
   | 'orders'
+  | 'microsite'
+  | 'storefront'
   | 'finance'
   | 'ai_knowledge'
   | 'integration'

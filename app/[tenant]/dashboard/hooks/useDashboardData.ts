@@ -8,6 +8,8 @@ export type DashboardTab =
   | 'inbox' 
   | 'catalog' 
   | 'orders' 
+  | 'microsite'
+  | 'storefront'
   | 'finance' 
   | 'ai_knowledge' 
   | 'ads_tracking' 

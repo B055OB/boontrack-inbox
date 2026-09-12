@@ -19,6 +19,7 @@ import AdsTrackingTab from './components/tabs/AdsTrackingTab';
 import TeamChatTab from './components/tabs/TeamChatTab';
 import OverviewTab from './components/tabs/OverviewTab';
 import SettingsTab from './components/tabs/SettingsTab';
+import MicrositeTab from './components/tabs/MicrositeTab';
 import WhatsAppTab from './components/tabs/WhatsAppTab';
 import AiKnowledgeTab from './components/AiKnowledgeTab';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
@@ -307,6 +308,18 @@ export default function TenantDashboardPage() {
           openSinglePageBuilder={openSinglePageBuilder}
           onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
           storeCategory={storeCategory}
+        />
+      )}
+
+      {/* TAB: TAMPILAN & MICROSITE */}
+      {(activeTab === 'microsite' || activeTab === 'storefront') && (
+        <MicrositeTab
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          onSaved={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 3000);
+          }}
         />
       )}
 
