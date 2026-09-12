@@ -73,18 +73,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Tentukan target instance dan coba hubungkan
-    let targetInstance = tenantSlug;
-    let pairingResult = await fetchPairing(targetInstance, cleanPhone);
+    // Format target instance langsung presisi (tenant_{tenantSlug})
+    const targetInstance = tenantSlug.startsWith("tenant_")
+      ? tenantSlug
+      : `tenant_${tenantSlug}`;
 
-    // Jika 404 dan slug belum memiliki prefix "tenant_", periksa apakah ada instance "tenant_{slug}"
-    if (pairingResult.res.status === 404 && !targetInstance.startsWith("tenant_")) {
-      const fallbackResult = await fetchPairing(`tenant_${targetInstance}`, cleanPhone);
-      if (fallbackResult.res.ok || fallbackResult.res.status !== 404) {
-        pairingResult = fallbackResult;
-        targetInstance = `tenant_${targetInstance}`;
-      }
-    }
+    // 1. Ambil pairing code pertama via GET /instance/connect/${targetInstance}?number=${cleanPhone}
+    let pairingResult = await fetchPairing(targetInstance, cleanPhone);
 
     // Jika instance belum ada di Evolution API (404), buat instance terlebih dahulu
     if (pairingResult.res.status === 404) {
@@ -104,26 +99,23 @@ export async function POST(req: NextRequest) {
       pairingResult = await fetchPairing(targetInstance, cleanPhone);
     }
 
-    const { data } = pairingResult;
-
     // HANYA ambil data.pairingCode, JANGAN gunakan data.code sebagai fallback
-    let pairingCode = data.pairingCode || data.qrcode?.pairingCode || null;
+    let pairingCode = pairingResult.data?.pairingCode || pairingResult.data?.qrcode?.pairingCode || null;
 
-    // Mekanisme Retry Socket Restart (sesuai backend core):
-    // Jika respons JSON memiliki pairingCode: null atau belum terbit
+    // Jika pairingCode masih null atau belum terbit:
     if (!pairingCode) {
-      // 1. Kirim request POST /instance/restart/{instance_name}
+      // 1. Kirim POST /instance/restart/${targetInstance}
       await restartInstance(targetInstance);
 
-      // 2. Beri jeda 1.5 detik
-      await new Promise((r) => setTimeout(r, 1500));
+      // 2. Beri jeda 2000 ms
+      await new Promise((r) => setTimeout(r, 2000));
 
-      // 3. Panggil ulang GET /instance/connect/{instance_name}?number={clean_phone}
+      // 3. Panggil ulang GET /instance/connect/${targetInstance}?number=${cleanPhone}
       const retryResult = await fetchPairing(targetInstance, cleanPhone);
       pairingCode = retryResult.data?.pairingCode || retryResult.data?.qrcode?.pairingCode || null;
     }
 
-    // Validasi dan format pairing code
+    // Validasi dan format pairing code jika valid
     let cleanPairingCode: string | null = null;
     if (pairingCode && typeof pairingCode === "string") {
       const trimmed = pairingCode.trim();
@@ -140,22 +132,24 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Jika tetap tidak ada pairingCode
+    // Cegah intersepsi HTML Cloudflare 502: kembalikan status 200 dengan flag retry
     return NextResponse.json(
       {
         success: false,
+        retry: true,
         error:
           "Evolution API sedang menyiapkan socket pairing. Silakan klik Dapatkan Kode sekali lagi atau scan barcode QR di sebelah.",
       },
-      { status: 502 }
+      { status: 200 }
     );
   } catch (err: any) {
     return NextResponse.json(
       {
         success: false,
+        retry: true,
         error: err.message || "Gagal berkomunikasi dengan Evolution API",
       },
-      { status: 500 }
+      { status: 200 }
     );
   }
 }
