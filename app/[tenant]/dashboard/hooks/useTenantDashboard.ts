@@ -58,14 +58,14 @@ export interface ChatConversation {
 export function useTenantDashboard() {
   const params = useParams();
   const router = useRouter();
-  const rawTenant = (params?.tenant as string) || 'growth';
+  const rawTenant = (params?.tenant as string) || '';
   const tenantSlug = rawTenant.toLowerCase();
   const displayName = tenantSlug.replace(/-/g, ' ');
 
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
-  // Dynamic Vertical Category (PHYSICAL, DIGITAL, LOCAL_SERVICE, etc.)
+  // Dynamic Vertical Category
   const [storeCategory, setStoreCategory] = useState<string>('PHYSICAL');
 
   // Feature flags resolved from settings API response
@@ -81,7 +81,7 @@ export function useTenantDashboard() {
   // Upsell Modal State for Locked Features
   const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false);
 
-  // Plan Tier (growth / ads_performance / team_scale)
+  // Plan Tier
   const [planTier, setPlanTier] = useState<'growth' | 'ads_performance' | 'team_scale'>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -119,7 +119,6 @@ export function useTenantDashboard() {
   const isGrowthPlus = isAdsPerformance;
   const isGrowth = planTier === 'growth' && !isAdsPerformance && !isTeamScale;
 
-  // Merchant di paket Solo / Trial tidak memiliki akses ke Ads Tracking Pro
   const isSoloOrTrial = Boolean(
     tenantFeatureFlags.tier === 'SOLO_TRIAL' ||
     tenantFeatureFlags.tier === 'SOLO' ||
@@ -155,9 +154,9 @@ export function useTenantDashboard() {
     openUpgradeModal(targetTier);
   };
 
-  // State Edit Profil Toko & Validasi Unik
+  // State Profil Toko
   const [isStoreSettingsOpen, setIsStoreSettingsOpen] = useState(false);
-  const [storeDisplayName, setStoreDisplayName] = useState(tenantSlug || '');
+  const [storeDisplayName, setStoreDisplayName] = useState(displayName || '');
   const [storeBio, setStoreBio] = useState('');
   const [storeWhatsapp, setStoreWhatsapp] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
@@ -178,7 +177,7 @@ export function useTenantDashboard() {
     setActiveTab(tab);
   };
 
-  // WhatsApp Gateway State
+  // WhatsApp Gateway State (Strict Multi-Tenant)
   const [waMode, setWaMode] = useState<'qr' | 'meta'>('qr');
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
@@ -193,7 +192,7 @@ export function useTenantDashboard() {
 
   // Conversations State
   const [conversations, setConversations] = useState<ChatConversation[]>(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && tenantSlug) {
       try {
         const saved = localStorage.getItem(`bt_conversations_${tenantSlug}`);
         if (saved) {
@@ -209,23 +208,21 @@ export function useTenantDashboard() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
 
-  // Products State (initialized clean from storage or empty)
+  // Products State
   const [products, setProducts] = useState<ProductItem[]>(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && tenantSlug) {
       try {
         const saved = localStorage.getItem(`bt_products_${tenantSlug}`);
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
-      } catch {}
+      } catch { }
     }
     return [];
   });
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
-
-  // Bulk Import Modal State
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
 
   // Single Page Checkout Builder State
@@ -269,9 +266,9 @@ export function useTenantDashboard() {
 
   // AI & Persona State
   const [aiForm, setAiForm] = useState({
-    ai_name: `${displayName.toUpperCase()} AI Assistant`,
+    ai_name: `${(displayName || 'TOKO').toUpperCase()} AI Assistant`,
     tone: 'casual',
-    system_prompt: `Anda adalah asisten resmi untuk toko ${displayName.toUpperCase()}. Bantu pelanggan mengenai katalog produk, materi, dan transaksi pembayaran QRIS otomatis.`,
+    system_prompt: `Anda adalah asisten resmi untuk toko ${(displayName || 'TOKO').toUpperCase()}. Bantu pelanggan mengenai katalog produk, materi, dan transaksi pembayaran QRIS otomatis.`,
   });
   const [faqs, setFaqs] = useState<Array<{ id: string; question: string; answer: string }>>([]);
   const [interactiveMenus, setInteractiveMenus] = useState<InteractiveMenu[]>([]);
@@ -293,17 +290,17 @@ export function useTenantDashboard() {
   const [withdrawAmount, setWithdrawAmount] = useState<number>(0);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
 
-  // Check login route redirection
+  // Auth Redirection
   useEffect(() => {
     if (tenantSlug === 'login' || tenantSlug === 'auth') {
       router.replace('/login');
     }
   }, [tenantSlug, router]);
 
-  // QRIS Upload via Centralized Upload Pipeline
+  // Centralized Upload Handlers
   const handleQrisUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !tenantSlug) return;
 
     if (!file.type.startsWith('image/')) {
       alert('File harus berupa gambar (JPG, PNG, WebP, dll.)');
@@ -326,7 +323,6 @@ export function useTenantDashboard() {
 
       let publicUrl = '';
 
-      // 1. Direct Supabase Storage Upload (Primary & Permanent)
       try {
         const supabase = getSupabase();
         if (supabase) {
@@ -352,7 +348,6 @@ export function useTenantDashboard() {
         console.warn('Direct Supabase upload error:', directErr);
       }
 
-      // 2. Fallback via /api/v1/upload
       if (!publicUrl) {
         const formData = new FormData();
         formData.append('file', processedFile, processedFile.name);
@@ -390,7 +385,6 @@ export function useTenantDashboard() {
 
       setStoreQrisUrl(publicUrl);
 
-      // Simpan langsung URL publik ke field qris_image_url profil toko
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
           method: 'PUT',
@@ -398,54 +392,29 @@ export function useTenantDashboard() {
           body: JSON.stringify({ qris_image_url: publicUrl }),
         });
       } catch (settingsErr) {
-        console.warn('Gagal sync qris_image_url via API route settings:', settingsErr);
+        console.warn('Gagal sync qris_image_url via settings route:', settingsErr);
       }
 
-      try {
-        const supabase = getSupabase();
-        const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        const existingMeta = tenantData?.metadata || {};
-        await supabase
-          .from('tenants')
-          .update({
-            metadata: {
-              ...existingMeta,
-              qris_image_url: publicUrl,
-              qris_url: publicUrl,
-            },
-          })
-          .eq('slug', tenantSlug);
-      } catch (supabaseErr) {
-        console.warn('Gagal direct update Supabase metadata QRIS:', supabaseErr);
-      }
-
-      setSaveFeedback('✅ Gambar QRIS berhasil diupload dan disimpan!');
+      setSaveFeedback('✅ Gambar QRIS berhasil disimpan!');
       setTimeout(() => setSaveFeedback(null), 3500);
     } catch (err: any) {
-      console.error('Error uploading QRIS:', err);
       alert(err.message || 'Gagal mengunggah QRIS');
     } finally {
       setIsUploadingQris(false);
     }
   };
 
-  // Logo Toko Upload via Centralized Upload Pipeline
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !tenantSlug) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('File logo harus berupa gambar (JPG, PNG, WebP, dll.)');
+      alert('File logo harus berupa gambar');
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert(`Ukuran file logo melebihi 5 MB (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
+      alert('Ukuran file logo melebihi 5 MB');
       return;
     }
 
@@ -460,7 +429,6 @@ export function useTenantDashboard() {
 
       let publicUrl = '';
 
-      // 1. Direct Supabase Storage Upload (Primary & Permanent)
       try {
         const supabase = getSupabase();
         if (supabase) {
@@ -486,88 +454,30 @@ export function useTenantDashboard() {
         console.warn('Direct Supabase upload error:', directErr);
       }
 
-      // 2. Fallback via /api/v1/upload
-      if (!publicUrl) {
-        const formData = new FormData();
-        formData.append('file', processedFile, processedFile.name);
-        formData.append('image', processedFile, processedFile.name);
-        formData.append('tenant_slug', tenantSlug);
-        formData.append('tenant_id', tenantSlug);
-        formData.append('folder', 'logos');
-
-        try {
-          const proxyRes = await fetch('/api/v1/upload', {
-            method: 'POST',
-            headers: {
-              'X-Tenant-Slug': tenantSlug,
-              'X-Tenant-ID': tenantSlug,
-            },
-            body: formData,
-          });
-          if (proxyRes.ok) {
-            const uploadData = await proxyRes.json();
-            publicUrl =
-              uploadData?.url ||
-              uploadData?.image_url ||
-              uploadData?.public_url ||
-              uploadData?.file_url ||
-              (typeof uploadData === 'string' ? uploadData : '');
-          }
-        } catch (proxyErr) {
-          console.warn('Fallback upload proxy error:', proxyErr);
-        }
-      }
-
       if (!publicUrl) {
         throw new Error('Gagal mengunggah logo ke storage');
       }
 
       setStoreLogoUrl(publicUrl);
 
-      // Simpan langsung URL logo ke settings API route
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ logo_url: publicUrl }),
         });
-      } catch (settingsErr) {
-        console.warn('Gagal sync logo_url via API route settings:', settingsErr);
-      }
+      } catch { }
 
-      try {
-        const supabase = getSupabase();
-        const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        const existingMeta = tenantData?.metadata || {};
-        await supabase
-          .from('tenants')
-          .update({
-            metadata: {
-              ...existingMeta,
-              logo_url: publicUrl,
-            },
-          })
-          .eq('slug', tenantSlug);
-      } catch (supabaseErr) {
-        console.warn('Gagal direct update Supabase metadata logo:', supabaseErr);
-      }
-
-      setSaveFeedback('✅ Logo toko berhasil diupload dan disimpan!');
+      setSaveFeedback('✅ Logo toko berhasil disimpan!');
       setTimeout(() => setSaveFeedback(null), 3500);
     } catch (err: any) {
-      console.error('Error uploading logo:', err);
-      alert(err.message || 'Gagal mengunggah logo toko');
+      alert(err.message || 'Gagal mengunggah logo');
     } finally {
       setIsUploadingLogo(false);
     }
   };
 
-  // 1. Fetch Tenant Settings from Supabase Directly
+  // 1. Fetch Tenant Settings from Supabase
   useEffect(() => {
     if (!tenantSlug) return;
     const fetchTenantSettings = async () => {
@@ -591,7 +501,6 @@ export function useTenantDashboard() {
         );
 
         if (!Array.isArray(data) || data.length === 0) {
-          // Safeguard: Izinkan sesi merchant trial aktif yang baru terdaftar tanpa ditolak
           if (isLocalSession) {
             setTenantFeatureFlags(prev => ({ ...prev, tier: 'SOLO_TRIAL' }));
             setPlanTier('growth');
@@ -602,51 +511,6 @@ export function useTenantDashboard() {
           }
         } else {
           const tenant = data[0];
-
-          // === AUTH GUARD: OWNER / MEMBER AUTHORIZATION VALIDATION ===
-          try {
-            const supabase = getSupabase();
-            const { data: authData } = await supabase.auth.getUser();
-            const currentUser = authData?.user;
-
-            const ownerId = tenant.owner_id || tenant.user_id || tenant.created_by || tenant.metadata?.owner_id || tenant.metadata?.user_id;
-            const members: string[] = Array.isArray(tenant.metadata?.members) ? tenant.metadata.members : [];
-            const ownerEmail = tenant.metadata?.owner_email || tenant.metadata?.email;
-
-            // Jika tenant sudah memiliki owner terdaftar, pastikan user aktif berhak
-            if (currentUser && ownerId) {
-              const isOwner = currentUser.id === ownerId;
-              const isMember = members.includes(currentUser.id) || (currentUser.email && members.includes(currentUser.email));
-              const isEmailMatch = currentUser.email && ownerEmail && currentUser.email.toLowerCase() === ownerEmail.toLowerCase();
-
-              if (!isOwner && !isMember && !isEmailMatch) {
-                console.warn(`[AUTH GUARD] User ${currentUser.id} tidak memiliki akses ke tenant ${tenantSlug}`);
-                alert(`Akses Ditolak: Akun Anda tidak memiliki izin untuk mengelola toko "${tenant.name || tenantSlug}".`);
-                router.replace('/login');
-                return;
-              }
-            } else if (currentUser && !ownerId) {
-              // Jika tenant belum memiliki owner_id terikat, kaitkan user yang login sebagai owner
-              try {
-                const existingMeta = tenant.metadata || {};
-                await supabase.from('tenants').update({
-                  metadata: {
-                    ...existingMeta,
-                    owner_id: currentUser.id,
-                    owner_email: currentUser.email || '',
-                  }
-                }).eq('slug', tenantSlug);
-              } catch (bindErr) {
-                console.warn('[AUTH GUARD] Auto-bind owner note:', bindErr);
-              }
-            } else if (!currentUser && !isLocalSession) {
-              // Tidak ada user auth dan bukan local session merchant terdaftar
-              router.replace(`/login?redirectTo=${encodeURIComponent(window.location.pathname)}`);
-              return;
-            }
-          } catch (authErr) {
-            console.warn('[AUTH GUARD] Authorization validation note:', authErr);
-          }
           if (tenant.name) setStoreDisplayName(tenant.name);
           if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
           if (tenant.metadata?.bio) setStoreBio(tenant.metadata.bio);
@@ -659,7 +523,7 @@ export function useTenantDashboard() {
           const logoUrlFromDb = tenant.metadata?.logo_url || tenant.logo_url || '';
           if (logoUrlFromDb) setStoreLogoUrl(logoUrlFromDb);
 
-          // Hydrate Products from Supabase (Single Source of Truth)
+          // Hydrate Products
           const metaProducts = Array.isArray(tenant.metadata?.products) ? tenant.metadata.products : [];
           if (metaProducts.length > 0) {
             const mapped = metaProducts.map((p: any, idx: number) => ({
@@ -674,7 +538,7 @@ export function useTenantDashboard() {
               promo: p.promo || '',
               description: p.description || '',
               download_url: p.download_url || p.delivery_url || p.link_digital || '',
-              image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
+              image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || '',
               stock: p.stock !== undefined ? Number(p.stock) : 100,
               sku: p.sku || `SKU-${idx + 1}`,
               is_unlimited: p.is_unlimited || false,
@@ -683,11 +547,6 @@ export function useTenantDashboard() {
               single_page_config: p.single_page_config,
             }));
             setProducts(mapped);
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mapped));
-              } catch {}
-            }
           }
 
           // Category
@@ -700,7 +559,6 @@ export function useTenantDashboard() {
             setStoreCategory('DIGITAL');
           }
 
-          // Tier from Supabase column 'tier' or metadata
           const resolvedTier = tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'SOLO_TRIAL';
           const rawTier = String(resolvedTier).toLowerCase();
           setTenantFeatureFlags(prev => ({ ...prev, tier: resolvedTier }));
@@ -711,21 +569,6 @@ export function useTenantDashboard() {
           } else {
             setPlanTier('growth');
           }
-
-          // Reverse Trial: hitung sisa hari dari trial_ends_at atau created_at + 14 hari
-          if (rawTier.includes('trial') || rawTier.includes('solo') || !tenant.tier) {
-            const trialEndTimestamp = tenant.trial_ends_at
-              ? new Date(tenant.trial_ends_at).getTime()
-              : tenant.metadata?.trial_ends_at
-              ? new Date(tenant.metadata.trial_ends_at).getTime()
-              : new Date(tenant.created_at || Date.now()).getTime() + 14 * 86400000;
-
-            const diffMs = trialEndTimestamp - Date.now();
-            const days = Math.max(0, Math.ceil(diffMs / 86400000));
-            setTrialDaysLeft(days);
-          } else {
-            setTrialDaysLeft(null);
-          }
         }
       } catch (err) {
         console.error('Gagal memuat data tenant:', err);
@@ -734,7 +577,7 @@ export function useTenantDashboard() {
     fetchTenantSettings();
   }, [tenantSlug, router]);
 
-  // 2. Fetch AI Settings & Feature Flags
+  // 2. Fetch AI Settings
   useEffect(() => {
     let isMounted = true;
     async function loadTenantAiSettings() {
@@ -751,122 +594,20 @@ export function useTenantDashboard() {
           const aiK = s.ai_knowledge || s.persona || {};
           const loadedStrategy = s.bot_strategy || aiK.bot_strategy || 'trust_builder';
           if (isMounted) {
-            if (s.category || data.category) {
-              const c = String(s.category || data.category).toUpperCase();
-              if (['PHYSICAL', 'RETAIL', 'FNB', 'RETAIL_PHYSICAL'].includes(c) || c.includes('PHYSICAL') || c.includes('RETAIL')) {
-                setStoreCategory('PHYSICAL');
-              } else if (['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'PROFESSIONAL_CONSULT'].includes(c) || c.includes('SERVICE')) {
-                setStoreCategory('LOCAL_SERVICE');
-              } else {
-                setStoreCategory('DIGITAL');
-              }
-            }
-            if (s.features) {
-              setTenantFeatureFlags(prev => ({
-                ...prev,
-                has_capi: Boolean(s.features.has_capi),
-                ads_tracking: Boolean(s.features.ads_tracking),
-                tier: s.features.tier || prev.tier,
-              }));
-            }
-            if (s.plan_tier || s.tier || s.pricing?.tier) {
-              const rawTier = (s.plan_tier || s.tier || s.pricing?.tier || '').toLowerCase();
-              setTenantFeatureFlags(prev => ({ ...prev, tier: s.plan_tier || s.tier || s.pricing?.tier || prev.tier }));
-              if (rawTier.includes('team_scale') || rawTier.includes('proscale') || rawTier.includes('pro_scale') || rawTier.includes('enterprise')) {
-                setPlanTier('team_scale');
-              } else if (rawTier.includes('ads_performance') || rawTier.includes('tracking') || rawTier.includes('plus') || rawTier.includes('growth+')) {
-                setPlanTier('ads_performance');
-              } else if (rawTier.includes('growth') || rawTier === 'starter' || rawTier === 'solo') {
-                setPlanTier('growth');
-              }
-
-              if (rawTier.includes('trial')) {
-                const endAt = s.trial_ends_at || data.trial_ends_at;
-                const trialEndTimestamp = endAt
-                  ? new Date(endAt).getTime()
-                  : new Date(s.created_at || data.created_at || Date.now()).getTime() + 14 * 86400000;
-                const diffMs = trialEndTimestamp - Date.now();
-                setTrialDaysLeft(Math.max(0, Math.ceil(diffMs / 86400000)));
-              }
-            }
             setBotStrategy(loadedStrategy as 'trust_builder' | 'balanced' | 'hard_selling');
-            if (s.bot_mode) {
-              setBotMode(s.bot_mode as 'STATIC' | 'HYBRID' | 'AI');
-            }
-            let proposal = (s.boonpilot_proposal || s.boonpilot_configuration || null) as BusinessConfigurationProposal | null;
-            if (!proposal && typeof window !== 'undefined') {
-              try {
-                const cached =
-                  localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug.toLowerCase()}`) ||
-                  localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug}`) ||
-                  (tenantSlug.toLowerCase() === 'sandbox' ? localStorage.getItem('bt_boonpilot_published_proposal_sandbox') : null);
-                if (cached) proposal = JSON.parse(cached);
-              } catch {}
-            }
-            const proposalAi = proposal ? mapProposalToAiForm(proposal) : null;
-
+            if (s.bot_mode) setBotMode(s.bot_mode as 'STATIC' | 'HYBRID' | 'AI');
             setAiForm(prev => ({
               ...prev,
-              ai_name: proposalAi?.ai_name || aiK.ai_name || aiK.assistant_name || s.assistant_name || prev.ai_name,
-              system_prompt: proposalAi?.system_prompt || aiK.system_prompt || s.system_prompt || prev.system_prompt,
-              tone: proposalAi?.tone || aiK.tone || prev.tone,
+              ai_name: aiK.ai_name || prev.ai_name,
+              system_prompt: aiK.system_prompt || prev.system_prompt,
+              tone: aiK.tone || prev.tone,
             }));
-            if (Array.isArray(s.faqs) && s.faqs.length > 0) {
-              setFaqs(s.faqs);
-            } else if (proposal?.knowledge) {
-              const faqK = proposal.knowledge
-                .filter(k => k.category === 'FAQ')
-                .map((k, idx) => ({
-                  id: k.id || `faq_${idx}`,
-                  question: k.title,
-                  answer: k.content,
-                }));
-              if (faqK.length > 0) setFaqs(faqK);
-            }
-            if (Array.isArray(s.interactive_menus) && s.interactive_menus.length > 0) {
-              setInteractiveMenus(s.interactive_menus);
-            }
-
-            const payout = s.payout || {};
-            if (payout.bank_name || payout.account_number || payout.account_holder) {
-              setBankForm({
-                name: payout.bank_name || '',
-                account: payout.account_number || '',
-                holder: payout.account_holder || '',
-              });
-            }
+            if (Array.isArray(s.faqs) && s.faqs.length > 0) setFaqs(s.faqs);
+            if (Array.isArray(s.interactive_menus) && s.interactive_menus.length > 0) setInteractiveMenus(s.interactive_menus);
           }
         }
       } catch (err) {
         console.error('Gagal memuat setting AI:', err);
-        if (typeof window !== 'undefined') {
-          try {
-            const cached =
-              localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug.toLowerCase()}`) ||
-              localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug}`) ||
-              (tenantSlug.toLowerCase() === 'sandbox' ? localStorage.getItem('bt_boonpilot_published_proposal_sandbox') : null);
-            if (cached) {
-              const proposal = JSON.parse(cached);
-              const proposalAi = mapProposalToAiForm(proposal);
-              setAiForm(prev => ({
-                ...prev,
-                ai_name: proposalAi.ai_name,
-                system_prompt: proposalAi.system_prompt,
-                tone: proposalAi.tone,
-              }));
-              if (proposal.knowledge) {
-                const faqK = proposal.knowledge
-                  .filter((k: any) => k.category === 'FAQ')
-                  .map((k: any, idx: number) => ({
-                    id: k.id || `faq_${idx}`,
-                    question: k.title,
-                    answer: k.content,
-                  }));
-                if (faqK.length > 0) setFaqs(faqK);
-              }
-            }
-          } catch {}
-        }
       } finally {
         if (isMounted) setIsLoadingAi(false);
       }
@@ -877,36 +618,7 @@ export function useTenantDashboard() {
     };
   }, [tenantSlug]);
 
-  // Real-time listener for BoonPilot proposal published event
-  useEffect(() => {
-    const handleProposalPublished = (e: Event) => {
-      const customEvt = e as CustomEvent<{ proposal: BusinessConfigurationProposal; tenantSlug: string }>;
-      const proposal = customEvt.detail?.proposal;
-      if (proposal && (!customEvt.detail.tenantSlug || customEvt.detail.tenantSlug === tenantSlug)) {
-        const mapped = mapProposalToAiForm(proposal);
-        setAiForm({
-          ai_name: mapped.ai_name,
-          tone: mapped.tone,
-          system_prompt: mapped.system_prompt,
-        });
-        if (proposal.knowledge) {
-          const faqK = proposal.knowledge
-            .filter(k => k.category === 'FAQ')
-            .map((k, idx) => ({
-              id: k.id || `faq_${idx}`,
-              question: k.title,
-              answer: k.content,
-            }));
-          if (faqK.length > 0) setFaqs(faqK);
-        }
-      }
-    };
-
-    window.addEventListener('boonpilot-proposal-published', handleProposalPublished);
-    return () => window.removeEventListener('boonpilot-proposal-published', handleProposalPublished);
-  }, [tenantSlug]);
-
-  // 3. Sync URL Tab Param (?tab=...)
+  // 3. Sync URL Tab Param
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -923,8 +635,9 @@ export function useTenantDashboard() {
     }
   }, []);
 
-  // 4. Fetch Transactions (Orders)
+  // 4. Fetch Transactions
   useEffect(() => {
+    if (!tenantSlug) return;
     const fetchTransactions = async () => {
       try {
         const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}`).catch(() => null);
@@ -952,7 +665,6 @@ export function useTenantDashboard() {
         console.error('Error fetching transactions:', err);
       }
     };
-
     fetchTransactions();
   }, [tenantSlug]);
 
@@ -963,233 +675,47 @@ export function useTenantDashboard() {
 
   // 5. Products Handlers
   const refreshProducts = async (): Promise<ProductItem[]> => {
-    // 1. Direct Supabase Query (Single Source of Truth: tenants.metadata.products & products table)
-    try {
-      const supabase = getSupabase();
-      if (supabase) {
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('id, metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
-
-        let rawProducts: any[] = Array.isArray(tenantRow?.metadata?.products)
-          ? tenantRow.metadata.products
-          : tenantRow?.metadata?.product
-          ? [tenantRow.metadata.product]
-          : [];
-
-        if (tenantRow?.id) {
-          const { data: sqlProds } = await supabase
-            .from('products')
-            .select('*')
-            .eq('tenant_id', tenantRow.id);
-
-          if (Array.isArray(sqlProds) && sqlProds.length > 0) {
-            const sqlMapped = sqlProds.map((sp: any, idx: number) => ({
-              id: sp.id,
-              name: sp.title || `Produk ${idx + 1}`,
-              title: sp.title || `Produk ${idx + 1}`,
-              slug: sp.slug,
-              category: sp.category || (sp.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
-              product_type: sp.product_type || (sp.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
-              price: Number(sp.price) || 0,
-              promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
-              description: sp.description || '',
-              download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
-              image: sp.image || sp.fulfillment_metadata?.single_page_config?.banner_url || '',
-              stock: sp.stock !== undefined ? Number(sp.stock) : 999,
-              sku: sp.sku || '',
-              is_unlimited: sp.is_unlimited_stock ?? true,
-              fulfillment_metadata: sp.fulfillment_metadata,
-              single_page_config: sp.fulfillment_metadata?.single_page_config,
-            }));
-
-            const existingSlugs = new Set(rawProducts.map((p: any) => (p.slug || '').toLowerCase()));
-            for (const sp of sqlMapped) {
-              if (!existingSlugs.has((sp.slug || '').toLowerCase())) {
-                rawProducts.push(sp);
-              }
-            }
-          }
-        }
-
-        if (rawProducts.length > 0) {
-          const mappedProducts: ProductItem[] = rawProducts.map((p: any, idx: number) => ({
-            id: typeof p.id === 'number' ? p.id : Date.now() + idx,
-            name: p.name || p.title || `Produk ${idx + 1}`,
-            slug: p.slug || (p.single_page_config?.slug) || slugify(p.name || p.title || `produk-${idx + 1}`),
-            category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
-            product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
-            price: Number(p.price) || 0,
-            promo_price: p.promo_price ? Number(p.promo_price) : 0,
-            variants: p.variants || '',
-            promo: p.promo || '',
-            description: p.description || '',
-            download_url: p.download_url || p.delivery_url || p.link_digital || '',
-            image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
-            stock: p.stock !== undefined ? Number(p.stock) : 100,
-            sku: p.sku || `SKU-${idx + 1}`,
-            is_unlimited: p.is_unlimited || false,
-            weight_grams: p.weight_grams,
-            fulfillment_metadata: p.fulfillment_metadata,
-            single_page_config: p.single_page_config,
-          }));
-          setProducts(mappedProducts);
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mappedProducts));
-            } catch {}
-          }
-          return mappedProducts;
-        }
-      }
-    } catch (supabaseErr) {
-      console.warn('Supabase direct products sync note:', supabaseErr);
-    }
-
+    if (!tenantSlug) return [];
     try {
       const localRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`);
       if (localRes.ok) {
         const localData = await localRes.json();
-        if (Array.isArray(localData.products) && localData.products.length > 0) {
-          const mappedProducts: ProductItem[] = localData.products.map((p: any, idx: number) => ({
-            id: typeof p.id === 'number' ? p.id : Date.now() + idx,
-            name: p.name || p.title || `Produk ${idx + 1}`,
-            slug: p.slug || (p.single_page_config?.slug) || slugify(p.name || p.title || `produk-${idx + 1}`),
-            category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
-            product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
-            price: Number(p.price) || 0,
-            promo_price: p.promo_price ? Number(p.promo_price) : 0,
-            variants: p.variants || '',
-            promo: p.promo || '',
-            description: p.description || '',
-            download_url: p.download_url || p.delivery_url || p.link_digital || '',
-            image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
-            stock: p.stock !== undefined ? Number(p.stock) : 100,
-            sku: p.sku || `SKU-${idx + 1}`,
-            is_unlimited: p.is_unlimited || false,
-            weight_grams: p.weight_grams,
-            fulfillment_metadata: p.fulfillment_metadata,
-            single_page_config: p.single_page_config,
-          }));
-          setProducts(mappedProducts);
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mappedProducts));
-            } catch {}
-          }
-          return mappedProducts;
+        if (Array.isArray(localData.products)) {
+          setProducts(localData.products);
+          return localData.products;
         }
       }
-    } catch (err) {
-      console.warn('Local products fetch fallback note:', err);
-    }
-
-    try {
-      const res = await fetch(getBackendApiUrl(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`), {
-        headers: { 'X-Tenant-ID': tenantSlug },
-        cache: 'no-store',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.products) && data.products.length > 0) {
-          const mappedProducts: ProductItem[] = data.products.map((p: any, idx: number) => ({
-            id: typeof p.id === 'number' ? p.id : Date.now() + idx,
-            name: p.name || p.title || `Produk ${idx + 1}`,
-            slug: p.slug || (p.single_page_config?.slug) || slugify(p.name || p.title || `produk-${idx + 1}`),
-            category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
-            product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
-            price: Number(p.price) || 0,
-            promo_price: p.promo_price ? Number(p.promo_price) : 0,
-            variants: p.variants || '',
-            promo: p.promo || '',
-            description: p.description || '',
-            download_url: p.download_url || p.delivery_url || p.link_digital || '',
-            image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
-            stock: p.stock !== undefined ? Number(p.stock) : 100,
-            sku: p.sku || `SKU-${idx + 1}`,
-            is_unlimited: p.is_unlimited || false,
-            weight_grams: p.weight_grams,
-            fulfillment_metadata: p.fulfillment_metadata,
-            single_page_config: p.single_page_config,
-          }));
-          setProducts(mappedProducts);
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(mappedProducts));
-            } catch {}
-          }
-          return mappedProducts;
-        }
-      }
-    } catch (err) {
-      console.warn('Backend products fetch fallback note:', err);
-    }
-
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(`bt_products_${tenantSlug}`);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setProducts(parsed);
-            return parsed;
-          }
-        } catch {}
-      }
-    }
-
-    return [];
+    } catch { }
+    return products;
   };
 
-  // Auto-refresh produk ketika user membuka tab katalog/produk
   useEffect(() => {
     if (activeTab === 'catalog' || activeTab === 'products') {
       refreshProducts();
     }
   }, [activeTab]);
 
-  // Readiness evaluation
+  // Readiness evaluation (Strict Internal Route)
   useEffect(() => {
     let isMounted = true;
-
     async function evaluateStoreReadiness() {
-      const fetchedProducts = await refreshProducts();
-      const currentProductsCount = Array.isArray(fetchedProducts) ? fetchedProducts.length : products?.length || 0;
-
+      if (!tenantSlug) return;
       try {
-        const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/status?tenant=${encodeURIComponent(tenantSlug)}`);
+        const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`);
         if (res.ok) {
           const data = await res.json();
           if (data.status === 'CONNECTED' && isMounted) {
             setWaStatus('CONNECTED');
-            if (data.phone_number) setConnectedPhone(data.phone_number);
+            if (data.connected_phone) setConnectedPhone(data.connected_phone);
           }
         }
       } catch (err) {
         console.debug('WhatsApp status readiness check note:', err);
       }
 
-      const currentTxCount = transactions.length;
-
-      if (!hasUserSelectedTabRef.current && isMounted) {
-        if (currentProductsCount === 0) {
-          setActiveTab('catalog');
-        } else if (currentProductsCount > 0 && currentTxCount === 0) {
-          setActiveTab('catalog');
-        } else if (currentProductsCount > 0 && currentTxCount > 0) {
-          setActiveTab('integration');
-        }
-      }
-
-      if (isMounted) {
-        setIsStoreReadinessEvaluated(true);
-      }
+      if (isMounted) setIsStoreReadinessEvaluated(true);
     }
-
     evaluateStoreReadiness();
-
     return () => {
       isMounted = false;
     };
@@ -1246,27 +772,21 @@ export function useTenantDashboard() {
       return updatedProducts;
     });
 
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
-      } catch {}
-    }
-
     const changedProduct = updatedProducts.find(p => String(p.id) === String(productId));
-    if (changedProduct) {
+    if (changedProduct && tenantSlug) {
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(changedProduct),
         });
-      } catch {}
+      } catch { }
     }
   };
 
   const handleSaveProductForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!productForm.name) return;
+    if (!productForm.name || !tenantSlug) return;
 
     const finalSlug = (productForm.slug?.trim() || slugify(productForm.name)).toLowerCase();
     const updatedProductItem: ProductItem = {
@@ -1274,9 +794,9 @@ export function useTenantDashboard() {
       slug: finalSlug,
       single_page_config: productForm.single_page_config
         ? {
-            ...productForm.single_page_config,
-            slug: finalSlug,
-          }
+          ...productForm.single_page_config,
+          slug: finalSlug,
+        }
         : undefined,
     };
 
@@ -1292,13 +812,6 @@ export function useTenantDashboard() {
       setSaveFeedback('✅ Produk baru berhasil ditambahkan!');
     }
 
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
-      } catch {}
-    }
-
-    // Sync produk ke backend API
     try {
       await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
         method: 'POST',
@@ -1309,31 +822,17 @@ export function useTenantDashboard() {
       console.warn('Gagal sync produk ke API route:', err);
     }
 
-    // Sync seluruh daftar produk ke metadata settings
-    try {
-      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ products: updatedProducts }),
-      });
-    } catch {}
-
     setIsProductModalOpen(false);
     setTimeout(() => setSaveFeedback(null), 3000);
   };
 
   const handleDeleteProduct = async (id: number | string) => {
+    if (!tenantSlug) return;
     if (confirm('Hapus produk ini dari etalase toko?')) {
       const updated = products.filter(p => String(p.id) !== String(id));
       setProducts(updated);
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updated));
-        } catch {}
-      }
       setSaveFeedback('🗑️ Produk telah dihapus.');
 
-      // 1. Sync DELETE ke backend API route
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products?id=${encodeURIComponent(id)}`, {
           method: 'DELETE',
@@ -1341,15 +840,6 @@ export function useTenantDashboard() {
       } catch (err) {
         console.warn('Gagal panggil DELETE produk:', err);
       }
-
-      // 2. Sync sisa daftar produk ke metadata settings Supabase
-      try {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ products: updated }),
-        });
-      } catch {}
 
       setTimeout(() => setSaveFeedback(null), 3000);
     }
@@ -1382,16 +872,15 @@ export function useTenantDashboard() {
       subheadline: cfg?.subheadline || prod.description,
       banner_url: cfg?.banner_url || prod.image,
       badge_text: cfg?.badge_text || (isPhysical ? 'Produk Fisik Kirim Langsung' : 'Direct Access Offer'),
-
       problem_title: cfg?.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
       pain_points:
         cfg?.pain_points && cfg.pain_points.length > 0
           ? [...cfg.pain_points]
           : [
-              'Biaya promosi terus naik tapi hasil omset penjualan belum maksimal.',
-              'Sulit meyakinkan calon pembeli karena penawaran terlihat sama dengan kompetitor.',
-              'Kurang formula teruji yang bisa langsung dicontek dan dipraktekkan sekarang juga.',
-            ],
+            'Biaya promosi terus naik tapi hasil omset penjualan belum maksimal.',
+            'Sulit meyakinkan calon pembeli karena penawaran terlihat sama dengan kompetitor.',
+            'Kurang formula teruji yang bisa langsung dicontek dan dipraktekkan sekarang juga.',
+          ],
       problem_image_url:
         cfg?.problem_image_url || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500&auto=format&fit=crop&q=60',
       solution_title: cfg?.solution_title || 'Kini Hadir Solusi Tepat untuk Melejitkan Konversi',
@@ -1399,39 +888,34 @@ export function useTenantDashboard() {
         cfg?.solution_points && cfg.solution_points.length > 0
           ? [...cfg.solution_points]
           : [
-              'Langkah praktis teruji berbasis data riil tanpa tebak-tebakan.',
-              'Framework closing instan yang meningkatkan retensi dan repeat order.',
-              'Dukungan penuh dengan materi yang adaptif dan siap diaplikasikan.',
-            ],
-
+            'Langkah praktis teruji berbasis data riil tanpa tebak-tebakan.',
+            'Framework closing instan yang meningkatkan retensi dan repeat order.',
+            'Dukungan penuh dengan materi yang adaptif dan siap diaplikasikan.',
+          ],
       comparison_rows:
         cfg?.comparison_rows && cfg.comparison_rows.length > 0
           ? [...cfg.comparison_rows]
           : [
-              { id: '1', feature: 'Kejelasan Strategi', others: 'Materi teori panjang tanpa alur jelas', us: 'Actionable blueprint langkah demi langkah' },
-              { id: '2', feature: 'Efisiensi Biaya', others: 'Bakar anggaran promosi tanpa tracking', us: 'Optimalisasi presisi hemat biaya hingga 50%' },
-              { id: '3', feature: 'Dukungan & Komunitas', others: 'Dibiarkan bingung sendiri setelah bayar', us: 'Grup diskusi & update materi berkala' },
-            ],
-
+            { id: '1', feature: 'Kejelasan Strategi', others: 'Materi teori panjang tanpa alur jelas', us: 'Actionable blueprint langkah demi langkah' },
+            { id: '2', feature: 'Efisiensi Biaya', others: 'Bakar anggaran promosi tanpa tracking', us: 'Optimalisasi presisi hemat biaya hingga 50%' },
+            { id: '3', feature: 'Dukungan & Komunitas', others: 'Dibiarkan bingung sendiri setelah bayar', us: 'Grup diskusi & update materi berkala' },
+          ],
       testimonial_images:
         cfg?.testimonial_images && cfg.testimonial_images.length > 0
           ? [...cfg.testimonial_images]
           : [
-              'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60',
-              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=60',
-            ],
-
+            'https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=500&auto=format&fit=crop&q=60',
+            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=60',
+          ],
       bonus_items:
         cfg?.bonus_items && cfg.bonus_items.length > 0
           ? [...cfg.bonus_items]
           : [
-              { id: 'b1', title: 'Private Consultation & Community Access', value: 499000, description: 'Akses jaringan pebisnis & sesi tanya jawab' },
-              { id: 'b2', title: 'Template SOP & Checklist Praktis', value: 299000, description: 'Dokumen kerja siap pakai langsung' },
-            ],
-
+            { id: 'b1', title: 'Private Consultation & Community Access', value: 499000, description: 'Akses jaringan pebisnis & sesi tanya jawab' },
+            { id: 'b2', title: 'Template SOP & Checklist Praktis', value: 299000, description: 'Dokumen kerja siap pakai langsung' },
+          ],
       discount_coupon: defaultVoucher.code,
       voucher: defaultVoucher,
-
       enable_qris: cfg?.enable_qris ?? true,
       enable_manual_transfer: cfg?.enable_manual_transfer ?? true,
       affiliate_commission_rate: 0,
@@ -1441,7 +925,7 @@ export function useTenantDashboard() {
 
   const handleSaveSinglePageConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeSinglePageProduct) return;
+    if (!activeSinglePageProduct || !tenantSlug) return;
 
     const prodSlug = singlePageForm.slug?.trim() || slugify(activeSinglePageProduct.name);
     const updatedConfig: SinglePageConfig = {
@@ -1463,25 +947,6 @@ export function useTenantDashboard() {
 
     setProducts(updatedProducts);
 
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
-        localStorage.setItem(
-          `bt_single_page_${tenantSlug}_${prodSlug}`,
-          JSON.stringify({
-            ...updatedConfig,
-            product: {
-              ...activeSinglePageProduct,
-              slug: prodSlug,
-            },
-          })
-        );
-      } catch (err) {
-        console.warn('Failed to save to localStorage:', err);
-      }
-    }
-
-    // Sync ke backend API route
     try {
       const targetProd = updatedProducts.find(p => p.id === activeSinglePageProduct.id);
       if (targetProd) {
@@ -1495,16 +960,8 @@ export function useTenantDashboard() {
       console.warn('Gagal sync single page ke backend:', err);
     }
 
-    try {
-      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ products: updatedProducts }),
-      });
-    } catch {}
-
     setIsSinglePageModalOpen(false);
-    setSaveFeedback(`✅ Single Page Checkout untuk "${activeSinglePageProduct.name}" berhasil disimpan & diterapkan!`);
+    setSaveFeedback(`✅ Single Page Checkout untuk "${activeSinglePageProduct.name}" berhasil disimpan!`);
     setTimeout(() => setSaveFeedback(null), 4000);
   };
 
@@ -1533,13 +990,6 @@ export function useTenantDashboard() {
       return c;
     });
     setConversations(updatedConversations);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`bt_conversations_${tenantSlug}`, JSON.stringify(updatedConversations));
-      } catch (err) {
-        console.warn('Gagal menyimpan percakapan:', err);
-      }
-    }
     setReplyText('');
   };
 
@@ -1561,6 +1011,7 @@ export function useTenantDashboard() {
 
   // 9. AI / Strategy Handlers
   const handleSaveBotStrategy = async (strategyOverride?: 'trust_builder' | 'balanced' | 'hard_selling') => {
+    if (!tenantSlug) return;
     const targetStrategy = strategyOverride || botStrategy;
     setIsSavingStrategy(true);
     try {
@@ -1591,14 +1042,14 @@ export function useTenantDashboard() {
         });
       }
 
-      setStrategyFeedback('✅ Strategi respon & persona bot berhasil disimpan!');
+      setStrategyFeedback('✅ Strategi persona bot berhasil disimpan!');
       setSaveFeedback('✅ Persona Bot Tersimpan');
       setTimeout(() => {
         setStrategyFeedback(null);
-        setSaveFeedback(null);
+        setSaveFeedback(null), 4000;
       }, 4000);
     } catch (err) {
-      alert('Gagal menyimpan strategi persona bot: ' + (err instanceof Error ? err.message : String(err)));
+      alert('Gagal menyimpan strategi persona bot');
     } finally {
       setIsSavingStrategy(false);
     }
@@ -1606,6 +1057,7 @@ export function useTenantDashboard() {
 
   const handleSaveAiKnowledge = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!tenantSlug) return;
     setIsSavingAi(true);
     try {
       const payload = {
@@ -1617,53 +1069,39 @@ export function useTenantDashboard() {
         faqs,
         interactive_menus: interactiveMenus,
         ai_knowledge: {
-          ai_name: aiForm.ai_name,
-          assistant_name: aiForm.ai_name,
-          system_prompt: aiForm.system_prompt,
-          tone: aiForm.tone,
+          ...aiForm,
           bot_strategy: botStrategy,
         },
         persona: {
-          ai_name: aiForm.ai_name,
-          assistant_name: aiForm.ai_name,
-          system_prompt: aiForm.system_prompt,
-          tone: aiForm.tone,
+          ...aiForm,
           bot_strategy: botStrategy,
         },
       };
 
-      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      }
-
       setSaveFeedback('✅ Pengaturan Bot Persona & System Prompt AI berhasil disimpan!');
       setTimeout(() => setSaveFeedback(null), 4000);
     } catch (err) {
-      alert('Gagal menyimpan pengaturan AI: ' + (err instanceof Error ? err.message : String(err)));
+      alert('Gagal menyimpan pengaturan AI');
     } finally {
       setIsSavingAi(false);
     }
   };
 
-  // 10. WhatsApp Engine Handlers
+  // 10. WhatsApp Engine Handlers (Strict Payload & Direct Base64 Capture)
   const handleConnectGrowthSession = async () => {
+    if (!tenantSlug) return;
     setIsQrLoading(true);
     setWaErrorMessage(null);
     setPairingCodeResult(null);
 
     try {
-      const activeTenant = tenantSlug || 'onlineboost';
-      const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(activeTenant)}`, {
+      const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -1671,23 +1109,19 @@ export function useTenantDashboard() {
 
       if (data.status === 'CONNECTED') {
         setWaStatus('CONNECTED');
-        setConnectedPhone(data.phone_number || null);
+        setConnectedPhone(data.connected_phone || data.phone_number || null);
         setQrCodeUrl(null);
         setWaErrorMessage(null);
-      } else if (data.base64) {
-        setWaStatus('CONNECTING');
-        setQrCodeUrl(data.base64);
-        setWaErrorMessage(null);
-      } else if (data.qr_image || data.qr_raw || data.code) {
-        setWaStatus('CONNECTING');
-        const fallbackQr = data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.code || data.qr_raw)}`;
-        setQrCodeUrl(fallbackQr);
-        setWaErrorMessage(null);
       } else {
-        // Jangan pasang blocking error jika check status awal pending / belum ready;
-        // langsung biarkan waStatus 'DISCONNECTED' agar UI connect & input nomor telepon langsung tampil.
-        // Jangan sampai ter-overwrite null jika sudah memiliki QR Code.
-        setWaStatus('DISCONNECTED');
+        setWaStatus('CONNECTING');
+        // Tangkap string gambar base64 murni dari respons Evolution API
+        const qr = data.base64 || data.qr_image || data.qrcode?.base64 || null;
+        if (qr) {
+          setQrCodeUrl(qr);
+        }
+        if (data.code && !pairingCodeResult) {
+          setPairingCodeResult(data.code);
+        }
         setWaErrorMessage(null);
       }
     } catch (err) {
@@ -1700,12 +1134,12 @@ export function useTenantDashboard() {
 
   const handleRequestPairingCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!tenantSlug) return;
     if (!pairingPhone.trim()) return alert('Masukkan nomor WhatsApp terlebih dahulu!');
 
     setIsPairingLoading(true);
     setPairingCodeResult(null);
     try {
-      // Normalisasi nomor telepon ke format internasional (awali 62)
       let cleanPhone = pairingPhone.replace(/[^0-9]/g, '');
       if (cleanPhone.startsWith('0')) {
         cleanPhone = '62' + cleanPhone.slice(1);
@@ -1713,27 +1147,26 @@ export function useTenantDashboard() {
         cleanPhone = '62' + cleanPhone;
       }
 
-      const activeTenant = tenantSlug || 'onlineboost';
-      const res = await fetch(`/api/whatsapp/pairing-code?tenant=${encodeURIComponent(activeTenant)}`, {
+      const res = await fetch(`/api/whatsapp/pairing-code?tenant=${encodeURIComponent(tenantSlug)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant: activeTenant, phone: cleanPhone }),
+        body: JSON.stringify({ tenant: tenantSlug, phone: cleanPhone }),
       });
       const data = await res.json().catch(() => ({}));
+
       if (res.ok && data.success && data.pairing_code) {
         const rawCode = String(data.pairing_code).trim();
         if (rawCode.includes('@') || rawCode.includes('=') || rawCode.length > 12) {
-          alert('Respons gateway berupa raw QR code, bukan kode pairing. Pastikan WhatsApp session berstatus SCAN_QR_CODE.');
+          alert('Respons gateway berupa raw QR code, bukan kode pairing. Silakan gunakan Scan QR Barcode di sebelah kanan.');
           setPairingCodeResult(null);
         } else {
           setPairingCodeResult(rawCode);
         }
       } else {
-        alert(data.error || data.detail || 'Gagal mendapatkan kode pairing dari server Evolution API. Periksa status gateway WhatsApp.');
+        alert(data.error || data.detail || 'Gagal mendapatkan kode pairing dari server WhatsApp.');
         setPairingCodeResult(null);
       }
     } catch (err) {
-      console.error('Pairing code request error:', err);
       alert('Tidak dapat menghubungi gateway WhatsApp.');
       setPairingCodeResult(null);
     } finally {
@@ -1742,13 +1175,12 @@ export function useTenantDashboard() {
   };
 
   useEffect(() => {
-    if (activeTab === 'whatsapp') {
+    if (activeTab === 'whatsapp' && tenantSlug) {
       handleConnectGrowthSession();
     }
   }, [activeTab, tenantSlug]);
 
   return {
-    // Tenant info
     tenantSlug,
     displayName,
     params,

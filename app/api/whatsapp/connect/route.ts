@@ -1,9 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const tenantSlug = searchParams.get("tenant") || "onlineboost";
+    const tenantSlug = searchParams.get("tenant");
+
+    // Validasi multi-tenant: Tolak request jika slug tidak ada
+    if (!tenantSlug || tenantSlug.trim() === "") {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "DISCONNECTED",
+          error: "Missing required query parameter: tenant",
+        },
+        { status: 400 }
+      );
+    }
 
     const BACKEND_URL =
       process.env.CORE_BACKEND_URL ||
@@ -12,12 +26,15 @@ export async function POST(req: NextRequest) {
       process.env.BACKEND_URL ||
       "https://boontrack-core-production.up.railway.app";
 
-    const response = await fetch(`${BACKEND_URL}/api/v1/whatsapp/sessions/${encodeURIComponent(tenantSlug)}/connect`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    const response = await fetch(
+      `${BACKEND_URL}/api/v1/whatsapp/sessions/${encodeURIComponent(tenantSlug.trim())}/connect`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
     const data = await response.json().catch(() => ({}));
 
@@ -35,7 +52,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json(data);
+    // Normalisasi struktur output QR Base64 dan Pairing Code
+    const base64 =
+      data.base64 ||
+      data.qrcode?.base64 ||
+      data.qr_image ||
+      data.qr_raw ||
+      data.qr ||
+      null;
+
+    const code =
+      data.code ||
+      data.pairingCode ||
+      data.pairing_code ||
+      null;
+
+    return NextResponse.json({
+      success: true,
+      tenant_slug: tenantSlug,
+      status: data.status === "open" || data.status === "CONNECTED" ? "CONNECTED" : "CONNECTING",
+      base64,
+      code,
+      connected_phone: data.connected_phone || data.phone || null,
+      instance: data.instance || tenantSlug,
+    });
   } catch (err: any) {
     return NextResponse.json(
       {
@@ -50,4 +90,3 @@ export async function POST(req: NextRequest) {
 }
 
 export const GET = POST;
-
