@@ -830,6 +830,15 @@ export function resolveBusinessTemplate(
   if (!categoryOrType) return BUSINESS_TEMPLATES.PRODUCT;
   const norm = categoryOrType.toUpperCase().trim();
 
+  // 1. Prioritaskan exact match template code
+  if (norm === 'PRODUCT') return BUSINESS_TEMPLATES.PRODUCT;
+  if (norm === 'DIGITAL') return BUSINESS_TEMPLATES.DIGITAL;
+  if (norm === 'LOCAL_SERVICE') return BUSINESS_TEMPLATES.LOCAL_SERVICE;
+  if (norm === 'FOOD') return BUSINESS_TEMPLATES.FOOD;
+  if (norm === 'PROFESSIONAL_SERVICE') return BUSINESS_TEMPLATES.PROFESSIONAL_SERVICE;
+  if (norm === 'CREATOR') return BUSINESS_TEMPLATES.CREATOR;
+
+  // 2. Prioritaskan template spesifik sebelum general service
   if (
     norm.includes('DIGITAL') ||
     norm.includes('ECOURSE') ||
@@ -838,29 +847,6 @@ export function resolveBusinessTemplate(
     norm.includes('DOWNLOAD')
   ) {
     return BUSINESS_TEMPLATES.DIGITAL;
-  }
-
-  if (
-    norm.includes('FIELD_SERVICE') ||
-    norm.includes('LOCAL_SERVICE') ||
-    norm.includes('SERVICE') ||
-    norm.includes('JASA') ||
-    norm.includes('TOREN') ||
-    norm.includes('CLEANING') ||
-    norm.includes('TEKNISI')
-  ) {
-    return BUSINESS_TEMPLATES.LOCAL_SERVICE;
-  }
-
-  if (
-    norm.includes('FOOD') ||
-    norm.includes('KULINER') ||
-    norm.includes('MAKANAN') ||
-    norm.includes('MINUMAN') ||
-    norm.includes('RESTAURANT') ||
-    norm.includes('CATERING')
-  ) {
-    return BUSINESS_TEMPLATES.FOOD;
   }
 
   if (
@@ -879,6 +865,29 @@ export function resolveBusinessTemplate(
     norm.includes('VIP')
   ) {
     return BUSINESS_TEMPLATES.CREATOR;
+  }
+
+  if (
+    norm.includes('FOOD') ||
+    norm.includes('KULINER') ||
+    norm.includes('MAKANAN') ||
+    norm.includes('MINUMAN') ||
+    norm.includes('RESTAURANT') ||
+    norm.includes('CATERING')
+  ) {
+    return BUSINESS_TEMPLATES.FOOD;
+  }
+
+  if (
+    norm.includes('FIELD_SERVICE') ||
+    norm.includes('LOCAL_SERVICE') ||
+    norm.includes('SERVICE') ||
+    norm.includes('JASA') ||
+    norm.includes('TOREN') ||
+    norm.includes('CLEANING') ||
+    norm.includes('TEKNISI')
+  ) {
+    return BUSINESS_TEMPLATES.LOCAL_SERVICE;
   }
 
   return BUSINESS_TEMPLATES.PRODUCT;

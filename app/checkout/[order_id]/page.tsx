@@ -141,7 +141,7 @@ export default function CheckoutPage({ params }: Props) {
           body: JSON.stringify({
             external_id: orderId,
             amount: gross,
-            tenant_slug: order.tenant_slug || 'onlineboost',
+            tenant_slug: order.tenant_slug || order.tenant_id || '',
             customer_phone: order.customer_phone,
             customer_name: order.customer_name,
             product_name: order.product_title
