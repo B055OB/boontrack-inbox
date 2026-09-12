@@ -40,7 +40,7 @@ export default function FnbCulinaryProductForm({
               value={productForm.weight_grams || 500}
               onChange={(e) => setProductForm((p) => ({ ...p, weight_grams: Number(e.target.value) }))}
               placeholder="Contoh: 500 gram (Porsi Standar)"
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-orange-600"
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-orange-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <span className="text-[10px] text-slate-500 mt-1 block">
               Dibutuhkan untuk penentuan kapasitas motor kurir instan (GoSend/Grab).
