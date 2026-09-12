@@ -18,7 +18,11 @@ import {
   Check 
 } from "lucide-react";
 import ShopClaimSection from "@/app/components/ShopClaimSection";
-import BarcodeScannerModal from './dashboard/components/BarcodeScannerModal';
+import dynamic from 'next/dynamic';
+
+const BarcodeScannerModal = dynamic(() => import('./dashboard/components/BarcodeScannerModal'), {
+  ssr: false,
+});
 import CheckoutModal from "@/app/components/CheckoutModal";
 import PersonalAuthorityTemplate from './components/templates/PersonalAuthorityTemplate';
 import MicrositeBioTemplate from './components/templates/MicrositeBioTemplate';
@@ -252,9 +256,13 @@ export default function TenantStorefrontPage() {
   // 0b. CAPTURE AFFILIATE REFERRAL & SELLER TRACKING
   useEffect(() => {
     if (!tenantSlug) return;
-    captureAffiliateReferral();
-    if (typeof window !== "undefined") {
-      initSellerTracking(tenantSlug);
+    try {
+      captureAffiliateReferral();
+      if (typeof window !== "undefined") {
+        initSellerTracking(tenantSlug);
+      }
+    } catch (err) {
+      console.warn("[Storefront] Tracking initialization caught error:", err);
     }
   }, [tenantSlug]);
 
@@ -606,9 +614,7 @@ export default function TenantStorefrontPage() {
   const currentTheme = tenantMetadata?.theme || {};
   const rawTemplate = tenantMetadata?.storefront_template || tenantMetadata?.template || currentTheme.template;
   // Kunci Default: pastikan fallback selalu ke default (Katalog Grid Standar)
-  const currentTemplate = tenantSlug === 'ombudi' 
-    ? 'personal' 
-    : (rawTemplate === 'microsite' ? 'microsite' : (rawTemplate === 'personal' ? 'personal' : 'default'));
+  const currentTemplate = rawTemplate === 'microsite' ? 'microsite' : (rawTemplate === 'personal' ? 'personal' : 'default');
   const isChatEnabled = currentTheme.chat_enabled !== false;
 
   // ── CONDITIONAL TEMPLATE: PERSONAL (Authority / Personal Brand) ──
@@ -687,11 +693,13 @@ export default function TenantStorefrontPage() {
           product={productForCheckout}
         />
         {/* Modal Barcode Scanner */}
-        <BarcodeScannerModal
-          isOpen={isScannerOpen}
-          onClose={() => setIsScannerOpen(false)}
-          onScanSuccess={handleBarcodeDetected}
-        />
+        {isScannerOpen && (
+          <BarcodeScannerModal
+            isOpen={isScannerOpen}
+            onClose={() => setIsScannerOpen(false)}
+            onScanSuccess={handleBarcodeDetected}
+          />
+        )}
       </>
     );
   }
@@ -724,11 +732,13 @@ export default function TenantStorefrontPage() {
           product={productForCheckout}
         />
         {/* Modal Barcode Scanner */}
-        <BarcodeScannerModal
-          isOpen={isScannerOpen}
-          onClose={() => setIsScannerOpen(false)}
-          onScanSuccess={handleBarcodeDetected}
-        />
+        {isScannerOpen && (
+          <BarcodeScannerModal
+            isOpen={isScannerOpen}
+            onClose={() => setIsScannerOpen(false)}
+            onScanSuccess={handleBarcodeDetected}
+          />
+        )}
       </>
     );
   }
@@ -1161,11 +1171,13 @@ export default function TenantStorefrontPage() {
         product={productForCheckout}
       />
       {/* Modal Barcode Scanner */}
-      <BarcodeScannerModal
-        isOpen={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
-        onScanSuccess={handleBarcodeDetected}
-      />
+      {isScannerOpen && (
+        <BarcodeScannerModal
+          isOpen={isScannerOpen}
+          onClose={() => setIsScannerOpen(false)}
+          onScanSuccess={handleBarcodeDetected}
+        />
+      )}
       <footer className="py-8 px-4 text-center text-xs text-slate-500 bg-slate-900 border-t border-slate-800 mt-auto space-y-4">
         <div className="max-w-4xl mx-auto space-y-3">
           <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1 text-slate-400 font-medium">

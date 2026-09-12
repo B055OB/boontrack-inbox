@@ -28,6 +28,13 @@ export default function TenantErrorBoundary({
           </p>
         </div>
 
+        {/* Expose Error Details for Live Debugging */}
+        <pre className="text-xs text-red-600 bg-red-50 p-3 rounded mt-4 max-w-md overflow-auto text-left whitespace-pre-wrap break-all font-mono">
+          {error?.message || "Unknown error"}
+          {error?.digest ? `\nDigest: ${error.digest}` : ""}
+          {error?.stack && `\n\n${error.stack.slice(0, 500)}`}
+        </pre>
+
         <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
           <button
             onClick={() => reset()}

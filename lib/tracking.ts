@@ -18,40 +18,54 @@ export interface TrackingParams {
 export function captureAffiliateReferral(): void {
   if (typeof window === "undefined") return;
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const refCode = urlParams.get("ref") || urlParams.get("aff");
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const refCode = urlParams.get("ref") || urlParams.get("aff");
 
-  if (refCode) {
-    localStorage.setItem("boontrack_affiliate_code", refCode.trim());
-  }
-
-  const trackingKeys = [
-    "utm_source",
-    "utm_medium",
-    "utm_campaign",
-    "utm_content",
-    "utm_term",
-    "fbclid",
-    "ttclid"
-  ];
-
-  const captured: Record<string, string> = {};
-  trackingKeys.forEach((key) => {
-    const val = urlParams.get(key);
-    if (val) {
-      captured[key] = val;
-      localStorage.setItem(`boontrack_${key}`, val);
+    if (refCode) {
+      try {
+        localStorage.setItem("boontrack_affiliate_code", refCode.trim());
+      } catch {}
     }
-  });
 
-  if (Object.keys(captured).length > 0) {
-    sessionStorage.setItem("boontrack_tracking_session", JSON.stringify(captured));
+    const trackingKeys = [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_content",
+      "utm_term",
+      "fbclid",
+      "ttclid"
+    ];
+
+    const captured: Record<string, string> = {};
+    trackingKeys.forEach((key) => {
+      const val = urlParams.get(key);
+      if (val) {
+        captured[key] = val;
+        try {
+          localStorage.setItem(`boontrack_${key}`, val);
+        } catch {}
+      }
+    });
+
+    if (Object.keys(captured).length > 0) {
+      try {
+        sessionStorage.setItem("boontrack_tracking_session", JSON.stringify(captured));
+      } catch {}
+    }
+  } catch (err) {
+    console.warn("[Tracking] Storage access unavailable:", err);
   }
 }
 
 export function getActiveAffiliateCode(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("boontrack_affiliate_code") || null;
+  try {
+    return localStorage.getItem("boontrack_affiliate_code") || null;
+  } catch {
+    return null;
+  }
 }
 
 export function getTrackingParams(): TrackingParams {
