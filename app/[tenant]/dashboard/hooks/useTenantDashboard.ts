@@ -1674,20 +1674,24 @@ export function useTenantDashboard() {
         setConnectedPhone(data.phone_number || null);
         setQrCodeUrl(null);
         setWaErrorMessage(null);
-      } else if (data.qr_image || data.qr_raw) {
+      } else if (data.base64) {
         setWaStatus('CONNECTING');
-        setQrCodeUrl(data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.qr_raw)}`);
+        setQrCodeUrl(data.base64);
+        setWaErrorMessage(null);
+      } else if (data.qr_image || data.qr_raw || data.code) {
+        setWaStatus('CONNECTING');
+        const fallbackQr = data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.code || data.qr_raw)}`;
+        setQrCodeUrl(fallbackQr);
         setWaErrorMessage(null);
       } else {
         // Jangan pasang blocking error jika check status awal pending / belum ready;
-        // langsung biarkan waStatus 'DISCONNECTED' agar UI connect & input nomor telepon langsung tampil
+        // langsung biarkan waStatus 'DISCONNECTED' agar UI connect & input nomor telepon langsung tampil.
+        // Jangan sampai ter-overwrite null jika sudah memiliki QR Code.
         setWaStatus('DISCONNECTED');
-        setQrCodeUrl(null);
         setWaErrorMessage(null);
       }
     } catch (err) {
       setWaStatus('DISCONNECTED');
-      setQrCodeUrl(null);
       setWaErrorMessage(null);
     } finally {
       setIsQrLoading(false);

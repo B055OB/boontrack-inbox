@@ -452,11 +452,11 @@ export default function WhatsAppTab({
                     <span>Mengambil token autentikasi dari proxy server...</span>
                   </div>
                 ) : qrCodeUrl ? (
-                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-md text-center space-y-3">
+                  <div className="flex flex-col items-center justify-center text-center space-y-3">
                     <img
                       src={qrCodeUrl}
-                      alt="Backend WhatsApp QR Code"
-                      className="w-44 h-44 mx-auto rounded-lg object-contain"
+                      alt="WhatsApp QR Code"
+                      className="w-56 h-56 object-contain"
                     />
                     <p className="text-[11px] font-bold text-slate-400 font-mono">
                       SESI TENANT: {tenantSlug.toUpperCase()}
@@ -466,7 +466,7 @@ export default function WhatsAppTab({
                   <div className="text-center py-8 space-y-2">
                     <Smartphone className="w-12 h-12 text-slate-300 mx-auto" />
                     <p className="text-xs font-bold text-slate-400">
-                      Sesi belum diinisialisasi
+                      Disediakan WhatsApp
                     </p>
                   </div>
                 )}
