@@ -4,7 +4,7 @@ export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const body = await req.json().catch(() => ({}));
-    const tenantSlug = searchParams.get("tenant") || body.tenant || body.tenant_slug || "growth";
+    const tenantSlug = searchParams.get("tenant") || body.tenant || body.tenant_slug || "onlineboost";
     const rawPhone = body.phone || body.phone_number || body.phoneNumber || searchParams.get("phone") || "";
 
     let cleanPhone = String(rawPhone).replace(/[^0-9]/g, "");
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: "Gateway mengembalikan raw QR string, bukan kode pairing. Pastikan session berstatus SCAN_QR_CODE.",
+            error: "Gateway mengembalikan raw QR string, bukan kode pairing. Pastikan WhatsApp session berstatus SCAN_QR_CODE.",
             detail: code,
           },
           { status: 502 }
@@ -58,23 +58,23 @@ export async function POST(req: NextRequest) {
         tenant_slug: tenantSlug,
         pairing_code: code,
         phone: cleanPhone,
-        session: data.session,
+        instance: data.instance || data.session,
       });
     }
 
-    // Kembalikan status error asli dari WAHA tanpa silent fallback
+    // Kembalikan status error asli dari Evolution API tanpa silent fallback
     return NextResponse.json(
       {
         success: false,
-        error: data.error || data.detail || `Server WAHA Error (${response.status})`,
+        error: data.error || data.detail || `Server Evolution API Error (${response.status})`,
         detail: data.detail || data,
         status_code: response.status,
       },
-      { status: response.status >= 400 ? response.status : 400 }
+      { status: response.status >= 400 ? response.status : 502 }
     );
   } catch (err: any) {
     return NextResponse.json(
-      { success: false, error: err.message || "Gagal menghubungi backend WAHA" },
+      { success: false, error: err.message || "Gagal menghubungi backend Evolution API Gateway" },
       { status: 500 }
     );
   }

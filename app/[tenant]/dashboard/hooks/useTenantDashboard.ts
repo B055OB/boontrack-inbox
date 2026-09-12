@@ -1662,7 +1662,10 @@ export function useTenantDashboard() {
     setPairingCodeResult(null);
 
     try {
-      const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/status?tenant=${encodeURIComponent(tenantSlug)}`);
+      const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
       const data = await res.json();
 
       if (!data.success || data.status === 'DEGRADED') {
@@ -1670,7 +1673,7 @@ export function useTenantDashboard() {
         setQrCodeUrl(null);
         setWaErrorMessage(
           data.disconnect_reason === 'GATEWAY_UNREACHABLE'
-            ? 'BoonTrack WhatsApp Engine belum aktif / offline. QR Code tidak dapat dimuat sampai engine dinyalakan.'
+            ? 'Evolution API v2 belum aktif / offline. QR Code tidak dapat dimuat sampai engine dinyalakan.'
             : 'Layanan BoonTrack WhatsApp Engine sedang dalam pemeliharaan.'
         );
       } else if (data.status === 'CONNECTED') {
@@ -1723,7 +1726,7 @@ export function useTenantDashboard() {
           setPairingCodeResult(rawCode);
         }
       } else {
-        alert(data.error || data.detail || 'Gagal mendapatkan kode pairing dari server WAHA. Periksa status gateway WhatsApp.');
+        alert(data.error || data.detail || 'Gagal mendapatkan kode pairing dari server Evolution API. Periksa status gateway WhatsApp.');
         setPairingCodeResult(null);
       }
     } catch (err) {
