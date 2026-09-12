@@ -20,7 +20,7 @@ export interface ProductItem {
   stock?: number;
   sku?: string;
   is_unlimited?: boolean;
-  type?: 'digital' | 'physical';
+  type?: 'digital' | 'physical' | 'service' | string;
   product_type?: string;
   weight_grams?: number;
   fulfillment_metadata?: any;
@@ -73,7 +73,8 @@ export async function POST(
       promo: promo || '',
       description: description || '',
       download_url: download_url || null,
-      type: type || (body.product_type === 'PHYSICAL' ? 'physical' : 'digital'),
+      type: type || (body.product_type === 'PHYSICAL' ? 'physical' : (body.product_type === 'SERVICE' || category === 'jasa' ? 'service' : 'digital')),
+      product_type: body.product_type || (category === 'fisik' ? 'PHYSICAL' : (category === 'jasa' ? 'SERVICE' : 'DIGITAL')),
       single_page_config: body.single_page_config
         ? {
             ...body.single_page_config,
@@ -292,8 +293,8 @@ export async function GET(
             name: sp.title || `Produk ${idx + 1}`,
             title: sp.title || `Produk ${idx + 1}`,
             slug: sp.slug,
-            category: sp.category || (sp.product_type === 'PHYSICAL' ? 'physical' : 'digital'),
-            product_type: sp.product_type || (sp.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
+            category: sp.category || (sp.product_type === 'PHYSICAL' ? 'physical' : (sp.product_type === 'SERVICE' ? 'jasa' : 'digital')),
+            product_type: sp.product_type || (sp.category === 'fisik' ? 'PHYSICAL' : (sp.category === 'jasa' || sp.category === 'service' ? 'SERVICE' : 'DIGITAL')),
             price: Number(sp.price) || 0,
             promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
             description: sp.description || '',

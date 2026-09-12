@@ -26,7 +26,8 @@ const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'boontrack-media';
 const R2_PUBLIC_URL_BASE = (
   process.env.R2_PUBLIC_URL ||
   process.env.NEXT_PUBLIC_R2_URL ||
-  'https://pub-cdf9b905df884053a60ef8bdb777d463.r2.dev'
+  process.env.NEXT_PUBLIC_ASSET_DOMAIN ||
+  'https://asset.boontrack.com'
 ).replace(/\/+$/, '');
 
 function getR2Client(): S3Client | null {
@@ -138,13 +139,13 @@ export async function POST(req: NextRequest) {
 
     // URL proksi internal yang selalu aman dari blokir DNS ISP lokal
     const localProxyUrl = `/api/v1/media/${storageKey}`;
-    // Jika R2 direct berhasil, gunakan domain R2 publik, atau local proxy yang mem-bypass DNS
-    const finalUrl = localProxyUrl;
+    // Jika R2 direct berhasil, kunci ke canonical asset domain (asset.boontrack.com), fallback ke internal proxy
+    const finalUrl = r2Uploaded ? r2PublicUrl : localProxyUrl;
 
     return NextResponse.json({
       status: 'success',
       url: finalUrl,
-      public_url: finalUrl,
+      public_url: r2PublicUrl,
       r2_url: r2PublicUrl,
       image_url: finalUrl,
       qris_url: isQris ? finalUrl : undefined,

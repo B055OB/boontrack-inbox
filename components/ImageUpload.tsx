@@ -105,10 +105,13 @@ export default function ImageUpload({
   };
 
   const getApiBaseUrl = (): string => {
+    if (typeof window !== 'undefined') {
+      return '';
+    }
     return (
       process.env.NEXT_PUBLIC_API_URL ||
       process.env.NEXT_PUBLIC_CORE_API_URL ||
-      'https://api.boontrack.com'
+      'https://boontrack-core-production.up.railway.app'
     ).replace(/\/+$/, '');
   };
 

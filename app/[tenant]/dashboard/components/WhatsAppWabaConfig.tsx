@@ -43,7 +43,8 @@ export default function WhatsAppWabaConfig({
   const [showAccessToken, setShowAccessToken] = useState(false);
 
   // Read-only Webhook Configuration
-  const webhookCallbackUrl = 'https://api.boontrack.com/webhook/meta/whatsapp';
+  const coreBase = (process.env.NEXT_PUBLIC_CORE_API_URL || process.env.NEXT_PUBLIC_API_URL || 'https://boontrack-core-production.up.railway.app').replace(/\/+$/, '');
+  const webhookCallbackUrl = `${coreBase}/webhook/meta/whatsapp`;
   const webhookVerifyToken = 'boontrack_waba_webhook_verify_token';
 
   // Copy state

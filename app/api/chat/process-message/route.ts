@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
           custom_data: {
             currency: 'IDR',
             value: result.entities.price || 0,
-            content_name: `Kuras Toren ${result.entities.capacity}L`
+            content_name: result.entities.service_name || result.entities.product_name || result.entities.item_name || (result.entities.capacity ? `Layanan ${result.entities.capacity}L` : 'Layanan / Produk')
           }
         })
       }).catch((err) => console.warn('[CAPI Trigger Warning]:', err));

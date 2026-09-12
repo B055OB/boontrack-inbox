@@ -46,6 +46,12 @@ async function fetchConnect(instanceName: string) {
 
 async function createInstance(instanceName: string) {
   const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/create`;
+  const coreBase = (
+    process.env.CORE_API_URL ||
+    process.env.NEXT_PUBLIC_CORE_API_URL ||
+    "https://boontrack-core-production.up.railway.app"
+  ).replace(/\/$/, "");
+
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -56,6 +62,9 @@ async function createInstance(instanceName: string) {
       instanceName,
       integration: "WHATSAPP-BAILEYS",
       qrcode: true,
+      webhook: `${coreBase}/webhook/whatsapp`,
+      webhook_by_events: false,
+      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
     }),
   });
   const data = await res.json().catch(() => ({}));

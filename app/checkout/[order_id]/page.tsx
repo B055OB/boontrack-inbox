@@ -203,8 +203,14 @@ export default function CheckoutPage({ params }: Props) {
   const shippingSubsidy = Number(order?.shipping_subsidy || 0);
   const netShippingCost = Number(order?.net_shipping_cost || Math.max(0, shippingCost - shippingSubsidy));
 
-  const orderProductType = order?.product_type || (order?.shipping_address ? 'PHYSICAL' : 'DIGITAL');
-  const orderRequirements = resolveFulfillmentRequirements(orderProductType);
+  const rawOrderType =
+    order?.product_type ||
+    (order?.shipping_address
+      ? 'PHYSICAL'
+      : order?.booking_date || order?.service_schedule || order?.category === 'jasa'
+      ? 'FIELD_SERVICE'
+      : 'DIGITAL');
+  const orderRequirements = resolveFulfillmentRequirements(rawOrderType);
   const isPaidOrder = order?.status === 'PAID' || order?.status === 'COMPLETED' || order?.status === 'SUCCESS' || order?.status === 'SETTLED';
 
   const fallbackQrisString = STATIC_QRIS;
@@ -215,8 +221,16 @@ export default function CheckoutPage({ params }: Props) {
     ? generateDynamicQRIS(candidateQris, grossAmount)
     : candidateQris;
   const targetWaNumber = getTenantWhatsApp(tenantSlug) || getPlatformWhatsApp();
+
+  const confirmationCallToAction =
+    orderRequirements.strategy === 'SERVICE'
+      ? 'Mohon dicek dan konfirmasi jadwal layanan saya. Terima kasih!'
+      : orderRequirements.strategy === 'PHYSICAL'
+      ? 'Mohon dicek dan proses pengiriman pesanan saya. Terima kasih!'
+      : 'Mohon dicek dan aktivasi akses saya. Terima kasih!';
+
   const waConfirmUrl = `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(
-    `Halo Tim BoonTrack, saya sudah melakukan pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Produk Digital'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\nMohon dicek dan aktivasi akses saya. Terima kasih!`
+    `Halo Tim BoonTrack, saya sudah melakukan pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Pesanan'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n${confirmationCallToAction}`
   )}`;
 
   return (

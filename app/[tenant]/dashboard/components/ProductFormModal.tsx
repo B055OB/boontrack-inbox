@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { Package, X, Save, Truck, Link as LinkIcon, Key, FileText, Info, RefreshCw } from 'lucide-react';
+import { Package, X, Save, Truck, Link as LinkIcon, Key, FileText, Info, RefreshCw, Calendar, Clock } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
 import {
   ProductItem,
@@ -64,11 +64,11 @@ export default function ProductFormModal({
           ...prev,
           slug: currentSlug,
           product_type: defaultType,
-          category: reqs.requiresShipping ? 'fisik' : 'digital',
+          category: reqs.strategy === 'PHYSICAL' ? 'fisik' : reqs.strategy === 'SERVICE' ? 'jasa' : 'digital',
           is_unlimited:
             prev.is_unlimited !== undefined
               ? prev.is_unlimited
-              : !reqs.requiresShipping,
+              : reqs.strategy === 'DIGITAL',
         };
       });
     }
@@ -80,6 +80,8 @@ export default function ProductFormModal({
     productForm.product_type ||
     (!editingProductId
       ? mapBusinessCategoryToProductType(storeCategory)
+      : productForm.category === 'jasa'
+      ? 'FIELD_SERVICE'
       : isDigitalOnly || productForm.category === 'digital'
       ? 'DIGITAL'
       : 'PHYSICAL');
@@ -96,8 +98,8 @@ export default function ProductFormModal({
     setProductForm((prev) => ({
       ...prev,
       product_type: newType,
-      category: reqs.requiresShipping ? 'fisik' : 'digital',
-      is_unlimited: reqs.requiresShipping ? false : (prev.is_unlimited ?? true),
+      category: reqs.strategy === 'PHYSICAL' ? 'fisik' : reqs.strategy === 'SERVICE' ? 'jasa' : 'digital',
+      is_unlimited: reqs.strategy === 'DIGITAL' ? (prev.is_unlimited ?? true) : false,
       weight_grams: reqs.requiresWeight ? (prev.weight_grams || 1000) : undefined,
     }));
   };
@@ -427,6 +429,24 @@ export default function ProductFormModal({
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-600 leading-relaxed"
                 />
               </div>
+            </div>
+          )}
+
+          {/* 7b. SYARAT FULFILLMENT: Layanan Jasa & Booking (Hanya jika strategy === 'SERVICE') */}
+          {requirements.strategy === 'SERVICE' && (
+            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
+                  <Clock className="w-4 h-4 text-emerald-700" />
+                  <span>Fulfillment Layanan Jasa (Booking Jadwal & Area)</span>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                  Reservasi Jadwal & Kunjungan
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Produk ini berupa jasa/layanan. Pembeli akan dipandu untuk melengkapi jadwal reservasi dan area pengerjaan, tanpa pengiriman paket fisik dan tanpa link download digital.
+              </p>
             </div>
           )}
 

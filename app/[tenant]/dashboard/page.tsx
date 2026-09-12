@@ -580,6 +580,8 @@ export default function TenantDashboardPage() {
       {/* BOONPILOT AI COPILOT FLOATING WIDGET */}
       <BoonPilotWidget
         tenantSlug={tenantSlug}
+        storeCategory={storeCategory}
+        storeName={displayName}
         isProductsEmpty={products.length === 0}
         onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
         onOpenNewProduct={openNewProductModal}

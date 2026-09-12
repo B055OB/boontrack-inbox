@@ -33,8 +33,9 @@ async function fetchFromR2Direct(joinedKey: string): Promise<Buffer | null> {
   return new Promise((resolve) => {
     const chosenIp = CLOUDFLARE_IPS[0];
     const req = https.get(
-      `https://pub-cdf9b905df884053a60ef8bdb777d463.r2.dev/${joinedKey}`,
+      `https://asset.boontrack.com/${joinedKey}`,
       {
+        headers: { Host: 'asset.boontrack.com' },
         lookup: (hostname, opts, cb) => {
           const callback = typeof opts === 'function' ? opts : cb;
           if (opts && typeof opts === 'object' && (opts as any).all) {
@@ -94,7 +95,6 @@ export async function GET(req: NextRequest, context: RouteContext) {
   // 2. Coba ambil dari Supabase Storage (store-assets)
   const supabasePaths = [
     `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/store-assets/${joinedKey}`,
-    `https://mpluzajlzpregmjwpjqr.supabase.co/storage/v1/object/public/store-assets/ombudi/${joinedKey.split('/').pop()}`,
   ];
 
   for (const sbUrl of supabasePaths) {

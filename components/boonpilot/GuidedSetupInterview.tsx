@@ -2,174 +2,62 @@
 
 import React, { useState } from 'react';
 import {
-  Sparkles,
-  ArrowRight,
   ArrowLeft,
   Check,
-  RotateCcw,
   Bot,
-  ShieldAlert,
-  ChevronRight,
-  HelpCircle,
-  Clock,
-  DollarSign,
-  MapPin,
-  FileCheck
+  LayoutGrid,
 } from 'lucide-react';
-import type { BusinessConfigurationProposal, KnowledgeProposalItem } from '@/types/boonpilot';
+import type { BusinessConfigurationProposal } from '@/types/boonpilot';
+import {
+  BusinessTemplateCode,
+  TenantRuntimeContext,
+  resolveBusinessTemplate,
+  BUSINESS_TEMPLATES,
+  InterviewAnswers,
+} from '@/lib/boonpilotTemplates';
 import ProposalPreviewCard from './ProposalPreviewCard';
 
 interface GuidedSetupInterviewProps {
   tenantSlug: string;
+  context?: TenantRuntimeContext;
   onFinish?: (proposal: BusinessConfigurationProposal) => void;
   onCancel?: () => void;
 }
 
-interface InterviewAnswers {
-  businessType: string;
-  businessDescription: string;
-  paymentTiming: string;
-  paymentMethods: string[];
-  bookingRequirements: string[];
-  serviceArea: string;
-  warrantyPolicy: string;
-  objectionHandling: string;
-}
-
-const DEFAULT_ANSWERS: InterviewAnswers = {
-  businessType: 'Jasa Cuci Toren & Pembersihan Pipa Saluran Air',
-  businessDescription: 'Layanan spesialis kuras toren, pembersihan tandon air, dan instalasi pipa bebas lumut & endapan untuk rumah dan kantor.',
-  paymentTiming: 'Setelah pengerjaan selesai di tempat (Pelunasan Pasca-Layanan)',
-  paymentMethods: ['QRIS Otomatis (0% MDR)', 'Tunai (Cash ke Teknisi)'],
-  bookingRequirements: ['Nama Lengkap', 'Nomor WhatsApp', 'Alamat Lengkap / Share Loc', 'Kapasitas / Tipe Toren', 'Pilihan Tanggal & Jam'],
-  serviceArea: 'Area Jabodetabek & Sekitarnya',
-  warrantyPolicy: 'Garansi 30 hari pengerjaan tuntas & anti bocor gratis cek ulang.',
-  objectionHandling: 'Jelaskan bahwa tarif sebanding dengan teknisi berpengalaman, peralatan modern, bahan ramah lingkungan, garansi 30 hari, dan jaminan air bersih higienis.',
-};
-
 export default function GuidedSetupInterview({
   tenantSlug,
+  context,
   onFinish,
   onCancel,
 }: GuidedSetupInterviewProps) {
+  // Resolve initial template from context
+  const initialTemplateDef = resolveBusinessTemplate(
+    context?.templateCode || context?.storeCategory
+  );
+
+  const [selectedTemplateCode, setSelectedTemplateCode] = useState<BusinessTemplateCode>(
+    initialTemplateDef.code
+  );
+
+  const activeTemplate = BUSINESS_TEMPLATES[selectedTemplateCode] || BUSINESS_TEMPLATES.PRODUCT;
+
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [answers, setAnswers] = useState<InterviewAnswers>(DEFAULT_ANSWERS);
+  const [answers, setAnswers] = useState<InterviewAnswers>(activeTemplate.defaultAnswers);
   const [generatedProposal, setGeneratedProposal] = useState<BusinessConfigurationProposal | null>(null);
 
-  // Helper to compile proposal from answers
-  const compileProposal = (ans: InterviewAnswers): BusinessConfigurationProposal => {
-    const knowledgeItems: KnowledgeProposalItem[] = [
-      {
-        id: `kn_${Date.now()}_1`,
-        category: 'FACT',
-        title: 'Area & Wilayah Layanan',
-        content: `Cakupan wilayah pengerjaan layanan meliputi: ${ans.serviceArea}.`,
-        priority: 10,
-      },
-      {
-        id: `kn_${Date.now()}_2`,
-        category: 'POLICY',
-        title: 'Ketentuan Garansi Layanan',
-        content: ans.warrantyPolicy,
-        priority: 9,
-      },
-      {
-        id: `kn_${Date.now()}_3`,
-        category: 'OBJECTION',
-        title: 'Penanganan Keberatan Harga Mahal',
-        content: ans.objectionHandling,
-        priority: 8,
-      },
-      {
-        id: `kn_${Date.now()}_4`,
-        category: 'RULE',
-        title: 'Ketentuan Waktu & Metode Pelunasan',
-        content: `Pelanggan membayar: ${ans.paymentTiming} menggunakan metode: ${ans.paymentMethods.join(', ')}.`,
-        priority: 7,
-      },
-      {
-        id: `kn_${Date.now()}_5`,
-        category: 'CONVERSION',
-        title: 'Pemicu Booking & Urgensi Jadwal',
-        content: 'Slot teknisi terbatas setiap hari untuk memastikan ketelitian pengerjaan. Segera amankan jadwal booking Anda hari ini.',
-        priority: 6,
-      },
-    ];
-
-    const proposal: BusinessConfigurationProposal = {
-      id: `prop_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      tenant_slug: tenantSlug,
-      template_code: 'FIELD_SERVICE',
-      business_profile: {
-        store_name: ans.businessType,
-        bio: ans.businessDescription,
-        business_category: 'FIELD_SERVICE',
-        vertical_type: 'FIELD_SERVICE',
-        location_city: ans.serviceArea,
-      },
-      persona: {
-        ai_name: 'BoonPilot Service Consultant',
-        tone: 'consultative',
-        system_prompt: `Kamu adalah asisten customer service dan sales consultant untuk ${ans.businessType}. ` +
-          `Jelaskan manfaat pengerjaan profesional, pandu pengumpulan data booking (${ans.bookingRequirements.join(', ')}), ` +
-          `serta informasikan bahwa pembayaran dilakukan ${ans.paymentTiming}. Selalu tangani keberatan harga dengan: "${ans.objectionHandling}".`,
-        greeting_message: `Halo kak! Terima kasih telah menghubungi kami. Kami siap membantu kebutuhan ${ans.businessType}. Ada yang bisa kami bantu jadwalkan hari ini?`,
-        closing_style: 'consultative_closing',
-        do_rules: [
-          'Selalu tanyakan kapasitas toren/unit dan alamat lengkap sebelum mengonfirmasi ketersediaan slot',
-          'Sampaikan garansi pengerjaan 30 hari untuk menumbuhkan kepercayaan',
-        ],
-        dont_rules: [
-          'DILARANG meminta transfer dana ke rekening pribadi di luar metode resmi yang disetujui',
-          'DILARANG menjanjikan jam kedatangan pasti tanpa konfirmasi jadwal teknisi lapangan',
-        ],
-      },
-      knowledge: knowledgeItems,
-      booking_schema: {
-        enabled: true,
-        slot_duration_minutes: 90,
-        buffer_minutes: 30,
-        operational_days: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'],
-        operational_hours: {
-          start: '08:00',
-          end: '17:00',
-        },
-        service_areas: [ans.serviceArea],
-        requires_technician_assignment: true,
-        auto_confirmation: false,
-      },
-      conversion_rules: {
-        impulse_buying_prompts: [
-          'Booking sekarang untuk dapatkan gratis inspeksi pipa & filter saluran air!',
-        ],
-        no_faq_mode: true,
-      },
-      payment_rules: {
-        enable_qris: ans.paymentMethods.some((m) => m.toLowerCase().includes('qris')),
-        enable_manual_transfer: ans.paymentMethods.some(
-          (m) => m.toLowerCase().includes('tunai') || m.toLowerCase().includes('transfer')
-        ),
-        qris_reader_automation: true,
-        require_unique_code: true,
-      },
-      fulfillment_rules: {
-        requires_shipping: false,
-        instant_couriers_enabled: false,
-      },
-      status: 'VALIDATED', // validated schema ready for preview
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    return proposal;
+  // When user switches business template, update defaults seamlessly
+  const handleSelectTemplate = (code: BusinessTemplateCode) => {
+    setSelectedTemplateCode(code);
+    const newDef = BUSINESS_TEMPLATES[code];
+    setAnswers(newDef.defaultAnswers);
   };
 
   const handleNext = () => {
     if (currentStep < 5) {
       setCurrentStep((prev) => prev + 1);
     } else {
-      // Step 5 completed -> generate proposal preview
-      const prop = compileProposal(answers);
+      // Step 5 completed -> generate proposal preview using template compiler
+      const prop = activeTemplate.compileProposal(tenantSlug, answers, context);
       setGeneratedProposal(prop);
     }
   };
@@ -199,21 +87,18 @@ export default function GuidedSetupInterview({
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 block">
-              {generatedProposal ? 'Preview & Publish' : `Langkah ${currentStep} dari 5`}
-            </span>
-            <h4 className="text-xs font-black text-slate-900 leading-none">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 block">
+                {generatedProposal ? 'Preview & Publish' : `Langkah ${currentStep} dari 5`}
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-bold border border-blue-200/60">
+                {activeTemplate.badge}
+              </span>
+            </div>
+            <h4 className="text-xs font-black text-slate-900 leading-none mt-0.5">
               {generatedProposal
                 ? 'Konfirmasi Konfigurasi Toko'
-                : currentStep === 1
-                ? 'Jenis Bisnis & Deskripsi'
-                : currentStep === 2
-                ? 'Alur Transaksi & Waktu Bayar'
-                : currentStep === 3
-                ? 'Metode Pembayaran'
-                : currentStep === 4
-                ? 'Kebutuhan Data Booking'
-                : 'Area Layanan & Garansi'}
+                : activeTemplate.stepTitles[currentStep - 1]}
             </h4>
           </div>
         </div>
@@ -258,63 +143,67 @@ export default function GuidedSetupInterview({
                 <Bot className="w-3.5 h-3.5" />
               </div>
               <div className="bg-white border border-slate-200/90 rounded-2xl rounded-tl-xs px-3.5 py-2.5 text-xs text-slate-800 leading-relaxed shadow-2xs">
-                {currentStep === 1 && (
-                  <p>
-                    👋 <strong>Selamat datang di BoonPilot Guided Setup!</strong>
-                    <br />
-                    Mari siapkan konfigurasi bisnis Anda dalam beberapa langkah ringkas. Pertama, apa jenis bisnis / layanan jasa yang Anda tawarkan?
-                  </p>
-                )}
-                {currentStep === 2 && (
-                  <p>
-                    ⏱️ <strong>Alur Pembayaran Pelanggan:</strong>
-                    <br />
-                    Kapan biasanya pelanggan melakukan pembayaran untuk jasa Anda?
-                  </p>
-                )}
-                {currentStep === 3 && (
-                  <p>
-                    💳 <strong>Metode Pembayaran yang Diterima:</strong>
-                    <br />
-                    Metode pembayaran apa saja yang ingin Anda aktifkan di sistem dan bot WhatsApp?
-                  </p>
-                )}
-                {currentStep === 4 && (
-                  <p>
-                    📝 <strong>Kebutuhan Data Booking Pelanggan:</strong>
-                    <br />
-                    Informasi apa saja yang wajib dikumpulkan oleh bot CS saat pelanggan ingin menjadwalkan kunjungan teknisi?
-                  </p>
-                )}
-                {currentStep === 5 && (
-                  <p>
-                    🛡️ <strong>Area Layanan, Garansi &amp; Penanganan Keberatan:</strong>
-                    <br />
-                    Tentukan jangkauan area kerja Anda, masa garansi, serta cara bot menjawab jika pembeli merasa harga jasa kemahalan (*objection handling*).
-                  </p>
-                )}
+                <p>
+                  {currentStep === 1 && (
+                    <>
+                      👋 <strong>BoonPilot Setup ({activeTemplate.name}):</strong>
+                      <br />
+                    </>
+                  )}
+                  {activeTemplate.stepBubbles[currentStep - 1]}
+                </p>
               </div>
             </div>
 
-            {/* Step 1: Jenis Bisnis & Deskripsi */}
+            {/* Step 1: Template Selection & Jenis Bisnis */}
             {currentStep === 1 && (
               <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+                {/* Template Switcher */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                      <LayoutGrid className="w-3 h-3 text-blue-600" />
+                      <span>Model Bisnis / Template Toko:</span>
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 mb-3">
+                    {(Object.keys(BUSINESS_TEMPLATES) as BusinessTemplateCode[]).map((tCode) => {
+                      const tDef = BUSINESS_TEMPLATES[tCode];
+                      const isSelected = selectedTemplateCode === tCode;
+                      return (
+                        <button
+                          key={tCode}
+                          type="button"
+                          onClick={() => handleSelectTemplate(tCode)}
+                          className={`px-2 py-1.5 rounded-xl text-left border transition cursor-pointer flex flex-col ${
+                            isSelected
+                              ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-2xs'
+                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-black">{tDef.name}</span>
+                            {isSelected && <Check className="w-3 h-3 text-blue-600 shrink-0" />}
+                          </div>
+                          <span className="text-[9px] text-slate-500 line-clamp-1">{tDef.badge}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Presets for active template */}
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Pilih Rekomendasi atau Ketik Jenis Bisnis:
+                    Pilih Rekomendasi atau Ketik Nama Bisnis:
                   </label>
                   <div className="flex flex-wrap gap-1.5 mb-2.5">
-                    {[
-                      'Jasa Cuci Toren & Saluran Air',
-                      'Servis & Cuci AC Rumah/Kantor',
-                      'Home Cleaning & Disinfeksi',
-                      'Teknisi Listrik & Instalasi Pipa',
-                    ].map((preset) => (
+                    {activeTemplate.step1Presets.map((preset) => (
                       <button
                         key={preset}
                         type="button"
                         onClick={() => setAnswers((prev) => ({ ...prev, businessType: preset }))}
-                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold border transition cursor-pointer text-left ${
+                        className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition cursor-pointer text-left ${
                           answers.businessType === preset
                             ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold'
                             : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
@@ -329,14 +218,14 @@ export default function GuidedSetupInterview({
                     type="text"
                     value={answers.businessType}
                     onChange={(e) => setAnswers({ ...answers, businessType: e.target.value })}
-                    placeholder="Nama / Jenis Bisnis Anda..."
+                    placeholder="Nama Toko / Layanan..."
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Deskripsi Singkat Layanan:
+                    Deskripsi Singkat Bisnis:
                   </label>
                   <textarea
                     rows={2}
@@ -354,20 +243,7 @@ export default function GuidedSetupInterview({
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">
                   Pilih Waktu Pelunasan yang Sesuai:
                 </label>
-                {[
-                  {
-                    title: 'Setelah pengerjaan selesai di tempat (Pelunasan Pasca-Layanan)',
-                    desc: 'Pelanggan baru membayar saat teknisi selesai bekerja & hasil telah dicek.',
-                  },
-                  {
-                    title: 'DP 50% di awal, pelunasan setelah selesai',
-                    desc: 'Uang muka diperlukan untuk mengunci jadwal & ongkos jalan teknisi.',
-                  },
-                  {
-                    title: 'Lunas di awal saat booking jadwal',
-                    desc: 'Pelanggan membayar penuh saat mengonfirmasi reservasi slot waktu.',
-                  },
-                ].map((opt) => {
+                {activeTemplate.paymentTimingOptions.map((opt) => {
                   const isSelected = answers.paymentTiming === opt.title;
                   return (
                     <button
@@ -403,20 +279,7 @@ export default function GuidedSetupInterview({
                 <label className="text-[11px] font-bold text-slate-700 block">
                   Pilih Metode Pembayaran yang Diterima (Multi-pilihan):
                 </label>
-                {[
-                  {
-                    name: 'QRIS Otomatis (0% MDR)',
-                    hint: 'Scan QRIS langsung ke rekening Anda tanpa potongan biaya pihak ketiga.',
-                  },
-                  {
-                    name: 'Tunai (Cash ke Teknisi)',
-                    hint: 'Pelanggan membayar langsung dengan uang tunai kepada staf di lokasi.',
-                  },
-                  {
-                    name: 'Transfer Bank Manual',
-                    hint: 'Transfer langsung via BCA, Mandiri, BRI, atau BNI dengan kode unik.',
-                  },
-                ].map((method) => {
+                {activeTemplate.paymentMethodOptions.map((method) => {
                   const isChecked = answers.paymentMethods.includes(method.name);
                   return (
                     <button
@@ -458,22 +321,15 @@ export default function GuidedSetupInterview({
               </div>
             )}
 
-            {/* Step 4: Data Kebutuhan Booking */}
+            {/* Step 4: Data Kebutuhan Transaksi / Pengiriman / Booking */}
             {currentStep === 4 && (
               <div className="space-y-2.5 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
                 <label className="text-[11px] font-bold text-slate-700 block">
-                  Field Data yang Diminta Bot CS Saat Pelanggan Reservasi:
+                  {activeTemplate.step4Label}
                 </label>
                 <div className="space-y-1.5">
-                  {[
-                    'Nama Lengkap',
-                    'Nomor WhatsApp',
-                    'Alamat Lengkap / Share Loc',
-                    'Kapasitas / Tipe Toren',
-                    'Pilihan Tanggal & Jam',
-                    'Catatan / Foto Lokasi Toren',
-                  ].map((field) => {
-                    const isChecked = answers.bookingRequirements.includes(field);
+                  {activeTemplate.step4Options.map((field) => {
+                    const isChecked = answers.step4Requirements.includes(field);
                     return (
                       <button
                         key={field}
@@ -482,12 +338,12 @@ export default function GuidedSetupInterview({
                           if (isChecked) {
                             setAnswers({
                               ...answers,
-                              bookingRequirements: answers.bookingRequirements.filter((f) => f !== field),
+                              step4Requirements: answers.step4Requirements.filter((f) => f !== field),
                             });
                           } else {
                             setAnswers({
                               ...answers,
-                              bookingRequirements: [...answers.bookingRequirements, field],
+                              step4Requirements: [...answers.step4Requirements, field],
                             });
                           }
                         }}
@@ -506,36 +362,36 @@ export default function GuidedSetupInterview({
               </div>
             )}
 
-            {/* Step 5: Area Layanan, Garansi & Objection Handling */}
+            {/* Step 5: Area / Asal, Kebijakan Garansi & Penanganan Keberatan */}
             {currentStep === 5 && (
               <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Cakupan Area Layanan:
+                    {activeTemplate.step5Labels.areaOrOrigin}
                   </label>
                   <input
                     type="text"
-                    value={answers.serviceArea}
-                    onChange={(e) => setAnswers({ ...answers, serviceArea: e.target.value })}
+                    value={answers.serviceAreaOrCity}
+                    onChange={(e) => setAnswers({ ...answers, serviceAreaOrCity: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Ketentuan Garansi Pekerjaan:
+                    {activeTemplate.step5Labels.guaranteeOrPolicy}
                   </label>
                   <input
                     type="text"
-                    value={answers.warrantyPolicy}
-                    onChange={(e) => setAnswers({ ...answers, warrantyPolicy: e.target.value })}
+                    value={answers.guaranteeOrReturnPolicy}
+                    onChange={(e) => setAnswers({ ...answers, guaranteeOrReturnPolicy: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Jawaban Jika Pembeli Mengeluh Harga Mahal (Objection):
+                    {activeTemplate.step5Labels.objection}
                   </label>
                   <textarea
                     rows={2}
@@ -550,24 +406,23 @@ export default function GuidedSetupInterview({
         )}
       </div>
 
-      {/* Footer Actions */}
+      {/* Step Footer Navigation */}
       {!generatedProposal && (
-        <div className="p-3 bg-white border-t border-slate-200 shrink-0 flex items-center justify-between gap-2">
+        <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
           <button
             type="button"
             onClick={handleBack}
-            className="py-2.5 px-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold transition cursor-pointer"
+            className="px-3 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
           >
-            {currentStep === 1 ? 'Batalkan' : 'Sebelumnya'}
+            {currentStep === 1 ? 'Batal' : 'Kembali'}
           </button>
 
           <button
             type="button"
             onClick={handleNext}
-            className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer"
+            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 transition cursor-pointer"
           >
-            <span>{currentStep === 5 ? 'Selesaikan & Buat Proposal' : 'Langkah Selanjutnya'}</span>
-            <ChevronRight className="w-4 h-4" />
+            <span>{currentStep === 5 ? 'Buat Proposal' : 'Lanjut'}</span>
           </button>
         </div>
       )}

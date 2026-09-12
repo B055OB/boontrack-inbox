@@ -52,6 +52,8 @@ export interface ChatMessage {
 
 interface BoonPilotWidgetProps {
   tenantSlug?: string | string[];
+  storeCategory?: string;
+  storeName?: string;
   isProductsEmpty?: boolean;
   onOpenBulkImport?: () => void;
   onOpenNewProduct?: () => void;
@@ -219,6 +221,8 @@ function MarkdownContent({ content }: { content: string }) {
 
 export default function BoonPilotWidget({
   tenantSlug,
+  storeCategory,
+  storeName,
   isProductsEmpty = false,
   onOpenBulkImport,
   onOpenNewProduct,
@@ -229,7 +233,7 @@ export default function BoonPilotWidget({
 }: BoonPilotWidgetProps) {
   const normalizedSlug = Array.isArray(tenantSlug)
     ? tenantSlug[0]
-    : tenantSlug || 'onlineboost';
+    : tenantSlug || '';
 
   const [isOpen, setIsOpen] = useState(false);
   const [activeMode, setActiveMode] = useState<'chat' | 'guided_setup'>('chat');
@@ -706,6 +710,12 @@ export default function BoonPilotWidget({
             <div className="flex-1 overflow-hidden flex flex-col">
               <GuidedSetupInterview
                 tenantSlug={normalizedSlug}
+                context={{
+                  tenantSlug: normalizedSlug,
+                  storeCategory,
+                  storeName,
+                  productsCount,
+                }}
                 onFinish={(publishedProposal) => {
                   const successMsg: ChatMessage = {
                     id: `ast_${Date.now()}`,

@@ -238,7 +238,10 @@ function SingleProductContent() {
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
 
   // Resolusi Deterministik via Fulfillment Requirements (Boundary Strategy)
-  const productType: ProductType = product.product_type || (product.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL');
+  const productType: ProductType = product.product_type || (
+    product.category === 'fisik' ? 'PHYSICAL' :
+    (product.category === 'jasa' || product.category === 'service' ? 'SERVICE' : 'DIGITAL')
+  );
   const requirements = resolveFulfillmentRequirements(productType);
   const requiresShipping = requirements.requiresShipping;
   const requiresAddress = requirements.requiresAddress;

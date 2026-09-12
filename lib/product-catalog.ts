@@ -66,7 +66,18 @@ export interface SinglePageConfig {
   whatsapp_number?: string;
 }
 
-export type ProductType = 'PHYSICAL' | 'DIGITAL' | 'FOOD' | 'FIELD_SERVICE' | 'PROFESSIONAL_SERVICE' | 'AGENCY';
+export type ProductType =
+  | 'PHYSICAL'
+  | 'DIGITAL'
+  | 'FOOD'
+  | 'LOCAL_SERVICE'
+  | 'FIELD_SERVICE'
+  | 'PROFESSIONAL_SERVICE'
+  | 'SERVICE'
+  | 'AGENCY'
+  | 'CREATOR';
+
+export type FulfillmentStrategy = 'PHYSICAL' | 'DIGITAL' | 'SERVICE';
 
 export interface FulfillmentMetadata {
   delivery_type?: 'DOWNLOAD_LINK' | 'LICENSE_KEY' | 'BRIEF_FORM';
@@ -77,34 +88,58 @@ export interface FulfillmentMetadata {
 }
 
 export interface FulfillmentRequirements {
+  strategy: FulfillmentStrategy;
   requiresAddress: boolean;
   requiresShipping: boolean;
   requiresWeight: boolean;
   requiresDeliveryPayload: boolean;
+  requiresServiceSchedule: boolean;
+  requiresBooking: boolean;
 }
 
 export function resolveFulfillmentRequirements(productType?: ProductType | string): FulfillmentRequirements {
-  const normType = (productType || '').toUpperCase();
+  const normType = (productType || '').toUpperCase().trim();
   switch (normType) {
     case 'PHYSICAL':
     case 'FOOD':
     case 'FISIK':
       return {
+        strategy: 'PHYSICAL',
         requiresAddress: true,
         requiresShipping: true,
         requiresWeight: true,
         requiresDeliveryPayload: false,
+        requiresServiceSchedule: false,
+        requiresBooking: false,
+      };
+    case 'FIELD_SERVICE':
+    case 'LOCAL_SERVICE':
+    case 'SERVICE':
+    case 'PROFESSIONAL_SERVICE':
+    case 'AGENCY':
+    case 'JASA':
+      return {
+        strategy: 'SERVICE',
+        requiresAddress: true,
+        requiresShipping: false,
+        requiresWeight: false,
+        requiresDeliveryPayload: false,
+        requiresServiceSchedule: true,
+        requiresBooking: true,
       };
     case 'DIGITAL':
-    case 'AGENCY':
-    case 'PROFESSIONAL_SERVICE':
-    case 'FIELD_SERVICE':
+    case 'CREATOR':
+    case 'ECOURSE':
+    case 'COURSE':
     default:
       return {
+        strategy: 'DIGITAL',
         requiresAddress: false,
         requiresShipping: false,
         requiresWeight: false,
         requiresDeliveryPayload: true,
+        requiresServiceSchedule: false,
+        requiresBooking: false,
       };
   }
 }
