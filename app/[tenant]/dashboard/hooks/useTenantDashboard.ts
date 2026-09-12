@@ -1679,26 +1679,16 @@ export function useTenantDashboard() {
         setQrCodeUrl(data.qr_image || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.qr_raw)}`);
         setWaErrorMessage(null);
       } else {
-        // Jangan kunci ke DEGRADED agar form pairing code dan tombol refresh tetap tampil
+        // Jangan pasang blocking error jika check status awal pending / belum ready;
+        // langsung biarkan waStatus 'DISCONNECTED' agar UI connect & input nomor telepon langsung tampil
         setWaStatus('DISCONNECTED');
         setQrCodeUrl(null);
-        if (!data.success) {
-          setWaErrorMessage(
-            data.error ||
-            data.detail ||
-            (data.disconnect_reason === 'GATEWAY_UNREACHABLE'
-              ? 'Evolution API v2 belum siap atau sedang menghubungkan ulang.'
-              : 'Sesi WhatsApp belum terhubung.')
-          );
-        } else {
-          setWaErrorMessage(null);
-        }
+        setWaErrorMessage(null);
       }
     } catch (err) {
-      // Jangan kunci ke DEGRADED
       setWaStatus('DISCONNECTED');
       setQrCodeUrl(null);
-      setWaErrorMessage('Koneksi ke gateway WhatsApp belum tersambung.');
+      setWaErrorMessage(null);
     } finally {
       setIsQrLoading(false);
     }
