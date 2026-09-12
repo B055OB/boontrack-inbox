@@ -118,7 +118,9 @@ export async function GET(
           webhook_verified: false,
         },
         qris_image_url: metadata.qris_image_url || metadata.qris_url || null,
-        logo_url: metadata.logo_url || null,
+        logo_url: metadata.logo_url || metadata.store_logo_url || metadata.avatar_url || tenantRow.logo_url || tenantRow.avatar_url || null,
+        store_logo_url: metadata.store_logo_url || metadata.logo_url || metadata.avatar_url || null,
+        avatar_url: metadata.avatar_url || metadata.logo_url || null,
         bio: metadata.bio || null,
         whatsapp_number: metadata.whatsapp_number || metadata.whatsapp || null,
         faqs: Array.isArray(metadata.faqs)
@@ -207,6 +209,8 @@ export async function PUT(
       };
     }
 
+    const effectiveLogo = logo_url || body.store_logo_url || body.avatar_url;
+
     const updatedMetadata = {
       ...(existing.metadata || {}),
       ...(bot_strategy ? { bot_strategy } : {}),
@@ -226,7 +230,7 @@ export async function PUT(
         : (template ? { theme: { ...(existing.metadata?.theme || {}), template } } : {})),
       ...(updatedProposal ? { boonpilot_proposal: updatedProposal, boonpilot_configuration: updatedProposal } : {}),
       ...(qris_image_url !== undefined ? { qris_image_url, qris_url: qris_image_url } : {}),
-      ...(logo_url !== undefined ? { logo_url } : {}),
+      ...(effectiveLogo !== undefined ? { logo_url: effectiveLogo, store_logo_url: effectiveLogo, avatar_url: effectiveLogo } : {}),
       ...(bio !== undefined ? { bio } : {}),
       ...(whatsapp !== undefined ? { whatsapp_number: whatsapp, whatsapp } : {}),
       ...(whatsapp_number !== undefined ? { whatsapp_number, whatsapp: whatsapp_number } : {}),

@@ -44,7 +44,10 @@ interface MicrositeBioTemplateProps {
   storeName: string;
   displayName: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tenant?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tenantMetadata: any;
+  storeLogoUrl?: string;
   storeProducts: Product[];
   dynamicQuickReplies: string[];
   chatEnabled: boolean;
@@ -57,7 +60,9 @@ export default function MicrositeBioTemplate({
   tenantSlug,
   storeName,
   displayName,
+  tenant,
   tenantMetadata,
+  storeLogoUrl,
   storeProducts,
   dynamicQuickReplies,
   chatEnabled,
@@ -65,11 +70,18 @@ export default function MicrositeBioTemplate({
   onOutboundClick,
 }: MicrositeBioTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
-  const displayAvatar =
-    tenantMetadata?.store_logo_url ||
+  const rawLogo =
+    storeLogoUrl ||
+    tenant?.metadata?.logo_url ||
+    tenant?.metadata?.store_logo_url ||
+    tenant?.metadata?.avatar_url ||
     tenantMetadata?.logo_url ||
+    tenantMetadata?.store_logo_url ||
     tenantMetadata?.avatar_url ||
+    tenant?.logo_url ||
+    tenant?.avatar_url ||
     '/logo.png';
+  const displayAvatar = sanitizeImageUrl(rawLogo) || rawLogo;
   const [avatarError, setAvatarError] = useState(false);
 
   const initials =

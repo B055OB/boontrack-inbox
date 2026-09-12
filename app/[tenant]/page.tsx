@@ -196,6 +196,7 @@ export default function TenantStorefrontPage() {
   const displayName = tenantSlug.replace(/[-_]/g, " ");
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+  const [tenant, setTenant] = useState<any>(null);
   const [tenantMetadata, setTenantMetadata] = useState<any>(null);
   const [tenantCategory, setTenantCategory] = useState<string>('');
   const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">("checking");
@@ -302,7 +303,7 @@ export default function TenantStorefrontPage() {
         const supabase = getSupabase();
         const { data: tenantRow, error: dbErr } = await supabase
           .from("tenants")
-          .select("id, slug, name, category, metadata")
+          .select("*")
           .eq("slug", tenantSlug)
           .maybeSingle();
 
@@ -313,8 +314,9 @@ export default function TenantStorefrontPage() {
               const fbData = await fallbackRes.json();
               if (fbData?.success && fbData?.settings) {
                 if (isMounted) {
+                  setTenant(fbData.settings);
                   setStoreName(fbData.settings.name || displayName);
-                  setTenantMetadata(fbData.settings);
+                  setTenantMetadata(fbData.settings.metadata || fbData.settings);
                   const rawProds = fbData.settings.products;
                   const prods = Array.isArray(rawProds) ? rawProds : [];
                   setStoreProducts(prods.filter(Boolean).map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx)));
@@ -327,11 +329,15 @@ export default function TenantStorefrontPage() {
             console.warn("[Storefront] Fallback settings fetch failed:", fbErr);
           }
 
-          if (isMounted) setStoreStatus("not_found");
+          if (isMounted) {
+            setTenant(null);
+            setStoreStatus("not_found");
+          }
           return;
         }
 
         if (isMounted) {
+          setTenant(tenantRow);
           setStoreName(tenantRow.name || displayName);
           setTenantMetadata(tenantRow.metadata || null);
           if (tenantRow.category) setTenantCategory(tenantRow.category);
@@ -346,6 +352,7 @@ export default function TenantStorefrontPage() {
       } catch (err) {
         console.error("[Storefront] Storefront load error:", err);
         if (isMounted) {
+          setTenant(null);
           setStoreName(displayName || "Toko");
           setTenantMetadata(null);
           setStoreProducts([]);
@@ -571,6 +578,21 @@ export default function TenantStorefrontPage() {
   const currentTemplate = rawTemplate === 'microsite' ? 'microsite' : (rawTemplate === 'personal' ? 'personal' : 'default');
   const isChatEnabled = currentTheme.chat_enabled !== false;
 
+  // Resolusi logo toko dengan prioritas terlengkap
+  const activeLogo =
+    tenant?.metadata?.logo_url ||
+    tenant?.metadata?.store_logo_url ||
+    tenant?.metadata?.avatar_url ||
+    tenantMetadata?.logo_url ||
+    tenantMetadata?.store_logo_url ||
+    tenantMetadata?.avatar_url ||
+    tenant?.logo_url ||
+    tenant?.avatar_url ||
+    "/logo.png";
+  const sanitizedActiveLogo = sanitizeImageUrl(activeLogo) || activeLogo;
+  const storeLogoUrl = sanitizedActiveLogo === "/logo.png" ? "" : sanitizedActiveLogo;
+  const displayAvatar = sanitizedActiveLogo;
+
   // ── RESERVED SYSTEM SLUGS CHECK ──
   const RESERVED_SYSTEM_SLUGS = new Set([
     "login", "register", "daftar", "api", "dashboard", "auth",
@@ -619,16 +641,17 @@ export default function TenantStorefrontPage() {
               Alamat toko <span className="font-bold text-slate-800 font-mono">shop.boontrack.com/{tenantSlug}</span> saat ini belum aktif atau belum didaftarkan.
             </p>
           </div>
-
-          <div className="p-3.5 bg-blue-50 border border-blue-100 text-blue-900 rounded-2xl text-xs font-semibold">
-            ✨ Kabar baik! Nama toko <b>"{tenantSlug}"</b> masih tersedia untuk Anda klaim.
+          <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left space-y-2">
+            <span className="text-[11px] font-bold text-slate-700 block">Apakah Anda pemilik brand ini?</span>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Daftarkan nama toko Anda dalam 1 menit dan aktifkan katalog produk instan terhubung QRIS &amp; WhatsApp Automation.
+            </p>
           </div>
-
           <button
-            onClick={() => router.push(`/register?store=${tenantSlug}`)}
-            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            onClick={() => router.push(`/register?claim=${tenantSlug}`)}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
-            <span>Klaim & Buka Toko Ini Sekarang</span>
+            <span>Klaim &amp; Daftarkan Toko Ini</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -644,7 +667,9 @@ export default function TenantStorefrontPage() {
           tenantSlug={tenantSlug}
           storeName={storeName}
           displayName={displayName}
+          tenant={tenant}
           tenantMetadata={tenantMetadata}
+          storeLogoUrl={sanitizedActiveLogo}
           storeProducts={storeProducts}
           dynamicQuickReplies={dynamicQuickReplies}
           chatEnabled={isChatEnabled}
@@ -731,7 +756,9 @@ export default function TenantStorefrontPage() {
           tenantSlug={tenantSlug}
           storeName={storeName}
           displayName={displayName}
+          tenant={tenant}
           tenantMetadata={tenantMetadata}
+          storeLogoUrl={sanitizedActiveLogo}
           storeProducts={storeProducts}
           dynamicQuickReplies={dynamicQuickReplies}
           chatEnabled={isChatEnabled}
@@ -763,13 +790,6 @@ export default function TenantStorefrontPage() {
   }
 
   // ── TEMPLATE 1: DEFAULT (Katalog Commerce) ──
-  const storeLogoUrl =
-    tenantMetadata?.store_logo_url ||
-    tenantMetadata?.logo_url ||
-    tenantMetadata?.avatar_url ||
-    "";
-  const displayAvatar = storeLogoUrl || "/logo.png";
-
   return (
     <div className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -1255,9 +1275,9 @@ export default function TenantStorefrontPage() {
                 {/* Drawer Header */}
                 <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/90 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2.5">
-                    {tenantMetadata?.logo_url ? (
+                    {displayAvatar && displayAvatar !== "/logo.png" ? (
                       <img
-                        src={tenantMetadata.logo_url}
+                        src={displayAvatar}
                         alt={storeName || displayName}
                         className="w-8 h-8 rounded-xl object-contain shadow-xs border border-slate-100 bg-white"
                       />
