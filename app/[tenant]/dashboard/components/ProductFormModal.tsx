@@ -173,6 +173,7 @@ export default function ProductFormModal({
           custom_badge: customBadge || (resolvedBadge !== meta.defaultBadge ? resolvedBadge : undefined),
           is_unlimited: !isPhysicalStock ? true : (prev.is_unlimited !== undefined ? prev.is_unlimited : reqs.strategy === 'DIGITAL'),
           stock: !isPhysicalStock ? 999999 : (prev.stock ?? 100),
+          weight_grams: !isPhysicalStock ? 0 : (prev.weight_grams ?? 0),
         };
       });
     }
@@ -231,6 +232,7 @@ export default function ProductFormModal({
         ...p,
         is_unlimited: true,
         stock: 999999,
+        weight_grams: 0,
       }));
     }
     onSave(e);

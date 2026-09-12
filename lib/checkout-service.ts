@@ -39,9 +39,26 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   const basePrice = payload.basePrice ?? payload.amount;
   const productDiscount = payload.productDiscount ?? 0;
   const netProductPrice = payload.netProductPrice ?? Math.max(0, basePrice - productDiscount);
-  const shippingCost = payload.shippingCost ?? 0;
-  const shippingSubsidy = payload.shippingSubsidy ?? 0;
-  const netShippingCost = payload.netShippingCost ?? Math.max(0, shippingCost - shippingSubsidy);
+
+  // Kunci pengamanan: vertikal non-shipping (jasa, digital, dsb.) dipaksa 0 ongkir & tanpa kurir
+  const normType = (payload.productType || '').toUpperCase().trim();
+  const isNonShipping = [
+    'FIELD_SERVICE',
+    'LOCAL_SERVICE',
+    'SERVICE',
+    'PROFESSIONAL_SERVICE',
+    'AGENCY',
+    'JASA',
+    'DIGITAL',
+    'CREATOR',
+    'ECOURSE',
+    'COURSE'
+  ].includes(normType);
+
+  const shippingCost = isNonShipping ? 0 : (payload.shippingCost ?? 0);
+  const shippingSubsidy = isNonShipping ? 0 : (payload.shippingSubsidy ?? 0);
+  const netShippingCost = isNonShipping ? 0 : (payload.netShippingCost ?? Math.max(0, shippingCost - shippingSubsidy));
+  const shippingCourier = isNonShipping ? null : (payload.shippingCourier || null);
 
   // Biaya admin Rp0 untuk QRIS maupun Transfer Bank Manual (dana langsung masuk ke seller)
   const adminFee = 0;
@@ -65,7 +82,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     net_shipping_cost: netShippingCost,
     voucher_code: payload.voucherCode || null,
     shipping_address: payload.shippingAddress || null,
-    shipping_courier: payload.shippingCourier || null,
+    shipping_courier: shippingCourier,
     product_type: payload.productType || null,
     fulfillment_metadata: payload.fulfillmentMetadata || null,
     admin_fee: adminFee,

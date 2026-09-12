@@ -15,8 +15,9 @@ import {
   X,
   Check,
   Wrench,
+  Loader2,
 } from 'lucide-react';
-
+import { getSupabase } from '@/lib/supabaseClient';
 import {
   DEFAULT_BOOKING_SUMMARY_TEMPLATE,
   getStoredBookingTemplate,
@@ -63,48 +64,6 @@ const TECHNICIANS = [
   'Agus (Spesialis Pipa & Radar)',
 ];
 
-const INITIAL_BOOKINGS: BookingSlot[] = [
-  {
-    id: 'BK-101',
-    customerName: 'Bapak Hendra',
-    phone: '081298765432',
-    serviceName: '1000 Liter',
-    date: 'Hari Ini',
-    timeSlot: '14:00 - 16:00 WIB',
-    address: 'Perumahan Grand Taruma Blok B3 No. 12, Karawang Barat',
-    mapsUrl: 'https://maps.app.goo.gl/sampleGrandTaruma1',
-    technicianName: 'Sakti (Teknisi Senior)',
-    status: 'IN_PROGRESS',
-    notes: 'Akses toren di dak lantai 2, tangga disediakan pemilik rumah.',
-  },
-  {
-    id: 'BK-102',
-    customerName: 'Ibu Ratna',
-    phone: '085712345678',
-    serviceName: '520 Liter',
-    date: 'Hari Ini',
-    timeSlot: '16:30 - 18:00 WIB',
-    address: 'Galuh Mas Cluster Riverview No. 45, Karawang',
-    mapsUrl: 'https://maps.app.goo.gl/sampleGaluhMas2',
-    technicianName: 'Dimas (Teknisi Lapangan)',
-    status: 'SCHEDULED',
-    notes: 'Tolong konfirmasi 30 menit sebelum jalan ke lokasi.',
-  },
-  {
-    id: 'BK-103',
-    customerName: 'Pak Wahyu',
-    phone: '081345678901',
-    serviceName: '800 Liter',
-    date: 'Kemarin',
-    timeSlot: '10:00 - 11:30 WIB',
-    address: 'Jl. Ahmad Yani No. 88, Karawang Kota',
-    mapsUrl: 'https://maps.app.goo.gl/sampleAhmadYani3',
-    technicianName: 'Sakti (Teknisi Senior)',
-    status: 'COMPLETED',
-    notes: 'Pekerjaan selesai tuntas, endapan lumut berhasil diangkat.',
-  },
-];
-
 export function formatFieldServiceWhatsAppMessage(
   booking: {
     serviceName: string;
@@ -129,7 +88,8 @@ export function formatFieldServiceWhatsAppMessage(
 }
 
 export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: string }) {
-  const [bookings, setBookings] = useState<BookingSlot[]>(INITIAL_BOOKINGS);
+  const [bookings, setBookings] = useState<BookingSlot[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [summaryTemplate, setSummaryTemplate] = useState<string>(() => getStoredBookingTemplate(tenantSlug));
@@ -148,20 +108,82 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
   const [formTechnician, setFormTechnician] = useState(TECHNICIANS[0]);
   const [formNotes, setFormNotes] = useState('');
 
-  // Persist locally if available
+  // Fetch real data from Supabase & merge with local additions
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`boontrack_bookings_${tenantSlug}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setBookings(parsed);
+    let isMounted = true;
+    async function loadBookings() {
+      setLoading(true);
+      try {
+        setSummaryTemplate(getStoredBookingTemplate(tenantSlug));
+
+        // 1. Ambil order riil dari Supabase
+        const supabase = getSupabase();
+        let remoteBookings: BookingSlot[] = [];
+        if (supabase) {
+          const { data: tenantRow } = await supabase
+            .from('tenants')
+            .select('id')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+
+          let query = supabase.from('orders').select('*');
+          if (tenantRow?.id) {
+            query = query.or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantRow.id}`);
+          } else {
+            query = query.eq('tenant_slug', tenantSlug);
+          }
+
+          const { data: orders } = await query
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+          if (Array.isArray(orders) && orders.length > 0) {
+            remoteBookings = orders
+              .filter((o) => o.product_type === 'SERVICE' || o.product_type === 'FIELD_SERVICE' || o.shipping_address)
+              .map((o) => ({
+                id: o.id,
+                customerName: o.customer_name || 'Pelanggan',
+                phone: o.customer_phone || '-',
+                serviceName: o.product_title || 'Layanan Toren',
+                date: o.service_schedule || new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
+                timeSlot: o.time_slot || '09:00 - 12:00 WIB',
+                address: o.shipping_address || 'Alamat dikonfirmasi via WA',
+                mapsUrl: o.maps_url || undefined,
+                technicianName: o.technician_name || 'Tim Teknisi',
+                status: (o.status === 'COMPLETED' ? 'COMPLETED' : (o.status === 'PROCESSING' || o.status === 'IN_PROGRESS') ? 'IN_PROGRESS' : 'SCHEDULED'),
+                notes: o.notes || undefined,
+              }));
+          }
+        }
+
+        // 2. Gabungkan dengan manual booking yang tersimpan di localStorage
+        let localBookings: BookingSlot[] = [];
+        const stored = localStorage.getItem(`boontrack_bookings_${tenantSlug}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            localBookings = parsed;
+          }
+        }
+
+        const existingIds = new Set(localBookings.map((b) => b.id));
+        const combined = [...localBookings, ...remoteBookings.filter((b) => !existingIds.has(b.id))];
+        if (isMounted) {
+          setBookings(combined);
+        }
+      } catch (err) {
+        console.warn('[BookingTab] Error fetching real bookings:', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
         }
       }
-      setSummaryTemplate(getStoredBookingTemplate(tenantSlug));
-    } catch {
-      // Ignore storage errors
     }
+
+    loadBookings();
+    return () => {
+      isMounted = false;
+    };
   }, [tenantSlug]);
 
   const saveBookingsState = (newBookings: BookingSlot[]) => {
@@ -290,7 +312,14 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
 
       {/* Booking List */}
       <div className="grid grid-cols-1 gap-4">
-        {filtered.map((item) => {
+        {loading && (
+          <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-500 space-y-2">
+            <Loader2 className="w-6 h-6 text-blue-600 animate-spin mx-auto" />
+            <p className="text-xs font-semibold text-slate-600">Memuat jadwal riil teknisi dari database...</p>
+          </div>
+        )}
+
+        {!loading && filtered.map((item) => {
           const isDone = item.status === 'COMPLETED';
           const isInProg = item.status === 'IN_PROGRESS';
           const isSched = item.status === 'SCHEDULED';
@@ -477,7 +506,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
           );
         })}
 
-        {filtered.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-500 space-y-2">
             <CalendarIcon className="w-8 h-8 text-slate-300 mx-auto" />
             <p className="text-sm font-bold text-slate-700">Belum Ada Jadwal Teknisi</p>

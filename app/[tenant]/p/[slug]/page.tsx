@@ -67,6 +67,7 @@ function SingleProductContent() {
   const router = useRouter();
   const tenant = (params.tenant as string) || 'onlineboost';
   const slug = (params.slug as string) || 'masterclass-ads-2026';
+  const [tenantCategory, setTenantCategory] = useState<string>('');
 
   // Resolusi Produk & Konfigurasi Dinamis dari Dasbor & Supabase
   const [resolvedData, setResolvedData] = useState<{ product: ProductItem; config: SinglePageConfig }>(() => 
@@ -87,9 +88,13 @@ function SingleProductContent() {
 
         const { data: tenantRow } = await supabase
           .from("tenants")
-          .select("id, metadata")
+          .select("id, metadata, category")
           .eq("slug", tenant)
           .maybeSingle();
+
+        if (tenantRow?.category) {
+          setTenantCategory(tenantRow.category);
+        }
 
         const prods = tenantRow?.metadata?.products;
         const norm = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -238,14 +243,36 @@ function SingleProductContent() {
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
 
   // Resolusi Deterministik via Fulfillment Requirements (Boundary Strategy)
-  const productType: ProductType = product.product_type || (
-    product.category?.toLowerCase() === 'fisik' || product.category?.toLowerCase() === 'physical' ? 'PHYSICAL' :
-    (product.category?.toLowerCase() === 'jasa' || product.category?.toLowerCase() === 'service' ? 'SERVICE' : 'DIGITAL')
-  );
+  const rawCategory = (product.category || '').toLowerCase();
+  const rawType = (product.type || '').toLowerCase();
+  const rawProductType = (product.product_type || '').toUpperCase();
+  const storeCat = (tenantCategory || '').toUpperCase();
+
+  const isStoreFieldService = ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'TEKNISI'].some(k => storeCat.includes(k));
+  const isStoreDigital = ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK'].some(k => storeCat.includes(k));
+  const isStoreProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT'].some(k => storeCat.includes(k));
+  const isStoreCreator = ['AGENCY', 'CREATOR'].some(k => storeCat.includes(k));
+  const isStorePhysical = ['RETAIL_PHYSICAL', 'PHYSICAL', 'FISIK'].some(k => storeCat.includes(k));
+  const isStoreFnb = ['FOOD', 'FNB', 'KULINER'].some(k => storeCat.includes(k));
+
+  const isPhysicalCategory = isStorePhysical || isStoreFnb || ['fisik', 'physical', 'retail_physical', 'fnb', 'food', 'kuliner'].some(k => rawCategory.includes(k) || rawType.includes(k) || rawProductType.includes(k));
+  const isServiceCategory = isStoreFieldService || isStoreProService || isStoreCreator || ['jasa', 'service', 'field', 'local', 'pro', 'consult', 'agency', 'creator', 'toren', 'teknisi'].some(k => rawCategory.includes(k) || rawType.includes(k) || rawProductType.includes(k));
+
+  const productType: ProductType = isStoreFieldService ? 'FIELD_SERVICE' :
+    isStoreDigital ? 'DIGITAL' :
+    isStoreProService ? 'PROFESSIONAL_SERVICE' :
+    isStoreCreator ? 'AGENCY' :
+    (product.product_type || (
+      isPhysicalCategory ? 'PHYSICAL' :
+      (isServiceCategory ? 'SERVICE' : 'DIGITAL')
+    ));
+
   const requirements = resolveFulfillmentRequirements(productType);
-  const requiresShipping = requirements.requiresShipping;
+  // STRICT ARCHITECTURE GUARDRAIL: Pilihan kurir HANYA aktif untuk vertikal retail_physical dan fnb
+  const isEligibleForShipping = isPhysicalCategory && !isServiceCategory && !isStoreFieldService && !isStoreDigital && !isStoreProService && !isStoreCreator;
+  const requiresShipping = isEligibleForShipping && requirements.requiresShipping;
   const requiresAddress = requirements.requiresAddress;
-  const requiresWeight = requirements.requiresWeight;
+  const requiresWeight = requiresShipping && requirements.requiresWeight;
   const requiresDeliveryPayload = requirements.requiresDeliveryPayload;
   const isPhysical = requiresShipping; // Backward-compatible alias
 
@@ -800,23 +827,32 @@ function SingleProductContent() {
         )}
       </div>
 
-      {/* Khusus Produk yang Memerlukan Pengiriman: Alamat & Opsi Pengiriman */}
+      {/* Khusus Produk yang Memerlukan Alamat: Alamat Pengiriman (Fisik) / Alamat Lokasi (Jasa) */}
       {requiresAddress && (
         <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
           <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
-            <Package className="w-4 h-4 text-amber-700" />
-            <span>Alamat & Ekspedisi Pengiriman Produk</span>
+            {requiresShipping ? (
+              <>
+                <Package className="w-4 h-4 text-amber-700" />
+                <span>Alamat &amp; Ekspedisi Pengiriman Produk</span>
+              </>
+            ) : (
+              <>
+                <Package className="w-4 h-4 text-blue-600" />
+                <span>Alamat Lengkap Lokasi Pengerjaan</span>
+              </>
+            )}
           </div>
 
           <div className="space-y-2">
             <div>
               <label className="font-bold text-slate-700 block mb-1">
-                Alamat Lengkap Rumah / Kantor <span className="text-rose-500">*</span>
+                {requiresShipping ? 'Alamat Lengkap Rumah / Kantor' : 'Alamat Lengkap Kunjungan Teknisi'} <span className="text-rose-500">*</span>
               </label>
               <textarea
                 rows={2}
                 required={requiresAddress}
-                placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan, Kecamatan"
+                placeholder={requiresShipping ? "Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan, Kecamatan" : "Jl. Nama Jalan, No. Rumah, RT/RW, Patokan Akses Toren/Lokasi"}
                 value={shippingAddress}
                 onChange={(e) => setShippingAddress(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
@@ -825,97 +861,102 @@ function SingleProductContent() {
 
             <div>
               <label className="font-bold text-slate-700 block mb-1">
-                Kota / Kabupaten & Kode Pos <span className="text-rose-500">*</span>
+                Kota / Kabupaten &amp; Kode Pos <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 required={requiresAddress}
-                placeholder="Contoh: Bandung, 40286"
+                placeholder={requiresShipping ? "Contoh: Bandung, 40286" : "Contoh: Karawang Barat"}
                 value={shippingCity}
                 onChange={(e) => setShippingCity(e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
               />
-              <span className="text-[10px] text-slate-500 mt-1 block">
-                💡 Masukkan kota &quot;Bandung&quot; atau kode pos 40xxx untuk mengaktifkan opsi kurir instan (GoSend &amp; GrabExpress 1-2 Jam via Biteship).
-              </span>
+              {requiresShipping && (
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  💡 Masukkan kota &quot;Bandung&quot; atau kode pos 40xxx untuk mengaktifkan opsi kurir instan (GoSend &amp; GrabExpress 1-2 Jam via Biteship).
+                </span>
+              )}
             </div>
 
-            <div className="space-y-2 pt-1">
-              <div className="flex items-center justify-between">
-                <label className="font-bold text-slate-700 block text-xs">Pilih Layanan Kurir</label>
-                {isLoadingInstant && (
-                  <span className="text-[10px] text-blue-600 flex items-center gap-1 font-semibold animate-pulse">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Menghitung tarif instan Biteship...
-                  </span>
-                )}
-              </div>
-
-              {/* 1. Kurir Reguler & Kargo */}
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Kurir Reguler &amp; Kargo</span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {BASE_SHIPPING_OPTIONS.map((opt) => (
-                    <div
-                      key={opt.id}
-                      onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
-                      className={`p-2.5 rounded-xl border cursor-pointer transition ${
-                        selectedShippingId === opt.id
-                          ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
-                          : 'bg-white border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="font-bold text-slate-900 text-[11px]">{opt.name}</div>
-                      <div className="text-[10px] text-slate-500">{opt.eta}</div>
-                      <div className="text-xs font-black text-blue-600 mt-1">
-                        Rp {opt.price.toLocaleString('id-ID')}
-                      </div>
-                    </div>
-                  ))}
+            {/* OPSI KURIR HANYA UNTUK PRODUK FISIK / REQUIRES_SHIPPING */}
+            {requiresShipping && (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 block text-xs">Pilih Layanan Kurir</label>
+                  {isLoadingInstant && (
+                    <span className="text-[10px] text-blue-600 flex items-center gap-1 font-semibold animate-pulse">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Menghitung tarif instan Biteship...
+                    </span>
+                  )}
                 </div>
-              </div>
 
-              {/* 2. Opsi Kurir Instan Biteship (Muncul jika alamat / kota Bandung terdeteksi) */}
-              {instantCouriers.length > 0 && (
-                <div className="mt-2.5 pt-2 border-t border-amber-200/70 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
-                      <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
-                      Kurir Instan Biteship (Area Bandung)
-                    </span>
-                    <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                      Tiba Hari Ini (1-2 Jam)
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {instantCouriers.map((opt) => (
+                {/* 1. Kurir Reguler & Kargo */}
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Kurir Reguler &amp; Kargo</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {BASE_SHIPPING_OPTIONS.map((opt) => (
                       <div
                         key={opt.id}
                         onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
                         className={`p-2.5 rounded-xl border cursor-pointer transition ${
                           selectedShippingId === opt.id
-                            ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs'
-                            : 'bg-white border-emerald-200 hover:border-emerald-400'
+                            ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-900 text-[11px]">{opt.name}</span>
-                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                            {opt.eta}
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          {opt.name} - {opt.eta}: Rp {opt.price.toLocaleString('id-ID')}
-                        </div>
-                        <div className="text-xs font-black text-emerald-700 mt-1 flex items-center justify-between">
-                          <span>Rp {opt.price.toLocaleString('id-ID')}</span>
-                          <span className="text-[9px] text-emerald-600 font-semibold">{opt.badge || 'Instan'}</span>
+                        <div className="font-bold text-slate-900 text-[11px]">{opt.name}</div>
+                        <div className="text-[10px] text-slate-500">{opt.eta}</div>
+                        <div className="text-xs font-black text-blue-600 mt-1">
+                          Rp {opt.price.toLocaleString('id-ID')}
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
-              )}
-            </div>
+
+                {/* 2. Opsi Kurir Instan Biteship (Muncul jika alamat / kota Bandung terdeteksi) */}
+                {instantCouriers.length > 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-amber-200/70 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                        <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
+                        Kurir Instan Biteship (Area Bandung)
+                      </span>
+                      <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                        Tiba Hari Ini (1-2 Jam)
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {instantCouriers.map((opt) => (
+                        <div
+                          key={opt.id}
+                          onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
+                          className={`p-2.5 rounded-xl border cursor-pointer transition ${
+                            selectedShippingId === opt.id
+                              ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs'
+                              : 'bg-white border-emerald-200 hover:border-emerald-400'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900 text-[11px]">{opt.name}</span>
+                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                              {opt.eta}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            {opt.name} - {opt.eta}: Rp {opt.price.toLocaleString('id-ID')}
+                          </div>
+                          <div className="text-xs font-black text-emerald-700 mt-1 flex items-center justify-between">
+                            <span>Rp {opt.price.toLocaleString('id-ID')}</span>
+                            <span className="text-[9px] text-emerald-600 font-semibold">{opt.badge || 'Instan'}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
