@@ -139,9 +139,6 @@ export default function ImageUpload({
     try {
       const processedFile = await optimizeImageToWebP(rawFile);
       const activeTenant = getResolvedTenantSlug();
-      const baseUrl = getApiBaseUrl();
-      const primaryUrl = `${baseUrl}/api/v1/upload`;
-      const fallbackUrl = `${baseUrl}/api/v1/media/upload`;
 
       const formData = new FormData();
       formData.append('file', processedFile, processedFile.name);
@@ -167,29 +164,12 @@ export default function ImageUpload({
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      // Do NOT explicitly set Content-Type header on FormData so browser creates boundary
-      let res: Response;
-      try {
-        res = await fetch(primaryUrl, {
-          method: 'POST',
-          headers,
-          body: formData,
-        });
-      } catch {
-        res = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers,
-          body: formData,
-        });
-      }
-
-      if (res.status === 404) {
-        res = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers,
-          body: formData,
-        });
-      }
+      // Selalu tembak langsung internal Next.js API route: POST /api/v1/upload (Direct ke R2)
+      const res = await fetch('/api/v1/upload', {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
 
       if (!res.ok) {
         let serverError = `Upload gagal (${res.status})`;

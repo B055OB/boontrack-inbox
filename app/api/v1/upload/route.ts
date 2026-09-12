@@ -72,27 +72,25 @@ export async function POST(req: NextRequest) {
     const sanitizedName = (file.name || (isQris ? 'qris.png' : 'image.webp')).replace(/[^a-zA-Z0-9.-]/g, '_');
     let key = `${folder}/${Date.now()}_${sanitizedName}`;
 
-    let r2Uploaded = false;
-
-    // 1. Cloudflare R2 Upload menggunakan S3 Client (@aws-sdk/client-s3)
+    // 1. Direct Cloudflare R2 Upload menggunakan S3 Client (@aws-sdk/client-s3)
     const r2Client = getR2Client();
-    if (r2Client) {
-      try {
-        await r2Client.send(
-          new PutObjectCommand({
-            Bucket: R2_BUCKET_NAME,
-            Key: key,
-            Body: buffer,
-            ContentType: file.type || (isQris ? 'image/png' : 'image/webp'),
-          })
-        );
-        r2Uploaded = true;
-      } catch (r2Err: any) {
-        console.warn('[Upload Route] Direct R2 upload error, continuing to resilient backup:', r2Err.message);
-      }
+    if (!r2Client) {
+      return NextResponse.json(
+        { status: 'error', detail: 'Cloudflare R2 Client belum terkonfigurasi (R2_ACCESS_KEY_ID & R2_SECRET_ACCESS_KEY wajib diset)' },
+        { status: 500 }
+      );
     }
 
-    // 2. Simpan juga ke Supabase Storage (store-assets) untuk fallback DNS bypass
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: file.type || (isQris ? 'image/png' : 'image/webp'),
+      })
+    );
+
+    // 2. Simpan juga ke Supabase Storage (store-assets) untuk backup
     try {
       const supabase = getSupabase();
       if (supabase) {
@@ -105,41 +103,6 @@ export async function POST(req: NextRequest) {
       }
     } catch (sbErr) {
       console.debug('[Upload Route] Backup sync note:', sbErr);
-    }
-
-    // 3. Fallback ke Core Backend Railway jika R2 direct belum aktif
-    if (!r2Uploaded) {
-      try {
-        const coreApiUrl = (
-          process.env.CORE_API_URL ||
-          process.env.NEXT_PUBLIC_API_URL ||
-          process.env.NEXT_PUBLIC_CORE_API_URL ||
-          'https://boontrack-core-production.up.railway.app'
-        ).replace(/\/+$/, '');
-
-        const backendRes = await fetch(`${coreApiUrl}/api/v1/media/upload`, {
-          method: 'POST',
-          headers: {
-            'X-Tenant-Slug': tenantSlug,
-            'X-Tenant-ID': tenantSlug,
-          },
-          body: formData,
-        });
-
-        if (backendRes.ok) {
-          const resData = await backendRes.json();
-          const backendPath = (
-            resData.path ||
-            resData.data?.path ||
-            (resData.folder && resData.filename ? `${resData.folder}/${resData.filename}` : '')
-          )?.replace(/^\/+/, '');
-          if (backendPath) {
-            key = backendPath;
-          }
-        }
-      } catch (coreErr) {
-        console.debug('[Upload Route] Railway media upload note:', coreErr);
-      }
     }
 
     // URL publik kanonikal dan proksi internal yang selalu sinkron dengan key penyimpanan
@@ -159,7 +122,7 @@ export async function POST(req: NextRequest) {
       filename: sanitizedName,
       folder,
       is_qris: isQris,
-      storage: r2Uploaded ? 'cloudflare_r2' : 'hybrid_proxy',
+      storage: 'cloudflare_r2',
     });
   } catch (err: any) {
     console.error('Upload route error:', err);
