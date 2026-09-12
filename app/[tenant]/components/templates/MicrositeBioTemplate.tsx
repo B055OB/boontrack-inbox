@@ -84,6 +84,36 @@ export default function MicrositeBioTemplate({
   const whatsappNumber = tenantMetadata?.whatsapp_number || tenantMetadata?.whatsapp || '6281234567890';
   const whatsappUrl = `https://wa.me/${whatsappNumber}?text=Halo%20${encodeURIComponent(activeName)},%20saya%20ingin%20pesan%20menu`;
 
+  // Product Catalog visibility & featured product filtering
+  const showProducts = Boolean(
+    tenantMetadata?.microsite_show_products ??
+    tenantMetadata?.microsite?.show_products ??
+    false
+  );
+
+  const featuredIds: string[] = React.useMemo(() => {
+    const raw = tenantMetadata?.microsite_featured_product_ids || tenantMetadata?.microsite?.featured_product_ids;
+    return Array.isArray(raw) ? raw.map(String) : [];
+  }, [tenantMetadata]);
+
+  const productMode =
+    tenantMetadata?.microsite_product_mode ||
+    tenantMetadata?.microsite?.product_mode ||
+    (featuredIds.length > 0 ? 'manual' : 'all');
+
+  const visibleProducts = React.useMemo(() => {
+    if (!showProducts || !Array.isArray(storeProducts) || storeProducts.length === 0) {
+      return [];
+    }
+
+    if (productMode === 'manual' && featuredIds.length > 0) {
+      return storeProducts.filter((p) => featuredIds.includes(String(p.id)));
+    }
+
+    // Default mode 'all': maksimal 6 produk
+    return storeProducts.slice(0, 6);
+  }, [showProducts, storeProducts, productMode, featuredIds]);
+
   // Food delivery CTA links (can be customized from metadata or fallback defaults)
   const deliveryLinks = [
     {
@@ -284,21 +314,21 @@ export default function MicrositeBioTemplate({
               ))}
         </div>
 
-        {/* Micro-Catalog: Menu / Produk Terlaris */}
-        {storeProducts.length > 0 && (
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3">
+        {/* Micro-Catalog: Menu / Produk Terlaris (hanya tampil jika showProducts aktif dan ada produk) */}
+        {showProducts && visibleProducts.length > 0 && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 animate-in fade-in duration-200">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-1.5">
                 <Utensils className="w-4 h-4 text-emerald-600" />
                 <h3 className="text-xs font-black text-slate-900">Menu &amp; Pilihan Populer</h3>
               </div>
               <span className="text-[10px] text-slate-400 font-semibold">
-                {storeProducts.length} Pilihan
+                {visibleProducts.length} Pilihan
               </span>
             </div>
 
             <div className="space-y-2.5">
-              {storeProducts.slice(0, 4).map((item) => (
+              {visibleProducts.map((item) => (
                 <div
                   key={item.id}
                   className="flex items-center gap-3 p-2 rounded-2xl hover:bg-slate-50 transition border border-slate-100"
@@ -319,7 +349,7 @@ export default function MicrositeBioTemplate({
                         price: Number(item.price),
                       })
                     }
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl transition active:scale-95 shrink-0 flex items-center gap-1"
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl transition active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
                   >
                     <QrCode className="w-3 h-3" />
                     <span>Pesan</span>

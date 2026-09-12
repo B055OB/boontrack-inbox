@@ -322,6 +322,7 @@ export default function TenantDashboardPage() {
         <MicrositeTab
           tenantSlug={tenantSlug}
           displayName={displayName}
+          products={products}
           onSaved={(msg) => {
             setSaveFeedback(msg);
             setTimeout(() => setSaveFeedback(null), 3000);

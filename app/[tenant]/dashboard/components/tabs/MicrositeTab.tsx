@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Sparkles,
   Plus,
@@ -19,8 +19,11 @@ import {
   ArrowDown,
   Layers,
   LayoutTemplate,
+  Package,
+  Utensils,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { ProductItem } from '@/lib/product-catalog';
 
 function InstagramIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -44,6 +47,7 @@ interface MicrositeTabProps {
   tenantSlug: string;
   displayName: string;
   onSaved?: (message: string) => void;
+  products?: ProductItem[];
 }
 
 const ICON_OPTIONS: { id: MicrositeButton['icon']; label: string; icon: React.ElementType; color: string }[] = [
@@ -55,13 +59,24 @@ const ICON_OPTIONS: { id: MicrositeButton['icon']; label: string; icon: React.El
   { id: 'link', label: 'Tautan Kustom', icon: LinkIcon, color: 'text-slate-600 bg-slate-50 border-slate-200' },
 ];
 
-export default function MicrositeTab({ tenantSlug, displayName, onSaved }: MicrositeTabProps) {
+export default function MicrositeTab({ tenantSlug, displayName, onSaved, products = [] }: MicrositeTabProps) {
   const [buttons, setButtons] = useState<MicrositeButton[]>([]);
   const [activeTemplate, setActiveTemplate] = useState<'default' | 'microsite' | 'personal'>('default');
   const [bioText, setBioText] = useState('');
+  const [showProducts, setShowProducts] = useState(false);
+  const [productMode, setProductMode] = useState<'all' | 'manual'>('all');
+  const [featuredProductIds, setFeaturedProductIds] = useState<string[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<ProductItem[]>(products);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Sync external products when available
+  useEffect(() => {
+    if (products && products.length > 0) {
+      setCatalogProducts(products);
+    }
+  }, [products]);
 
   // Load existing configuration from Supabase
   useEffect(() => {
@@ -73,7 +88,7 @@ export default function MicrositeTab({ tenantSlug, displayName, onSaved }: Micro
         const supabase = getSupabase();
         const { data: tenantRow } = await supabase
           .from('tenants')
-          .select('name, metadata')
+          .select('id, name, metadata')
           .eq('slug', tenantSlug)
           .maybeSingle();
 
@@ -108,6 +123,39 @@ export default function MicrositeTab({ tenantSlug, displayName, onSaved }: Micro
             setActiveTemplate(t);
           } else {
             setActiveTemplate('default');
+          }
+
+          // Load Bio-Link product catalog settings
+          const showProd = Boolean(
+            meta.microsite_show_products ?? meta.microsite?.show_products ?? false
+          );
+          setShowProducts(showProd);
+
+          const rawFeatured = meta.microsite_featured_product_ids || meta.microsite?.featured_product_ids;
+          const featIds = Array.isArray(rawFeatured) ? rawFeatured.map(String) : [];
+          setFeaturedProductIds(featIds);
+
+          const pMode = meta.microsite_product_mode || meta.microsite?.product_mode || (featIds.length > 0 ? 'manual' : 'all');
+          setProductMode(pMode as 'all' | 'manual');
+
+          // Fallback load products if not provided via props
+          if (!products || products.length === 0) {
+            if (Array.isArray(meta.products) && meta.products.length > 0) {
+              setCatalogProducts(meta.products);
+            } else {
+              const { data: dbProducts } = await supabase
+                .from('products')
+                .select('*')
+                .eq('tenant_id', tenantRow.id || tenantSlug);
+              if (Array.isArray(dbProducts) && dbProducts.length > 0) {
+                setCatalogProducts(
+                  dbProducts.map((p: any) => ({
+                    ...p,
+                    image: p.image_url || p.image,
+                  }))
+                );
+              }
+            }
           }
         }
       } catch (err) {
@@ -178,9 +226,15 @@ export default function MicrositeTab({ tenantSlug, displayName, onSaved }: Micro
         ...currentMeta,
         storefront_template: activeTemplate,
         bio: bioText,
+        microsite_show_products: showProducts,
+        microsite_featured_product_ids: featuredProductIds,
+        microsite_product_mode: productMode,
         microsite: {
           ...(currentMeta.microsite || {}),
           buttons,
+          show_products: showProducts,
+          featured_product_ids: featuredProductIds,
+          product_mode: productMode,
         },
       };
 
@@ -199,7 +253,15 @@ export default function MicrositeTab({ tenantSlug, displayName, onSaved }: Micro
           body: JSON.stringify({
             template: activeTemplate,
             bio: bioText,
-            microsite: { buttons },
+            microsite_show_products: showProducts,
+            microsite_featured_product_ids: featuredProductIds,
+            microsite_product_mode: productMode,
+            microsite: {
+              buttons,
+              show_products: showProducts,
+              featured_product_ids: featuredProductIds,
+              product_mode: productMode,
+            },
           }),
         });
       } catch {}
@@ -230,6 +292,16 @@ export default function MicrositeTab({ tenantSlug, displayName, onSaved }: Micro
         return ExternalLink;
     }
   };
+
+  const previewProductsList = useMemo(() => {
+    if (!showProducts || catalogProducts.length === 0) return [];
+    if (productMode === 'manual') {
+      if (featuredProductIds.length === 0) return [];
+      return catalogProducts.filter((p) => featuredProductIds.includes(String(p.id)));
+    }
+    // Mode 'all': maksimal 6 produk
+    return catalogProducts.slice(0, 6);
+  }, [showProducts, productMode, featuredProductIds, catalogProducts]);
 
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto w-full space-y-8 animate-in fade-in duration-200">
@@ -531,6 +603,171 @@ export default function MicrositeTab({ tenantSlug, displayName, onSaved }: Micro
               </div>
             )}
           </div>
+
+          {/* KATALOG PRODUK DI BIO-LINK CARD */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-5">
+            <div className="flex items-center justify-between gap-4 flex-wrap pb-4 border-b border-slate-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
+                    <Package className="w-4 h-4" />
+                  </span>
+                  <h3 className="text-sm font-black text-slate-900">
+                    Katalog Produk di Bio-Link
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Tampilkan cuplikan menu atau produk pilihan langsung di bawah deretan tombol tautan bio.
+                </p>
+              </div>
+
+              {/* Toggle Switch */}
+              <label className="relative inline-flex items-center cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showProducts}
+                  onChange={(e) => setShowProducts(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                <span className="ml-3 text-xs font-bold text-slate-700">
+                  {showProducts ? 'Aktif (Tampilkan)' : 'Nonaktif (Sembunyikan)'}
+                </span>
+              </label>
+            </div>
+
+            {showProducts && (
+              <div className="space-y-4 animate-in fade-in duration-200">
+                {/* Pilihan Mode */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-2">
+                    Mode Penampilan Produk:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setProductMode('all')}
+                      className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex items-start gap-3 ${
+                        productMode === 'all'
+                          ? 'border-emerald-600 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-600/20'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl shrink-0 ${productMode === 'all' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        <Layers className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">Semua Produk (Maksimal 6)</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Menampilkan hingga 6 produk teratas secara otomatis dari katalog toko.
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setProductMode('manual')}
+                      className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex items-start gap-3 ${
+                        productMode === 'manual'
+                          ? 'border-emerald-600 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-600/20'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl shrink-0 ${productMode === 'manual' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">Pilih Produk Unggulan Manual</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          Pilih sendiri produk atau layanan tertentu yang ingin disorot.
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Manual Checklist Selection */}
+                {productMode === 'manual' && (
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-700">
+                        Pilih Produk Unggulan ({featuredProductIds.length} dipilih):
+                      </span>
+                      {featuredProductIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setFeaturedProductIds([])}
+                          className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                        >
+                          Reset Pilihan
+                        </button>
+                      )}
+                    </div>
+
+                    {catalogProducts.length === 0 ? (
+                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
+                        Belum ada produk di katalog toko Anda. Tambahkan produk di tab{' '}
+                        <strong className="text-slate-800">Katalog Produk</strong> terlebih dahulu.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                        {catalogProducts.map((prod) => {
+                          const prodIdStr = String(prod.id);
+                          const isSelected = featuredProductIds.includes(prodIdStr);
+                          const prodImage = prod.image || (prod as any).image_url;
+
+                          return (
+                            <label
+                              key={prodIdStr}
+                              className={`flex items-center gap-3 p-2.5 rounded-xl border transition cursor-pointer select-none ${
+                                isSelected
+                                  ? 'border-emerald-500 bg-emerald-50/60 shadow-2xs'
+                                  : 'border-slate-200 hover:bg-slate-50 bg-white'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFeaturedProductIds((prev) => [...prev, prodIdStr]);
+                                  } else {
+                                    setFeaturedProductIds((prev) => prev.filter((id) => id !== prodIdStr));
+                                  }
+                                }}
+                                className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 shrink-0"
+                              />
+
+                              {prodImage ? (
+                                <img
+                                  src={prodImage}
+                                  alt={prod.name}
+                                  className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0 bg-slate-50"
+                                />
+                              ) : (
+                                <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                                  <Package className="w-4 h-4" />
+                                </div>
+                              )}
+
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-bold text-slate-800 truncate">
+                                  {prod.name}
+                                </div>
+                                <div className="text-[11px] font-semibold text-emerald-600">
+                                  Rp {Number(prod.price).toLocaleString('id-ID')}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* RIGHT COLUMN: REALTIME PHONE PREVIEW (lg:col-span-5) */}
@@ -595,6 +832,64 @@ export default function MicrositeTab({ tenantSlug, displayName, onSaved }: Micro
                   </div>
                 )}
               </div>
+
+              {/* Product Preview (Menu & Pilihan Populer) */}
+              {showProducts && (
+                <div className="w-full bg-white rounded-2xl border border-slate-200 p-3 shadow-2xs space-y-2 mt-4 text-left">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+                    <div className="flex items-center gap-1.5">
+                      <Utensils className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-[11px] font-black text-slate-800">
+                        Menu &amp; Pilihan Populer
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-slate-400 font-bold">
+                      {previewProductsList.length} Item
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {previewProductsList.map((item) => {
+                      const itemImg = item.image || (item as any).image_url;
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 p-1.5 rounded-xl border border-slate-100 bg-slate-50/50"
+                        >
+                          {itemImg ? (
+                            <img
+                              src={itemImg}
+                              alt={item.name}
+                              className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                              <Package className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <h5 className="text-[11px] font-bold text-slate-900 truncate">
+                              {item.name}
+                            </h5>
+                            <p className="text-[10px] font-black text-emerald-600">
+                              Rp {Number(item.price).toLocaleString('id-ID')}
+                            </p>
+                          </div>
+                          <span className="text-[9px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-lg shrink-0">
+                            Pesan
+                          </span>
+                        </div>
+                      );
+                    })}
+
+                    {previewProductsList.length === 0 && (
+                      <div className="py-3 text-center text-slate-400 text-[10px] italic">
+                        Belum ada produk dipilih
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Storefront Catalog Card Preview */}
               <div className="w-full mt-auto pt-4 border-t border-slate-200/60 text-center">
