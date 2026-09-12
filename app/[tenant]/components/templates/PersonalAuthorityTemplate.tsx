@@ -79,6 +79,12 @@ export default function PersonalAuthorityTemplate({
     tenantMetadata?.description ||
     '';
 
+  const storeDescription =
+    tenantMetadata?.bio ||
+    tenantMetadata?.description ||
+    tenantMetadata?.category ||
+    '';
+
   const mainProduct = storeProducts && storeProducts.length > 0 ? storeProducts[0] : null;
 
   const handleCtaPrimary = () => {
@@ -146,20 +152,22 @@ export default function PersonalAuthorityTemplate({
                 <span className="font-black text-slate-900 text-base tracking-tight">{activeName}</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               </div>
-              <p className="text-[10px] text-slate-400 font-medium">
-                {tenantMetadata?.role || tenantMetadata?.category || 'Official Store'}
-              </p>
+              {storeDescription ? (
+                <p className="text-[10px] text-slate-400 font-medium truncate max-w-[200px] sm:max-w-xs">
+                  {storeDescription}
+                </p>
+              ) : null}
             </div>
           </div>
 
           <div className="flex items-center gap-2.5">
-            {whatsappConsultationUrl ? (
+            {tenantMetadata?.consultation_label && whatsappConsultationUrl ? (
               <button
                 type="button"
                 onClick={() => onOutboundClick(whatsappConsultationUrl, 'whatsapp_nav_cta')}
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs shadow-purple-600/20 active:scale-95 flex items-center gap-1.5"
               >
-                <span>Hubungi Kami</span>
+                <span>{tenantMetadata.consultation_label}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             ) : null}
@@ -392,6 +400,89 @@ export default function PersonalAuthorityTemplate({
                 </div>
               </div>
             </div>
+
+            {/* Grid Katalog Produk & Layanan dari Database */}
+            {storeProducts.length > 1 && (
+              <div className="pt-8 space-y-5 border-t border-slate-200/80">
+                <div className="space-y-1">
+                  <span className="text-xs font-black text-purple-600 uppercase tracking-wider">
+                    Katalog Lengkap
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    Pilihan Produk &amp; Layanan Lainnya
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {storeProducts.slice(1).map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
+                    >
+                      <div className="space-y-3">
+                        <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-100 flex items-center justify-center">
+                          {item.image ? (
+                            <img
+                              src={sanitizeImageUrl(item.image)}
+                              alt={item.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-400">
+                              <Sparkles className="w-8 h-8 text-purple-400" />
+                            </div>
+                          )}
+                          {item.badge && (
+                            <span className="absolute top-2.5 left-2.5 bg-white/95 text-purple-700 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
+                              {item.badge}
+                            </span>
+                          )}
+                        </div>
+
+                        <div>
+                          <h4 className="font-black text-slate-900 text-sm leading-snug group-hover:text-purple-600 transition-colors line-clamp-2">
+                            {item.name}
+                          </h4>
+                          {item.description ? (
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                              {item.description}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="pt-4 mt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <div>
+                          {item.originalPrice ? (
+                            <span className="text-[10px] text-slate-400 line-through block font-medium">
+                              Rp {Number(item.originalPrice).toLocaleString('id-ID')}
+                            </span>
+                          ) : null}
+                          <span className="text-sm font-black text-purple-700">
+                            Rp {Number(item.price).toLocaleString('id-ID')}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onInitiateCheckout({
+                              id: String(item.id),
+                              title: item.name,
+                              price: Number(item.price),
+                            })
+                          }
+                          className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>Pesan</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}

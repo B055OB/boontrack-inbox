@@ -561,7 +561,12 @@ export default function TenantStorefrontPage() {
   };
 
   const currentTheme = tenantMetadata?.theme || {};
-  const rawTemplate = tenantMetadata?.storefront_template || tenantMetadata?.template || currentTheme.template;
+  const rawTemplate =
+    tenantMetadata?.selected_template ||
+    tenantMetadata?.storefront_template ||
+    tenantMetadata?.template ||
+    currentTheme.template ||
+    'default';
   // Kunci Default: pastikan fallback selalu ke default (Katalog Grid Standar)
   const currentTemplate = rawTemplate === 'microsite' ? 'microsite' : (rawTemplate === 'personal' ? 'personal' : 'default');
   const isChatEnabled = currentTheme.chat_enabled !== false;
