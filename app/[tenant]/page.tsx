@@ -200,6 +200,39 @@ export default function TenantStorefrontPage() {
   const displayName = tenantSlug.replace(/[-_]/g, " ");
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [tenantMetadata, setTenantMetadata] = useState<any>(null);
+  const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">("checking");
+  const [storeName, setStoreName] = useState("");
+  const [storeProducts, setStoreProducts] = useState<Product[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [productForCheckout, setProductForCheckout] = useState<{ id: string; title: string; price: number } | null>(null);
+  const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
+  const [showCartModal, setShowCartModal] = useState(false);
+  const [inputMessage, setInputMessage] = useState("");
+  const [messages, setMessages] = useState<StoreChatMessage[]>([]);
+  const [isBotTyping, setIsBotTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const dynamicQuickReplies = useMemo(() => [
+    "💧 Daftar Harga Layanan",
+    "📍 Area Jangkauan Layanan",
+    "📅 Jadwal & Cara Pesan",
+    "🛡️ Garansi Kebersihan"
+  ], []);
+
+  const uniqueCategories = useMemo(() => {
+    const set = new Set<string>();
+    (storeProducts || []).forEach((p) => {
+      if (p && p.category) {
+        const badge = formatCategoryBadge(String(p.category), typeof p.type === 'string' ? p.type : undefined);
+        if (badge && typeof badge === 'string' && badge.trim()) {
+          set.add(badge.trim());
+        }
+      }
+    });
+    return Array.from(set);
+  }, [storeProducts]);
 
   // 0. CAPTURE UTM TRACKING PARAMETERS TO SESSION STORAGE
   useEffect(() => {
@@ -228,31 +261,6 @@ export default function TenantStorefrontPage() {
     }
   }, []);
 
-  const handleOutboundClick = (url: string, label: string) => {
-    if (typeof window === "undefined") return;
-    let finalUrl = url;
-    try {
-      const storedUtmStr = sessionStorage.getItem("boontrack_utm");
-      if (storedUtmStr) {
-        const utm = JSON.parse(storedUtmStr);
-        if (!url.includes("utm_source")) {
-          const separator = url.includes("?") ? "&" : "?";
-          const paramsObj: Record<string, string> = {};
-          Object.entries(utm).forEach(([k, v]) => {
-            if (k.startsWith("utm_") && typeof v === "string" && v) {
-              paramsObj[k] = v;
-            }
-          });
-          const query = new URLSearchParams(paramsObj).toString();
-          if (query) {
-            finalUrl = `${url}${separator}${query}`;
-          }
-        }
-      }
-    } catch {}
-    window.open(finalUrl, "_blank", "noopener,noreferrer");
-  };
-
   // 0b. CAPTURE AFFILIATE REFERRAL & SELLER TRACKING
   useEffect(() => {
     if (!tenantSlug) return;
@@ -266,43 +274,23 @@ export default function TenantStorefrontPage() {
     }
   }, [tenantSlug]);
 
-  // 1. RESERVED SYSTEM SLUGS CHECK
-  const RESERVED_SYSTEM_SLUGS = new Set([
-    "login", "register", "daftar", "api", "dashboard", "auth",
-    "admin", "affiliate", "manager", "checkout", "pricing",
-    "onboarding", "pilot-onboarding", "enterprise", "gym",
-    "terms", "privacy", "acceptable-use", "refund", "store-original"
-  ]);
-
-  if (tenantSlug === "login" || tenantSlug === "auth") {
-    if (typeof window !== "undefined") router.replace("/login");
-    return null;
-  }
-
-  if (tenantSlug === "register" || tenantSlug === "daftar") {
-    return (
-      <main className="min-h-[100dvh] bg-slate-50 py-12 px-4 flex flex-col items-center justify-center">
-        <ShopClaimSection />
-      </main>
-    );
-  }
-
-  if (RESERVED_SYSTEM_SLUGS.has(tenantSlug)) {
-    if (typeof window !== "undefined") router.replace("/");
-    return null;
-  }
-
-  // 2. VALIDASI KEBERADAAN TOKO MURNI DARI SUPABASE
-  const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">("checking");
-  const [storeName, setStoreName] = useState("");
-  const [storeProducts, setStoreProducts] = useState<Product[]>([]);
-
+  // 0c. FETCH TENANT & CATALOG FROM SUPABASE
   useEffect(() => {
     let isMounted = true;
 
     async function loadTenantAndCatalog() {
       if (!tenantSlug) {
         if (isMounted) setStoreStatus("not_found");
+        return;
+      }
+
+      const RESERVED_SLUGS = new Set([
+        "login", "register", "daftar", "api", "dashboard", "auth",
+        "admin", "affiliate", "manager", "checkout", "pricing",
+        "onboarding", "pilot-onboarding", "enterprise", "gym",
+        "terms", "privacy", "acceptable-use", "refund", "store-original"
+      ]);
+      if (RESERVED_SLUGS.has(tenantSlug)) {
         return;
       }
 
@@ -315,7 +303,6 @@ export default function TenantStorefrontPage() {
           .maybeSingle();
 
         if (dbErr || !tenantRow) {
-          // Fallback coba query endpoint settings lokal jika direct Supabase client network issue
           try {
             const fallbackRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
             if (fallbackRes.ok) {
@@ -354,7 +341,6 @@ export default function TenantStorefrontPage() {
       } catch (err) {
         console.error("[Storefront] Storefront load error:", err);
         if (isMounted) {
-          // Fallback aman: gunakan catalog default / array kosong alih-alih melempar exception!
           setStoreName(displayName || "Toko");
           setTenantMetadata(null);
           setStoreProducts([]);
@@ -370,25 +356,7 @@ export default function TenantStorefrontPage() {
     };
   }, [tenantSlug, displayName]);
 
-  // STATE STOREFRONT & MODAL CHECKOUT
-  const [activeCategory, setActiveCategory] = useState<string>("all");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [productForCheckout, setProductForCheckout] = useState<{ id: string; title: string; price: number } | null>(null);
-
-  const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
-  const [showCartModal, setShowCartModal] = useState(false);
-
-  const dynamicQuickReplies = useMemo(() => [
-    "💧 Daftar Harga Layanan",
-    "📍 Area Jangkauan Layanan",
-    "📅 Jadwal & Cara Pesan",
-    "🛡️ Garansi Kebersihan"
-  ], []);
-
-  const [inputMessage, setInputMessage] = useState("");
-  const [messages, setMessages] = useState<StoreChatMessage[]>([]);
-
+  // 0d. INIT CHAT MESSAGES
   useEffect(() => {
     const activeName = storeName || displayName.toUpperCase();
     setMessages([
@@ -403,63 +371,35 @@ export default function TenantStorefrontPage() {
     ]);
   }, [storeName, displayName, dynamicQuickReplies]);
 
-  const [isBotTyping, setIsBotTyping] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
+  // 0e. AUTO SCROLL MESSAGES
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isBotTyping]);
 
-  if (storeStatus === "checking") {
-    return (
-      <div className="min-h-[100dvh] bg-slate-50 flex items-center justify-center text-xs text-slate-400 font-semibold">
-        Memverifikasi toko {displayName}...
-      </div>
-    );
-  }
-
-  if (storeStatus === "not_found") {
-    return (
-      <div className="min-h-[100dvh] bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
-        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-5">
-          <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-100">
-            <Store className="w-7 h-7" />
-          </div>
-          <div>
-            <h2 className="text-xl font-black text-slate-900">Toko Belum Terdaftar</h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Alamat toko <span className="font-bold text-slate-800 font-mono">shop.boontrack.com/{tenantSlug}</span> saat ini belum aktif atau belum didaftarkan.
-            </p>
-          </div>
-
-          <div className="p-3.5 bg-blue-50 border border-blue-100 text-blue-900 rounded-2xl text-xs font-semibold">
-            ✨ Kabar baik! Nama toko <b>"{tenantSlug}"</b> masih tersedia untuk Anda klaim.
-          </div>
-
-          <button
-            onClick={() => router.push(`/register?store=${tenantSlug}`)}
-            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <span>Klaim & Buka Toko Ini Sekarang</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const uniqueCategories = useMemo(() => {
-    const set = new Set<string>();
-    (storeProducts || []).forEach((p) => {
-      if (p && p.category) {
-        const badge = formatCategoryBadge(String(p.category), typeof p.type === 'string' ? p.type : undefined);
-        if (badge && typeof badge === 'string' && badge.trim()) {
-          set.add(badge.trim());
+  const handleOutboundClick = (url: string, label: string) => {
+    if (typeof window === "undefined") return;
+    let finalUrl = url;
+    try {
+      const storedUtmStr = sessionStorage.getItem("boontrack_utm");
+      if (storedUtmStr) {
+        const utm = JSON.parse(storedUtmStr);
+        if (!url.includes("utm_source")) {
+          const separator = url.includes("?") ? "&" : "?";
+          const paramsObj: Record<string, string> = {};
+          Object.entries(utm).forEach(([k, v]) => {
+            if (k.startsWith("utm_") && typeof v === "string" && v) {
+              paramsObj[k] = v;
+            }
+          });
+          const query = new URLSearchParams(paramsObj).toString();
+          if (query) {
+            finalUrl = `${url}${separator}${query}`;
+          }
         }
       }
-    });
-    return Array.from(set);
-  }, [storeProducts]);
+    } catch {}
+    window.open(finalUrl, "_blank", "noopener,noreferrer");
+  };
 
   const filteredProducts = activeCategory === "all"
     ? (storeProducts || [])
@@ -484,6 +424,7 @@ export default function TenantStorefrontPage() {
       return [...prev, { product, qty: 1 }];
     });
   };
+
   const handleBarcodeDetected = (code: string) => {
     const matched = storeProducts.find(
       (p: any) =>
@@ -616,6 +557,71 @@ export default function TenantStorefrontPage() {
   // Kunci Default: pastikan fallback selalu ke default (Katalog Grid Standar)
   const currentTemplate = rawTemplate === 'microsite' ? 'microsite' : (rawTemplate === 'personal' ? 'personal' : 'default');
   const isChatEnabled = currentTheme.chat_enabled !== false;
+
+  // ── RESERVED SYSTEM SLUGS CHECK ──
+  const RESERVED_SYSTEM_SLUGS = new Set([
+    "login", "register", "daftar", "api", "dashboard", "auth",
+    "admin", "affiliate", "manager", "checkout", "pricing",
+    "onboarding", "pilot-onboarding", "enterprise", "gym",
+    "terms", "privacy", "acceptable-use", "refund", "store-original"
+  ]);
+
+  if (tenantSlug === "login" || tenantSlug === "auth") {
+    if (typeof window !== "undefined") router.replace("/login");
+    return null;
+  }
+
+  if (tenantSlug === "register" || tenantSlug === "daftar") {
+    return (
+      <main className="min-h-[100dvh] bg-slate-50 py-12 px-4 flex flex-col items-center justify-center">
+        <ShopClaimSection />
+      </main>
+    );
+  }
+
+  if (RESERVED_SYSTEM_SLUGS.has(tenantSlug)) {
+    if (typeof window !== "undefined") router.replace("/");
+    return null;
+  }
+
+  // ── STORE STATUS CHECKS ──
+  if (storeStatus === "checking") {
+    return (
+      <div className="min-h-[100dvh] bg-slate-50 flex items-center justify-center text-xs text-slate-400 font-semibold">
+        Memverifikasi toko {displayName}...
+      </div>
+    );
+  }
+
+  if (storeStatus === "not_found") {
+    return (
+      <div className="min-h-[100dvh] bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-5">
+          <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-100">
+            <Store className="w-7 h-7" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Toko Belum Terdaftar</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Alamat toko <span className="font-bold text-slate-800 font-mono">shop.boontrack.com/{tenantSlug}</span> saat ini belum aktif atau belum didaftarkan.
+            </p>
+          </div>
+
+          <div className="p-3.5 bg-blue-50 border border-blue-100 text-blue-900 rounded-2xl text-xs font-semibold">
+            ✨ Kabar baik! Nama toko <b>"{tenantSlug}"</b> masih tersedia untuk Anda klaim.
+          </div>
+
+          <button
+            onClick={() => router.push(`/register?store=${tenantSlug}`)}
+            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>Klaim & Buka Toko Ini Sekarang</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ── CONDITIONAL TEMPLATE: PERSONAL (Authority / Personal Brand) ──
   if (currentTemplate === 'personal') {
