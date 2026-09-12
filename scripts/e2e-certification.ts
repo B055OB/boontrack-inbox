@@ -377,6 +377,11 @@ async function runCertification() {
       input: 'https://asset.boontrack.com/media/banner.webp',
       expected: 'https://assets.boontrack.com/media/banner.webp',
     },
+    {
+      name: 'Legacy API with Product Folder Preservation',
+      input: 'https://api.boontrack.com/assets/uploads/products/image.webp',
+      expected: 'https://assets.boontrack.com/products/image.webp',
+    },
   ];
 
   for (const ac of assetCases) {

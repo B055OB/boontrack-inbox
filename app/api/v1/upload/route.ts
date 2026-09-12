@@ -70,10 +70,9 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const sanitizedName = (file.name || (isQris ? 'qris.png' : 'image.webp')).replace(/[^a-zA-Z0-9.-]/g, '_');
-    const storageKey = `${folder}/${Date.now()}_${sanitizedName}`;
+    let key = `${folder}/${Date.now()}_${sanitizedName}`;
 
     let r2Uploaded = false;
-    let r2PublicUrl = `${R2_PUBLIC_URL_BASE}/${storageKey}`;
 
     // 1. Cloudflare R2 Upload menggunakan S3 Client (@aws-sdk/client-s3)
     const r2Client = getR2Client();
@@ -82,7 +81,7 @@ export async function POST(req: NextRequest) {
         await r2Client.send(
           new PutObjectCommand({
             Bucket: R2_BUCKET_NAME,
-            Key: storageKey,
+            Key: key,
             Body: buffer,
             ContentType: file.type || (isQris ? 'image/png' : 'image/webp'),
           })
@@ -99,7 +98,7 @@ export async function POST(req: NextRequest) {
       if (supabase) {
         await supabase.storage
           .from('store-assets')
-          .upload(`${tenantSlug}/${storageKey}`, buffer, {
+          .upload(`${tenantSlug}/${key}`, buffer, {
             contentType: file.type || (isQris ? 'image/png' : 'image/webp'),
             upsert: true,
           });
@@ -129,9 +128,13 @@ export async function POST(req: NextRequest) {
 
         if (backendRes.ok) {
           const resData = await backendRes.json();
-          const candidateUrl = resData.url || resData.file_url || resData.public_url || '';
-          if (candidateUrl) {
-            r2PublicUrl = sanitizeImageUrl(candidateUrl);
+          const backendPath = (
+            resData.path ||
+            resData.data?.path ||
+            (resData.folder && resData.filename ? `${resData.folder}/${resData.filename}` : '')
+          )?.replace(/^\/+/, '');
+          if (backendPath) {
+            key = backendPath;
           }
         }
       } catch (coreErr) {
@@ -139,21 +142,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // URL proksi internal yang selalu aman dari blokir DNS ISP lokal
-    const localProxyUrl = `/api/v1/media/${storageKey}`;
-    // Kunci URL publik secara mutlak ke domain kanonikal asset.boontrack.com
-    const canonicalAssetUrl = sanitizeImageUrl(r2PublicUrl) || `${R2_PUBLIC_URL_BASE}/${storageKey}`;
-    const finalUrl = canonicalAssetUrl;
+    // URL publik kanonikal dan proksi internal yang selalu sinkron dengan key penyimpanan
+    const publicUrl = `${R2_PUBLIC_URL_BASE}/${key}`;
+    const canonicalAssetUrl = sanitizeImageUrl(publicUrl) || publicUrl;
+    const localProxyUrl = `/api/v1/media/${key}`;
 
     return NextResponse.json({
       status: 'success',
-      url: finalUrl,
+      url: canonicalAssetUrl,
       public_url: canonicalAssetUrl,
       r2_url: canonicalAssetUrl,
-      image_url: finalUrl,
+      image_url: canonicalAssetUrl,
       local_proxy_url: localProxyUrl,
-      qris_url: isQris ? finalUrl : undefined,
-      path: `/${storageKey}`,
+      qris_url: isQris ? canonicalAssetUrl : undefined,
+      path: `/${key}`,
       filename: sanitizedName,
       folder,
       is_qris: isQris,

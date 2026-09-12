@@ -16,23 +16,22 @@ export function sanitizeImageUrl(url?: string | null): string {
   // 1. Tangkap seluruh variasi domain legacy api.boontrack.com (apa pun path atau protocol-nya)
   if (trimmed.includes('api.boontrack.com')) {
     const afterDomain = trimmed.split(/api\.boontrack\.com/i)[1] || '';
-    const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    let cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
     
-    // Ekstrak nama file atau sub-path terakhir jika terdapat prefix assets/uploads/, dsb.
-    let targetPath = cleanPath;
-    if (cleanPath.includes('assets/uploads/')) {
-      targetPath = cleanPath.split('assets/uploads/').pop() || '';
+    // Hapus hanya prefix mount server legacy tanpa memotong prefix folder bucket (products, media, qris, dll.)
+    if (cleanPath.startsWith('api/v1/media/')) {
+      cleanPath = cleanPath.replace(/^api\/v1\/media\//, '');
+    } else if (cleanPath.startsWith('assets/uploads/')) {
+      cleanPath = cleanPath.replace(/^assets\/uploads\//, '');
     } else if (cleanPath.startsWith('assets/')) {
-      targetPath = cleanPath.replace(/^assets\//, '');
+      cleanPath = cleanPath.replace(/^assets\//, '');
     } else if (cleanPath.startsWith('uploads/')) {
-      targetPath = cleanPath.replace(/^uploads\//, '');
-    } else if (cleanPath.startsWith('media/')) {
-      targetPath = cleanPath.replace(/^media\//, '');
+      cleanPath = cleanPath.replace(/^uploads\//, '');
     }
-    targetPath = targetPath.replace(/^\/+/, '');
+    cleanPath = cleanPath.replace(/^\/+/, '');
 
-    if (targetPath) {
-      return `${ASSET_DOMAIN}/${targetPath}`;
+    if (cleanPath) {
+      return `${ASSET_DOMAIN}/${cleanPath}`;
     }
     return ASSET_DOMAIN;
   }
@@ -40,21 +39,20 @@ export function sanitizeImageUrl(url?: string | null): string {
   // 2. Tangkap legacy Railway core backend assets (boontrack-core-production.up.railway.app)
   if (trimmed.includes('boontrack-core-production.up.railway.app')) {
     const afterDomain = trimmed.split(/boontrack-core-production\.up\.railway\.app/i)[1] || '';
-    const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
-    let targetPath = cleanPath;
-    if (cleanPath.includes('assets/uploads/')) {
-      targetPath = cleanPath.split('assets/uploads/').pop() || '';
+    let cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    if (cleanPath.startsWith('api/v1/media/')) {
+      cleanPath = cleanPath.replace(/^api\/v1\/media\//, '');
+    } else if (cleanPath.startsWith('assets/uploads/')) {
+      cleanPath = cleanPath.replace(/^assets\/uploads\//, '');
     } else if (cleanPath.startsWith('assets/')) {
-      targetPath = cleanPath.replace(/^assets\//, '');
+      cleanPath = cleanPath.replace(/^assets\//, '');
     } else if (cleanPath.startsWith('uploads/')) {
-      targetPath = cleanPath.replace(/^uploads\//, '');
-    } else if (cleanPath.startsWith('media/')) {
-      targetPath = cleanPath.replace(/^media\//, '');
+      cleanPath = cleanPath.replace(/^uploads\//, '');
     }
-    targetPath = targetPath.replace(/^\/+/, '');
+    cleanPath = cleanPath.replace(/^\/+/, '');
 
-    if (targetPath) {
-      return `${ASSET_DOMAIN}/${targetPath}`;
+    if (cleanPath) {
+      return `${ASSET_DOMAIN}/${cleanPath}`;
     }
     return ASSET_DOMAIN;
   }
@@ -62,7 +60,13 @@ export function sanitizeImageUrl(url?: string | null): string {
   // 3. Normalisasi singular domain https://asset.boontrack.com -> plural https://assets.boontrack.com
   if (trimmed.includes('asset.boontrack.com') && !trimmed.includes('assets.boontrack.com')) {
     const afterDomain = trimmed.split(/asset\.boontrack\.com/i)[1] || '';
-    const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    let cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    if (cleanPath.startsWith('api/v1/media/')) {
+      cleanPath = cleanPath.replace(/^api\/v1\/media\//, '');
+    } else if (cleanPath.startsWith('assets/uploads/')) {
+      cleanPath = cleanPath.replace(/^assets\/uploads\//, '');
+    }
+    cleanPath = cleanPath.replace(/^\/+/, '');
     if (cleanPath) {
       return `${ASSET_DOMAIN}/${cleanPath}`;
     }
@@ -72,7 +76,13 @@ export function sanitizeImageUrl(url?: string | null): string {
   // 4. Pastikan plural domain https://assets.boontrack.com terformat rapi
   if (trimmed.includes('assets.boontrack.com')) {
     const afterDomain = trimmed.split(/assets\.boontrack\.com/i)[1] || '';
-    const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    let cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    if (cleanPath.startsWith('api/v1/media/')) {
+      cleanPath = cleanPath.replace(/^api\/v1\/media\//, '');
+    } else if (cleanPath.startsWith('assets/uploads/')) {
+      cleanPath = cleanPath.replace(/^assets\/uploads\//, '');
+    }
+    cleanPath = cleanPath.replace(/^\/+/, '');
     if (cleanPath) {
       return `${ASSET_DOMAIN}/${cleanPath}`;
     }
@@ -90,13 +100,19 @@ export function sanitizeImageUrl(url?: string | null): string {
 
   // 6. Upgrade relative paths yang mengarah ke internal media proxy atau uploads
   if (trimmed.startsWith('/api/v1/media/')) {
-    const sub = trimmed.replace(/^\/api\/v1\/media\//, '').split('?')[0];
+    const sub = trimmed.replace(/^\/api\/v1\/media\//, '').split('?')[0].replace(/^\/+/, '');
     if (sub) {
       return `${ASSET_DOMAIN}/${sub}`;
     }
   }
   if (trimmed.startsWith('/assets/uploads/')) {
-    const sub = trimmed.replace(/^\/assets\/uploads\//, '').split('?')[0];
+    const sub = trimmed.replace(/^\/assets\/uploads\//, '').split('?')[0].replace(/^\/+/, '');
+    if (sub) {
+      return `${ASSET_DOMAIN}/${sub}`;
+    }
+  }
+  if (trimmed.startsWith('/products/') || trimmed.startsWith('/media/') || trimmed.startsWith('/qris/')) {
+    const sub = trimmed.replace(/^\/+/, '').split('?')[0];
     if (sub) {
       return `${ASSET_DOMAIN}/${sub}`;
     }
