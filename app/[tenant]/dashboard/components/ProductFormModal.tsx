@@ -134,7 +134,7 @@ export interface ProductFormModalProps {
   onSave: (e: React.FormEvent) => void;
   productForm: ProductItem;
   setProductForm: React.Dispatch<React.SetStateAction<ProductItem>>;
-  editingProductId: number | null;
+  editingProductId: number | string | null;
   storeCategory?: string;
   tenantSlug?: string;
 }

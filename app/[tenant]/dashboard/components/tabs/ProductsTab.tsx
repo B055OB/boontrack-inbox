@@ -49,8 +49,8 @@ export interface ProductsTabProps {
   tenantSlug: string;
   openNewProductModal: () => void;
   openEditProductModal: (p: ProductItem) => void;
-  handleDeleteProduct: (id: number) => void;
-  handleQuickStockChange: (id: number, delta: number) => void;
+  handleDeleteProduct: (id: number | string) => void;
+  handleQuickStockChange: (id: number | string, delta: number) => void;
   openSinglePageBuilder: (p: ProductItem) => void;
   onOpenBulkImport: () => void;
   storeCategory?: string;
@@ -69,7 +69,7 @@ export default function ProductsTab({
 }: ProductsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
-  const [copiedSlugId, setCopiedSlugId] = useState<number | null>(null);
+  const [copiedSlugId, setCopiedSlugId] = useState<number | string | null>(null);
 
   const categories = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
 

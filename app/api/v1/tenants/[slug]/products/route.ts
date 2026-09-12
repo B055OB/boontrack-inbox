@@ -136,13 +136,51 @@ export async function POST(
         product: newProduct,
       };
 
-      await supabase.from('tenants').upsert({
-        slug,
-        name: existing?.name || slug,
-        category: existing?.category || (type === 'digital' ? 'digital' : 'retail'),
-        metadata: updatedMetadata,
-        updated_at: new Date().toISOString(),
-      });
+      if (existing?.id) {
+        const { error: tUpdateErr } = await supabase
+          .from('tenants')
+          .update({
+            name: existing?.name || slug,
+            category: existing?.category || (type === 'digital' ? 'digital' : 'retail'),
+            metadata: updatedMetadata,
+          })
+          .eq('id', existing.id);
+
+        if (tUpdateErr) {
+          console.error('[Products Route] Failed to update tenant metadata:', tUpdateErr);
+        }
+
+        // Coba sync juga ke tabel SQL `products` jika memungkinkan
+        try {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(productId));
+          await supabase.from('products').upsert({
+            ...(isUuid ? { id: String(productId) } : {}),
+            tenant_id: existing.id,
+            title: name,
+            slug: finalSlug,
+            description: description || '',
+            price: Number(price),
+            promo_price: promo_price ? Number(promo_price) : 0,
+            image: body.image || body.image_url || '',
+            category: resolvedCategory,
+            stock: body.stock !== undefined ? Number(body.stock) : 999999,
+            is_unlimited_stock: body.is_unlimited ?? true,
+            asset_reference: `product:${finalSlug}`,
+            license_status: 'UNVERIFIED',
+            product_type: 'DIGITAL_FILE',
+            fulfillment_metadata: body.fulfillment_metadata || {},
+          });
+        } catch (sqlErr) {
+          console.debug('[Products Route] SQL products table sync note:', sqlErr);
+        }
+      } else {
+        await supabase.from('tenants').upsert({
+          slug,
+          name: existing?.name || slug,
+          category: existing?.category || (type === 'digital' ? 'digital' : 'retail'),
+          metadata: updatedMetadata,
+        }, { onConflict: 'slug' });
+      }
     } catch (dbErr) {
       console.warn('Supabase product save error:', dbErr);
       updatedProducts = [newProduct];
@@ -219,13 +257,19 @@ export async function DELETE(
         product: remainingProducts[0] || null,
       };
 
-      await supabase.from('tenants').upsert({
-        slug,
-        name: existing?.name || slug,
-        category: existing?.category || 'digital',
-        metadata: updatedMetadata,
-        updated_at: new Date().toISOString(),
-      });
+      if (existing?.id) {
+        await supabase
+          .from('tenants')
+          .update({
+            metadata: updatedMetadata,
+          })
+          .eq('id', existing.id);
+      } else {
+        await supabase.from('tenants').upsert({
+          slug,
+          metadata: updatedMetadata,
+        }, { onConflict: 'slug' });
+      }
     } catch (dbErr) {
       console.warn('Supabase product delete error:', dbErr);
     }

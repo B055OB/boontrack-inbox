@@ -145,7 +145,7 @@ export function resolveFulfillmentRequirements(productType?: ProductType | strin
 }
 
 export interface ProductItem {
-  id: number;
+  id: number | string;
   name: string;
   slug?: string;
   category: 'terlaris' | 'digital' | 'fisik' | string;

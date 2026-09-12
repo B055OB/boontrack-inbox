@@ -223,7 +223,7 @@ export function useTenantDashboard() {
     return [];
   });
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-  const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [editingProductId, setEditingProductId] = useState<number | string | null>(null);
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
 
   // Single Page Checkout Builder State
@@ -483,16 +483,33 @@ export function useTenantDashboard() {
     if (!tenantSlug) return;
     const fetchTenantSettings = async () => {
       try {
-        const res = await fetch(
-          `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenants?slug=eq.${encodeURIComponent(tenantSlug)}&select=*`,
-          {
-            headers: {
-              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-            },
+        const supabase = getSupabase();
+        let tenant: any = null;
+
+        if (supabase) {
+          const { data: tRow } = await supabase
+            .from('tenants')
+            .select('*')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+          tenant = tRow;
+        }
+
+        if (!tenant) {
+          const res = await fetch(
+            `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenants?slug=eq.${encodeURIComponent(tenantSlug)}&select=*`,
+            {
+              headers: {
+                apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+                Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
+              },
+            }
+          );
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            tenant = data[0];
           }
-        );
-        const data = await res.json();
+        }
 
         const isLocalSession = typeof window !== 'undefined' && (
           localStorage.getItem('merchant_store') === tenantSlug ||
@@ -501,7 +518,7 @@ export function useTenantDashboard() {
           document.cookie.includes(`merchant_session=${tenantSlug}`)
         );
 
-        if (!Array.isArray(data) || data.length === 0) {
+        if (!tenant) {
           if (isLocalSession) {
             setTenantFeatureFlags(prev => ({ ...prev, tier: 'SOLO_TRIAL' }));
             setPlanTier('growth');
@@ -511,7 +528,6 @@ export function useTenantDashboard() {
             return;
           }
         } else {
-          const tenant = data[0];
           if (tenant.name) setStoreDisplayName(tenant.name);
           if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
           if (tenant.metadata?.bio) setStoreBio(tenant.metadata.bio);
@@ -524,11 +540,50 @@ export function useTenantDashboard() {
           const logoUrlFromDb = tenant.metadata?.logo_url || tenant.logo_url || '';
           if (logoUrlFromDb) setStoreLogoUrl(logoUrlFromDb);
 
-          // Hydrate Products
+          // Hydrate Products: Prioritas Supabase (tenants.metadata.products & products table)
+          let hydratedProducts: ProductItem[] = [];
+
+          // 1. Cek tabel SQL `products` jika ada
+          if (supabase && tenant.id) {
+            try {
+              const { data: dbProds } = await supabase
+                .from('products')
+                .select('*')
+                .eq('tenant_id', tenant.id);
+              if (Array.isArray(dbProds) && dbProds.length > 0) {
+                hydratedProducts = dbProds.map((p: any, idx: number) => ({
+                  id: p.id || `prod-${idx + 1}`,
+                  name: p.title || p.name || `Produk ${idx + 1}`,
+                  slug: p.slug || p.single_page_config?.slug || slugify(p.title || p.name || `produk-${idx + 1}`),
+                  category: p.category || (p.product_type === 'PHYSICAL' ? 'Fisik' : (p.product_type === 'SERVICE' || p.product_type === 'FIELD_SERVICE' ? 'Jasa Lapangan' : 'Digital')),
+                  product_type: p.product_type || (p.category?.toLowerCase() === 'fisik' ? 'PHYSICAL' : (p.category?.toLowerCase() === 'jasa' || p.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
+                  type: p.type || (p.product_type === 'PHYSICAL' ? 'physical' : (p.product_type === 'FOOD' ? 'fnb' : (p.product_type === 'DIGITAL' ? 'digital' : 'service'))),
+                  custom_badge: p.custom_badge,
+                  price: Number(p.price) || 0,
+                  promo_price: p.promo_price ? Number(p.promo_price) : 0,
+                  variants: p.variants || '',
+                  promo: p.promo || '',
+                  description: p.description || '',
+                  download_url: p.link_digital || p.download_url || '',
+                  image: sanitizeImageUrl(p.image || p.image_url || ''),
+                  stock: p.stock !== undefined ? Number(p.stock) : 999999,
+                  sku: p.sku || `SKU-${idx + 1}`,
+                  is_unlimited: p.is_unlimited_stock ?? p.is_unlimited ?? true,
+                  weight_grams: p.weight_grams,
+                  fulfillment_metadata: p.fulfillment_metadata,
+                  single_page_config: p.fulfillment_metadata?.single_page_config || p.single_page_config,
+                }));
+              }
+            } catch (pTableErr) {
+              console.debug('[Dashboard] SQL products table query note:', pTableErr);
+            }
+          }
+
+          // 2. Ambil dari tenant.metadata.products (Single Source of Truth)
           const metaProducts = Array.isArray(tenant.metadata?.products) ? tenant.metadata.products : [];
           if (metaProducts.length > 0) {
-            const mapped = metaProducts.map((p: any, idx: number) => ({
-              id: typeof p.id === 'number' ? p.id : Date.now() + idx,
+            const mappedMeta = metaProducts.map((p: any, idx: number) => ({
+              id: p.id !== undefined && p.id !== null ? p.id : `prod-${idx + 1}`,
               name: p.name || p.title || `Produk ${idx + 1}`,
               slug: p.slug || p.single_page_config?.slug || slugify(p.name || p.title || `produk-${idx + 1}`),
               category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'Fisik' : (p.product_type === 'SERVICE' || p.product_type === 'FIELD_SERVICE' ? 'Jasa Lapangan' : (p.product_type === 'PROFESSIONAL_SERVICE' ? 'Konsultasi' : (p.product_type === 'AGENCY' ? 'Agency & Kreator' : (p.product_type === 'FOOD' ? 'Kuliner & F&B' : 'Digital'))))),
@@ -542,14 +597,26 @@ export function useTenantDashboard() {
               description: p.description || '',
               download_url: p.download_url || p.delivery_url || p.link_digital || '',
               image: sanitizeImageUrl(p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || ''),
-              stock: p.stock !== undefined ? Number(p.stock) : 100,
+              stock: p.stock !== undefined ? Number(p.stock) : 999999,
               sku: p.sku || `SKU-${idx + 1}`,
-              is_unlimited: p.is_unlimited || false,
+              is_unlimited: p.is_unlimited !== undefined ? p.is_unlimited : true,
               weight_grams: p.weight_grams,
               fulfillment_metadata: p.fulfillment_metadata,
               single_page_config: p.single_page_config,
             }));
-            setProducts(mapped);
+
+            // Gabungkan dengan prioritas metadata (update terbaru merchant)
+            const metaIds = new Set(mappedMeta.map((m: any) => String(m.id)));
+            const metaSlugs = new Set(mappedMeta.map((m: any) => String(m.slug).toLowerCase()));
+            const nonDuplicates = hydratedProducts.filter((hp: any) => !metaIds.has(String(hp.id)) && !metaSlugs.has(String(hp.slug).toLowerCase()));
+            hydratedProducts = [...mappedMeta, ...nonDuplicates];
+          }
+
+          if (hydratedProducts.length > 0) {
+            setProducts(hydratedProducts);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(hydratedProducts));
+            }
           }
 
           // Category
@@ -804,8 +871,12 @@ export function useTenantDashboard() {
 
     const finalSlug = (productForm.slug?.trim() || slugify(productForm.name)).toLowerCase();
     const cleanImage = sanitizeImageUrl(productForm.image);
+    const isPhysicalStock = storeCategory === 'PHYSICAL' || storeCategory === 'FOOD';
     const updatedProductItem: ProductItem = {
       ...productForm,
+      is_unlimited: !isPhysicalStock ? true : (productForm.is_unlimited ?? false),
+      stock: !isPhysicalStock ? 999999 : (productForm.stock ?? 100),
+      weight_grams: !isPhysicalStock ? 0 : (productForm.weight_grams ?? 0),
       image: cleanImage,
       slug: finalSlug,
       single_page_config: productForm.single_page_config
@@ -818,17 +889,77 @@ export function useTenantDashboard() {
     };
 
     let updatedProducts: ProductItem[];
-    if (editingProductId) {
-      updatedProducts = products.map(p => (p.id === editingProductId ? updatedProductItem : p));
+    if (editingProductId !== null && editingProductId !== undefined) {
+      updatedProducts = products.map(p => (String(p.id) === String(editingProductId) ? updatedProductItem : p));
       setProducts(updatedProducts);
       setSaveFeedback('✅ Produk berhasil diperbarui!');
     } else {
-      const newProd = { ...updatedProductItem, id: updatedProductItem.id || Date.now() };
+      const newProd = { ...updatedProductItem, id: updatedProductItem.id || `prod-${Date.now()}` };
       updatedProducts = [newProd, ...products];
       setProducts(updatedProducts);
       setSaveFeedback('✅ Produk baru berhasil ditambahkan!');
     }
 
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
+    }
+
+    // 1. Direct Mutation ke database Supabase (tenants.metadata.products)
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('id, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        if (tenantRow?.id) {
+          const updatedMeta = {
+            ...(tenantRow.metadata || {}),
+            products: updatedProducts,
+            product: updatedProductItem,
+          };
+
+          const { error: tErr } = await supabase
+            .from('tenants')
+            .update({ metadata: updatedMeta })
+            .eq('id', tenantRow.id);
+
+          if (tErr) {
+            console.error('[Dashboard] Direct Supabase product update failed:', tErr);
+          }
+
+          // Sync juga ke tabel SQL `products` jika ada
+          try {
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(updatedProductItem.id));
+            await supabase.from('products').upsert({
+              ...(isUuid ? { id: String(updatedProductItem.id) } : {}),
+              tenant_id: tenantRow.id,
+              title: updatedProductItem.name,
+              slug: finalSlug,
+              description: updatedProductItem.description || '',
+              price: Number(updatedProductItem.price),
+              promo_price: updatedProductItem.promo_price ? Number(updatedProductItem.promo_price) : 0,
+              image: cleanImage,
+              category: updatedProductItem.category || 'service',
+              stock: updatedProductItem.stock !== undefined ? Number(updatedProductItem.stock) : 999999,
+              is_unlimited_stock: updatedProductItem.is_unlimited ?? true,
+              asset_reference: `product:${finalSlug}`,
+              license_status: 'UNVERIFIED',
+              product_type: 'DIGITAL_FILE',
+              fulfillment_metadata: updatedProductItem.fulfillment_metadata || {},
+            });
+          } catch (pTableErr) {
+            console.debug('[Dashboard] SQL products table sync note:', pTableErr);
+          }
+        }
+      }
+    } catch (dbErr) {
+      console.warn('Direct Supabase product save error:', dbErr);
+    }
+
+    // 2. Sync via API Route Gateway (forward ke core backend)
     try {
       await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
         method: 'POST',
@@ -849,6 +980,36 @@ export function useTenantDashboard() {
       const updated = products.filter(p => String(p.id) !== String(id));
       setProducts(updated);
       setSaveFeedback('🗑️ Produk telah dihapus.');
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updated));
+      }
+
+      // Direct delete ke database Supabase
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: tenantRow } = await supabase
+            .from('tenants')
+            .select('id, metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+
+          if (tenantRow?.id) {
+            const updatedMeta = {
+              ...(tenantRow.metadata || {}),
+              products: updated,
+              product: updated[0] || null,
+            };
+            await supabase
+              .from('tenants')
+              .update({ metadata: updatedMeta })
+              .eq('id', tenantRow.id);
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Direct Supabase delete error:', dbErr);
+      }
 
       try {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products?id=${encodeURIComponent(id)}`, {
