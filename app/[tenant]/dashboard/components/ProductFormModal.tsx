@@ -160,6 +160,9 @@ export default function ProductFormModal({
         const customBadge = prev.custom_badge?.trim();
         const resolvedBadge = customBadge || (prev.category?.trim() && !['fisik', 'jasa', 'digital', 'service', 'physical'].includes(prev.category.trim().toLowerCase()) ? prev.category.trim() : meta.defaultBadge);
 
+        const effectiveDomain = resolveDomainVertical(storeCategory || vertical || meta.productType);
+        const isPhysicalStock = effectiveDomain === 'physical-retail' || effectiveDomain === 'fnb-culinary';
+
         return {
           ...prev,
           image: sanitizeImageUrl(prev.image),
@@ -168,10 +171,8 @@ export default function ProductFormModal({
           type: meta.backendType,
           category: resolvedBadge,
           custom_badge: customBadge || (resolvedBadge !== meta.defaultBadge ? resolvedBadge : undefined),
-          is_unlimited:
-            prev.is_unlimited !== undefined
-              ? prev.is_unlimited
-              : reqs.strategy === 'DIGITAL',
+          is_unlimited: !isPhysicalStock ? true : (prev.is_unlimited !== undefined ? prev.is_unlimited : reqs.strategy === 'DIGITAL'),
+          stock: !isPhysicalStock ? 999999 : (prev.stock ?? 100),
         };
       });
     }
@@ -184,6 +185,9 @@ export default function ProductFormModal({
 
   const currentType: ProductType = productForm.product_type || activeVerticalMeta.productType;
   const requirements = resolveFulfillmentRequirements(currentType);
+
+  const effectiveVertical = resolveDomainVertical(storeCategory || currentVerticalKey || currentType);
+  const isPhysicalStockVertical = effectiveVertical === 'physical-retail' || effectiveVertical === 'fnb-culinary';
 
   const isServiceCluster = currentVerticalKey === 'field_service' || currentVerticalKey === 'pro_service' || currentVerticalKey === 'creator_agency' || activeVerticalMeta.backendType === 'service';
   const isDigitalCluster = currentVerticalKey === 'digital_product' || activeVerticalMeta.backendType === 'digital';
@@ -220,6 +224,18 @@ export default function ProductFormModal({
     });
   };
 
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isPhysicalStockVertical) {
+      setProductForm((p) => ({
+        ...p,
+        is_unlimited: true,
+        stock: 999999,
+      }));
+    }
+    onSave(e);
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
@@ -237,7 +253,7 @@ export default function ProductFormModal({
           </button>
         </div>
 
-        <form onSubmit={onSave} className="p-6 overflow-y-auto space-y-4 flex-1">
+        <form onSubmit={handleFormSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
           {/* 1. Nama Produk */}
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1.5">
@@ -402,39 +418,41 @@ export default function ProductFormModal({
             </div>
           </div>
 
-          {/* 5. Stok Barang */}
-          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex-1">
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Jumlah Stok Tersedia *
-                </label>
-                <input
-                  type="number"
-                  disabled={productForm.is_unlimited}
-                  value={productForm.is_unlimited ? 9999 : (productForm.stock ?? 100)}
-                  onChange={(e) => setProductForm((p) => ({ ...p, stock: Number(e.target.value) }))}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-blue-600 disabled:bg-slate-100 disabled:text-slate-400"
-                />
-              </div>
+          {/* 5. Stok Barang (Hanya untuk Retail Fisik dan FnB) */}
+          {isPhysicalStockVertical && (
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex-1">
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Jumlah Stok Tersedia *
+                  </label>
+                  <input
+                    type="number"
+                    disabled={productForm.is_unlimited}
+                    value={productForm.is_unlimited ? 9999 : (productForm.stock ?? 100)}
+                    onChange={(e) => setProductForm((p) => ({ ...p, stock: Number(e.target.value) }))}
+                    className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-blue-600 disabled:bg-slate-100 disabled:text-slate-400"
+                  />
+                </div>
 
-              <label className="inline-flex items-center gap-1.5 self-start sm:self-center pt-2 sm:pt-4 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={productForm.is_unlimited || false}
-                  onChange={(e) =>
-                    setProductForm((p) => ({
-                      ...p,
-                      is_unlimited: e.target.checked,
-                      stock: e.target.checked ? 9999 : p.stock,
-                    }))
-                  }
-                  className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
-                />
-                <span className="text-xs text-slate-700 font-semibold">Stok Tak Terbatas (Unlimited)</span>
-              </label>
+                <label className="inline-flex items-center gap-1.5 self-start sm:self-center pt-2 sm:pt-4 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={productForm.is_unlimited || false}
+                    onChange={(e) =>
+                      setProductForm((p) => ({
+                        ...p,
+                        is_unlimited: e.target.checked,
+                        stock: e.target.checked ? 9999 : p.stock,
+                      }))
+                    }
+                    className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                  />
+                  <span className="text-xs text-slate-700 font-semibold">Stok Tak Terbatas (Unlimited)</span>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* FULFILLMENT & DOMAIN SPECIFIC PRODUCT FORM */}
           <ModularProductFormDispatcher

@@ -47,13 +47,13 @@ export function resolveDomainVertical(categoryOrType?: string): DomainVerticalKe
   if (['FOOD', 'FNB', 'KULINER', 'MAKANAN', 'RESTO'].some((k) => norm.includes(k))) {
     return 'fnb-culinary';
   }
-  if (['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD'].some((k) => norm.includes(k))) {
+  if (['DIGITAL_PRODUCT', 'DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD'].some((k) => norm.includes(k))) {
     return 'digital-product';
   }
-  if (['PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL'].some((k) => norm.includes(k))) {
+  if (['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'PRO'].some((k) => norm.includes(k))) {
     return 'pro-service';
   }
-  if (['AGENCY', 'CREATOR', 'TALENT', 'CAMPAIGN', 'AFFILIATE'].some((k) => norm.includes(k))) {
+  if (['CREATOR_AGENCY', 'AGENCY', 'CREATOR', 'TALENT', 'CAMPAIGN', 'AFFILIATE'].some((k) => norm.includes(k))) {
     return 'creator-agency';
   }
   if (['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'REPAIR', 'CLEANING', 'TEKNISI'].some((k) => norm.includes(k))) {
