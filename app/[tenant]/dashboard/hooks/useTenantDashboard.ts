@@ -18,6 +18,7 @@ import { optimizeImageToWebP } from '@/components/ImageUpload';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm } from '@/lib/boonpilotMapper';
 import type { InteractiveMenu } from '@/lib/whatsappFormatter';
+import { sanitizeImageUrl } from '@/lib/image-utils';
 
 export type DashboardTab =
   | 'inbox'
@@ -530,15 +531,15 @@ export function useTenantDashboard() {
               id: typeof p.id === 'number' ? p.id : Date.now() + idx,
               name: p.name || p.title || `Produk ${idx + 1}`,
               slug: p.slug || p.single_page_config?.slug || slugify(p.name || p.title || `produk-${idx + 1}`),
-              category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : 'digital'),
-              product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : 'DIGITAL'),
+              category: (p.category as any) || (p.product_type === 'PHYSICAL' ? 'fisik' : (p.product_type === 'SERVICE' ? 'jasa' : 'digital')),
+              product_type: p.product_type || (p.category === 'fisik' ? 'PHYSICAL' : (p.category === 'jasa' || p.category === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
               price: Number(p.price) || 0,
               promo_price: p.promo_price ? Number(p.promo_price) : 0,
               variants: p.variants || '',
               promo: p.promo || '',
               description: p.description || '',
               download_url: p.download_url || p.delivery_url || p.link_digital || '',
-              image: p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || '',
+              image: sanitizeImageUrl(p.image || (Array.isArray(p.images) && p.images[0]) || p.image_url || ''),
               stock: p.stock !== undefined ? Number(p.stock) : 100,
               sku: p.sku || `SKU-${idx + 1}`,
               is_unlimited: p.is_unlimited || false,
@@ -751,6 +752,7 @@ export function useTenantDashboard() {
     const prodSlug = prod.slug || prod.single_page_config?.slug || slugify(prod.name);
     setProductForm({
       ...prod,
+      image: sanitizeImageUrl(prod.image),
       slug: prodSlug,
       stock: prod.stock ?? 100,
       sku: prod.sku || `SKU-${prod.id}`,
@@ -789,13 +791,16 @@ export function useTenantDashboard() {
     if (!productForm.name || !tenantSlug) return;
 
     const finalSlug = (productForm.slug?.trim() || slugify(productForm.name)).toLowerCase();
+    const cleanImage = sanitizeImageUrl(productForm.image);
     const updatedProductItem: ProductItem = {
       ...productForm,
+      image: cleanImage,
       slug: finalSlug,
       single_page_config: productForm.single_page_config
         ? {
           ...productForm.single_page_config,
           slug: finalSlug,
+          banner_url: sanitizeImageUrl(productForm.single_page_config.banner_url || cleanImage),
         }
         : undefined,
     };

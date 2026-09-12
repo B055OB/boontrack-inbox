@@ -10,6 +10,7 @@ import {
   FulfillmentMetadata,
   slugify,
 } from '@/lib/product-catalog';
+import { sanitizeImageUrl } from '@/lib/image-utils';
 
 export function mapBusinessCategoryToProductType(storeCategory?: string): ProductType {
   const cat = (storeCategory || '').toUpperCase();
@@ -62,6 +63,7 @@ export default function ProductFormModal({
         const currentSlug = prev.slug?.trim() || (prev.name ? slugify(prev.name) : '');
         return {
           ...prev,
+          image: sanitizeImageUrl(prev.image),
           slug: currentSlug,
           product_type: defaultType,
           category: reqs.strategy === 'PHYSICAL' ? 'fisik' : reqs.strategy === 'SERVICE' ? 'jasa' : 'digital',
@@ -455,7 +457,7 @@ export default function ProductFormModal({
             <ImageUpload
               label="Foto Produk"
               value={productForm.image}
-              onChange={(url) => setProductForm((p) => ({ ...p, image: url }))}
+              onChange={(url) => setProductForm((p) => ({ ...p, image: sanitizeImageUrl(url) }))}
               placeholder="Upload foto produk (Auto-convert WebP)"
               description="Auto-convert WebP & resize max width 1200px"
               tenantSlug={tenantSlug}

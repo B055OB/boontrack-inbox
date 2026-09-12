@@ -4,32 +4,96 @@
  * - Upgrades insecure http:// to https://
  * - Converts legacy api.boontrack.com/assets/uploads/... or dev r2 domains to canonical asset.boontrack.com
  */
-export const ASSET_DOMAIN = process.env.NEXT_PUBLIC_ASSET_DOMAIN || 'https://asset.boontrack.com';
+export const ASSET_DOMAIN = (
+  process.env.NEXT_PUBLIC_ASSET_DOMAIN || 'https://asset.boontrack.com'
+).replace(/\/+$/, '');
 
 export function sanitizeImageUrl(url?: string | null): string {
   if (!url || typeof url !== 'string') return '';
-  const trimmed = url.trim();
+  let trimmed = url.trim();
   if (!trimmed) return '';
 
-  // Upgrade legacy boontrack api assets to canonical asset.boontrack.com
-  if (trimmed.includes('api.boontrack.com/assets/uploads/')) {
-    const filename = trimmed.split('assets/uploads/').pop()?.split('?')[0];
-    if (filename) {
-      return `${ASSET_DOMAIN}/${filename}`;
+  // 1. Tangkap seluruh variasi domain legacy api.boontrack.com (apa pun path atau protocol-nya)
+  if (trimmed.includes('api.boontrack.com')) {
+    const afterDomain = trimmed.split(/api\.boontrack\.com/i)[1] || '';
+    const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    
+    // Ekstrak nama file atau sub-path terakhir jika terdapat prefix assets/uploads/, dsb.
+    let targetPath = cleanPath;
+    if (cleanPath.includes('assets/uploads/')) {
+      targetPath = cleanPath.split('assets/uploads/').pop() || '';
+    } else if (cleanPath.startsWith('assets/')) {
+      targetPath = cleanPath.replace(/^assets\//, '');
+    } else if (cleanPath.startsWith('uploads/')) {
+      targetPath = cleanPath.replace(/^uploads\//, '');
+    } else if (cleanPath.startsWith('media/')) {
+      targetPath = cleanPath.replace(/^media\//, '');
+    }
+    targetPath = targetPath.replace(/^\/+/, '');
+
+    if (targetPath) {
+      return `${ASSET_DOMAIN}/${targetPath}`;
+    }
+    return ASSET_DOMAIN;
+  }
+
+  // 2. Tangkap legacy Railway core backend assets (boontrack-core-production.up.railway.app)
+  if (trimmed.includes('boontrack-core-production.up.railway.app')) {
+    const afterDomain = trimmed.split(/boontrack-core-production\.up\.railway\.app/i)[1] || '';
+    const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    let targetPath = cleanPath;
+    if (cleanPath.includes('assets/uploads/')) {
+      targetPath = cleanPath.split('assets/uploads/').pop() || '';
+    } else if (cleanPath.startsWith('assets/')) {
+      targetPath = cleanPath.replace(/^assets\//, '');
+    } else if (cleanPath.startsWith('uploads/')) {
+      targetPath = cleanPath.replace(/^uploads\//, '');
+    } else if (cleanPath.startsWith('media/')) {
+      targetPath = cleanPath.replace(/^media\//, '');
+    }
+    targetPath = targetPath.replace(/^\/+/, '');
+
+    if (targetPath) {
+      return `${ASSET_DOMAIN}/${targetPath}`;
+    }
+    return ASSET_DOMAIN;
+  }
+
+  // 3. Normalisasi plural domain https://assets.boontrack.com -> https://asset.boontrack.com
+  if (trimmed.includes('assets.boontrack.com')) {
+    const afterDomain = trimmed.split(/assets\.boontrack\.com/i)[1] || '';
+    const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    if (cleanPath) {
+      return `${ASSET_DOMAIN}/${cleanPath}`;
     }
   }
 
-  // Upgrade legacy r2.dev dev URLs to canonical asset.boontrack.com
-  if (trimmed.includes('r2.dev/')) {
-    const path = trimmed.split('r2.dev/').pop()?.split('?')[0];
-    if (path) {
-      return `${ASSET_DOMAIN}/${path}`;
+  // 4. Upgrade legacy Cloudflare R2 dev domains (*.r2.dev)
+  if (trimmed.includes('r2.dev')) {
+    const afterDomain = trimmed.split(/r2\.dev/i)[1] || '';
+    const cleanPath = afterDomain.split('?')[0].replace(/^\/+/, '');
+    if (cleanPath) {
+      return `${ASSET_DOMAIN}/${cleanPath}`;
     }
   }
 
-  // Upgrade any http:// to https:// to prevent mixed content blocking on HTTPS
+  // 5. Upgrade relative paths yang mengarah ke internal media proxy atau uploads
+  if (trimmed.startsWith('/api/v1/media/')) {
+    const sub = trimmed.replace(/^\/api\/v1\/media\//, '').split('?')[0];
+    if (sub) {
+      return `${ASSET_DOMAIN}/${sub}`;
+    }
+  }
+  if (trimmed.startsWith('/assets/uploads/')) {
+    const sub = trimmed.replace(/^\/assets\/uploads\//, '').split('?')[0];
+    if (sub) {
+      return `${ASSET_DOMAIN}/${sub}`;
+    }
+  }
+
+  // 6. Upgrade any insecure http:// to https://
   if (trimmed.startsWith('http://')) {
-    return trimmed.replace(/^http:\/\//i, 'https://');
+    trimmed = trimmed.replace(/^http:\/\//i, 'https://');
   }
 
   return trimmed;

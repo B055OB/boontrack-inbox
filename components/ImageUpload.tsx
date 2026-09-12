@@ -87,7 +87,13 @@ export default function ImageUpload({
 
   useEffect(() => {
     setImgError(false);
-  }, [value]);
+    if (value) {
+      const sanitized = sanitizeImageUrl(value);
+      if (sanitized && sanitized !== value) {
+        onChange(sanitized);
+      }
+    }
+  }, [value, onChange]);
 
   const getResolvedTenantSlug = (): string => {
     if (tenantSlug) return tenantSlug;
@@ -203,9 +209,10 @@ export default function ImageUpload({
 
       const data = await res.json();
       const rawFinalUrl =
+        data?.public_url ||
+        data?.r2_url ||
         data?.url ||
         data?.image_url ||
-        data?.public_url ||
         data?.file_url ||
         (typeof data === 'string' ? data : '');
       const finalUrl = sanitizeImageUrl(rawFinalUrl);

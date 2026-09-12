@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSupabase } from '@/lib/supabaseClient';
+import { sanitizeImageUrl } from '@/lib/image-utils';
 
 const R2_ACCOUNT_ID =
   process.env.R2_ACCOUNT_ID ||
@@ -128,8 +129,9 @@ export async function POST(req: NextRequest) {
 
         if (backendRes.ok) {
           const resData = await backendRes.json();
-          if (resData.url) {
-            r2PublicUrl = resData.url;
+          const candidateUrl = resData.url || resData.file_url || resData.public_url || '';
+          if (candidateUrl) {
+            r2PublicUrl = sanitizeImageUrl(candidateUrl);
           }
         }
       } catch (coreErr) {
@@ -139,15 +141,17 @@ export async function POST(req: NextRequest) {
 
     // URL proksi internal yang selalu aman dari blokir DNS ISP lokal
     const localProxyUrl = `/api/v1/media/${storageKey}`;
-    // Jika R2 direct berhasil, kunci ke canonical asset domain (asset.boontrack.com), fallback ke internal proxy
-    const finalUrl = r2Uploaded ? r2PublicUrl : localProxyUrl;
+    // Kunci URL publik secara mutlak ke domain kanonikal asset.boontrack.com
+    const canonicalAssetUrl = sanitizeImageUrl(r2PublicUrl) || `${R2_PUBLIC_URL_BASE}/${storageKey}`;
+    const finalUrl = canonicalAssetUrl;
 
     return NextResponse.json({
       status: 'success',
       url: finalUrl,
-      public_url: r2PublicUrl,
-      r2_url: r2PublicUrl,
+      public_url: canonicalAssetUrl,
+      r2_url: canonicalAssetUrl,
       image_url: finalUrl,
+      local_proxy_url: localProxyUrl,
       qris_url: isQris ? finalUrl : undefined,
       path: `/${storageKey}`,
       filename: sanitizedName,
