@@ -10,7 +10,7 @@ const EVOLUTION_API_KEY =
   "4398809d97f770b1a2b243ed0ee33bf3312d02dec42be8789ea3512f487f4c5e";
 
 async function fetchPairing(instanceName: string, phone: string) {
-  const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${encodeURIComponent(instanceName)}?number=${encodeURIComponent(phone)}`;
+  const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${encodeURIComponent(instanceName)}?number=${encodeURIComponent(phone)}&pairing=true`;
   const res = await fetch(url, {
     method: "GET",
     headers: {
