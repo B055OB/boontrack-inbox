@@ -172,7 +172,7 @@ export default function TenantDashboardPage() {
   }) => <LockedFeatureCard {...cardProps} onUpgrade={handleUpgradeTier} />;
 
   const renderVerticalModule = () => {
-    if (storeCategory === 'LOCAL_SERVICE') {
+    if (storeCategory === 'LOCAL_SERVICE' || storeCategory === 'FIELD_SERVICE' || storeCategory === 'SERVICE') {
       return (
         <div className="mb-6 animate-in fade-in duration-200">
           <LocalServiceConfigForm tenantSlug={tenantSlug} />

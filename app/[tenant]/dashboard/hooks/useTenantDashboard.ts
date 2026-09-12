@@ -554,12 +554,18 @@ export function useTenantDashboard() {
 
           // Category
           const rawCat = (tenant.category || tenant.metadata?.vertical_type || tenant.metadata?.business_category || 'PHYSICAL').toUpperCase();
-          if (['PHYSICAL', 'RETAIL', 'FNB', 'RETAIL_PHYSICAL'].includes(rawCat) || rawCat.includes('PHYSICAL') || rawCat.includes('RETAIL')) {
-            setStoreCategory('PHYSICAL');
-          } else if (['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'PROFESSIONAL_CONSULT'].includes(rawCat) || rawCat.includes('SERVICE') || rawCat.includes('LOCAL')) {
+          if (['FOOD', 'FNB', 'KULINER'].some(k => rawCat.includes(k))) {
+            setStoreCategory('FOOD');
+          } else if (['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'REPAIR'].some(k => rawCat.includes(k))) {
             setStoreCategory('LOCAL_SERVICE');
-          } else {
+          } else if (['PROFESSIONAL', 'CONSULT'].some(k => rawCat.includes(k))) {
+            setStoreCategory('PROFESSIONAL_SERVICE');
+          } else if (['AGENCY', 'CREATOR'].some(k => rawCat.includes(k))) {
+            setStoreCategory('CREATOR_AGENCY');
+          } else if (['DIGITAL', 'COURSE', 'SOFTWARE'].some(k => rawCat.includes(k))) {
             setStoreCategory('DIGITAL');
+          } else {
+            setStoreCategory('PHYSICAL');
           }
 
           const resolvedTier = tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'SOLO_TRIAL';
@@ -733,8 +739,8 @@ export function useTenantDashboard() {
       name: '',
       slug: '',
       product_type: defaultProductType,
-      type: reqs.strategy === 'PHYSICAL' ? 'physical' : reqs.strategy === 'SERVICE' ? 'service' : 'digital',
-      category: reqs.strategy === 'PHYSICAL' ? 'Fisik' : reqs.strategy === 'SERVICE' ? 'Jasa Lapangan' : 'Digital',
+      type: defaultProductType === 'FOOD' ? 'fnb' : reqs.strategy === 'PHYSICAL' ? 'physical' : reqs.strategy === 'SERVICE' ? 'service' : 'digital',
+      category: defaultProductType === 'FOOD' ? 'Kuliner & F&B' : reqs.strategy === 'PHYSICAL' ? 'Fisik' : reqs.strategy === 'SERVICE' ? (defaultProductType === 'PROFESSIONAL_SERVICE' ? 'Konsultasi' : defaultProductType === 'AGENCY' ? 'Agency & Kreator' : 'Jasa Lapangan') : 'Digital',
       custom_badge: '',
       price: 99000,
       promo_price: 0,

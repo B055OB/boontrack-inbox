@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { Package, X, Save, Truck, Link as LinkIcon, Key, FileText, Info, RefreshCw, Calendar, Clock } from 'lucide-react';
+import { Package, X, Save, Truck, Link as LinkIcon, Key, RefreshCw, Clock } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
 import {
   ProductItem,
@@ -84,6 +84,16 @@ export function resolveBoonVertical(
   product: Partial<ProductItem>,
   storeCategory?: string
 ): BoonVerticalOption {
+  // Store category from tenant is the primary source of truth for the store's vertical
+  const sc = (storeCategory || '').toUpperCase();
+  if (['FOOD', 'FNB', 'KULINER'].some((k) => sc.includes(k))) return 'fnb';
+  if (['DIGITAL', 'COURSE', 'SOFTWARE'].some((k) => sc.includes(k))) return 'digital_product';
+  if (['PROFESSIONAL', 'CONSULT'].some((k) => sc.includes(k))) return 'pro_service';
+  if (['AGENCY', 'CREATOR'].some((k) => sc.includes(k))) return 'creator_agency';
+  if (['SERVICE', 'FIELD', 'LOCAL'].some((k) => sc.includes(k))) return 'field_service';
+  if (['PHYSICAL', 'RETAIL'].some((k) => sc.includes(k))) return 'retail_physical';
+
+  // Fallback to product attributes if storeCategory is not specified
   const pt = (product.product_type || '').toUpperCase();
   if (pt === 'FOOD' || pt === 'FNB') return 'fnb';
   if (pt === 'DIGITAL') return 'digital_product';
@@ -100,19 +110,9 @@ export function resolveBoonVertical(
   if (rawCat === 'konsultasi' || rawCat === 'pro_service') return 'pro_service';
   if (rawCat === 'agency & kreator' || rawCat === 'creator_agency') return 'creator_agency';
   if (rawCat === 'jasa lapangan' || rawCat === 'field_service' || rawCat === 'jasa' || rawCat === 'service' || rawType === 'service') {
-    const sc = (storeCategory || '').toUpperCase();
-    if (sc.includes('AGENCY') || sc.includes('CREATOR')) return 'creator_agency';
-    if (sc.includes('PROFESSIONAL') || sc.includes('CONSULT')) return 'pro_service';
     return 'field_service';
   }
   if (rawCat === 'fisik' || rawCat === 'physical' || rawType === 'physical') return 'retail_physical';
-
-  const sc = (storeCategory || '').toUpperCase();
-  if (['FOOD', 'FNB', 'KULINER'].some(k => sc.includes(k))) return 'fnb';
-  if (['DIGITAL', 'COURSE', 'SOFTWARE'].some(k => sc.includes(k))) return 'digital_product';
-  if (['PROFESSIONAL', 'CONSULT'].some(k => sc.includes(k))) return 'pro_service';
-  if (['AGENCY', 'CREATOR'].some(k => sc.includes(k))) return 'creator_agency';
-  if (['SERVICE', 'FIELD', 'LOCAL'].some(k => sc.includes(k))) return 'field_service';
 
   return 'retail_physical';
 }
@@ -121,9 +121,9 @@ export function mapBusinessCategoryToProductType(storeCategory?: string): Produc
   const cat = (storeCategory || '').toUpperCase();
   if (['FOOD', 'FNB', 'KULINER', 'RESTO', 'MAKANAN'].some((k) => cat.includes(k))) return 'FOOD';
   if (['DIGITAL', 'COURSE', 'SOFTWARE', 'CREATOR_SERVICE', 'KONTEN'].some((k) => cat.includes(k))) return 'DIGITAL';
-  if (['FIELD_SERVICE', 'LOCAL_SERVICE', 'REPAIR', 'LAUNDRY', 'SALON', 'JASA_LAPANGAN'].some((k) => cat.includes(k))) return 'FIELD_SERVICE';
+  if (['FIELD_SERVICE', 'LOCAL_SERVICE', 'REPAIR', 'LAUNDRY', 'SALON', 'JASA_LAPANGAN', 'SERVICE'].some((k) => cat.includes(k))) return 'FIELD_SERVICE';
   if (['PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'ACCOUNTING'].some((k) => cat.includes(k))) return 'PROFESSIONAL_SERVICE';
-  if (['AGENCY', 'MARKETING_AGENCY', 'DEV_AGENCY'].some((k) => cat.includes(k))) return 'AGENCY';
+  if (['AGENCY', 'MARKETING_AGENCY', 'DEV_AGENCY', 'CREATOR'].some((k) => cat.includes(k))) return 'AGENCY';
   return 'PHYSICAL';
 }
 
@@ -191,25 +191,6 @@ export default function ProductFormModal({
     delivery_type: isServiceCluster ? 'WHATSAPP_GROUP' : 'DOWNLOAD_LINK',
     access_url: productForm.download_url || '',
     instructions: '',
-  };
-
-  const handleVerticalChange = (newVerticalKey: BoonVerticalOption) => {
-    const meta = BOON_VERTICAL_OPTIONS.find((o) => o.key === newVerticalKey) || BOON_VERTICAL_OPTIONS[0];
-    const reqs = resolveFulfillmentRequirements(meta.productType);
-
-    setProductForm((prev) => {
-      const customBadge = prev.custom_badge?.trim();
-      const resolvedBadge = customBadge || meta.defaultBadge;
-
-      return {
-        ...prev,
-        product_type: meta.productType,
-        type: meta.backendType,
-        category: resolvedBadge,
-        is_unlimited: reqs.strategy === 'DIGITAL' ? (prev.is_unlimited ?? true) : false,
-        weight_grams: reqs.requiresWeight ? (prev.weight_grams || 1000) : undefined,
-      };
-    });
   };
 
   const handleCustomBadgeChange = (val: string) => {
@@ -336,50 +317,30 @@ export default function ProductFormModal({
             </p>
           </div>
 
-          {/* 2. Kategori Produk / Layanan & Label Kustom Etalase */}
-          <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-bold text-slate-800 block mb-1">
-                  Kategori Produk / Layanan *
-                </label>
-                <select
-                  value={currentVerticalKey}
-                  onChange={(e) => handleVerticalChange(e.target.value as BoonVerticalOption)}
-                  className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 cursor-pointer shadow-xs"
-                >
-                  {BOON_VERTICAL_OPTIONS.map((opt) => (
-                    <option key={opt.key} value={opt.key}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-1.5 leading-tight">
-                  <Info className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                  <span>{activeVerticalMeta.description}</span>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-800">
-                    Label Kustom Etalase (Opsional)
-                  </label>
-                  <span className="text-[10px] font-semibold text-slate-500">
-                    Default: <span className="text-blue-600 font-bold">"{activeVerticalMeta.defaultBadge}"</span>
-                  </span>
-                </div>
-                <input
-                  type="text"
-                  value={productForm.custom_badge || ''}
-                  onChange={(e) => handleCustomBadgeChange(e.target.value)}
-                  placeholder="Biarkan kosong untuk memakai badge default"
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-blue-600 shadow-xs"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Badge yang tampil: <strong className="text-slate-700">{productForm.custom_badge?.trim() || activeVerticalMeta.defaultBadge}</strong>
-                </p>
-              </div>
+          {/* 2. Kategori / Label Produk (Opsional) - Full Width */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700">
+                Kategori / Label Produk (Opsional)
+              </label>
+              <span className="text-[11px] text-slate-500 font-medium">
+                Badge default: <strong className="text-blue-600 font-bold">"{activeVerticalMeta.defaultBadge}"</strong>
+              </span>
+            </div>
+            <input
+              type="text"
+              value={productForm.custom_badge || ''}
+              onChange={(e) => handleCustomBadgeChange(e.target.value)}
+              placeholder="Contoh: Cuci AC, Kuras Toren, Aksesoris, dsb. (Biarkan kosong untuk label default)"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-blue-600 shadow-xs"
+            />
+            <div className="flex items-center justify-between text-[11px] text-slate-400">
+              <span>
+                Badge etalase: <strong className="text-slate-700">{productForm.custom_badge?.trim() || activeVerticalMeta.defaultBadge}</strong>
+              </span>
+              <span className="text-[10px] text-slate-400">
+                Vertikal toko: <span className="text-slate-600 font-semibold">{activeVerticalMeta.label}</span>
+              </span>
             </div>
           </div>
 
