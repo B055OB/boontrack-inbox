@@ -17,6 +17,12 @@ import {
   Wrench,
 } from 'lucide-react';
 
+import {
+  DEFAULT_BOOKING_SUMMARY_TEMPLATE,
+  getStoredBookingTemplate,
+  parseBookingSummaryTemplate,
+} from './booking-template';
+
 export interface BookingSlot {
   id: string;
   customerName: string;
@@ -99,37 +105,34 @@ const INITIAL_BOOKINGS: BookingSlot[] = [
   },
 ];
 
-export function formatFieldServiceWhatsAppMessage(booking: {
-  serviceName: string;
-  customerName: string;
-  address: string;
-  date: string;
-  timeSlot: string;
-  phone: string;
-  mapsUrl?: string;
-}): string {
-  const ukuran = booking.serviceName || '-';
-  const nama = booking.customerName || '-';
-  const alamat = booking.address || '-';
-  const tgl = booking.date || '-';
-  const waktu = booking.timeSlot || '-';
-  const wa = booking.phone || '-';
-  const maps = booking.mapsUrl && booking.mapsUrl.trim() ? booking.mapsUrl.trim() : '-';
-
-  return `JASA TOREN KARAWANG
-🚰 Order ukuran toren : ${ukuran}
-👤 Nama Client : ${nama}
-🏠 Alamat : ${alamat}
-🗓️ Tanggal Eksekusi : ${tgl}
-⏰ Waktu : ${waktu}
-📱 No. WA : ${wa}
-📍 Link Google map : ${maps}`;
+export function formatFieldServiceWhatsAppMessage(
+  booking: {
+    serviceName: string;
+    customerName: string;
+    address: string;
+    date: string;
+    timeSlot: string;
+    phone: string;
+    mapsUrl?: string;
+  },
+  customTemplate?: string
+): string {
+  return parseBookingSummaryTemplate(customTemplate || DEFAULT_BOOKING_SUMMARY_TEMPLATE, {
+    nama_client: booking.customerName,
+    ukuran_toren: booking.serviceName,
+    alamat: booking.address,
+    tanggal: booking.date,
+    jam: booking.timeSlot,
+    no_wa: booking.phone,
+    link_maps: booking.mapsUrl,
+  });
 }
 
 export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: string }) {
   const [bookings, setBookings] = useState<BookingSlot[]>(INITIAL_BOOKINGS);
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [summaryTemplate, setSummaryTemplate] = useState<string>(() => getStoredBookingTemplate(tenantSlug));
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -155,6 +158,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
           setBookings(parsed);
         }
       }
+      setSummaryTemplate(getStoredBookingTemplate(tenantSlug));
     } catch {
       // Ignore storage errors
     }
@@ -175,7 +179,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
   };
 
   const handleCopyWA = (item: BookingSlot) => {
-    const text = formatFieldServiceWhatsAppMessage(item);
+    const text = formatFieldServiceWhatsAppMessage(item, summaryTemplate);
     navigator.clipboard.writeText(text);
     setCopiedId(item.id);
     setTimeout(() => {
@@ -291,7 +295,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
           const isInProg = item.status === 'IN_PROGRESS';
           const isSched = item.status === 'SCHEDULED';
           const isCopied = copiedId === item.id;
-          const waMessage = formatFieldServiceWhatsAppMessage(item);
+          const waMessage = formatFieldServiceWhatsAppMessage(item, summaryTemplate);
 
           return (
             <div
@@ -392,7 +396,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
               {/* Action Buttons: Standardized WA Format & Dispatch */}
               <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Salin Format WA Button */}
+                  {/* Salin Rangkuman WA Button */}
                   <button
                     type="button"
                     onClick={() => handleCopyWA(item)}
@@ -405,12 +409,12 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                     {isCopied ? (
                       <>
                         <Check className="w-3.5 h-3.5" />
-                        <span>Format WA Tersalin!</span>
+                        <span>Rangkuman Tersalin!</span>
                       </>
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Salin Format WA</span>
+                        <span>Salin Rangkuman WA</span>
                       </>
                     )}
                   </button>
