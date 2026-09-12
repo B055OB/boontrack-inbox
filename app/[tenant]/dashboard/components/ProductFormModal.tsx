@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { Package, X, Save, Truck, Link as LinkIcon, Key, RefreshCw, Clock } from 'lucide-react';
+import { Package, X, Save, Link as LinkIcon, RefreshCw } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
 import {
   ProductItem,
@@ -11,6 +11,7 @@ import {
   slugify,
 } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';
+import { ModularProductFormDispatcher, resolveDomainVertical } from './modules';
 
 export type BoonVerticalOption =
   | 'retail_physical'
@@ -435,158 +436,14 @@ export default function ProductFormModal({
             </div>
           </div>
 
-          {/* 6. SYARAT FULFILLMENT: Berat & Kurir (Hanya jika requiresWeight === true) */}
-          {requirements.requiresWeight && (
-            <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-2">
-              <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
-                <Truck className="w-4 h-4 text-amber-700" />
-                <span>Pengaturan Logistik & Berat Fisik</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Berat Paket (Gram) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={productForm.weight_grams || 1000}
-                    onChange={(e) =>
-                      setProductForm((p) => ({ ...p, weight_grams: Number(e.target.value) }))
-                    }
-                    placeholder="1000 gram (1 kg)"
-                    className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold font-mono focus:outline-none focus:border-amber-600"
-                  />
-                </div>
-                <div className="flex items-center text-[11px] text-slate-500 leading-snug">
-                  Tarif kurir (J&T, SiCepat, Kargo, Instant) otomatis dihitung berdasarkan berat gram ini saat pembeli checkout.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 7. SYARAT FULFILLMENT: PAYLOAD FILE / LINK DOWNLOAD (Digital Product) */}
-          {isDigitalCluster && (
-            <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-2xl space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs">
-                  <Key className="w-4 h-4 text-indigo-700" />
-                  <span>Payload File / Link Download (Akses Digital)</span>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
-                  Auto-Deliver Saat Lunas
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Tipe Pengiriman Akses
-                  </label>
-                  <select
-                    value={metadata.delivery_type || 'DOWNLOAD_LINK'}
-                    onChange={(e) => handleMetadataChange('delivery_type', e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-indigo-600 cursor-pointer"
-                  >
-                    <option value="DOWNLOAD_LINK">🔗 Link Download (Google Drive / Cloud)</option>
-                    <option value="LICENSE_KEY">🔑 Lisensi / Serial Key / Kupon</option>
-                    <option value="BRIEF_FORM">📝 Akses Member Area / URL Aplikasi</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Payload File / Link Download *
-                  </label>
-                  <div className="relative">
-                    <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="url"
-                      value={metadata.access_url || productForm.download_url || ''}
-                      onChange={(e) => handleMetadataChange('access_url', e.target.value)}
-                      placeholder="https://drive.google.com/... atau https://app..."
-                      className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-600 font-medium"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Petunjuk Aktivasi / Catatan Pembeli
-                </label>
-                <textarea
-                  rows={2}
-                  value={metadata.instructions || ''}
-                  onChange={(e) => handleMetadataChange('instructions', e.target.value)}
-                  placeholder="Contoh: Silakan klik link di atas dan download file materi Anda. Jika ada kendala, hubungi CS kami."
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-600 leading-relaxed"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* 7b. SYARAT FULFILLMENT: INSTRUKSI & KOORDINASI LAYANAN (Klaster Service: field_service, pro_service, creator_agency) */}
-          {isServiceCluster && (
-            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
-                  <Clock className="w-4 h-4 text-emerald-700" />
-                  <span>Instruksi & Koordinasi Layanan (Link WA / Briefing / Kalender)</span>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                  Koordinasi Layanan
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Metode Koordinasi Layanan
-                  </label>
-                  <select
-                    value={metadata.delivery_type || 'WHATSAPP_GROUP'}
-                    onChange={(e) => handleMetadataChange('delivery_type', e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-none focus:border-emerald-600 cursor-pointer"
-                  >
-                    <option value="WHATSAPP_GROUP">💬 WhatsApp Konfirmasi / Tim Lapangan</option>
-                    <option value="CALENDAR_LINK">📅 Link Booking Kalender (Cal.com / Calendly)</option>
-                    <option value="BRIEF_FORM">📝 Form Brief / Konsultasi Klien</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Link Koordinasi / Kalender / WA (Opsional)
-                  </label>
-                  <div className="relative">
-                    <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="url"
-                      value={metadata.access_url || productForm.download_url || ''}
-                      onChange={(e) => handleMetadataChange('access_url', e.target.value)}
-                      placeholder="https://wa.me/... atau https://cal.com/..."
-                      className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Petunjuk & Prosedur Layanan untuk Pelanggan
-                </label>
-                <textarea
-                  rows={2}
-                  value={metadata.instructions || ''}
-                  onChange={(e) => handleMetadataChange('instructions', e.target.value)}
-                  placeholder="Contoh: Setelah pembayaran diverifikasi, tim kami akan segera menghubungi nomor WhatsApp Anda untuk konfirmasi jadwal kunjungan ke lokasi."
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-emerald-600 leading-relaxed"
-                />
-              </div>
-            </div>
-          )}
+          {/* FULFILLMENT & DOMAIN SPECIFIC PRODUCT FORM */}
+          <ModularProductFormDispatcher
+            verticalKey={resolveDomainVertical(storeCategory || currentType)}
+            productForm={productForm}
+            setProductForm={setProductForm}
+            tenantSlug={tenantSlug}
+            onMetadataChange={handleMetadataChange}
+          />
 
           {/* 8. Foto Produk */}
           <div>

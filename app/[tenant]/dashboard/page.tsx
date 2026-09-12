@@ -30,6 +30,11 @@ import BulkImportModal from './components/modals/BulkImportModal';
 import UpsellModal from './components/modals/UpsellModal';
 import UpgradePaymentModal from './components/modals/UpgradePaymentModal';
 import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
+import {
+  ModularVerticalTabDispatcher,
+  ModularAiKnowledgeDispatcher,
+  resolveDomainVertical,
+} from './components/modules';
 import { useTenantDashboard } from './hooks/useTenantDashboard';
 
 const OrdersTab = dynamic(() => import('./components/tabs/OrdersTab'), {
@@ -172,14 +177,12 @@ export default function TenantDashboardPage() {
   }) => <LockedFeatureCard {...cardProps} onUpgrade={handleUpgradeTier} />;
 
   const renderVerticalModule = () => {
-    if (storeCategory === 'LOCAL_SERVICE' || storeCategory === 'FIELD_SERVICE' || storeCategory === 'SERVICE') {
-      return (
-        <div className="mb-6 animate-in fade-in duration-200">
-          <LocalServiceConfigForm tenantSlug={tenantSlug} />
-        </div>
-      );
-    }
-    return null;
+    const vKey = resolveDomainVertical(storeCategory);
+    return (
+      <div className="mb-6 animate-in fade-in duration-200">
+        <ModularAiKnowledgeDispatcher verticalKey={vKey} tenantSlug={tenantSlug} />
+      </div>
+    );
   };
 
   return (
@@ -507,74 +510,20 @@ export default function TenantDashboardPage() {
         />
       )}
 
-      {/* TAB: BOOKING & JADWAL (HANYA FIELD SERVICE / LOCAL SERVICE) */}
+      {/* TAB: BOOKING & JADWAL (FIELD SERVICE / JASA / PRO SERVICE) */}
       {activeTab === 'booking' && (
-        <div className="flex-1 p-6 md:p-8 max-w-5xl mx-auto w-full space-y-6">
-          <div className="border-b border-slate-200 pb-4">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-blue-600" />
-              <span>Manajemen Booking & Jadwal Layanan</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Atur ketersediaan slot waktu, area jangkauan, dan teknisi untuk pesanan jasa lapangan.
-            </p>
-          </div>
-          <LocalServiceConfigForm tenantSlug={tenantSlug} />
-        </div>
+        <ModularVerticalTabDispatcher
+          verticalKey={resolveDomainVertical(storeCategory)}
+          tenantSlug={tenantSlug}
+        />
       )}
 
-      {/* TAB: AKSES UNDUH & DIGITAL DELIVERY (HANYA PRODUK DIGITAL) */}
+      {/* TAB: AKSES UNDUH & DIGITAL DELIVERY (PRODUK DIGITAL) */}
       {activeTab === 'downloads' && (
-        <div className="flex-1 p-6 md:p-8 max-w-5xl mx-auto w-full space-y-6">
-          <div className="border-b border-slate-200 pb-4">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Download className="w-5 h-5 text-indigo-600" />
-              <span>Akses Unduh & Delivery Materi Digital</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Pantau tautan pengiriman otomatis dan link akses materi digital pelanggan setelah pembayaran terverifikasi.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {products
-              .filter((p) => p.download_url || p.category === 'digital')
-              .map((p) => (
-                <div
-                  key={p.id}
-                  className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-900 truncate">{p.name}</h3>
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Auto-Deliver
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 truncate">
-                    Link Akses:{' '}
-                    {p.download_url ? (
-                      <a
-                        href={p.download_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-blue-600 underline font-medium hover:text-blue-800"
-                      >
-                        {p.download_url}
-                      </a>
-                    ) : (
-                      <span className="italic text-slate-400">
-                        Belum diatur URL (buka tab Katalog untuk mengedit)
-                      </span>
-                    )}
-                  </p>
-                </div>
-              ))}
-            {products.filter((p) => p.download_url || p.category === 'digital').length === 0 && (
-              <div className="col-span-full p-8 text-center bg-white rounded-2xl border border-slate-200 text-xs text-slate-500">
-                Belum ada produk digital dengan tautan unduh. Tambahkan atau edit produk di tab Katalog Produk.
-              </div>
-            )}
-          </div>
-        </div>
+        <ModularVerticalTabDispatcher
+          verticalKey="digital-product"
+          tenantSlug={tenantSlug}
+        />
       )}
 
       {/* BOONPILOT AI COPILOT FLOATING WIDGET */}

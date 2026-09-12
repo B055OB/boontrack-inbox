@@ -158,44 +158,63 @@ export default function GuidedSetupInterview({
             {/* Step 1: Template Selection & Jenis Bisnis */}
             {currentStep === 1 && (
               <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-                {/* Template Switcher */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                      <LayoutGrid className="w-3 h-3 text-blue-600" />
-                      <span>Model Bisnis / Template Toko:</span>
-                    </label>
+                {/* Template Switcher / Locked Badge */}
+                {context?.storeCategory || context?.templateCode ? (
+                  <div className="flex items-center justify-between p-2.5 bg-blue-50/80 border border-blue-200/80 rounded-xl mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">🔒</span>
+                      <div>
+                        <span className="text-[11px] font-black text-blue-950 block">
+                          Kategori Toko Terkunci: {activeTemplate.name}
+                        </span>
+                        <span className="text-[10px] text-blue-700 font-semibold">
+                          {activeTemplate.badge}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                      Otomatis
+                    </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5 mb-3">
-                    {(Object.keys(BUSINESS_TEMPLATES) as BusinessTemplateCode[]).map((tCode) => {
-                      const tDef = BUSINESS_TEMPLATES[tCode];
-                      const isSelected = selectedTemplateCode === tCode;
-                      return (
-                        <button
-                          key={tCode}
-                          type="button"
-                          onClick={() => handleSelectTemplate(tCode)}
-                          className={`px-2 py-1.5 rounded-xl text-left border transition cursor-pointer flex flex-col ${
-                            isSelected
-                              ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-2xs'
-                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-black">{tDef.name}</span>
-                            {isSelected && <Check className="w-3 h-3 text-blue-600 shrink-0" />}
-                          </div>
-                          <span className="text-[9px] text-slate-500 line-clamp-1">{tDef.badge}</span>
-                        </button>
-                      );
-                    })}
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                        <LayoutGrid className="w-3 h-3 text-blue-600" />
+                        <span>Model Bisnis / Template Toko:</span>
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 mb-3">
+                      {(Object.keys(BUSINESS_TEMPLATES) as BusinessTemplateCode[]).map((tCode) => {
+                        const tDef = BUSINESS_TEMPLATES[tCode];
+                        const isSelected = selectedTemplateCode === tCode;
+                        return (
+                          <button
+                            key={tCode}
+                            type="button"
+                            onClick={() => handleSelectTemplate(tCode)}
+                            className={`px-2 py-1.5 rounded-xl text-left border transition cursor-pointer flex flex-col ${
+                              isSelected
+                                ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-2xs'
+                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-black">{tDef.name}</span>
+                              {isSelected && <Check className="w-3 h-3 text-blue-600 shrink-0" />}
+                            </div>
+                            <span className="text-[9px] text-slate-500 line-clamp-1">{tDef.badge}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Presets for active template */}
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Pilih Rekomendasi atau Ketik Nama Bisnis:
+                    Pilih Rekomendasi Spesialisasi:
                   </label>
                   <div className="flex flex-wrap gap-1.5 mb-2.5">
                     {activeTemplate.step1Presets.map((preset) => (
@@ -214,12 +233,15 @@ export default function GuidedSetupInterview({
                     ))}
                   </div>
 
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                    Ketik disini kalau tidak ada di list:
+                  </label>
                   <input
                     type="text"
                     value={answers.businessType}
                     onChange={(e) => setAnswers({ ...answers, businessType: e.target.value })}
-                    placeholder="Nama Toko / Layanan..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500"
+                    placeholder="Ketik disini kalau tidak ada di list..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500 font-medium"
                   />
                 </div>
 
