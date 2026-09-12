@@ -1119,7 +1119,7 @@ export function useTenantDashboard() {
         if (qr) {
           setQrCodeUrl(qr);
         }
-        if (data.code && !pairingCodeResult) {
+        if (data.code && !pairingCodeResult && !data.code.includes('@') && !data.code.includes('=') && data.code.length <= 12) {
           setPairingCodeResult(data.code);
         }
         setWaErrorMessage(null);
@@ -1154,17 +1154,35 @@ export function useTenantDashboard() {
       });
       const data = await res.json().catch(() => ({}));
 
-      if (res.ok && data.success && data.pairing_code) {
-        const rawCode = String(data.pairing_code).trim();
-        if (rawCode.includes('@') || rawCode.includes('=') || rawCode.length > 12) {
-          alert('Respons gateway berupa raw QR code, bukan kode pairing. Silakan gunakan Scan QR Barcode di sebelah kanan.');
-          setPairingCodeResult(null);
-        } else {
-          setPairingCodeResult(rawCode);
-        }
-      } else {
+      if (!res.ok || !data.success || !data.pairing_code) {
         alert(data.error || data.detail || 'Gagal mendapatkan kode pairing dari server WhatsApp.');
         setPairingCodeResult(null);
+        return;
+      }
+
+      const rawCode = String(data.pairing_code).trim();
+
+      // Cegah Simpan String QR ke State UI:
+      // Jika rawCode mengandung @, =, atau panjangnya lebih dari 12 karakter:
+      if (rawCode.includes('@') || rawCode.includes('=') || rawCode.length > 12) {
+        alert('Respons server berupa string QR mentah, bukan kode pairing. Silakan klik Dapatkan Kode sekali lagi atau scan barcode QR di sebelah.');
+        setPairingCodeResult(null);
+        return;
+      }
+
+      // Filter Kode Valid:
+      // Hanya panggil setPairingCodeResult(rawCode) jika kode benar-benar berupa 8 digit alfanumerik (misal format XXXX-XXXX atau panjang 8-9 karakter)
+      const isValidFormat =
+        /^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/.test(rawCode) ||
+        /^[A-Za-z0-9]{8}$/.test(rawCode) ||
+        (rawCode.length >= 8 && rawCode.length <= 9 && !/[^A-Za-z0-9-]/.test(rawCode));
+
+      if (isValidFormat) {
+        setPairingCodeResult(rawCode);
+      } else {
+        alert('Format kode pairing tidak valid dari server. Silakan klik Dapatkan Kode sekali lagi.');
+        setPairingCodeResult(null);
+        return;
       }
     } catch (err) {
       alert('Tidak dapat menghubungi gateway WhatsApp.');
