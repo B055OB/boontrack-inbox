@@ -15,6 +15,29 @@ import {
 } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
+import { sanitizeImageUrl } from '@/lib/image-utils';
+
+function MicrositeItemImage({ src, alt }: { src?: string; alt: string }) {
+  const [error, setError] = useState(false);
+  const safeSrc = sanitizeImageUrl(src);
+
+  if (!safeSrc || error) {
+    return (
+      <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 shrink-0 flex flex-col items-center justify-center text-slate-400">
+        <Utensils className="w-5 h-5 text-slate-400" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={safeSrc}
+      alt={alt}
+      onError={() => setError(true)}
+      className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-200"
+    />
+  );
+}
 
 interface MicrositeBioTemplateProps {
   tenantSlug: string;
@@ -152,8 +175,9 @@ export default function MicrositeBioTemplate({
         {bannerImg && (
           <div className="relative rounded-3xl overflow-hidden border border-slate-200 shadow-md aspect-video bg-slate-900 group">
             <img
-              src={bannerImg}
+              src={sanitizeImageUrl(bannerImg)}
               alt="Promo Banner"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex flex-col justify-end p-4 text-white">
@@ -219,11 +243,7 @@ export default function MicrositeBioTemplate({
                   key={item.id}
                   className="flex items-center gap-3 p-2 rounded-2xl hover:bg-slate-50 transition border border-slate-100"
                 >
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-200"
-                  />
+                  <MicrositeItemImage src={item.image} alt={item.name} />
                   <div className="flex-1 min-w-0 space-y-0.5">
                     <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
                     <p className="text-emerald-700 font-black text-xs">

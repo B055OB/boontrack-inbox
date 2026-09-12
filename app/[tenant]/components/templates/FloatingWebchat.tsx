@@ -176,7 +176,7 @@ export default function FloatingWebchat({
                       <div className="mt-2.5 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 space-y-2">
                         <div className="flex items-center gap-2.5">
                           <img
-                            src={msg.product.image || 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600'}
+                            src={msg.product.image || '/logo-shop.png'}
                             alt={msg.product.name}
                             className="w-12 h-12 rounded-lg object-cover border border-slate-200"
                           />

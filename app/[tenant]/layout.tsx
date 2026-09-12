@@ -37,7 +37,7 @@ export async function generateMetadata({
   // Tarik data toko langsung dari database Supabase
   const { data: store } = await supabase
     .from('tenants')
-    .select('name, metadata')
+    .select('name, metadata, logo_url, qris_image_url')
     .eq('slug', cleanTenant)
     .maybeSingle();
 
@@ -47,16 +47,57 @@ export async function generateMetadata({
   const description =
     metaObj.description ||
     metaObj.tagline ||
-    `Selamat datang di layanan resmi ${storeName}. Pemesanan online praktis, konfirmasi instan via WhatsApp, dan bayar di tempat.`;
+    `Selamat datang di toko resmi ${storeName}. Pemesanan online praktis, konfirmasi instan via WhatsApp, dan pembayaran aman terverifikasi.`;
+
+  // =========================================================================
+  // HIERARKI GAMBAR OPENGRAPH (og:image):
+  // 1. tenant.metadata.banner_url / cover_url
+  // 2. tenant.metadata.logo_url / store.logo_url
+  // 3. Gambar produk pertama yang aktif
+  // 4. Fallback default branding resmi BoonTrack (bukan gambar demo)
+  // =========================================================================
+  const bannerUrl =
+    metaObj.banner_url ||
+    metaObj.cover_url ||
+    metaObj.hero_image ||
+    null;
 
   const logoUrl =
     metaObj.logo_url ||
+    store?.logo_url ||
     metaObj.image ||
-    'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60';
+    null;
+
+  let firstProductImage: string | null = null;
+  const products = Array.isArray(metaObj.products) ? metaObj.products : [];
+  for (const prod of products) {
+    const pImg = prod?.image || (Array.isArray(prod?.images) && prod.images[0]) || prod?.image_url;
+    if (pImg && typeof pImg === 'string' && !pImg.includes('photo-1581578731548')) {
+      firstProductImage = pImg;
+      break;
+    }
+  }
+
+  const BOONTRACK_OFFICIAL_LOGO = 'https://shop.boontrack.com/logo-shop.png';
+
+  const resolvedOgImage =
+    bannerUrl ||
+    logoUrl ||
+    firstProductImage ||
+    BOONTRACK_OFFICIAL_LOGO;
+
+  // Favicon dinamis per-tenant sesuai logo toko
+  const resolvedFavicon = logoUrl || '/favicon.ico';
+  const resolvedAppleIcon = logoUrl || '/apple-touch-icon.png';
 
   return {
-    title: `${storeName} | Layanan Resmi`,
+    title: `${storeName} | Toko Resmi`,
     description,
+    icons: {
+      icon: resolvedFavicon,
+      shortcut: resolvedFavicon,
+      apple: resolvedAppleIcon,
+    },
     openGraph: {
       title: storeName,
       description,
@@ -66,7 +107,7 @@ export async function generateMetadata({
       type: 'website',
       images: [
         {
-          url: logoUrl,
+          url: resolvedOgImage,
           width: 800,
           height: 600,
           alt: storeName,
@@ -77,7 +118,7 @@ export async function generateMetadata({
       card: 'summary_large_image',
       title: storeName,
       description,
-      images: [logoUrl],
+      images: [resolvedOgImage],
     },
   };
 }

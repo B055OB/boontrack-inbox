@@ -14,6 +14,7 @@ import {
   ArrowRight, 
   Store, 
   PackageOpen, 
+  Package,
   Check 
 } from "lucide-react";
 import ShopClaimSection from "@/app/components/ShopClaimSection";
@@ -28,6 +29,30 @@ import {
   trackViewContent 
 } from "@/lib/tracking";
 import { getSupabase } from "@/lib/supabaseClient";
+import { sanitizeImageUrl } from "@/lib/image-utils";
+
+function StoreProductImage({ src, alt, className }: { src?: string; alt: string; className?: string }) {
+  const [error, setError] = useState(false);
+  const safeSrc = sanitizeImageUrl(src);
+
+  if (!safeSrc || error) {
+    return (
+      <div className={`${className || 'w-full h-full'} bg-slate-100 border border-slate-200 flex flex-col items-center justify-center text-slate-400 p-2`}>
+        <Package className="w-8 h-8 text-slate-400 mb-1" />
+        <span className="text-[10px] font-bold text-slate-400 text-center">BoonTrack Official</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={safeSrc}
+      alt={alt}
+      onError={() => setError(true)}
+      className={className || "w-full h-full object-cover"}
+    />
+  );
+}
 
 export interface Product {
   id: number | string;
@@ -82,7 +107,7 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     type: p.type || rawCat,
     price,
     originalPrice,
-    image: p.image || (Array.isArray(p.images) && p.images[0]) || "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60",
+    image: sanitizeImageUrl(p.image || (Array.isArray(p.images) && p.images[0]) || "/logo-shop.png"),
     description: p.description || "",
     badge: p.promo || (p.variants ? p.variants : "Layanan Resmi"),
     features: Array.isArray(p.features) && p.features.length > 0 ? p.features : [
@@ -480,8 +505,8 @@ export default function TenantStorefrontPage() {
     sendChatMessage(msg);
   };
 
-  const currentTheme = tenantMetadata?.theme || (tenantSlug === 'ombudi' ? { template: 'personal', chat_enabled: true, chat_position: 'bottom-right' } : { template: 'default', chat_enabled: true, chat_position: 'bottom-right' });
-  const currentTemplate = currentTheme.template || (tenantSlug === 'ombudi' ? 'personal' : 'default');
+  const currentTheme = tenantMetadata?.theme || {};
+  const currentTemplate = tenantMetadata?.template || currentTheme.template || (tenantSlug === 'ombudi' ? 'personal' : 'default');
   const isChatEnabled = currentTheme.chat_enabled !== false;
 
   // ── CONDITIONAL TEMPLATE: PERSONAL (Authority / Personal Brand) ──
@@ -511,7 +536,7 @@ export default function TenantStorefrontPage() {
               <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
                 <X className="w-5 h-5" />
               </button>
-              <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full aspect-video object-cover rounded-2xl" />
+              <StoreProductImage src={selectedProduct.image} alt={selectedProduct.name} className="w-full aspect-video object-cover rounded-2xl" />
               <div>
                 <h2 className="text-lg font-black text-slate-900">{selectedProduct.name}</h2>
                 <div className="mt-1 flex items-baseline gap-2">
@@ -701,7 +726,7 @@ export default function TenantStorefrontPage() {
                 >
                   <div>
                     <div className="relative aspect-video rounded-2xl overflow-hidden mb-3 bg-slate-100">
-                      <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      <StoreProductImage src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                       {p.badge && (
                         <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
                           {p.badge}
@@ -761,8 +786,8 @@ export default function TenantStorefrontPage() {
                       {msg.sender === "bot" && msg.product && (msg.action === "SHOW_PRODUCT" || msg.action === "SHOW_CHECKOUT" || msg.type === "SHOW_PRODUCT" || msg.type === "SHOW_CHECKOUT") && (
                         <div className="mt-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-3 text-slate-900 space-y-2.5">
                           <div className="flex items-start gap-3">
-                            <img
-                              src={msg.product.image || "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60"}
+                            <StoreProductImage
+                              src={msg.product.image || "/logo-shop.png"}
                               alt={msg.product.name}
                               className="w-14 h-14 object-cover rounded-xl shrink-0 border border-slate-200"
                             />
@@ -823,7 +848,7 @@ export default function TenantStorefrontPage() {
                                   category: msg.product.category || "service",
                                   price: msg.product.price,
                                   originalPrice: msg.product.originalPrice,
-                                  image: msg.product.image || "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=60",
+                                  image: msg.product.image || "/logo-shop.png",
                                   description: msg.product.description || "",
                                   badge: msg.product.badge
                                 });

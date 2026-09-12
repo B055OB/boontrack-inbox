@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { Upload, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, X, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { sanitizeImageUrl } from '@/lib/image-utils';
 
 interface ImageUploadProps {
   label?: string;
@@ -81,7 +82,12 @@ export default function ImageUpload({
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [imgError, setImgError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [value]);
 
   const getResolvedTenantSlug = (): string => {
     if (tenantSlug) return tenantSlug;
@@ -193,12 +199,13 @@ export default function ImageUpload({
       }
 
       const data = await res.json();
-      const finalUrl =
+      const rawFinalUrl =
         data?.url ||
         data?.image_url ||
         data?.public_url ||
         data?.file_url ||
         (typeof data === 'string' ? data : '');
+      const finalUrl = sanitizeImageUrl(rawFinalUrl);
 
       if (finalUrl) {
         onChange(finalUrl, {
@@ -270,42 +277,62 @@ export default function ImageUpload({
       />
 
       {value ? (
-        <div className="relative group rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center p-2.5 gap-3 shadow-xs">
-          <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-slate-200 shrink-0 border border-slate-200">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={value}
-              alt="Preview"
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-[11px]">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Gambar Siap (WebP)</span>
+        (() => {
+          const safeValue = sanitizeImageUrl(value);
+          return (
+            <div className="relative group rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center p-2.5 gap-3 shadow-xs">
+              <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200 flex items-center justify-center">
+                {!imgError && safeValue ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={safeValue}
+                    alt="Preview"
+                    onError={() => setImgError(true)}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-slate-100 flex flex-col items-center justify-center text-slate-400 p-1">
+                    <ImageIcon className="w-5 h-5 text-slate-400 mb-0.5" />
+                    <span className="text-[8px] font-bold text-slate-400 leading-none text-center">Gagal Muat</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                {!imgError ? (
+                  <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-[11px]">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Gambar Siap (WebP)</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-amber-600 font-bold text-[11px]">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>Gambar Tidak Dapat Dimuat</span>
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-500 font-mono truncate">{safeValue || value}</p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Ganti
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRemove}
+                  disabled={isUploading}
+                  className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition cursor-pointer"
+                  title="Hapus gambar"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-            <p className="text-[11px] text-slate-500 font-mono truncate">{value}</p>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-            >
-              Ganti
-            </button>
-            <button
-              type="button"
-              onClick={handleRemove}
-              disabled={isUploading}
-              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition cursor-pointer"
-              title="Hapus gambar"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+          );
+        })()
       ) : (
         <div
           onDragEnter={handleDrag}

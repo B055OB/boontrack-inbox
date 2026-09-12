@@ -171,8 +171,44 @@ function extractSubdomain(hostWithPort: string): string | null {
   return null;
 }
 
+
+/**
+ * Helper untuk memeriksa apakah request memiliki sesi login Supabase Auth / Merchant Store aktif
+ */
+function hasAuthSession(req: NextRequest): boolean {
+  const allCookies = req.cookies.getAll();
+  return allCookies.some((cookie) => {
+    const n = cookie.name.toLowerCase();
+    return (
+      n.startsWith('sb-') ||
+      n.includes('auth-token') ||
+      n.includes('access-token') ||
+      n === 'merchant_session' ||
+      n === 'merchant_store' ||
+      n === 'bt_tenant'
+    );
+  });
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===
+  const isDashboardPath =
+    pathname === '/dashboard' ||
+    pathname.startsWith('/dashboard/') ||
+    /^\/[^/]+\/dashboard(\/.*)?$/.test(pathname);
+
+  if (isDashboardPath) {
+    if (!hasAuthSession(req)) {
+      const loginUrl = req.nextUrl.clone();
+      loginUrl.pathname = '/login';
+      const redirectTarget = pathname + (req.nextUrl.search || '');
+      loginUrl.search = `?redirectTo=${encodeURIComponent(redirectTarget)}`;
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
 
   // ── 0. Universal pass-through: static assets, Next.js internals, API, and custom 404 page ──
   if (

@@ -602,6 +602,51 @@ export function useTenantDashboard() {
           }
         } else {
           const tenant = data[0];
+
+          // === AUTH GUARD: OWNER / MEMBER AUTHORIZATION VALIDATION ===
+          try {
+            const supabase = getSupabase();
+            const { data: authData } = await supabase.auth.getUser();
+            const currentUser = authData?.user;
+
+            const ownerId = tenant.owner_id || tenant.user_id || tenant.created_by || tenant.metadata?.owner_id || tenant.metadata?.user_id;
+            const members: string[] = Array.isArray(tenant.metadata?.members) ? tenant.metadata.members : [];
+            const ownerEmail = tenant.metadata?.owner_email || tenant.metadata?.email;
+
+            // Jika tenant sudah memiliki owner terdaftar, pastikan user aktif berhak
+            if (currentUser && ownerId) {
+              const isOwner = currentUser.id === ownerId;
+              const isMember = members.includes(currentUser.id) || (currentUser.email && members.includes(currentUser.email));
+              const isEmailMatch = currentUser.email && ownerEmail && currentUser.email.toLowerCase() === ownerEmail.toLowerCase();
+
+              if (!isOwner && !isMember && !isEmailMatch) {
+                console.warn(`[AUTH GUARD] User ${currentUser.id} tidak memiliki akses ke tenant ${tenantSlug}`);
+                alert(`Akses Ditolak: Akun Anda tidak memiliki izin untuk mengelola toko "${tenant.name || tenantSlug}".`);
+                router.replace('/login');
+                return;
+              }
+            } else if (currentUser && !ownerId) {
+              // Jika tenant belum memiliki owner_id terikat, kaitkan user yang login sebagai owner
+              try {
+                const existingMeta = tenant.metadata || {};
+                await supabase.from('tenants').update({
+                  metadata: {
+                    ...existingMeta,
+                    owner_id: currentUser.id,
+                    owner_email: currentUser.email || '',
+                  }
+                }).eq('slug', tenantSlug);
+              } catch (bindErr) {
+                console.warn('[AUTH GUARD] Auto-bind owner note:', bindErr);
+              }
+            } else if (!currentUser && !isLocalSession) {
+              // Tidak ada user auth dan bukan local session merchant terdaftar
+              router.replace(`/login?redirectTo=${encodeURIComponent(window.location.pathname)}`);
+              return;
+            }
+          } catch (authErr) {
+            console.warn('[AUTH GUARD] Authorization validation note:', authErr);
+          }
           if (tenant.name) setStoreDisplayName(tenant.name);
           if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
           if (tenant.metadata?.bio) setStoreBio(tenant.metadata.bio);
@@ -1655,19 +1700,28 @@ export function useTenantDashboard() {
     setIsPairingLoading(true);
     setPairingCodeResult(null);
     try {
-      const res = await fetch(`https://api.boontrack.com/tenant/whatsapp/reconnect`, {
+      // Normalisasi nomor telepon ke format internasional (awali 62)
+      let cleanPhone = pairingPhone.replace(/[^0-9]/g, '');
+      if (cleanPhone.startsWith('0')) {
+        cleanPhone = '62' + cleanPhone.slice(1);
+      } else if (!cleanPhone.startsWith('62')) {
+        cleanPhone = '62' + cleanPhone;
+      }
+
+      const res = await fetch(`/api/whatsapp/pairing-code?tenant=${encodeURIComponent(tenantSlug)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant: tenantSlug, phone: pairingPhone }),
+        body: JSON.stringify({ tenant: tenantSlug, phone: cleanPhone }),
       });
       const data = await res.json();
       if (data.success && data.pairing_code) {
         setPairingCodeResult(data.pairing_code);
       } else {
-        alert(data.detail || 'Gateway cluster belum siap menerima pairing code.');
+        alert(data.error || data.detail || 'Gateway belum siap menerima pairing code. Silakan coba kembali.');
       }
     } catch (err) {
-      alert('Tidak dapat menghubungi cluster gateway.');
+      console.error('Pairing code request error:', err);
+      alert('Tidak dapat menghubungi gateway WhatsApp.');
     } finally {
       setIsPairingLoading(false);
     }

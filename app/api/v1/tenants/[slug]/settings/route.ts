@@ -170,6 +170,7 @@ export async function PUT(
       faqs,
       interactive_menus,
       theme,
+      template,
     } = body;
 
     const supabase = getSupabase();
@@ -216,7 +217,10 @@ export async function PUT(
       ...(integration ? { integration } : {}),
       ...(faqs !== undefined ? { faqs } : {}),
       ...(interactive_menus !== undefined ? { interactive_menus } : {}),
-      ...(theme !== undefined ? { theme } : {}),
+      ...(template !== undefined ? { template } : {}),
+      ...(theme !== undefined
+        ? { theme: { ...(existing.metadata?.theme || {}), ...theme, ...(template ? { template } : {}) } }
+        : (template ? { theme: { ...(existing.metadata?.theme || {}), template } } : {})),
       ...(updatedProposal ? { boonpilot_proposal: updatedProposal, boonpilot_configuration: updatedProposal } : {}),
       ...(qris_image_url !== undefined ? { qris_image_url, qris_url: qris_image_url } : {}),
       ...(logo_url !== undefined ? { logo_url } : {}),

@@ -127,6 +127,7 @@ export async function PUT(
 
     const updatedMetadata = {
       ...existingMetadata,
+      template: newTemplate,
       theme: updatedTheme,
     };
 

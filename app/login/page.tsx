@@ -123,9 +123,17 @@ export default function MerchantLoginPage() {
       setSuccessMessage(`Toko terverifikasi! Mengalihkan ke Dashboard ${cleanSlug.toUpperCase()}...`);
 
       setTimeout(() => {
-        router.push(`/${cleanSlug}/dashboard`);
+        let dest = `/${cleanSlug}/dashboard`;
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          const redirectParam = params.get('redirectTo');
+          if (redirectParam && redirectParam.startsWith('/')) {
+            dest = redirectParam;
+          }
+        }
+        router.push(dest);
         setTimeout(() => {
-          window.location.href = `/${cleanSlug}/dashboard`;
+          window.location.href = dest;
         }, 300);
       }, 500);
     } catch (err: unknown) {

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
+import { sanitizeImageUrl } from '@/lib/image-utils';
 
 interface PersonalAuthorityTemplateProps {
   tenantSlug: string;
@@ -97,6 +98,7 @@ export default function PersonalAuthorityTemplate({
   const activeName = storeName || displayName.toUpperCase();
   const avatarUrl = tenantMetadata?.logo_url || tenantMetadata?.avatar_url || '';
   const [avatarError, setAvatarError] = useState(false);
+  const [productImgError, setProductImgError] = useState(false);
 
   const initials =
     (activeName || 'Om Budi')
@@ -329,12 +331,22 @@ export default function PersonalAuthorityTemplate({
           {/* Featured Product Card */}
           <div className="bg-white rounded-3xl border border-slate-200/90 shadow-md p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             <div className="lg:col-span-5 space-y-4">
-              <div className="relative aspect-video sm:aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
-                <img
-                  src={mainProduct.image}
-                  alt={mainProduct.name}
-                  className="w-full h-full object-cover"
-                />
+              <div className="relative aspect-video sm:aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center">
+                {!productImgError && mainProduct.image ? (
+                  <img
+                    src={sanitizeImageUrl(mainProduct.image)}
+                    alt={mainProduct.name}
+                    onError={() => setProductImgError(true)}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-purple-50 to-indigo-50 flex flex-col items-center justify-center text-purple-400 p-4">
+                    <Sparkles className="w-10 h-10 text-purple-500 mb-2" />
+                    <span className="text-xs font-black text-purple-700 uppercase tracking-wider text-center line-clamp-2">
+                      {mainProduct.name}
+                    </span>
+                  </div>
+                )}
                 <span className="absolute top-3 left-3 bg-purple-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-xs uppercase tracking-wider">
                   {mainProduct.badge || 'Program Utama'}
                 </span>

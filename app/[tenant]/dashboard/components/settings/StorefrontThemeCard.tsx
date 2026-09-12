@@ -16,12 +16,14 @@ import {
   ArrowRight,
   X,
 } from 'lucide-react';
+import { getSupabase } from '@/lib/supabaseClient';
 
 export type TemplateType = 'default' | 'personal' | 'microsite';
 
 interface StorefrontThemeCardProps {
   tenantSlug: string;
   isTeamScale: boolean;
+  onSelectTemplate?: (template: TemplateType) => void;
 }
 
 interface TemplateOption {
@@ -74,6 +76,7 @@ const TEMPLATE_OPTIONS: TemplateOption[] = [
 export default function StorefrontThemeCard({
   tenantSlug,
   isTeamScale,
+  onSelectTemplate,
 }: StorefrontThemeCardProps) {
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>(
     tenantSlug === 'ombudi' ? 'personal' : 'default'
@@ -99,7 +102,8 @@ export default function StorefrontThemeCard({
       if (res.ok) {
         const data = await res.json();
         if (data?.theme) {
-          setSelectedTemplate(data.theme.template || (tenantSlug === 'ombudi' ? 'personal' : 'default'));
+          const resolvedTmpl = data.theme.template || (tenantSlug === 'ombudi' ? 'personal' : 'default');
+          setSelectedTemplate(resolvedTmpl);
           setChatEnabled(data.theme.chat_enabled !== false);
         }
       }
@@ -114,12 +118,13 @@ export default function StorefrontThemeCard({
     fetchTheme();
   }, [fetchTheme]);
 
-  // 2. Save theme change
+  // 2. Save theme change persistently to database & settings API
   const saveThemeConfig = async (newTemplate: TemplateType, newChatEnabled: boolean) => {
     setIsSaving(true);
     setErrorMessage(null);
 
     try {
+      // Step A: Panggil endpoint theme API
       const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -136,8 +141,70 @@ export default function StorefrontThemeCard({
         throw new Error(data.error || 'Gagal menyimpan template tampilan toko.');
       }
 
-      setToastMessage('Template tampilan toko berhasil disimpan.');
-      setTimeout(() => setToastMessage(null), 3000);
+      // Step B: Sinkronkan via endpoint settings API profil/metadata tenant
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: newTemplate,
+            theme: {
+              template: newTemplate,
+              chat_enabled: newChatEnabled,
+              chat_position: 'bottom-right',
+            },
+          }),
+        });
+      } catch (settingsErr) {
+        console.warn('[StorefrontThemeCard] Settings API sync note:', settingsErr);
+      }
+
+      // Step C: Update langsung ke Supabase DB tenants.metadata (Double Safety Net)
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: tenantRow } = await supabase
+            .from('tenants')
+            .select('metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+
+          if (tenantRow) {
+            const updatedMeta = {
+              ...(tenantRow.metadata || {}),
+              template: newTemplate,
+              theme: {
+                ...(tenantRow.metadata?.theme || {}),
+                template: newTemplate,
+                chat_enabled: newChatEnabled,
+                chat_position: 'bottom-right',
+              },
+            };
+            await supabase
+              .from('tenants')
+              .update({ metadata: updatedMeta })
+              .eq('slug', tenantSlug);
+          }
+        }
+      } catch (sbErr) {
+        console.warn('[StorefrontThemeCard] Direct Supabase update note:', sbErr);
+      }
+
+      if (onSelectTemplate) {
+        onSelectTemplate(newTemplate);
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('storefront-template-changed', {
+            detail: { template: newTemplate, chat_enabled: newChatEnabled },
+          })
+        );
+      }
+
+      const tmplLabel = newTemplate === 'personal' ? 'Personal (Authority)' : newTemplate === 'microsite' ? 'Microsite (Bio-Funnel)' : 'Default (Katalog)';
+      setToastMessage(`Template ${tmplLabel} berhasil disimpan & diterapkan!`);
+      setTimeout(() => setToastMessage(null), 3500);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Terjadi kendala saat menyimpan tema.';
       setErrorMessage(msg);
@@ -153,8 +220,6 @@ export default function StorefrontThemeCard({
       setShowUpgradeModal(true);
       return;
     }
-
-    if (tmpl.id === selectedTemplate) return;
 
     setSelectedTemplate(tmpl.id);
     saveThemeConfig(tmpl.id, chatEnabled);
