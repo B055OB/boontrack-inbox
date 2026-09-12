@@ -415,3 +415,14 @@ Pairing berhasil tidak sama dengan gateway yang beroperasi sehat. Sistem memanta
 - **Storage Key Contract**: Endpoint `/api/v1/upload` menjamin sinkronisasi 1:1 antara S3/R2 object key dengan output public URL (`${R2_PUBLIC_URL_BASE}/${key}`).
 - **Client Auto-Healing**: Form edit produk mendeteksi URL legacy saat render pertama kali dan menyembuhkan state data menjadi URL kanonikal sebelum disimpan kembali ke Supabase.
 
+### 4. Direct Cloudflare R2 Connection Specification
+- **Storage Protocol**: S3-Compatible API via `@aws-sdk/client-s3` (`PutObjectCommand`).
+- **Bucket**: `boontrack-media`
+- **Account ID**: `56303bb13200d0980da8695adcf08550`
+- **Endpoint URL**: `https://56303bb13200d0980da8695adcf08550.r2.cloudflarestorage.com`
+- **Region**: `auto`
+- **Public Domain**: `https://assets.boontrack.com`
+- **Direct Next.js Route**: `POST /api/v1/upload` (stream langsung ke R2 dengan auto-sync backup ke Supabase Storage, tanpa perantara container ephemeral Railway).
+- **Environment Keys**: `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT_URL`, `NEXT_PUBLIC_ASSET_DOMAIN`.
+
+
