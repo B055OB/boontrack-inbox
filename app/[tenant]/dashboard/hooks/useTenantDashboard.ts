@@ -21,6 +21,8 @@ import { sanitizeImageUrl, uploadImageFile } from '@/lib/image-utils';
 import type { InteractiveMenu } from '@/lib/whatsappFormatter';
 
 export type DashboardTab =
+  | 'dashboard'
+  | 'overview'
   | 'inbox'
   | 'catalog'
   | 'products'
@@ -171,7 +173,7 @@ export function useTenantDashboard() {
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<DashboardTab>('catalog');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('dashboard');
   const hasUserSelectedTabRef = useRef(false);
   const [isStoreReadinessEvaluated, setIsStoreReadinessEvaluated] = useState(false);
 
@@ -677,10 +679,11 @@ export function useTenantDashboard() {
       const tabParam = urlParams.get('tab')?.toLowerCase();
       if (tabParam) {
         hasUserSelectedTabRef.current = true;
-        if (tabParam === 'products' || tabParam === 'catalog') setActiveTab('catalog');
+        if (tabParam === 'dashboard') setActiveTab('dashboard');
+        else if (tabParam === 'products' || tabParam === 'catalog') setActiveTab('catalog');
         else if (tabParam === 'orders' || tabParam === 'pesanan') setActiveTab('orders');
-        else if (tabParam === 'overview' || tabParam === 'analytics' || tabParam === 'finance' || tabParam === 'laporan') setActiveTab('integration');
-        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'shipping', 'broadcast', 'whatsapp'].includes(tabParam)) {
+        else if (tabParam === 'overview' || tabParam === 'analytics' || tabParam === 'finance' || tabParam === 'laporan') setActiveTab('finance');
+        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'shipping', 'broadcast', 'whatsapp', 'microsite', 'settings'].includes(tabParam)) {
           setActiveTab(tabParam as DashboardTab);
         }
       }

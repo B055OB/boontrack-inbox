@@ -157,7 +157,7 @@ export default function TeamChatTab({
               </span>
             </div>
 
-            {isGrowth ? (
+            {isGrowth || (!isAdsPerformance && !isTeamScale) ? (
               <button
                 type="button"
                 onClick={() => handleUpgradeTier('ads_performance')}
@@ -173,17 +173,13 @@ export default function TeamChatTab({
                 className="w-full py-1.5 px-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
               >
                 <Plus className="w-3 h-3 text-blue-600" />
-                <span>Tambah CS Baru (Maks 2)</span>
+                <span>Tambah CS Baru (Upgrade Team Scale)</span>
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => alert('Menambahkan kursi Agent CS baru ke tim Omnichannel...')}
-                className="w-full py-1.5 px-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-800 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
-              >
-                <Plus className="w-3 h-3 text-purple-600" />
-                <span>Tambah CS Baru (Unlimited)</span>
-              </button>
+              <div className="w-full py-1.5 px-2 bg-purple-50 border border-purple-200 text-purple-800 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-pulse" />
+                <span>Multi-Agent CS Aktif (Unlimited Seats)</span>
+              </div>
             )}
           </div>
         </div>

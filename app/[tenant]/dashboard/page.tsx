@@ -20,6 +20,7 @@ import TeamChatTab from './components/tabs/TeamChatTab';
 import OverviewTab from './components/tabs/OverviewTab';
 import SettingsTab from './components/tabs/SettingsTab';
 import MicrositeTab from './components/tabs/MicrositeTab';
+import DashboardOverviewTab from './components/tabs/DashboardOverviewTab';
 import WhatsAppTab from './components/tabs/WhatsAppTab';
 import AiKnowledgeTab from './components/AiKnowledgeTab';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
@@ -279,6 +280,36 @@ export default function TenantDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* TAB 0: DASHBOARD UTAMA (ONBOARDING, ANALYTICS, INTEGRATED STOREFRONT HUB) */}
+      {(activeTab === 'dashboard' || activeTab === 'overview') && (
+        <DashboardOverviewTab
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          storeDisplayName={storeDisplayName}
+          storeBio={storeBio}
+          storeLogoUrl={storeLogoUrl}
+          storeQrisUrl={storeQrisUrl}
+          waStatus={waStatus}
+          connectedPhone={connectedPhone}
+          products={products}
+          transactions={transactions}
+          totalOmzet={totalOmzet}
+          isTeamScale={isTeamScale}
+          isAdsPerformance={isAdsPerformance}
+          isSoloOrTrial={isSoloOrTrial}
+          onOpenStoreSettings={() => {
+            setNameError(null);
+            setIsStoreSettingsOpen(true);
+          }}
+          onOpenNewProduct={openNewProductModal}
+          onNavigateTab={(tab) => setActiveTab(tab)}
+          onSavedFeedback={(msg) => {
+            setSaveFeedback(msg);
+            setTimeout(() => setSaveFeedback(null), 3000);
+          }}
+        />
+      )}
 
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
       {activeTab === 'inbox' && (

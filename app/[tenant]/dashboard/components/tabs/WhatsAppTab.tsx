@@ -12,10 +12,7 @@ import {
   QrCode,
   AlertTriangle,
   RefreshCw,
-  PhoneCall,
   ArrowRight,
-  Copy,
-  Check,
 } from 'lucide-react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 
@@ -32,12 +29,12 @@ interface WhatsAppTabProps {
   waErrorMessage: string | null;
   connectedPhone: string | null;
   setConnectedPhone: (phone: string | null) => void;
-  pairingPhone: string;
-  setPairingPhone: (phone: string) => void;
-  pairingCodeResult: string | null;
-  isPairingLoading: boolean;
+  pairingPhone?: string;
+  setPairingPhone?: (phone: string) => void;
+  pairingCodeResult?: string | null;
+  isPairingLoading?: boolean;
   handleConnectGrowthSession: () => Promise<void>;
-  handleRequestPairingCode: (e: React.FormEvent) => Promise<void>;
+  handleRequestPairingCode?: (e: React.FormEvent) => Promise<void>;
   botStrategy?: 'trust_builder' | 'balanced' | 'hard_selling';
   setBotStrategy?: (strategy: 'trust_builder' | 'balanced' | 'hard_selling') => void;
   handleSaveBotStrategy?: (strategyOverride?: 'trust_builder' | 'balanced' | 'hard_selling') => Promise<void>;
@@ -84,18 +81,6 @@ export default function WhatsAppTab({
   renderLockedFeatureCard,
   setSaveFeedback,
 }: WhatsAppTabProps) {
-  const [hasCopied, setHasCopied] = useState(false);
-
-  const handleCopyCode = async (code: string) => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setHasCopied(true);
-      setTimeout(() => setHasCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy code to clipboard', err);
-    }
-  };
-
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -206,7 +191,7 @@ export default function WhatsAppTab({
                   </div>
                   <div className="flex items-start gap-3 text-xs text-slate-700 font-medium">
                     <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
-                    <span>Arahkan kamera HP Anda ke QR Code atau gunakan opsi nomor telepon di bawah.</span>
+                    <span>Arahkan kamera HP Anda ke QR Code di sebelah kanan.</span>
                   </div>
                 </div>
 
@@ -228,81 +213,6 @@ export default function WhatsAppTab({
                       </>
                     )}
                   </button>
-                </div>
-
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 mt-4 space-y-3">
-                  <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
-                    <PhoneCall className="w-4 h-4 text-blue-600" />
-                    <span>Atau Tautkan dengan Nomor WhatsApp Saja</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    Solusi jika kamera HP bermasalah saat scan QR. Masukkan nomor WhatsApp aktif Anda (awali 62):
-                  </p>
-
-                  <form onSubmit={handleRequestPairingCode} className="flex gap-2">
-                    <input
-                      type="text"
-                      required
-                      value={pairingPhone}
-                      onChange={(e) => setPairingPhone(e.target.value)}
-                      placeholder="628xxxxxxxxxx"
-                      className="flex-1 bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-mono"
-                    />
-                    <button
-                      type="submit"
-                      disabled={isPairingLoading}
-                      className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-bold text-xs rounded-xl transition cursor-pointer shrink-0"
-                    >
-                      {isPairingLoading ? 'Memproses...' : 'Dapatkan Kode'}
-                    </button>
-                  </form>
-
-                  {pairingCodeResult && (
-                    <div className="p-4 bg-emerald-50/90 border border-emerald-200 rounded-2xl text-center space-y-3 mt-3 shadow-xs">
-                      <div>
-                        <span className="inline-block px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider rounded-full mb-1">
-                          Kode Pairing WhatsApp Resmi
-                        </span>
-                        <p className="text-xs text-emerald-900 font-medium">
-                          Masukkan 8 digit kode ini di WhatsApp HP Anda:
-                        </p>
-                      </div>
-
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="text-2xl sm:text-3xl font-black font-mono tracking-widest text-emerald-900 bg-white py-2.5 px-5 rounded-xl border border-emerald-300 shadow-sm select-all">
-                          {pairingCodeResult}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyCode(pairingCodeResult)}
-                          className="flex items-center gap-1.5 px-3 py-2.5 bg-white hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl border border-emerald-300 transition shadow-sm cursor-pointer"
-                          title="Salin Kode Pairing"
-                        >
-                          {hasCopied ? (
-                            <>
-                              <Check className="w-4 h-4 text-emerald-600" />
-                              <span className="text-emerald-700">Tersalin</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-4 h-4 text-emerald-600" />
-                              <span>Salin</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="text-[11px] text-slate-600 bg-emerald-100/60 p-2.5 rounded-xl text-left space-y-1 border border-emerald-200/60">
-                        <p className="font-semibold text-emerald-900">Cara tautkan di HP:</p>
-                        <ol className="list-decimal list-inside space-y-0.5 text-slate-700 pl-1 text-[11px]">
-                          <li>Buka WhatsApp di HP Anda</li>
-                          <li>Buka <strong>Pengaturan</strong> atau Menu (titik tiga) &gt; <strong>Perangkat Tertaut</strong></li>
-                          <li>Pilih <strong>Tautkan Perangkat</strong> lalu ketuk <strong>Tautkan dengan nomor telepon saja</strong></li>
-                          <li>Ketikkan 8 karakter kode di atas</li>
-                        </ol>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 

@@ -16,9 +16,13 @@ import {
   Download,
   Radio,
   LayoutTemplate,
+  LayoutDashboard,
+  Settings,
 } from 'lucide-react';
 
 export type DashboardTab =
+  | 'dashboard'
+  | 'overview'
   | 'inbox'
   | 'catalog'
   | 'products'
@@ -155,6 +159,22 @@ export default function NavTabs({
           ref={tabsRef}
           className="flex items-center gap-1 sm:gap-2 overflow-x-auto whitespace-nowrap scrollbar-none no-scrollbar text-xs font-bold w-full max-w-full min-w-0 py-1 relative z-30"
         >
+          {/* TAB 0: DASHBOARD UTAMA (Onboarding, Analytics, Storefront Hub) */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'dashboard' || activeTab === 'overview'}
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              activeTab === 'dashboard' || activeTab === 'overview'
+                ? 'border-purple-600 text-purple-600 bg-purple-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4 shrink-0 text-purple-600" />
+            <span>Dashboard</span>
+          </button>
+
           {/* TAB 1: KATALOG PRODUK & LAYANAN */}
           <button
             type="button"
