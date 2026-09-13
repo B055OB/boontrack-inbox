@@ -63,18 +63,6 @@ interface Incident {
   first_seen_at: string;
 }
 
-const INTERNAL_SLUGS = [
-  'boontrack-holding',
-  'boontrack-career',
-  'career',
-  'boontrack-kurir',
-  'boontrack-bola',
-  'boontrack-loker',
-  'boontrack-digicorn',
-  'boontrack-demo',
-  'om-budi',
-];
-
 const MASTER_PIN = '998877';
 
 export default function SuperAdminDashboard() {
@@ -95,7 +83,7 @@ export default function SuperAdminDashboard() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'all' | 'internal' | 'external' | 'shop'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'internal' | 'b2b'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -189,23 +177,43 @@ export default function SuperAdminDashboard() {
       }
 
       const mapped: Tenant[] = currentTenants.map((t) => {
-        const isInternal =
-          t.category === 'internal' ||
-          INTERNAL_SLUGS.includes(t.slug) ||
-          t.slug.startsWith('boontrack-');
+        const meta = t.metadata || {};
+        const slug = (t.slug || '').toLowerCase();
+        const name = (t.name || '').toLowerCase();
 
-        const isShop =
-          t.category === 'shop' ||
-          t.vertical === 'shop' ||
-          Boolean(t.business_type) ||
-          (t.category !== 'internal' && !isInternal);
+        // 1. Internal & Sandbox (Media, loker, holding, development, test)
+        const isInternal =
+          meta.is_internal === true ||
+          meta.workspace_type === 'internal' ||
+          t.category === 'internal' ||
+          slug.includes('holding') ||
+          slug.includes('sandbox') ||
+          slug.includes('dummy') ||
+          slug.startsWith('test-') ||
+          slug.includes('demo') ||
+          slug.includes('career') ||
+          slug.includes('loker') ||
+          slug.includes('digicorn') ||
+          slug.includes('bola') ||
+          slug.includes('kurir') ||
+          name.includes('holding') ||
+          name.includes('sandbox') ||
+          name.includes('dummy') ||
+          name.includes('demo store') ||
+          name.includes('toko uji');
+
+        // 2. SaaS Shop (Retail, Dakwah, Digital, Field Service storefronts)
+        const isShop = !isInternal && (meta.is_saas === true || meta.workspace_type === 'saas_shop');
+
+        // 3. Client B2B & Custom App (Gym, kelurahan, komunitas privat, custom enterprise)
+        const resolvedCategory: 'internal' | 'b2b' | 'shop' = isShop ? 'shop' : isInternal ? 'internal' : 'b2b';
 
         const isHealthy = t.status === 'HEALTHY' || t.status === 'active';
         const finalHealth: HealthStatus = !isHealthy ? 'DOWN' : serverLiveStatus;
 
         return {
           ...t,
-          category: isShop ? 'shop' : isInternal ? 'internal' : 'external',
+          category: resolvedCategory,
           message_count: countMap[t.id] || countMap[t.slug] || 0,
           health_status: finalHealth,
           wa_gateway_status: isHealthy ? (serverLiveStatus === 'HEALTHY' ? 'CONNECTED' : 'RECONNECTING') : 'DISCONNECTED',
@@ -301,11 +309,15 @@ export default function SuperAdminDashboard() {
   };
 
   const filteredTenants = tenants.filter((t) => {
+    // Segregate retail shops to Directory Shop (/admin/shops) unless specifically searched
     const matchCategory =
-      activeTab === 'all' ||
-      (activeTab === 'internal' && t.category === 'internal') ||
-      (activeTab === 'external' && t.category === 'external') ||
-      (activeTab === 'shop' && t.category === 'shop');
+      activeTab === 'internal'
+        ? t.category === 'internal'
+        : activeTab === 'b2b'
+        ? t.category === 'b2b'
+        : searchQuery
+        ? true
+        : t.category !== 'shop';
 
     const matchSearch = searchQuery
       ? t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -316,7 +328,8 @@ export default function SuperAdminDashboard() {
   });
 
   const countInternal = tenants.filter((t) => t.category === 'internal').length;
-  const countExternal = tenants.filter((t) => t.category === 'external').length;
+  const countB2B = tenants.filter((t) => t.category === 'b2b').length;
+  const countWorkspaces = countInternal + countB2B;
   const countShops = tenants.filter((t) => t.category === 'shop').length;
   const countHealthy = tenants.filter((t) => t.health_status === 'HEALTHY').length;
   const countDegraded = tenants.filter((t) => t.health_status === 'DEGRADED').length;
@@ -419,7 +432,7 @@ export default function SuperAdminDashboard() {
             className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
           >
             <Store className="w-3.5 h-3.5 text-blue-400" />
-            <span>Directory Toko</span>
+            <span>Directory Shop</span>
           </Link>
           <Link
             href="/admin/push-notification"
@@ -564,7 +577,7 @@ export default function SuperAdminDashboard() {
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
               }`}
             >
-              Semua ({tenants.length})
+              Semua Workspace ({countWorkspaces})
             </button>
             <button
               onClick={() => setActiveTab('internal')}
@@ -575,29 +588,18 @@ export default function SuperAdminDashboard() {
               }`}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-              Internal ({countInternal})
+              Internal &amp; Sandbox ({countInternal})
             </button>
             <button
-              onClick={() => setActiveTab('external')}
+              onClick={() => setActiveTab('b2b')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'external'
+                activeTab === 'b2b'
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
               }`}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-              Client B2B ({countExternal})
-            </button>
-            <button
-              onClick={() => setActiveTab('shop')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'shop'
-                  ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-              SaaS Shops ({countShops})
+              Client B2B &amp; Custom App ({countB2B})
             </button>
           </div>
 
@@ -638,6 +640,29 @@ export default function SuperAdminDashboard() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Quick Alert Banner: Directory Shop Segregation */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-blue-950/50 via-slate-900 to-indigo-950/40 border border-blue-500/25 text-xs text-blue-200 shadow-sm backdrop-blur-sm">
+          <div className="flex items-center gap-2.5">
+            <span className="text-base shrink-0">💡</span>
+            <p className="leading-relaxed">
+              Mencari toko merchant e-commerce retail? Kelola ribuan toko lebih cepat di{' '}
+              <Link
+                href="/admin/shops"
+                className="font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2 inline-flex items-center gap-0.5"
+              >
+                Directory Shop ➔
+              </Link>
+            </p>
+          </div>
+          <Link
+            href="/admin/shops"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-600/25 transition shrink-0 self-start sm:self-auto cursor-pointer"
+          >
+            <Store className="w-3.5 h-3.5" />
+            <span>Buka Directory Shop</span>
+          </Link>
         </div>
 
         {/* 1. GRID CARD VIEW */}

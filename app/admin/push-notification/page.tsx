@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   Radio,
   Sliders,
+  Store,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -293,14 +294,21 @@ export default function SuperAdminPushNotificationPage() {
 
           <div className="flex items-center gap-2">
             <Link
+              href="/admin/shops"
+              className="px-3 py-2 bg-slate-900 hover:bg-slate-850 text-slate-300 text-xs font-semibold rounded-xl border border-slate-800 transition flex items-center gap-1.5"
+            >
+              <Store className="w-3.5 h-3.5 text-blue-400" />
+              <span>Directory Shop</span>
+            </Link>
+            <Link
               href="/admin/telemetry"
-              className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl border border-slate-800 transition"
+              className="px-3 py-2 bg-slate-900 hover:bg-slate-850 text-slate-300 text-xs font-semibold rounded-xl border border-slate-800 transition"
             >
               📊 Telemetri Trafik
             </Link>
             <Link
               href="/admin/economics"
-              className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl border border-slate-800 transition"
+              className="px-3 py-2 bg-slate-900 hover:bg-slate-850 text-slate-300 text-xs font-semibold rounded-xl border border-slate-800 transition"
             >
               💰 Unit Economics
             </Link>
