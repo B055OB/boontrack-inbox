@@ -33,7 +33,7 @@ interface Tenant {
   id: string;
   name: string;
   slug: string;
-  category?: 'internal' | 'external' | 'shop' | string;
+  category?: 'internal' | 'custom_b2b' | 'b2g' | 'shop' | string;
   vertical?: string;
   business_type?: string;
   metadata?: Record<string, any>;
@@ -83,7 +83,7 @@ export default function SuperAdminDashboard() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'all' | 'internal' | 'b2b'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'custom_b2b' | 'b2g' | 'internal'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -180,33 +180,32 @@ export default function SuperAdminDashboard() {
         const meta = t.metadata || {};
         const slug = (t.slug || '').toLowerCase();
         const name = (t.name || '').toLowerCase();
+        const wsType = ((meta.workspace_type as string) || '').toUpperCase();
+        const tenantKind = ((meta.tenant_kind as string) || '').toUpperCase();
 
-        // 1. Internal & Sandbox (Media, loker, holding, development, test)
-        const isInternal =
-          meta.is_internal === true ||
-          meta.workspace_type === 'internal' ||
-          t.category === 'internal' ||
-          slug.includes('holding') ||
-          slug.includes('sandbox') ||
-          slug.includes('dummy') ||
-          slug.startsWith('test-') ||
-          slug.includes('demo') ||
-          slug.includes('career') ||
-          slug.includes('loker') ||
-          slug.includes('digicorn') ||
-          slug.includes('bola') ||
-          slug.includes('kurir') ||
-          name.includes('holding') ||
-          name.includes('sandbox') ||
-          name.includes('dummy') ||
-          name.includes('demo store') ||
-          name.includes('toko uji');
+        // 1. SaaS Shop (Retail storefronts: growth, proscale, onlineboost, kurastorenkrw, buatinvideo, etc.)
+        const isShop = meta.is_saas === true || wsType === 'SAAS_SHOP';
 
-        // 2. SaaS Shop (Retail, Dakwah, Digital, Field Service storefronts)
-        const isShop = !isInternal && (meta.is_saas === true || meta.workspace_type === 'saas_shop');
+        // 2. B2G & Civic Tech
+        const isB2G = !isShop && (wsType === 'B2G' || slug.includes('pelayanan') || name.includes('pelayanan publik'));
 
-        // 3. Client B2B & Custom App (Gym, kelurahan, komunitas privat, custom enterprise)
-        const resolvedCategory: 'internal' | 'b2b' | 'shop' = isShop ? 'shop' : isInternal ? 'internal' : 'b2b';
+        // 3. Custom App & B2B (atmosfitnes, om-budi / ombudi, bale-pananggeuhan)
+        const isCustomB2B = !isShop && !isB2G && (
+          wsType === 'CUSTOM_APP' ||
+          tenantKind === 'CUSTOM_APP' ||
+          slug === 'atmosfitnes' || slug.includes('atmos') ||
+          slug === 'om-budi' || slug === 'ombudi' || slug.includes('budi') ||
+          slug === 'bale-pananggeuhan' || slug.includes('pananggeuhan')
+        );
+
+        // 4. Internal & Edge Platform
+        const resolvedCategory: 'internal' | 'custom_b2b' | 'b2g' | 'shop' = isShop
+          ? 'shop'
+          : isB2G
+          ? 'b2g'
+          : isCustomB2B
+          ? 'custom_b2b'
+          : 'internal';
 
         const isHealthy = t.status === 'HEALTHY' || t.status === 'active';
         const finalHealth: HealthStatus = !isHealthy ? 'DOWN' : serverLiveStatus;
@@ -309,31 +308,37 @@ export default function SuperAdminDashboard() {
   };
 
   const filteredTenants = tenants.filter((t) => {
-    // Segregate retail shops to Directory Shop (/admin/shops) unless specifically searched
-    const matchCategory =
-      activeTab === 'internal'
-        ? t.category === 'internal'
-        : activeTab === 'b2b'
-        ? t.category === 'b2b'
-        : searchQuery
-        ? true
-        : t.category !== 'shop';
+    // 1. Strictly exclude SaaS / retail shops from overview grid (they belong in /admin/shops)
+    const isShop = t.metadata?.is_saas === true || t.category === 'shop';
+    if (isShop) return false;
 
+    // 2. Tab filter
+    let matchTab = true;
+    if (activeTab === 'custom_b2b') {
+      matchTab = t.category === 'custom_b2b';
+    } else if (activeTab === 'b2g') {
+      matchTab = t.category === 'b2g';
+    } else if (activeTab === 'internal') {
+      matchTab = t.category === 'internal';
+    }
+
+    // 3. Search query
     const matchSearch = searchQuery
       ? t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         t.slug.toLowerCase().includes(searchQuery.toLowerCase())
       : true;
 
-    return matchCategory && matchSearch;
+    return matchTab && matchSearch;
   });
 
-  const countInternal = tenants.filter((t) => t.category === 'internal').length;
-  const countB2B = tenants.filter((t) => t.category === 'b2b').length;
-  const countWorkspaces = countInternal + countB2B;
-  const countShops = tenants.filter((t) => t.category === 'shop').length;
-  const countHealthy = tenants.filter((t) => t.health_status === 'HEALTHY').length;
-  const countDegraded = tenants.filter((t) => t.health_status === 'DEGRADED').length;
-  const countDown = tenants.filter((t) => t.health_status === 'DOWN').length;
+  const nonShopTenants = tenants.filter((t) => t.metadata?.is_saas !== true && t.category !== 'shop');
+  const countCustomB2B = nonShopTenants.filter((t) => t.category === 'custom_b2b').length;
+  const countB2G = nonShopTenants.filter((t) => t.category === 'b2g').length;
+  const countInternal = nonShopTenants.filter((t) => t.category === 'internal').length;
+  const countWorkspaces = nonShopTenants.length;
+  const countHealthy = nonShopTenants.filter((t) => t.health_status === 'HEALTHY').length;
+  const countDegraded = nonShopTenants.filter((t) => t.health_status === 'DEGRADED').length;
+  const countDown = nonShopTenants.filter((t) => t.health_status === 'DOWN').length;
   const openIncidentsCount = incidents.filter((i) => i.status === 'OPEN').length;
 
   if (!isAdminAuth) {
@@ -514,8 +519,8 @@ export default function SuperAdminDashboard() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
             <span className="text-[11px] font-medium text-slate-400 block">Total Workspaces</span>
-            <span className="text-xl font-bold text-white mt-1 block">{tenants.length}</span>
-            <span className="text-[10px] text-slate-500">Live DB instances</span>
+            <span className="text-xl font-bold text-white mt-1 block">{countWorkspaces}</span>
+            <span className="text-[10px] text-slate-500">System &amp; Custom instances</span>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
@@ -551,7 +556,7 @@ export default function SuperAdminDashboard() {
               <span>WA Gateway</span>
             </span>
             <span className="text-xl font-bold text-white mt-1 block">
-              {tenants.filter((t) => t.wa_gateway_status === 'CONNECTED').length}/{tenants.length}
+              {nonShopTenants.filter((t) => t.wa_gateway_status === 'CONNECTED').length}/{countWorkspaces}
             </span>
             <span className="text-[10px] text-slate-500">Live nodes</span>
           </div>
@@ -577,7 +582,29 @@ export default function SuperAdminDashboard() {
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
               }`}
             >
-              Semua Workspace ({countWorkspaces})
+              Semua System Workspaces ({countWorkspaces})
+            </button>
+            <button
+              onClick={() => setActiveTab('custom_b2b')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'custom_b2b'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              Custom App &amp; B2B ({countCustomB2B})
+            </button>
+            <button
+              onClick={() => setActiveTab('b2g')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'b2g'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              B2G &amp; Civic Tech ({countB2G})
             </button>
             <button
               onClick={() => setActiveTab('internal')}
@@ -588,18 +615,7 @@ export default function SuperAdminDashboard() {
               }`}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-              Internal &amp; Sandbox ({countInternal})
-            </button>
-            <button
-              onClick={() => setActiveTab('b2b')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'b2b'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-              Client B2B &amp; Custom App ({countB2B})
+              Internal &amp; Edge ({countInternal})
             </button>
           </div>
 
@@ -679,8 +695,9 @@ export default function SuperAdminDashboard() {
               </div>
             ) : (
               filteredTenants.map((t) => {
+                const isCustomB2B = t.category === 'custom_b2b';
+                const isB2G = t.category === 'b2g';
                 const isInternal = t.category === 'internal';
-                const isShop = t.category === 'shop';
                 const isHealthyTenant = t.health_status === 'HEALTHY';
                 const isDegradedTenant = t.health_status === 'DEGRADED';
                 const isWaConnected = t.wa_gateway_status === 'CONNECTED';
@@ -696,14 +713,14 @@ export default function SuperAdminDashboard() {
                       <div className="flex items-center justify-between gap-2 mb-2.5">
                         <span
                           className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                            isShop
-                              ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
-                              : isInternal
-                              ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-                              : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                            isCustomB2B
+                              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                              : isB2G
+                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
                           }`}
                         >
-                          {isShop ? 'SaaS Storefront' : isInternal ? 'Internal Ecosystem' : 'Client B2B'}
+                          {isCustomB2B ? 'Custom App & B2B' : isB2G ? 'B2G & Civic Tech' : 'Internal & Edge'}
                         </span>
 
                         <div className="flex items-center gap-1.5">
@@ -864,8 +881,9 @@ export default function SuperAdminDashboard() {
                     </tr>
                   ) : (
                     filteredTenants.map((t) => {
+                      const isCustomB2B = t.category === 'custom_b2b';
+                      const isB2G = t.category === 'b2g';
                       const isInternal = t.category === 'internal';
-                      const isShop = t.category === 'shop';
                       const isHealthyTenant = t.health_status === 'HEALTHY';
                       const isDegradedTenant = t.health_status === 'DEGRADED';
 
@@ -875,14 +893,14 @@ export default function SuperAdminDashboard() {
                             <div className="flex items-center gap-2 mb-1">
                               <span
                                 className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                                  isShop
-                                    ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
-                                    : isInternal
-                                    ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
-                                    : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                  isCustomB2B
+                                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                    : isB2G
+                                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                    : 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30'
                                 }`}
                               >
-                                {isShop ? 'SaaS Store' : isInternal ? 'Internal' : 'Client B2B'}
+                                {isCustomB2B ? 'Custom App & B2B' : isB2G ? 'B2G Civic Tech' : 'Internal & Edge'}
                               </span>
                               <p className="font-semibold text-white text-sm">{t.name}</p>
                             </div>

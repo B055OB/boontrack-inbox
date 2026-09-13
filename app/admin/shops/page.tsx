@@ -21,6 +21,7 @@ import {
   Building2,
   CheckCircle2,
   Video,
+  Trash2,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -252,6 +253,7 @@ export default function SuperAdminShopDirectory() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeVertical, setActiveVertical] = useState<VerticalFilterKey>('ALL');
+  const [updatingSlug, setUpdatingSlug] = useState<string | null>(null);
 
   // Authenticate PIN
   const handleAdminLogin = (e: React.FormEvent) => {
@@ -281,9 +283,17 @@ export default function SuperAdminShopDirectory() {
         return;
       }
 
-      // Filter strictly to SaaS / Storefront merchants
+      // Filter strictly to SaaS / Storefront merchants (excluding archived and platform internals)
       const saasMerchants = (data || []).filter((t: any) => {
-        if (t.is_active === false || t.status === 'expired' || t.status === 'inactive') return false;
+        // Exclude archived, expired, inactive stores
+        if (
+          t.status === 'ARCHIVED' ||
+          t.metadata?.is_archived === true ||
+          t.status === 'expired' ||
+          t.status === 'inactive'
+        ) {
+          return false;
+        }
 
         const meta = t.metadata || {};
         if (meta.is_saas === true) return true;
@@ -328,6 +338,72 @@ export default function SuperAdminShopDirectory() {
       console.warn('Error fetching shop directory:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Toggle active / suspended status
+  const handleToggleStatus = async (slug: string, currentStatus: string, currentActive?: boolean) => {
+    const isCurrentlyActive = currentActive !== false && currentStatus !== 'SUSPENDED';
+    const nextActive = !isCurrentlyActive;
+    const nextStatus = nextActive ? 'ACTIVE' : 'SUSPENDED';
+
+    setUpdatingSlug(slug);
+    // Optimistic UI update
+    setShops((prev) =>
+      prev.map((s) => (s.slug === slug ? { ...s, is_active: nextActive, status: nextStatus } : s))
+    );
+
+    try {
+      const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(slug)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'TOGGLE_STATUS',
+          is_active: nextActive,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal mengubah status toko');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Gagal mengubah status');
+      fetchShops();
+    } finally {
+      setUpdatingSlug(null);
+    }
+  };
+
+  // Archive (soft delete) shop
+  const handleArchiveShop = async (slug: string, name: string) => {
+    const confirmed = window.confirm(
+      `Apakah Anda yakin ingin mengarsipkan toko "${name}" (${slug})?\n\nToko akan disembunyikan dari direktori merchant (soft delete).`
+    );
+    if (!confirmed) return;
+
+    setUpdatingSlug(slug);
+    // Optimistic UI update: remove from directory
+    setShops((prev) => prev.filter((s) => s.slug !== slug));
+
+    try {
+      const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(slug)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'ARCHIVE',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal mengarsipkan toko');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Gagal mengarsipkan toko');
+      fetchShops();
+    } finally {
+      setUpdatingSlug(null);
     }
   };
 
@@ -680,12 +756,35 @@ export default function SuperAdminShopDirectory() {
                           </span>
                         </td>
 
-                        {/* 5. Status */}
+                        {/* 5. Status: Interactive Toggle (ACTIVE / SUSPENDED) */}
                         <td className="px-5 py-4">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            <span>ACTIVE</span>
-                          </span>
+                          {(() => {
+                            const isActive = shop.is_active !== false && shop.status !== 'SUSPENDED';
+                            const isUpdating = updatingSlug === shop.slug;
+                            return (
+                              <button
+                                onClick={() => handleToggleStatus(shop.slug, shop.status, shop.is_active)}
+                                disabled={isUpdating}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition cursor-pointer disabled:opacity-50 ${
+                                  isActive
+                                    ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                    : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                }`}
+                                title={`Klik untuk mengubah status ke ${isActive ? 'SUSPENDED' : 'ACTIVE'}`}
+                              >
+                                {isUpdating ? (
+                                  <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                                ) : (
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      isActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                                    }`}
+                                  />
+                                )}
+                                <span>{isActive ? 'ACTIVE' : 'SUSPENDED'}</span>
+                              </button>
+                            );
+                          })()}
                         </td>
 
                         {/* 6. Aksi Langsung */}
@@ -710,6 +809,14 @@ export default function SuperAdminShopDirectory() {
                               <Sliders className="w-3 h-3 text-blue-400" />
                               <span>Konfigurasi</span>
                             </Link>
+                            <button
+                              onClick={() => handleArchiveShop(shop.slug, shop.name)}
+                              disabled={updatingSlug === shop.slug}
+                              className="p-1.5 bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 rounded-xl border border-slate-700 hover:border-rose-500/30 transition cursor-pointer disabled:opacity-50"
+                              title="Arsipkan Toko (Soft Delete)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </td>
                       </tr>
