@@ -28,13 +28,14 @@ export async function POST(req: NextRequest) {
     const {
       tenant_slug,
       tenant_id,
+      tenant,
       slug: rawSlug,
       message,
       product_context,
       conversation_history,
       context,
     } = body;
-    const slug = tenant_slug || tenant_id || rawSlug || 'general';
+    const slug = tenant_slug || tenant_id || tenant || rawSlug || 'general';
 
     const q = (message || '').toLowerCase();
     const storeName = context?.storeName || slug.replace(/[-_]/g, ' ').toUpperCase();
@@ -282,9 +283,20 @@ Instruksi:
           reply = `Untuk informasi varian produk ${storeName}, silakan cek rincian paket di panel katalog samping.`;
         }
       }
-      // 7. Scoped Gym Atmosfitnes
-      else if (slug === 'atmosfitnes' && (q.includes('zumba') || q.includes('aerobik') || q.includes('gym'))) {
-        reply = `Jadwal kelas Zumba & Aerobik di Studio Lt 2 Atmosfitnes tersedia setiap Selasa, Kamis, dan Sabtu pukul 16:30 & 19:00 WIB bersama instruktur bersertifikasi. Biaya per sesi hanya Rp 35.000.`;
+      // 7. Akses / Download / Link Materi Digital / Lisensi
+      else if (q.includes('download') || q.includes('akses') || q.includes('link') || q.includes('lisensi') || (q.includes('materi') && (q.includes('dapat') || q.includes('mana') || q.includes('buka')))) {
+        const resolvedUrl =
+          product.download_url ||
+          (product as any).link_digital ||
+          (product as any).delivery_url ||
+          tenantMetadata?.digital_asset_url ||
+          tenantMetadata?.download_url;
+
+        if (resolvedUrl) {
+          reply = `Akses materi digital Anda untuk "${product.name || storeName}" dapat langsung dibuka melalui tautan resmi berikut:\n\n👉 ${resolvedUrl}\n\nPastikan transaksi pembayaran Anda telah selesai agar akun modul aktif penuh.`;
+        } else {
+          reply = `Akses produk digital Anda sedang disiapkan oleh admin toko. Detail link dan instruksi akses akan segera dikirimkan ke kontak Anda setelah diverifikasi.`;
+        }
       }
       // 8. General Product Introduction
       else if (product.name) {

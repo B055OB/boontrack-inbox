@@ -322,9 +322,9 @@ export default function CheckoutPage({ params }: Props) {
                 </div>
               )}
 
-              {(order?.fulfillment_metadata?.access_url || order?.download_url) && (
+              {(order?.fulfillment_metadata?.access_url || order?.download_url || order?.link_digital || order?.delivery_url) ? (
                 <a
-                  href={order?.fulfillment_metadata?.access_url || order?.download_url}
+                  href={order?.fulfillment_metadata?.access_url || order?.download_url || order?.link_digital || order?.delivery_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition cursor-pointer"
@@ -333,6 +333,15 @@ export default function CheckoutPage({ params }: Props) {
                   <span>Buka Akses / Unduh Materi Sekarang</span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
+              ) : (
+                <div className="p-3.5 bg-slate-900/80 border border-amber-500/30 rounded-xl text-center space-y-1">
+                  <p className="text-xs text-amber-300 font-semibold">
+                    Akses produk digital Anda sedang disiapkan oleh admin toko.
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Detail link dan lisensi akan dikirimkan otomatis melalui WhatsApp/Email Anda segera setelah diverifikasi.
+                  </p>
+                </div>
               )}
             </div>
           </div>

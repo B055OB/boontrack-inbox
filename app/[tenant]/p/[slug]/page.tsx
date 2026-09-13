@@ -146,7 +146,7 @@ function SingleProductContent() {
               image: sqlProd.image,
               stock: sqlProd.stock,
               is_unlimited: sqlProd.is_unlimited_stock,
-              download_url: sqlProd.link_digital,
+              download_url: sqlProd.link_digital || sqlProd.asset_reference || sqlProd.fulfillment_metadata?.access_url || '',
               fulfillment_metadata: sqlProd.fulfillment_metadata,
               ...(sqlProd.fulfillment_metadata?.single_page_config || {}),
               single_page_config: sqlProd.fulfillment_metadata?.single_page_config || {}
@@ -744,11 +744,10 @@ function SingleProductContent() {
 
         <div>
           <label className="font-bold text-slate-700 block mb-1">
-            Alamat Email <span className="text-rose-500">*</span>
+            Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional untuk backup link)</span>
           </label>
           <input
             type="email"
-            required
             placeholder="nama@email.com"
             value={buyerEmail}
             onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}

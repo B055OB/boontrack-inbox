@@ -96,6 +96,8 @@ export interface StoreChatMessage {
     badge?: string;
     modules?: string[];
     features?: string[];
+    download_url?: string;
+    type?: string;
   };
   quick_actions?: string[];
 }
@@ -182,7 +184,7 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     features: Array.isArray(p.features) && p.features.length > 0 ? p.features : [],
     modules: Array.isArray(p.modules) ? p.modules : undefined,
     promo_price: rawPromoPrice,
-    download_url: p.download_url || p.delivery_url || "",
+    download_url: p.download_url || p.delivery_url || p.link_digital || p.asset_reference || p.fulfillment_metadata?.access_url || "",
     stock: p.stock !== undefined && p.stock !== null ? Number(p.stock) : 999,
     sku: p.sku || `SKU-${idx + 1}`
   };
@@ -205,7 +207,18 @@ export default function TenantStorefrontPage() {
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [productForCheckout, setProductForCheckout] = useState<{ id: string; title: string; price: number } | null>(null);
+  const [productForCheckout, setProductForCheckout] = useState<{
+    id: string;
+    title: string;
+    price: number;
+    download_url?: string;
+    link_digital?: string;
+    delivery_url?: string;
+    category?: string;
+    type?: string;
+    product_type?: string;
+    fulfillment_metadata?: any;
+  } | null>(null);
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
   const [showCartModal, setShowCartModal] = useState(false);
   const [inputMessage, setInputMessage] = useState("");
@@ -1024,7 +1037,10 @@ export default function TenantStorefrontPage() {
                                 setProductForCheckout({
                                   id: String(msg.product.id),
                                   title: msg.product.name,
-                                  price: msg.product.price
+                                  price: msg.product.price,
+                                  download_url: msg.product.download_url,
+                                  type: msg.product.type,
+                                  category: msg.product.category,
                                 });
                                 setIsCheckoutOpen(true);
                               }}
@@ -1353,6 +1369,9 @@ export default function TenantStorefrontPage() {
                                       id: String(msg.product.id),
                                       title: msg.product.name,
                                       price: msg.product.price,
+                                      download_url: msg.product.download_url,
+                                      type: msg.product.type,
+                                      category: msg.product.category,
                                     });
                                     setIsMobileChatOpen(false);
                                     setIsCheckoutOpen(true);

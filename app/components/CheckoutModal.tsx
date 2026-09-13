@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle } from "lucide-react";
+import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, trackClientPurchase } from "@/lib/tracking";
@@ -18,6 +18,13 @@ interface CheckoutModalProps {
     id: string;
     title: string;
     price: number;
+    download_url?: string;
+    link_digital?: string;
+    delivery_url?: string;
+    category?: string;
+    type?: string;
+    product_type?: string;
+    fulfillment_metadata?: any;
   } | null;
 }
 
@@ -38,6 +45,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     paymentMethod?: 'qris' | 'manual_transfer';
   } | null>(null);
   const qrData = paymentData;
+  const [orderStatus, setOrderStatus] = useState<'PENDING' | 'PAID' | string>('PENDING');
+  const [orderFulfillment, setOrderFulfillment] = useState<{
+    access_url?: string;
+    instructions?: string;
+  } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [qrisError, setQrisError] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -83,6 +95,51 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     }
   }, [isOpen, tenantSlug]);
 
+  // Real-time polling to detect when order is paid
+  useEffect(() => {
+    if (!paymentData?.orderId) return;
+
+    let active = true;
+    const checkStatus = async () => {
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: ord } = await supabase
+            .from('orders')
+            .select('status, payment_status, download_url, fulfillment_metadata')
+            .eq('id', paymentData.orderId)
+            .maybeSingle();
+
+          if (ord && active) {
+            const statusUpper = (ord.payment_status || ord.status || '').toUpperCase();
+            if (statusUpper === 'PAID' || statusUpper === 'COMPLETED' || statusUpper === 'SUCCESS' || statusUpper === 'SETTLED') {
+              setOrderStatus('PAID');
+              const resolvedAccess =
+                ord.fulfillment_metadata?.access_url ||
+                ord.download_url ||
+                product?.download_url ||
+                product?.link_digital ||
+                product?.delivery_url;
+
+              setOrderFulfillment({
+                access_url: resolvedAccess,
+                instructions: ord.fulfillment_metadata?.instructions,
+              });
+            }
+          }
+        }
+      } catch {}
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 2500);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [paymentData?.orderId, product]);
+
   if (!isOpen || !product) return null;
 
   const handleCheckout = async (e: React.FormEvent) => {
@@ -91,6 +148,17 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     setErrorMessage("");
 
     const trackingParams = getTrackingData();
+    const resolvedProductType =
+      product.type ||
+      product.product_type ||
+      (product.category === 'digital' ? 'DIGITAL' : 'DIGITAL');
+
+    const resolvedAccessUrl =
+      product.download_url ||
+      product.link_digital ||
+      product.delivery_url ||
+      product.fulfillment_metadata?.access_url ||
+      '';
 
     try {
       const result = await createOrderAndInvoice({
@@ -105,9 +173,15 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         affiliateCommission: 0,
         customerName,
         customerPhone,
-        customerEmail,
+        customerEmail: customerEmail || undefined,
         affiliateCode: undefined, // Murni direct store ke toko merchant
         tracking: trackingParams,
+        productType: resolvedProductType,
+        fulfillmentMetadata: product.fulfillment_metadata || (resolvedAccessUrl ? {
+          delivery_type: 'DOWNLOAD_LINK',
+          access_url: resolvedAccessUrl,
+          instructions: 'Akses materi digital Anda telah aktif secara instan.'
+        } : undefined),
       });
 
       // Trigger Client-side Purchase Event dengan Deduplikasi Key
@@ -123,6 +197,10 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         qrCodeUrl: result.qrCodeUrl,
         paymentMethod: paymentMethod,
       });
+      setOrderStatus('PENDING');
+      if (resolvedAccessUrl) {
+        setOrderFulfillment({ access_url: resolvedAccessUrl });
+      }
     } catch (err: any) {
       setErrorMessage(err.message || "Gagal memproses pesanan.");
     } finally {
@@ -152,7 +230,61 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         </div>
 
         {paymentData ? (
-          /* Tampilan Selesai / Menunggu Pembayaran */
+          orderStatus === 'PAID' ? (
+            /* Tampilan Lunas / Akses Digital Siap */
+            <div className="text-center space-y-4 py-4 animate-in fade-in duration-200">
+              <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto border border-emerald-500/30 shadow-lg shadow-emerald-500/10">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <div>
+                <span className="inline-block px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold rounded-full mb-1">
+                  Pembayaran Terverifikasi (Lunas)
+                </span>
+                <h4 className="font-black text-white text-base">Akses Produk Digital Siap!</h4>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: {paymentData.orderId}</p>
+              </div>
+
+              <div className="bg-slate-950 border border-emerald-500/30 rounded-2xl p-4 text-left space-y-3 shadow-inner">
+                {orderFulfillment?.access_url ? (
+                  <>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Selamat! Pembayaran untuk <strong>{product.title}</strong> telah selesai. Anda dapat langsung membuka akses materi sekarang:
+                    </p>
+                    <a
+                      href={orderFulfillment.access_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/25 cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Buka Akses / Unduh Materi Sekarang</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </>
+                ) : (
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-center space-y-1">
+                    <p className="text-xs font-bold text-amber-300">
+                      Akses produk digital Anda sedang disiapkan oleh admin toko.
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      Detail link dan instruksi akses otomatis dikirimkan ke WhatsApp Anda (<strong>{customerPhone}</strong>).
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {paymentData.invoiceUrl && (
+                <a
+                  href={paymentData.invoiceUrl}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition"
+                >
+                  <span>Lihat Rincian Faktur / Invoice</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </a>
+              )}
+            </div>
+          ) : (
+          /* Tampilan Menunggu Pembayaran */
           <div className="text-center space-y-4 py-4">
             <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto border border-emerald-500/30">
               <CheckCircle2 className="w-6 h-6" />
@@ -273,6 +405,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               </a>
             )}
           </div>
+        )
         ) : (
           /* Form Data Pembeli (Ultra-Lean Single Section) */
           <form onSubmit={handleCheckout} className="space-y-4 text-xs">
@@ -323,10 +456,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               </div>
 
               <div className="space-y-1">
-                <label className="text-slate-400 font-medium">Alamat Email *</label>
+                <label className="text-slate-400 font-medium">Alamat Email (Opsional untuk backup link)</label>
                 <input
                   type="email"
-                  required
                   value={customerEmail}
                   onChange={(e) => setCustomerEmail(e.target.value)}
                   placeholder="nama@email.com"

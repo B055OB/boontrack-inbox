@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   QrCode,
   ArrowRight,
+  Download,
 } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
@@ -24,7 +25,7 @@ function MicrositeItemImage({ src, alt }: { src?: string; alt: string }) {
   if (!safeSrc || error) {
     return (
       <div className="w-14 h-14 rounded-xl bg-slate-100 border border-slate-200 shrink-0 flex flex-col items-center justify-center text-slate-400">
-        <Utensils className="w-5 h-5 text-slate-400" />
+        <ShoppingBag className="w-5 h-5 text-slate-400" />
       </div>
     );
   }
@@ -51,7 +52,18 @@ interface MicrositeBioTemplateProps {
   storeProducts: Product[];
   dynamicQuickReplies: string[];
   chatEnabled: boolean;
-  onInitiateCheckout: (product: { id: string; title: string; price: number }) => void;
+  onInitiateCheckout: (product: {
+    id: string;
+    title: string;
+    price: number;
+    download_url?: string;
+    link_digital?: string;
+    delivery_url?: string;
+    category?: string;
+    type?: string;
+    product_type?: string;
+    fulfillment_metadata?: any;
+  }) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onOutboundClick: (url: string, label: string) => void;
 }
@@ -322,50 +334,67 @@ export default function MicrositeBioTemplate({
         </div>
 
         {/* Micro-Catalog: Menu / Produk Terlaris (hanya tampil jika showProducts aktif dan ada produk) */}
-        {showProducts && visibleProducts.length > 0 && (
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 animate-in fade-in duration-200 mt-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-1.5">
-                <Utensils className="w-4 h-4 text-emerald-600" />
-                <h3 className="text-xs font-black text-slate-900">Menu &amp; Pilihan Populer</h3>
-              </div>
-              <span className="text-[10px] text-slate-400 font-semibold">
-                {visibleProducts.length} Pilihan
-              </span>
-            </div>
+        {showProducts && visibleProducts.length > 0 && (() => {
+          const isDigitalCatalog = ['DIGITAL', 'COURSE', 'SOFTWARE', 'CREATOR', 'AGENCY'].some(k =>
+            (tenantMetadata?.category || tenantMetadata?.vertical_type || '').toUpperCase().includes(k)
+          );
 
-            <div className="space-y-2.5">
-              {visibleProducts.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 p-2 rounded-2xl hover:bg-slate-50 transition border border-slate-100"
-                >
-                  <MicrositeItemImage src={item.image} alt={item.name} />
-                  <div className="flex-1 min-w-0 space-y-0.5">
-                    <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
-                    <p className="text-emerald-700 font-black text-xs">
-                      Rp {Number(item.price).toLocaleString('id-ID')}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onInitiateCheckout({
-                        id: String(item.id),
-                        title: item.name,
-                        price: Number(item.price),
-                      })
-                    }
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl transition active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
-                  >
-                    <QrCode className="w-3 h-3" />
-                    <span>Pesan</span>
-                  </button>
+          return (
+            <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-xs space-y-3 animate-in fade-in duration-200 mt-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-1.5">
+                  {isDigitalCatalog ? (
+                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                  ) : (
+                    <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                  )}
+                  <h3 className="text-xs font-black text-slate-900">
+                    {isDigitalCatalog ? 'Katalog Modul & Produk Pilihan' : 'Menu & Pilihan Populer'}
+                  </h3>
                 </div>
-              ))}
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  {visibleProducts.length} Pilihan
+                </span>
+              </div>
+
+              <div className="space-y-2.5">
+                {visibleProducts.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-3 p-2 rounded-2xl hover:bg-slate-50 transition border border-slate-100"
+                  >
+                    <MicrositeItemImage src={item.image} alt={item.name} />
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
+                      <p className="text-emerald-700 font-black text-xs">
+                        Rp {Number(item.price).toLocaleString('id-ID')}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onInitiateCheckout({
+                          id: String(item.id),
+                          title: item.name,
+                          price: Number(item.price),
+                          download_url: item.download_url,
+                          link_digital: (item as any).link_digital,
+                          type: item.type,
+                          category: item.category,
+                          fulfillment_metadata: (item as any).fulfillment_metadata,
+                        })
+                      }
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-xl transition active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
+                    >
+                      {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
+                      <span>{isDigitalCatalog ? 'Akses' : 'Pesan'}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Footer Minimalis */}
         <div className="text-center pt-4 pb-8 space-y-1">
