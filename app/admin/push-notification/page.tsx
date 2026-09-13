@@ -50,9 +50,9 @@ export default function SuperAdminPushNotificationPage() {
   const [targetUrl, setTargetUrl] = useState('/dashboard');
   const [targetType, setTargetType] = useState<'all' | 'tier' | 'tenant'>('all');
   const [selectedTier, setSelectedTier] = useState<string>('solo');
-  const [selectedTenant, setSelectedTenant] = useState<string>('');
+  const [selectedTenant, setSelectedTenant] = useState<string>('ALL_SHOPS');
 
-  // Tenant list for dropdown
+  // Tenant list for dropdown (strictly SaaS / storefront merchants)
   const [tenants, setTenants] = useState<{ slug: string; name: string; tier?: string }[]>([]);
   const [loadingTenants, setLoadingTenants] = useState(false);
 
@@ -73,7 +73,7 @@ export default function SuperAdminPushNotificationPage() {
     }
   };
 
-  // Load tenants from Supabase
+  // Load tenants from Supabase (Strictly isolate to SaaS / Shop Merchants)
   useEffect(() => {
     if (!isAdminAuth) return;
     const fetchTenants = async () => {
@@ -83,13 +83,50 @@ export default function SuperAdminPushNotificationPage() {
         if (supabase) {
           const { data } = await supabase
             .from('tenants')
-            .select('slug, name, tier')
+            .select('slug, name, tier, status, is_active, metadata')
             .order('name', { ascending: true });
+
           if (Array.isArray(data)) {
-            setTenants(data);
-            if (data.length > 0 && !selectedTenant) {
-              setSelectedTenant(data[0].slug);
-            }
+            // Filter strictly to SaaS / Storefront merchants:
+            // 1. is_saas === true OR classification SaaS shop
+            // 2. Exclude internal workspaces (holding, internal agency live, sandbox testing, dummy, expired)
+            const saasMerchants = data.filter((t: any) => {
+              if (t.is_active === false || t.status === 'expired' || t.status === 'inactive') return false;
+
+              const meta = t.metadata || {};
+              // Explicit flag from Supabase Single Source of Truth
+              if (meta.is_saas === true) return true;
+              if (meta.is_saas === false || meta.is_internal === true || meta.workspace_type === 'internal') return false;
+
+              // Heuristic safety fallback for unmigrated rows
+              const slug = (t.slug || '').toLowerCase();
+              const name = (t.name || '').toLowerCase();
+              if (
+                slug.includes('holding') ||
+                slug.includes('sandbox') ||
+                slug.includes('dummy') ||
+                slug.startsWith('test-') ||
+                slug.includes('demo') ||
+                slug.includes('career') ||
+                slug.includes('loker') ||
+                slug.includes('digicorn') ||
+                slug.includes('bola') ||
+                slug.includes('kurir') ||
+                slug.includes('pelayanan-publik') ||
+                name.includes('holding') ||
+                name.includes('sandbox') ||
+                name.includes('dummy') ||
+                name.includes('demo store') ||
+                name.includes('toko uji')
+              ) {
+                return false;
+              }
+
+              return true;
+            });
+
+            setTenants(saasMerchants);
+            setSelectedTenant((prev) => prev || 'ALL_SHOPS');
           }
         }
       } catch (err) {
@@ -113,7 +150,7 @@ export default function SuperAdminPushNotificationPage() {
     setDispatchResult(null);
 
     const targetValue =
-      targetType === 'tenant' ? selectedTenant : targetType === 'tier' ? selectedTier : 'all';
+      targetType === 'tenant' ? (selectedTenant || 'ALL_SHOPS') : targetType === 'tier' ? selectedTier : 'ALL_SHOPS';
 
     try {
       const res = await fetch('/api/v1/admin/push/broadcast', {
@@ -140,7 +177,12 @@ export default function SuperAdminPushNotificationPage() {
         id: data.broadcast_id || `log-${Date.now()}`,
         title: title.trim(),
         message: message.trim(),
-        target: targetType === 'all' ? 'Semua Seller' : `${targetType.toUpperCase()}: ${targetValue}`,
+        target:
+          targetType === 'all' || targetValue === 'ALL_SHOPS'
+            ? 'Semua Toko Merchant (shop.boontrack.com)'
+            : targetType === 'tier'
+            ? `TIER: ${targetValue.toUpperCase()}`
+            : `TOKO: ${targetValue}`,
         url: targetUrl.trim(),
         successCount: data.success_count || 0,
         failureCount: data.failure_count || 0,
@@ -235,11 +277,15 @@ export default function SuperAdminPushNotificationPage() {
               <ArrowLeft className="w-4 h-4" />
             </Link>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
                   Control Plane Broadcaster
                 </span>
                 <span className="text-[11px] text-slate-400">&bull; Web Push VAPID</span>
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Target: Merchant Storefront Aktif (shop.boontrack.com)
+                </span>
               </div>
               <h1 className="text-xl font-black text-white mt-1">Web Push Notification Broadcaster</h1>
             </div>
@@ -391,7 +437,12 @@ export default function SuperAdminPushNotificationPage() {
 
                 {targetType === 'tenant' && (
                   <div className="pt-2">
-                    <label className="block mb-1 text-[11px] text-slate-400">Pilih Toko Merchant:</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] text-slate-400">Pilih Toko Merchant:</label>
+                      <span className="text-[10px] text-emerald-400 font-semibold">
+                        {tenants.length} Toko Merchant Terverifikasi
+                      </span>
+                    </div>
                     {loadingTenants ? (
                       <p className="text-xs text-slate-500">Memuat daftar toko...</p>
                     ) : (
@@ -400,6 +451,7 @@ export default function SuperAdminPushNotificationPage() {
                         onChange={(e) => setSelectedTenant(e.target.value)}
                         className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500"
                       >
+                        <option value="ALL_SHOPS">📢 Semua Toko Merchant (shop.boontrack.com)</option>
                         {tenants.map((t) => (
                           <option key={t.slug} value={t.slug}>
                             {t.name} ({t.slug}) - {t.tier || 'Solo'}

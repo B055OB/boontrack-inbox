@@ -80,13 +80,66 @@ export async function POST(req: NextRequest) {
       try {
         let query = supabase.from('push_subscriptions').select('*');
 
-        if (target_type === 'tenant' && target_value) {
+        const isSpecificTenant =
+          target_type === 'tenant' &&
+          target_value &&
+          target_value !== 'ALL_SHOPS' &&
+          target_value !== 'all';
+
+        if (isSpecificTenant) {
           query = query.eq('tenant_slug', target_value);
         }
 
         const { data, error } = await query;
         if (!error && Array.isArray(data)) {
           subscriptions = data;
+        }
+
+        // Strictly isolate all general / ALL_SHOPS broadcasts to active SaaS storefront merchants
+        if (!isSpecificTenant) {
+          const { data: saasTenants } = await supabase
+            .from('tenants')
+            .select('slug, tier, status, is_active, metadata');
+
+          if (Array.isArray(saasTenants)) {
+            const validSaasSlugs = new Set(
+              saasTenants
+                .filter((t: any) => {
+                  if (t.is_active === false || t.status === 'expired' || t.status === 'inactive') return false;
+                  const meta = t.metadata || {};
+                  if (meta.is_saas === true) return true;
+                  if (meta.is_saas === false || meta.is_internal === true || meta.workspace_type === 'internal') return false;
+
+                  const slug = (t.slug || '').toLowerCase();
+                  const name = (t.name || '').toLowerCase();
+                  if (
+                    slug.includes('holding') ||
+                    slug.includes('sandbox') ||
+                    slug.includes('dummy') ||
+                    slug.startsWith('test-') ||
+                    slug.includes('demo') ||
+                    slug.includes('career') ||
+                    slug.includes('loker') ||
+                    slug.includes('digicorn') ||
+                    slug.includes('bola') ||
+                    slug.includes('kurir') ||
+                    slug.includes('pelayanan-publik') ||
+                    name.includes('holding') ||
+                    name.includes('sandbox') ||
+                    name.includes('dummy') ||
+                    name.includes('demo store') ||
+                    name.includes('toko uji')
+                  ) {
+                    return false;
+                  }
+
+                  return true;
+                })
+                .map((t: any) => t.slug)
+            );
+
+            subscriptions = subscriptions.filter((s: any) => validSaasSlugs.has(s.tenant_slug));
+          }
         }
       } catch (dbErr) {
         console.warn('[WebPush] Query push_subscriptions note:', dbErr);
