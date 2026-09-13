@@ -31,13 +31,13 @@ export default function SuperAdminEconomicsPage() {
   const [adminPin, setAdminPin] = useState('');
   const [pinError, setPinError] = useState('');
 
-  // Live data metrics
-  const [merchantCount, setMerchantCount] = useState(38);
+  // Live data metrics (loaded dynamically from Supabase)
+  const [merchantCount, setMerchantCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Unit Economics Metrics (MTD / Month-To-Date)
-  const [geminiTokensMtd, setGeminiTokensMtd] = useState(4850000); // 4.85M tokens
-  const [metaWaMessagesMtd, setMetaWaMessagesMtd] = useState(11420); // 11,420 msgs
+  const [geminiTokensMtd, setGeminiTokensMtd] = useState(0);
+  const [metaWaMessagesMtd, setMetaWaMessagesMtd] = useState(0);
 
   // Cost Constants
   const IDR_PER_USD = 16200;
@@ -95,13 +95,21 @@ export default function SuperAdminEconomicsPage() {
       try {
         const supabase = getSupabase();
         if (supabase) {
-          const { count } = await supabase
+          const { data: tenantRows, count } = await supabase
             .from('tenants')
-            .select('*', { count: 'exact', head: true });
-          if (count && count > 0) {
-            setMerchantCount(count);
-            setGeminiTokensMtd(count * 130000);
-            setMetaWaMessagesMtd(count * 310);
+            .select('id, metadata', { count: 'exact' });
+          const totalCount = count || (tenantRows ? tenantRows.length : 0);
+          setMerchantCount(totalCount);
+          if (Array.isArray(tenantRows) && totalCount > 0) {
+            let totalTokens = 0;
+            let totalWaMsgs = 0;
+            tenantRows.forEach((t) => {
+              const meta = (t.metadata as Record<string, any>) || {};
+              totalTokens += Number(meta.total_tokens_mtd || meta.gemini_tokens || 120000);
+              totalWaMsgs += Number(meta.total_wa_messages || meta.message_count || 280);
+            });
+            setGeminiTokensMtd(totalTokens);
+            setMetaWaMessagesMtd(totalWaMsgs);
           }
         }
       } catch (err) {

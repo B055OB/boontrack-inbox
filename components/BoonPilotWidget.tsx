@@ -53,6 +53,7 @@ export interface ChatMessage {
 interface BoonPilotWidgetProps {
   tenantSlug?: string | string[];
   storeCategory?: string;
+  businessType?: string;
   storeName?: string;
   isProductsEmpty?: boolean;
   onOpenBulkImport?: () => void;
@@ -221,8 +222,9 @@ function MarkdownContent({ content }: { content: string }) {
 
 export default function BoonPilotWidget({
   tenantSlug,
-  storeCategory,
-  storeName,
+  storeCategory = 'retail',
+  businessType,
+  storeName = 'Toko Anda',
   isProductsEmpty = false,
   onOpenBulkImport,
   onOpenNewProduct,
@@ -713,6 +715,7 @@ export default function BoonPilotWidget({
                 context={{
                   tenantSlug: normalizedSlug,
                   storeCategory,
+                  businessType,
                   storeName,
                   productsCount,
                 }}

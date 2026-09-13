@@ -107,12 +107,11 @@ export default function SuperAdminTelemetryPage() {
           }
 
           if (Array.isArray(tenantRows) && tenantRows.length > 0) {
-            const mapped: TenantLeaderboardItem[] = tenantRows.map((t, idx) => {
+            const mapped: TenantLeaderboardItem[] = tenantRows.map((t) => {
               const stats = orderMap[t.slug] || { count: 0, volume: 0 };
-              // Bot activity estimation from metadata or deterministic seed
-              const seed = (t.slug.charCodeAt(0) + (t.slug.charCodeAt(1) || 50)) * 7;
-              const chatToday = (t.metadata?.chat_count_today as number) || (seed % 150) + stats.count * 8 + 12;
-              const qrisToday = stats.volume > 0 ? stats.volume : ((seed * 12340) % 2500000) + 150000;
+              const meta = (t.metadata as Record<string, any>) || {};
+              const chatToday = Number(meta.chat_count_today || meta.message_count || (stats.count > 0 ? stats.count * 4 : 0));
+              const qrisToday = Number(stats.volume || 0);
 
               return {
                 id: t.id,
@@ -121,7 +120,7 @@ export default function SuperAdminTelemetryPage() {
                 tier: t.tier || 'SOLO',
                 chatCountToday: chatToday,
                 qrisVolumeToday: qrisToday,
-                orderCountToday: stats.count || Math.floor(chatToday / 6),
+                orderCountToday: stats.count || 0,
                 botStatus: 'ACTIVE',
               };
             });

@@ -29,18 +29,6 @@ export function useDashboardData(tenantSlug: string) {
     }
   }, [tenantSlug, router]);
 
-  const isProTenant = ['demo', 'onlineboost'].includes(tenantSlug);
-  const isTenantGrowthPlus = 
-    tenantSlug === 'growthplus' || 
-    tenantSlug.includes('growthplus') || 
-    tenantSlug === 'growth-plus' || 
-    tenantSlug === 'growth_plus';
-  const isTenantProScale = 
-    tenantSlug === 'proscale' || 
-    tenantSlug.includes('proscale') || 
-    tenantSlug === 'enterprise' || 
-    ['demo', 'onlineboost', 'suhu-ads-masterclass'].includes(tenantSlug);
-
   const [planTier, setPlanTier] = useState<PlanTier>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
@@ -59,8 +47,6 @@ export function useDashboardData(tenantSlug: string) {
       const stored = localStorage.getItem(`bt_tier_${tenantSlug}`) as PlanTier | null;
       if (stored && ['growth', 'ads_performance', 'team_scale'].includes(stored)) return stored;
     }
-    if (isTenantProScale) return 'team_scale';
-    if (isTenantGrowthPlus) return 'ads_performance';
     return 'growth';
   });
 
@@ -72,16 +58,14 @@ export function useDashboardData(tenantSlug: string) {
 
   const isTeamScale = 
     planTier === 'team_scale' || 
-    isTenantProScale || 
     tenantFeatureFlags.tier === 'TEAM_SCALE' || 
-    tenantFeatureFlags.tier === 'PRO_SCALE';
+    tenantFeatureFlags.tier === 'PRO_SCALE' ||
+    tenantFeatureFlags.tier === 'ENTERPRISE';
 
   const isAdsPerformance = 
     (planTier === 'ads_performance' || 
-     isTenantGrowthPlus || 
      tenantFeatureFlags.tier === 'ADS_PERFORMANCE' || 
-     tenantFeatureFlags.tier === 'GROWTH_PLUS' || 
-     tenantFeatureFlags.tier === 'PRO_SCALE') && 
+     tenantFeatureFlags.tier === 'GROWTH_PLUS') && 
     !isTeamScale;
 
   const isSolo = planTier === 'growth' && !isAdsPerformance && !isTeamScale;

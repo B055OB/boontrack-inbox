@@ -32,7 +32,7 @@ export default function GuidedSetupInterview({
 }: GuidedSetupInterviewProps) {
   // Resolve initial template from context
   const initialTemplateDef = resolveBusinessTemplate(
-    context?.templateCode || context?.storeCategory
+    context?.businessType || context?.templateCode || context?.storeCategory
   );
 
   const [selectedTemplateCode, setSelectedTemplateCode] = useState<BusinessTemplateCode>(

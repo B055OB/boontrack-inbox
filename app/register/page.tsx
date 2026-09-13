@@ -43,42 +43,50 @@ const CATEGORIES = [
   {
     id: "digital",
     label: "Produk Digital",
-    desc: "E-course, ebook, webinar, tools",
+    desc: "E-course, ebook, webinar, tools, lisensi",
     icon: GraduationCap,
   },
   {
     id: "fnb",
     label: "Kuliner & F&B",
-    desc: "Frozen food, makanan, camilan",
+    desc: "Frozen food, makanan, camilan, minuman",
     icon: UtensilsCrossed,
   },
   {
     id: "local_service",
-    label: "Produk Jasa Teknisi & Lapangan",
-    desc: "Servis AC, toren, sedot WC",
+    label: "Jasa Booking Panggilan & Lapangan",
+    desc: "Servis AC, kuras toren, sedot WC, teknisi",
     icon: Wrench,
   },
   {
     id: "professional_consult",
-    label: "Jasa Profesional & Konsultasi",
-    desc: "Agensi, legal, freelancer",
+    label: "Jasa Travel, Konsultan, Umroh & Legal",
+    desc: "Biro travel, haji & umroh, legal, agensi, konsultan",
     icon: Briefcase,
   },
   {
     id: "affiliate_creator",
     label: "Affiliate, Agensi Live & Kreator",
-    desc: "Live host, video sample creator",
+    desc: "Live host, video sample creator, VIP channel",
     icon: Video,
   },
 ];
 
-const VERTICAL_MAP: Record<string, "LOCAL_SERVICE" | "PHYSICAL" | "DIGITAL"> = {
+export type CanonicalBusinessType =
+  | "PHYSICAL"
+  | "DIGITAL"
+  | "FOOD"
+  | "FIELD_SERVICE"
+  | "PROFESSIONAL_SERVICE"
+  | "CREATOR_AGENCY";
+
+const VERTICAL_MAP: Record<string, CanonicalBusinessType> = {
   retail_physical: "PHYSICAL",
   digital: "DIGITAL",
-  fnb: "PHYSICAL",
-  local_service: "LOCAL_SERVICE",
-  professional_consult: "LOCAL_SERVICE",
-  affiliate_creator: "PHYSICAL",
+  fnb: "FOOD",
+  local_service: "FIELD_SERVICE",
+  professional_consult: "PROFESSIONAL_SERVICE",
+  affiliate_creator: "CREATOR_AGENCY",
 };
 
 export const PLAN_PRICING: Record<
@@ -538,34 +546,43 @@ export default function RegisterShopPage() {
 
     try {
       // 1. Simpan tenant langsung ke Supabase tenants table agar data toko & PIN benar-benar tersimpan
+      const resolvedBusinessType = VERTICAL_MAP[category] || 'PHYSICAL';
+      const isPhysicalStore = resolvedBusinessType === 'PHYSICAL' || resolvedBusinessType === 'FOOD';
+      const isServiceStore = resolvedBusinessType === 'FIELD_SERVICE' || resolvedBusinessType === 'PROFESSIONAL_SERVICE';
+
       try {
         const supabase = getSupabase();
-        await supabase.from('tenants').upsert(
-          {
-            slug,
-            name: storeName,
-            category: VERTICAL_MAP[category] ?? 'PHYSICAL',
-            tier: isTrial ? 'SOLO_TRIAL' : (selectedPlan === 'team_scale' ? 'TEAM_SCALE' : 'ADS_PERFORMANCE'),
-            trial_ends_at: isTrial ? trialEndsAt : null,
-            metadata: {
-              merchant_name: merchantData.name,
-              whatsapp_number: formattedPhone,
-              email: merchantData.email,
-              access_pin: cleanPin,
-              pin_hash: cleanPin,
-              created_via: isTrial ? 'register_solo_trial' : 'register_paid',
-              business_category: category,
-              vertical_type: VERTICAL_MAP[category] ?? 'PHYSICAL',
-              capabilities: {
-                inbox: selectedPlan === 'team_scale',
-                ai_bot: true,
-                shipping: ['PHYSICAL', 'RETAIL', 'FNB'].includes(VERTICAL_MAP[category] ?? 'PHYSICAL'),
+        if (supabase) {
+          await supabase.from('tenants').upsert(
+            {
+              slug,
+              name: storeName,
+              business_type: resolvedBusinessType,
+              category: resolvedBusinessType,
+              tier: isTrial ? 'SOLO_TRIAL' : (selectedPlan === 'team_scale' ? 'TEAM_SCALE' : 'ADS_PERFORMANCE'),
+              trial_ends_at: isTrial ? trialEndsAt : null,
+              metadata: {
+                merchant_name: merchantData.name,
+                whatsapp_number: formattedPhone,
+                email: merchantData.email,
+                access_pin: cleanPin,
+                pin_hash: cleanPin,
+                created_via: isTrial ? 'register_solo_trial' : 'register_paid',
+                business_category: category,
+                business_type: resolvedBusinessType,
+                vertical_type: resolvedBusinessType,
+                capabilities: {
+                  inbox: selectedPlan === 'team_scale',
+                  ai_bot: true,
+                  shipping: isPhysicalStore,
+                  booking: isServiceStore,
+                },
+                onboarded_at: new Date().toISOString(),
               },
-              onboarded_at: new Date().toISOString(),
             },
-          },
-          { onConflict: 'slug' }
-        );
+            { onConflict: 'slug' }
+          );
+        }
       } catch (dbErr) {
         console.warn('Supabase tenant direct upsert note:', dbErr);
       }
@@ -582,7 +599,9 @@ export default function RegisterShopPage() {
             amount: planAmount,
             trial_days: isTrial ? 14 : 0,
             business_category: category,
-            vertical_type: VERTICAL_MAP[category] ?? "PHYSICAL",
+            business_type: resolvedBusinessType,
+            vertical_type: resolvedBusinessType,
+            category: resolvedBusinessType,
             merchant_name: merchantData.name,
             merchant_phone: formattedPhone,
             customer_email: merchantData.email,

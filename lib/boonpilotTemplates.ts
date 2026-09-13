@@ -16,6 +16,7 @@ export interface TenantRuntimeContext {
   tenantSlug: string;
   storeName?: string;
   storeCategory?: string;
+  businessType?: string;
   templateCode?: BusinessTemplateCode;
   productsCount?: number;
   phone?: string;
@@ -584,69 +585,75 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
   PROFESSIONAL_SERVICE: {
     code: 'PROFESSIONAL_SERVICE',
     verticalType: 'PROFESSIONAL_SERVICE',
-    name: 'Konsultasi & Layanan Profesional',
-    badge: 'Brief Form & Sesi Konsultasi',
+    name: 'Travel Umroh, Konsultasi & Layanan Profesional',
+    badge: 'Jasa, Travel & Reservasi',
     stepTitles: [
-      'Bidang Konsultasi / Layanan',
-      'Alur Retainer / Pembayaran',
+      'Bidang Layanan / Paket Travel / Konsultasi',
+      'Skema Pembayaran & DP',
       'Metode Pembayaran',
-      'Brief Awal Kebutuhan Klien',
-      'Kerahasiaan NDA & Garansi Solusi',
+      'Data Jamaah / Klien & Dokumen Persyaratan',
+      'Kuota Seat, Jadwal & Kebijakan Reschedule',
     ],
     stepBubbles: [
-      'Apa spesialisasi konsultasi, agensi, atau layanan profesional yang Anda jalankan?',
-      'Bagaimana skema pembayaran fee jasa Anda (DP proyek / Retainer bulanan / Per sesi)?',
-      'Metode pembayaran bisnis apa saja yang diterima untuk invoicing?',
-      'Formulir data apa saja yang perlu diisi klien sebelum sesi konsultasi dimulai?',
-      'Sampaikan jaminan kerahasiaan data (NDA), garansi kepuasan, dan respon terhadap perbandingan harga agensi.',
+      'Apa spesialisasi jasa travel umroh, biro perjalanan, atau layanan konsultasi profesional yang Anda jalankan?',
+      'Bagaimana skema pembayaran fee/paket Anda (DP pendaftaran / pelunasan bertahap / lunas di awal)?',
+      'Metode pembayaran bisnis apa saja yang diterima untuk invoicing & pembayaran paket?',
+      'Formulir data dan dokumen apa saja yang perlu dilengkapi jamaah atau klien (KTP, paspor, kuota seat)?',
+      'Sampaikan ketentuan kuota seat, jadwal keberangkatan/sesi, kebijakan pembatalan/reschedule, dan garansi layanan.',
     ],
     defaultAnswers: {
-      businessType: 'Agensi Pemasaran Digital & Konsultan Bisnis',
-      businessDescription: 'Pendampingan strategi pertumbuhan bisnis, manajemen iklan terukur, dan audit funnel penjualan berorientasi ROI.',
-      paymentTiming: 'DP 50% untuk kick-off proyek, pelunasan saat deliverable selesai',
+      businessType: 'Biro Travel Umroh & Konsultasi Profesional',
+      businessDescription: 'Penyelenggara perjalanan ibadah umroh resmi, paket tour travel, serta pendampingan konsultasi bisnis berorientasi hasil.',
+      paymentTiming: 'DP pendaftaran untuk amankan kuota seat, pelunasan 30 hari sebelum keberangkatan',
       paymentMethods: ['Transfer Bank Manual', 'QRIS Otomatis (0% MDR)'],
-      step4Requirements: ['Nama Bisnis / Brand Klien', 'Nama Lengkap Penanggung Jawab', 'Nomor WhatsApp & Email', 'Tantangan Utama / Goals Bisnis', 'Estimasi Budget Proyek'],
-      serviceAreaOrCity: 'Online (Zoom Meeting) & On-Site Jakarta/Surabaya',
-      guaranteeOrReturnPolicy: 'Perjanjian kerahasiaan data penuh (NDA) dan revisi strategi berkala hingga target tercapai.',
-      objectionHandling: 'Jelaskan metodologi berbasis data yang teruji, rekam jejak portofolio nyata, serta dedikasi tim spesialis berpengalaman.',
+      step4Requirements: [
+        'Nama Lengkap (Sesuai KTP / Paspor)',
+        'Nomor WhatsApp Aktif',
+        'Pilihan Paket / Tanggal Keberangkatan',
+        'Jumlah Jamaah / Kuota Seat',
+        'Foto KTP & Paspor',
+      ],
+      serviceAreaOrCity: 'Jakarta & Keberangkatan Bandara Soekarno-Hatta (Seluruh Indonesia)',
+      guaranteeOrReturnPolicy: 'Jaminan kepastian tiket pesawat, hotel sesuai paket, pembimbing ibadah bersertifikat, serta SOP reschedule/refund resmi.',
+      objectionHandling: 'Jelaskan fasilitas premium, hotel dekat masjid, bimbingan manasik intensif, serta transparansi biaya tanpa pungutan tersembunyi.',
     },
     step1Presets: [
-      'Agensi Iklan Meta / Google Ads',
-      'Konsultan Pajak & Legalitas Usaha',
-      'Studio Desain Branding & UI/UX',
-      'Konsultan Keuangan & Valuasi Bisnis',
+      'Paket Travel Umroh Reguler & Plus Turki',
+      'Tour & Travel Wisata Halal Mancanegara',
+      'Konsultan Pajak, Legalitas & Pendirian Usaha',
+      'Agensi Iklan Meta / Google Ads & Branding',
     ],
     paymentTimingOptions: [
       {
-        title: 'DP 50% untuk kick-off proyek, pelunasan saat deliverable selesai',
-        desc: 'Skema termin aman bagi kedua belah pihak.',
+        title: 'DP pendaftaran untuk amankan kuota seat, pelunasan bertahap',
+        desc: 'Skema termin bertahap aman bagi jamaah atau klien proyek.',
       },
       {
-        title: 'Retainer Bulanan di Awal (Monthly Retainer)',
-        desc: 'Biaya jasa dibayarkan di awal bulan untuk slot kerja tim bulanan.',
+        title: 'Pelunasan Penuh di Awal (Full Payment)',
+        desc: 'Pembayaran penuh langsung konfirmasi tiket/seat instan.',
       },
       {
-        title: 'Pembayaran Penuh di Awal per Sesi Konsultasi',
-        desc: 'Booking jadwal 1-on-1 consultation session.',
+        title: 'DP 50% kick-off, pelunasan saat deliverable selesai',
+        desc: 'Cocok untuk jasa konsultasi dan pendampingan proyek agensi.',
       },
     ],
     paymentMethodOptions: [
       { name: 'Transfer Bank Manual', hint: 'Invoicing resmi ke rekening perusahaan atau bank rekanan.' },
-      { name: 'QRIS Otomatis (0% MDR)', hint: 'Pembayaran instan untuk sesi konsultasi cepat.' },
+      { name: 'QRIS Otomatis (0% MDR)', hint: 'Pembayaran instan untuk DP atau konsultasi cepat.' },
     ],
-    step4Label: 'Data Brief Proyek yang Diminta dari Klien:',
+    step4Label: 'Data Jamaah / Klien yang Wajib Dilengkapi:',
     step4Options: [
-      'Nama Bisnis / Brand Klien',
-      'Nama Lengkap Penanggung Jawab',
-      'Nomor WhatsApp & Email',
-      'Tantangan Utama / Goals Bisnis',
-      'Estimasi Budget Proyek',
-      'Jadwal Preferensi Meeting Kick-off',
+      'Nama Lengkap (Sesuai KTP / Paspor)',
+      'Nomor WhatsApp Aktif',
+      'Pilihan Paket / Tanggal Keberangkatan',
+      'Jumlah Jamaah / Kuota Seat',
+      'Foto KTP & Paspor',
+      'Catatan Khusus / Preferensi Kamar (Quad/Triple/Double)',
     ],
     step5Labels: {
-      areaOrOrigin: 'Metode & Lokasi Pelaksanaan Sesi:',
-      guaranteeOrPolicy: 'Klausul Kerahasiaan (NDA) & Garansi Kerja:',
-      objection: 'Respon Bila Klien Membandingkan Biaya Jasa:',
+      areaOrOrigin: 'Titik Keberangkatan / Domisili Layanan:',
+      guaranteeOrPolicy: 'Kuota Seat, Jadwal & Ketentuan Reschedule/Batal:',
+      objection: 'Respon Jika Calon Jamaah/Klien Membandingkan Biaya:',
     },
     compileProposal: (tenantSlug, ans) => ({
       id: `prop_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -853,7 +860,10 @@ export function resolveBusinessTemplate(
     norm.includes('PROFESSIONAL') ||
     norm.includes('AGENCY') ||
     norm.includes('CONSULT') ||
-    norm.includes('LEGAL')
+    norm.includes('LEGAL') ||
+    norm.includes('TRAVEL') ||
+    norm.includes('UMROH') ||
+    norm.includes('TOUR')
   ) {
     return BUSINESS_TEMPLATES.PROFESSIONAL_SERVICE;
   }

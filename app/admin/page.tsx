@@ -35,6 +35,8 @@ interface Tenant {
   slug: string;
   category?: 'internal' | 'external' | 'shop' | string;
   vertical?: string;
+  business_type?: string;
+  metadata?: Record<string, any>;
   plan?: string;
   status: string;
   start_date: string | null;
@@ -192,7 +194,11 @@ export default function SuperAdminDashboard() {
           INTERNAL_SLUGS.includes(t.slug) ||
           t.slug.startsWith('boontrack-');
 
-        const isShop = t.category === 'shop' || t.vertical === 'shop' || t.slug === 'onlineboost' || t.slug === 'kanz-store' || t.slug === 'toko-berkah';
+        const isShop =
+          t.category === 'shop' ||
+          t.vertical === 'shop' ||
+          Boolean(t.business_type) ||
+          (t.category !== 'internal' && !isInternal);
 
         const isHealthy = t.status === 'HEALTHY' || t.status === 'active';
         const finalHealth: HealthStatus = !isHealthy ? 'DOWN' : serverLiveStatus;

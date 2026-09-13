@@ -66,14 +66,17 @@ export async function POST(req: NextRequest) {
     // Try to record into Supabase if accessible
     try {
       const supabase = getSupabase();
+      const resolvedBusinessType = body.business_type || category || (isDigital ? 'DIGITAL' : 'PHYSICAL');
       await supabase.from('tenants').upsert(
         {
           slug: generatedSlug,
           name: storeName,
-          category,
+          category: resolvedBusinessType,
+          business_type: resolvedBusinessType,
           metadata: {
             template: template || 'COMMERCE_TEMPLATE',
             onboarding_mode: onboardingMode || 'SELF_SERVICE',
+            business_type: resolvedBusinessType,
             wa_number: formattedWa,
             referral_code: referralCode || null,
             product: {

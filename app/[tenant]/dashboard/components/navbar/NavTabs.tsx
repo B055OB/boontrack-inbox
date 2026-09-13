@@ -91,13 +91,16 @@ export default function NavTabs({
   // Resolusi kategori toko fisik vs digital vs jasa yang ketat
   const rawCat = (businessType || storeCategory || 'PHYSICAL').toUpperCase();
   const isPhysical =
-    ['PHYSICAL', 'RETAIL', 'FNB', 'RETAIL_PHYSICAL'].includes(rawCat) ||
-    rawCat.includes('PHYSICAL') ||
-    rawCat.includes('RETAIL');
+    rawCat === 'PHYSICAL' ||
+    rawCat === 'RETAIL' ||
+    rawCat === 'RETAIL_PHYSICAL';
 
   const isService =
     !isPhysical && (
-      ['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'PROFESSIONAL_CONSULT'].includes(rawCat) ||
+      rawCat === 'FIELD_SERVICE' ||
+      rawCat === 'PROFESSIONAL_SERVICE' ||
+      rawCat === 'LOCAL_SERVICE' ||
+      rawCat === 'PROFESSIONAL_CONSULT' ||
       rawCat.includes('SERVICE') ||
       rawCat.includes('LOCAL')
     );
@@ -188,7 +191,13 @@ export default function NavTabs({
             }`}
           >
             <Package className="w-4 h-4 shrink-0" />
-            <span>Katalog Produk ({productCount})</span>
+            <span>
+              {isService
+                ? `Katalog Jasa & Layanan (${productCount})`
+                : isDigital
+                ? `Katalog Produk Digital (${productCount})`
+                : `Katalog Produk (${productCount})`}
+            </span>
           </button>
 
           {/* TAB: TAMPILAN & MICROSITE */}

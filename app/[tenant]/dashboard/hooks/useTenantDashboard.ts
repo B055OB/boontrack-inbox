@@ -502,6 +502,15 @@ export function useTenantDashboard() {
             return;
           }
         } else {
+          const resolvedBusinessType =
+            tenant.business_type ||
+            tenant.category ||
+            tenant.metadata?.business_type ||
+            tenant.metadata?.vertical_type ||
+            tenant.metadata?.business_category ||
+            'PHYSICAL';
+          setStoreCategory(resolvedBusinessType);
+
           const storeNameFromDb =
             tenant.name ||
             tenant.metadata?.store_name ||
@@ -1384,6 +1393,7 @@ export function useTenantDashboard() {
 
     // Store & Vertical
     storeCategory,
+    businessType: storeCategory,
     setStoreCategory,
     storeDisplayName,
     setStoreDisplayName,

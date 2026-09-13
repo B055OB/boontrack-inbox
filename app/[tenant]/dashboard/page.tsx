@@ -69,6 +69,7 @@ export default function TenantDashboardPage() {
     setIsUpsellModalOpen,
 
     storeCategory,
+    businessType,
     storeDisplayName,
     setStoreDisplayName,
     storeBio,
@@ -272,6 +273,7 @@ export default function TenantDashboardPage() {
           isAdsTrackingUnlocked={isAdsTrackingUnlocked}
           isSoloOrTrial={isSoloOrTrial}
           storeCategory={storeCategory}
+          businessType={businessType || storeCategory}
           productCount={products.length}
           orderCount={transactions.length}
         />
@@ -586,6 +588,7 @@ export default function TenantDashboardPage() {
       <BoonPilotWidget
         tenantSlug={tenantSlug}
         storeCategory={storeCategory}
+        businessType={businessType || storeCategory}
         storeName={displayName}
         isProductsEmpty={products.length === 0}
         onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
