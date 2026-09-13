@@ -72,7 +72,6 @@ export async function POST(req: NextRequest) {
           slug: generatedSlug,
           name: storeName,
           category: resolvedBusinessType,
-          business_type: resolvedBusinessType,
           metadata: {
             template: template || 'COMMERCE_TEMPLATE',
             onboarding_mode: onboardingMode || 'SELF_SERVICE',

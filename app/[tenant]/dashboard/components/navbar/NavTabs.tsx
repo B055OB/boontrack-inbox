@@ -48,6 +48,13 @@ export interface NavTabsPermissions {
   isTeamScale?: boolean;
 }
 
+export interface NavTabsCapabilities {
+  shipping?: boolean;
+  booking?: boolean;
+  digital_fulfillment?: boolean;
+  [key: string]: any;
+}
+
 interface NavTabsProps {
   activeTab: any;
   setActiveTab: (tab: any) => void;
@@ -60,6 +67,7 @@ interface NavTabsProps {
   orderCount?: number;
   storeCategory?: string;
   businessType?: string;
+  capabilities?: NavTabsCapabilities | null;
 }
 
 export default function NavTabs({
@@ -81,6 +89,7 @@ export default function NavTabs({
   orderCount = 0,
   storeCategory = 'PHYSICAL',
   businessType,
+  capabilities,
 }: NavTabsProps) {
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -90,10 +99,12 @@ export default function NavTabs({
 
   // Resolusi kategori toko fisik vs digital vs jasa yang ketat
   const rawCat = (businessType || storeCategory || 'PHYSICAL').toUpperCase();
+  const isDakwah = rawCat.includes('DAKWAH') || rawCat.includes('KAJIAN') || rawCat.includes('ISLAM');
+
   const isPhysical =
-    rawCat === 'PHYSICAL' ||
-    rawCat === 'RETAIL' ||
-    rawCat === 'RETAIL_PHYSICAL';
+    !isDakwah &&
+    (rawCat === 'PHYSICAL' || rawCat === 'RETAIL' || rawCat === 'RETAIL_PHYSICAL') &&
+    capabilities?.shipping !== false;
 
   const isService =
     !isPhysical && (
@@ -105,7 +116,9 @@ export default function NavTabs({
       rawCat.includes('LOCAL')
     );
 
-  const isDigital = !isPhysical && !isService;
+  const isDigital = (!isPhysical && !isService) || rawCat === 'DIGITAL' || isDakwah;
+  const showBooking = isService || Boolean(capabilities?.booking);
+  const showDigital = isDigital || Boolean(capabilities?.digital_fulfillment);
 
   // Entitlement Ads Tracking Pro: terkunci untuk Solo/Trial
   const capiUnlocked = typeof isAdsTrackingUnlocked === 'boolean'
@@ -192,7 +205,9 @@ export default function NavTabs({
           >
             <Package className="w-4 h-4 shrink-0" />
             <span>
-              {isService
+              {isDakwah
+                ? `Katalog Materi / Program Dakwah (${productCount})`
+                : isService
                 ? `Katalog Jasa & Layanan (${productCount})`
                 : isDigital
                 ? `Katalog Produk Digital (${productCount})`
@@ -258,7 +273,7 @@ export default function NavTabs({
             )}
           </button>
 
-          {/* TAB 4: CONDITIONAL — LOGISTIK (Fisik) / BOOKING (Jasa) / AKSES UNDUH (Digital) */}
+          {/* TAB 4: CONDITIONAL — LOGISTIK (Fisik) / BOOKING (Jasa & Jadwal) / AKSES UNDUH (Digital) */}
           {isPhysical && (
             <button
               type="button"
@@ -279,7 +294,7 @@ export default function NavTabs({
             </button>
           )}
 
-          {isService && (
+          {showBooking && (
             <button
               type="button"
               role="tab"
@@ -292,14 +307,14 @@ export default function NavTabs({
               }`}
             >
               <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>Booking & Jadwal</span>
+              <span>{isDakwah ? 'Jadwal Kajian & Zoom' : 'Booking & Jadwal'}</span>
               <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
-                JASA
+                {isDakwah ? 'KAJIAN' : 'JASA'}
               </span>
             </button>
           )}
 
-          {isDigital && (
+          {showDigital && (
             <button
               type="button"
               role="tab"
@@ -312,9 +327,9 @@ export default function NavTabs({
               }`}
             >
               <Download className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>Akses Unduh</span>
+              <span>{isDakwah ? 'Materi & Unduhan' : 'Akses Unduh'}</span>
               <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-800 border border-indigo-200 rounded text-[10px] font-extrabold">
-                DIGITAL
+                {isDakwah ? 'DAKWAH' : 'DIGITAL'}
               </span>
             </button>
           )}

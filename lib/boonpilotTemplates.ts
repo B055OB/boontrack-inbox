@@ -223,10 +223,11 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       objectionHandling: 'Jelaskan bahwa materi disusun dari pengalaman riil terbukti, hemat waktu riset berbulan-bulan, dan investasi yang balik modal berkali-kali lipat.',
     },
     step1Presets: [
+      'Kajian Online, Modul Riyadhoh & Ebook Dakwah',
       'Video Ecourse & Pelatihan Online',
       'Ebook Panduan & Blueprint Praktis',
       'Template Notion & Spreadsheet Bisnis',
-      'Preset Lightroom & Asset Desain Kreatif',
+      'Akses Webinar & Rekaman Sesi Live',
     ],
     paymentTimingOptions: [
       {
@@ -851,7 +852,10 @@ export function resolveBusinessTemplate(
     norm.includes('ECOURSE') ||
     norm.includes('COURSE') ||
     norm.includes('EBOOK') ||
-    norm.includes('DOWNLOAD')
+    norm.includes('DOWNLOAD') ||
+    norm.includes('DAKWAH') ||
+    norm.includes('KAJIAN') ||
+    norm.includes('MAJELIS')
   ) {
     return BUSINESS_TEMPLATES.DIGITAL;
   }

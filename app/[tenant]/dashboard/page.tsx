@@ -70,6 +70,7 @@ export default function TenantDashboardPage() {
 
     storeCategory,
     businessType,
+    capabilities,
     storeDisplayName,
     setStoreDisplayName,
     storeBio,
@@ -274,6 +275,7 @@ export default function TenantDashboardPage() {
           isSoloOrTrial={isSoloOrTrial}
           storeCategory={storeCategory}
           businessType={businessType || storeCategory}
+          capabilities={capabilities}
           productCount={products.length}
           orderCount={transactions.length}
         />

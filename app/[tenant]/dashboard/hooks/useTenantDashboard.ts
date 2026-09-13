@@ -72,6 +72,12 @@ export function useTenantDashboard() {
 
   // Dynamic Vertical Category
   const [storeCategory, setStoreCategory] = useState<string>('PHYSICAL');
+  const [capabilities, setCapabilities] = useState<{
+    shipping?: boolean;
+    booking?: boolean;
+    digital_fulfillment?: boolean;
+    [key: string]: any;
+  } | null>(null);
 
   // Feature flags resolved from settings API response
   const [tenantFeatureFlags, setTenantFeatureFlags] = useState<{
@@ -510,6 +516,9 @@ export function useTenantDashboard() {
             tenant.metadata?.business_category ||
             'PHYSICAL';
           setStoreCategory(resolvedBusinessType);
+          if (tenant.metadata?.capabilities) {
+            setCapabilities(tenant.metadata.capabilities);
+          }
 
           const storeNameFromDb =
             tenant.name ||
@@ -1394,6 +1403,7 @@ export function useTenantDashboard() {
     // Store & Vertical
     storeCategory,
     businessType: storeCategory,
+    capabilities,
     setStoreCategory,
     storeDisplayName,
     setStoreDisplayName,

@@ -557,7 +557,6 @@ export default function RegisterShopPage() {
             {
               slug,
               name: storeName,
-              business_type: resolvedBusinessType,
               category: resolvedBusinessType,
               tier: isTrial ? 'SOLO_TRIAL' : (selectedPlan === 'team_scale' ? 'TEAM_SCALE' : 'ADS_PERFORMANCE'),
               trial_ends_at: isTrial ? trialEndsAt : null,
