@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -15,6 +15,7 @@ import {
   BUSINESS_TEMPLATES,
   InterviewAnswers,
 } from '@/lib/boonpilotTemplates';
+import { getSupabase } from '@/lib/supabaseClient';
 import ProposalPreviewCard from './ProposalPreviewCard';
 
 interface GuidedSetupInterviewProps {
@@ -44,6 +45,53 @@ export default function GuidedSetupInterview({
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [answers, setAnswers] = useState<InterviewAnswers>(activeTemplate.defaultAnswers);
   const [generatedProposal, setGeneratedProposal] = useState<BusinessConfigurationProposal | null>(null);
+
+  // Invalidate stale draft and fetch fresh tenant business type directly from Supabase
+  useEffect(() => {
+    let isMounted = true;
+    async function syncFreshTenantData() {
+      if (!tenantSlug) return;
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: tenant } = await supabase
+            .from('tenants')
+            .select('category, metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+
+          if (tenant && isMounted) {
+            const freshCat =
+              tenant.metadata?.business_type ||
+              tenant.metadata?.vertical_type ||
+              tenant.category ||
+              tenant.metadata?.business_category;
+
+            const freshDef = resolveBusinessTemplate(freshCat);
+            setSelectedTemplateCode(freshDef.code);
+
+            // Invalidate stale physical answers if tenant is non-physical
+            setAnswers((prev) => {
+              const isPhysicalStale =
+                prev.guaranteeOrReturnPolicy?.includes('size') ||
+                prev.paymentTiming?.includes('COD') ||
+                prev.businessType?.includes('Fashion') ||
+                prev.step4Requirements?.some((r) => r.toLowerCase().includes('pos') || r.toLowerCase().includes('ekspedisi'));
+
+              if (freshDef.code !== 'PRODUCT' && isPhysicalStale) {
+                return freshDef.defaultAnswers;
+              }
+              return freshDef.defaultAnswers;
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to sync fresh tenant data in GuidedSetupInterview:', err);
+      }
+    }
+    syncFreshTenantData();
+    return () => { isMounted = false; };
+  }, [tenantSlug]);
 
   // When user switches business template, update defaults seamlessly
   const handleSelectTemplate = (code: BusinessTemplateCode) => {
@@ -159,7 +207,7 @@ export default function GuidedSetupInterview({
             {currentStep === 1 && (
               <div className="space-y-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
                 {/* Template Switcher / Locked Badge */}
-                {context?.storeCategory || context?.templateCode ? (
+                {context?.businessType || context?.storeCategory || context?.templateCode ? (
                   <div className="flex items-center justify-between p-2.5 bg-blue-50/80 border border-blue-200/80 rounded-xl mb-3">
                     <div className="flex items-center gap-2">
                       <span className="text-xs">🔒</span>
@@ -185,7 +233,15 @@ export default function GuidedSetupInterview({
                       </label>
                     </div>
                     <div className="grid grid-cols-2 gap-1.5 mb-3">
-                      {(Object.keys(BUSINESS_TEMPLATES) as BusinessTemplateCode[]).map((tCode) => {
+                      {(Object.keys(BUSINESS_TEMPLATES) as BusinessTemplateCode[])
+                        .filter((tCode) => {
+                          // Fashion/physical product template ONLY allowed if explicitly PHYSICAL
+                          if (tCode === 'PRODUCT' && context?.businessType && context.businessType !== 'PHYSICAL') {
+                            return false;
+                          }
+                          return true;
+                        })
+                        .map((tCode) => {
                         const tDef = BUSINESS_TEMPLATES[tCode];
                         const isSelected = selectedTemplateCode === tCode;
                         return (

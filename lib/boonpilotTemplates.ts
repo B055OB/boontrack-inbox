@@ -202,25 +202,30 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       'Jenis Produk Digital',
       'Alur Transaksi & Pembayaran',
       'Metode Pembayaran',
-      'Format Pengiriman Akses',
+      'Format Materi & Akses',
       'Ketentuan Lisensi & Garansi',
     ],
     stepBubbles: [
-      'Apa jenis produk digital, materi ecourse, atau template yang Anda tawarkan?',
-      'Kapan akses digital diberikan kepada pembeli setelah transfer berhasil?',
-      'Metode pembayaran apa saja yang ingin Anda aktifkan untuk transaksi otomatis?',
-      'Format akses apa yang akan diterima pembeli saat checkout berhasil?',
-      'Bagaimana ketentuan pemakaian lisensi, garansi uang kembali, dan respon keberatan harga?',
+      'Apa jenis produk digital, materi ecourse, rekaman kajian, atau e-book yang Anda tawarkan?',
+      'Bagaimana alur pembayaran produk digital Anda? (Wajib lunas 100% di awal sebelum link akses dibuka otomatis, tanpa COD atau DP)?',
+      'Metode pembayaran bisnis apa saja yang ingin Anda aktifkan untuk transaksi otomatis?',
+      'Format materi apa yang akan diterima pembeli (Link download, e-book PDF, rekaman video, atau akses Zoom)?',
+      'Bagaimana ketentuan pemakaian lisensi, garansi akses, dan respon jika pembeli ragu dengan materi?',
     ],
     defaultAnswers: {
-      businessType: 'Ecourse & Template Bisnis Digital',
-      businessDescription: 'Materi panduan praktis, video tutorial, dan template bisnis siap pakai untuk meningkatkan omzet dan produktivitas.',
-      paymentTiming: 'Lunas di awal sebelum link akses dibuka (Instant Access)',
+      businessType: 'Ecourse, Modul & Materi Digital',
+      businessDescription: 'Materi panduan praktis, rekaman video, audio, dan e-book berkualitas tinggi untuk diakses secara digital tanpa pengiriman kurir fisik.',
+      paymentTiming: 'Lunas 100% di awal sebelum link akses dibuka (Full Payment Instant Access)',
       paymentMethods: ['QRIS Otomatis (0% MDR)', 'Transfer Bank Manual'],
-      step4Requirements: ['Email Penerima Akses', 'Nomor WhatsApp Pengiriman Notifikasi', 'Nama Lengkap Peserta'],
+      step4Requirements: [
+        'Email Penerima Akses / Materi',
+        'Nomor WhatsApp Pengiriman Link Instan',
+        'Nama Lengkap Peserta / Jamaah',
+        'Format Materi Digital (Video / PDF Ebook / Audio / Zoom)',
+      ],
       serviceAreaOrCity: 'Online (Seluruh Indonesia & Dunia)',
-      guaranteeOrReturnPolicy: 'Garansi akses selamanya (lifetime access) dan konsultasi tanya jawab grup support.',
-      objectionHandling: 'Jelaskan bahwa materi disusun dari pengalaman riil terbukti, hemat waktu riset berbulan-bulan, dan investasi yang balik modal berkali-kali lipat.',
+      guaranteeOrReturnPolicy: 'Garansi akses selamanya (lifetime access) dan panduan bantuan akses materi.',
+      objectionHandling: 'Jelaskan bahwa materi disusun dari pengalaman riil terbukti, hemat waktu riset berbulan-bulan, dan investasi yang bernilai tinggi.',
     },
     step1Presets: [
       'Kajian Online, Modul Riyadhoh & Ebook Dakwah',
@@ -231,11 +236,11 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
     ],
     paymentTimingOptions: [
       {
-        title: 'Lunas di awal sebelum link akses dibuka (Instant Access)',
-        desc: 'Akses link download/grup langsung terbit otomatis begitu verifikasi bayar sukses.',
+        title: 'Lunas 100% di awal sebelum link akses dibuka (Full Payment Instant Access)',
+        desc: 'Akses link download/grup langsung terbit otomatis begitu verifikasi bayar sukses (Tanpa COD / Tanpa DP).',
       },
       {
-        title: 'Skema Berlangganan (Bulanan / Tahunan)',
+        title: 'Skema Berlangganan Berkala (Langganan Bulanan / Tahunan)',
         desc: 'Pelanggan membayar secara berkala untuk mempertahankan keanggotaan VIP.',
       },
     ],
@@ -243,12 +248,13 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       { name: 'QRIS Otomatis (0% MDR)', hint: 'Link aktivasi langsung dikirim via WhatsApp bot detik itu juga.' },
       { name: 'Transfer Bank Manual', hint: 'Verifikasi menggunakan nominal kode unik.' },
     ],
-    step4Label: 'Data yang Dibutuhkan untuk Aktivasi Akses Pembeli:',
+    step4Label: 'Format Materi & Data Penerima Akses Digital:',
     step4Options: [
-      'Email Penerima Akses',
-      'Nomor WhatsApp Pengiriman Notifikasi',
-      'Nama Lengkap Peserta',
-      'Username / Akun Member',
+      'Email Penerima Akses / Materi',
+      'Nomor WhatsApp Pengiriman Link Instan',
+      'Nama Lengkap Peserta / Jamaah',
+      'Format Materi Digital (Video / PDF Ebook / Audio / Zoom)',
+      'Username / Akun Portal Member Area',
     ],
     step5Labels: {
       areaOrOrigin: 'Jangkauan Akses Pembeli:',
@@ -841,10 +847,10 @@ export function resolveBusinessTemplate(
   // 1. Prioritaskan exact match template code
   if (norm === 'PRODUCT') return BUSINESS_TEMPLATES.PRODUCT;
   if (norm === 'DIGITAL') return BUSINESS_TEMPLATES.DIGITAL;
-  if (norm === 'LOCAL_SERVICE') return BUSINESS_TEMPLATES.LOCAL_SERVICE;
+  if (norm === 'LOCAL_SERVICE' || norm === 'FIELD_SERVICE') return BUSINESS_TEMPLATES.LOCAL_SERVICE;
   if (norm === 'FOOD') return BUSINESS_TEMPLATES.FOOD;
   if (norm === 'PROFESSIONAL_SERVICE') return BUSINESS_TEMPLATES.PROFESSIONAL_SERVICE;
-  if (norm === 'CREATOR') return BUSINESS_TEMPLATES.CREATOR;
+  if (norm === 'CREATOR' || norm === 'CREATOR_AGENCY') return BUSINESS_TEMPLATES.CREATOR;
 
   // 2. Prioritaskan template spesifik sebelum general service
   if (
