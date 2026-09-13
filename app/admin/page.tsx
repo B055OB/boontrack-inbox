@@ -22,6 +22,9 @@ import {
   Store,
   ShieldAlert,
   Check,
+  Bell,
+  Activity,
+  DollarSign,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { HealthStatus, WaGatewayStatus } from '@/lib/tenant-config';
@@ -400,6 +403,41 @@ export default function SuperAdminDashboard() {
           </div>
         </div>
 
+        {/* Superadmin Control Plane Module Navigation */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <span className="px-3.5 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-600/20 shrink-0">
+            ⚡ Workspaces &amp; Incidents
+          </span>
+          <Link
+            href="/admin/shops"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
+          >
+            <Store className="w-3.5 h-3.5 text-blue-400" />
+            <span>Directory Toko</span>
+          </Link>
+          <Link
+            href="/admin/push-notification"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
+          >
+            <Bell className="w-3.5 h-3.5 text-purple-400" />
+            <span>Web Push Broadcaster</span>
+          </Link>
+          <Link
+            href="/admin/telemetry"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
+          >
+            <Activity className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Telemetri Trafik</span>
+          </Link>
+          <Link
+            href="/admin/economics"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
+          >
+            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Unit Economics</span>
+          </Link>
+        </div>
+
         {/* Master Card Shop Hub */}
         <div className="bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/70 border border-blue-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 backdrop-blur-md">
           <div className="space-y-2 max-w-2xl">
@@ -414,21 +452,41 @@ export default function SuperAdminDashboard() {
             </div>
 
             <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              BoonTrack Multi-Store & Merchant Superadmin
+              BoonTrack Multi-Store &amp; Merchant Superadmin
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-              Direktori terpusat untuk monitoring ribuan toko online merchant, auto-delivery QRIS Xendit, dan routing Meta WhatsApp Cloud API.
+              Direktori terpusat untuk monitoring ribuan toko online merchant, auto-delivery QRIS Xendit, web push broadcast, dan routing Meta WhatsApp Cloud API.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto shrink-0 flex-wrap">
             <Link
               href="/admin/shops"
-              className="px-5 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-2 active:scale-95 text-center cursor-pointer"
+              className="px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-1.5 active:scale-95 text-center cursor-pointer"
             >
               <Store className="w-4 h-4" />
-              <span>Buka Directory Semua Toko</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>Semua Toko</span>
+            </Link>
+            <Link
+              href="/admin/push-notification"
+              className="px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-purple-600/30 transition flex items-center justify-center gap-1.5 active:scale-95 text-center cursor-pointer"
+            >
+              <Bell className="w-4 h-4" />
+              <span>Push Broadcaster</span>
+            </Link>
+            <Link
+              href="/admin/telemetry"
+              className="px-4 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-cyan-600/30 transition flex items-center justify-center gap-1.5 active:scale-95 text-center cursor-pointer"
+            >
+              <Activity className="w-4 h-4" />
+              <span>Telemetri</span>
+            </Link>
+            <Link
+              href="/admin/economics"
+              className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center justify-center gap-1.5 active:scale-95 text-center cursor-pointer"
+            >
+              <DollarSign className="w-4 h-4" />
+              <span>Economics</span>
             </Link>
           </div>
         </div>
