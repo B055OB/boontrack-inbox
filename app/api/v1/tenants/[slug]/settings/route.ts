@@ -97,6 +97,7 @@ export async function GET(
       settings: {
         slug: tenantRow.slug,
         name: tenantRow.name,
+        store_name: metadata.store_name || tenantRow.name,
         category: tenantRow.category || 'retail',
         tier: tenantRow.tier,
         plan_tier: planTier,
@@ -210,9 +211,11 @@ export async function PUT(
     }
 
     const effectiveLogo = logo_url || body.store_logo_url || body.avatar_url;
+    const effectiveStoreName = body.store_name || name;
 
     const updatedMetadata = {
       ...(existing.metadata || {}),
+      ...(effectiveStoreName !== undefined ? { store_name: effectiveStoreName } : {}),
       ...(bot_strategy ? { bot_strategy } : {}),
       ...(bot_mode ? { bot_mode } : {}),
       ...(plan_tier ? { plan_tier } : {}),
@@ -240,7 +243,7 @@ export async function PUT(
     const { error: updateError } = await supabase
       .from('tenants')
       .update({
-        name: name || existing.name,
+        name: effectiveStoreName || existing.name,
         category: category || existing.category,
         tier: updatedTier,
         metadata: updatedMetadata,

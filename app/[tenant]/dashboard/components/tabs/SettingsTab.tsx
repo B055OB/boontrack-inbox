@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Store, Image as ImageIcon, Save, X, Package, QrCode, CheckCircle2, Smartphone, Zap, Download } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import CustomDomainCard from '../settings/CustomDomainCard';
@@ -53,6 +53,11 @@ export default function SettingsTab({
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [isSavingStore, setIsSavingStore] = useState(false);
 
+  // Reset pesan error saat modal baru pertama kali terbuka atau berganti mode
+  useEffect(() => {
+    setNameError(null);
+  }, [isOpen, isModal]);
+
   const handleSave = async () => {
     const trimmed = storeDisplayName.trim();
     if (!trimmed) {
@@ -60,31 +65,10 @@ export default function SettingsTab({
       return;
     }
 
-    setIsCheckingName(true);
+    setIsSavingStore(true);
     setNameError(null);
 
     try {
-      const checkRes = await fetch(
-        `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?store_name=ilike.${encodeURIComponent(
-          trimmed
-        )}&tenant_slug=neq.${tenantSlug}&select=tenant_slug`,
-        {
-          headers: {
-            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-          },
-        }
-      );
-      const existing = await checkRes.json();
-
-      if (Array.isArray(existing) && existing.length > 0) {
-        setNameError('Nama toko sudah digunakan (Not Available). Pilih nama lain.');
-        setIsCheckingName(false);
-        return;
-      }
-
-      setIsSavingStore(true);
-
       // 1. Direct Persist ke database Supabase (tenants table & metadata)
       try {
         const supabase = getSupabase();
@@ -98,10 +82,11 @@ export default function SettingsTab({
           if (tenantRow?.id) {
             const updatedMeta = {
               ...(tenantRow.metadata || {}),
+              store_name: trimmed,
               bio: storeBio,
               whatsapp_number: storeWhatsapp,
               whatsapp: storeWhatsapp,
-              ...(storeLogoUrl ? { logo_url: storeLogoUrl, avatar_url: storeLogoUrl } : {}),
+              ...(storeLogoUrl ? { logo_url: storeLogoUrl, avatar_url: storeLogoUrl, store_logo_url: storeLogoUrl } : {}),
               ...(storeQrisUrl ? { qris_image_url: storeQrisUrl, qris_url: storeQrisUrl } : {}),
             };
 
@@ -128,6 +113,7 @@ export default function SettingsTab({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: trimmed,
+          store_name: trimmed,
           bio: storeBio,
           whatsapp: storeWhatsapp,
           whatsapp_number: storeWhatsapp,
@@ -245,18 +231,26 @@ export default function SettingsTab({
           type="text"
           value={storeDisplayName}
           onChange={(e) => {
-            setStoreDisplayName(e.target.value);
-            if (nameError) setNameError(null);
+            const val = e.target.value;
+            setStoreDisplayName(val);
+            if (!val.trim()) {
+              setNameError('Nama toko tidak boleh kosong.');
+            } else {
+              setNameError(null);
+            }
           }}
-          className={`w-full px-3.5 py-2.5 border rounded-xl text-xs text-slate-800 focus:outline-hidden ${
+          className={`w-full px-3.5 py-2.5 border rounded-xl text-xs text-slate-800 focus:outline-hidden transition-colors ${
             nameError
-              ? 'border-red-500 focus:border-red-500'
+              ? 'border-red-500 focus:border-red-500 ring-1 ring-red-500/20'
               : 'border-slate-200 focus:border-blue-600'
           }`}
           placeholder="Contoh: Kuras Koren Karawang"
         />
         {nameError && (
-          <p className="text-[11px] font-semibold text-red-500 mt-1">⚠️ {nameError}</p>
+          <p className="text-[11px] font-semibold text-red-500 mt-1 flex items-center gap-1">
+            <span>⚠️</span>
+            <span>{nameError}</span>
+          </p>
         )}
       </div>
 

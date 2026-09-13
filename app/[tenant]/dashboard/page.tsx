@@ -13,6 +13,7 @@ import LockedFeatureCard from './components/LockedFeatureCard';
 
 import NavTabs from './components/navbar/NavTabs';
 import OrderNotificationBell from './components/navbar/OrderNotificationBell';
+import PwaInstallPrompt from './components/PwaInstallPrompt';
 import TrialBanner from './components/navbar/TrialBanner';
 import ProductsTab from './components/tabs/ProductsTab';
 import AdsTrackingTab from './components/tabs/AdsTrackingTab';
@@ -206,6 +207,7 @@ export default function TenantDashboardPage() {
               <ExternalLink className="w-3 h-3 opacity-60" />
             </Link>
             <OrderNotificationBell tenantSlug={tenantSlug} />
+            <PwaInstallPrompt tenantSlug={tenantSlug} />
 
             <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
 

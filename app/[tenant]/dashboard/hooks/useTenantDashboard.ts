@@ -502,7 +502,11 @@ export function useTenantDashboard() {
             return;
           }
         } else {
-          if (tenant.name) setStoreDisplayName(tenant.name);
+          const storeNameFromDb =
+            tenant.name ||
+            tenant.metadata?.store_name ||
+            tenant.metadata?.business_name;
+          if (storeNameFromDb) setStoreDisplayName(storeNameFromDb);
           if (tenant.metadata?.whatsapp_number) setStoreWhatsapp(tenant.metadata.whatsapp_number);
           if (tenant.metadata?.bio) setStoreBio(tenant.metadata.bio);
           const qrisUrlFromDb =

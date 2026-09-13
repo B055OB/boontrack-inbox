@@ -57,10 +57,40 @@ export default function OrderNotificationBell({ tenantSlug, onNewOrder }: OrderN
           table: 'orders',
           filter: `tenant_slug=eq.${tenantSlug}`,
         },
-        () => {
+        (payload: any) => {
           setUnseenCount((prev) => prev + 1);
           setIsRinging(true);
           playCashRegisterChime();
+
+          // Dispatch Web Notification if granted
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            try {
+              const orderTitle = payload?.new?.product_title || 'Pesanan Baru';
+              const orderAmount = payload?.new?.gross_amount
+                ? ` (Rp ${Number(payload.new.gross_amount).toLocaleString('id-ID')})`
+                : '';
+
+              if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.ready.then((reg) => {
+                  reg.showNotification(`🔔 Pesanan Baru Masuk: ${orderTitle}`, {
+                    body: `Pelanggan baru memesan produk ${orderTitle}${orderAmount}. Buka dashboard untuk rincian.`,
+                    icon: '/logo.png',
+                    badge: '/logo.png',
+                    vibrate: [200, 100, 200],
+                    data: { url: `/${tenantSlug}/dashboard` },
+                  } as any);
+                });
+              } else {
+                new Notification(`🔔 Pesanan Baru Masuk: ${orderTitle}`, {
+                  body: `Pelanggan baru memesan produk ${orderTitle}${orderAmount}.`,
+                  icon: '/logo.png',
+                });
+              }
+            } catch (notifErr) {
+              console.warn('[Notification Error]:', notifErr);
+            }
+          }
+
           if (onNewOrder) onNewOrder();
           setTimeout(() => setIsRinging(false), 1500);
         }
