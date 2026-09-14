@@ -133,6 +133,25 @@ export default function PersonalAuthorityTemplate({
       ? tenantMetadata.stats
       : null;
 
+  // Dynamic CTA Button Labels from Tenant Metadata (Zero Hardcoding Policy)
+  const customCtaLabel =
+    tenant?.metadata?.storefront_config?.header_cta_label ||
+    tenantMetadata?.storefront_config?.header_cta_label ||
+    tenant?.metadata?.theme?.cta_button_text ||
+    tenantMetadata?.theme?.cta_button_text ||
+    tenantMetadata?.consultation_label;
+
+  const isServiceBusiness =
+    tenant?.category === 'SERVICE' ||
+    tenant?.metadata?.business_type === 'SERVICE' ||
+    tenant?.metadata?.business_type === 'FIELD_SERVICE' ||
+    tenantMetadata?.business_type === 'SERVICE' ||
+    tenantMetadata?.business_type === 'FIELD_SERVICE' ||
+    tenantMetadata?.vertical_type === 'FIELD_SERVICE';
+
+  const defaultCtaLabel = isServiceBusiness ? 'Tanya Layanan' : 'Pilihan Produk';
+  const headerCtaText = customCtaLabel || defaultCtaLabel;
+
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 font-sans selection:bg-purple-100 selection:text-purple-900 flex flex-col antialiased">
       {/* Top Notice Bar */}
@@ -173,13 +192,13 @@ export default function PersonalAuthorityTemplate({
           </div>
 
           <div className="flex items-center gap-2.5">
-            {tenantMetadata?.consultation_label && whatsappConsultationUrl ? (
+            {whatsappConsultationUrl ? (
               <button
                 type="button"
                 onClick={() => onOutboundClick(whatsappConsultationUrl, 'whatsapp_nav_cta')}
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs shadow-purple-600/20 active:scale-95 flex items-center gap-1.5"
               >
-                <span>{tenantMetadata.consultation_label}</span>
+                <span>{headerCtaText}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             ) : null}
@@ -421,7 +440,7 @@ export default function PersonalAuthorityTemplate({
                     Katalog Lengkap
                   </span>
                   <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                    Pilihan Produk &amp; Layanan Lainnya
+                    {isServiceBusiness ? 'Pilihan Layanan Lainnya' : 'Pilihan Produk & Layanan Lainnya'}
                   </h3>
                 </div>
 

@@ -239,6 +239,51 @@ export default function TenantStorefrontPage() {
     ];
   }, [tenantMetadata?.quick_replies]);
 
+  // Dynamic Header & Product CTA Button Labels (Zero Hardcoding via Tenant Metadata)
+  const headerCtaText = useMemo(() => {
+    // 1. Ambil kustomisasi dari metadata tenant
+    const customCtaLabel =
+      tenant?.metadata?.storefront_config?.header_cta_label ||
+      tenantMetadata?.storefront_config?.header_cta_label ||
+      tenant?.metadata?.theme?.cta_button_text ||
+      tenantMetadata?.theme?.cta_button_text;
+
+    // 2. Fallback cerdas jika belum diset di admin
+    const defaultCtaLabel =
+      tenant?.category === 'SERVICE' ||
+      tenant?.metadata?.business_type === 'SERVICE' ||
+      tenant?.metadata?.business_type === 'FIELD_SERVICE' ||
+      tenantMetadata?.business_type === 'SERVICE' ||
+      tenantMetadata?.business_type === 'FIELD_SERVICE' ||
+      tenantMetadata?.vertical_type === 'FIELD_SERVICE' ||
+      tenantCategory.toLowerCase().includes('service') ||
+      tenantCategory.toLowerCase().includes('jasa')
+        ? 'Tanya Layanan'
+        : 'Pilihan Produk';
+
+    return customCtaLabel || defaultCtaLabel;
+  }, [tenant, tenantMetadata, tenantCategory]);
+
+  const chatCtaLabel = useMemo(() => {
+    const custom =
+      tenant?.metadata?.storefront_config?.chat_cta_label ||
+      tenantMetadata?.storefront_config?.chat_cta_label ||
+      tenant?.metadata?.theme?.chat_cta_label ||
+      tenantMetadata?.theme?.chat_cta_label;
+    if (custom) return custom;
+
+    const isService =
+      tenant?.category === 'SERVICE' ||
+      tenant?.metadata?.business_type === 'SERVICE' ||
+      tenant?.metadata?.business_type === 'FIELD_SERVICE' ||
+      tenantMetadata?.business_type === 'SERVICE' ||
+      tenantMetadata?.business_type === 'FIELD_SERVICE' ||
+      tenantCategory.toLowerCase().includes('service') ||
+      tenantCategory.toLowerCase().includes('jasa');
+
+    return isService ? 'Tanya Layanan' : 'Tanya Admin';
+  }, [tenant, tenantMetadata, tenantCategory]);
+
   const uniqueCategories = useMemo(() => {
     const set = new Set<string>();
     (storeProducts || []).forEach((p) => {
@@ -735,7 +780,7 @@ export default function TenantStorefrontPage() {
                   className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>Pilih Layanan Ini</span>
+                  <span>{headerCtaText === 'Tanya Layanan' ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
                 </button>
               </div>
             </div>
@@ -846,7 +891,7 @@ export default function TenantStorefrontPage() {
               className="relative bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
             >
               <ShoppingBag className="w-4 h-4" />
-              <span className="hidden sm:inline">Pilihan Layanan</span>
+              <span className="hidden sm:inline">{headerCtaText}</span>
               {totalCartCount > 0 && (
                 <span className="bg-white text-blue-600 w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center shadow-xs">
                   {totalCartCount}
@@ -1176,7 +1221,7 @@ export default function TenantStorefrontPage() {
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <ShoppingBag className="w-4 h-4" />
-                <span>Pilih Layanan Ini</span>
+                <span>{headerCtaText === 'Tanya Layanan' ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
               </button>
             </div>
           </div>
@@ -1191,11 +1236,11 @@ export default function TenantStorefrontPage() {
               <X className="w-5 h-5" />
             </button>
             <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-blue-600" /> Ringkasan Pesanan Layanan
+              <ShoppingBag className="w-5 h-5 text-blue-600" /> Ringkasan {headerCtaText === 'Tanya Layanan' ? 'Pesanan Layanan' : 'Pesanan Produk'}
             </h2>
 
             {cart.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-6">Belum ada layanan yang dipilih.</p>
+              <p className="text-xs text-slate-400 text-center py-6">Belum ada {headerCtaText === 'Tanya Layanan' ? 'layanan' : 'produk'} yang dipilih.</p>
             ) : (
               <div className="space-y-3 max-h-60 overflow-y-auto">
                 {cart.map((item) => (
@@ -1237,9 +1282,7 @@ export default function TenantStorefrontPage() {
                   onClick={() => setShowCartModal(false)}
                   className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-800 py-2.5 mt-1 transition-colors cursor-pointer"
                 >
-                  {['service', 'field_service', 'jasa_lapangan', 'creator', 'creator_agency', 'professional', 'pro_service'].some(
-                    (k) => tenantCategory.toLowerCase().includes(k)
-                  )
+                  {headerCtaText === 'Tanya Layanan'
                     ? '+ Pilih Layanan Lain'
                     : '+ Pilih Produk Lain'}
                 </button>
@@ -1274,13 +1317,13 @@ export default function TenantStorefrontPage() {
               type="button"
               onClick={() => setIsMobileChatOpen(true)}
               className="fixed bottom-5 right-5 z-40 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-full shadow-xl shadow-blue-600/30 flex items-center gap-2.5 transition-all active:scale-95 cursor-pointer border border-white/40 ring-4 ring-blue-600/20"
-              aria-label="Tanya Admin"
+              aria-label={chatCtaLabel}
             >
               <div className="relative">
                 <Send className="w-4 h-4 rotate-[-10deg]" />
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border border-white animate-pulse" />
               </div>
-              <span className="text-xs font-black tracking-tight">Tanya Admin</span>
+              <span className="text-xs font-black tracking-tight">{chatCtaLabel}</span>
             </button>
           )}
 
