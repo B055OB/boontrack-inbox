@@ -25,6 +25,7 @@ import {
   Bell,
   Activity,
   DollarSign,
+  UserCheck,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { HealthStatus, WaGatewayStatus } from '@/lib/tenant-config';
@@ -438,6 +439,13 @@ export default function SuperAdminDashboard() {
           >
             <Store className="w-3.5 h-3.5 text-blue-400" />
             <span>Directory Shop</span>
+          </Link>
+          <Link
+            href="/admin/leads"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
+          >
+            <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Leads &amp; Pilots</span>
           </Link>
           <Link
             href="/admin/push-notification"
