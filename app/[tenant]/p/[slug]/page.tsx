@@ -44,7 +44,10 @@ import {
   trackWhatsAppConsultation,
   trackClientPurchase,
   getActiveAffiliateCode,
-  getTrackingData
+  getTrackingData,
+  trackLeadFormSubmission,
+  trackContactEvent,
+  initPixelsFromMetadata
 } from '@/lib/tracking';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
 import { 
@@ -94,6 +97,10 @@ function SingleProductContent() {
 
         if (tenantRow?.category) {
           setTenantCategory(tenantRow.category);
+        }
+
+        if (tenantRow?.metadata?.tracking) {
+          initPixelsFromMetadata(tenantRow.metadata.tracking);
         }
 
         const rawProds = tenantRow?.metadata?.products;
@@ -484,9 +491,10 @@ function SingleProductContent() {
     // 1. Rekam jejak atribusi referral & parameter UTM/Click ID
     syncAttributionSession(tenant, searchParams);
 
-    // 2. Inisialisasi Meta & TikTok Pixel (Demo / Tenant Config ID)
-    initMetaPixel('123456789012345');
-    initTikTokPixel('C1234567890ABCDE');
+    // 2. Inisialisasi Meta & TikTok Pixel secara dinamis
+    if ((config as any)?.tracking) {
+      initPixelsFromMetadata((config as any).tracking);
+    }
 
     // 3. Dispatch event ViewContent saat landing page dimuat
     trackViewContent({
@@ -550,6 +558,7 @@ function SingleProductContent() {
       name: product.name,
       price: basePrice
     });
+    trackContactEvent('WhatsApp Consultation');
     window.open(waConsultationUrl, '_blank', 'noopener,noreferrer');
   };
 
@@ -609,6 +618,7 @@ function SingleProductContent() {
 
       if (result?.orderId) {
         trackClientPurchase(result.orderId, totalAmount);
+        trackLeadFormSubmission(totalAmount);
       }
 
       // Redirect langsung ke rincian invoice presisi

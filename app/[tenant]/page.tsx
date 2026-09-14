@@ -30,7 +30,8 @@ import {
   captureAffiliateReferral, 
   initSellerTracking, 
   trackInitiateCheckout, 
-  trackViewContent 
+  trackViewContent,
+  initPixelsFromMetadata
 } from "@/lib/tracking";
 import { getSupabase } from "@/lib/supabaseClient";
 import { sanitizeImageUrl } from "@/lib/image-utils";
@@ -336,6 +337,13 @@ export default function TenantStorefrontPage() {
       console.warn("[Storefront] Tracking initialization caught error:", err);
     }
   }, [tenantSlug]);
+
+  // 0b2. AUTO INITIALIZE META & TIKTOK PIXELS FROM TENANT METADATA
+  useEffect(() => {
+    if (tenantMetadata?.tracking) {
+      initPixelsFromMetadata(tenantMetadata.tracking);
+    }
+  }, [tenantMetadata?.tracking]);
 
   // 0c. FETCH TENANT & CATALOG FROM SUPABASE
   useEffect(() => {
