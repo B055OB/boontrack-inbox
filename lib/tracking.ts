@@ -428,3 +428,52 @@ export function buildTrackedWhatsAppUrl(
 
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(fullText)}`;
 }
+
+// 5. Direct-from-metadata Pixel Initializer (all plans, no remote fetch needed)
+export function initPixelsFromMetadata(tracking?: {
+  facebook_pixel_id?: string;
+  tiktok_pixel_id?: string;
+  [key: string]: unknown;
+}): void {
+  if (typeof window === "undefined" || !tracking) return;
+
+  if (tracking.facebook_pixel_id) {
+    initMetaPixel(String(tracking.facebook_pixel_id));
+  }
+
+  if (tracking.tiktok_pixel_id) {
+    initTikTokPixel(String(tracking.tiktok_pixel_id));
+  }
+}
+
+// 6. Contact Event (WhatsApp button, social links)
+export function trackContactEvent(label: string = "Contact"): void {
+  if (typeof window === "undefined") return;
+  const win = window as unknown as Record<string, any>;
+
+  if (win.fbq) {
+    win.fbq("track", "Contact", { content_name: label });
+  }
+  if (win.ttq) {
+    win.ttq.track("Contact", { content_name: label });
+  }
+}
+
+// 7. Lead Form Submission Event (single-page checkout form submit)
+export function trackLeadFormSubmission(value: number = 0): void {
+  if (typeof window === "undefined") return;
+  const win = window as unknown as Record<string, any>;
+
+  if (win.fbq) {
+    win.fbq("track", "Lead", {
+      content_name: "Lead Form Submission",
+      value,
+      currency: "IDR",
+    });
+  }
+  if (win.ttq) {
+    win.ttq.track("SubmitForm", {
+      content_name: "Lead Form Submission",
+    });
+  }
+}

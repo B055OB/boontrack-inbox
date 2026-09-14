@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
-import { getActiveAffiliateCode, getTrackingData, trackClientPurchase } from "@/lib/tracking";
+import { getActiveAffiliateCode, getTrackingData, trackClientPurchase, trackLeadFormSubmission } from "@/lib/tracking";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 
@@ -187,6 +187,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
       // Trigger Client-side Purchase Event dengan Deduplikasi Key
       if (result?.orderId) {
         trackClientPurchase(result.orderId, totalAmount);
+        // Lead / SubmitForm event: form submission berhasil
+        trackLeadFormSubmission(totalAmount);
       }
 
       setPaymentData({
