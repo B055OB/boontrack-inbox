@@ -2,144 +2,218 @@ import React from 'react';
 import Link from 'next/link';
 
 export const metadata = {
-    title: 'BoonTrack App — Solusi Integrasi Proses Bisnis & WhatsApp Conversational',
-    description: 'Hubungkan database, sistem pesanan, dan alur operasional bisnis Anda langsung ke WhatsApp API, Telegram, dan Webchat secara otomatis.',
+    title: 'BoonTrack Apps — Conversational Systems & Outcome-as-a-Service',
+    description: 'Kami tidak sekadar membangun software. Kami merekayasa sistem alur kerja terintegrasi chat dengan jaminan output bisnis yang terukur.',
 };
 
-export default function AppPage() {
+export default function AppPortalPage() {
     return (
-        <div className="min-h-screen bg-[#070c14] text-slate-100 selection:bg-emerald-500 selection:text-slate-950 font-sans">
-            {/* Top Banner */}
-            <div className="bg-gradient-to-r from-emerald-950/60 via-slate-900 to-emerald-950/60 border-b border-white/5 py-2 px-4 text-center text-xs text-emerald-400 font-medium">
-                ⚡ Infrastruktur Resmi WhatsApp Cloud API & Otomasi Alur Kerja Bisnis
+        <div className="min-h-screen bg-[#FAFAFA] text-slate-900 selection:bg-indigo-600 selection:text-white font-sans antialiased">
+            {/* Top Value Banner */}
+            <div className="bg-slate-900 text-slate-300 py-2.5 px-4 text-center text-xs font-medium border-b border-slate-800">
+                <span className="inline-block px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-semibold mr-2">
+                    Outcome-as-a-Service (OaaS)
+                </span>
+                Beralih dari bayar langganan software pasif ke ekosistem yang bertanggung jawab atas hasil operasional.
             </div>
 
-            {/* Navigation */}
-            <header className="sticky top-0 z-50 bg-[#070c14]/90 backdrop-blur-md border-b border-white/10">
-                <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+            {/* Clean Modern Navigation */}
+            <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <span className="text-2xl font-black tracking-tight text-white">
-                            Boon<span className="text-emerald-400">Track</span>
-                        </span>
-                        <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            App Portal
+                        <span className="text-2xl font-black tracking-tight text-slate-950">
+                            BoonTrack <span className="text-indigo-600 font-semibold text-sm px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100">Apps</span>
                         </span>
                     </div>
 
-                    <nav className="flex items-center gap-4 sm:gap-6 text-sm">
-                        <a href="https://shop.boontrack.com" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition">
-                            Shop
-                        </a>
-                        <a href="https://career.boontrack.com" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-white transition">
-                            Career
-                        </a>
-                        <Link href="/login" className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs sm:text-sm hover:bg-emerald-400 transition">
-                            Masuk Dashboard
-                        </Link>
+                    <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+                        <a href="#outcomes" className="hover:text-indigo-600 transition">Target Hasil</a>
+                        <a href="#framework" className="hover:text-indigo-600 transition">Model OaaS</a>
+                        <a href="#engines" className="hover:text-indigo-600 transition">Spesialisasi Sistem</a>
                     </nav>
+
+                    <div className="flex items-center gap-3">
+                        <Link
+                            href="/onboarding"
+                            className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs sm:text-sm hover:bg-indigo-700 shadow-sm transition"
+                        >
+                            Klaim Audit Alur Bisnis
+                        </Link>
+                    </div>
                 </div>
             </header>
 
             {/* Hero Section */}
-            <main className="max-w-6xl mx-auto px-4 py-16 sm:py-24 text-center">
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-6">
-                    <span>⚙️ Custom App & Business Process Integration</span>
-                </div>
-
-                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-tight max-w-4xl mx-auto">
-                    Hubungkan Proses Bisnis Anda Langsung ke Ruang <span className="text-emerald-400">Percakapan.</span>
-                </h1>
-
-                <p className="mt-6 text-base sm:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
-                    Otomatiskan alur kerja, invoice QRIS, integrasi database, hingga bot customer service 24 jam melalui WhatsApp Official, Telegram, dan WebChat tanpa hambatan teknis.
-                </p>
-
-                {/* CTA Buttons */}
-                <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <Link
-                        href="/onboarding"
-                        className="w-full sm:w-auto px-8 py-4 rounded-xl bg-emerald-500 text-slate-950 font-black text-sm hover:bg-emerald-400 shadow-lg shadow-emerald-500/20 transition"
-                    >
-                        Mulai Integrasi Bisnis Anda &rarr;
-                    </Link>
-                    <a
-                        href="https://wa.me/6281237460222?text=Halo%20BoonTrack,%20saya%20ingin%20konsultasi%20integrasi%20sistem%20aplikasi%20ke%20WhatsApp"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900 border border-white/10 text-white font-semibold text-sm hover:bg-slate-800 transition"
-                    >
-                        Konsultasi Kustomisasi (WA)
-                    </a>
-                </div>
-
-                {/* 3 Pillars Grid */}
-                <div className="mt-20 text-left grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Card 1: BoonTrack Shop */}
-                    <div className="p-6 rounded-2xl bg-[#0e1624]/80 border border-white/10 flex flex-col justify-between hover:border-emerald-500/40 transition">
-                        <div>
-                            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md">
-                                Conversational Commerce
-                            </span>
-                            <h3 className="mt-4 text-xl font-bold text-white">BoonTrack Shop</h3>
-                            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-                                Etalase katalog produk instan sub-detik dengan checkout otomatis ke WhatsApp, penerbitan QRIS dinamis, dan pelacakan Meta Pixel terintegrasi.
-                            </p>
-                        </div>
-                        <a
-                            href="https://shop.boontrack.com"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-6 inline-flex items-center text-xs font-bold text-emerald-400 hover:text-emerald-300"
-                        >
-                            Kunjungi Shop Engine &rarr;
-                        </a>
+            <section className="relative pt-20 pb-16 md:pt-28 md:pb-24 border-b border-slate-200/70 bg-gradient-to-b from-white to-[#FAFAFA]">
+                <div className="max-w-7xl mx-auto px-6 text-center">
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold mb-8">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                        Beyond Conventional SaaS: We Deliver End Results
                     </div>
 
-                    {/* Card 2: Talent & Career */}
-                    <div className="p-6 rounded-2xl bg-[#0e1624]/80 border border-white/10 flex flex-col justify-between hover:border-sky-500/40 transition">
-                        <div>
-                            <span className="text-xs font-bold text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded-md">
-                                Talent & Career
-                            </span>
-                            <h3 className="mt-4 text-xl font-bold text-white">Talent Scouting</h3>
-                            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-                                Pembuatan CV berstandar ATS, audit portofolio profesional berbasis AI, dan saluran rekrutmen kerja interaktif via notifikasi WhatsApp.
-                            </p>
-                        </div>
-                        <a
-                            href="https://career.boontrack.com"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-6 inline-flex items-center text-xs font-bold text-sky-400 hover:text-sky-300"
-                        >
-                            Kunjungi Career Portal &rarr;
-                        </a>
-                    </div>
+                    <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-slate-950 leading-[1.1] max-w-5xl mx-auto">
+                        Jangan beli aplikasi. <br className="hidden sm:inline" />
+                        <span className="text-indigo-600">Beli hasil tuntas operasional Anda.</span>
+                    </h1>
 
-                    {/* Card 3: App Customize */}
-                    <div className="p-6 rounded-2xl bg-[#0e1624]/80 border border-white/10 flex flex-col justify-between hover:border-purple-500/40 transition">
-                        <div>
-                            <span className="text-xs font-bold text-purple-400 bg-purple-500/10 px-2.5 py-1 rounded-md">
-                                B2B Custom Integration
-                            </span>
-                            <h3 className="mt-4 text-xl font-bold text-white">App Customize</h3>
-                            <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-                                Pengembangan dashboard kustom, CRM, sistem antrean/reservasi, dan integrasi backend database langsung ke WhatsApp Cloud API resmi.
-                            </p>
-                        </div>
+                    <p className="mt-8 text-base sm:text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed font-normal">
+                        Mayoritas software berakhir terbengkalai karena tim internal gagal adopsi. Melalui model <strong>Outcome-as-a-Service</strong>, kami membangun sistem aplikasi kustom, menyatukannya ke WhatsApp alur percakapan harian, dan memastikan metrik bisnis Anda benar-benar tercapai.
+                    </p>
+
+                    <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
                         <Link
                             href="/onboarding"
-                            className="mt-6 inline-flex items-center text-xs font-bold text-purple-400 hover:text-purple-300"
+                            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-950 text-white font-bold text-sm hover:bg-slate-800 shadow-lg transition"
                         >
-                            Daftar Kustomisasi &rarr;
+                            Konsultasi Target Bisnis Anda &rarr;
+                        </Link>
+                        <a
+                            href="#outcomes"
+                            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white border border-slate-300 text-slate-800 font-semibold text-sm hover:bg-slate-50 transition"
+                        >
+                            Lihat Metrik yang Kami Tuntaskan
+                        </a>
+                    </div>
+
+                    {/* OaaS Metrics Row */}
+                    <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto text-left">
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="text-2xl font-black text-indigo-600">&lt; 3 Detik</div>
+                            <div className="text-xs text-slate-600 font-medium mt-1">Lead Dispatch & Respon Pertama</div>
+                        </div>
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="text-2xl font-black text-slate-900">0%</div>
+                            <div className="text-xs text-slate-600 font-medium mt-1">Order Tercecer Tanpa Follow-up</div>
+                        </div>
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="text-2xl font-black text-slate-900">100%</div>
+                            <div className="text-xs text-slate-600 font-medium mt-1">Alur Transaksi Terekam Database</div>
+                        </div>
+                        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="text-2xl font-black text-indigo-600">24 / 7</div>
+                            <div className="text-xs text-slate-600 font-medium mt-1">Otomasi Tanpa Hambatan Jam Kerja</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Target Outcomes Grid */}
+            <section id="outcomes" className="py-24 max-w-7xl mx-auto px-6">
+                <div className="text-center max-w-3xl mx-auto mb-16">
+                    <span className="text-xs font-bold uppercase tracking-widest text-indigo-600">Solusi Berbasis Target</span>
+                    <h2 className="text-3xl sm:text-4xl font-black text-slate-950 mt-2">Bukan Fitur Rumit, Tapi Output Konkret</h2>
+                    <p className="mt-4 text-slate-600 text-sm sm:text-base">
+                        Tentukan hambatan operasional Anda, kami rancang arsitektur aplikasi dan sistem chat yang memastikan hasil berikut tercapai:
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    {/* Outcome 1 */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-8 hover:border-indigo-400 hover:shadow-lg transition">
+                        <div className="text-xs font-bold text-indigo-600 tracking-wider uppercase mb-3">Outcome: Revenue Velocity</div>
+                        <h3 className="text-xl font-bold text-slate-950 mb-3">Closing Otomatis & Pembayaran Kilat</h3>
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                            Memangkas friksi transaksi dari media sosial langsung ke WhatsApp. Sistem otomatis memvalidasi order, menerbitkan tagihan QRIS dinamis, dan memperbarui status stok secara seketika.
+                        </p>
+                        <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-500">
+                            <span>Metrik Utama</span>
+                            <span className="text-indigo-600">Shorter Sales Cycle</span>
+                        </div>
+                    </div>
+
+                    {/* Outcome 2 */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-8 hover:border-indigo-400 hover:shadow-lg transition">
+                        <div className="text-xs font-bold text-indigo-600 tracking-wider uppercase mb-3">Outcome: Operational Efficiency</div>
+                        <h3 className="text-xl font-bold text-slate-950 mb-3">Eliminasi Input Manual & Human Error</h3>
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                            Semua koordinasi lapangan, reservasi jadwal, atau pelaporan internal cukup dilakukan lewat chat terstruktur. Data langsung tersimpan di PostgreSQL tanpa perlu staf mengetik ulang di spreadsheet.
+                        </p>
+                        <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-500">
+                            <span>Metrik Utama</span>
+                            <span className="text-indigo-600">Zero Redundant Entry</span>
+                        </div>
+                    </div>
+
+                    {/* Outcome 3 */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-8 hover:border-indigo-400 hover:shadow-lg transition">
+                        <div className="text-xs font-bold text-indigo-600 tracking-wider uppercase mb-3">Outcome: Retention & Rekening</div>
+                        <h3 className="text-xl font-bold text-slate-950 mb-3">Pengingat & Retensi Otomatis</h3>
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                            Mulai dari pengingat jatuh tempo iuran keanggotaan hingga follow-up berkala prospek lama. Sistem bergerak otomatis berbasis waktu tanpa bergantung pada ingatan manual staf.
+                        </p>
+                        <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-500">
+                            <span>Metrik Utama</span>
+                            <span className="text-indigo-600">Higher Lifetime Value</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* The OaaS Framework Section */}
+            <section id="framework" className="py-20 bg-slate-100/60 border-y border-slate-200">
+                <div className="max-w-7xl mx-auto px-6">
+                    <div className="max-w-3xl mb-12">
+                        <span className="text-xs font-bold uppercase tracking-widest text-indigo-600">The Delivery Model</span>
+                        <h2 className="text-3xl font-extrabold text-slate-950 mt-2">Bagaimana Kerja Sama Outcome Berjalan?</h2>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="bg-white p-7 rounded-2xl border border-slate-200">
+                            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-sm mb-4">
+                                01
+                            </div>
+                            <h4 className="text-base font-bold text-slate-950 mb-2">Audit Hambatan & Metrik Sukses</h4>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                Kami membedah alur operasional berjalan, mencari celah kebocoran prospek atau inefisiensi tim, dan menyepakati metrik yang wajib tercapai.
+                            </p>
+                        </div>
+
+                        <div className="bg-white p-7 rounded-2xl border border-slate-200">
+                            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-sm mb-4">
+                                02
+                            </div>
+                            <h4 className="text-base font-bold text-slate-950 mb-2">Rekayasa Engine Terintegrasi Chat</h4>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                Aplikasi internal, backend database, dan integrasi WhatsApp Cloud API dibangun khusus agar cocok dengan kebiasaan tim serta audiens Anda.
+                            </p>
+                        </div>
+
+                        <div className="bg-white p-7 rounded-2xl border border-slate-200">
+                            <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-sm mb-4">
+                                03
+                            </div>
+                            <h4 className="text-base font-bold text-slate-950 mb-2">Monitoring Hasil & Eskalasi</h4>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                                Kami tidak meninggalkan sistem begitu saja. Tim teknis memantau stabilitas transmisi pesan, latensi server, dan tingkat keberhasilan konversi.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Conversion / Call-to-Action Section */}
+            <section className="py-24 bg-white text-center">
+                <div className="max-w-4xl mx-auto px-6">
+                    <h2 className="text-3xl sm:text-5xl font-black text-slate-950 tracking-tight">
+                        Punya Alur Kerja yang Ingin Diotomatiskan?
+                    </h2>
+                    <p className="mt-6 text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
+                        Sampaikan target hasil yang ingin Anda capai dalam bisnis. Kami analisis alur kerjanya dan siapkan arsitektur sistem percakapan yang tepat.
+                    </p>
+                    <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+                        <Link
+                            href="/onboarding"
+                            className="px-8 py-4 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 shadow-md transition"
+                        >
+                            Mulai Diskusi Kebutuhan Sistem &rarr;
                         </Link>
                     </div>
                 </div>
-            </main>
+            </section>
 
-            {/* Footer */}
-            <footer className="border-t border-white/10 py-8 text-center text-xs text-slate-500">
-                <p>&copy; 2026 BoonTrack. Dioperasikan oleh PT Envirotech Multi Core. Seluruh hak cipta dilindungi.</p>
+            {/* Clean Minimalist Footer */}
+            <footer className="border-t border-slate-200 py-10 bg-[#FAFAFA] text-center text-xs text-slate-500">
+                <p>&copy; 2026 BoonTrack Apps. Dioperasikan oleh PT Envirotech Multi Core. Seluruh hak cipta dilindungi.</p>
             </footer>
         </div>
     );
