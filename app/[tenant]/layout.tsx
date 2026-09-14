@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import Script from 'next/script';
+import { cache } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 function getSupabase() {
@@ -10,6 +11,38 @@ function getSupabase() {
       'placeholder-anon-key'
   );
 }
+
+// ── Cache fetch per request agar generateMetadata & TenantStoreLayout tidak melakukan duplikasi query ──
+const getTenantStoreData = cache(async (cleanTenant: string) => {
+  const RESERVED_SLUGS = ['login', 'register', 'admin', 'auth', 'checkout'];
+  if (!cleanTenant || RESERVED_SLUGS.includes(cleanTenant)) {
+    return { store: null, settings: null };
+  }
+
+  try {
+    const supabase = getSupabase();
+    const [tenantRes, settingsRes] = await Promise.all([
+      supabase
+        .from('tenants')
+        .select('name, metadata, logo_url, qris_image_url')
+        .eq('slug', cleanTenant)
+        .maybeSingle(),
+      supabase
+        .from('tenant_settings')
+        .select('ads_tracking_config')
+        .eq('tenant_slug', cleanTenant)
+        .maybeSingle(),
+    ]);
+
+    return {
+      store: tenantRes.data,
+      settings: settingsRes.data,
+    };
+  } catch (err) {
+    console.warn('[TenantStoreLayout] Cached fetch error:', err);
+    return { store: null, settings: null };
+  }
+});
 
 type Props = {
   params: Promise<{ tenant: string }>;
@@ -34,14 +67,8 @@ export async function generateMetadata({
       };
     }
 
-    const supabase = getSupabase();
-
-    // Tarik data toko langsung dari database Supabase
-    const { data: store } = await supabase
-      .from('tenants')
-      .select('name, metadata, logo_url, qris_image_url')
-      .eq('slug', cleanTenant)
-      .maybeSingle();
+    // Tarik data toko melalui cached fetcher (deduplicated per-request)
+    const { store } = await getTenantStoreData(cleanTenant);
 
     const storeName = store?.name || cleanTenant.replace(/[-_]/g, ' ').toUpperCase();
     const metaObj = (store?.metadata as Record<string, any>) || {};
@@ -147,48 +174,31 @@ export default async function TenantStoreLayout({
   try {
     const { tenant } = await params;
     const cleanTenant = (tenant || '').toLowerCase().trim();
-    const RESERVED_SLUGS = ['login', 'register', 'admin', 'auth', 'checkout'];
+    const { store, settings } = await getTenantStoreData(cleanTenant);
 
-    if (!RESERVED_SLUGS.includes(cleanTenant)) {
-      const supabase = getSupabase();
-      
-      const [tenantRes, settingsRes] = await Promise.all([
-        supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', cleanTenant)
-          .maybeSingle(),
-        supabase
-          .from('tenant_settings')
-          .select('ads_tracking_config')
-          .eq('tenant_slug', cleanTenant)
-          .maybeSingle(),
-      ]);
+    const tenantMetaTracking = (store?.metadata as Record<string, any>)?.tracking;
+    const adsTrackingCfg = (settings as any)?.ads_tracking_config;
 
-      const tenantMetaTracking = (tenantRes.data?.metadata as Record<string, any>)?.tracking;
-      const adsTrackingCfg = (settingsRes.data as any)?.ads_tracking_config;
+    fbPixelId =
+      adsTrackingCfg?.meta_pixel_id ||
+      adsTrackingCfg?.facebook_pixel_id ||
+      tenantMetaTracking?.meta_pixel_id ||
+      tenantMetaTracking?.facebook_pixel_id ||
+      null;
 
-      fbPixelId =
-        adsTrackingCfg?.meta_pixel_id ||
-        adsTrackingCfg?.facebook_pixel_id ||
-        tenantMetaTracking?.meta_pixel_id ||
-        tenantMetaTracking?.facebook_pixel_id ||
-        null;
-
-      ttPixelId =
-        adsTrackingCfg?.tiktok_pixel_id ||
-        tenantMetaTracking?.tiktok_pixel_id ||
-        null;
-    }
+    ttPixelId =
+      adsTrackingCfg?.tiktok_pixel_id ||
+      tenantMetaTracking?.tiktok_pixel_id ||
+      null;
   } catch (err) {
-    console.warn('[TenantStoreLayout] Tracking extraction error:', err);
+    console.warn('[TenantStoreLayout] Tracking resolution error:', err);
   }
 
   return (
     <>
       <Script
         id="tracking-debug-log"
-        strategy="afterInteractive"
+        strategy="lazyOnload"
         dangerouslySetInnerHTML={{
           __html: `console.log('[Tracking Debug] Loaded Pixel ID:', ${JSON.stringify(fbPixelId)});`,
         }}
@@ -196,7 +206,7 @@ export default async function TenantStoreLayout({
       {fbPixelId && (
         <Script
           id="meta-pixel-base"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
           dangerouslySetInnerHTML={{
             __html: `!function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -214,7 +224,7 @@ fbq('track', 'PageView');`,
       {ttPixelId && (
         <Script
           id="tiktok-pixel-base"
-          strategy="afterInteractive"
+          strategy="lazyOnload"
           dangerouslySetInnerHTML={{
             __html: `!function (w, d, t) {
   w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(
