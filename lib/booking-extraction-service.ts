@@ -1,4 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import {
+  get7DaySlotsAvailability,
+  formatAvailableSlotsForWhatsApp,
+  AvailableSlotOption,
+} from '@/lib/schedule-slot-service';
 
 export interface FunnelBookingResult {
   isHandled: boolean;
@@ -38,6 +43,7 @@ interface ConversationState {
   payment_method?: 'QRIS' | 'COD' | string;
   scheduled_at?: string;
   time_slot?: string;
+  offered_slots?: AvailableSlotOption[];
 }
 
 // In-memory cache fallback untuk conversational session state
@@ -225,11 +231,28 @@ export async function processFunnelBookingMessage(
   if (session.step === 'STEP_3_PAYMENT' || ((isQris || isCod) && session.address)) {
     session.payment_method = isCod ? 'COD' : 'QRIS';
     session.step = 'STEP_4_SCHEDULE';
+
+    // Ambil ketersediaan slot 7 hari ke depan secara dinamis
+    let offeredPrompt = '';
+    try {
+      const { availableList } = await get7DaySlotsAvailability(cleanSlug, supabase);
+      session.offered_slots = availableList.slice(0, 5);
+      if (session.offered_slots.length > 0) {
+        offeredPrompt = formatAvailableSlotsForWhatsApp(session.offered_slots, 5);
+      }
+    } catch (err) {
+      console.warn('[Booking Service] Error getting 7-day slot availability:', err);
+    }
+
     await saveState(session);
 
     const step4Menu = menuItems.find((m) => m.id === 'step_4_pick_schedule');
-    const replyText = step4Menu?.reply_content ||
-      `Baik kak, metode pembayaran *${session.payment_method === 'COD' ? 'Bayar di Tempat (COD)' : 'Transfer / QRIS'}* sudah kami catat!\n\nUntuk pengerjaannya, kakak mau dijadwalkan hari apa dan jam berapa? (Tim teknisi siap mulai pkl 08.00 - 16.00 WIB)`;
+    const fallbackText = step4Menu?.reply_content ||
+      `Untuk pengerjaannya, kakak mau dijadwalkan hari apa dan jam berapa? (Tim teknisi siap mulai pkl 08.00 - 16.00 WIB)`;
+
+    const replyText =
+      `Baik kak, metode pembayaran *${session.payment_method === 'COD' ? 'Bayar di Tempat (COD)' : 'Transfer / QRIS'}* sudah kami catat! 🗓️\n\n` +
+      (offeredPrompt || fallbackText);
 
     return {
       isHandled: true,
@@ -238,11 +261,51 @@ export async function processFunnelBookingMessage(
   }
 
   // STEP 4: DETEKSI JADWAL & JAM KUNJUNGAN -> FINAL BOOKING INSERT TO DATABASE
+  const isNumberSelection = /^(?:pilih\s+|nomor\s+|no\.?\s*)?([1-9])\b/i.test(lowerMsg);
   const isScheduleKeyword = /besok|lusa|senin|selasa|rabu|kamis|jumat|sabtu|minggu|hari|pagi|siang|sore|jam|\d{1,2}[:.]\d{2}/i.test(lowerMsg);
 
-  if (session.step === 'STEP_4_SCHEDULE' || (isScheduleKeyword && session.payment_method && session.address)) {
-    session.scheduled_at = rawMsg;
-    session.time_slot = rawMsg.match(/\d{1,2}[:.]\d{2}/) ? rawMsg.match(/\d{1,2}[:.]\d{2}/)![0] : '09:00 - 12:00 WIB';
+  if (
+    session.step === 'STEP_4_SCHEDULE' ||
+    ((isNumberSelection || isScheduleKeyword) && session.payment_method && session.address)
+  ) {
+    let resolvedDate = rawMsg;
+    let resolvedTimeSlot = rawMsg.match(/\d{1,2}[:.]\d{2}/)
+      ? rawMsg.match(/\d{1,2}[:.]\d{2}/)![0]
+      : '09:00 - 12:00 WIB';
+
+    // 1. Cek apakah customer memilih nomor dari daftar slot yang ditawarkan
+    const numMatch = lowerMsg.match(/(?:pilih\s+|nomor\s+|no\.?\s*)?([1-9])\b/i);
+    let chosenSlot: AvailableSlotOption | undefined;
+
+    if (numMatch && Array.isArray(session.offered_slots) && session.offered_slots.length > 0) {
+      const idx = parseInt(numMatch[1], 10);
+      chosenSlot = session.offered_slots.find((s) => s.optionIndex === idx);
+    }
+
+    // 2. Jika tidak memilih angka murni, cocokkan teks natural dengan slot yang ditawarkan
+    if (!chosenSlot && Array.isArray(session.offered_slots) && session.offered_slots.length > 0) {
+      chosenSlot = session.offered_slots.find((s) => {
+        const d = s.displayDate.toLowerCase();
+        const t = s.timeSlot.toLowerCase();
+        const r = (s.label || '').toLowerCase();
+        const matchDay =
+          (lowerMsg.includes('besok') && r.includes('besok')) ||
+          (lowerMsg.includes('lusa') && r.includes('lusa')) ||
+          d.includes(lowerMsg) ||
+          lowerMsg.includes(d.split(',')[0].trim().toLowerCase());
+
+        const matchTime = lowerMsg.includes(t.slice(0, 2)) || !lowerMsg.match(/\d{1,2}/);
+        return matchDay && matchTime;
+      });
+    }
+
+    if (chosenSlot) {
+      resolvedDate = chosenSlot.displayDate;
+      resolvedTimeSlot = chosenSlot.timeSlot;
+    }
+
+    session.scheduled_at = resolvedDate;
+    session.time_slot = resolvedTimeSlot;
 
     const bookingId = `BK-${Date.now().toString().slice(-6)}`;
     const finalItem = session.service_item || 'Kuras Toren 1000 Liter';
@@ -315,13 +378,14 @@ export async function processFunnelBookingMessage(
     await saveState(session);
 
     const confirmationReply =
-      `Alhamdulillah, terima kasih banyak Kak ${finalCustomer}! 🎉\n\nJadwal kunjungan teknisi untuk *${finalItem}* sudah berhasil dikonfirmasi dan tercatat di sistem kami:\n\n` +
+      `Alhamdulillah, terima kasih banyak Kak ${finalCustomer}! 🎉\n\nJadwal kunjungan teknisi untuk *${finalItem}* sudah berhasil dikonfirmasi dan SLOT DIKUNCI di sistem kami:\n\n` +
       `📋 *Rincian Penugasan Teknisi:*\n` +
       `• No. Booking: *${bookingId}*\n` +
       `• Paket: *${finalItem}*\n` +
       `• Estimasi Biaya: *Rp ${finalPrice.toLocaleString('id-ID')}*\n` +
       `• Pembayaran: *${finalPaymentMethod === 'COD' ? 'Bayar di Tempat (COD Tunai/QRIS)' : 'Transfer Bank / QRIS'}*\n` +
       `• Jadwal Kunjungan: *${finalSchedule}*\n` +
+      `• Jam / Slot: *${session.time_slot}*\n` +
       `• Alamat Lokasi: *${finalAddress}*\n\n` +
       `Tim teknisi kami siap meluncur ke lokasi sesuai jadwal. Jika ada pertanyaan atau perubahan jam, Kakak bisa langsung balas chat ini ya. Terima kasih! 🙏`;
 

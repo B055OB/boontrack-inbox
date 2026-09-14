@@ -16,6 +16,10 @@ import {
   Check,
   Wrench,
   Loader2,
+  Sliders,
+  Settings,
+  Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import {
@@ -23,6 +27,13 @@ import {
   getStoredBookingTemplate,
   parseBookingSummaryTemplate,
 } from './booking-template';
+import {
+  get7DaySlotsAvailability,
+  saveTenantScheduleSettings,
+  DEFAULT_SCHEDULE_SETTINGS,
+  ScheduleSettings,
+  ScheduleDaySlots,
+} from '@/lib/schedule-slot-service';
 
 export interface BookingSlot {
   id: string;
@@ -93,6 +104,21 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [summaryTemplate, setSummaryTemplate] = useState<string>(() => getStoredBookingTemplate(tenantSlug));
+
+  // Schedule Slot Manager State
+  const [scheduleSettings, setScheduleSettings] = useState<ScheduleSettings>(DEFAULT_SCHEDULE_SETTINGS);
+  const [daySlots, setDaySlots] = useState<ScheduleDaySlots[]>([]);
+  const [isSlotModalOpen, setIsSlotModalOpen] = useState(false);
+  const [selectedDayFilter, setSelectedDayFilter] = useState<string | null>(null);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsSavedToast, setSettingsSavedToast] = useState(false);
+
+  // Form states for Slot Manager
+  const [editOperatingDays, setEditOperatingDays] = useState<number[]>(DEFAULT_SCHEDULE_SETTINGS.operating_days);
+  const [editTimeSlots, setEditTimeSlots] = useState<string[]>(DEFAULT_SCHEDULE_SETTINGS.time_slots);
+  const [newSlotInput, setNewSlotInput] = useState('');
+  const [editQuota, setEditQuota] = useState<number>(1);
+  const [editIsEnabled, setEditIsEnabled] = useState<boolean>(true);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -191,7 +217,22 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
           }
         }
 
-        // 2. Gabungkan dengan manual booking yang tersimpan di localStorage
+        // 2. Ambil ketersediaan slot 7 hari ke depan
+        try {
+          const slotsData = await get7DaySlotsAvailability(tenantSlug, supabase);
+          if (isMounted) {
+            setScheduleSettings(slotsData.settings);
+            setDaySlots(slotsData.days);
+            setEditOperatingDays(slotsData.settings.operating_days);
+            setEditTimeSlots(slotsData.settings.time_slots);
+            setEditQuota(slotsData.settings.quota_per_slot);
+            setEditIsEnabled(slotsData.settings.is_enabled);
+          }
+        } catch (err) {
+          console.warn('[BookingTab] Error loading slot availability:', err);
+        }
+
+        // 3. Gabungkan dengan manual booking yang tersimpan di localStorage
         let localBookings: BookingSlot[] = [];
         const stored = localStorage.getItem(`boontrack_bookings_${tenantSlug}`);
         if (stored) {
@@ -319,9 +360,82 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
     setFormCustomTime('');
   };
 
+  const handleSaveScheduleSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSettings(true);
+    const newSettings: ScheduleSettings = {
+      is_enabled: editIsEnabled,
+      active_days_range: 7,
+      operating_days: editOperatingDays,
+      time_slots: editTimeSlots.length > 0 ? editTimeSlots : DEFAULT_SCHEDULE_SETTINGS.time_slots,
+      quota_per_slot: Math.max(1, editQuota),
+    };
+
+    const supabase = getSupabase();
+    const ok = await saveTenantScheduleSettings(tenantSlug, newSettings, supabase);
+    setIsSavingSettings(false);
+    if (ok) {
+      setScheduleSettings(newSettings);
+      setSettingsSavedToast(true);
+      setTimeout(() => setSettingsSavedToast(false), 2500);
+      setIsSlotModalOpen(false);
+      // Refresh slot display
+      const refreshed = await get7DaySlotsAvailability(tenantSlug, supabase);
+      setDaySlots(refreshed.days);
+    }
+  };
+
+  const handleAddSlot = () => {
+    const trimmed = newSlotInput.trim();
+    if (!trimmed) return;
+    const formatted = trimmed.toUpperCase().includes('WIB') ? trimmed : `${trimmed} WIB`;
+    if (!editTimeSlots.includes(formatted)) {
+      setEditTimeSlots([...editTimeSlots, formatted]);
+    }
+    setNewSlotInput('');
+  };
+
+  const handleRemoveSlot = (slotToRemove: string) => {
+    setEditTimeSlots(editTimeSlots.filter((s) => s !== slotToRemove));
+  };
+
+  const toggleOperatingDay = (dayIndex: number) => {
+    if (editOperatingDays.includes(dayIndex)) {
+      if (editOperatingDays.length > 1) {
+        setEditOperatingDays(editOperatingDays.filter((d) => d !== dayIndex));
+      }
+    } else {
+      setEditOperatingDays([...editOperatingDays, dayIndex].sort((a, b) => a - b));
+    }
+  };
+
   const filtered = bookings.filter((b) => {
-    if (activeFilter === 'ACTIVE') return b.status === 'SCHEDULED' || b.status === 'AKTIF' || b.status === 'PENDING' || b.status === 'ON_THE_WAY' || b.status === 'IN_PROGRESS';
-    if (activeFilter === 'COMPLETED') return b.status === 'COMPLETED';
+    if (activeFilter === 'ACTIVE') {
+      const isActive =
+        b.status === 'SCHEDULED' ||
+        b.status === 'AKTIF' ||
+        b.status === 'PENDING' ||
+        b.status === 'ON_THE_WAY' ||
+        b.status === 'IN_PROGRESS';
+      if (!isActive) return false;
+    }
+    if (activeFilter === 'COMPLETED' && b.status !== 'COMPLETED') return false;
+
+    if (selectedDayFilter) {
+      const bDate = (b.date || '').toLowerCase();
+      const matchedDay = daySlots.find((d) => d.dateStr === selectedDayFilter);
+      if (matchedDay) {
+        const matchIso = bDate.includes(matchedDay.dateStr);
+        const matchRelative = bDate.includes(matchedDay.relativeLabel.toLowerCase());
+        const matchDisplay =
+          bDate.includes(matchedDay.displayDay.toLowerCase()) ||
+          bDate.includes(matchedDay.displayDate.toLowerCase());
+        if (!matchIso && !matchRelative && !matchDisplay) return false;
+      } else if (!bDate.includes(selectedDayFilter)) {
+        return false;
+      }
+    }
+
     return true;
   });
 
@@ -347,6 +461,15 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsSlotModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-xs transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Sliders className="w-4 h-4 text-blue-600" />
+            <span>Kelola Slot & Jam Kerja</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
@@ -385,6 +508,91 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
               Selesai ({bookings.filter((b) => b.status === 'COMPLETED').length})
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* 7-Day Slot Availability Strip */}
+      <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-black text-slate-900 flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-blue-600" />
+              <span>Ketersediaan Slot Teknisi (7 Hari Ke Depan)</span>
+            </span>
+            <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+              <Sparkles className="w-3 h-3" />
+              <span>Sinkron Bot WhatsApp</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            {selectedDayFilter && (
+              <button
+                type="button"
+                onClick={() => setSelectedDayFilter(null)}
+                className="text-blue-600 font-bold hover:underline cursor-pointer flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-lg border border-blue-200"
+              >
+                <span>Reset Filter Hari</span>
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            <span className="text-slate-400 font-medium">
+              {daySlots.reduce((acc, d) => acc + d.availableSlotsCount, 0)} Slot Kosong
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
+          {daySlots.map((day) => {
+            const isSelected = selectedDayFilter === day.dateStr;
+            const isFull = day.isOpen && day.availableSlotsCount === 0;
+            const isClosed = !day.isOpen;
+
+            return (
+              <div
+                key={day.dateStr}
+                onClick={() => {
+                  if (isSelected) {
+                    setSelectedDayFilter(null);
+                  } else {
+                    setSelectedDayFilter(day.dateStr);
+                  }
+                }}
+                className={`p-3 rounded-2xl border text-center transition-all cursor-pointer select-none ${
+                  isSelected
+                    ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500/20 shadow-xs'
+                    : isClosed
+                    ? 'border-slate-200 bg-slate-50/60 opacity-60'
+                    : isFull
+                    ? 'border-rose-200 bg-rose-50/40 hover:border-rose-300'
+                    : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-xs'
+                }`}
+              >
+                <span className="text-[11px] font-bold text-slate-500 block">
+                  {day.relativeLabel}
+                </span>
+                <span className="text-xs font-black text-slate-900 block mt-0.5">
+                  {day.displayDate}
+                </span>
+
+                <div className="mt-2">
+                  {isClosed ? (
+                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                      Libur
+                    </span>
+                  ) : isFull ? (
+                    <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md">
+                      Penuh
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                      {day.availableSlotsCount} Slot
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -829,6 +1037,181 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Modal: Kelola Slot & Jam Kerja */}
+      {isSlotModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Kelola Slot & Jam Kerja Teknisi</h3>
+                  <p className="text-xs text-slate-500">Konfigurasi jadwal operasional dan jam kunjungan untuk bot WhatsApp.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSlotModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveScheduleSettings} className="space-y-5 text-xs">
+              {/* 1. Status Aktif */}
+              <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                <div>
+                  <span className="font-bold text-slate-900 block text-xs">Aktifkan Manajemen Slot 7 Hari</span>
+                  <span className="text-[11px] text-slate-500">Bot otomatis menawarkan slot yang masih kosong ke pelanggan WhatsApp.</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={editIsEnabled}
+                  onChange={(e) => setEditIsEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+              </div>
+
+              {/* 2. Hari Operasional Aktif */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-800 block text-xs">
+                  🗓️ Hari Operasional Kerja (Kunjungan Teknisi)
+                </label>
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                  {[
+                    { idx: 1, label: 'Sen' },
+                    { idx: 2, label: 'Sel' },
+                    { idx: 3, label: 'Rab' },
+                    { idx: 4, label: 'Kam' },
+                    { idx: 5, label: 'Jum' },
+                    { idx: 6, label: 'Sab' },
+                    { idx: 0, label: 'Min' },
+                  ].map((day) => {
+                    const isChecked = editOperatingDays.includes(day.idx);
+                    return (
+                      <button
+                        key={day.idx}
+                        type="button"
+                        onClick={() => toggleOperatingDay(day.idx)}
+                        className={`py-2 rounded-xl font-bold text-xs transition cursor-pointer border ${
+                          isChecked
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Slot Jam Kunjungan Harian */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-800 block text-xs">
+                  ⏰ Pilihan Jam Kunjungan Harian
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {editTimeSlots.map((slot) => (
+                    <span
+                      key={slot}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 font-bold rounded-xl border border-blue-200 text-xs"
+                    >
+                      <Clock className="w-3 h-3 text-blue-500" />
+                      <span>{slot}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSlot(slot)}
+                        className="p-0.5 hover:text-rose-600 cursor-pointer"
+                        title="Hapus slot"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={newSlotInput}
+                    onChange={(e) => setNewSlotInput(e.target.value)}
+                    placeholder="Contoh: 09:00 WIB atau 14:00"
+                    className="flex-1 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSlot}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition cursor-pointer"
+                  >
+                    Tambah Jam
+                  </button>
+                </div>
+              </div>
+
+              {/* 4. Kuota Pengerjaan per Slot */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-800 block text-xs">
+                  👷 Kuota Pengerjaan per Slot (Jumlah Teknisi)
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={editQuota}
+                    onChange={(e) => setEditQuota(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-24 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                  />
+                  <span className="text-slate-500 text-xs">
+                    Jika order mencapai kuota ini pada jam yang sama, status slot otomatis menjadi <strong className="text-rose-600">PENUH</strong>.
+                  </span>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsSlotModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingSettings}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingSettings ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Simpan Konfigurasi</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Feedback */}
+      {settingsSavedToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2 font-bold text-xs animate-in slide-in-from-bottom-4 duration-300">
+          <CheckCircle2 className="w-4 h-4" />
+          <span>Pengaturan slot jadwal teknisi berhasil disimpan!</span>
         </div>
       )}
     </div>
