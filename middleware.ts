@@ -193,6 +193,20 @@ function hasAuthSession(req: NextRequest): boolean {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // ── 0. Universal pass-through: static assets, Next.js internals, API, and custom 404 page ──
+  // Critical: API routes must NEVER be intercepted, redirected, or rewritten by tenant routing
+  if (
+    pathname.startsWith('/api') ||
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/static') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/apple-touch-icon.png' ||
+    pathname === '/404-store-not-found' ||
+    pathname.includes('.')
+  ) {
+    return NextResponse.next();
+  }
+
   // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===
   const isDashboardPath =
     pathname === '/dashboard' ||
@@ -207,20 +221,6 @@ export async function middleware(req: NextRequest) {
       loginUrl.search = `?redirectTo=${encodeURIComponent(redirectTarget)}`;
       return NextResponse.redirect(loginUrl);
     }
-  }
-
-
-  // ── 0. Universal pass-through: static assets, Next.js internals, API, and custom 404 page ──
-  if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/api') ||
-    pathname.startsWith('/static') ||
-    pathname === '/favicon.ico' ||
-    pathname === '/apple-touch-icon.png' ||
-    pathname === '/404-store-not-found' ||
-    pathname.includes('.')
-  ) {
-    return NextResponse.next();
   }
 
   const host = req.headers.get('host') || '';
