@@ -270,7 +270,6 @@ export async function PATCH(
       .from('tenants')
       .update({
         metadata: updatedMetadata,
-        updated_at: new Date().toISOString(),
       })
       .eq('id', tenant.id);
 
