@@ -517,19 +517,24 @@ export default function ShopConfigPage() {
           </div>
 
           <div className="flex items-center gap-2.5">
-            {tenant && (
-              <a
-                href={`/${tenant.slug}`}
-                target="_blank"
-                rel="noreferrer"
-                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
-                title="Lihat Etalase Toko"
-              >
-                <Store className="w-3.5 h-3.5 text-blue-400" />
-                <span className="hidden sm:inline">Etalase Toko</span>
-                <ExternalLink className="w-3 h-3 text-slate-500" />
-              </a>
-            )}
+            {tenant && (() => {
+              const publicStoreDomain = process.env.NEXT_PUBLIC_STORE_DOMAIN || 'https://boontrack.com';
+              const storeSlug = tenant?.slug || shopId;
+              const storefrontUrl = `${publicStoreDomain.replace(/\/$/, '')}/${storeSlug}`;
+              return (
+                <a
+                  href={storefrontUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
+                  title="Lihat Etalase Toko"
+                >
+                  <Store className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="hidden sm:inline">Etalase Toko</span>
+                  <ExternalLink className="w-3 h-3 text-slate-500" />
+                </a>
+              );
+            })()}
 
             <button
               onClick={handleSaveConfig}
