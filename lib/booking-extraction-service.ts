@@ -148,10 +148,26 @@ export async function processFunnelBookingMessage(
   // STEP DETECTION & NATURAL EXTRACTION
   // =========================================================================
 
-  // STEP 1: DETEKSI UKURAN TOREN & HARGA
-  const capMatch = lowerMsg.match(/\b(350|520|650|800|1000|1500|2000)\b/);
-  if (capMatch) {
-    const cap = capMatch[1];
+  // ── PRIORITY 0: DETEKSI INTENT PEMILIHAN PRODUK (selalu dijalankan pertama) ──
+  // Pola yang ditangkap:
+  //   "ya yg 650 liter kak", "ambil yg 1000 liter", "mau ukuran 650L",
+  //   "pilih yg 800", "paket 520", "kuras 1000", angka kapasitas murni di step awal
+  const PRODUCT_SELECTION_RE =
+    /(?:ya|iya|ok|oke|mau|ambil|pilih|paket|ukuran|yg|yang|kuras)\s+.*?\b(350|520|650|800|1000|1500|2000)\s*(?:liter|l|L)?\b/i;
+  const CAPACITY_NUMBER_RE = /\b(350|520|650|800|1000|1500|2000)\s*(?:liter|l)?\b/i;
+
+  // Ekstrak kapasitas dari product-selection atau angka kapasitas murni
+  // Guard: jangan intercept jika session sudah di STEP_4_SCHEDULE dan pesan
+  // hanya berisi 1 angka kecil (1–9) tanpa konteks ukuran liter
+  const isAtScheduleStep = session.step === 'STEP_4_SCHEDULE';
+  const isShortNumberOnly = /^\s*[1-9]\s*$/.test(rawMsg);
+
+  const productSelectionMatch =
+    PRODUCT_SELECTION_RE.exec(lowerMsg) ||
+    (!isAtScheduleStep || !isShortNumberOnly ? CAPACITY_NUMBER_RE.exec(lowerMsg) : null);
+
+  if (productSelectionMatch) {
+    const cap = productSelectionMatch[1];
     session.capacity = `${cap}L`;
     session.service_item = `Kuras Toren ${cap} Liter`;
 
@@ -172,7 +188,7 @@ export async function processFunnelBookingMessage(
     // Ambil template balasan Step 2 dari interactive_menu jika diset
     const step2Menu = menuItems.find((m) => m.id === 'step_2_closing_signal');
     const replyText = step2Menu?.reply_content ||
-      `Siap kak! Layanan ${session.service_item} (Rp ${session.total_price.toLocaleString('id-ID')}) sudah kami siapkan.\n\nAgar tim teknisi kami bisa segera bersiap, boleh diinfo:\n- Dengan Kakak siapa?\n- Alamat lengkap / share location rumahnya di mana kak?`;
+      `Siap kak! Layanan *${session.service_item}* (Rp ${session.total_price!.toLocaleString('id-ID')}) sudah kami siapkan.\n\nAgar tim teknisi kami bisa segera bersiap, boleh diinfo:\n- Dengan Kakak siapa?\n- Alamat lengkap / share location rumahnya di mana kak?`;
 
     return {
       isHandled: true,

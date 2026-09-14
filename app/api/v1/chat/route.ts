@@ -180,22 +180,35 @@ export async function POST(req: NextRequest) {
     // 2. If GEMINI_API_KEY is configured, call Gemini API
     if (!reply && process.env.GEMINI_API_KEY) {
       try {
+        // Build full product catalog from tenant metadata
+        const tenantProducts: any[] = Array.isArray(tenantMetadata.products) ? tenantMetadata.products : [];
+        const productCatalogText = tenantProducts.length > 0
+          ? tenantProducts
+              .map((p: any) => `• ${p.name || p.title || 'Paket'}: Rp ${Number(p.promo_price || p.price || 0).toLocaleString('id-ID')}${p.description ? ' — ' + p.description : ''}`)
+              .join('\n')
+          : `• Kuras Toren 520 Liter: Rp 160.000\n• Kuras Toren 650 Liter: Rp 170.000\n• Kuras Toren 800 Liter: Rp 180.000\n• Kuras Toren 1000 Liter: Rp 200.000`;
+
         const menuSummary = formatInteractiveMenusSummary(interactiveMenus);
         const systemPrompt = `Anda adalah asisten AI customer service resmi untuk toko "${storeName}" (Kategori: ${category}).
-Detail Produk & Layanan:
+
+Katalog Produk & Layanan RESMI (WAJIB DIGUNAKAN, jangan jawab 'tidak tersedia' atau 'belum menyediakan' untuk paket di bawah):
+${productCatalogText}
+
+Detail Produk Utama:
 - Nama Produk: ${product.name || 'Produk Unggulan'}
 - Harga: Rp ${Number(product.price || 0).toLocaleString('id-ID')}
 - Format/Varian: ${product.variants || 'Standar'}
 - Promo/Bundling: ${product.promo || 'Tersedia promo pembayaran via QRIS'}
 - Tipe: ${product.type || 'Fisik / Digital'}
-- Silabus/Materi: ${Array.isArray(product.syllabus) ? product.syllabus.join(', ') : 'Modul 1 (Dasar), Modul 2 (Praktek), Modul 3 (Template), Modul 4 (Evaluasi)'}
 - Link Checkout Resmi: ${checkoutUrl}
 ${menuSummary ? `\nMenu Navigasi & Pilihan Cepat Toko:\n${menuSummary}\n` : ''}
 Instruksi:
 1. Jawab pertanyaan pengguna dengan ramah, jelas, ringkas, dan persuasif dalam bahasa Indonesia.
-2. Selalu dorong pengguna untuk melakukan pembayaran instan melalui link checkout resmi: ${checkoutUrl}
-3. Jika pengguna menanyakan topik yang ada di Menu Navigasi di atas (seperti jadwal, harga, fasilitas, atau materi), jelaskan dengan mengacu pada rincian opsi tersebut dan arahkan pengguna untuk memilih opsi menu terkait.
-4. Jangan pernah memberikan informasi palsu di luar data produk yang ada.`;
+2. Katalog produk di atas adalah DAFTAR RESMI. Jika customer menyebut ukuran (misal 800L, 1000L, 650L), KONFIRMASI bahwa paket tersebut TERSEDIA dan sebutkan harganya.
+3. Selalu dorong pengguna untuk melakukan pembayaran melalui link checkout resmi: ${checkoutUrl}
+4. Jika pengguna menanyakan topik yang ada di Menu Navigasi di atas (jadwal, harga, fasilitas, materi), jelaskan mengacu pada rincian opsi tersebut.
+5. Jangan pernah memberikan informasi palsu di luar data produk yang ada.`;
+
 
         const geminiMessages = [
           { role: 'user', parts: [{ text: systemPrompt }] },
