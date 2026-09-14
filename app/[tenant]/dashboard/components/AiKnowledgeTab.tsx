@@ -992,9 +992,9 @@ export default function AiKnowledgeTab({
           <div className="flex items-start gap-2">
             <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
             <div>
-              <span className="font-bold text-slate-700">WAHA (Web/Baileys):</span>
+              <span className="font-bold text-slate-700">BoonTrack WhatsApp Engine:</span>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Diformat otomatis menjadi <strong className="text-slate-700">Teks Berpenomoran (1, 2, 3...)</strong> yang ramah dibaca dan diproses parser chat.
+                Diformat otomatis menjadi <strong className="text-slate-700">Menu Pilihan Berpenomoran (1, 2, 3...)</strong> yang ramah dibaca dan diproses oleh bot.
               </p>
             </div>
           </div>
