@@ -207,16 +207,23 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
       try {
         const supabase = getSupabase();
         if (supabase) {
-          const { data } = await supabase
-            .from('tenant_settings')
-            .select('ads_tracking_config')
-            .eq('tenant_slug', tenantSlug)
-            .maybeSingle();
+          const [settingsRes, tenantRes] = await Promise.all([
+            supabase
+              .from('tenant_settings')
+              .select('ads_tracking_config')
+              .eq('tenant_slug', tenantSlug)
+              .maybeSingle(),
+            supabase
+              .from('tenants')
+              .select('metadata')
+              .eq('slug', tenantSlug)
+              .maybeSingle(),
+          ]);
 
-          if (data?.ads_tracking_config) {
-            const cfg = data.ads_tracking_config;
+          const cfg = settingsRes.data?.ads_tracking_config || (tenantRes.data?.metadata as any)?.tracking;
+          if (cfg) {
             setIsEnabled(cfg.is_enabled ?? true);
-            setMetaPixelId(cfg.meta_pixel_id || '');
+            setMetaPixelId(cfg.meta_pixel_id || cfg.facebook_pixel_id || '');
             setMetaCapiToken(cfg.meta_capi_token || '');
             setMetaTestCode(cfg.meta_test_code || '');
             setTiktokPixelId(cfg.tiktok_pixel_id || '');
@@ -295,6 +302,7 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
     try {
       const supabase = getSupabase();
       if (supabase) {
+        // 1. Simpan ke tenant_settings (ads_tracking_config)
         await supabase
           .from('tenant_settings')
           .upsert(
@@ -305,6 +313,41 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
             },
             { onConflict: 'tenant_slug' }
           );
+
+        // 2. Sinkronkan ke tenants.metadata.tracking (Single Source of Truth)
+        try {
+          const { data: tenantData } = await supabase
+            .from('tenants')
+            .select('metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+
+          const currentMeta = (tenantData?.metadata as Record<string, any>) || {};
+          const updatedTracking = {
+            ...(currentMeta.tracking || {}),
+            facebook_pixel_id: metaPixelId,
+            meta_pixel_id: metaPixelId,
+            meta_capi_token: metaCapiToken,
+            meta_test_code: metaTestCode,
+            tiktok_pixel_id: tiktokPixelId,
+            tiktok_access_token: tiktokAccessToken,
+            enable_wa_utm: enableWaUtm,
+            auto_deduplication: autoDeduplication,
+            is_enabled: isEnabled,
+          };
+
+          await supabase
+            .from('tenants')
+            .update({
+              metadata: {
+                ...currentMeta,
+                tracking: updatedTracking,
+              },
+            })
+            .eq('slug', tenantSlug);
+        } catch (syncErr) {
+          console.warn('[AdsTrackingPro] Sync to tenants.metadata note:', syncErr);
+        }
       }
 
       setFeedback('✅ Konfigurasi Ads Tracking Pro & CAPI berhasil disimpan!');

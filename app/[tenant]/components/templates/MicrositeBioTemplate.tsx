@@ -10,6 +10,7 @@ import {
   trackContactEvent,
   trackInitiateCheckout,
 } from '@/lib/tracking';
+import { getSupabase } from '@/lib/supabaseClient';
 
 // ─── Product image with graceful fallback ────────────────────────────────────
 function MicrositeItemImage({ src, alt }: { src?: string; alt: string }) {
@@ -213,13 +214,54 @@ export default function MicrositeBioTemplate({
     ? `https://wa.me/${whatsappNumber}?text=Halo%20${encodeURIComponent(activeName)},%20saya%20tertarik%20dengan%20produk%2Flayanan%20Anda`
     : '';
 
-  // ── Auto-inject Meta & TikTok pixels from tenant.metadata.tracking ─────────
+  // ── Auto-inject Meta & TikTok pixels from tenant.metadata.tracking / tenant_settings ───
   useEffect(() => {
-    const tracking = tenant?.metadata?.tracking || tenantMetadata?.tracking;
-    if (tracking && (tracking.facebook_pixel_id || tracking.tiktok_pixel_id)) {
-      initPixelsFromMetadata(tracking);
+    let isMounted = true;
+
+    async function resolveAndInitTracking() {
+      const tracking = (tenant?.metadata?.tracking || tenantMetadata?.tracking || {}) as Record<string, any>;
+      let fbPixelId = tracking.meta_pixel_id || tracking.facebook_pixel_id || '';
+      let ttPixelId = tracking.tiktok_pixel_id || '';
+
+      // Jika belum ditemukan di metadata tenant, query langsung dari tenant_settings (sumber Ads Tracking Pro)
+      if (!fbPixelId && tenantSlug) {
+        try {
+          const supabase = getSupabase();
+          if (supabase) {
+            const { data } = await supabase
+              .from('tenant_settings')
+              .select('ads_tracking_config')
+              .eq('tenant_slug', tenantSlug)
+              .maybeSingle();
+
+            if (data?.ads_tracking_config) {
+              const cfg = data.ads_tracking_config;
+              fbPixelId = cfg.meta_pixel_id || cfg.facebook_pixel_id || '';
+              ttPixelId = cfg.tiktok_pixel_id || '';
+            }
+          }
+        } catch (err) {
+          console.warn('[MicrositeBioTemplate] Tracking query error:', err);
+        }
+      }
+
+      if (isMounted) {
+        console.log('[Tracking Debug] Loaded Pixel ID:', fbPixelId || null);
+        if (fbPixelId || ttPixelId) {
+          initPixelsFromMetadata({
+            facebook_pixel_id: fbPixelId,
+            meta_pixel_id: fbPixelId,
+            tiktok_pixel_id: ttPixelId,
+          });
+        }
+      }
     }
-  }, [tenant, tenantMetadata]);
+
+    resolveAndInitTracking();
+    return () => {
+      isMounted = false;
+    };
+  }, [tenant, tenantMetadata, tenantSlug]);
 
   // ── Product catalog visibility ────────────────────────────────────────────
   // Checks (in order): microsite_settings.show_products → microsite.show_products → microsite_show_products (legacy)

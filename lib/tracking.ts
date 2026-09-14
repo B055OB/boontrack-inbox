@@ -432,13 +432,15 @@ export function buildTrackedWhatsAppUrl(
 // 5. Direct-from-metadata Pixel Initializer (all plans, no remote fetch needed)
 export function initPixelsFromMetadata(tracking?: {
   facebook_pixel_id?: string;
+  meta_pixel_id?: string;
   tiktok_pixel_id?: string;
   [key: string]: unknown;
 }): void {
   if (typeof window === "undefined" || !tracking) return;
 
-  if (tracking.facebook_pixel_id) {
-    initMetaPixel(String(tracking.facebook_pixel_id));
+  const fbPixelId = tracking.meta_pixel_id || tracking.facebook_pixel_id;
+  if (fbPixelId) {
+    initMetaPixel(String(fbPixelId));
   }
 
   if (tracking.tiktok_pixel_id) {
