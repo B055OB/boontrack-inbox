@@ -30,7 +30,7 @@ export default function AppPortalPage() {
                 }
             `}</style>
 
-            {/* Background Ornamen Odoo Style */}
+            {/* Background Ornamen Blob */}
             <div className="absolute -top-32 -left-32 w-96 h-96 bg-slate-100 rounded-full blur-3xl pointer-events-none -z-10"></div>
             <div className="absolute top-1/3 -right-32 w-[500px] h-[500px] bg-orange-50/70 rounded-full blur-3xl pointer-events-none -z-10"></div>
             <div className="absolute bottom-10 left-1/4 w-80 h-80 bg-slate-100 rounded-full blur-2xl pointer-events-none -z-10"></div>
@@ -45,19 +45,21 @@ export default function AppPortalPage() {
                 Tanpa install app untuk pelanggan. Seluruh interaksi CRM & Transaksi berjalan via Chat & Hardware API.
             </div>
 
-            {/* Header dengan Logo Image Asli */}
+            {/* Header dengan Block Gelap Khusus Logo */}
             <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
                 <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <a href="#" className="flex items-center group">
-                            <div className="relative h-10 w-44 sm:w-52">
-                                <Image
-                                    src="/app-brand/logo-boontrack-app.png"
-                                    alt="BoonTrack Apps"
-                                    fill
-                                    priority
-                                    className="object-contain object-left group-hover:opacity-90 transition"
-                                />
+                            <div className="bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-800 shadow-sm flex items-center justify-center group-hover:bg-slate-900 transition">
+                                <div className="relative h-8 w-36 sm:w-44">
+                                    <Image
+                                        src="/app-brand/logo-boontrack-app.png"
+                                        alt="BoonTrack Apps"
+                                        fill
+                                        priority
+                                        className="object-contain object-left"
+                                    />
+                                </div>
                             </div>
                         </a>
                     </div>
@@ -246,7 +248,7 @@ export default function AppPortalPage() {
                         </p>
                     </div>
 
-                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-300 transition group">
+                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-orange-300 transition group">
                         <div className="text-3xl mb-4 group-hover:scale-110 transition transform origin-left">🚪</div>
                         <h3 className="text-lg font-bold text-slate-950 mb-2">Doorlock & Turnstile Gate</h3>
                         <p className="text-xs text-slate-600 leading-relaxed">
