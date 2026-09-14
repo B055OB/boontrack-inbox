@@ -20,7 +20,11 @@ import {
   Settings,
   Sparkles,
   AlertCircle,
+  Users,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
+
 import { getSupabase } from '@/lib/supabaseClient';
 import {
   DEFAULT_BOOKING_SUMMARY_TEMPLATE,
@@ -68,12 +72,11 @@ const TIME_SLOT_PRESETS = [
   '19:00 - 21:00 WIB',
 ];
 
-const TECHNICIANS = [
-  'Sakti (Teknisi Senior)',
-  'Dimas (Teknisi Lapangan)',
-  'Rian (Teknisi Lapangan)',
-  'Agus (Spesialis Pipa & Radar)',
+// Default teknisi fallback jika metadata kosong
+const DEFAULT_TECHNICIANS = [
+  { name: 'Tim Teknisi', specialty: 'Umum' },
 ];
+
 
 export function formatFieldServiceWhatsAppMessage(
   booking: {
@@ -113,6 +116,16 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsSavedToast, setSettingsSavedToast] = useState(false);
 
+  // Teknisi State (dinamis dari metadata.technicians)
+  interface Technician { name: string; specialty: string; }
+  const [technicians, setTechnicians] = useState<Technician[]>(DEFAULT_TECHNICIANS);
+  const [techModalOpen, setTechModalOpen] = useState(false);
+  const [newTechName, setNewTechName] = useState('');
+  const [newTechSpecialty, setNewTechSpecialty] = useState('');
+  const [editTechIdx, setEditTechIdx] = useState<number | null>(null);
+  const [isSavingTech, setIsSavingTech] = useState(false);
+
+
   // Form states for Slot Manager
   const [editOperatingDays, setEditOperatingDays] = useState<number[]>(DEFAULT_SCHEDULE_SETTINGS.operating_days);
   const [editTimeSlots, setEditTimeSlots] = useState<string[]>(DEFAULT_SCHEDULE_SETTINGS.time_slots);
@@ -131,8 +144,9 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
   const [formCustomTime, setFormCustomTime] = useState('');
   const [formAddress, setFormAddress] = useState('');
   const [formMapsUrl, setFormMapsUrl] = useState('');
-  const [formTechnician, setFormTechnician] = useState(TECHNICIANS[0]);
+  const [formTechnician, setFormTechnician] = useState('');
   const [formNotes, setFormNotes] = useState('');
+
 
   // Fetch real data from Supabase & merge with local additions
   useEffect(() => {
@@ -152,7 +166,16 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
             .eq('slug', tenantSlug)
             .maybeSingle();
 
-          // Ambil jadwal booking dari metadata tenant jika ada
+          // Muat daftar teknisi dari metadata secara dinamis
+          const metaTechnicians = tenantRow?.metadata?.technicians;
+          if (Array.isArray(metaTechnicians) && metaTechnicians.length > 0) {
+            setTechnicians(metaTechnicians);
+            setFormTechnician(metaTechnicians[0]?.name || '');
+          } else {
+            setTechnicians(DEFAULT_TECHNICIANS);
+            setFormTechnician(DEFAULT_TECHNICIANS[0].name);
+          }
+
           const metadataBookings: BookingSlot[] = Array.isArray(tenantRow?.metadata?.bookings)
             ? tenantRow.metadata.bookings
             : [];
@@ -409,6 +432,54 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
     }
   };
 
+  // ── Kelola Teknisi (simpan ke tenants.metadata.technicians) ──────────────────
+  const handleSaveTechnicians = async (newList: Array<{ name: string; specialty: string }>) => {
+    setIsSavingTech(true);
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data } = await supabase
+          .from('tenants')
+          .select('id, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+        if (data) {
+          await supabase
+            .from('tenants')
+            .update({ metadata: { ...data.metadata, technicians: newList } })
+            .eq('id', data.id);
+        }
+      }
+      setTechnicians(newList);
+      if (newList.length > 0) setFormTechnician(newList[0].name);
+    } catch (err) {
+      console.warn('[BookingTab] Error saving technicians:', err);
+    } finally {
+      setIsSavingTech(false);
+    }
+  };
+
+  const handleAddTechnician = async () => {
+    const name = newTechName.trim();
+    const specialty = newTechSpecialty.trim() || 'Teknisi Lapangan';
+    if (!name) return;
+    let updated;
+    if (editTechIdx !== null) {
+      updated = technicians.map((t, i) => i === editTechIdx ? { name, specialty } : t);
+    } else {
+      updated = [...technicians, { name, specialty }];
+    }
+    await handleSaveTechnicians(updated);
+    setNewTechName('');
+    setNewTechSpecialty('');
+    setEditTechIdx(null);
+  };
+
+  const handleDeleteTechnician = async (idx: number) => {
+    const updated = technicians.filter((_, i) => i !== idx);
+    await handleSaveTechnicians(updated.length > 0 ? updated : DEFAULT_TECHNICIANS);
+  };
+
   const filtered = bookings.filter((b) => {
     if (activeFilter === 'ACTIVE') {
       const isActive =
@@ -467,7 +538,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
             className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-xs transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Sliders className="w-4 h-4 text-blue-600" />
-            <span>Kelola Slot & Jam Kerja</span>
+            <span>Kelola Slot &amp; Tim</span>
           </button>
 
           <button
@@ -987,7 +1058,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                 />
               </div>
 
-              {/* 6. Tugaskan Teknisi */}
+              {/* 6. Tugaskan Teknisi — dari metadata dinamis */}
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">
                   👷 Tugaskan Teknisi
@@ -997,9 +1068,9 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                   onChange={(e) => setFormTechnician(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white cursor-pointer"
                 >
-                  {TECHNICIANS.map((tech) => (
-                    <option key={tech} value={tech}>
-                      {tech}
+                  {technicians.map((tech) => (
+                    <option key={tech.name} value={tech.name}>
+                      {tech.name}{tech.specialty ? ` — ${tech.specialty}` : ''}
                     </option>
                   ))}
                 </select>
@@ -1175,6 +1246,62 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                 </div>
               </div>
 
+              {/* 5. Manajemen Tim Teknisi */}
+              <div className="space-y-2 border-t border-slate-100 pt-4">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-blue-600" />
+                    Daftar Teknisi Tim
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setNewTechName(''); setNewTechSpecialty(''); setEditTechIdx(null); setTechModalOpen(true); }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold text-[11px] border border-blue-200 hover:bg-blue-100 cursor-pointer transition"
+                  >
+                    <Plus className="w-3 h-3" /> Tambah Teknisi
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  {technicians.map((tech, idx) => (
+                    <div key={idx} className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <div>
+                        <span className="font-bold text-slate-900 text-xs">{tech.name}</span>
+                        {tech.specialty && (
+                          <span className="ml-2 text-[11px] text-slate-500">({tech.specialty})</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditTechIdx(idx);
+                            setNewTechName(tech.name);
+                            setNewTechSpecialty(tech.specialty || '');
+                            setTechModalOpen(true);
+                          }}
+                          className="p-1 text-slate-400 hover:text-blue-600 rounded-lg cursor-pointer"
+                          title="Edit"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTechnician(idx)}
+                          className="p-1 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer"
+                          title="Hapus"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {technicians.length === 0 && (
+                    <p className="text-[11px] text-slate-400 italic text-center py-2">Belum ada teknisi. Klik &quot;Tambah Teknisi&quot; di atas.</p>
+                  )}
+                </div>
+              </div>
+
               {/* Footer */}
               <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
                 <button
@@ -1203,6 +1330,79 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-Modal: Tambah / Edit Teknisi */}
+      {techModalOpen && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+                  <Users className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-black text-slate-900">
+                  {editTechIdx !== null ? 'Edit Teknisi' : 'Tambah Teknisi Baru'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setTechModalOpen(false); setEditTechIdx(null); setNewTechName(''); setNewTechSpecialty(''); }}
+                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-200/60 cursor-pointer transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">👷 Nama Teknisi *</label>
+                <input
+                  type="text"
+                  value={newTechName}
+                  onChange={(e) => setNewTechName(e.target.value)}
+                  placeholder="Contoh: Sakti"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600 focus:bg-white"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">🔧 Bagian / Spesialisasi</label>
+                <input
+                  type="text"
+                  value={newTechSpecialty}
+                  onChange={(e) => setNewTechSpecialty(e.target.value)}
+                  placeholder="Contoh: Teknisi Senior, Spesialis Pipa & Radar"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => { setTechModalOpen(false); setEditTechIdx(null); setNewTechName(''); setNewTechSpecialty(''); }}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  disabled={!newTechName.trim() || isSavingTech}
+                  onClick={async () => {
+                    await handleAddTechnician();
+                    setTechModalOpen(false);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingTech ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Menyimpan...</span></>
+                  ) : (
+                    <><Check className="w-3.5 h-3.5" /><span>{editTechIdx !== null ? 'Simpan Perubahan' : 'Tambah Teknisi'}</span></>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

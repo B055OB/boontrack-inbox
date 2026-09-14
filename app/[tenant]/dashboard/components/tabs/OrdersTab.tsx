@@ -14,7 +14,10 @@ import {
   Download, 
   Truck, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  ToggleLeft,
+  ToggleRight,
+  Loader2,
 } from 'lucide-react';
 import GodPayButton, { OrderItem as GodPayOrderItem } from '../orders/GodPayButton';
 import { 
@@ -22,6 +25,8 @@ import {
   ProductType, 
   FulfillmentMetadata 
 } from '@/lib/product-catalog';
+import { getSupabase } from '@/lib/supabaseClient';
+
 
 export interface OrderItem {
   id: string;
@@ -107,6 +112,40 @@ export default function OrdersTab({
   });
 
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const togglePaymentStatus = async (order: OrderItem) => {
+    const newStatus = order.payment_status === 'PAID' ? 'UNPAID' : 'PAID';
+    setTogglingId(order.id);
+    try {
+      // 1. Optimistic update
+      const applyUpdate = (prev: OrderItem[]) =>
+        prev.map((o) => (o.id === order.id ? { ...o, payment_status: newStatus } : o));
+      setInternalOrders((prev) => applyUpdate(prev));
+      if (selectedOrder?.id === order.id) {
+        setSelectedOrder((prev) => prev ? { ...prev, payment_status: newStatus } : null);
+      }
+
+      // 2. Persist ke Supabase
+      const supabase = getSupabase();
+      if (supabase) {
+        await supabase.from('orders').update({ payment_status: newStatus }).eq('id', order.id);
+      } else {
+        // fallback: hit API
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${order.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_status: newStatus }),
+        });
+      }
+    } catch (err) {
+      console.warn('[OrdersTab] Error toggling payment_status:', err);
+      // Revert on error
+      await fetchOrders();
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
@@ -251,6 +290,28 @@ export default function OrdersTab({
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
+
+                          {/* Toggle Paid / Unpaid inline */}
+                          <button
+                            type="button"
+                            title={ord.payment_status === 'PAID' ? 'Tandai Unpaid' : 'Tandai Paid'}
+                            disabled={togglingId === ord.id}
+                            onClick={() => togglePaymentStatus(ord)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] border transition cursor-pointer disabled:opacity-50 ${
+                              ord.payment_status === 'PAID'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
+                            }`}
+                          >
+                            {togglingId === ord.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : ord.payment_status === 'PAID' ? (
+                              <><ToggleRight className="w-3.5 h-3.5" /><span>PAID</span></>
+                            ) : (
+                              <><ToggleLeft className="w-3.5 h-3.5" /><span>UNPAID</span></>
+                            )}
+                          </button>
+
                           <GodPayButton
                             order={ord as GodPayOrderItem}
                             tenantSlug={tenantSlug}
@@ -458,14 +519,35 @@ export default function OrdersTab({
                 >
                   Tutup
                 </button>
-                <GodPayButton
-                  order={selectedOrder as GodPayOrderItem}
-                  tenantSlug={tenantSlug}
-                  onSuccess={(upd) => {
-                    handleOrderUpdated(upd);
-                    setSelectedOrder((prev) => (prev ? { ...prev, ...upd } : null));
-                  }}
-                />
+                <div className="flex items-center gap-2">
+                  {/* Toggle Paid/Unpaid dari modal */}
+                  <button
+                    type="button"
+                    disabled={togglingId === selectedOrder.id}
+                    onClick={() => togglePaymentStatus(selectedOrder)}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold text-xs border transition cursor-pointer disabled:opacity-50 ${
+                      selectedOrder.payment_status === 'PAID'
+                        ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    {togglingId === selectedOrder.id ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Menyimpan...</span></>
+                    ) : selectedOrder.payment_status === 'PAID' ? (
+                      <><ToggleRight className="w-3.5 h-3.5" /><span>Tandai Unpaid</span></>
+                    ) : (
+                      <><ToggleLeft className="w-3.5 h-3.5" /><span>Tandai Paid ✓</span></>
+                    )}
+                  </button>
+                  <GodPayButton
+                    order={selectedOrder as GodPayOrderItem}
+                    tenantSlug={tenantSlug}
+                    onSuccess={(upd) => {
+                      handleOrderUpdated(upd);
+                      setSelectedOrder((prev) => (prev ? { ...prev, ...upd } : null));
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
