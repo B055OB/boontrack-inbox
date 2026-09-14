@@ -30,7 +30,7 @@ export default function AppPortalPage() {
                 }
             `}</style>
 
-            {/* Background Ornamen Bulat / Blob Abu ala Odoo */}
+            {/* Background Ornamen Blob Odoo Style */}
             <div className="absolute -top-32 -left-32 w-96 h-96 bg-slate-100 rounded-full blur-3xl pointer-events-none -z-10"></div>
             <div className="absolute top-1/3 -right-32 w-[500px] h-[500px] bg-orange-50/70 rounded-full blur-3xl pointer-events-none -z-10"></div>
             <div className="absolute bottom-10 left-1/4 w-80 h-80 bg-slate-100 rounded-full blur-2xl pointer-events-none -z-10"></div>
@@ -87,7 +87,6 @@ export default function AppPortalPage() {
                     <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-slate-950 leading-[1.15] max-w-5xl mx-auto">
                         Bisnis canggih, <br className="hidden sm:inline" />
                         <span className="relative inline-block px-4 py-1 my-2">
-                            {/* Marker highlight oranye dengan teks gelap agar kontras dan terbaca jelas */}
                             <span className="absolute inset-0 bg-orange-500 rotate-[-1.5deg] rounded-2xl shadow-md -z-10"></span>
                             <span className="font-handwriting text-5xl sm:text-7xl text-slate-950 font-bold tracking-wider">
                                 tanpa repot install aplikasi.
@@ -247,7 +246,7 @@ export default function AppPortalPage() {
                         </p>
                     </div>
 
-                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-orange-300 transition group">
+                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-300 transition group">
                         <div className="text-3xl mb-4 group-hover:scale-110 transition transform origin-left">🔌</div>
                         <h3 className="text-lg font-bold text-slate-950 mb-2">Custom Peripheral API</h3>
                         <p className="text-xs text-slate-600 leading-relaxed">
