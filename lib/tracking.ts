@@ -389,16 +389,28 @@ export function trackClientPurchase(orderId: string, amount: number, productTitl
   }
 }
 
+// 3b. Sanitasi Format Nomor WhatsApp Indonesia
+export function formatIndonesianWhatsAppNumber(phone: string): string {
+  if (!phone) return '';
+  let clean = phone.replace(/[^0-9]/g, '');
+  if (clean.startsWith('0')) {
+    clean = '62' + clean.slice(1);
+  } else if (clean.startsWith('8')) {
+    clean = '62' + clean;
+  }
+  return clean;
+}
+
 // 4. WhatsApp Inbound Link Builder dengan Embedding Tag & Event Contact
 export function buildTrackedWhatsAppUrl(
   phoneNumber: string,
   baseText: string,
   extraPayload?: { productName?: string; price?: number }
 ): string {
-  if (typeof window === "undefined") return `https://wa.me/${phoneNumber}`;
+  const cleanPhone = formatIndonesianWhatsAppNumber(phoneNumber);
+  if (typeof window === "undefined") return `https://wa.me/${cleanPhone}`;
 
   const tracking = getTrackingParams();
-  const cleanPhone = phoneNumber.replace(/\D/g, "");
   const win = window as unknown as Record<string, any>;
 
   const refParts = [

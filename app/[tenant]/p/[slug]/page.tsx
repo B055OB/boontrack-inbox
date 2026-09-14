@@ -47,7 +47,8 @@ import {
   getTrackingData,
   trackLeadFormSubmission,
   trackContactEvent,
-  initPixelsFromMetadata
+  initPixelsFromMetadata,
+  formatIndonesianWhatsAppNumber
 } from '@/lib/tracking';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
 import { 
@@ -550,7 +551,7 @@ function SingleProductContent() {
   // Prefill Pesan WhatsApp: "Halo [Nama Toko], saya sedang melihat produk [Nama Produk] di website dan mau tanya detailnya."
   const storeDisplayName = (tenant.charAt(0).toUpperCase() + tenant.slice(1));
   const waConsultationMessage = `Halo ${storeDisplayName}, saya sedang melihat produk ${product.name} di website dan mau tanya detailnya.`;
-  const csWaNumber = (config.whatsapp_number || getTenantWhatsApp(tenant)).replace(/\D/g, '');
+  const csWaNumber = formatIndonesianWhatsAppNumber(config.whatsapp_number || getTenantWhatsApp(tenant));
   const waConsultationUrl = `https://wa.me/${csWaNumber}?text=${encodeURIComponent(waConsultationMessage)}`;
 
   const handleWhatsAppConsultation = () => {

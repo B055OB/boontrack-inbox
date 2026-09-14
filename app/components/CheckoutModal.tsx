@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
-import { getActiveAffiliateCode, getTrackingData, trackClientPurchase, trackLeadFormSubmission } from "@/lib/tracking";
+import { getActiveAffiliateCode, getTrackingData, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber } from "@/lib/tracking";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 
@@ -302,7 +302,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 ? generateDynamicQRIS(candidateQris, totalAmount)
                 : candidateQris;
 
-              const cleanWa = (tenantPhone || '6281237450222').replace(/\D/g, '');
+              const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222');
               const waConfirmUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(
                 `Halo Admin, saya ingin konfirmasi pembayaran untuk Order ID: ${paymentData.orderId}\nProduk: ${product.title}\nNominal: Rp ${totalAmount.toLocaleString('id-ID')}`
               )}`;

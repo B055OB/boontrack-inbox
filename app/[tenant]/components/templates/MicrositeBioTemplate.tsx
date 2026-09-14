@@ -9,6 +9,7 @@ import {
   initPixelsFromMetadata,
   trackContactEvent,
   trackInitiateCheckout,
+  formatIndonesianWhatsAppNumber,
 } from '@/lib/tracking';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -209,9 +210,15 @@ export default function MicrositeBioTemplate({
       .toUpperCase() || 'ST';
 
   const bioText = tenantMetadata?.bio || tenantMetadata?.description || '';
-  const whatsappNumber = tenantMetadata?.whatsapp_number || tenantMetadata?.whatsapp || '';
-  const whatsappUrl = whatsappNumber
-    ? `https://wa.me/${whatsappNumber}?text=Halo%20${encodeURIComponent(activeName)},%20saya%20tertarik%20dengan%20produk%2Flayanan%20Anda`
+  const rawWhatsapp =
+    tenantMetadata?.whatsapp_number ||
+    tenantMetadata?.whatsapp ||
+    tenant?.metadata?.whatsapp_number ||
+    tenant?.metadata?.whatsapp ||
+    '';
+  const cleanWhatsapp = formatIndonesianWhatsAppNumber(rawWhatsapp);
+  const whatsappUrl = cleanWhatsapp
+    ? `https://wa.me/${cleanWhatsapp}?text=Halo%20${encodeURIComponent(activeName)},%20saya%20tertarik%20dengan%20produk%2Flayanan%20Anda`
     : '';
 
   // ── Auto-inject Meta & TikTok pixels from tenant.metadata.tracking / tenant_settings ───
@@ -407,10 +414,15 @@ export default function MicrositeBioTemplate({
                   key={btn.id}
                   type="button"
                   onClick={() => {
+                    let targetUrl = btn.url;
                     if (isWhatsApp) {
                       trackContactEvent('WhatsApp Bio');
+                      // Pastikan link wa.me diawali kode negara 62 (jangan terpotong atau menjadi +81)
+                      targetUrl = targetUrl.replace(/wa\.me\/08/g, 'wa.me/628').replace(/wa\.me\/0/g, 'wa.me/62');
+                      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                      return;
                     }
-                    onOutboundClick(btn.url, `microsite_${btn.id}`);
+                    onOutboundClick(targetUrl, `microsite_${btn.id}`);
                   }}
                   className="rounded-full py-3.5 px-5 bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all duration-200 active:scale-[0.98] shadow-lg flex items-center justify-between text-white w-full cursor-pointer"
                 >
