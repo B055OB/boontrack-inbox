@@ -646,6 +646,33 @@ export function useTenantDashboard() {
           } else {
             setPlanTier('growth');
           }
+
+          // Hydrate Interactive Menu dari metadata tenant
+          const rawMenu =
+            tenant.metadata?.interactive_menu ||
+            tenant.metadata?.interactive_menus ||
+            tenant.interactive_menu;
+
+          const menuItems =
+            tenant?.metadata?.interactive_menu?.items ||
+            tenant?.metadata?.interactive_menu ||
+            tenant?.metadata?.bot_config?.quick_actions ||
+            rawMenu?.items ||
+            (Array.isArray(rawMenu) ? rawMenu : null) ||
+            [];
+
+          const menuMode =
+            tenant?.metadata?.interactive_menu?.mode ||
+            rawMenu?.mode ||
+            tenant?.metadata?.bot_mode ||
+            'HYBRID';
+
+          if (Array.isArray(menuItems) && menuItems.length > 0) {
+            setInteractiveMenus(menuItems);
+          }
+          if (menuMode) {
+            setBotMode(menuMode as 'STATIC' | 'HYBRID' | 'AI');
+          }
         }
       } catch (err) {
         console.error('Gagal memuat data tenant:', err);
@@ -680,7 +707,29 @@ export function useTenantDashboard() {
               tone: aiK.tone || prev.tone,
             }));
             if (Array.isArray(s.faqs) && s.faqs.length > 0) setFaqs(s.faqs);
-            if (Array.isArray(s.interactive_menus) && s.interactive_menus.length > 0) setInteractiveMenus(s.interactive_menus);
+
+            // Fallback membaca interactive_menu dari metadata tenant
+            const rawMenu = s.interactive_menu || s.metadata?.interactive_menu || s.interactive_menus;
+            const menuItems =
+              rawMenu?.items ||
+              (Array.isArray(rawMenu) ? rawMenu : null) ||
+              s.metadata?.interactive_menu?.items ||
+              s.metadata?.interactive_menu ||
+              s.metadata?.bot_config?.quick_actions ||
+              (Array.isArray(s.interactive_menus) ? s.interactive_menus : []);
+
+            const menuMode =
+              rawMenu?.mode ||
+              s.metadata?.interactive_menu?.mode ||
+              s.bot_mode ||
+              'HYBRID';
+
+            if (Array.isArray(menuItems) && menuItems.length > 0) {
+              setInteractiveMenus(menuItems);
+            }
+            if (menuMode) {
+              setBotMode(menuMode as 'STATIC' | 'HYBRID' | 'AI');
+            }
           }
         }
       } catch (err) {
@@ -1247,6 +1296,10 @@ export function useTenantDashboard() {
         bot_mode: botMode,
         faqs,
         interactive_menus: interactiveMenus,
+        interactive_menu: {
+          mode: botMode,
+          items: interactiveMenus,
+        },
         ai_knowledge: {
           ...aiForm,
           bot_strategy: botStrategy,

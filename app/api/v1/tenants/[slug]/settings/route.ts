@@ -49,8 +49,17 @@ export async function GET(
             if (tenantRow?.metadata?.faqs) {
               settingsObj.faqs = tenantRow.metadata.faqs;
             }
-            if (tenantRow?.metadata?.interactive_menus) {
+            if (tenantRow?.metadata?.interactive_menu) {
+              settingsObj.interactive_menu = tenantRow.metadata.interactive_menu;
+              settingsObj.interactive_menus = Array.isArray(tenantRow.metadata.interactive_menu?.items)
+                ? tenantRow.metadata.interactive_menu.items
+                : (Array.isArray(tenantRow.metadata.interactive_menu) ? tenantRow.metadata.interactive_menu : []);
+              settingsObj.bot_mode = tenantRow.metadata.interactive_menu?.mode || settingsObj.bot_mode || 'HYBRID';
+            } else if (tenantRow?.metadata?.interactive_menus) {
               settingsObj.interactive_menus = tenantRow.metadata.interactive_menus;
+            }
+            if (tenantRow?.metadata) {
+              settingsObj.metadata = tenantRow.metadata;
             }
           } catch {}
           return NextResponse.json({ success: true, settings: settingsObj });
@@ -135,7 +144,11 @@ export async function GET(
                     answer: k.content,
                   }))
               : []),
-        interactive_menus: Array.isArray(metadata.interactive_menus) ? metadata.interactive_menus : [],
+        interactive_menu: metadata.interactive_menu || null,
+        interactive_menus: Array.isArray(metadata.interactive_menu?.items)
+          ? metadata.interactive_menu.items
+          : (Array.isArray(metadata.interactive_menus) ? metadata.interactive_menus : []),
+        metadata: metadata,
         theme: metadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
         microsite: metadata.microsite || { buttons: [] },
       },

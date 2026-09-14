@@ -24,6 +24,37 @@ import { mapProposalToAiForm, mapProposalToPlaybook } from '@/lib/boonpilotMappe
 import type { InteractiveMenu, InteractiveMenuOption } from '@/lib/whatsappFormatter';
 export type { InteractiveMenu, InteractiveMenuOption };
 
+export function normalizeInteractiveMenuItem(item: any): InteractiveMenu {
+  const options: InteractiveMenuOption[] = Array.isArray(item.options) && item.options.length > 0
+    ? item.options.map((opt: any, idx: number) => ({
+        id: opt.id || `opt_${idx}`,
+        title: opt.title || opt.label || '',
+        description: opt.description || '',
+        responseText: opt.responseText || opt.response_text || opt.payload || '',
+      }))
+    : Array.isArray(item.action_buttons) && item.action_buttons.length > 0
+    ? item.action_buttons.map((ab: any, idx: number) => ({
+        id: ab.id || `btn_${idx}`,
+        title: ab.label || ab.title || '',
+        description: ab.action_type || '',
+        responseText: ab.payload || ab.reply_content || '',
+      }))
+    : [];
+
+  return {
+    id: item.id || `menu_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    trigger: item.trigger || item.title || '',
+    title: item.title || item.trigger || '',
+    description: item.description || item.reply_content || '',
+    options,
+    ...(item.reply_content ? { reply_content: item.reply_content } : {}),
+    ...(item.response_type ? { response_type: item.response_type } : {}),
+    ...(item.match_type ? { match_type: item.match_type } : {}),
+    ...(item.action_buttons ? { action_buttons: item.action_buttons } : {}),
+    ...(item.is_active !== undefined ? { is_active: item.is_active } : {}),
+  } as InteractiveMenu;
+}
+
 export interface AiKnowledgeForm {
   ai_name: string;
   tone: string;
@@ -66,6 +97,8 @@ export const DEFAULT_SELLER_PLAYBOOK: SellerConversationPlaybook = {
 
 export interface AiKnowledgeTabProps {
   tenantSlug: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tenant?: any;
   aiForm: AiKnowledgeForm;
   setAiForm: React.Dispatch<React.SetStateAction<AiKnowledgeForm>>;
   faqs?: FaqItem[];
@@ -93,6 +126,7 @@ export interface AiKnowledgeTabProps {
 
 export default function AiKnowledgeTab({
   tenantSlug,
+  tenant: propTenant,
   aiForm,
   setAiForm,
   faqs: propFaqs,
@@ -189,12 +223,26 @@ export default function AiKnowledgeTab({
     return [];
   });
 
-  const currentInteractiveMenus = propInteractiveMenus ?? internalInteractiveMenus;
-  const updateInteractiveMenus = propSetInteractiveMenus ?? setInternalInteractiveMenus;
+  const currentInteractiveMenus =
+    (propInteractiveMenus && propInteractiveMenus.length > 0)
+      ? propInteractiveMenus
+      : internalInteractiveMenus;
+
+  const updateInteractiveMenus = (updater: React.SetStateAction<InteractiveMenu[]>) => {
+    if (propSetInteractiveMenus) {
+      propSetInteractiveMenus(updater);
+    }
+    setInternalInteractiveMenus(updater);
+  };
 
   const [internalBotMode, setInternalBotMode] = useState<'STATIC' | 'HYBRID' | 'AI'>('HYBRID');
   const currentBotMode = propBotMode ?? internalBotMode;
-  const updateBotMode = propSetBotMode ?? setInternalBotMode;
+  const updateBotMode = (updater: React.SetStateAction<'STATIC' | 'HYBRID' | 'AI'>) => {
+    if (propSetBotMode) {
+      propSetBotMode(updater);
+    }
+    setInternalBotMode(updater);
+  };
 
   const handleAddMenu = () => {
     const newMenu: InteractiveMenu = {
@@ -399,16 +447,63 @@ export default function AiKnowledgeTab({
         } catch {}
       }
 
-      // Query settings API for both proposal and faqs
+      // Query settings API & tenant config for proposal, faqs, and interactive menu
       try {
+        let tenantData: any = null;
+        try {
+          const configRes = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(currentSlug)}/config`);
+          if (configRes.ok) {
+            const cfg = await configRes.json();
+            tenantData = cfg.tenant || cfg;
+          }
+        } catch {}
+
         const res = await fetch(`/api/v1/tenants/${encodeURIComponent(currentSlug)}/settings`);
         if (res.ok) {
           const data = await res.json();
+          const s = data.settings || {};
+          const tenant = propTenant || tenantData || data.tenant || { metadata: s.metadata || s };
+
           if (!loadedProposal) {
-            loadedProposal = data.settings?.boonpilot_proposal || data.settings?.boonpilot_configuration || null;
+            loadedProposal = s.boonpilot_proposal || s.boonpilot_configuration || tenant?.metadata?.boonpilot_proposal || null;
           }
-          if (Array.isArray(data.settings?.faqs) && data.settings.faqs.length > 0) {
-            updateFaqs(data.settings.faqs);
+          if (Array.isArray(s.faqs) && s.faqs.length > 0) {
+            updateFaqs(s.faqs);
+          } else if (Array.isArray(tenant?.metadata?.faqs) && tenant.metadata.faqs.length > 0) {
+            updateFaqs(tenant.metadata.faqs);
+          }
+
+          // Fallback cerdas membaca list menu interaktif dari metadata tenant
+          const menuItems =
+            tenant?.metadata?.interactive_menu?.items ||
+            tenant?.metadata?.interactive_menu ||
+            tenant?.metadata?.bot_config?.quick_actions ||
+            s.interactive_menu?.items ||
+            s.interactive_menu ||
+            s.interactive_menus ||
+            [];
+
+          const menuMode =
+            tenant?.metadata?.interactive_menu?.mode ||
+            s.interactive_menu?.mode ||
+            tenant?.metadata?.bot_mode ||
+            s.bot_mode ||
+            'HYBRID';
+
+          if (Array.isArray(menuItems) && menuItems.length > 0) {
+            const normalized = menuItems.map(normalizeInteractiveMenuItem);
+            updateInteractiveMenus(normalized);
+            setInternalInteractiveMenus(normalized);
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(`bt_interactive_menus_${currentSlug}`, JSON.stringify(normalized));
+              } catch {}
+            }
+          }
+
+          if (menuMode) {
+            updateBotMode(menuMode as 'STATIC' | 'HYBRID' | 'AI');
+            setInternalBotMode(menuMode as 'STATIC' | 'HYBRID' | 'AI');
           }
         }
       } catch {}
@@ -1069,7 +1164,7 @@ export default function AiKnowledgeTab({
                       {menuIdx + 1}
                     </span>
                     <h4 className="text-xs font-bold text-slate-800">
-                      Menu #{menuIdx + 1}: {menu.trigger || 'Menu Baru'}
+                      Menu #{menuIdx + 1}: {menu.trigger || (menu as any).title || 'Menu Baru'}
                     </h4>
                   </div>
                   <button
@@ -1091,7 +1186,7 @@ export default function AiKnowledgeTab({
                     </label>
                     <input
                       type="text"
-                      value={menu.trigger}
+                      value={menu.trigger || (menu as any).title || ''}
                       onChange={(e) => handleUpdateMenuField(menu.id, 'trigger', e.target.value)}
                       placeholder="Contoh: Pilih Informasi Mood Booster / Pilih Kapasitas Toren"
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
@@ -1107,7 +1202,7 @@ export default function AiKnowledgeTab({
                     </label>
                     <input
                       type="text"
-                      value={menu.description || ''}
+                      value={menu.description || (menu as any).reply_content || ''}
                       onChange={(e) => handleUpdateMenuField(menu.id, 'description', e.target.value)}
                       placeholder="Contoh: Silakan pilih salah satu opsi di bawah ini:"
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
