@@ -191,22 +191,24 @@ function hasAuthSession(req: NextRequest): boolean {
 }
 
 export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+  const pathname = req.nextUrl.pathname;
 
-  // 1. Strict API Pass-Through (Bypass all hostname and tenant rewrites)
-  if (pathname.startsWith('/api/') || pathname === '/api') {
-    return NextResponse.next();
-  }
-
-  // ── 0. Universal pass-through: static assets, Next.js internals, and custom 404 page ──
+  // 1. BYPASS API & STATIC LANGSUNG TANPA SENTUH SUBDOMAIN/KV REWRITE
   if (
-    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api/') || 
+    pathname === '/api' ||
+    pathname.startsWith('/_next/') || 
     pathname.startsWith('/static') ||
     pathname === '/favicon.ico' ||
     pathname === '/apple-touch-icon.png' ||
     pathname === '/404-store-not-found' ||
     pathname.includes('.')
   ) {
+    return NextResponse.next();
+  }
+
+  // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
+  if (pathname.startsWith('/admin')) {
     return NextResponse.next();
   }
 
@@ -378,6 +380,9 @@ export async function middleware(req: NextRequest) {
   // SPECIAL DOMAIN: bossob.boontrack.com
   // ===========================================================================
   if (subdomain === 'bossob') {
+    if (pathname.startsWith('/api') || pathname.startsWith('/admin')) {
+      return NextResponse.next();
+    }
     const url = req.nextUrl.clone();
 
     if (pathname === '/career/bossob' || pathname === '/career/bossob/') {
