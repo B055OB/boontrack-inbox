@@ -87,12 +87,9 @@ export default function AppPortalPage() {
                     <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-slate-950 leading-[1.15] max-w-5xl mx-auto">
                         Bisnis canggih, <br className="hidden sm:inline" />
                         <span className="relative inline-block px-4 py-1 my-2">
-                            {/* Marker highlight latar belakang */}
-                            <span className="absolute inset-0 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 rotate-[-1.5deg] rounded-2xl shadow-lg -z-10"></span>
-
-                            {/* Teks dengan efek warna-warni ceria (Gradient Text) */}
-                            <span className="font-handwriting text-5xl sm:text-7xl font-extrabold tracking-wider bg-gradient-to-r from-yellow-100 via-white to-orange-100 bg-clip-text text-transparent drop-shadow-md">
-                                tanpa repot install aplikasi.
+                            <span className="absolute inset-0 bg-amber-300 rotate-[-1.5deg] rounded-2xl shadow-lg -z-10"></span>
+                            <span className="font-handwriting text-5xl sm:text-7xl font-bold tracking-wider text-slate-900 drop-shadow-sm">
+                                tanpa <span className="text-blue-700">repot</span> <span className="text-purple-700">install</span> <span className="text-rose-700">aplikasi.</span>
                             </span>
                         </span>
                     </h1>
