@@ -26,16 +26,20 @@ const nextConfig: NextConfig = {
     ],
   },
   async rewrites() {
-    return [
-      {
-        source: "/api/v1/:path*",
-        destination: `${process.env.CORE_BACKEND_URL || "https://boontrack-core-production.up.railway.app"}/api/v1/:path*`,
-      },
-      {
-        source: "/api/orders",
-        destination: `${process.env.CORE_BACKEND_URL || "https://boontrack-core-production.up.railway.app"}/api/v1/orders`,
-      },
-    ];
+    return {
+      beforeFiles: [],
+      afterFiles: [],
+      fallback: [
+        {
+          source: "/api/orders",
+          destination: `${process.env.CORE_BACKEND_URL || "https://boontrack-core-production.up.railway.app"}/api/v1/orders`,
+        },
+        {
+          source: "/api/v1/:path*",
+          destination: `${process.env.CORE_BACKEND_URL || "https://boontrack-core-production.up.railway.app"}/api/v1/:path*`,
+        },
+      ],
+    };
   },
 };
 

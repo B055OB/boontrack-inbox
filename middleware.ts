@@ -193,10 +193,13 @@ function hasAuthSession(req: NextRequest): boolean {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ── 0. Universal pass-through: static assets, Next.js internals, API, and custom 404 page ──
-  // Critical: API routes must NEVER be intercepted, redirected, or rewritten by tenant routing
+  // 1. Strict API Pass-Through (Bypass all hostname and tenant rewrites)
+  if (pathname.startsWith('/api/') || pathname === '/api') {
+    return NextResponse.next();
+  }
+
+  // ── 0. Universal pass-through: static assets, Next.js internals, and custom 404 page ──
   if (
-    pathname.startsWith('/api') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
     pathname === '/favicon.ico' ||
