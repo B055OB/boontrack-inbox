@@ -802,9 +802,9 @@ export default function SuperAdminShopDirectory() {
                               <ExternalLink className="w-2.5 h-2.5 text-slate-500" />
                             </a>
                             <Link
-                              href={`/admin/${shop.slug}/config`}
+                              href={`/admin/shops/${shop.slug}/config`}
                               className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-xl text-[11px] inline-flex items-center gap-1.5 font-semibold transition border border-blue-500/30 cursor-pointer"
-                              title="Edit Konfigurasi Admin Tenant"
+                              title="Edit Konfigurasi Payment & Ongkir Toko"
                             >
                               <Sliders className="w-3 h-3 text-blue-400" />
                               <span>Konfigurasi</span>
