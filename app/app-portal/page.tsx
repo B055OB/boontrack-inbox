@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
+import Image from 'next/image';
 
 export default function AppPortalPage() {
     const [logIndex, setLogIndex] = useState(0);
@@ -30,7 +30,7 @@ export default function AppPortalPage() {
                 }
             `}</style>
 
-            {/* Background Ornamen Bulat / Blob Abu ala Odoo */}
+            {/* Background Ornamen Odoo Style */}
             <div className="absolute -top-32 -left-32 w-96 h-96 bg-slate-100 rounded-full blur-3xl pointer-events-none -z-10"></div>
             <div className="absolute top-1/3 -right-32 w-[500px] h-[500px] bg-orange-50/70 rounded-full blur-3xl pointer-events-none -z-10"></div>
             <div className="absolute bottom-10 left-1/4 w-80 h-80 bg-slate-100 rounded-full blur-2xl pointer-events-none -z-10"></div>
@@ -45,16 +45,21 @@ export default function AppPortalPage() {
                 Tanpa install app untuk pelanggan. Seluruh interaksi CRM & Transaksi berjalan via Chat & Hardware API.
             </div>
 
-            {/* Header */}
+            {/* Header dengan Logo Image Asli */}
             <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
                 <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <span className="text-2xl font-black tracking-tight text-slate-950 flex items-center gap-2">
-                            BoonTrack
-                            <span className="text-orange-600 font-semibold text-xs px-2.5 py-1 rounded-lg bg-orange-50 border border-orange-200 shadow-sm">
-                                Apps [B2B Engine]
-                            </span>
-                        </span>
+                        <a href="#" className="flex items-center group">
+                            <div className="relative h-10 w-44 sm:w-52">
+                                <Image
+                                    src="/app-brand/logo-boontrack-app.png"
+                                    alt="BoonTrack Apps"
+                                    fill
+                                    priority
+                                    className="object-contain object-left group-hover:opacity-90 transition"
+                                />
+                            </div>
+                        </a>
                     </div>
 
                     <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
@@ -66,12 +71,14 @@ export default function AppPortalPage() {
                     </nav>
 
                     <div className="flex items-center gap-3">
-                        <Link
-                            href="/onboarding"
+                        <a
+                            href="https://boontrack.com/onboarding"
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="px-5 py-2.5 rounded-xl bg-slate-950 text-white font-extrabold text-xs sm:text-sm hover:bg-slate-800 shadow-md transition transform active:scale-95"
                         >
                             Uji Coba Integrasi &rarr;
-                        </Link>
+                        </a>
                     </div>
                 </div>
             </header>
@@ -87,10 +94,7 @@ export default function AppPortalPage() {
                     <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-slate-950 leading-[1.15] max-w-5xl mx-auto">
                         Bisnis canggih, <br className="hidden sm:inline" />
                         <span className="relative inline-block px-4 py-1 my-2">
-                            {/* Background marker kuning lembut ala Odoo */}
                             <span className="absolute inset-0 bg-amber-300 rotate-[-1.5deg] rounded-2xl shadow-sm -z-10"></span>
-
-                            {/* Teks hitam pekat agar sangat kontras dan jelas dibaca, dengan aksen warna ceria */}
                             <span className="font-handwriting text-5xl sm:text-7xl font-bold tracking-wider text-slate-950 drop-shadow-sm">
                                 tanpa <span className="text-indigo-700">repot</span> <span className="text-orange-600">install</span> <span className="text-rose-700">aplikasi.</span>
                             </span>
@@ -102,21 +106,23 @@ export default function AppPortalPage() {
                     </p>
 
                     <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-                        <Link
-                            href="/onboarding"
-                            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-orange-600 text-white font-black text-sm hover:bg-orange-700 shadow-xl shadow-orange-600/20 transition transform hover:-translate-y-0.5 active:translate-y-0"
+                        <a
+                            href="https://boontrack.com/onboarding"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-orange-600 text-white font-black text-sm hover:bg-orange-700 shadow-xl shadow-orange-600/20 transition transform hover:-translate-y-0.5 active:translate-y-0 text-center"
                         >
                             Mulai Bangun Tanpa Friksi
-                        </Link>
+                        </a>
                         <a
                             href="#hardware"
-                            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white border border-slate-300 text-slate-800 font-bold text-sm hover:bg-slate-50 shadow-sm transition"
+                            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white border border-slate-300 text-slate-800 font-bold text-sm hover:bg-slate-50 shadow-sm transition text-center"
                         >
                             Lihat Integrasi Perangkat &rarr;
                         </a>
                     </div>
 
-                    {/* Odoo Style Grid */}
+                    {/* App Grid */}
                     <div className="mt-16 pt-12 border-t border-slate-200">
                         <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-8">
                             Ekosistem Lengkap Terintegrasi Dalam 1 Backend
@@ -162,7 +168,7 @@ export default function AppPortalPage() {
                 </div>
             </section>
 
-            {/* Omnichannel Section with Dynamic Terminal Simulator */}
+            {/* Omnichannel Live Terminal */}
             <section id="channels" className="py-20 max-w-7xl mx-auto px-6 border-b border-slate-200">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                     <div>
@@ -185,7 +191,6 @@ export default function AppPortalPage() {
                         </div>
                     </div>
 
-                    {/* Live Animated Terminal Box */}
                     <div className="bg-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-2xl border border-slate-800 relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-2xl pointer-events-none"></div>
                         <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
@@ -241,7 +246,7 @@ export default function AppPortalPage() {
                         </p>
                     </div>
 
-                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-orange-300 transition group">
+                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-300 transition group">
                         <div className="text-3xl mb-4 group-hover:scale-110 transition transform origin-left">🚪</div>
                         <h3 className="text-lg font-bold text-slate-950 mb-2">Doorlock & Turnstile Gate</h3>
                         <p className="text-xs text-slate-600 leading-relaxed">
@@ -249,7 +254,7 @@ export default function AppPortalPage() {
                         </p>
                     </div>
 
-                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-orange-300 transition group">
+                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-300 transition group">
                         <div className="text-3xl mb-4 group-hover:scale-110 transition transform origin-left">🔌</div>
                         <h3 className="text-lg font-bold text-slate-950 mb-2">Custom Peripheral API</h3>
                         <p className="text-xs text-slate-600 leading-relaxed">
@@ -274,12 +279,14 @@ export default function AppPortalPage() {
                         Kami mengonfigurasi alur chat, menghubungkan hardware, dan memastikan metrik operasional tercapai tanpa friksi.
                     </p>
                     <div className="mt-8 flex justify-center">
-                        <Link
-                            href="/onboarding"
+                        <a
+                            href="https://boontrack.com/onboarding"
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="px-8 py-4 rounded-xl bg-white text-orange-600 font-black text-sm hover:bg-orange-50 shadow-lg transition transform active:scale-95"
                         >
                             Mulai Integrasi Bisnis &rarr;
-                        </Link>
+                        </a>
                     </div>
                 </div>
             </section>
