@@ -45,7 +45,7 @@ export default function AppPortalPage() {
                 Tanpa install app untuk pelanggan. Seluruh interaksi CRM & Transaksi berjalan via Chat & Hardware API.
             </div>
 
-            {/* Header dengan Block Gelap Khusus Logo */}
+            {/* Header */}
             <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
                 <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -65,6 +65,7 @@ export default function AppPortalPage() {
                     </div>
 
                     <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
+                        <a href="#solutions" className="hover:text-orange-600 transition">Solusi Industri</a>
                         <a href="#channels" className="hover:text-orange-600 transition">Zero-App Channels</a>
                         <a href="#hardware" className="hover:text-orange-600 transition">POS & Peripheral API</a>
                         <a href="https://shop.boontrack.com" target="_blank" rel="noopener noreferrer" className="hover:text-slate-950 transition flex items-center gap-1">
@@ -79,7 +80,7 @@ export default function AppPortalPage() {
                             rel="noopener noreferrer"
                             className="px-5 py-2.5 rounded-xl bg-slate-950 text-white font-extrabold text-xs sm:text-sm hover:bg-slate-800 shadow-md transition transform active:scale-95"
                         >
-                            Uji Coba Integrasi &rarr;
+                            Audit Operasional Gratis &rarr;
                         </a>
                     </div>
                 </div>
@@ -114,7 +115,7 @@ export default function AppPortalPage() {
                             rel="noopener noreferrer"
                             className="w-full sm:w-auto px-8 py-4 rounded-xl bg-orange-600 text-white font-black text-sm hover:bg-orange-700 shadow-xl shadow-orange-600/20 transition transform hover:-translate-y-0.5 active:translate-y-0 text-center"
                         >
-                            Mulai Bangun Tanpa Friksi
+                            Jadwalkan Audit Operasional Gratis
                         </a>
                         <a
                             href="#hardware"
@@ -166,6 +167,63 @@ export default function AppPortalPage() {
                                 <span className="text-[10px] text-slate-400">IoT Gate API</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Industry Use-Cases Section */}
+            <section id="solutions" className="py-20 max-w-7xl mx-auto px-6 border-b border-slate-200">
+                <div className="text-center max-w-3xl mx-auto mb-16">
+                    <span className="text-xs font-bold uppercase tracking-widest text-orange-600">Skenario Nyata</span>
+                    <h2 className="text-3xl sm:text-4xl font-black text-slate-950 mt-2">
+                        Dirancang untuk Kebutuhan Spesifik Industri Anda
+                    </h2>
+                    <p className="mt-4 text-slate-600 text-sm sm:text-base">
+                        Satu engine yang langsung beradaptasi dengan model operasional bisnis Anda tanpa merombak perangkat keras eksisting.
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm hover:border-orange-400 hover:shadow-md transition flex flex-col justify-between">
+                        <div>
+                            <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center text-2xl mb-6">🏋️‍♂️</div>
+                            <h3 className="text-xl font-bold text-slate-950 mb-3">Gym & Fitness Club</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed mb-6">
+                                Pendaftaran & bayar membership tuntas di WhatsApp. Check-in otomatis dengan NFC tap atau barcode tanpa staf jaga pintu 24 jam.
+                            </p>
+                        </div>
+                        <ul className="space-y-2 border-t border-slate-100 pt-4 text-xs font-semibold text-slate-700">
+                            <li className="flex items-center gap-2">✓ Integrasi Turnstile / Doorlock</li>
+                            <li className="flex items-center gap-2">✓ Notifikasi jatuh tempo otomatis</li>
+                        </ul>
+                    </div>
+
+                    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm hover:border-orange-400 hover:shadow-md transition flex flex-col justify-between">
+                        <div>
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl mb-6">☕</div>
+                            <h3 className="text-xl font-bold text-slate-950 mb-3">Kafe & F&B Multi-Cabang</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed mb-6">
+                                Pelanggan pesan langsung dari meja via chat. Struk tercetak seketika di dapur kasir via thermal printer tanpa antre di kasir.
+                            </p>
+                        </div>
+                        <ul className="space-y-2 border-t border-slate-100 pt-4 text-xs font-semibold text-slate-700">
+                            <li className="flex items-center gap-2">✓ Dynamic QRIS 0% biaya platform</li>
+                            <li className="flex items-center gap-2">✓ Auto-print tiket dapur & barista</li>
+                        </ul>
+                    </div>
+
+                    <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm hover:border-orange-400 hover:shadow-md transition flex flex-col justify-between">
+                        <div>
+                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl mb-6">💼</div>
+                            <h3 className="text-xl font-bold text-slate-950 mb-3">Coworking & Venue Rental</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed mb-6">
+                                Sewa ruang meeting atau desk harian. Sistem menerbitkan passcode pintu dinamis yang aktif hanya selama durasi sewa.
+                            </p>
+                        </div>
+                        <ul className="space-y-2 border-t border-slate-100 pt-4 text-xs font-semibold text-slate-700">
+                            <li className="flex items-center gap-2">✓ Sinkronisasi kalender real-time</li>
+                            <li className="flex items-center gap-2">✓ Akses pintu cerdas via IoT API</li>
+                        </ul>
                     </div>
                 </div>
             </section>
@@ -272,13 +330,13 @@ export default function AppPortalPage() {
                     <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
 
                     <span className="text-xs font-bold uppercase tracking-wider text-orange-200 bg-white/20 px-3 py-1 rounded-full border border-white/20">
-                        Outcome As A Service
+                        14-Day Zero-Risk Pilot Implementation
                     </span>
                     <h2 className="text-3xl sm:text-4xl font-black mt-4">
-                        Anda Tentukan Target Hasil, Kami Rekayasa Ekosistemnya.
+                        Uji Coba di Cabang Anda Tanpa Risiko Finansial.
                     </h2>
                     <p className="mt-4 text-orange-100 text-sm leading-relaxed max-w-2xl mx-auto">
-                        Kami mengonfigurasi alur chat, menghubungkan hardware, dan memastikan metrik operasional tercapai tanpa friksi.
+                        Kami rekayasa arsitektur chat dan hardware di 1 cabang Anda selama 14 hari. Tanpa biaya langganan jika sistem gagal mengoptimalkan waktu operasional Anda.
                     </p>
                     <div className="mt-8 flex justify-center">
                         <a
@@ -287,7 +345,7 @@ export default function AppPortalPage() {
                             rel="noopener noreferrer"
                             className="px-8 py-4 rounded-xl bg-white text-orange-600 font-black text-sm hover:bg-orange-50 shadow-lg transition transform active:scale-95"
                         >
-                            Mulai Integrasi Bisnis &rarr;
+                            Klaim Pilot 14 Hari Tanpa Risiko &rarr;
                         </a>
                     </div>
                 </div>
