@@ -73,9 +73,13 @@ export default function AppPortalPage() {
                         <span>Outcome As A Service — No App Installation Needed</span>
                     </div>
 
-                    <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white leading-[1.08] max-w-5xl mx-auto">
+                    <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white leading-[1.12] max-w-5xl mx-auto">
                         Bisnis canggih, <br className="hidden sm:inline" />
-                        <span className="text-orange-500 underline decoration-orange-500/30 decoration-wavy decoration-2">tanpa repot install aplikasi.</span>
+                        <span className="relative inline-block px-3 py-1 my-2">
+                            {/* Marker highlight background ala Odoo */}
+                            <span className="absolute inset-0 bg-orange-500 rotate-[-1deg] rounded-lg shadow-md -z-10"></span>
+                            <span className="text-slate-950 font-extrabold tracking-wide">tanpa repot install aplikasi.</span>
+                        </span>
                     </h1>
 
                     <p className="mt-8 text-base sm:text-xl text-slate-400 max-w-3xl mx-auto leading-relaxed">
