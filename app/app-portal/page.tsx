@@ -87,9 +87,12 @@ export default function AppPortalPage() {
                     <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-slate-950 leading-[1.15] max-w-5xl mx-auto">
                         Bisnis canggih, <br className="hidden sm:inline" />
                         <span className="relative inline-block px-4 py-1 my-2">
-                            <span className="absolute inset-0 bg-amber-300 rotate-[-1.5deg] rounded-2xl shadow-lg -z-10"></span>
-                            <span className="font-handwriting text-5xl sm:text-7xl font-bold tracking-wider text-slate-900 drop-shadow-sm">
-                                tanpa <span className="text-blue-700">repot</span> <span className="text-purple-700">install</span> <span className="text-rose-700">aplikasi.</span>
+                            {/* Background marker kuning lembut ala Odoo */}
+                            <span className="absolute inset-0 bg-amber-300 rotate-[-1.5deg] rounded-2xl shadow-sm -z-10"></span>
+
+                            {/* Teks hitam pekat agar sangat kontras dan jelas dibaca, dengan aksen warna ceria */}
+                            <span className="font-handwriting text-5xl sm:text-7xl font-bold tracking-wider text-slate-950 drop-shadow-sm">
+                                tanpa <span className="text-indigo-700">repot</span> <span className="text-orange-600">install</span> <span className="text-rose-700">aplikasi.</span>
                             </span>
                         </span>
                     </h1>
