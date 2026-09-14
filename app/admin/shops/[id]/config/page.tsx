@@ -136,12 +136,31 @@ export default function ShopConfigPage() {
       const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(shopId)}/config`, {
         cache: 'no-store',
       });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Gagal memuat data toko');
+      
+      const rawText = await res.text();
+      let json: any = null;
+      try {
+        json = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        console.error('Non-JSON response from config GET:', rawText.slice(0, 300));
+        throw new Error(`Respon server tidak valid (${res.status}: ${res.statusText || 'Non-JSON'})`);
       }
 
-      const t = json.tenant as TenantData;
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `Gagal memuat data toko (HTTP ${res.status})`);
+      }
+
+      const t = (json.tenant || {
+        id: json.data?.id || shopId,
+        slug: json.data?.slug || shopId,
+        name: json.data?.name || shopId,
+        tier: json.data?.tier || 'SOLO',
+        status: json.data?.status || 'HEALTHY',
+        is_active: json.data?.is_active ?? true,
+        payment_config: json.data?.payment_config || json.payment_config || {},
+        shipping_config: json.data?.shipping_config || json.shipping_config || {},
+        metadata: json.data || {},
+      }) as TenantData;
       setTenant(t);
 
       // Populate Payment Config
@@ -245,8 +264,14 @@ export default function ShopConfigPage() {
         });
 
         if (res.ok) {
-          const json = await res.json();
-          if (json.status === 'success' && (json.url || json.public_url)) {
+          const rawText = await res.text();
+          let json: any = null;
+          try {
+            json = rawText ? JSON.parse(rawText) : null;
+          } catch {
+            json = null;
+          }
+          if (json && json.status === 'success' && (json.url || json.public_url)) {
             uploadedUrl = json.url || json.public_url;
           }
         }
@@ -378,9 +403,17 @@ export default function ShopConfigPage() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Gagal menyimpan konfigurasi');
+      const rawText = await res.text();
+      let data: any = null;
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        console.error('Non-JSON response from config PATCH:', rawText.slice(0, 300));
+        throw new Error(`Respon server tidak valid (${res.status}: ${res.statusText || 'Non-JSON'})`);
+      }
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || `Gagal menyimpan konfigurasi (HTTP ${res.status})`);
       }
 
       showToast('Konfigurasi toko berhasil disimpan ke database Supabase!', 'success');
@@ -1389,6 +1422,32 @@ export default function ShopConfigPage() {
           </>
         )}
       </div>
+
+      {/* Floating Toast Notification */}
+      {toast && (
+        <div
+          role="alert"
+          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl border backdrop-blur-xl transition-all animate-in fade-in slide-in-from-bottom-5 duration-200 max-w-md ${
+            toast.type === 'success'
+              ? 'bg-slate-900/95 border-emerald-500/50 text-emerald-300 shadow-emerald-950/60'
+              : 'bg-slate-900/95 border-rose-500/50 text-rose-300 shadow-rose-950/60'
+          }`}
+        >
+          {toast.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+          )}
+          <div className="text-xs font-medium leading-relaxed">{toast.message}</div>
+          <button
+            onClick={() => setToast(null)}
+            className="ml-auto text-slate-400 hover:text-white text-xs font-bold p-1 rounded-lg hover:bg-slate-800 transition"
+            aria-label="Tutup notifikasi"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </main>
   );
 }
