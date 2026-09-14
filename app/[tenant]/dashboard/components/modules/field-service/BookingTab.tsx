@@ -34,7 +34,7 @@ export interface BookingSlot {
   address: string;     // Alamat lengkap
   mapsUrl?: string;    // Link Google Maps
   technicianName?: string;
-  status: 'SCHEDULED' | 'ON_THE_WAY' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  status: 'SCHEDULED' | 'AKTIF' | 'PENDING' | 'ON_THE_WAY' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   notes?: string;
 }
 
@@ -116,43 +116,78 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
       try {
         setSummaryTemplate(getStoredBookingTemplate(tenantSlug));
 
-        // 1. Ambil order riil dari Supabase
+        // 1. Ambil order riil dari Supabase & tenant metadata
         const supabase = getSupabase();
         let remoteBookings: BookingSlot[] = [];
         if (supabase) {
           const { data: tenantRow } = await supabase
             .from('tenants')
-            .select('id')
+            .select('id, slug, metadata')
             .eq('slug', tenantSlug)
             .maybeSingle();
 
-          let query = supabase.from('orders').select('*');
-          if (tenantRow?.id) {
-            query = query.or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantRow.id}`);
-          } else {
-            query = query.eq('tenant_slug', tenantSlug);
-          }
+          // Ambil jadwal booking dari metadata tenant jika ada
+          const metadataBookings: BookingSlot[] = Array.isArray(tenantRow?.metadata?.bookings)
+            ? tenantRow.metadata.bookings
+            : [];
 
-          const { data: orders } = await query
+          const { data: orders } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('tenant_slug', tenantSlug)
             .order('created_at', { ascending: false })
-            .limit(50);
+            .limit(100);
 
+          let orderBookings: BookingSlot[] = [];
           if (Array.isArray(orders) && orders.length > 0) {
-            remoteBookings = orders
-              .filter((o) => o.product_type === 'SERVICE' || o.product_type === 'FIELD_SERVICE' || o.shipping_address)
-              .map((o) => ({
+            orderBookings = orders.map((o) => {
+              let parsedUtm: any = {};
+              if (o.utm_content) {
+                try {
+                  parsedUtm = typeof o.utm_content === 'string' ? JSON.parse(o.utm_content) : o.utm_content;
+                } catch {}
+              }
+
+              const serviceName = parsedUtm?.service_item || o.product_title || 'Layanan Toren';
+              const address = parsedUtm?.address || o.shipping_address || 'Karawang';
+              const date = parsedUtm?.scheduled_at || o.service_schedule || new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+              const timeSlot = parsedUtm?.time_slot || o.time_slot || '09:00 - 12:00 WIB';
+              const paymentMethod = parsedUtm?.payment_method || 'COD';
+              const rawStatus = (o.status || '').toUpperCase();
+              const status: BookingSlot['status'] =
+                rawStatus === 'COMPLETED'
+                  ? 'COMPLETED'
+                  : rawStatus === 'IN_PROGRESS' || rawStatus === 'PROCESSING'
+                  ? 'IN_PROGRESS'
+                  : rawStatus === 'AKTIF' || rawStatus === 'ACTIVE'
+                  ? 'AKTIF'
+                  : rawStatus === 'PENDING'
+                  ? 'PENDING'
+                  : 'SCHEDULED';
+
+              return {
                 id: o.id,
                 customerName: o.customer_name || 'Pelanggan',
                 phone: o.customer_phone || '-',
-                serviceName: o.product_title || 'Layanan Toren',
-                date: o.service_schedule || new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
-                timeSlot: o.time_slot || '09:00 - 12:00 WIB',
-                address: o.shipping_address || 'Alamat dikonfirmasi via WA',
+                serviceName,
+                date,
+                timeSlot,
+                address,
                 mapsUrl: o.maps_url || undefined,
                 technicianName: o.technician_name || 'Tim Teknisi',
-                status: (o.status === 'COMPLETED' ? 'COMPLETED' : (o.status === 'PROCESSING' || o.status === 'IN_PROGRESS') ? 'IN_PROGRESS' : 'SCHEDULED'),
-                notes: o.notes || undefined,
-              }));
+                status,
+                notes: o.notes || `Metode: ${paymentMethod} | Estimasi: Rp ${Number(o.gross_amount || 0).toLocaleString('id-ID')}`,
+              };
+            });
+          }
+
+          // Gabungkan tanpa duplikat id
+          const seen = new Set<string>();
+          for (const b of [...metadataBookings, ...orderBookings]) {
+            if (b && b.id && !seen.has(b.id)) {
+              seen.add(b.id);
+              remoteBookings.push(b);
+            }
           }
         }
 
@@ -195,9 +230,31 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
     }
   };
 
-  const updateStatus = (id: string, newStatus: BookingSlot['status']) => {
+  const updateStatus = async (id: string, newStatus: BookingSlot['status']) => {
     const updated = bookings.map((b) => (b.id === id ? { ...b, status: newStatus } : b));
     saveBookingsState(updated);
+
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        await supabase.from('orders').update({ status: newStatus }).eq('id', id);
+        const { data } = await supabase
+          .from('tenants')
+          .select('id, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        if (data && Array.isArray(data.metadata?.bookings)) {
+          const updatedMetaBookings = data.metadata.bookings.map((b: any) =>
+            b.id === id ? { ...b, status: newStatus } : b
+          );
+          await supabase
+            .from('tenants')
+            .update({ metadata: { ...data.metadata, bookings: updatedMetaBookings } })
+            .eq('id', data.id);
+        }
+      }
+    } catch {}
   };
 
   const handleCopyWA = (item: BookingSlot) => {
@@ -209,7 +266,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
     }, 2500);
   };
 
-  const handleCreateBooking = (e: React.FormEvent) => {
+  const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalUkuran = formUkuran === 'CUSTOM' ? (formCustomUkuran.trim() || 'Kustom') : formUkuran;
     const finalTime = formTimeSlot === 'CUSTOM' ? (formCustomTime.trim() || 'Fleksibel') : formTimeSlot;
@@ -224,11 +281,32 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
       address: formAddress.trim(),
       mapsUrl: formMapsUrl.trim() || undefined,
       technicianName: formTechnician,
-      status: 'SCHEDULED',
+      status: 'AKTIF',
       notes: formNotes.trim() || undefined,
     };
 
     saveBookingsState([newBooking, ...bookings]);
+
+    // Simpan ke Supabase tenant metadata agar sinkron lintas perangkat
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data } = await supabase
+          .from('tenants')
+          .select('id, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        if (data) {
+          const current = Array.isArray(data.metadata?.bookings) ? data.metadata.bookings : [];
+          await supabase
+            .from('tenants')
+            .update({ metadata: { ...data.metadata, bookings: [newBooking, ...current].slice(0, 100) } })
+            .eq('id', data.id);
+        }
+      }
+    } catch {}
+
     setIsModalOpen(false);
 
     // Reset Form
@@ -242,7 +320,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
   };
 
   const filtered = bookings.filter((b) => {
-    if (activeFilter === 'ACTIVE') return b.status === 'SCHEDULED' || b.status === 'ON_THE_WAY' || b.status === 'IN_PROGRESS';
+    if (activeFilter === 'ACTIVE') return b.status === 'SCHEDULED' || b.status === 'AKTIF' || b.status === 'PENDING' || b.status === 'ON_THE_WAY' || b.status === 'IN_PROGRESS';
     if (activeFilter === 'COMPLETED') return b.status === 'COMPLETED';
     return true;
   });
@@ -321,8 +399,8 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
 
         {!loading && filtered.map((item) => {
           const isDone = item.status === 'COMPLETED';
-          const isInProg = item.status === 'IN_PROGRESS';
-          const isSched = item.status === 'SCHEDULED';
+          const isInProg = item.status === 'IN_PROGRESS' || item.status === 'ON_THE_WAY';
+          const isSched = item.status === 'SCHEDULED' || item.status === 'AKTIF' || item.status === 'PENDING';
           const isCopied = copiedId === item.id;
           const waMessage = formatFieldServiceWhatsAppMessage(item, summaryTemplate);
 
@@ -334,6 +412,8 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                   ? 'border-blue-400 ring-2 ring-blue-100/70'
                   : isDone
                   ? 'border-slate-200 opacity-90'
+                  : item.status === 'AKTIF'
+                  ? 'border-blue-200 ring-1 ring-blue-50'
                   : 'border-slate-200 hover:border-slate-300'
               }`}
             >
@@ -362,10 +442,12 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                         ? 'bg-blue-50 text-blue-700 border-blue-200 animate-pulse'
                         : isDone
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : item.status === 'AKTIF'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
                         : 'bg-amber-50 text-amber-700 border-amber-200'
                     }`}
                   >
-                    {isInProg ? '🛠️ SEDANG DIKERJAKAN' : isDone ? '✅ SELESAI' : '📅 TERJADWAL'}
+                    {isInProg ? '🛠️ SEDANG DIKERJAKAN' : isDone ? '✅ SELESAI' : item.status === 'AKTIF' ? '⚡ AKTIF' : '📅 TERJADWAL'}
                   </span>
                 </div>
               </div>

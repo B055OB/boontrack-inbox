@@ -57,9 +57,7 @@ export async function GET(req: NextRequest) {
     }
 
     let query = supabase.from('orders').select('*');
-    if (tenantId && tenantSlug) {
-      query = query.or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantId}`);
-    } else if (tenantSlug) {
+    if (tenantSlug) {
       query = query.eq('tenant_slug', tenantSlug);
     }
 

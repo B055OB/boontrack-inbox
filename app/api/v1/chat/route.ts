@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { getTenantCheckoutUrl } from '@/lib/checkout-link';
+import { processFunnelBookingMessage } from '@/lib/booking-extraction-service';
 import {
   InteractiveMenu,
   findMenuResponseAcrossMenus,
@@ -74,6 +75,27 @@ export async function POST(req: NextRequest) {
       : [];
     const botMode: 'STATIC' | 'HYBRID' | 'AI' = String(tenantMetadata.bot_mode || 'HYBRID').toUpperCase() as any;
     const channel = body.channel || 'WAHA';
+
+    // --- CLOSING-SIGNAL FUNNEL INTERCEPTOR & BOOKING AUTO-EXTRACTION ---
+    const senderPhone = body.sender_phone || body.phone_number || body.from || body.user_identifier || '';
+    const funnelRes = await processFunnelBookingMessage({
+      tenantSlug: slug,
+      senderPhone,
+      message,
+      interactiveReply: body.interactive_reply,
+    });
+
+    if (funnelRes.isHandled && funnelRes.replyText) {
+      return NextResponse.json({
+        success: true,
+        reply: funnelRes.replyText,
+        tenant_id: slug,
+        tenant_slug: slug,
+        checkout_url: checkoutUrl,
+        type: funnelRes.isBookingCreated ? 'BOOKING_CONFIRMED' : 'TEXT',
+        booking: funnelRes.bookingData,
+      });
+    }
 
     // --- INBOUND FAST-PATH 1: WABA Interactive Reply / Numbered Option Match (BYPASS LLM) ---
     const inputKey = body.interactive_reply?.id || body.interactive_reply?.title || message;
