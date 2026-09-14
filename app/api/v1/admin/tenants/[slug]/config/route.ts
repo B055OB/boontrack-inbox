@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export interface BankAccount {
   bank_name: string;
   account_number: string;
@@ -39,13 +42,60 @@ export interface ShippingConfig {
   regular_couriers: string[];
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Helper to fetch tenant safely by slug or UUID id without crashing PostgreSQL UUID parser
+async function findTenant(supabaseAdmin: any, identifier: string) {
+  const cleanId = decodeURIComponent(identifier || '').trim();
+  if (!cleanId) return null;
+
+  const isUuid = UUID_REGEX.test(cleanId);
+  let query = supabaseAdmin
+    .from('tenants')
+    .select('id, slug, name, tier, status, is_active, metadata');
+
+  if (isUuid) {
+    query = query.or(`slug.eq.${cleanId},id.eq.${cleanId}`);
+  } else {
+    query = query.eq('slug', cleanId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (data) return data;
+
+  // Case-insensitive fallback if slug was uppercase or mixed case
+  if (!isUuid) {
+    const { data: fallbackData } = await supabaseAdmin
+      .from('tenants')
+      .select('id, slug, name, tier, status, is_active, metadata')
+      .ilike('slug', cleanId)
+      .maybeSingle();
+    if (fallbackData) return fallbackData;
+  }
+
+  return null;
+}
+
+// OPTIONS: Handle CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, PATCH, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
+}
+
 // GET: Fetch existing configuration for the tenant
 export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
+  _req: Request | NextRequest,
+  { params }: { params: Promise<{ slug: string }> | { slug: string } }
 ) {
   try {
-    const { slug } = await params;
+    const resolvedParams = await params;
+    const slug = resolvedParams?.slug;
     if (!slug) {
       return NextResponse.json(
         { success: false, error: 'Tenant identifier is required' },
@@ -61,19 +111,7 @@ export async function GET(
       );
     }
 
-    // Support lookup by either slug or UUID id
-    const { data: tenant, error: fetchErr } = await supabaseAdmin
-      .from('tenants')
-      .select('id, slug, name, tier, status, is_active, metadata')
-      .or(`slug.eq.${slug},id.eq.${slug}`)
-      .maybeSingle();
-
-    if (fetchErr) {
-      return NextResponse.json(
-        { success: false, error: fetchErr.message },
-        { status: 500 }
-      );
-    }
+    const tenant = await findTenant(supabaseAdmin, slug);
 
     if (!tenant) {
       return NextResponse.json(
@@ -137,11 +175,12 @@ export async function GET(
 
 // PATCH: Update tenant payment and shipping configuration in Supabase
 export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
+  req: Request | NextRequest,
+  { params }: { params: Promise<{ slug: string }> | { slug: string } }
 ) {
   try {
-    const { slug } = await params;
+    const resolvedParams = await params;
+    const slug = resolvedParams?.slug;
     if (!slug) {
       return NextResponse.json(
         { success: false, error: 'Tenant identifier is required' },
@@ -160,19 +199,8 @@ export async function PATCH(
       );
     }
 
-    // 1. Fetch current tenant record
-    const { data: tenant, error: fetchErr } = await supabaseAdmin
-      .from('tenants')
-      .select('id, slug, name, metadata')
-      .or(`slug.eq.${slug},id.eq.${slug}`)
-      .maybeSingle();
-
-    if (fetchErr) {
-      return NextResponse.json(
-        { success: false, error: fetchErr.message },
-        { status: 500 }
-      );
-    }
+    // 1. Fetch current tenant record safely
+    const tenant = await findTenant(supabaseAdmin, slug);
 
     if (!tenant) {
       return NextResponse.json(
