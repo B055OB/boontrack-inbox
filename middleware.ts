@@ -7,16 +7,16 @@ import type { NextRequest } from 'next/server';
  * ============================================================
  */
 
-// In-Memory Cache untuk Custom Domain Lookup (TTL 5 menit)
+// In-Memory Cache untuk Custom Domain Lookup (TTL 5 menit)[cite: 5]
 interface DomainCacheEntry {
   slug: string | null;
   timestamp: number;
 }
 
 const domainCache = new Map<string, DomainCacheEntry>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit[cite: 5]
 
-// Known B2B Tenant Slugs (webchat + CS inbox engine)
+// Known B2B Tenant Slugs (webchat + CS inbox engine)[cite: 5]
 const B2B_TENANT_SLUGS = new Set([
   'atmosfitnes',
   'nyka', 'nyka-hijab', 'nyka-modest', 'nyka-store',
@@ -26,14 +26,14 @@ const B2B_TENANT_SLUGS = new Set([
   'om-budi', 'om_budi', 'ombudi', 'boontrack-demo', 'boontrack-holding', 'holding',
 ]);
 
-// Known Career/Jobseeker Profile subdomains
+// Known Career/Jobseeker Profile subdomains[cite: 5]
 const CAREER_KNOWN_SLUGS = new Set([
   'cv', 'career', 'resume', 'profile',
   'rayi-gemilang', 'rayi',
 ]);
 
 /**
- * Helper untuk menentukan apakah hostname adalah domain internal sistem atau official BoonTrack
+ * Helper untuk menentukan apakah hostname adalah domain internal sistem atau official BoonTrack[cite: 5]
  */
 function isSystemOrBoonTrackHost(hostClean: string): boolean {
   if (
@@ -46,17 +46,17 @@ function isSystemOrBoonTrackHost(hostClean: string): boolean {
     return true;
   }
 
-  // Vercel deployment / preview domains
+  // Vercel deployment / preview domains[cite: 5]
   if (hostClean.endsWith('.vercel.app')) {
     return true;
   }
 
-  // shop.boontrack.com
+  // shop.boontrack.com[cite: 5]
   if (hostClean === 'shop.boontrack.com') {
     return true;
   }
 
-  // BoonTrack official domain & subdomains
+  // BoonTrack official domain & subdomains[cite: 5]
   if (
     hostClean === 'boontrack.com' ||
     hostClean === 'www.boontrack.com' ||
@@ -69,10 +69,10 @@ function isSystemOrBoonTrackHost(hostClean: string): boolean {
 }
 
 /**
- * Lookup slug tenant berdasarkan custom domain:
- * 1. Cek memory cache (TTL 5 menit)
- * 2. Fetch ke Core Backend GET /api/v1/store/lookup-by-domain?domain={hostname} (revalidate 300s)
- * 3. Fallback ke Supabase REST jika Core Backend 404 / offline
+ * Lookup slug tenant berdasarkan custom domain:[cite: 5]
+ * 1. Cek memory cache (TTL 5 menit)[cite: 5]
+ * 2. Fetch ke Core Backend GET /api/v1/store/lookup-by-domain?domain={hostname} (revalidate 300s)[cite: 5]
+ * 3. Fallback ke Supabase REST jika Core Backend 404 / offline[cite: 5]
  */
 async function lookupTenantByDomain(hostname: string): Promise<string | null> {
   const cached = domainCache.get(hostname);
@@ -88,7 +88,7 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
     process.env.CORE_BACKEND_URL ||
     'https://boontrack-core-production.up.railway.app';
 
-  // 1. Fetch lookup ke Core Backend
+  // 1. Fetch lookup ke Core Backend[cite: 5]
   try {
     const lookupUrl = `${coreApiUrl.replace(/\/$/, '')}/api/v1/store/lookup-by-domain?domain=${encodeURIComponent(hostname)}`;
     const res = await fetch(lookupUrl, {
@@ -96,7 +96,7 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
       headers: {
         'Content-Type': 'application/json',
       },
-      next: { revalidate: 300 }, // Revalidate 5 menit
+      next: { revalidate: 300 }, // Revalidate 5 menit[cite: 5]
     });
 
     if (res.ok) {
@@ -107,7 +107,7 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
     console.warn('[middleware] Core backend lookup error:', err);
   }
 
-  // 2. Fallback Supabase REST (Single Source of Truth)
+  // 2. Fallback Supabase REST (Single Source of Truth)[cite: 5]
   if (!slug) {
     try {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
@@ -134,13 +134,13 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
     }
   }
 
-  // Simpan ke in-memory cache
+  // Simpan ke in-memory cache[cite: 5]
   domainCache.set(hostname, { slug, timestamp: now });
   return slug;
 }
 
 /**
- * Extract subdomain from incoming request hostname for *.boontrack.com.
+ * Extract subdomain from incoming request hostname for *.boontrack.com.[cite: 5]
  */
 function extractSubdomain(hostWithPort: string): string | null {
   const hostClean = hostWithPort.split(':')[0].toLowerCase().trim();
@@ -171,9 +171,8 @@ function extractSubdomain(hostWithPort: string): string | null {
   return null;
 }
 
-
 /**
- * Helper untuk memeriksa apakah request memiliki sesi login Supabase Auth / Merchant Store aktif
+ * Helper untuk memeriksa apakah request memiliki sesi login Supabase Auth / Merchant Store aktif[cite: 5]
  */
 function hasAuthSession(req: NextRequest): boolean {
   const allCookies = req.cookies.getAll();
@@ -193,11 +192,11 @@ function hasAuthSession(req: NextRequest): boolean {
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
 
-  // 1. BYPASS API & STATIC LANGSUNG TANPA SENTUH SUBDOMAIN/KV REWRITE
+  // 1. BYPASS API & STATIC LANGSUNG TANPA SENTUH SUBDOMAIN/KV REWRITE[cite: 5]
   if (
-    pathname.startsWith('/api/') || 
+    pathname.startsWith('/api/') ||
     pathname === '/api' ||
-    pathname.startsWith('/_next/') || 
+    pathname.startsWith('/_next/') ||
     pathname.startsWith('/static') ||
     pathname === '/favicon.ico' ||
     pathname === '/apple-touch-icon.png' ||
@@ -207,12 +206,12 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV
+  // 2. KHUSUS /admin: JANGAN PERNAH DI-REWRITE KE CAREER/KV[cite: 5]
   if (pathname.startsWith('/admin')) {
     return NextResponse.next();
   }
 
-  // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===
+  // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===[cite: 5]
   const isDashboardPath =
     pathname === '/dashboard' ||
     pathname.startsWith('/dashboard/') ||
@@ -231,13 +230,13 @@ export async function middleware(req: NextRequest) {
   const host = req.headers.get('host') || '';
   const hostClean = host.split(':')[0].toLowerCase().trim();
 
-  // ── 1. CUSTOM DOMAIN LOOKUP & REWRITE ──
-  // Jika request BUKAN dari domain sistem / boontrack (misal: ombudi.com atau toko.ombudi.com)
+  // ── 1. CUSTOM DOMAIN LOOKUP & REWRITE ──[cite: 5]
+  // Jika request BUKAN dari domain sistem / boontrack (misal: ombudi.com atau toko.ombudi.com)[cite: 5]
   if (!isSystemOrBoonTrackHost(hostClean) && hostClean.length > 0) {
     const slug = await lookupTenantByDomain(hostClean);
 
     if (slug) {
-      // Slug ditemukan: rewrite internal ke /${slug}... tanpa mengubah URL di browser pengunjung
+      // Slug ditemukan: rewrite internal ke /${slug}... tanpa mengubah URL di browser pengunjung[cite: 5]
       const url = req.nextUrl.clone();
       const cleanPath = pathname.startsWith(`/${slug}`)
         ? pathname
@@ -245,14 +244,14 @@ export async function middleware(req: NextRequest) {
       url.pathname = cleanPath;
       return NextResponse.rewrite(url);
     } else {
-      // Domain tidak ditemukan atau belum terdaftar: rewrite ke /404-store-not-found
+      // Domain tidak ditemukan atau belum terdaftar: rewrite ke /404-store-not-found[cite: 5]
       const url = req.nextUrl.clone();
       url.pathname = '/404-store-not-found';
       return NextResponse.rewrite(url);
     }
   }
 
-  // ── 2. Universal pass-through: Auth/Checkout, Manager, Pricing & Vertical Apps ──
+  // ── 2. Universal pass-through: Auth/Checkout, Manager, Pricing, Legal & Vertical Apps ──[cite: 5]
   if (
     pathname === '/register' ||
     pathname.startsWith('/register/') ||
@@ -282,12 +281,17 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith('/terms/') ||
     pathname === '/privacy' ||
     pathname.startsWith('/privacy/') ||
+    pathname === '/privacy-policy' ||
+    pathname.startsWith('/privacy-policy') ||
+    pathname === '/data-deletion' ||
+    pathname.startsWith('/data-deletion') ||
     pathname === '/acceptable-use' ||
     pathname.startsWith('/acceptable-use/') ||
     pathname === '/refund' ||
     pathname.startsWith('/refund/') ||
     pathname === '/store-original' ||
     pathname.startsWith('/store-original/') ||
+    pathname.startsWith('/app-portal') ||
     pathname.startsWith('/gym') ||
     pathname.startsWith('/pos') ||
     pathname.startsWith('/hotel') ||
@@ -296,23 +300,41 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // ── 2b. /admin always resolves to Super Admin Panel ──
+  // ── 2b. /admin always resolves to Super Admin Panel ──[cite: 5]
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
     return NextResponse.next();
   }
 
-  // ── 3. Root / system hostnames & App Hub pass-through ──
+  // ── 3. KHUSUS APP.BOONTRACK.COM (Isolasi ke /app-portal) ──
+  if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
+    const url = req.nextUrl.clone();
+    if (pathname === '/' || pathname === '') {
+      url.pathname = '/app-portal';
+      return NextResponse.rewrite(url);
+    }
+    if (!pathname.startsWith('/app-portal')) {
+      url.pathname = `/app-portal${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+    return NextResponse.next();
+  }
+
+  // ── 4. KHUSUS SHOP.BOONTRACK.COM (100% Pass-Through Alami) ──[cite: 5]
+  // Membiarkan Next.js merender app/page.tsx (klaim toko) dan app/[tenant] secara natural[cite: 5]
+  if (hostClean === 'shop.boontrack.com' || hostClean.startsWith('shop.')) {
+    return NextResponse.next();
+  }
+
+  // ── 5. Root domain boontrack.com & www.boontrack.com pass-through ──[cite: 5]
   if (
     hostClean === 'localhost' ||
     hostClean === 'boontrack.com' ||
-    hostClean === 'www.boontrack.com' ||
-    hostClean === 'app.boontrack.com' ||
-    hostClean.startsWith('app.')
+    hostClean === 'www.boontrack.com'
   ) {
     return NextResponse.next();
   }
 
-  // admin.boontrack.com → pass straight to /admin
+  // admin.boontrack.com → pass straight to /admin[cite: 5]
   if (hostClean === 'admin.boontrack.com' || hostClean.startsWith('admin.')) {
     const url = req.nextUrl.clone();
     if (pathname === '/' || pathname === '') {
@@ -324,12 +346,12 @@ export async function middleware(req: NextRequest) {
 
   const subdomain = extractSubdomain(host);
 
-  if (!subdomain || subdomain === 'www' || subdomain === 'app') {
+  if (!subdomain || subdomain === 'www') {
     return NextResponse.next();
   }
 
   // ===========================================================================
-  // SUBDOMAIN: manager.boontrack.com (Affiliate & Agency Manager Control Plane)
+  // SUBDOMAIN: manager.boontrack.com (Affiliate & Agency Manager Control Plane)[cite: 5]
   // ===========================================================================
   if (subdomain === 'manager') {
     const url = req.nextUrl.clone();
@@ -345,7 +367,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // SUBDOMAIN: affiliate.boontrack.com (Affiliate Marketer Hub & Leaderboard)
+  // SUBDOMAIN: affiliate.boontrack.com (Affiliate Marketer Hub & Leaderboard)[cite: 5]
   // ===========================================================================
   if (subdomain === 'affiliate') {
     const url = req.nextUrl.clone();
@@ -361,7 +383,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // SPECIAL DOMAIN: login.boontrack.com & shop.boontrack.com
+  // SPECIAL DOMAIN: login.boontrack.com & shop.boontrack.com[cite: 5]
   // ===========================================================================
   if (subdomain === 'login') {
     const url = req.nextUrl.clone();
@@ -377,7 +399,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // SPECIAL DOMAIN: bossob.boontrack.com
+  // SPECIAL DOMAIN: bossob.boontrack.com[cite: 5]
   // ===========================================================================
   if (subdomain === 'bossob') {
     if (pathname.startsWith('/api') || pathname.startsWith('/admin')) {
@@ -404,7 +426,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // SPECIAL DOMAIN: chat.boontrack.com
+  // SPECIAL DOMAIN: chat.boontrack.com[cite: 5]
   // ===========================================================================
   if (subdomain === 'chat') {
     const url = req.nextUrl.clone();
@@ -422,7 +444,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // 4. Explicit B2B Tenant Slugs
+  // 4. Explicit B2B Tenant Slugs[cite: 5]
   // ===========================================================================
   if (B2B_TENANT_SLUGS.has(subdomain)) {
     const url = req.nextUrl.clone();
@@ -455,7 +477,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // 5. Career Profile Subdomains
+  // 5. Career Profile Subdomains[cite: 5]
   // ===========================================================================
   if (CAREER_KNOWN_SLUGS.has(subdomain)) {
     const url = req.nextUrl.clone();
@@ -479,13 +501,13 @@ export async function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // 6. Dynamic B2B Tenant Fallback
+  // 6. Dynamic B2B Tenant Fallback[cite: 5]
   // ===========================================================================
   {
-    // Safeguard: Do not process system reserved subdomains as dynamic B2B tenants
+    // Safeguard: Jangan rewrite subdomain cadangan sistem[cite: 5]
     const RESERVED_SUBDOMAINS = new Set([
       'login', 'register', 'daftar', 'api', 'dashboard', 'auth', 'admin',
-      'affiliate', 'manager', 'shop', 'www', 'app', 'static'
+      'affiliate', 'manager', 'shop', 'www', 'app', 'career', 'static'
     ]);
     if (RESERVED_SUBDOMAINS.has(subdomain)) {
       return NextResponse.next();
