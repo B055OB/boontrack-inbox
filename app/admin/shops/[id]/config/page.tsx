@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -28,8 +28,11 @@ import {
   ChevronRight,
   Info,
   Layers,
+  UploadCloud,
+  Upload,
 } from 'lucide-react';
 import { BankAccount, PaymentConfig, ShippingConfig } from '@/app/api/v1/admin/tenants/[slug]/config/route';
+import { getSupabase } from '@/lib/supabaseClient';
 
 const MASTER_PIN = '998877';
 
@@ -91,6 +94,9 @@ export default function ShopConfigPage() {
     { bank_name: 'BCA', account_number: '', account_name: '' },
   ]);
   const [qrisImageUrl, setQrisImageUrl] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingQris, setUploadingQris] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Gateway Form States
   const [gatewayProvider, setGatewayProvider] = useState<'duitku' | 'xendit' | 'midtrans'>('duitku');
@@ -203,6 +209,115 @@ export default function ShopConfigPage() {
       copy[index] = { ...copy[index], [field]: value };
       return copy;
     });
+  };
+
+  // QRIS Direct File Upload Handler
+  const handleQrisFileUpload = async (file: File) => {
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      showToast('Format file tidak didukung. Gunakan PNG, JPEG, atau WEBP.', 'error');
+      return;
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Ukuran file terlalu besar (maksimal 5 MB).', 'error');
+      return;
+    }
+
+    setUploadingQris(true);
+    try {
+      let uploadedUrl = '';
+
+      // 1. Coba upload via canonical API /api/v1/upload
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('folder', 'qris');
+        formData.append('tenant_slug', tenant?.slug || shopId);
+
+        const res = await fetch('/api/v1/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (json.status === 'success' && (json.url || json.public_url)) {
+            uploadedUrl = json.url || json.public_url;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('API upload failed, attempting Supabase Storage fallback:', apiErr);
+      }
+
+      // 2. Fallback direct to Supabase Storage jika API upload offline / credentials issue
+      if (!uploadedUrl) {
+        const supabase = getSupabase();
+        const fileExt = file.name.split('.').pop() || 'png';
+        const fileName = `qris_${tenant?.slug || shopId}_${Date.now()}.${fileExt}`;
+        const filePath = `qris/${fileName}`;
+
+        let sbRes = await supabase.storage.from('store-assets').upload(filePath, file, {
+          upsert: true,
+          contentType: file.type,
+        });
+
+        if (sbRes.error) {
+          sbRes = await supabase.storage.from('public-assets').upload(filePath, file, {
+            upsert: true,
+            contentType: file.type,
+          });
+        }
+
+        if (sbRes.error) {
+          throw new Error(sbRes.error.message || 'Gagal mengunggah file ke storage');
+        }
+
+        const bucketName = sbRes.data?.fullPath ? sbRes.data.fullPath.split('/')[0] : 'store-assets';
+        const { data: pubUrlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+        uploadedUrl = pubUrlData?.publicUrl || '';
+      }
+
+      if (!uploadedUrl) {
+        throw new Error('Gagal mendapatkan public URL gambar setelah upload.');
+      }
+
+      setQrisImageUrl(uploadedUrl);
+      showToast('Gambar QRIS berhasil diunggah! URL terpasang otomatis.', 'success');
+    } catch (err: any) {
+      console.error('Error uploading QRIS file:', err);
+      showToast(err.message || 'Gagal mengunggah gambar QRIS.', 'error');
+    } finally {
+      setUploadingQris(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleQrisFileUpload(e.dataTransfer.files[0]);
+    }
   };
 
   // Courier Toggle Handlers
@@ -712,34 +827,113 @@ export default function ShopConfigPage() {
                       </div>
                     </div>
 
-                    {/* QRIS Statis Section */}
+                    {/* QRIS Statis Section with Direct Uploader */}
                     <div className="p-6 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-4">
-                      <div>
-                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                          <QrCode className="w-4 h-4 text-purple-400" />
-                          <span>QRIS Statis Toko</span>
-                        </h3>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          Tautan gambar QRIS standar toko Anda (BCA QRIS, GoPay Merchant, atau OVO).
-                        </p>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                            <QrCode className="w-4 h-4 text-purple-400" />
+                            <span>QRIS Statis Toko</span>
+                          </h3>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Unggah langsung barcode QRIS toko Anda (BCA QRIS, GoPay Merchant, Dana Bisnis, atau OVO).
+                          </p>
+                        </div>
+
+                        {qrisImageUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setQrisImageUrl('')}
+                            className="text-[11px] text-rose-400 hover:text-rose-300 font-semibold transition inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Hapus QRIS</span>
+                          </button>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-                        <div className="md:col-span-8 space-y-3">
+                        <div className="md:col-span-8 space-y-3.5">
+                          {/* Hidden File Input */}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/png, image/jpeg, image/webp"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files.length > 0) {
+                                handleQrisFileUpload(e.target.files[0]);
+                              }
+                            }}
+                          />
+
+                          {/* Drag and Drop Zone */}
+                          <div
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            onClick={() => fileInputRef.current?.click()}
+                            className={`p-5 rounded-2xl border-2 border-dashed transition flex flex-col items-center justify-center text-center cursor-pointer ${
+                              isDragging
+                                ? 'bg-purple-950/40 border-purple-400 scale-[1.01]'
+                                : uploadingQris
+                                ? 'bg-slate-950/80 border-purple-500/50 cursor-wait'
+                                : 'bg-slate-950/60 border-slate-700/80 hover:border-purple-500/60 hover:bg-slate-950'
+                            }`}
+                          >
+                            {uploadingQris ? (
+                              <div className="py-2 space-y-2">
+                                <RefreshCw className="w-7 h-7 text-purple-400 animate-spin mx-auto" />
+                                <span className="text-xs font-bold text-white block">
+                                  Mengunggah gambar QRIS ke storage...
+                                </span>
+                                <span className="text-[11px] text-slate-400 block">
+                                  Memproses dan menyelaraskan ke Cloudflare R2 / Supabase
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="py-1 space-y-2">
+                                <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center mx-auto border border-purple-500/30">
+                                  <UploadCloud className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <span className="text-xs font-bold text-white block">
+                                    Klik untuk memilih gambar atau tarik file ke sini
+                                  </span>
+                                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                                    Mendukung format PNG, JPG, atau WEBP (Maksimal 5 MB)
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="mt-1 px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/40 text-purple-300 border border-purple-500/40 text-xs font-semibold inline-flex items-center gap-1.5 transition"
+                                >
+                                  <Upload className="w-3.5 h-3.5" />
+                                  <span>Pilih Dari Perangkat</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Or Direct URL Input */}
                           <div>
-                            <label className="text-[11px] font-medium text-slate-300 block mb-1">
-                              URL Gambar QRIS
-                            </label>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[11px] font-medium text-slate-400 block">
+                                Atau masukkan URL gambar langsung:
+                              </label>
+                              {qrisImageUrl && (
+                                <span className="text-[10px] text-emerald-400 font-medium">
+                                  ✓ URL aktif tersimpan
+                                </span>
+                              )}
+                            </div>
                             <input
                               type="url"
-                              placeholder="https://images.boontrack.com/qris/toko-berkah.jpg"
+                              placeholder="https://assets.boontrack.com/qris/toko-berkah.png"
                               value={qrisImageUrl}
                               onChange={(e) => setQrisImageUrl(e.target.value)}
                               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-purple-500"
                             />
-                            <p className="text-[10px] text-slate-500 mt-1">
-                              Tips: Anda dapat mengunggah gambar QRIS ke R2 / Cloud Storage publik lalu masukkan tautannya di sini.
-                            </p>
                           </div>
 
                           <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-500/20 text-xs text-purple-300 flex items-start gap-2.5">
@@ -750,28 +944,38 @@ export default function ShopConfigPage() {
                           </div>
                         </div>
 
-                        {/* Image Preview */}
-                        <div className="md:col-span-4 bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col items-center justify-center min-h-[160px] text-center">
+                        {/* Image Preview Box */}
+                        <div className="md:col-span-4 bg-slate-950 border border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center min-h-[220px] text-center relative overflow-hidden">
                           {qrisImageUrl ? (
-                            <div className="space-y-2">
-                              <img
-                                src={qrisImageUrl}
-                                alt="Preview QRIS"
-                                className="max-h-40 max-w-full rounded-lg object-contain mx-auto border border-slate-700"
-                                onError={(e) => {
-                                  (e.target as HTMLElement).style.display = 'none';
-                                }}
-                              />
-                              <span className="text-[10px] text-emerald-400 font-bold block">
-                                ✓ Preview QRIS Terdeteksi
-                              </span>
+                            <div className="space-y-3 w-full">
+                              <div className="relative group mx-auto max-w-[180px]">
+                                <img
+                                  src={qrisImageUrl}
+                                  alt="Preview QRIS Toko"
+                                  className="max-h-48 w-auto rounded-xl object-contain mx-auto border border-slate-700/80 bg-white p-2 shadow-lg"
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-emerald-400 font-bold flex items-center justify-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>QRIS Siap Ditampilkan</span>
+                                </span>
+                                <span className="text-[10px] text-slate-400 block truncate max-w-[200px] mx-auto font-mono">
+                                  {qrisImageUrl.split('/').pop()}
+                                </span>
+                              </div>
                             </div>
                           ) : (
-                            <div className="space-y-1.5 text-slate-500">
-                              <QrCode className="w-8 h-8 mx-auto text-slate-600" />
-                              <span className="text-[11px] block">Belum ada URL QRIS</span>
-                              <span className="text-[10px] text-slate-600 block">
-                                Masukkan URL gambar di samping untuk preview
+                            <div className="space-y-2 text-slate-500 p-4">
+                              <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto text-slate-600">
+                                <QrCode className="w-6 h-6" />
+                              </div>
+                              <span className="text-xs font-semibold text-slate-400 block">Belum ada QRIS</span>
+                              <span className="text-[10px] text-slate-500 block leading-relaxed">
+                                Unggah foto QRIS atau masukkan URL gambar untuk melihat pratinjau
                               </span>
                             </div>
                           )}
