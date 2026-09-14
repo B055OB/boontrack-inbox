@@ -90,18 +90,39 @@ function SingleProductContent() {
         const supabase = getSupabase();
         if (!supabase) return;
 
-        const { data: tenantRow } = await supabase
-          .from("tenants")
-          .select("id, metadata, category")
-          .eq("slug", tenant)
-          .maybeSingle();
+        // 2. Query paralel non-waterfall ke database Supabase (tenants, products, tenant_settings)
+        const [tenantRes, sqlProdRes, settingsRes] = await Promise.all([
+          supabase
+            .from("tenants")
+            .select("id, metadata, category")
+            .eq("slug", tenant)
+            .maybeSingle(),
+          supabase
+            .from("products")
+            .select("*")
+            .eq("slug", slug)
+            .maybeSingle(),
+          supabase
+            .from("tenant_settings")
+            .select("ads_tracking_config")
+            .eq("tenant_slug", tenant)
+            .maybeSingle(),
+        ]);
+
+        const tenantRow = tenantRes.data;
+        const sqlProd = sqlProdRes.data;
+        const adsTrackingCfg = settingsRes.data?.ads_tracking_config;
 
         if (tenantRow?.category) {
           setTenantCategory(tenantRow.category);
         }
 
-        if (tenantRow?.metadata?.tracking) {
-          initPixelsFromMetadata(tenantRow.metadata.tracking);
+        const combinedTracking = {
+          ...(tenantRow?.metadata?.tracking || {}),
+          ...(adsTrackingCfg || {}),
+        };
+        if (combinedTracking.meta_pixel_id || combinedTracking.facebook_pixel_id || combinedTracking.tiktok_pixel_id) {
+          initPixelsFromMetadata(combinedTracking);
         }
 
         const rawProds = tenantRow?.metadata?.products;
@@ -131,35 +152,26 @@ function SingleProductContent() {
             })
           : null;
 
-        // Fallback: Query langsung dari tabel SQL `products` jika belum ada di metadata.products
-        if (!match && tenantRow?.id) {
-          const { data: sqlProd } = await supabase
-            .from("products")
-            .select("*")
-            .eq("tenant_id", tenantRow.id)
-            .eq("slug", slug)
-            .maybeSingle();
-
-          if (sqlProd) {
-            match = {
-              id: sqlProd.id,
-              name: sqlProd.title,
-              title: sqlProd.title,
-              slug: sqlProd.slug,
-              price: sqlProd.price,
-              promo_price: sqlProd.promo_price,
-              category: sqlProd.category,
-              product_type: sqlProd.product_type,
-              description: sqlProd.description,
-              image: sqlProd.image,
-              stock: sqlProd.stock,
-              is_unlimited: sqlProd.is_unlimited_stock,
-              download_url: sqlProd.link_digital || sqlProd.asset_reference || sqlProd.fulfillment_metadata?.access_url || '',
-              fulfillment_metadata: sqlProd.fulfillment_metadata,
-              ...(sqlProd.fulfillment_metadata?.single_page_config || {}),
-              single_page_config: sqlProd.fulfillment_metadata?.single_page_config || {}
-            };
-          }
+        // Fallback: Gunakan sqlProd hasil query paralel jika belum ada di metadata.products
+        if (!match && sqlProd) {
+          match = {
+            id: sqlProd.id,
+            name: sqlProd.title,
+            title: sqlProd.title,
+            slug: sqlProd.slug,
+            price: sqlProd.price,
+            promo_price: sqlProd.promo_price,
+            category: sqlProd.category,
+            product_type: sqlProd.product_type,
+            description: sqlProd.description,
+            image: sqlProd.image,
+            stock: sqlProd.stock,
+            is_unlimited: sqlProd.is_unlimited_stock,
+            download_url: sqlProd.link_digital || sqlProd.asset_reference || sqlProd.fulfillment_metadata?.access_url || '',
+            fulfillment_metadata: sqlProd.fulfillment_metadata,
+            ...(sqlProd.fulfillment_metadata?.single_page_config || {}),
+            single_page_config: sqlProd.fulfillment_metadata?.single_page_config || {}
+          };
         }
 
         if (match && isMounted) {
@@ -1153,15 +1165,15 @@ function SingleProductContent() {
 
         {/* 1. Hero Section (Hook + Banner) */}
         <section className="space-y-4">
-          <div className="aspect-video w-full rounded-3xl bg-gradient-to-tr from-slate-900 via-slate-900 to-blue-950 flex items-center justify-center text-white overflow-hidden shadow-xl border border-slate-200 relative">
-            {config.banner_url && config.banner_url.startsWith('http') ? (
+          <div className="aspect-square w-full rounded-3xl bg-slate-950 flex items-center justify-center text-white overflow-hidden shadow-xl border border-slate-200 relative group">
+            {(config.banner_url || product.image) ? (
               <img 
-                src={config.banner_url} 
+                src={config.banner_url || product.image} 
                 alt={product.name} 
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-[1.02]"
               />
             ) : null}
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/45 to-transparent flex items-end p-5 sm:p-7">
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent flex items-end p-5 sm:p-7 pointer-events-none">
               <div className="text-left">
                 <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white leading-tight drop-shadow-sm">
                   {product.name}
