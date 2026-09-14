@@ -30,7 +30,8 @@ import {
   ExternalLink,
   FileText,
   Key,
-  Download
+  Download,
+  ShoppingBag
 } from 'lucide-react';
 import { syncAttributionSession } from '@/lib/attribution';
 import { getTenantWhatsApp } from '@/lib/tenant-config';
@@ -1163,23 +1164,21 @@ function SingleProductContent() {
         {/* Kartu Akses Delivery Payload Jika Status Lunas (PAID) */}
         {isPaid && requiresDeliveryPayload && renderDeliveryPayloadCard()}
 
-        {/* 1. Hero Section (Hook + Banner) */}
+        {/* 1. Hero Section (Hook + Flexible Banner/Image) */}
         <section className="space-y-4">
-          <div className="aspect-square w-full rounded-3xl bg-slate-950 flex items-center justify-center text-white overflow-hidden shadow-xl border border-slate-200 relative group">
+          <div className="w-full max-h-[420px] rounded-2xl overflow-hidden flex items-center justify-center bg-slate-50 border border-slate-100 shadow-sm relative group">
             {(config.banner_url || product.image) ? (
               <img 
                 src={config.banner_url || product.image} 
                 alt={product.name} 
-                className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-[1.02]"
+                className="w-full h-auto max-h-[420px] object-contain rounded-2xl transition-transform duration-300 group-hover:scale-[1.01]"
               />
-            ) : null}
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent flex items-end p-5 sm:p-7 pointer-events-none">
-              <div className="text-left">
-                <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white leading-tight drop-shadow-sm">
-                  {product.name}
-                </h2>
+            ) : (
+              <div className="w-full py-16 flex flex-col items-center justify-center text-slate-400 bg-slate-100/60">
+                <ShoppingBag className="w-12 h-12 mb-2 text-slate-300" />
+                <span className="text-xs font-semibold">{product.name}</span>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Pricing & Value Proposition */}
