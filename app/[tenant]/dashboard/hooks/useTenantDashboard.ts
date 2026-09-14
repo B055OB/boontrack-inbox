@@ -41,6 +41,7 @@ export type DashboardTab =
   | 'downloads'
   | 'broadcast'
   | 'whatsapp'
+  | 'auto_reply'
   | 'settings';
 
 export interface ConversationMessage {

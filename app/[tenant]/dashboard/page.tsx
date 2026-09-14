@@ -26,6 +26,7 @@ import WhatsAppTab from './components/tabs/WhatsAppTab';
 import AiKnowledgeTab from './components/AiKnowledgeTab';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
+import WhatsAppAutoReplyManager from './components/WhatsAppAutoReplyManager';
 import BoonPilotWidget from '@/components/BoonPilotWidget';
 import StoreBioLinkWidget from './components/StoreBioLinkWidget';
 import ProductFormModal from './components/ProductFormModal';
@@ -453,7 +454,7 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB 5: WHATSAPP & BROADCAST UNIFIED HUB */}
-      {(activeTab === 'whatsapp' || activeTab === 'broadcast') && (
+      {(activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply') && (
         <div className="flex-1 flex flex-col">
           {/* Sub Navigation Hub */}
           <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center justify-between gap-3">
@@ -468,6 +469,17 @@ export default function TenantDashboardPage() {
                 }`}
               >
                 Koneksi Gateway & Bot
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('auto_reply')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'auto_reply'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Aturan Auto-Reply (Keyword)
               </button>
               <button
                 type="button"
@@ -515,6 +527,17 @@ export default function TenantDashboardPage() {
               isProScale={isProScale}
               renderLockedFeatureCard={renderLockedFeatureCard}
               setSaveFeedback={setSaveFeedback}
+            />
+          )}
+
+          {activeTab === 'auto_reply' && (
+            <WhatsAppAutoReplyManager
+              tenantSlug={tenantSlug}
+              displayName={displayName}
+              onSaved={(msg) => {
+                setSaveFeedback(msg);
+                setTimeout(() => setSaveFeedback(null), 4000);
+              }}
             />
           )}
 

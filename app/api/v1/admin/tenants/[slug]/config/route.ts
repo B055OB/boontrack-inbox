@@ -190,7 +190,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { payment_config, shipping_config, extra_metadata } = body;
+    const { payment_config, shipping_config, extra_metadata, auto_replies } = body;
 
     const supabaseAdmin = getSupabaseAdmin();
     if (!supabaseAdmin) {
@@ -261,6 +261,7 @@ export async function PATCH(
     const updatedMetadata = {
       ...currentMeta,
       ...(extra_metadata || {}),
+      ...(auto_replies !== undefined ? { auto_replies } : {}),
       ...(payment_config ? { payment_config: updatedPaymentConfig } : {}),
       ...(shipping_config ? { shipping_config: updatedShippingConfig } : {}),
       config_updated_at: new Date().toISOString(),
