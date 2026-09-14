@@ -331,6 +331,12 @@ export async function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
+    // Bypass /ugc-studio agar tidak masuk ke dynamic slug /creator/[slug]
+    if (pathname.startsWith('/ugc-studio')) {
+      url.pathname = `/creator/ugc-studio`;
+      return NextResponse.rewrite(url);
+    }
+
     // Rewrite creator.boontrack.com/[slug] ke /creator/[slug]
     if (!pathname.startsWith('/creator/')) {
       url.pathname = `/creator${pathname}`;
@@ -414,8 +420,19 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (subdomain === 'shop' || subdomain === 'creator') {
+  if (subdomain === 'shop') {
     return NextResponse.next();
+  }
+
+  if (subdomain === 'creator') {
+    const url = req.nextUrl.clone();
+    // Bypass /ugc-studio agar tidak dianggap sebagai dynamic profile slug
+    if (pathname.startsWith('/ugc-studio')) {
+      url.pathname = `/creator/ugc-studio`;
+      return NextResponse.rewrite(url);
+    }
+    url.pathname = `/creator${pathname}`;
+    return NextResponse.rewrite(url);
   }
 
   // ===========================================================================
