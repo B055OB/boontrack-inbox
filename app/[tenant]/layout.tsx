@@ -1,48 +1,60 @@
 import { Metadata } from 'next';
 import Script from 'next/script';
 import { cache } from 'react';
-import { createClient } from '@supabase/supabase-js';
 
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-      'placeholder-anon-key'
-  );
-}
+// ISR: re-generate layout shell (meta tags + tracking) paling sering tiap 60 detik.
+// Vercel Edge Network akan serve cached HTML ke seluruh dunia (<300ms TTFB).
+export const revalidate = 60;
+
 
 // ── Cache fetch per request agar generateMetadata & TenantStoreLayout tidak melakukan duplikasi query ──
+// Menggunakan native fetch + next:{revalidate:60} agar Vercel Edge Cache aktif.
+// Supabase JS SDK tidak mendukung Next.js fetch cache — gunakan REST API langsung.
 const getTenantStoreData = cache(async (cleanTenant: string) => {
   const RESERVED_SLUGS = ['login', 'register', 'admin', 'auth', 'checkout'];
   if (!cleanTenant || RESERVED_SLUGS.includes(cleanTenant)) {
     return { store: null, settings: null };
   }
 
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    '';
+
+  const headers: HeadersInit = {
+    apikey: supabaseKey,
+    Authorization: `Bearer ${supabaseKey}`,
+    'Content-Type': 'application/json',
+  };
+
   try {
-    const supabase = getSupabase();
     const [tenantRes, settingsRes] = await Promise.all([
-      supabase
-        .from('tenants')
-        .select('name, metadata, logo_url, qris_image_url')
-        .eq('slug', cleanTenant)
-        .maybeSingle(),
-      supabase
-        .from('tenant_settings')
-        .select('ads_tracking_config')
-        .eq('tenant_slug', cleanTenant)
-        .maybeSingle(),
+      // next:{revalidate:60} → Vercel Data Cache caches this for 60s at the Edge
+      fetch(
+        `${supabaseUrl}/rest/v1/tenants?slug=eq.${encodeURIComponent(cleanTenant)}&select=name,metadata,logo_url,qris_image_url&limit=1`,
+        { headers, next: { revalidate: 60 } }
+      ),
+      fetch(
+        `${supabaseUrl}/rest/v1/tenant_settings?tenant_slug=eq.${encodeURIComponent(cleanTenant)}&select=ads_tracking_config&limit=1`,
+        { headers, next: { revalidate: 60 } }
+      ),
     ]);
 
+    const tenantRows = tenantRes.ok ? await tenantRes.json().catch(() => []) : [];
+    const settingsRows = settingsRes.ok ? await settingsRes.json().catch(() => []) : [];
+
     return {
-      store: tenantRes.data,
-      settings: settingsRes.data,
+      store: Array.isArray(tenantRows) && tenantRows.length > 0 ? tenantRows[0] : null,
+      settings: Array.isArray(settingsRows) && settingsRows.length > 0 ? settingsRows[0] : null,
     };
   } catch (err) {
     console.warn('[TenantStoreLayout] Cached fetch error:', err);
     return { store: null, settings: null };
   }
 });
+
 
 type Props = {
   params: Promise<{ tenant: string }>;
