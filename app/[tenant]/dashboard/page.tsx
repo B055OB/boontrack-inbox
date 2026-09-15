@@ -9,8 +9,11 @@ import {
   Calendar,
   Download,
   ShoppingBag,
+  Menu,
+  X,
 } from 'lucide-react';
 import LockedFeatureCard from './components/LockedFeatureCard';
+import { getSupabase } from '@/lib/supabaseClient';
 
 import DashboardSidebar from './components/sidebar/DashboardSidebar';
 import LivePhonePreview from './components/preview/LivePhonePreview';
@@ -196,26 +199,47 @@ export default function TenantDashboardPage() {
     );
   };
 
-  const [activeVisualTheme, setActiveVisualTheme] = React.useState<VisualThemeType>('clean_minimal');
+  const [activeVisualTheme, setActiveVisualTheme] = React.useState<VisualThemeType>('aurora_gradient');
   const [livePreviewButtons, setLivePreviewButtons] = React.useState<any[]>([]);
-  const [livePreviewShowProducts, setLivePreviewShowProducts] = React.useState(false);
+  const [livePreviewShowProducts, setLivePreviewShowProducts] = React.useState(true);
 
   React.useEffect(() => {
     if (!tenantSlug) return;
-    async function loadInitialTheme() {
+    async function loadInitialData() {
       try {
-        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.theme?.visual_theme) {
-            setActiveVisualTheme(data.theme.visual_theme);
+        const supabase = getSupabase();
+        let meta: any = null;
+        if (supabase) {
+          const { data: tenantRow } = await supabase
+            .from('tenants')
+            .select('metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+          meta = tenantRow?.metadata;
+        }
+
+        if (meta) {
+          const vTheme = meta.theme?.visual_theme || meta.visual_theme || 'aurora_gradient';
+          setActiveVisualTheme(vTheme);
+          if (Array.isArray(meta.microsite?.buttons) && meta.microsite.buttons.length > 0) {
+            setLivePreviewButtons(meta.microsite.buttons);
+          }
+          const showProd = Boolean(meta.microsite?.show_products ?? meta.microsite_show_products ?? true);
+          setLivePreviewShowProducts(showProd);
+        } else {
+          const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.theme?.visual_theme) {
+              setActiveVisualTheme(data.theme.visual_theme);
+            }
           }
         }
       } catch (err) {
-        console.warn('Load initial theme note:', err);
+        console.warn('Load initial preview data note:', err);
       }
     }
-    loadInitialTheme();
+    loadInitialData();
   }, [tenantSlug]);
 
   React.useEffect(() => {
@@ -228,10 +252,67 @@ export default function TenantDashboardPage() {
     return () => window.removeEventListener('storefront-theme-changed', handleThemeEvent);
   }, []);
 
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState(false);
+  const storeHeaderName = storeDisplayName || displayName || tenantSlug;
+
   return (
-    <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex antialiased">
-      {/* KOLOM 1: SIDEBAR KIRI VERTIKAL */}
+    <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col lg:flex-row antialiased">
+      {/* MOBILE SLIDE-OVER DRAWER / SHEET (< lg) */}
+      {isMobileDrawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+            onClick={() => setIsMobileDrawerOpen(false)}
+          />
+
+          {/* Drawer Sheet Container */}
+          <div className="fixed inset-y-0 left-0 w-[290px] sm:w-[320px] max-w-[85vw] bg-white shadow-2xl z-50 flex flex-col animate-in slide-in-from-left duration-250">
+            <div className="absolute top-3 right-3 z-50">
+              <button
+                type="button"
+                onClick={() => setIsMobileDrawerOpen(false)}
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                aria-label="Tutup Menu"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <DashboardSidebar
+              className="w-full h-full border-r-0 static"
+              tenantSlug={tenantSlug}
+              displayName={displayName}
+              storeDisplayName={storeDisplayName}
+              storeLogoUrl={storeLogoUrl}
+              activeTab={activeTab}
+              setActiveTab={(tab) => {
+                setActiveTab(tab);
+                setIsMobileDrawerOpen(false);
+              }}
+              isTeamScale={isTeamScale}
+              isAdsPerformance={isAdsPerformance}
+              isAdsTrackingUnlocked={isAdsTrackingUnlocked}
+              isSoloOrTrial={isSoloOrTrial}
+              productCount={products.length}
+              orderCount={transactions.length}
+              onOpenStoreSettings={() => {
+                setNameError(null);
+                setIsStoreSettingsOpen(true);
+                setIsMobileDrawerOpen(false);
+              }}
+              onOpenUpgradeModal={() => {
+                openUpgradeModal('ads_performance');
+                setIsMobileDrawerOpen(false);
+              }}
+              onCloseMobileDrawer={() => setIsMobileDrawerOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* KOLOM 1: SIDEBAR KIRI STATIS DESKTOP (hidden lg:flex) */}
       <DashboardSidebar
+        className="hidden lg:flex"
         tenantSlug={tenantSlug}
         displayName={displayName}
         storeDisplayName={storeDisplayName}
@@ -252,9 +333,65 @@ export default function TenantDashboardPage() {
       />
 
       {/* KOLOM 2 & 3 WRAPPER */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-        {/* TOP BAR RINGKAS (Header Canvas) */}
-        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center justify-between gap-4 shadow-2xs">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen w-full">
+        {/* TOP MOBILE NAVBAR (< lg) */}
+        <header className="lg:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shadow-2xs">
+          {/* Sisi Kiri: Tombol Hamburger Menu */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsMobileDrawerOpen(true)}
+              className="p-2 -ml-1.5 rounded-xl text-slate-700 hover:text-indigo-600 hover:bg-slate-100 active:scale-95 transition cursor-pointer"
+              aria-label="Buka Menu Navigasi"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <OrderNotificationBell tenantSlug={tenantSlug} />
+          </div>
+
+          {/* Sisi Tengah: Nama & Logo Toko Ringkas */}
+          <div className="flex items-center gap-2 min-w-0 max-w-[50%]">
+            {storeLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={storeLogoUrl}
+                alt={storeHeaderName}
+                className="w-6 h-6 rounded-lg object-cover border border-slate-200 shrink-0"
+              />
+            ) : (
+              <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 uppercase">
+                {storeHeaderName.charAt(0)}
+              </div>
+            )}
+            <span className="text-xs font-black text-slate-900 truncate">
+              {storeHeaderName}
+            </span>
+          </div>
+
+          {/* Sisi Kanan: Avatar Toko / Status Aktif */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('orders')}
+              className={`p-1.5 rounded-lg border transition ${
+                activeTab === 'orders'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-slate-50 text-slate-700 border-slate-200'
+              }`}
+              title="Pesanan"
+            >
+              <ShoppingBag className="w-4 h-4" />
+            </button>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5 text-[10px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="hidden sm:inline">Store Online</span>
+              <span className="sm:hidden">Live</span>
+            </span>
+          </div>
+        </header>
+
+        {/* TOP BAR RINGKAS DESKTOP (Header Canvas - hidden on mobile, flex on desktop) */}
+        <header className="hidden lg:flex sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-6 xl:px-8 py-2.5 items-center justify-between gap-4 shadow-2xs">
           <div className="flex items-center gap-3 min-w-0">
             {/* Shortcut Pesanan */}
             <button
@@ -293,8 +430,7 @@ export default function TenantDashboardPage() {
           <div className="flex items-center gap-2.5 shrink-0">
             <span className="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5 text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="hidden sm:inline">Storefront Online</span>
-              <span className="sm:hidden">Online</span>
+              <span>Storefront Online</span>
             </span>
           </div>
         </header>
@@ -307,9 +443,9 @@ export default function TenantDashboardPage() {
         />
 
         {/* CONTENT CANVAS AREA (KOLOM 2 & KOLOM 3) */}
-        <div className="flex-1 flex items-start gap-6 p-4 sm:p-6 lg:p-8 min-w-0">
-          {/* KOLOM 2: CANVAS FORM MODUL AKTIF */}
-          <div className="flex-1 min-w-0">
+        <div className="flex-1 flex items-start gap-6 p-4 sm:p-6 lg:p-8 min-w-0 w-full">
+          {/* KOLOM 2: CANVAS FORM MODUL AKTIF (Full Width on Mobile) */}
+          <div className="flex-1 min-w-0 w-full">
           {/* TAB 0: DASHBOARD UTAMA (ONBOARDING, ANALYTICS, INTEGRATED STOREFRONT HUB) */}
       {(activeTab === 'dashboard' || activeTab === 'overview') && (
         <DashboardOverviewTab
@@ -657,15 +793,38 @@ export default function TenantDashboardPage() {
         />
       )}
 
+            {/* PRATINJAU LANGSUNG MOBILE & TABLET (< xl): STACKED AT BOTTOM OF CANVAS */}
+            <div className="xl:hidden w-full max-w-[360px] mx-auto my-8 pt-6 border-t border-slate-200">
+              <div className="text-center mb-3">
+                <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">
+                  Pratinjau Langsung Etalase Toko
+                </span>
+                <p className="text-[11px] text-slate-500">
+                  Tampilan real-time yang dilihat pelanggan di smartphone
+                </p>
+              </div>
+              <LivePhonePreview
+                tenantSlug={tenantSlug}
+                displayName={storeDisplayName || displayName}
+                storeBio={storeBio}
+                storeLogoUrl={storeLogoUrl}
+                storeWhatsapp={storeWhatsapp}
+                visualTheme={activeVisualTheme}
+                buttons={livePreviewButtons}
+                showProducts={livePreviewShowProducts}
+                products={products}
+              />
+            </div>
           </div>
 
-          {/* KOLOM 3: STICKY LIVE PHONE PREVIEW (WYSIWYG) */}
-          <div className="hidden lg:block w-[340px] xl:w-[360px] sticky top-20 shrink-0 self-start">
+          {/* KOLOM 3: STICKY LIVE PHONE PREVIEW DESKTOP (WYSIWYG, >= xl) */}
+          <div className="hidden xl:block w-[340px] xl:w-[360px] sticky top-20 shrink-0 self-start">
             <LivePhonePreview
               tenantSlug={tenantSlug}
               displayName={storeDisplayName || displayName}
               storeBio={storeBio}
               storeLogoUrl={storeLogoUrl}
+              storeWhatsapp={storeWhatsapp}
               visualTheme={activeVisualTheme}
               buttons={livePreviewButtons}
               showProducts={livePreviewShowProducts}
