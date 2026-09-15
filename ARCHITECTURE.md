@@ -19,6 +19,11 @@
 11. **Verticals define configuration and business rules; the Core Engine defines how configuration is interpreted and executed.**
 12. **Zero Fake Fallbacks on External Infrastructure**: Dilarang keras membuat generator kode tiruan (mock/hash generator) untuk menutupi kegagalan koneksi pihak ketiga (seperti WhatsApp pairing code). Kegagalan infrastruktur wajib diekspos secara jujur dan transparan sebagai error HTTP eksplisit.
 
+### 0.1 Tri-Rule Database-Driven Multi-Tenant Constitution (Phase B Guardrails)
+- **Rule 1 (Zero Hardcoded Tenant Logic)**: Tidak boleh membuat percabangan kode berbasis slug fisik (misal: `if tenant == 'gym'` atau `if slug in ['om_budi', 'career']`). Seluruh logika runtime wajib membaca `capabilities`, `business_type`, atau `tenant_kind` dari database Supabase (`TenantRuntimeContext`).
+- **Rule 2 (No New Tenant Folders)**: Direktori `app/tenants/*` berstatus **DEPRECATED (Freeze)**. Dilarang keras menambah file, modul, atau folder baru di dalamnya. Seluruh vertikal bisnis baru harus dioperasikan melalui Core capability engine berbasis data.
+- **Rule 3 (Shared Core Capabilities)**: Fitur-fitur fundamental seperti Meta CAPI, Payment QRIS (Duitku/Xendit), AI Conversational Gateway, Storage R2, dan Auth adalah mesin global terpadu milik BoonTrack Core, bukan milik vertikal tertentu. Vertikal hanya mengonsumsi capabilities ini secara deklaratif.
+
 ---
 
 ## 1. Backend Engine (Dual-Runner Python)
@@ -39,6 +44,23 @@
     - `Pengiriman`: Hanya dirender jika `business_type === 'PHYSICAL'` dan `capabilities.shipping === true`.
     - `Booking`: Hanya dirender jika `business_type === 'FIELD_SERVICE'`.
     - Form vertikal lokal (seperti service toren/torsi) terisolasi mutlak di balik pengecekan tipe bisnis dan dilarang muncul di toko digital.
+
+### 2.1 Canonical Domain, Edge Delivery & Funnel Routing Contract
+Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat kontrak arsitektur baku:
+
+| Domain / Route | Target Pengguna & Peran | Edge / Hosting Infra | Funnel & CTA Intent | Meta Event Trigger |
+| :--- | :--- | :--- | :--- | :--- |
+| `boontrack.com` | Landing Page Korporat & Solusi | Cloudflare Worker (`patient-smoke-84ed`) | Edukasi platform & navigasi produk | `PageView` |
+| `boontrack.com/onboarding` | B2B, B2G, Custom IoT & Hardware | Cloudflare Worker (`patient-smoke-84ed`) | Form Audit & Booking Architect | `Lead` |
+| `career.boontrack.com` | AI Career Growth & Talent Pool | Cloudflare Worker (`silent-water-8c2e`) | Landing page career & intake CV | `PageView` / `Lead` |
+| `app.boontrack.com` | Pintu Masuk Portal Aplikasi | Vercel (Next.js) | Hub Utama (Onboarding redirect ke `boontrack.com/onboarding`) | - |
+| `shop.boontrack.com/register` | Merchant Self-Serve (UKM / Retail) | Vercel (Next.js) | Registrasi Toko Baru Langsung | `InitiateCheckout` (Trial), `Purchase` (Lunas) |
+| `shop.boontrack.com/affiliate/register` | Calon Mitra Afiliasi | Vercel (Next.js) | Registrasi Mandiri Program Afiliasi | `CompleteRegistration` |
+| `affiliate.boontrack.com` | Mitra Affiliate Aktif | Vercel (Next.js) | Dashboard Klik, Konversi Referal & Komisi | - |
+| `manager.boontrack.com` | Affiliate Manager (AM / Kang Sakti) | Vercel (Next.js) | Pengawasan Jaringan, Approval Mitra & Validasi Payout | - |
+| `bossob.boontrack.com/admin` | Super Admin Internal | Vercel (Next.js) | Control Plane, Leads Pipeline & Tenant Registry | - |
+
+> **Contract Rule**: Setiap domain baru yang ditambahkan ke ekosistem BoonTrack **WAJIB** didaftarkan di tabel ini beserta edge infra, funnel intent, dan Meta event trigger-nya sebelum dipublikasikan ke produksi.
 
 ---
 
@@ -430,19 +452,63 @@ Pairing berhasil tidak sama dengan gateway yang beroperasi sehat. Sistem memanta
 ### 3. Sanitization & Auto-Healing Guardrails
 - **Endpoint Contract**: Response dari endpoint upload (`/api/v1/upload`) wajib mengembalikan URL kanonikal berbasis `https://assets.boontrack.com/...`.
 - **Sanitization Layer (`sanitizeImageUrl`)**:
-  - Merewrite URL legacy (`api.boontrack.com`, backend Railway `boontrack-core-production.up.railway.app`, variasi `asset.boontrack.com` singular, dan dev URL `*.r2.dev`) langsung ke `https://assets.boontrack.com/${path}` dengan menjaga integritas folder object (`products/`, `media/`, `qris/`, dll.).
+  - Merewrite URL legacy (`api.boontrack.com`, backend Railway `boontrack-core-production.up.railway.app`, variasi `asset.boontrack.com` singular, dan dev URL `*.r2.dev`) langsung ke `https://assets.boontrack.com/${path}`.
   - Memaksa upgrade protokol dari `http://` ke `https://`.
-- **Storage Key Contract**: Endpoint `/api/v1/upload` menjamin sinkronisasi 1:1 antara S3/R2 object key dengan output public URL (`${R2_PUBLIC_URL_BASE}/${key}`).
 - **Client Auto-Healing**: Form edit produk mendeteksi URL legacy saat render pertama kali dan menyembuhkan state data menjadi URL kanonikal sebelum disimpan kembali ke Supabase.
 
-### 4. Direct Cloudflare R2 Connection Specification
-- **Storage Protocol**: S3-Compatible API via `@aws-sdk/client-s3` (`PutObjectCommand`).
-- **Bucket**: `boontrack-media`
-- **Account ID**: `56303bb13200d0980da8695adcf08550`
-- **Endpoint URL**: `https://56303bb13200d0980da8695adcf08550.r2.cloudflarestorage.com`
-- **Region**: `auto`
-- **Public Domain**: `https://assets.boontrack.com`
-- **Direct Next.js Route**: `POST /api/v1/upload` (stream langsung ke R2 dengan auto-sync backup ke Supabase Storage, tanpa perantara container ephemeral Railway).
-- **Environment Keys**: `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT_URL`, `NEXT_PUBLIC_ASSET_DOMAIN`.
+---
+
+## 🗄️ Media & Asset Storage Standard Pattern (Cloudflare R2 + Supabase)
+
+### 1. Separation of Concerns
+* **Cloudflare R2 (Object Storage / Binary Data)**:
+  * Gudang penyimpanan fisik untuk seluruh berkas media berat: QRIS statis, katalog foto produk, bukti bayar konsumen, video promosi, dan PDF invoice.
+  * Diakses via Custom Domain publik (misal: `assets.boontrack.com`) untuk menjamin **Zero Egress Fee** tanpa beban biaya bandwidth.
+  * **Fallback**: Supabase Storage hanya aktif jika koneksi/kredensial API R2 gagal merespons saat proses upload.
+
+* **Supabase PostgreSQL (State Machine & Relational Metadata)**:
+  * Database **DILARANG** menyimpan data biner atau string base64.
+  * Database hanya menyimpan string URL publik R2 di kolom metadata JSONB atau kolom URL relasional:
+    ```json
+    {
+      "payment_config": {
+        "mode": "MANUAL_TRANSFER",
+        "static_qris_url": "https://assets.boontrack.com/qris/1769366055685_whatsapp_image.jpg",
+        "bank_accounts": [...]
+      }
+    }
+    ```
+
+### 2. S3/R2 Object Key Naming Conventions
+Penamaan key/path di bucket Cloudflare R2 wajib seragam dan scoped per konteks/tenant:
+* **QRIS Toko**: `qris/{timestamp}_{sanitized_filename}`
+* **Foto Produk**: `products/{tenant_id}/{product_id}_{timestamp}.webp`
+* **Bukti Transfer**: `proofs/{tenant_id}/{order_id}_{timestamp}.jpg`
+* **Video/Media Kampanye**: `media/{tenant_id}/videos/{hash}_{timestamp}.mp4`
+* **Resume Mentah**: `resumes/{user_id}/raw/{timestamp}_{filename}.pdf`
+* **Resume ATS Terkompilasi**: `resumes/{user_id}/generated/ats_{user_id}_{timestamp}.pdf`
+
+### 3. Database Mutation & Schema Integrity Guard
+* Setiap operasi `UPDATE` / `PATCH` pada entitas tenant pasca pembaruan berkas media:
+  * **DILARANG KERAS** menyertakan field otomatis seperti `updated_at` kecuali kolom tersebut sudah nyata terdaftar di schema tabel `tenants` Supabase.
+  * Operasi pembaruan wajib menargetkan kolom `metadata` secara aman (JSONB merge) tanpa merusak struktur data yang telah ada.
+
+### 4. 📄 Career Resume & Document Pipeline Standard
+1. **Ingestion File Mentah**:
+   - Sumber: Web upload atau WhatsApp incoming webhook.
+   - Penanganan: File binary dibaca via in-memory stream (`io.BytesIO`), langsung dialirkan ke Cloudflare R2 dengan key:
+     `resumes/{user_id}/raw/{timestamp}_{filename}.pdf`
+   - Metadata Supabase: Simpan URL R2 ke kolom `raw_file_url` tabel `career_resumes`. Tidak ada biner yang disimpan ke database.
+
+2. **Ekstraksi Teks & Analisis AI**:
+   - Stream bytes dibaca langsung oleh parser (`pypdf` / `pdfplumber`) dari memori atau R2 stream.
+   - Hasil parsing dikirim ke AI Engine. Output analisis disimpan sebagai JSON murni pada kolom `parsed_content` / `analysis_result` (tipe `jsonb`).
+
+3. **ATS Generation & Distribution**:
+   - Hasil kompilasi ATS di-render dan dialirkan langsung ke Cloudflare R2 dengan key:
+     `resumes/{user_id}/generated/ats_{user_id}_{timestamp}.pdf`
+   - URL publik yang dikembalikan: `https://assets.boontrack.com/resumes/{user_id}/generated/...`
+   - Simpan URL ke kolom `generated_file_url` dan kirimkan tautan tersebut ke WhatsApp user.
+
 
 
