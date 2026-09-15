@@ -235,7 +235,7 @@ export default function AiKnowledgeTab({
     setInternalInteractiveMenus(updater);
   };
 
-  const [internalBotMode, setInternalBotMode] = useState<'STATIC' | 'HYBRID' | 'AI'>('HYBRID');
+  const [internalBotMode, setInternalBotMode] = useState<'STATIC' | 'HYBRID' | 'AI'>('STATIC');
   const currentBotMode = propBotMode ?? internalBotMode;
   const updateBotMode = (updater: React.SetStateAction<'STATIC' | 'HYBRID' | 'AI'>) => {
     if (propSetBotMode) {
@@ -334,6 +334,61 @@ export default function AiKnowledgeTab({
       } catch {}
     }
   }, [currentInteractiveMenus, tenantSlug]);
+
+  // Auto-populate 3 default quick menus based on storeCategory if list is empty
+  useEffect(() => {
+    if (currentInteractiveMenus.length > 0) return;
+    if (!storeCategory) return;
+
+    type QuickMenuItem = { trigger: string; title: string; description: string };
+    const VERTICAL_QUICK_MENUS: Record<string, QuickMenuItem[]> = {
+      FIELD_SERVICE: [
+        { trigger: 'jadwal servis', title: '📅 Jadwalkan Servis/Teknisi', description: 'Pilih jadwal kunjungan teknisi ke lokasi Anda.' },
+        { trigger: 'tarif layanan', title: '💰 Tarif & Area Layanan', description: 'Cek daftar harga dan cakupan area servis kami.' },
+        { trigger: 'hubungi cs', title: '🛠️ Hubungi Live CS', description: 'Terhubung langsung dengan tim customer service.' },
+      ],
+      PHYSICAL: [
+        { trigger: 'lihat katalog', title: '📦 Cek Katalog & Promo', description: 'Lihat semua produk terbaru dan promo aktif kami.' },
+        { trigger: 'ongkir resi', title: '🚚 Cek Ongkir & Lacak Resi', description: 'Hitung ongkos kirim atau lacak paket Anda.' },
+        { trigger: 'hubungi cs', title: '💬 Hubungi Live CS', description: 'Terhubung langsung dengan tim customer service.' },
+      ],
+      FOOD: [
+        { trigger: 'pesan antar', title: '🛵 Pesan Antar (Delivery)', description: 'Pesan makanan diantar ke lokasi Anda sekarang.' },
+        { trigger: 'ambil di toko', title: '🥡 Ambil di Toko (Takeaway)', description: 'Pesan dan ambil sendiri — lebih cepat & hemat.' },
+        { trigger: 'lokasi toko', title: '📍 Lokasi & Jam Buka', description: 'Temukan alamat dan jam operasional kami.' },
+      ],
+      PROFESSIONAL_SERVICE: [
+        { trigger: 'janji temu', title: '📝 Janji Temu / Konsultasi', description: 'Buat jadwal konsultasi dengan tim profesional kami.' },
+        { trigger: 'portofolio', title: '📋 Portofolio & Syarat', description: 'Lihat hasil kerja dan persyaratan layanan kami.' },
+        { trigger: 'hubungi cs', title: '💬 Konsultasi CS', description: 'Tanya langsung ke tim konsultan kami.' },
+      ],
+      DIGITAL: [
+        { trigger: 'beli produk', title: '🔑 Beli & Unduh Produk', description: 'Akses produk digital Anda setelah pembayaran.' },
+        { trigger: 'cek lisensi', title: '📜 Cek Lisensi & Akses', description: 'Verifikasi lisensi atau perpanjang akses Anda.' },
+        { trigger: 'hubungi cs', title: '💬 Hubungi Support', description: 'Butuh bantuan teknis? CS kami siap membantu.' },
+      ],
+      CREATOR_AGENCY: [
+        { trigger: 'paket konten', title: '🎨 Paket Konten & Tarif', description: 'Lihat pilihan paket kreatif dan harga terbaik kami.' },
+        { trigger: 'portofolio', title: '🖼️ Portofolio Karya', description: 'Eksplorasi hasil karya dan proyek unggulan kami.' },
+        { trigger: 'hubungi cs', title: '💬 Diskusi Proyek', description: 'Konsultasikan ide proyek kreatif Anda bersama kami.' },
+      ],
+    };
+
+    const cat = (storeCategory || '').toUpperCase();
+    const defaultMenus = VERTICAL_QUICK_MENUS[cat];
+    if (!defaultMenus) return;
+
+    const menus: InteractiveMenu[] = defaultMenus.map((item, idx) => ({
+      id: `menu_default_${cat.toLowerCase()}_${idx}`,
+      trigger: item.trigger,
+      title: item.title,
+      description: item.description,
+      options: [],
+    }));
+
+    updateInteractiveMenus(menus);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeCategory]);
 
   // Seller Conversation Playbook State
   const [internalPlaybook, setInternalPlaybook] = useState<SellerConversationPlaybook>(() => {

@@ -494,6 +494,7 @@ export default function TenantDashboardPage() {
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
       {activeTab === 'inbox' && (
         <TeamChatTab
+          tenantSlug={tenantSlug}
           conversations={conversations}
           activeConversation={activeConversation}
           activeConversationId={activeConversationId}

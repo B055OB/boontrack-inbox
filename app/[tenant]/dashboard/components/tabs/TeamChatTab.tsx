@@ -68,6 +68,7 @@ export interface ChatConversation {
 }
 
 export interface TeamChatTabProps {
+  tenantSlug?: string;
   conversations: any[];
   activeConversation: any | null;
   activeConversationId: string | null;
@@ -224,6 +225,7 @@ const INITIAL_MOCK_CONVERSATIONS: ChatConversation[] = [
 ];
 
 export default function TeamChatTab({
+  tenantSlug,
   conversations: externalConversations,
   activeConversation: externalActiveConversation,
   activeConversationId: externalActiveConversationId,
@@ -258,6 +260,8 @@ export default function TeamChatTab({
   const [qrisItemName, setQrisItemName] = useState('Paket Bundle Hemat');
   const [qrisAmount, setQrisAmount] = useState('150000');
   const [isGeneratingQris, setIsGeneratingQris] = useState(false);
+  const [markingPaidOrderId, setMarkingPaidOrderId] = useState<string | null>(null);
+  const resolvedTenant = tenantSlug || (typeof window !== 'undefined' ? window.location.pathname.split('/')[1] : 'onlineboost');
   const [qrisFeedback, setQrisFeedback] = useState<string | null>(null);
 
   // Transfer CS state
@@ -385,14 +389,49 @@ export default function TeamChatTab({
     externalSetReplyText('');
   };
 
-  // Quick POS: Generate QRIS Tagihan
-  const handleGenerateQris = () => {
+  // Quick POS: Generate QRIS Tagihan & Record Order in Core Backend
+  const handleGenerateQris = async () => {
     if (!currentConversation) return;
     const num = parseInt(qrisAmount.replace(/[^0-9]/g, ''), 10) || 100000;
     setIsGeneratingQris(true);
+    setQrisFeedback(null);
 
-    setTimeout(() => {
-      const orderId = `ORD-POS-${Math.floor(100000 + Math.random() * 900000)}`;
+    try {
+      const coreApiBase = (
+        process.env.NEXT_PUBLIC_CORE_API_URL ||
+        process.env.NEXT_PUBLIC_API_URL ||
+        'https://api.boontrack.com'
+      ).replace(/\/+$/, '');
+
+      let realOrderId = `ORD-POS-${Math.floor(100000 + Math.random() * 900000)}`;
+      let dynamicQrString = "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
+
+      try {
+        const checkoutRes = await fetch(`${coreApiBase}/api/v1/orders/qris-checkout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            merchant_slug: resolvedTenant,
+            merchant_name: resolvedTenant,
+            product_name: qrisItemName || 'Tagihan Manual CS',
+            customer_phone: currentConversation.customerPhone,
+            total_amount: num,
+          }),
+        });
+
+        if (checkoutRes.ok) {
+          const checkData = await checkoutRes.json();
+          if (checkData?.order_id) {
+            realOrderId = checkData.order_id;
+          }
+          if (checkData?.qr_string) {
+            dynamicQrString = checkData.qr_string;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('[Quick POS] Core API checkout note:', apiErr);
+      }
+
       const qrisPayload: ConversationMessage = {
         id: `qris-${Date.now()}`,
         sender: 'agent',
@@ -401,10 +440,10 @@ export default function TeamChatTab({
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         isQris: true,
         qrisData: {
-          orderId,
+          orderId: realOrderId,
           amount: num,
           description: qrisItemName,
-          qrValue: `00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1`,
+          qrValue: dynamicQrString,
           status: 'WAITING_PAYMENT',
         },
       };
@@ -414,7 +453,7 @@ export default function TeamChatTab({
           if (c.id === currentConversation.id) {
             return {
               ...c,
-              lastMessage: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${orderId})`,
+              lastMessage: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${realOrderId})`,
               time: 'Baru saja',
               tag: 'Konfirmasi Bayar',
               messages: [...c.messages, qrisPayload],
@@ -424,10 +463,83 @@ export default function TeamChatTab({
         })
       );
 
+      setQrisFeedback(`✅ Tagihan QRIS (${realOrderId}) terkirim ke chat!`);
+      setTimeout(() => setQrisFeedback(null), 4000);
+    } catch (err: any) {
+      setQrisFeedback(`❌ Gagal: ${err.message || 'Error membuat tagihan'}`);
+    } finally {
       setIsGeneratingQris(false);
-      setQrisFeedback(`✅ Tagihan QRIS (${orderId}) terkirim ke chat!`);
-      setTimeout(() => setQrisFeedback(null), 3500);
-    }, 400);
+    }
+  };
+
+  // Manual Transaction: Tandai Lunas & Dispatch Meta CAPI Event
+  const handleMarkPaid = async (orderId: string) => {
+    if (!orderId) return;
+    setMarkingPaidOrderId(orderId);
+    try {
+      const coreApiBase = (
+        process.env.NEXT_PUBLIC_CORE_API_URL ||
+        process.env.NEXT_PUBLIC_API_URL ||
+        'https://api.boontrack.com'
+      ).replace(/\/+$/, '');
+
+      const res = await fetch(`${coreApiBase}/api/v1/orders/${orderId}/mark-paid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: resolvedTenant,
+          agent_id: currentConversation?.assignedTo || 'agent_cs',
+          notes: 'Manual CS Mark Paid via BoonTrack Inbox',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok && res.status !== 200) {
+        throw new Error(data?.detail || 'Gagal menandai lunas pesanan.');
+      }
+
+      setConversationsList((prev) =>
+        prev.map((c) => {
+          if (c.id === currentConversation?.id) {
+            const updatedMessages = c.messages.map((m) => {
+              if (m.isQris && m.qrisData && m.qrisData.orderId === orderId) {
+                return {
+                  ...m,
+                  qrisData: {
+                    ...m.qrisData,
+                    status: 'PAID' as const,
+                  },
+                };
+              }
+              return m;
+            });
+
+            const confirmationMsg: ConversationMessage = {
+              id: `paid-conf-${Date.now()}`,
+              sender: 'system',
+              senderName: 'Sistem BoonTrack',
+              text: `✅ Pembayaran untuk tagihan ${orderId} senilai Rp ${data?.gross_amount ? data.gross_amount.toLocaleString('id-ID') : ''} telah DIVERIFIKASI LUNAS oleh CS. Event konversi Purchase Meta CAPI telah terkirim.`,
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+
+            return {
+              ...c,
+              lastMessage: `LUNAS: Tagihan ${orderId}`,
+              tag: 'Repeat Buyer',
+              messages: [...updatedMessages, confirmationMsg],
+            };
+          }
+          return c;
+        })
+      );
+
+      setQrisFeedback(`✅ Tagihan ${orderId} LUNAS & Event Meta CAPI tersinkron!`);
+      setTimeout(() => setQrisFeedback(null), 4000);
+    } catch (err: any) {
+      alert(`Gagal menandai lunas: ${err.message || 'Terjadi kesalahan sistem'}`);
+    } finally {
+      setMarkingPaidOrderId(null);
+    }
   };
 
   // Transfer Chat to Colleague
@@ -805,14 +917,20 @@ export default function TeamChatTab({
 
                         {/* Interactive QRIS Card Preview inside Chat */}
                         {msg.isQris && msg.qrisData && (
-                          <div className="mt-3 p-3 bg-white rounded-xl border border-slate-200 text-slate-900 space-y-2 shadow-xs">
+                          <div className="mt-3 p-3 bg-white rounded-xl border border-slate-200 text-slate-900 space-y-2.5 shadow-xs">
                             <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
                               <span className="text-[10px] font-black text-slate-800 flex items-center gap-1">
                                 <QrCode className="w-3.5 h-3.5 text-indigo-600" />
                                 <span>TAGIHAN QRIS DINAMIS</span>
                               </span>
-                              <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                                {msg.qrisData.status}
+                              <span
+                                className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
+                                  msg.qrisData.status === 'PAID'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                }`}
+                              >
+                                {msg.qrisData.status === 'PAID' ? 'LUNAS (PAID)' : 'MENUNGGU BAYAR'}
                               </span>
                             </div>
 
@@ -820,7 +938,7 @@ export default function TeamChatTab({
                               <div className="p-1 bg-slate-50 border border-slate-200 rounded-lg shrink-0">
                                 <QRCodeSVG value={msg.qrisData.qrValue} size={64} level="M" />
                               </div>
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <p className="text-[11px] font-bold text-slate-800 truncate">
                                   {msg.qrisData.description}
                                 </p>
@@ -832,6 +950,33 @@ export default function TeamChatTab({
                                 </p>
                               </div>
                             </div>
+
+                            {/* Tombol Aksi Tandai Lunas jika belum dibayar */}
+                            {msg.qrisData.status === 'WAITING_PAYMENT' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleMarkPaid(msg.qrisData!.orderId)}
+                                disabled={markingPaidOrderId === msg.qrisData.orderId}
+                                className="w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
+                              >
+                                {markingPaidOrderId === msg.qrisData.orderId ? (
+                                  <>
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    <span>Memverifikasi & Kirim CAPI...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Tandai Lunas & Sinkron CAPI</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <div className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center gap-1 text-[10px] font-black text-emerald-700">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Terverifikasi Lunas (Synced to Meta CAPI)</span>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -1049,6 +1194,59 @@ export default function TeamChatTab({
                       </>
                     )}
                   </button>
+
+                  {/* Ringkasan & Aksi Cepat Tandai Lunas Tagihan Terakhir */}
+                  {(() => {
+                    const latestQris = currentConversation?.messages.slice().reverse().find((m) => m.isQris && m.qrisData);
+                    if (!latestQris || !latestQris.qrisData) return null;
+                    const isPaid = latestQris.qrisData.status === 'PAID';
+                    return (
+                      <div className="mt-2.5 p-2.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 text-left">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-bold text-slate-600">Tagihan Aktif:</span>
+                          <span className={`font-black px-1.5 py-0.2 rounded border text-[9px] ${
+                            isPaid
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                            {isPaid ? 'LUNAS (PAID)' : 'MENUNGGU BAYAR'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-800 flex justify-between gap-1">
+                          <span className="truncate">{latestQris.qrisData.description}</span>
+                          <span className="text-indigo-700 font-black shrink-0">
+                            Rp {latestQris.qrisData.amount.toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                        <p className="text-[9px] text-slate-400 font-mono">Ref: {latestQris.qrisData.orderId}</p>
+                        {!isPaid ? (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkPaid(latestQris.qrisData!.orderId)}
+                            disabled={markingPaidOrderId === latestQris.qrisData.orderId}
+                            className="w-full mt-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
+                          >
+                            {markingPaidOrderId === latestQris.qrisData.orderId ? (
+                              <>
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                                <span>Sinkron CAPI...</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Tandai Lunas (Kirim CAPI)</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <div className="mt-1 p-1 rounded-lg bg-emerald-100/60 border border-emerald-300 flex items-center justify-center gap-1 text-[10px] font-black text-emerald-800">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Telah Lunas & Sinkron CAPI</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
