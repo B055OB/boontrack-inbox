@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { ProductItem } from '@/lib/product-catalog';
+import StorefrontThemeCard from '../settings/StorefrontThemeCard';
+import CustomDomainCard from '../settings/CustomDomainCard';
 
 function InstagramIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -48,6 +50,7 @@ interface MicrositeTabProps {
   displayName: string;
   onSaved?: (message: string) => void;
   products?: ProductItem[];
+  isTeamScale?: boolean;
 }
 
 const ICON_OPTIONS: { id: MicrositeButton['icon']; label: string; icon: React.ElementType; color: string }[] = [
@@ -59,7 +62,13 @@ const ICON_OPTIONS: { id: MicrositeButton['icon']; label: string; icon: React.El
   { id: 'link', label: 'Tautan Kustom', icon: LinkIcon, color: 'text-slate-600 bg-slate-50 border-slate-200' },
 ];
 
-export default function MicrositeTab({ tenantSlug, displayName, onSaved, products = [] }: MicrositeTabProps) {
+export default function MicrositeTab({
+  tenantSlug,
+  displayName,
+  onSaved,
+  products = [],
+  isTeamScale = false,
+}: MicrositeTabProps) {
   const [buttons, setButtons] = useState<MicrositeButton[]>([]);
   const [activeTemplate, setActiveTemplate] = useState<'default' | 'microsite' | 'personal'>('default');
   const [bioText, setBioText] = useState('');
@@ -438,6 +447,12 @@ export default function MicrositeTab({ tenantSlug, displayName, onSaved, product
               </button>
             </div>
           </div>
+
+          {/* Template Tampilan Toko & Toggle Webchat */}
+          <StorefrontThemeCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
+
+          {/* Domain Setting Card */}
+          <CustomDomainCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
 
           {/* BUTTON BUILDER LIST CARD */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-5">

@@ -3,8 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { Store, Image as ImageIcon, Save, X, Package, QrCode, CheckCircle2, Smartphone, Zap, Download } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
-import CustomDomainCard from '../settings/CustomDomainCard';
-import StorefrontThemeCard from '../settings/StorefrontThemeCard';
 
 export interface SettingsTabProps {
   tenantSlug: string;
@@ -470,9 +468,6 @@ export default function SettingsTab({
           {profileFormFields}
         </div>
 
-        {/* Template Tampilan Toko & Toggle Webchat */}
-        <StorefrontThemeCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
-
         {/* QR Meja Toko Fisik */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
@@ -558,9 +553,6 @@ export default function SettingsTab({
             </a>
           </div>
         </div>
-
-        {/* Domain Setting Card */}
-        <CustomDomainCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
       </div>
     </div>
   );

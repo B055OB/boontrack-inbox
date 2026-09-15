@@ -384,6 +384,7 @@ export default function TenantDashboardPage() {
           tenantSlug={tenantSlug}
           displayName={displayName}
           products={products}
+          isTeamScale={isTeamScale}
           onSaved={(msg) => {
             setSaveFeedback(msg);
             setTimeout(() => setSaveFeedback(null), 3000);
