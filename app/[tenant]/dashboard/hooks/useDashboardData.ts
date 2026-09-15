@@ -5,17 +5,21 @@ import { useParams, useRouter } from 'next/navigation';
 import { getPlatformWhatsApp } from '@/lib/tenant-config';
 
 export type DashboardTab = 
+  | 'dashboard'
   | 'inbox' 
   | 'catalog' 
   | 'orders' 
   | 'microsite'
+  | 'links'
   | 'storefront'
+  | 'themes'
   | 'finance' 
   | 'ai_knowledge' 
   | 'ads_tracking' 
   | 'shipping' 
   | 'broadcast' 
-  | 'whatsapp';
+  | 'whatsapp'
+  | 'settings';
 
 export type PlanTier = 'growth' | 'ads_performance' | 'team_scale';
 

@@ -12,7 +12,10 @@ import {
 } from 'lucide-react';
 import LockedFeatureCard from './components/LockedFeatureCard';
 
-import NavTabs from './components/navbar/NavTabs';
+import DashboardSidebar from './components/sidebar/DashboardSidebar';
+import LivePhonePreview from './components/preview/LivePhonePreview';
+import StorefrontThemeCard, { VisualThemeType } from './components/settings/StorefrontThemeCard';
+import CustomDomainCard from './components/settings/CustomDomainCard';
 import OrderNotificationBell from './components/navbar/OrderNotificationBell';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import TrialBanner from './components/navbar/TrialBanner';
@@ -193,125 +196,121 @@ export default function TenantDashboardPage() {
     );
   };
 
-  return (
-    <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
-      {/* STICKY TOP WRAPPER (HEADER + TABS NAVIGATION) */}
-      <div className="sticky top-0 z-50 isolate bg-white border-b border-slate-200 shadow-xs">
-        {/* TOP NAVBAR */}
-        <header className="px-4 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-            <Link
-              href={`/${tenantSlug}`}
-              target="_blank"
-              className="text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl border border-slate-200 transition inline-flex items-center gap-1.5 shadow-xs shrink-0"
-            >
-              <Store className="w-3.5 h-3.5 text-slate-500" />
-              <span className="hidden sm:inline">Lihat Etalase Toko</span>
-              <span className="sm:hidden">Toko</span>
-              <ExternalLink className="w-3 h-3 opacity-60" />
-            </Link>
+  const [activeVisualTheme, setActiveVisualTheme] = React.useState<VisualThemeType>('clean_minimal');
+  const [livePreviewButtons, setLivePreviewButtons] = React.useState<any[]>([]);
+  const [livePreviewShowProducts, setLivePreviewShowProducts] = React.useState(false);
 
-            {/* SHORTCUT INSTAN PESANAN & ORDER (HEADER UTAMA) */}
+  React.useEffect(() => {
+    if (!tenantSlug) return;
+    async function loadInitialTheme() {
+      try {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.theme?.visual_theme) {
+            setActiveVisualTheme(data.theme.visual_theme);
+          }
+        }
+      } catch (err) {
+        console.warn('Load initial theme note:', err);
+      }
+    }
+    loadInitialTheme();
+  }, [tenantSlug]);
+
+  React.useEffect(() => {
+    function handleThemeEvent(e: any) {
+      if (e.detail?.visual_theme) {
+        setActiveVisualTheme(e.detail.visual_theme);
+      }
+    }
+    window.addEventListener('storefront-theme-changed', handleThemeEvent);
+    return () => window.removeEventListener('storefront-theme-changed', handleThemeEvent);
+  }, []);
+
+  return (
+    <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex antialiased">
+      {/* KOLOM 1: SIDEBAR KIRI VERTIKAL */}
+      <DashboardSidebar
+        tenantSlug={tenantSlug}
+        displayName={displayName}
+        storeDisplayName={storeDisplayName}
+        storeLogoUrl={storeLogoUrl}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isTeamScale={isTeamScale}
+        isAdsPerformance={isAdsPerformance}
+        isAdsTrackingUnlocked={isAdsTrackingUnlocked}
+        isSoloOrTrial={isSoloOrTrial}
+        productCount={products.length}
+        orderCount={transactions.length}
+        onOpenStoreSettings={() => {
+          setNameError(null);
+          setIsStoreSettingsOpen(true);
+        }}
+        onOpenUpgradeModal={() => openUpgradeModal('ads_performance')}
+      />
+
+      {/* KOLOM 2 & 3 WRAPPER */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        {/* TOP BAR RINGKAS (Header Canvas) */}
+        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Shortcut Pesanan */}
             <button
               type="button"
               onClick={() => setActiveTab('orders')}
-              className={`text-xs font-bold px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl border transition inline-flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer active:scale-95 ${
+              className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition inline-flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                 activeTab === 'orders'
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-500/20'
-                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200/90'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
               }`}
-              title="Akses Langsung Pesanan & Order Tanpa Scroll"
+              title="Akses Pesanan & Order"
             >
-              <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="font-black">Pesanan &amp; Order</span>
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Pesanan &amp; Order</span>
               {transactions?.length > 0 && (
-                <span className={`px-1.5 py-0.5 text-[10px] font-black rounded-full leading-none ${
-                  activeTab === 'orders' ? 'bg-white text-emerald-700' : 'bg-emerald-600 text-white'
-                }`}>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                    activeTab === 'orders' ? 'bg-white text-emerald-800' : 'bg-emerald-600 text-white'
+                  }`}
+                >
                   {transactions.length}
                 </span>
               )}
             </button>
+
             <OrderNotificationBell tenantSlug={tenantSlug} />
             <PwaInstallPrompt tenantSlug={tenantSlug} />
 
-            <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
-
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setNameError(null);
-                  setIsStoreSettingsOpen(true);
-                }}
-                className="group flex items-center gap-1.5 px-2 py-0.5 rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 transition-all cursor-pointer text-left"
-                title="Klik untuk ubah nama & profil toko"
-              >
-                <span className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-wider truncate group-hover:text-blue-600">
-                  {storeDisplayName || displayName}
-                </span>
-                <span className="text-[11px] text-slate-400 group-hover:text-blue-600">
-                  ✏️
-                </span>
-              </button>
-              <span
-                className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 ${
-                  isTeamScale
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : isAdsPerformance
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-slate-100 text-slate-700 border-slate-200'
-                }`}
-              >
-                {isTeamScale ? 'Team Scale' : isAdsPerformance ? 'Ads Performance' : 'Solo'}
+            {saveFeedback && (
+              <span className="text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 animate-fadeIn truncate">
+                {saveFeedback}
               </span>
-            </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 text-xs shrink-0">
-            <span className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5 text-[11px] sm:text-xs">
+          <div className="flex items-center gap-2.5 shrink-0">
+            <span className="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5 text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="hidden sm:inline">Storefront Active</span>
+              <span className="hidden sm:inline">Storefront Online</span>
               <span className="sm:hidden">Online</span>
             </span>
           </div>
         </header>
 
-        {/* STORE SHORT BIO LINK WIDGET (GLOBAL DASHBOARD HEADER) */}
-        <div className="px-4 sm:px-6 py-2 bg-slate-50/70 border-b border-slate-100">
-          <StoreBioLinkWidget tenantSlug={tenantSlug} />
-        </div>
-
-        {/* REVERSE TRIAL WARNING BANNER */}
+        {/* TRIAL BANNER IF ACTIVE */}
         <TrialBanner
           daysLeft={trialDaysLeft}
           tier={tenantFeatureFlags?.tier}
           onUpgrade={handleUpgradeTier}
         />
 
-        {/* TABS NAVIGATION */}
-        <NavTabs
-          activeTab={activeTab as any}
-          setActiveTab={setActiveTab as any}
-          isTeamScale={isTeamScale}
-          isAdsPerformance={isAdsPerformance}
-          isAdsTrackingUnlocked={isAdsTrackingUnlocked}
-          isSoloOrTrial={isSoloOrTrial}
-          storeCategory={storeCategory}
-          businessType={businessType || storeCategory}
-          capabilities={capabilities}
-          productCount={products.length}
-          orderCount={transactions.length}
-        />
-
-        {saveFeedback && (
-          <div className="hidden md:block text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200">
-            {saveFeedback}
-          </div>
-        )}
-      </div>
-
-      {/* TAB 0: DASHBOARD UTAMA (ONBOARDING, ANALYTICS, INTEGRATED STOREFRONT HUB) */}
+        {/* CONTENT CANVAS AREA (KOLOM 2 & KOLOM 3) */}
+        <div className="flex-1 flex items-start gap-6 p-4 sm:p-6 lg:p-8 min-w-0">
+          {/* KOLOM 2: CANVAS FORM MODUL AKTIF */}
+          <div className="flex-1 min-w-0">
+          {/* TAB 0: DASHBOARD UTAMA (ONBOARDING, ANALYTICS, INTEGRATED STOREFRONT HUB) */}
       {(activeTab === 'dashboard' || activeTab === 'overview') && (
         <DashboardOverviewTab
           tenantSlug={tenantSlug}
@@ -378,18 +377,43 @@ export default function TenantDashboardPage() {
         />
       )}
 
-      {/* TAB: TAMPILAN & MICROSITE */}
-      {(activeTab === 'microsite' || activeTab === 'storefront') && (
+      {/* TAB: LINKS (TAUTAN & MICROSITE) */}
+      {(activeTab === 'microsite' || activeTab === 'links') && (
         <MicrositeTab
           tenantSlug={tenantSlug}
           displayName={displayName}
           products={products}
           isTeamScale={isTeamScale}
+          onLivePreviewUpdate={(data) => {
+            if (data.bio !== undefined) setStoreBio(data.bio);
+            if (data.buttons !== undefined) setLivePreviewButtons(data.buttons);
+            if (data.showProducts !== undefined) setLivePreviewShowProducts(data.showProducts);
+          }}
+          onNavigateTab={(tab) => setActiveTab(tab as any)}
           onSaved={(msg) => {
             setSaveFeedback(msg);
             setTimeout(() => setSaveFeedback(null), 3000);
           }}
         />
+      )}
+
+      {/* TAB: TAMPILAN (DESIGN & THEMES) */}
+      {(activeTab === 'themes' || activeTab === 'storefront') && (
+        <div className="max-w-4xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
+          <StorefrontThemeCard
+            tenantSlug={tenantSlug}
+            isTeamScale={isTeamScale}
+            isAdsPerformance={isAdsPerformance}
+            currentVisualTheme={activeVisualTheme}
+            onThemeChange={(themeId) => {
+              setActiveVisualTheme(themeId);
+              setSaveFeedback('✅ Tema visual storefront berhasil diubah!');
+              setTimeout(() => setSaveFeedback(null), 3000);
+            }}
+          />
+
+          <CustomDomainCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
+        </div>
       )}
 
       {/* TAB 3: AI Knowledge */}
@@ -632,6 +656,24 @@ export default function TenantDashboardPage() {
           tenantSlug={tenantSlug}
         />
       )}
+
+          </div>
+
+          {/* KOLOM 3: STICKY LIVE PHONE PREVIEW (WYSIWYG) */}
+          <div className="hidden lg:block w-[340px] xl:w-[360px] sticky top-20 shrink-0 self-start">
+            <LivePhonePreview
+              tenantSlug={tenantSlug}
+              displayName={storeDisplayName || displayName}
+              storeBio={storeBio}
+              storeLogoUrl={storeLogoUrl}
+              visualTheme={activeVisualTheme}
+              buttons={livePreviewButtons}
+              showProducts={livePreviewShowProducts}
+              products={products}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* BOONPILOT AI COPILOT FLOATING WIDGET */}
       <BoonPilotWidget

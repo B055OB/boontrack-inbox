@@ -3,22 +3,24 @@ import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 
+export type VisualThemeType =
+  | 'clean_minimal'
+  | 'aurora_gradient'
+  | 'midnight_luxe'
+  | 'warm_terra'
+  | 'bold_performance';
+
 export interface StoreThemeConfig {
   template: 'default' | 'personal' | 'microsite';
+  visual_theme?: VisualThemeType;
   chat_enabled: boolean;
   chat_position: 'bottom-right' | 'bottom-left';
 }
 
-function resolveDefaultTheme(slug: string): StoreThemeConfig {
-  if (slug === 'ombudi') {
-    return {
-      template: 'personal',
-      chat_enabled: true,
-      chat_position: 'bottom-right',
-    };
-  }
+function resolveDefaultTheme(): StoreThemeConfig {
   return {
     template: 'default',
+    visual_theme: 'clean_minimal',
     chat_enabled: true,
     chat_position: 'bottom-right',
   };
@@ -47,9 +49,10 @@ export async function GET(
     }
 
     const metadata = tenantRow.metadata || {};
-    const defaultTheme = resolveDefaultTheme(slug);
+    const defaultTheme = resolveDefaultTheme();
     const theme: StoreThemeConfig = {
       template: metadata.theme?.template || defaultTheme.template,
+      visual_theme: metadata.theme?.visual_theme || metadata.visual_theme || defaultTheme.visual_theme,
       chat_enabled:
         metadata.theme?.chat_enabled !== undefined
           ? Boolean(metadata.theme.chat_enabled)
@@ -86,7 +89,7 @@ export async function PUT(
     const slug = normalizeTenantSlug(rawSlug || '');
     const body = await req.json();
 
-    const { template, chat_enabled, chat_position } = body;
+    const { template, visual_theme, chat_enabled, chat_position } = body;
 
     const supabase = getSupabase();
     const { data: tenantRow, error: fetchErr } = await supabase
@@ -103,13 +106,25 @@ export async function PUT(
     }
 
     const existingMetadata = tenantRow.metadata || {};
-    const existingTheme = existingMetadata.theme || resolveDefaultTheme(slug);
+    const existingTheme = existingMetadata.theme || resolveDefaultTheme();
 
     const validTemplates = ['default', 'personal', 'microsite'];
     const newTemplate =
       template && validTemplates.includes(template)
         ? template
         : existingTheme.template;
+
+    const validVisualThemes: VisualThemeType[] = [
+      'clean_minimal',
+      'aurora_gradient',
+      'midnight_luxe',
+      'warm_terra',
+      'bold_performance',
+    ];
+    const newVisualTheme =
+      visual_theme && validVisualThemes.includes(visual_theme)
+        ? visual_theme
+        : existingTheme.visual_theme || existingMetadata.visual_theme || 'clean_minimal';
 
     const newChatEnabled =
       chat_enabled !== undefined ? Boolean(chat_enabled) : existingTheme.chat_enabled;
@@ -121,6 +136,7 @@ export async function PUT(
 
     const updatedTheme: StoreThemeConfig = {
       template: newTemplate,
+      visual_theme: newVisualTheme,
       chat_enabled: newChatEnabled,
       chat_position: newChatPosition,
     };
@@ -128,6 +144,7 @@ export async function PUT(
     const updatedMetadata = {
       ...existingMetadata,
       template: newTemplate,
+      visual_theme: newVisualTheme,
       theme: updatedTheme,
     };
 

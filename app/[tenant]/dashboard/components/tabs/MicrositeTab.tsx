@@ -24,8 +24,6 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { ProductItem } from '@/lib/product-catalog';
-import StorefrontThemeCard from '../settings/StorefrontThemeCard';
-import CustomDomainCard from '../settings/CustomDomainCard';
 
 function InstagramIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -51,6 +49,13 @@ interface MicrositeTabProps {
   onSaved?: (message: string) => void;
   products?: ProductItem[];
   isTeamScale?: boolean;
+  onLivePreviewUpdate?: (data: {
+    bio?: string;
+    buttons?: MicrositeButton[];
+    showProducts?: boolean;
+    featuredProductIds?: string[];
+  }) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 const ICON_OPTIONS: { id: MicrositeButton['icon']; label: string; icon: React.ElementType; color: string }[] = [
@@ -68,6 +73,8 @@ export default function MicrositeTab({
   onSaved,
   products = [],
   isTeamScale = false,
+  onLivePreviewUpdate,
+  onNavigateTab,
 }: MicrositeTabProps) {
   const [buttons, setButtons] = useState<MicrositeButton[]>([]);
   const [activeTemplate, setActiveTemplate] = useState<'default' | 'microsite' | 'personal'>('default');
@@ -86,6 +93,18 @@ export default function MicrositeTab({
       setCatalogProducts(products);
     }
   }, [products]);
+
+  // Broadcast live preview data
+  useEffect(() => {
+    if (onLivePreviewUpdate) {
+      onLivePreviewUpdate({
+        bio: bioText,
+        buttons,
+        showProducts,
+        featuredProductIds,
+      });
+    }
+  }, [bioText, buttons, showProducts, featuredProductIds, onLivePreviewUpdate]);
 
   // Load existing configuration from Supabase
   useEffect(() => {
@@ -364,95 +383,34 @@ export default function MicrositeTab({
         </div>
       )}
 
-      {/* 2-COLUMN BUILDER + PREVIEW */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* LEFT COLUMN: BUILDER SETTINGS (lg:col-span-7) */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* TEMPLATE CHOOSER CARD */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-blue-600" />
-                  <span>Template Etalase Toko</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Tentukan tampilan default saat pengunjung membuka alamat <span className="font-mono font-bold text-slate-700">shop.boontrack.com/{tenantSlug}</span>
-                </p>
-              </div>
+      {/* BUILDER CANVAS */}
+      <div className="space-y-6">
+        {/* Quick Info Banner to Tampilan & Desain */}
+        <div className="p-4 bg-indigo-50/70 border border-indigo-100/80 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4" />
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setActiveTemplate('default')}
-                className={`p-4 rounded-2xl border text-left transition relative cursor-pointer ${
-                  activeTemplate === 'default'
-                    ? 'border-blue-600 bg-blue-50/50 shadow-xs ring-2 ring-blue-600/20'
-                    : 'border-slate-200 hover:border-slate-300 bg-white'
-                }`}
-              >
-                {activeTemplate === 'default' && (
-                  <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-blue-600"></span>
-                )}
-                <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-100/70 px-2 py-0.5 rounded inline-block mb-2">
-                  Rekomendasi
-                </span>
-                <h4 className="text-xs font-bold text-slate-900">Katalog Toko (Default)</h4>
-                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                  Katalog grid produk lengkap dengan Asisten AI Chatbot &amp; Checkout instan.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTemplate('microsite')}
-                className={`p-4 rounded-2xl border text-left transition relative cursor-pointer ${
-                  activeTemplate === 'microsite'
-                    ? 'border-blue-600 bg-blue-50/50 shadow-xs ring-2 ring-blue-600/20'
-                    : 'border-slate-200 hover:border-slate-300 bg-white'
-                }`}
-              >
-                {activeTemplate === 'microsite' && (
-                  <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-blue-600"></span>
-                )}
-                <span className="text-[10px] font-black uppercase text-emerald-600 bg-emerald-100/70 px-2 py-0.5 rounded inline-block mb-2">
-                  Bio-Funnel
-                </span>
-                <h4 className="text-xs font-bold text-slate-900">Microsite Bio-Link</h4>
-                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                  Format vertikal fokus tombol tautan cepat (Linktree style) &amp; menu unggulan.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTemplate('personal')}
-                className={`p-4 rounded-2xl border text-left transition relative cursor-pointer ${
-                  activeTemplate === 'personal'
-                    ? 'border-blue-600 bg-blue-50/50 shadow-xs ring-2 ring-blue-600/20'
-                    : 'border-slate-200 hover:border-slate-300 bg-white'
-                }`}
-              >
-                {activeTemplate === 'personal' && (
-                  <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-blue-600"></span>
-                )}
-                <span className="text-[10px] font-black uppercase text-purple-600 bg-purple-100/70 px-2 py-0.5 rounded inline-block mb-2">
-                  Authority
-                </span>
-                <h4 className="text-xs font-bold text-slate-900">Personal Brand</h4>
-                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                  Cocok untuk profil mentor, konsultan, portofolio, dan bimbingan privat.
-                </p>
-              </button>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900">
+                Pilihan Tema Visual &amp; Desain Storefront
+              </h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Sesuaikan 5 tema visual toko (Clean Minimal, Aurora, Midnight Luxe, dll) di tab{' '}
+                <span className="font-bold text-indigo-700">Tampilan (Design &amp; Themes)</span>.
+              </p>
             </div>
           </div>
-
-          {/* Template Tampilan Toko & Toggle Webchat */}
-          <StorefrontThemeCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
-
-          {/* Domain Setting Card */}
-          <CustomDomainCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
+          {onNavigateTab && (
+            <button
+              type="button"
+              onClick={() => onNavigateTab('themes')}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shrink-0 transition shadow-xs cursor-pointer self-start sm:self-auto"
+            >
+              Buka Tab Tampilan
+            </button>
+          )}
+        </div>
 
           {/* BUTTON BUILDER LIST CARD */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-5">
@@ -785,8 +743,8 @@ export default function MicrositeTab({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: REALTIME PHONE PREVIEW (lg:col-span-5) */}
-        <div className="lg:col-span-5 lg:sticky lg:top-24 space-y-4">
+        {/* MOBILE SIMULATION (Hanya tampil di mobile/tablet saat kolom kanan desktop disembunyikan) */}
+        <div className="lg:hidden mt-8 space-y-4">
           <div className="flex items-center justify-between px-2">
             <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <Smartphone className="w-4 h-4 text-slate-500" />
@@ -919,6 +877,5 @@ export default function MicrositeTab({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }

@@ -3,9 +3,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Palette,
-  LayoutGrid,
-  UserCheck,
-  Smartphone,
   CheckCircle2,
   Lock,
   Sparkles,
@@ -18,68 +15,112 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
-export type TemplateType = 'default' | 'personal' | 'microsite';
+export type VisualThemeType =
+  | 'clean_minimal'
+  | 'aurora_gradient'
+  | 'midnight_luxe'
+  | 'warm_terra'
+  | 'bold_performance';
+
+export interface VisualThemeOption {
+  id: VisualThemeType;
+  title: string;
+  subtitle: string;
+  description: string;
+  badge: string;
+  isLockedForSolo: boolean;
+  swatches: {
+    bg: string;
+    card: string;
+    accent: string;
+  };
+}
+
+export const VISUAL_THEMES: VisualThemeOption[] = [
+  {
+    id: 'clean_minimal',
+    title: 'Clean Minimal',
+    subtitle: 'Default Storefront',
+    description: 'Layout modern & terang dengan kontras bersih. Terbuka untuk semua tier termasuk Solo Starter.',
+    badge: 'Semua Tier',
+    isLockedForSolo: false,
+    swatches: {
+      bg: 'bg-slate-100',
+      card: 'bg-white border-slate-200',
+      accent: 'bg-indigo-600',
+    },
+  },
+  {
+    id: 'aurora_gradient',
+    title: 'Aurora Gradient',
+    subtitle: 'Cyan-Indigo Glassmorphism',
+    description: 'Gradien cyan ke indigo memukau dengan kartu kaca transparan. Tema aktif storefront saat ini.',
+    badge: 'Populer',
+    isLockedForSolo: true,
+    swatches: {
+      bg: 'bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600',
+      card: 'bg-white/30 backdrop-blur-xs',
+      accent: 'bg-cyan-400',
+    },
+  },
+  {
+    id: 'midnight_luxe',
+    title: 'Midnight Luxe',
+    subtitle: 'Deep Dark / Neon Gold Accent',
+    description: 'Mode gelap eksklusif dipadu aksen emas neon untuk citra produk premium & personal branding otoritas.',
+    badge: 'Luxe',
+    isLockedForSolo: true,
+    swatches: {
+      bg: 'bg-slate-950',
+      card: 'bg-slate-900 border-amber-500/40',
+      accent: 'bg-amber-400',
+    },
+  },
+  {
+    id: 'warm_terra',
+    title: 'Warm Terra',
+    subtitle: 'Earthy Peach / Sand Palette',
+    description: 'Nuansa terakota & sand hangat yang organik, cocok untuk produk artisan, kuliner, fesyen & kopi.',
+    badge: 'Artisan',
+    isLockedForSolo: true,
+    swatches: {
+      bg: 'bg-[#FFF7ED]',
+      card: 'bg-[#431407]',
+      accent: 'bg-[#EA580C]',
+    },
+  },
+  {
+    id: 'bold_performance',
+    title: 'Bold Performance',
+    subtitle: 'High-Contrast CTA Neo-Brutalism',
+    description: 'Desain neo-brutalism dengan tombol aksi tegas berbayang kontras tinggi untuk mendongkrak konversi checkout.',
+    badge: 'High Conversion',
+    isLockedForSolo: true,
+    swatches: {
+      bg: 'bg-slate-200',
+      card: 'bg-emerald-400 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]',
+      accent: 'bg-emerald-500',
+    },
+  },
+];
 
 interface StorefrontThemeCardProps {
   tenantSlug: string;
   isTeamScale: boolean;
-  onSelectTemplate?: (template: TemplateType) => void;
+  isAdsPerformance?: boolean;
+  onThemeChange?: (themeId: VisualThemeType) => void;
+  currentVisualTheme?: VisualThemeType;
 }
-
-interface TemplateOption {
-  id: TemplateType;
-  title: string;
-  subtitle: string;
-  description: string;
-  icon: React.ElementType;
-  isPremium: boolean;
-  accentColor: string;
-  tagline: string;
-}
-
-const TEMPLATE_OPTIONS: TemplateOption[] = [
-  {
-    id: 'default',
-    title: 'Default (Katalog Commerce)',
-    subtitle: 'Ritel, F&B & Toko Fisik',
-    description:
-      'Layout e-commerce modern, produk di kiri dan chat asisten di kanan. Cocok untuk toko ritel & produk fisik.',
-    icon: LayoutGrid,
-    isPremium: false,
-    accentColor: 'blue',
-    tagline: 'Standar & Praktis',
-  },
-  {
-    id: 'personal',
-    title: 'Personal (Authority / Brand)',
-    subtitle: 'Mentor, Public Figure & Konsultan',
-    description:
-      'Landing page elegan berbasis trust, profil mentor/konsultan, showcase portofolio, dan ulasan/testimoni.',
-    icon: UserCheck,
-    isPremium: true,
-    accentColor: 'purple',
-    tagline: 'High-Trust Authority',
-  },
-  {
-    id: 'microsite',
-    title: 'Microsite (Bio-Funnel)',
-    subtitle: 'Kuliner, F&B & Kreator',
-    description:
-      'Bio-link praktis mobile-first untuk kuliner & kreator. Arahkan traffic medsos ke GoFood, GrabFood, ShopeeFood, atau WA.',
-    icon: Smartphone,
-    isPremium: true,
-    accentColor: 'emerald',
-    tagline: 'Mobile Bio Link',
-  },
-];
 
 export default function StorefrontThemeCard({
   tenantSlug,
   isTeamScale,
-  onSelectTemplate,
+  isAdsPerformance = false,
+  onThemeChange,
+  currentVisualTheme,
 }: StorefrontThemeCardProps) {
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>(
-    tenantSlug === 'ombudi' ? 'personal' : 'default'
+  const [selectedTheme, setSelectedTheme] = useState<VisualThemeType>(
+    currentVisualTheme || 'clean_minimal'
   );
   const [chatEnabled, setChatEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,8 +128,16 @@ export default function StorefrontThemeCard({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [targetUpgradeTheme, setTargetUpgradeTheme] = useState<VisualThemeOption | null>(null);
 
-  // 1. Fetch initial theme config
+  // Sync prop jika ada perubahan dari parent
+  useEffect(() => {
+    if (currentVisualTheme) {
+      setSelectedTheme(currentVisualTheme);
+    }
+  }, [currentVisualTheme]);
+
+  // 1. Fetch initial theme config dari database & API
   const fetchTheme = useCallback(async () => {
     if (!tenantSlug) return;
     setIsLoading(true);
@@ -102,9 +151,14 @@ export default function StorefrontThemeCard({
       if (res.ok) {
         const data = await res.json();
         if (data?.theme) {
-          const resolvedTmpl = data.theme.template || (tenantSlug === 'ombudi' ? 'personal' : 'default');
-          setSelectedTemplate(resolvedTmpl);
+          const resolvedTheme: VisualThemeType =
+            data.theme.visual_theme ||
+            (data.theme.template === 'microsite' ? 'aurora_gradient' : 'clean_minimal');
+          setSelectedTheme(resolvedTheme);
           setChatEnabled(data.theme.chat_enabled !== false);
+          if (onThemeChange) {
+            onThemeChange(resolvedTheme);
+          }
         }
       }
     } catch (err) {
@@ -112,14 +166,14 @@ export default function StorefrontThemeCard({
     } finally {
       setIsLoading(false);
     }
-  }, [tenantSlug]);
+  }, [tenantSlug, onThemeChange]);
 
   useEffect(() => {
     fetchTheme();
   }, [fetchTheme]);
 
   // 2. Save theme change persistently to database & settings API
-  const saveThemeConfig = async (newTemplate: TemplateType, newChatEnabled: boolean) => {
+  const saveThemeConfig = async (newThemeId: VisualThemeType, newChatEnabled: boolean) => {
     setIsSaving(true);
     setErrorMessage(null);
 
@@ -129,7 +183,8 @@ export default function StorefrontThemeCard({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          template: newTemplate,
+          visual_theme: newThemeId,
+          template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
           chat_enabled: newChatEnabled,
           chat_position: 'bottom-right',
         }),
@@ -138,7 +193,7 @@ export default function StorefrontThemeCard({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data.error || 'Gagal menyimpan template tampilan toko.');
+        throw new Error(data.error || 'Gagal menyimpan tema visual toko.');
       }
 
       // Step B: Sinkronkan via endpoint settings API profil/metadata tenant
@@ -147,9 +202,9 @@ export default function StorefrontThemeCard({
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            template: newTemplate,
             theme: {
-              template: newTemplate,
+              visual_theme: newThemeId,
+              template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
               chat_enabled: newChatEnabled,
               chat_position: 'bottom-right',
             },
@@ -172,10 +227,11 @@ export default function StorefrontThemeCard({
           if (tenantRow) {
             const updatedMeta = {
               ...(tenantRow.metadata || {}),
-              template: newTemplate,
+              visual_theme: newThemeId,
               theme: {
                 ...(tenantRow.metadata?.theme || {}),
-                template: newTemplate,
+                visual_theme: newThemeId,
+                template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
                 chat_enabled: newChatEnabled,
                 chat_position: 'bottom-right',
               },
@@ -190,23 +246,22 @@ export default function StorefrontThemeCard({
         console.warn('[StorefrontThemeCard] Direct Supabase update note:', sbErr);
       }
 
-      if (onSelectTemplate) {
-        onSelectTemplate(newTemplate);
+      if (onThemeChange) {
+        onThemeChange(newThemeId);
       }
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
-          new CustomEvent('storefront-template-changed', {
-            detail: { template: newTemplate, chat_enabled: newChatEnabled },
+          new CustomEvent('storefront-theme-changed', {
+            detail: { visual_theme: newThemeId, chat_enabled: newChatEnabled },
           })
         );
       }
 
-      const tmplLabel = newTemplate === 'personal' ? 'Personal (Authority)' : newTemplate === 'microsite' ? 'Microsite (Bio-Funnel)' : 'Default (Katalog)';
-      setToastMessage(`Template ${tmplLabel} berhasil disimpan & diterapkan!`);
-      setTimeout(() => setToastMessage(null), 3500);
+      setToastMessage('✅ Tema visual berhasil diubah!');
+      setTimeout(() => setToastMessage(null), 3000);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Terjadi kendala saat menyimpan tema.';
+      const msg = err instanceof Error ? err.message : 'Gagal menyimpan tema toko';
       setErrorMessage(msg);
       setTimeout(() => setErrorMessage(null), 4000);
     } finally {
@@ -214,40 +269,46 @@ export default function StorefrontThemeCard({
     }
   };
 
-  const handleSelectTemplate = (tmpl: TemplateOption) => {
-    // Paywall check jika template premium tapi plan masih Solo
-    if (tmpl.isPremium && !isTeamScale) {
+  const isThemeLocked = (theme: VisualThemeOption) => {
+    if (!theme.isLockedForSolo) return false;
+    // Buka penuh untuk Ads Performance & Team Scale
+    return !isAdsPerformance && !isTeamScale;
+  };
+
+  const handleSelectTheme = (theme: VisualThemeOption) => {
+    if (isThemeLocked(theme)) {
+      setTargetUpgradeTheme(theme);
       setShowUpgradeModal(true);
       return;
     }
 
-    setSelectedTemplate(tmpl.id);
-    saveThemeConfig(tmpl.id, chatEnabled);
+    setSelectedTheme(theme.id);
+    saveThemeConfig(theme.id, chatEnabled);
   };
 
   const handleToggleChat = () => {
     const nextVal = !chatEnabled;
     setChatEnabled(nextVal);
-    saveThemeConfig(selectedTemplate, nextVal);
+    saveThemeConfig(selectedTheme, nextVal);
   };
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-5 shadow-xs relative">
+    <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-6 shadow-xs relative">
       {/* Header Info */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-100">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
             <Palette className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-black text-slate-900">Template Tampilan Toko</h3>
+              <h3 className="text-sm font-black text-slate-900">Pilihan Tema Visual Storefront</h3>
               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                Storefront Style
+                5 Pilihan Tema
               </span>
             </div>
-            <p className="text-xs text-slate-500">
-              Pilih gaya tata letak storefront yang paling sesuai dengan model bisnis dan persona Anda.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Sesuaikan palet warna, gradien, dan gaya kartu etalase publik toko Anda.
             </p>
           </div>
         </div>
@@ -278,107 +339,83 @@ export default function StorefrontThemeCard({
       {isLoading ? (
         <div className="p-8 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-500 font-medium">
           <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
-          <span>Memuat preferensi template toko...</span>
+          <span>Memuat preferensi tema visual toko...</span>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Template Selection Radio Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {TEMPLATE_OPTIONS.map((tmpl) => {
-              const Icon = tmpl.icon;
-              const isSelected = selectedTemplate === tmpl.id;
-              const isLocked = tmpl.isPremium && !isTeamScale;
+        <div className="space-y-6">
+          {/* 5 Theme Options Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {VISUAL_THEMES.map((theme) => {
+              const isSelected = selectedTheme === theme.id;
+              const locked = isThemeLocked(theme);
 
               return (
                 <div
-                  key={tmpl.id}
-                  onClick={() => handleSelectTemplate(tmpl)}
+                  key={theme.id}
+                  onClick={() => handleSelectTheme(theme)}
                   className={`relative rounded-2xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between text-left border ${
                     isSelected
                       ? 'bg-indigo-50/40 border-indigo-600 ring-2 ring-indigo-500/20 shadow-sm'
-                      : isLocked
-                      ? 'bg-slate-50/80 border-slate-200 hover:border-slate-300 opacity-90'
+                      : locked
+                      ? 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
                       : 'bg-white border-slate-200 hover:border-indigo-300 hover:bg-slate-50/40 shadow-2xs'
                   }`}
                 >
-                  {/* Top Bar Card */}
                   <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                          isSelected
-                            ? 'bg-indigo-600 text-white'
-                            : isLocked
-                            ? 'bg-slate-200 text-slate-500'
-                            : 'bg-slate-100 text-slate-700'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4" />
+                    {/* Top row: Swatches & Badges */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100/80 border border-slate-200/60">
+                        <span className={`w-4 h-4 rounded-md ${theme.swatches.bg} border border-black/10`} />
+                        <span className={`w-4 h-4 rounded-md ${theme.swatches.card} border border-black/10`} />
+                        <span className={`w-4 h-4 rounded-md ${theme.swatches.accent} border border-black/10`} />
                       </div>
 
-                      {/* Badges */}
-                      <div className="flex items-center gap-1">
-                        {tmpl.isPremium ? (
-                          <span
-                            className={`text-[9px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 ${
-                              isLocked
-                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                : 'bg-purple-100 text-purple-800 border border-purple-200'
-                            }`}
-                          >
-                            {isLocked ? (
-                              <>
-                                <Lock className="w-2.5 h-2.5 text-amber-700" />
-                                Team / Scale
-                              </>
-                            ) : (
-                              <>
-                                <Crown className="w-2.5 h-2.5 text-purple-600" />
-                                Team / Scale
-                              </>
-                            )}
-                          </span>
-                        ) : (
-                          <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
-                            Semua Paket
-                          </span>
-                        )}
-                      </div>
+                      {locked ? (
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-md text-[10px] font-extrabold flex items-center gap-1 shrink-0">
+                          <Lock className="w-3 h-3 text-slate-500" />
+                          <span>Terkunci</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          {theme.badge}
+                        </span>
+                      )}
                     </div>
 
-                    {/* Title & Tagline */}
+                    {/* Title & Description */}
                     <div>
-                      <div className="flex items-center gap-1.5">
-                        <h4 className="text-xs font-black text-slate-900 leading-snug">
-                          {tmpl.title}
-                        </h4>
-                      </div>
-                      <span className="text-[10px] font-bold text-indigo-600 block mt-0.5">
-                        {tmpl.subtitle}
-                      </span>
-                      <p className="text-[11px] text-slate-500 leading-relaxed mt-1.5">
-                        {tmpl.description}
+                      <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>{theme.title}</span>
+                        {isSelected && (
+                          <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                        )}
+                      </h4>
+                      <p className="text-[11px] font-medium text-slate-500 mt-0.5">
+                        {theme.subtitle}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                        {theme.description}
                       </p>
                     </div>
                   </div>
 
-                  {/* Bottom Radio Check Indicator */}
+                  {/* Radio Indicator at bottom */}
                   <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-400 font-medium">
-                      {isLocked ? 'Klik untuk upgrade' : isSelected ? 'Tema Aktif' : 'Pilih Template'}
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {isSelected ? 'Sedang Digunakan' : locked ? 'Khusus Ads / Scale' : 'Klik untuk Pilih'}
                     </span>
                     <div
                       className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
                         isSelected
                           ? 'border-indigo-600 bg-indigo-600'
-                          : isLocked
+                          : locked
                           ? 'border-slate-300 bg-slate-100'
                           : 'border-slate-300 bg-white'
                       }`}
                     >
                       {isSelected ? (
                         <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                      ) : isLocked ? (
+                      ) : locked ? (
                         <Lock className="w-2.5 h-2.5 text-slate-400" />
                       ) : null}
                     </div>
@@ -389,7 +426,7 @@ export default function StorefrontThemeCard({
           </div>
 
           {/* Switch Toggle: Aktifkan Webchat di Storefront */}
-          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200/70">
+          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200/70">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 mt-0.5">
                 <MessageSquare className="w-4 h-4" />
@@ -459,27 +496,27 @@ export default function StorefrontThemeCard({
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
-                  Paket Team / Scale
+                  Fitur Ads Performance &amp; Team Scale
                 </span>
               </div>
               <h3 className="text-base font-black text-slate-900">
-                Fitur Eksklusif Team &amp; Scale
+                Buka Tema {targetUpgradeTheme?.title || 'Visual Premium'}
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Template <strong>Personal (Authority Brand)</strong> dan <strong>Microsite (Bio-Funnel)</strong> dirancang khusus untuk merchant dengan paket Team Scale ke atas.
+                Pilihan tema visual <strong>{targetUpgradeTheme?.title}</strong> dirancang untuk memperkuat identitas brand dan konversi. Tersedia di paket <strong>Ads Performance (Rp 299k)</strong> atau <strong>Team Scale (Rp 499k)</strong>.
               </p>
             </div>
 
             <div className="p-3.5 bg-purple-50/60 rounded-2xl border border-purple-100 text-xs text-slate-700 space-y-2">
               <p className="font-bold text-purple-900 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                Benefit Paket Team Scale (499k/bln):
+                Benefit Paket Ads Performance &amp; Scale:
               </p>
               <ul className="text-[11px] text-slate-600 space-y-1 pl-1">
-                <li>&bull; Akses semua template: Personal Authority &amp; Microsite Bio-Funnel</li>
-                <li>&bull; Custom Domain mandiri dengan Cloudflare SSL gratis</li>
-                <li>&bull; Multi-CS Inbox (hingga 5+ kursi CS)</li>
-                <li>&bull; WhatsApp Broadcast Engine &amp; Meta CAPI Tracking</li>
+                <li>&bull; Bebas pilih semua 5 tema visual storefront &amp; bio-link</li>
+                <li>&bull; Multi-CS Live Chat Inbox WhatsApp</li>
+                <li>&bull; Meta CAPI Tracking &amp; analitik konversi iklan</li>
+                <li>&bull; Custom Domain mandiri dengan SSL Cloudflare otomatis</li>
               </ul>
             </div>
 
@@ -492,7 +529,7 @@ export default function StorefrontThemeCard({
                 Nanti Saja
               </button>
               <a
-                href="https://wa.me/6281234567890?text=Halo%20BoonTrack,%20saya%20ingin%20upgrade%20ke%20paket%20Team%20Scale"
+                href="https://wa.me/6281234567890?text=Halo%20BoonTrack,%20saya%20ingin%20upgrade%20paket%20untuk%20membuka%20tema%20storefront"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs flex items-center gap-1.5"
