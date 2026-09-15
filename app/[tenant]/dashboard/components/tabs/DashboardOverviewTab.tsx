@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { ProductItem } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
+import StoreBioLinkWidget from '@/app/[tenant]/dashboard/components/StoreBioLinkWidget';
 
 interface DashboardOverviewTabProps {
   tenantSlug: string;
@@ -78,7 +79,7 @@ export default function DashboardOverviewTab({
   const [isUpdatingTemplate, setIsUpdatingTemplate] = useState(false);
 
   const activeStoreName = storeDisplayName || displayName;
-  const storePublicUrl = `https://shop.boontrack.com/${tenantSlug}`;
+  const storePublicUrl = `https://boontrack.com/${tenantSlug}`;
 
   // Time of day greeting
   const timeGreeting = useMemo(() => {
@@ -351,6 +352,9 @@ export default function DashboardOverviewTab({
           </div>
         </div>
 
+        {/* WIDGET PENGELOLAAN TAUTAN BIO RESMI TOKO LANGSUNG MENYATU */}
+        <StoreBioLinkWidget tenantSlug={tenantSlug} />
+
         {/* Banner Interaktif Onboarding BoonPilot */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white p-6 sm:p-7 shadow-lg border border-purple-700/40">
           <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-purple-500/10 blur-3xl pointer-events-none" />
@@ -615,10 +619,10 @@ export default function DashboardOverviewTab({
             </button>
             <button
               type="button"
-              onClick={() => onNavigateTab('microsite')}
+              onClick={() => onNavigateTab('themes')}
               className="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs rounded-xl transition cursor-pointer"
             >
-              Kelola Tombol Bio Link
+              Atur Tema Visual
             </button>
           </div>
         </div>

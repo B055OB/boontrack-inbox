@@ -95,8 +95,7 @@ export default function DashboardSidebar({
   const nameToShow = storeDisplayName || displayName || tenantSlug;
 
   const isMainTabActive = (tab: string) => {
-    if (tab === 'dashboard' && (activeTab === 'dashboard' || activeTab === 'overview')) return true;
-    if (tab === 'microsite' && (activeTab === 'microsite' || activeTab === 'links')) return true;
+    if (tab === 'dashboard' && (activeTab === 'dashboard' || activeTab === 'overview' || activeTab === 'microsite' || activeTab === 'links')) return true;
     if (tab === 'catalog' && (activeTab === 'catalog' || activeTab === 'products')) return true;
     if (tab === 'themes' && (activeTab === 'themes' || activeTab === 'storefront')) return true;
     if (tab === 'ai_knowledge' && activeTab === 'ai_knowledge') return true;
@@ -113,7 +112,8 @@ export default function DashboardSidebar({
   };
 
   const handleSelectTab = (tab: string) => {
-    setActiveTab(tab);
+    const targetTab = (tab === 'microsite' || tab === 'links') ? 'dashboard' : tab;
+    setActiveTab(targetTab);
     if (onCloseMobileDrawer) {
       onCloseMobileDrawer();
     }
@@ -184,7 +184,7 @@ export default function DashboardSidebar({
             <div className="px-3 py-2 border-b border-slate-100">
               <p className="text-xs font-black text-slate-900 truncate">{nameToShow}</p>
               <p className="text-[10px] font-semibold text-slate-400 truncate">
-                shop.boontrack.com/{tenantSlug}
+                boontrack.com/{tenantSlug}
               </p>
             </div>
 
@@ -299,28 +299,7 @@ export default function DashboardSidebar({
               </div>
             </button>
 
-            {/* 2. Tautan & Microsite */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('microsite')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isMainTabActive('microsite')
-                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isMainTabActive('microsite') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                  <LinkIcon className="w-4 h-4" />
-                </div>
-                <span className="truncate">Tautan &amp; Microsite</span>
-              </div>
-            </button>
-
-            {/* Katalog & Produk */}
+            {/* 2. Katalog & Produk */}
             <button
               type="button"
               onClick={() => handleSelectTab('catalog')}

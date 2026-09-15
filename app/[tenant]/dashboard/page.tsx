@@ -265,6 +265,8 @@ export default function TenantDashboardPage() {
   const storeHeaderName = storeDisplayName || displayName || tenantSlug;
 
   const isPreviewEnabledTab =
+    activeTab === 'dashboard' ||
+    activeTab === 'overview' ||
     activeTab === 'microsite' ||
     activeTab === 'links' ||
     activeTab === 'themes' ||
