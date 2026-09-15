@@ -778,14 +778,21 @@ export default function TenantDashboardPage() {
 
       {/* TAB: LOGISTIK & EKSPEDISI MULTI-KURIR (HANYA PRODUK FISIK) */}
       {(activeTab === 'shipping' || activeTab === 'biteship') && (
-        <BiteshipCourierConfig
-          tenantSlug={tenantSlug}
-          displayName={displayName}
-          onSaved={(msg) => {
-            setSaveFeedback(msg);
-            setTimeout(() => setSaveFeedback(null), 3000);
-          }}
-        />
+        resolveDomainVertical(storeCategory) === 'fnb-culinary' ? (
+          <ModularVerticalTabDispatcher
+            verticalKey="fnb-culinary"
+            tenantSlug={tenantSlug}
+          />
+        ) : (
+          <BiteshipCourierConfig
+            tenantSlug={tenantSlug}
+            displayName={displayName}
+            onSaved={(msg) => {
+              setSaveFeedback(msg);
+              setTimeout(() => setSaveFeedback(null), 3000);
+            }}
+          />
+        )
       )}
 
       {/* TAB: BOOKING & JADWAL (FIELD SERVICE / JASA / PRO SERVICE) */}
@@ -800,6 +807,14 @@ export default function TenantDashboardPage() {
       {activeTab === 'downloads' && (
         <ModularVerticalTabDispatcher
           verticalKey="digital-product"
+          tenantSlug={tenantSlug}
+        />
+      )}
+
+      {/* TAB: MANAJEMEN KAMPANYE & UGC (CREATOR AGENCY) */}
+      {activeTab === 'campaigns' && (
+        <ModularVerticalTabDispatcher
+          verticalKey="creator-agency"
           tenantSlug={tenantSlug}
         />
       )}

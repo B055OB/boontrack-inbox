@@ -40,6 +40,7 @@ export type DashboardTab =
   | 'shipping'
   | 'booking'
   | 'downloads'
+  | 'campaigns'
   | 'broadcast'
   | 'whatsapp'
   | 'auto_reply'

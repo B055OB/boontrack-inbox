@@ -27,6 +27,11 @@ import {
   Calendar,
   Video,
   UtensilsCrossed,
+  Truck,
+  Bike,
+  CalendarCheck,
+  FolderKey,
+  Share2,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { resolveDomainVertical, DomainVerticalKey } from '@/app/[tenant]/dashboard/components/modules';
@@ -70,6 +75,61 @@ function getVerticalMenuConfig(storeCategory?: string) {
         label: 'Katalog & Produk',
         badge: 'Fisik',
         icon: Package,
+      };
+  }
+}
+
+function getVerticalOperationalMenuConfig(storeCategory?: string) {
+  const verticalKey = resolveDomainVertical(storeCategory);
+  switch (verticalKey) {
+    case 'field-service':
+      return {
+        label: 'Jadwal & Booking Servis',
+        targetTab: 'booking',
+        badge: 'SLOT',
+        icon: CalendarCheck,
+        colorClass: 'bg-emerald-50 text-emerald-600',
+      };
+    case 'pro-service':
+      return {
+        label: 'Jadwal & Sesi Konsultasi',
+        targetTab: 'booking',
+        badge: 'SESI',
+        icon: Calendar,
+        colorClass: 'bg-blue-50 text-blue-600',
+      };
+    case 'digital-product':
+      return {
+        label: 'Akses Unduh & Lisensi',
+        targetTab: 'downloads',
+        badge: 'AKSES',
+        icon: FolderKey,
+        colorClass: 'bg-indigo-50 text-indigo-600',
+      };
+    case 'creator-agency':
+      return {
+        label: 'Manajemen Kampanye & UGC',
+        targetTab: 'campaigns',
+        badge: 'UGC',
+        icon: Share2,
+        colorClass: 'bg-pink-50 text-pink-600',
+      };
+    case 'fnb-culinary':
+      return {
+        label: 'Kurir Instan & Dapur',
+        targetTab: 'shipping',
+        badge: 'INSTAN',
+        icon: Bike,
+        colorClass: 'bg-amber-50 text-amber-600',
+      };
+    case 'physical-retail':
+    default:
+      return {
+        label: 'Logistik & Ekspedisi',
+        targetTab: 'shipping',
+        badge: 'KURIR',
+        icon: Truck,
+        colorClass: 'bg-teal-50 text-teal-600',
       };
   }
 }
@@ -383,6 +443,40 @@ export default function DashboardSidebar({
                       </span>
                     ) : null}
                   </div>
+                </button>
+              );
+            })()}
+
+            {/* 3. Menu Operasional Khusus Dinamis Sesuai 6 Kategori Bisnis */}
+            {(() => {
+              const opConfig = getVerticalOperationalMenuConfig(storeCategory);
+              const OpIcon = opConfig.icon;
+              const isOpActive =
+                activeTab === opConfig.targetTab ||
+                (opConfig.targetTab === 'shipping' && activeTab === 'biteship');
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab(opConfig.targetTab)}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isOpActive
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isOpActive && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${opConfig.colorClass}`}>
+                      <OpIcon className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">{opConfig.label}</span>
+                  </div>
+                  <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                    {opConfig.badge}
+                  </span>
                 </button>
               );
             })()}

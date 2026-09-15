@@ -17,6 +17,9 @@ export type DashboardTab =
   | 'ai_knowledge' 
   | 'ads_tracking' 
   | 'shipping' 
+  | 'booking'
+  | 'downloads'
+  | 'campaigns'
   | 'broadcast' 
   | 'whatsapp'
   | 'settings';
