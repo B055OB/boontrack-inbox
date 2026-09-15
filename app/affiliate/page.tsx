@@ -96,6 +96,8 @@ const UTM_SOURCE_PRESETS = [
   { id: 'wa_group', label: 'WA Group' },
   { id: 'tiktok', label: 'TikTok' },
   { id: 'instagram', label: 'Instagram' },
+  { id: 'threads', label: 'Threads' },
+  { id: 'telegram', label: 'Telegram' },
   { id: 'wa_personal', label: 'WA Chat' },
   { id: 'facebook', label: 'Facebook' },
   { id: 'youtube', label: 'YouTube' },
