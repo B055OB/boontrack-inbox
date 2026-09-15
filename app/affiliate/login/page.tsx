@@ -149,8 +149,7 @@ export default function AffiliateLoginPage() {
       document.cookie = `affiliate_token=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
       setSuccessMessage('Verifikasi berhasil! Mengalihkan ke Dashboard Affiliate...');
       setTimeout(() => {
-        router.push('/affiliate/dashboard');
-        setTimeout(() => { window.location.href = '/affiliate/dashboard'; }, 300);
+        window.location.href = '/dashboard';
       }, 600);
       return;
     }

@@ -216,6 +216,26 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  const host = req.headers.get('host') || '';
+  const hostClean = host.split(':')[0].toLowerCase().trim();
+  const subdomain = extractSubdomain(host);
+
+  // ===========================================================================
+  // SUBDOMAIN: affiliate.boontrack.com
+  // ===========================================================================
+  if (subdomain === 'affiliate') {
+    const url = req.nextUrl.clone();
+    if (pathname === '/') {
+      url.pathname = '/affiliate';
+      return NextResponse.rewrite(url);
+    }
+    if (!pathname.startsWith('/affiliate')) {
+      url.pathname = `/affiliate${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+    return NextResponse.next();
+  }
+
   // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===
   const isDashboardPath =
     pathname === '/dashboard' ||
@@ -231,9 +251,6 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
   }
-
-  const host = req.headers.get('host') || '';
-  const hostClean = host.split(':')[0].toLowerCase().trim();
 
   // ── 1. CUSTOM DOMAIN LOOKUP & REWRITE ──
   if (!isSystemOrBoonTrackHost(hostClean) && hostClean.length > 0) {
@@ -370,8 +387,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const subdomain = extractSubdomain(host);
-
   if (!subdomain || subdomain === 'www') {
     return NextResponse.next();
   }
@@ -387,22 +402,6 @@ export async function middleware(req: NextRequest) {
     }
     if (!pathname.startsWith('/manager')) {
       url.pathname = `/manager${pathname}`;
-      return NextResponse.rewrite(url);
-    }
-    return NextResponse.next();
-  }
-
-  // ===========================================================================
-  // SUBDOMAIN: affiliate.boontrack.com
-  // ===========================================================================
-  if (subdomain === 'affiliate') {
-    const url = req.nextUrl.clone();
-    if (pathname === '/') {
-      url.pathname = '/affiliate';
-      return NextResponse.rewrite(url);
-    }
-    if (!pathname.startsWith('/affiliate')) {
-      url.pathname = `/affiliate${pathname}`;
       return NextResponse.rewrite(url);
     }
     return NextResponse.next();
