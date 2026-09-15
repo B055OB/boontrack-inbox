@@ -1,760 +1,520 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import Link from 'next/link';
-import {
-  Store,
-  Search,
-  ExternalLink,
-  RefreshCw,
-  ShoppingBag,
-  Bell,
-  Activity,
-  UserCheck,
-  Building2,
-  Phone,
-  MessageCircle,
-  Cpu,
-  Printer,
-  KeyRound,
-  CreditCard,
-  Layers,
-  ChevronRight,
-  Filter,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-  SlidersHorizontal,
-  X,
-  Send,
-  Radio,
-  FileText,
-  ShieldCheck,
-  AlertCircle
-} from 'lucide-react';
+/**
+ * Superadmin Leads Dashboard
+ * Apply to: boontrack-inbox/app/admin/leads/page.tsx
+ *
+ * Features:
+ *   - Fetches GET /api/v1/superadmin/leads (auto-refresh every 30s)
+ *   - Full table: Brand, Industry, PIC, WA (quick CTA), Feature Flags, Status, Date
+ *   - Feature flag badges: WABA · Telegram · ESC/POS · Doorlock · NFC
+ *   - PATCH status modal: CONTACTED · FOLLOWED_UP · DEMO_SCHEDULED · PILOT_APPROVED · ARCHIVED
+ *   - Dark slate-950, orange accent
+ */
 
-const MASTER_PIN = '998877';
+import React, { useEffect, useState, useCallback } from 'react';
 
-interface ChannelsConfig {
-  whatsapp?: boolean;
-  telegram?: boolean;
-  discord?: boolean;
-  other?: string | null;
-}
-
-interface HardwareConfig {
-  none?: boolean;
-  printer?: boolean;
-  doorlock?: boolean;
-  nfc?: boolean;
-  other?: string | null;
-}
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface FeatureFlags {
-  'channel.waba_official'?: boolean;
-  'channel.telegram_ops'?: boolean;
-  'channel.discord_crm'?: boolean;
-  'channel.other'?: string | null;
-  'peripheral.escpos_printer'?: boolean;
-  'peripheral.smart_doorlock'?: boolean;
-  'peripheral.nfc_access'?: boolean;
-  'peripheral.other'?: string | null;
-  [key: string]: any;
+    'channel.waba_official'?: boolean;
+    'channel.telegram_ops'?: boolean;
+    'channel.discord_crm'?: boolean;
+    'peripheral.escpos_printer'?: boolean;
+    'peripheral.smart_doorlock'?: boolean;
+    'peripheral.nfc_access'?: boolean;
+    [key: string]: boolean | string | undefined;
 }
 
-interface TenantProspect {
-  id: string;
-  brand_name: string;
-  industry: string;
-  pic_name: string;
-  whatsapp: string;
-  pain_points: string;
-  desired_outcome: string;
-  channels_config: ChannelsConfig;
-  hardware_config: HardwareConfig;
-  feature_flags: FeatureFlags;
-  status: string;
-  created_at: string;
+interface Lead {
+    id: string;
+    brand_name: string;
+    industry: string;
+    pic_name: string;
+    whatsapp: string;
+    pain_points: string;
+    desired_outcome: string;
+    channels_config: Record<string, unknown>;
+    hardware_config: Record<string, unknown>;
+    feature_flags: FeatureFlags;
+    status: string;
+    created_at: string | null;
 }
 
-export default function AdminLeadsPage() {
-  const CORE_API_URL =
-    process.env.NEXT_PUBLIC_CORE_API_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    'https://boontrack-core-production.up.railway.app';
+// ─── Constants ───────────────────────────────────────────────────────────────
 
-  const [isAdminAuth, setIsAdminAuth] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('super_admin_auth') === 'true';
-    }
-    return false;
-  });
-  const [adminPin, setAdminPin] = useState('');
-  const [pinError, setPinError] = useState('');
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.boontrack.com';
 
-  const [leads, setLeads] = useState<TenantProspect[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedIndustry, setSelectedIndustry] = useState<string>('ALL');
-  const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
-  const [selectedLead, setSelectedLead] = useState<TenantProspect | null>(null);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
+const STATUS_OPTIONS = [
+    'PROSPECT_PILOT_REQUESTED',
+    'CONTACTED',
+    'FOLLOWED_UP',
+    'DEMO_SCHEDULED',
+    'PROSPECT_PILOT_ACCEPTED',
+    'PILOT_APPROVED',
+    'ARCHIVED',
+];
 
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminPin === MASTER_PIN) {
-      setIsAdminAuth(true);
-      sessionStorage.setItem('super_admin_auth', 'true');
-      setPinError('');
-    } else {
-      setPinError('PIN Super Admin salah!');
-    }
-  };
+const STATUS_STYLES: Record<string, string> = {
+    PROSPECT_PILOT_REQUESTED: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+    CONTACTED:                'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    FOLLOWED_UP:              'bg-violet-500/20 text-violet-300 border-violet-500/30',
+    DEMO_SCHEDULED:           'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    PROSPECT_PILOT_ACCEPTED:  'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    PILOT_APPROVED:           'bg-green-500/20 text-green-300 border-green-500/30',
+    ARCHIVED:                 'bg-neutral-600/30 text-neutral-400 border-neutral-600/30',
+};
 
-  const loadLeads = useCallback(async () => {
-    if (!isAdminAuth) return;
-    setLoading(true);
-    try {
-      // Coba panggil endpoint superadmin leads dari backend
-      const res = await fetch(`${CORE_API_URL}/api/v1/superadmin/leads`, {
-        cache: 'no-store',
-        headers: { 'Accept': 'application/json' }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json && Array.isArray(json.data)) {
-          setLeads(json.data);
-          return;
-        }
-      }
-      // Fallback jika direct host beda port (misal local development)
-      const localRes = await fetch('/api/v1/superadmin/leads', { cache: 'no-store' });
-      if (localRes.ok) {
-        const json = await localRes.json();
-        if (json && Array.isArray(json.data)) {
-          setLeads(json.data);
-        }
-      }
-    } catch (err) {
-      console.warn('[Admin Leads] Error fetching leads:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [CORE_API_URL, isAdminAuth]);
+const FLAG_DEFS = [
+    { key: 'channel.waba_official',    label: 'WABA',     color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
+    { key: 'channel.telegram_ops',     label: 'TG',       color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+    { key: 'channel.discord_crm',      label: 'Discord',  color: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
+    { key: 'peripheral.escpos_printer',label: 'ESC/POS',  color: 'bg-orange-500/20 text-orange-300 border-orange-500/30' },
+    { key: 'peripheral.smart_doorlock',label: 'Doorlock', color: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
+    { key: 'peripheral.nfc_access',    label: 'NFC',      color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+];
 
-  useEffect(() => {
-    loadLeads();
-  }, [loadLeads, refreshKey]);
+function formatWA(phone: string): string {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('08')) return '62' + digits.slice(1);
+    if (digits.startsWith('8'))  return '62' + digits;
+    return digits;
+}
 
-  // Status Updater
-  const handleUpdateStatus = async (leadId: string, newStatus: string) => {
-    setUpdatingStatus(true);
-    try {
-      const res = await fetch(`${CORE_API_URL}/api/v1/superadmin/leads/${leadId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (res.ok) {
-        setLeads((prev) =>
-          prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l))
-        );
-        if (selectedLead && selectedLead.id === leadId) {
-          setSelectedLead((prev) => (prev ? { ...prev, status: newStatus } : null));
-        }
-      }
-    } catch (err) {
-      console.error('Gagal memperbarui status lead:', err);
-    } finally {
-      setUpdatingStatus(false);
-    }
-  };
-
-  // WhatsApp Sanitizer & Link Generator
-  const generateWhatsAppLink = (lead: TenantProspect) => {
-    const rawDigits = (lead.whatsapp || '').replace(/\D/g, '');
-    let sanitized = rawDigits;
-    if (sanitized.startsWith('08')) {
-      sanitized = '62' + sanitized.slice(1);
-    } else if (sanitized.startsWith('8')) {
-      sanitized = '62' + sanitized;
-    }
-
-    const message = `Halo Kak ${lead.pic_name} dari *${lead.brand_name}* 👋\n\nSalam kenal dari tim BoonTrack! Kami telah menerima permohonan pilot onboarding Anda untuk kategori industri *${lead.industry}*.\n\nKami melihat sasaran utama Anda:\n> "${lead.desired_outcome}"\n\nDengan tantangan operasional:\n> "${lead.pain_points}"\n\nApakah besok atau lusa ada waktu sekitar 15 menit untuk sesi online demo aktivasi sandbox pilot sistem BoonTrack untuk *${lead.brand_name}*?\n\nTerima kasih! 🙏`;
-
-    return `https://wa.me/${sanitized}?text=${encodeURIComponent(message)}`;
-  };
-
-  // Extract list of unique industries for filter
-  const industries = useMemo(() => {
-    const set = new Set<string>();
-    leads.forEach((l) => {
-      if (l.industry) set.add(l.industry);
+function formatDate(iso: string | null): string {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('id-ID', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
     });
-    return Array.from(set);
-  }, [leads]);
+}
 
-  // Filtered Leads
-  const filteredLeads = useMemo(() => {
-    return leads.filter((item) => {
-      const matchQuery = searchQuery
-        ? item.brand_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.pic_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.whatsapp.includes(searchQuery) ||
-          item.pain_points.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.desired_outcome.toLowerCase().includes(searchQuery.toLowerCase())
-        : true;
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
-      const matchIndustry =
-        selectedIndustry === 'ALL' || item.industry === selectedIndustry;
-
-      const matchStatus =
-        selectedStatus === 'ALL' || item.status === selectedStatus;
-
-      return matchQuery && matchIndustry && matchStatus;
-    });
-  }, [leads, searchQuery, selectedIndustry, selectedStatus]);
-
-  // Summary Metrics
-  const totalLeads = leads.length;
-  const wabaRequests = leads.filter(
-    (l) => l.channels_config?.whatsapp || l.feature_flags?.['channel.waba_official']
-  ).length;
-  const hardwareRequests = leads.filter(
-    (l) =>
-      !l.hardware_config?.none &&
-      (l.hardware_config?.printer ||
-        l.hardware_config?.doorlock ||
-        l.hardware_config?.nfc ||
-        l.feature_flags?.['peripheral.escpos_printer'])
-  ).length;
-  const freshRequests = leads.filter(
-    (l) => l.status === 'PROSPECT_PILOT_REQUESTED'
-  ).length;
-
-  if (!isAdminAuth) {
+function StatusBadge({ status }: { status: string }) {
+    const cls = STATUS_STYLES[status] ?? 'bg-neutral-700/40 text-neutral-400 border-neutral-600';
     return (
-      <main className="min-h-[100dvh] bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl text-center">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-3 font-bold text-xl shadow-lg shadow-emerald-500/10">
-            💼
-          </div>
-          <h1 className="text-lg font-bold text-white mb-1">BoonTrack Leads Cockpit</h1>
-          <p className="text-xs text-slate-400 mb-5">
-            Akses data intake onboarding & pilot request. Masukkan PIN Master Super Admin.
-          </p>
-
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <input
-              type="password"
-              placeholder="PIN Super Admin (default: 998877)"
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              className="w-full text-center tracking-widest px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-base md:text-sm text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
-              required
-            />
-            {pinError && <p className="text-[11px] text-rose-400">{pinError}</p>}
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-emerald-600/30 cursor-pointer"
-            >
-              Buka Data Leads &amp; Pilots
-            </button>
-          </form>
-        </div>
-      </main>
+        <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border whitespace-nowrap ${cls}`}>
+            {status.replace(/_/g, ' ')}
+        </span>
     );
-  }
+}
 
-  return (
-    <main className="min-h-[100dvh] bg-slate-950 text-slate-100 p-4 md:p-8 antialiased selection:bg-emerald-600 selection:text-white">
-      <div className="max-w-7xl mx-auto space-y-6">
-        
-        {/* Top Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-6 rounded-2xl backdrop-blur-md shadow-2xl">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30">
-                LEADS &amp; PILOT REQUESTS
-              </span>
-              <span className="text-[11px] text-slate-400">&bull; Control Plane Intake Engine</span>
-            </div>
-            <h1 className="text-xl md:text-2xl font-bold text-white mt-1">Onboarding Pilot Intake Dashboard</h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Daftar prospek tenant baru dari formulir onboarding, konfigurasi channel, integrasi IoT, dan aksi follow-up WhatsApp langsung.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setRefreshKey((k) => k + 1)}
-              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-xl border border-slate-700 transition cursor-pointer flex items-center gap-2"
-              title="Refresh Live Leads"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
-              <span className="hidden sm:inline text-xs">Sinkronisasi</span>
-            </button>
-            <button
-              onClick={() => {
-                sessionStorage.removeItem('super_admin_auth');
-                setIsAdminAuth(false);
-              }}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-xl border border-slate-700 transition cursor-pointer"
-            >
-              Kunci
-            </button>
-          </div>
+function FlagBadges({ flags }: { flags: FeatureFlags }) {
+    const active = FLAG_DEFS.filter(f => flags[f.key] === true);
+    if (active.length === 0) return <span className="text-neutral-700 text-xs">—</span>;
+    return (
+        <div className="flex flex-wrap gap-1">
+            {active.map(f => (
+                <span key={f.key} className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide border ${f.color}`}>
+                    {f.label}
+                </span>
+            ))}
         </div>
+    );
+}
 
-        {/* Superadmin Control Plane Module Navigation */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          <Link
-            href="/admin"
-            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
-          >
-            <Layers className="w-3.5 h-3.5 text-blue-400" />
-            <span>Workspaces &amp; Incidents</span>
-          </Link>
-          <Link
-            href="/admin/shops"
-            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
-          >
-            <Store className="w-3.5 h-3.5 text-amber-400" />
-            <span>Directory Shop</span>
-          </Link>
-          <span className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs shadow-md shadow-emerald-600/20 shrink-0 flex items-center gap-1.5">
-            <UserCheck className="w-3.5 h-3.5 text-white" />
-            <span>Leads &amp; Pilot Intake</span>
-          </span>
-          <Link
-            href="/admin/push-notification"
-            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
-          >
-            <Bell className="w-3.5 h-3.5 text-purple-400" />
-            <span>Web Push Broadcaster</span>
-          </Link>
-          <Link
-            href="/admin/telemetry"
-            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white font-semibold text-xs border border-slate-800 transition shrink-0 flex items-center gap-1.5"
-          >
-            <Activity className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Telemetry Engine</span>
-          </Link>
-        </div>
+// ─── PATCH Status Modal ──────────────────────────────────────────────────────
 
-        {/* Quick KPI Stat Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
-          <div className="bg-slate-900/70 border border-slate-800/80 p-4 rounded-xl relative overflow-hidden">
-            <div className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Total Intake Leads</div>
-            <div className="text-2xl font-extrabold text-white mt-1">{totalLeads}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Calon merchant terdaftar</div>
-            <div className="absolute -right-2 -bottom-2 opacity-10 text-white font-bold text-5xl">#</div>
-          </div>
-          <div className="bg-slate-900/70 border border-slate-800/80 p-4 rounded-xl relative overflow-hidden">
-            <div className="text-[11px] font-medium text-emerald-400 uppercase tracking-wider">Permohonan Baru</div>
-            <div className="text-2xl font-extrabold text-emerald-400 mt-1">{freshRequests}</div>
-            <div className="text-[11px] text-emerald-500/70 mt-0.5">Status PILOT_REQUESTED</div>
-            <div className="absolute -right-2 -bottom-2 opacity-10 text-emerald-400 font-bold text-5xl">!</div>
-          </div>
-          <div className="bg-slate-900/70 border border-slate-800/80 p-4 rounded-xl relative overflow-hidden">
-            <div className="text-[11px] font-medium text-emerald-300 uppercase tracking-wider">WhatsApp WABA</div>
-            <div className="text-2xl font-extrabold text-white mt-1">{wabaRequests}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Butuh WhatsApp Gateway</div>
-            <div className="absolute -right-2 -bottom-2 opacity-10 text-emerald-400 font-bold text-5xl">WA</div>
-          </div>
-          <div className="bg-slate-900/70 border border-slate-800/80 p-4 rounded-xl relative overflow-hidden">
-            <div className="text-[11px] font-medium text-orange-400 uppercase tracking-wider">Hardware / Peripherals</div>
-            <div className="text-2xl font-extrabold text-orange-400 mt-1">{hardwareRequests}</div>
-            <div className="text-[11px] text-orange-500/70 mt-0.5">Printer / Doorlock / NFC</div>
-            <div className="absolute -right-2 -bottom-2 opacity-10 text-orange-400 font-bold text-5xl">IoT</div>
-          </div>
-        </div>
+function StatusModal({
+    lead,
+    onClose,
+    onUpdated,
+}: {
+    lead: Lead;
+    onClose: () => void;
+    onUpdated: (id: string, newStatus: string) => void;
+}) {
+    const [selected, setSelected] = useState(lead.status);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-        {/* Filter & Search Bar */}
-        <div className="bg-slate-900/70 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Cari brand, nama PIC, no WhatsApp, pain points, atau outcome..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+    const handleSave = async () => {
+        if (selected === lead.status) { onClose(); return; }
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/superadmin/leads/${lead.id}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: selected }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            onUpdated(lead.id, selected);
+            onClose();
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Gagal update status');
+        } finally {
+            setLoading(false);
+        }
+    };
 
-          <div className="flex items-center gap-2 overflow-x-auto">
-            <select
-              value={selectedIndustry}
-              onChange={(e) => setSelectedIndustry(e.target.value)}
-              className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
-            >
-              <option value="ALL">Semua Industri</option>
-              {industries.map((ind) => (
-                <option key={ind} value={ind}>
-                  {ind}
-                </option>
-              ))}
-            </select>
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(2,6,23,0.85)', backdropFilter: 'blur(8px)' }}
+            onClick={e => e.target === e.currentTarget && onClose()}
+        >
+            <div className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+                <div className="p-5 border-b border-white/[0.07] flex items-center justify-between">
+                    <div>
+                        <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Update Status</p>
+                        <h3 className="text-sm font-bold text-white mt-0.5">{lead.brand_name}</h3>
+                    </div>
+                    <button onClick={onClose} className="text-neutral-500 hover:text-white transition text-xl">✕</button>
+                </div>
 
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="PROSPECT_PILOT_REQUESTED">PROSPECT_PILOT_REQUESTED</option>
-              <option value="FOLLOWED_UP">FOLLOWED_UP</option>
-              <option value="PILOT_ACTIVE">PILOT_ACTIVE</option>
-              <option value="CLOSED">CLOSED</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Data Table */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950/80 border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
-                <tr>
-                  <th className="p-4">Brand &amp; PIC</th>
-                  <th className="p-4">Industri</th>
-                  <th className="p-4">Pain Points &amp; Desired Outcome</th>
-                  <th className="p-4">Channels &amp; Peripherals</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4 text-right">Aksi Follow-Up</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="p-12 text-center text-slate-500">
-                      <RefreshCw className="w-6 h-6 animate-spin mx-auto text-emerald-400 mb-2" />
-                      <p>Memuat data onboarding leads...</p>
-                    </td>
-                  </tr>
-                ) : filteredLeads.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-12 text-center text-slate-500">
-                      <AlertCircle className="w-8 h-8 mx-auto text-slate-600 mb-2" />
-                      <p className="font-medium text-slate-400">Belum ada data leads yang sesuai filter.</p>
-                      <p className="text-[11px] text-slate-600 mt-1">
-                        Calon merchant yang mengisi formulir onboarding akan otomatis muncul di sini.
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredLeads.map((lead) => {
-                    const waUrl = generateWhatsAppLink(lead);
-                    const isPilotRequested = lead.status === 'PROSPECT_PILOT_REQUESTED';
-                    const isFollowedUp = lead.status === 'FOLLOWED_UP';
-
-                    return (
-                      <tr
-                        key={lead.id}
-                        className="hover:bg-slate-850/50 transition duration-150 group cursor-pointer"
-                        onClick={() => setSelectedLead(lead)}
-                      >
-                        {/* Brand & PIC Name */}
-                        <td className="p-4 align-top">
-                          <div className="font-bold text-white text-sm group-hover:text-emerald-400 transition">
-                            {lead.brand_name}
-                          </div>
-                          <div className="text-slate-400 text-xs mt-0.5 flex items-center gap-1">
-                            <span className="font-medium text-slate-300">PIC:</span> {lead.pic_name}
-                          </div>
-                          <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-emerald-400 font-mono">
-                            <Phone className="w-3 h-3 text-emerald-400" />
-                            <span>{lead.whatsapp}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5" />
-                            {lead.created_at
-                              ? new Date(lead.created_at).toLocaleString('id-ID', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
-                              : 'Baru saja'}
-                          </div>
-                        </td>
-
-                        {/* Industry Badge */}
-                        <td className="p-4 align-top">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-800 text-slate-300 border border-slate-700 shadow-sm">
-                            <Building2 className="w-3 h-3 mr-1 text-slate-400" />
-                            {lead.industry}
-                          </span>
-                        </td>
-
-                        {/* Pain Points & Desired Outcome */}
-                        <td className="p-4 align-top max-w-xs md:max-w-md">
-                          <div className="space-y-1.5">
-                            <div>
-                              <span className="text-[10px] uppercase font-bold text-rose-400/90 tracking-wider">
-                                Kendala:
-                              </span>
-                              <p className="text-slate-300 text-xs line-clamp-2 mt-0.5 leading-relaxed">
-                                {lead.pain_points}
-                              </p>
-                            </div>
-                            <div>
-                              <span className="text-[10px] uppercase font-bold text-emerald-400/90 tracking-wider">
-                                Target Outcome:
-                              </span>
-                              <p className="text-slate-300 text-xs line-clamp-2 mt-0.5 leading-relaxed font-medium">
-                                {lead.desired_outcome}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Channels & Hardware Badges */}
-                        <td className="p-4 align-top">
-                          <div className="space-y-2">
-                            {/* Channels */}
-                            <div className="flex flex-wrap gap-1">
-                              {(lead.channels_config?.whatsapp ||
-                                lead.feature_flags?.['channel.waba_official']) && (
-                                <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold inline-flex items-center gap-1">
-                                  <MessageCircle className="w-2.5 h-2.5" /> WA WABA
-                                </span>
-                              )}
-                              {(lead.channels_config?.telegram ||
-                                lead.feature_flags?.['channel.telegram_ops']) && (
-                                <span className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/30 text-[10px] font-semibold inline-flex items-center gap-1">
-                                  Telegram
-                                </span>
-                              )}
-                              {(lead.channels_config?.discord ||
-                                lead.feature_flags?.['channel.discord_crm']) && (
-                                <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 text-[10px] font-semibold inline-flex items-center gap-1">
-                                  Discord
-                                </span>
-                              )}
-                              {lead.channels_config?.other && (
-                                <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[10px]">
-                                  +{lead.channels_config.other}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Peripherals */}
-                            <div className="flex flex-wrap gap-1">
-                              {lead.hardware_config?.none ? (
-                                <span className="text-[10px] text-slate-500 italic">
-                                  Software Only (No IoT)
-                                </span>
-                              ) : (
-                                <>
-                                  {(lead.hardware_config?.printer ||
-                                    lead.feature_flags?.['peripheral.escpos_printer']) && (
-                                    <span className="px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-400 border border-orange-500/30 text-[10px] font-semibold inline-flex items-center gap-1">
-                                      <Printer className="w-2.5 h-2.5" /> ESC/POS
-                                    </span>
-                                  )}
-                                  {(lead.hardware_config?.doorlock ||
-                                    lead.feature_flags?.['peripheral.smart_doorlock']) && (
-                                    <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/30 text-[10px] font-semibold inline-flex items-center gap-1">
-                                      <KeyRound className="w-2.5 h-2.5" /> Doorlock
-                                    </span>
-                                  )}
-                                  {(lead.hardware_config?.nfc ||
-                                    lead.feature_flags?.['peripheral.nfc_access']) && (
-                                    <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[10px] font-semibold inline-flex items-center gap-1">
-                                      <CreditCard className="w-2.5 h-2.5" /> NFC
-                                    </span>
-                                  )}
-                                  {lead.hardware_config?.other && (
-                                    <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[10px]">
-                                      +{lead.hardware_config.other}
-                                    </span>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Status Badge */}
-                        <td className="p-4 align-top">
-                          {isPilotRequested ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                              PILOT REQUESTED
-                            </span>
-                          ) : isFollowedUp ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                              FOLLOWED UP
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                              {lead.status}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Action Follow-Up */}
-                        <td
-                          className="p-4 align-top text-right"
-                          onClick={(e) => e.stopPropagation()}
+                <div className="p-5 space-y-2">
+                    {STATUS_OPTIONS.map(s => (
+                        <label
+                            key={s}
+                            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl cursor-pointer border transition ${
+                                selected === s
+                                    ? 'border-orange-500/50 bg-orange-500/10'
+                                    : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]'
+                            }`}
                         >
-                          <a
-                            href={waUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={() => {
-                              if (lead.status === 'PROSPECT_PILOT_REQUESTED') {
-                                handleUpdateStatus(lead.id, 'FOLLOWED_UP');
-                              }
-                            }}
-                            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-lg shadow-emerald-600/30 active:scale-95 cursor-pointer"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            <span>Follow Up WhatsApp</span>
-                          </a>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                            <input
+                                type="radio"
+                                name="status"
+                                value={s}
+                                checked={selected === s}
+                                onChange={() => setSelected(s)}
+                                className="accent-orange-500"
+                            />
+                            <StatusBadge status={s} />
+                        </label>
+                    ))}
 
-        {/* Lead Detail & Feature Flags Modal */}
-        {selectedLead && (
-          <div
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setSelectedLead(null)}
-          >
-            <div
-              className="bg-slate-900 border border-slate-800 w-full max-w-2xl rounded-2xl p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between border-b border-slate-800 pb-4">
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                    PROSPECT DETAIL &amp; FEATURE FLAGS
-                  </div>
-                  <h2 className="text-lg font-bold text-white mt-0.5">
-                    {selectedLead.brand_name}
-                  </h2>
-                  <p className="text-xs text-slate-400">
-                    PIC: {selectedLead.pic_name} &bull; {selectedLead.whatsapp} &bull; Industri: {selectedLead.industry}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setSelectedLead(null)}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+                    {error && (
+                        <p className="text-xs text-rose-400 bg-rose-950/30 border border-rose-900/40 rounded-lg px-3 py-2">{error}</p>
+                    )}
 
-              {/* Status Selector */}
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs font-semibold text-white">Status Prospek Saat Ini</div>
-                  <div className="text-[11px] text-slate-400">Ubah status setelah melakukan follow-up atau aktivasi pilot.</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {['PROSPECT_PILOT_REQUESTED', 'FOLLOWED_UP', 'PILOT_ACTIVE', 'CLOSED'].map((st) => (
                     <button
-                      key={st}
-                      disabled={updatingStatus}
-                      onClick={() => handleUpdateStatus(selectedLead.id, st)}
-                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
-                        selectedLead.status === st
-                          ? 'bg-emerald-600 border-emerald-500 text-white shadow-sm'
-                          : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white hover:bg-slate-800'
-                      }`}
+                        onClick={handleSave}
+                        disabled={loading}
+                        id="status-modal-save-btn"
+                        className="w-full mt-3 py-3 rounded-xl font-bold text-sm text-white transition flex items-center justify-center gap-2 disabled:opacity-50"
+                        style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)' }}
                     >
-                      {st === 'PROSPECT_PILOT_REQUESTED' ? 'REQUESTED' : st}
+                        {loading ? (
+                            <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Menyimpan…</>
+                        ) : 'Simpan Status'}
                     </button>
-                  ))}
                 </div>
-              </div>
+            </div>
+        </div>
+    );
+}
 
-              {/* Details Sections */}
-              <div className="space-y-4 text-xs">
-                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80">
-                  <div className="font-semibold text-rose-400 flex items-center gap-1.5 mb-1">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    <span>Kendala Operasional / Pain Points:</span>
-                  </div>
-                  <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">
-                    {selectedLead.pain_points}
-                  </p>
-                </div>
+// ─── Detail Drawer ───────────────────────────────────────────────────────────
 
-                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80">
-                  <div className="font-semibold text-emerald-400 flex items-center gap-1.5 mb-1">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Target Outcome yang Diinginkan:</span>
-                  </div>
-                  <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">
-                    {selectedLead.desired_outcome}
-                  </p>
+function DetailDrawer({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+    return (
+        <div
+            className="fixed inset-0 z-40 flex justify-end"
+            style={{ background: 'rgba(2,6,23,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={e => e.target === e.currentTarget && onClose()}
+        >
+            <div className="w-full max-w-sm h-full bg-slate-900 border-l border-white/10 overflow-y-auto p-6 space-y-5">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-base font-bold text-white">{lead.brand_name}</h3>
+                    <button onClick={onClose} className="text-neutral-500 hover:text-white text-xl transition">✕</button>
                 </div>
 
-                {/* Feature Flags JSON Preview */}
-                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 font-mono text-[11px]">
-                  <div className="text-slate-400 font-semibold mb-2 flex items-center justify-between">
-                    <span>MAPPED FEATURE FLAGS:</span>
-                    <span className="text-[10px] text-slate-500 font-normal">control_plane.tenant_prospects.feature_flags</span>
-                  </div>
-                  <pre className="text-emerald-400 overflow-x-auto p-2 bg-slate-900 rounded-lg">
-                    {JSON.stringify(selectedLead.feature_flags, null, 2)}
-                  </pre>
-                </div>
-              </div>
+                <div className="space-y-3 text-sm">
+                    {[
+                        { label: 'ID', value: lead.id },
+                        { label: 'Industry', value: lead.industry },
+                        { label: 'PIC', value: lead.pic_name },
+                        { label: 'WhatsApp', value: lead.whatsapp },
+                    ].map(({ label, value }) => (
+                        <div key={label}>
+                            <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">{label}</p>
+                            <p className="text-neutral-200 mt-0.5 font-mono text-xs break-all">{value}</p>
+                        </div>
+                    ))}
 
-              {/* Footer Actions */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                <div className="text-[11px] text-slate-500">
-                  Lead ID: <span className="font-mono">{selectedLead.id}</span>
+                    <div>
+                        <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">Pain Points</p>
+                        <p className="text-neutral-300 mt-0.5 text-xs leading-relaxed">{lead.pain_points}</p>
+                    </div>
+
+                    <div>
+                        <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">Desired Outcome</p>
+                        <p className="text-neutral-300 mt-0.5 text-xs leading-relaxed">{lead.desired_outcome}</p>
+                    </div>
+
+                    <div>
+                        <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold mb-1.5">Feature Flags</p>
+                        <FlagBadges flags={lead.feature_flags} />
+                    </div>
+
+                    <div>
+                        <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">Status</p>
+                        <div className="mt-1"><StatusBadge status={lead.status} /></div>
+                    </div>
+
+                    <div>
+                        <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">Created At</p>
+                        <p className="text-neutral-400 text-xs mt-0.5">{formatDate(lead.created_at)}</p>
+                    </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setSelectedLead(null)}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition cursor-pointer"
-                  >
-                    Tutup
-                  </button>
-                  <a
-                    href={generateWhatsAppLink(selectedLead)}
+
+                <a
+                    href={`https://wa.me/${formatWA(lead.whatsapp)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={() => {
-                      if (selectedLead.status === 'PROSPECT_PILOT_REQUESTED') {
-                        handleUpdateStatus(selectedLead.id, 'FOLLOWED_UP');
-                      }
-                    }}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-emerald-600/30 inline-flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Kirim Template WhatsApp</span>
-                  </a>
-                </div>
-              </div>
+                    className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 text-white"
+                    style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)' }}
+                >
+                    💬 Follow-up via WhatsApp
+                </a>
             </div>
-          </div>
-        )}
-      </div>
-    </main>
-  );
+        </div>
+    );
+}
+
+// ─── Main Page ───────────────────────────────────────────────────────────────
+
+export default function SuperadminLeadsPage() {
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('ALL');
+    const [patchTarget, setPatchTarget] = useState<Lead | null>(null);
+    const [detailTarget, setDetailTarget] = useState<Lead | null>(null);
+    const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+
+    const fetchLeads = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/superadmin/leads?limit=200`, {
+                cache: 'no-store',
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            setLeads(data.data ?? []);
+            setLastRefresh(new Date());
+            setError('');
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Gagal memuat leads');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchLeads();
+        const interval = setInterval(fetchLeads, 30_000);
+        return () => clearInterval(interval);
+    }, [fetchLeads]);
+
+    const handleStatusUpdated = (id: string, newStatus: string) => {
+        setLeads(prev => prev.map(l => l.id === id ? { ...l, status: newStatus } : l));
+    };
+
+    const filtered = leads.filter(l => {
+        const matchSearch = !search || [l.brand_name, l.industry, l.pic_name, l.whatsapp]
+            .some(v => v.toLowerCase().includes(search.toLowerCase()));
+        const matchStatus = statusFilter === 'ALL' || l.status === statusFilter;
+        return matchSearch && matchStatus;
+    });
+
+    const statusCounts = leads.reduce<Record<string, number>>((acc, l) => {
+        acc[l.status] = (acc[l.status] ?? 0) + 1;
+        return acc;
+    }, {});
+
+    return (
+        <>
+            <title>Superadmin Leads · BoonTrack</title>
+
+            <main className="min-h-screen bg-slate-950 text-white">
+                {/* Header */}
+                <div className="border-b border-white/[0.06] px-6 py-4 flex items-center justify-between">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
+                            <span className="text-[10px] text-orange-400 font-bold uppercase tracking-widest">Control Plane</span>
+                        </div>
+                        <h1 className="text-lg font-extrabold mt-0.5">Superadmin Leads</h1>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {lastRefresh && (
+                            <p className="text-xs text-neutral-600 hidden sm:block">
+                                Refresh: {lastRefresh.toLocaleTimeString('id-ID')}
+                            </p>
+                        )}
+                        <button
+                            id="leads-refresh-btn"
+                            onClick={() => { setLoading(true); fetchLeads(); }}
+                            className="px-3 py-1.5 rounded-lg border border-white/10 text-xs font-semibold text-neutral-300 hover:text-white hover:border-white/20 transition flex items-center gap-1.5"
+                        >
+                            ↻ Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-5">
+                    {/* KPI Strip */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {[
+                            { label: 'Total Leads', value: leads.length, color: 'text-orange-400' },
+                            { label: 'Requested',   value: statusCounts['PROSPECT_PILOT_REQUESTED'] ?? 0, color: 'text-orange-300' },
+                            { label: 'Contacted',   value: (statusCounts['CONTACTED'] ?? 0) + (statusCounts['FOLLOWED_UP'] ?? 0), color: 'text-blue-300' },
+                            { label: 'Approved',    value: (statusCounts['PROSPECT_PILOT_ACCEPTED'] ?? 0) + (statusCounts['PILOT_APPROVED'] ?? 0), color: 'text-emerald-300' },
+                        ].map(({ label, value, color }) => (
+                            <div key={label} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+                                <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">{label}</p>
+                                <p className={`text-2xl font-black mt-1 ${color}`}>{value}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Filters */}
+                    <div className="flex flex-wrap gap-3">
+                        <input
+                            id="leads-search-input"
+                            type="text"
+                            placeholder="Cari brand, PIC, WA..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="flex-1 min-w-48 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2 text-sm text-neutral-200 placeholder-neutral-600 focus:outline-none focus:border-orange-500/50 transition"
+                        />
+                        <select
+                            id="leads-status-filter"
+                            value={statusFilter}
+                            onChange={e => setStatusFilter(e.target.value)}
+                            className="bg-white/[0.03] border border-white/10 rounded-xl px-3 py-2 text-sm text-neutral-300 focus:outline-none focus:border-orange-500/50 transition"
+                        >
+                            <option value="ALL">Semua Status</option>
+                            {STATUS_OPTIONS.map(s => (
+                                <option key={s} value={s}>{s.replace(/_/g, ' ')} ({statusCounts[s] ?? 0})</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Table */}
+                    {loading ? (
+                        <div className="flex items-center justify-center py-24">
+                            <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                    ) : error ? (
+                        <div className="rounded-2xl border border-dashed border-white/10 p-10 text-center">
+                            <p className="text-rose-400 text-sm">{error}</p>
+                            <button onClick={fetchLeads} className="mt-3 text-xs text-neutral-500 hover:text-neutral-300 underline underline-offset-2 transition">
+                                Coba lagi
+                            </button>
+                        </div>
+                    ) : filtered.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-white/10 p-12 text-center text-neutral-600 text-sm">
+                            {search || statusFilter !== 'ALL' ? 'Tidak ada leads yang cocok dengan filter.' : 'Belum ada leads masuk.'}
+                        </div>
+                    ) : (
+                        <div className="rounded-2xl border border-white/[0.07] overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-white/[0.07] bg-white/[0.02]">
+                                            {['Brand Name', 'Industry', 'PIC', 'WhatsApp', 'Feature Flags', 'Status', 'Created At', 'Aksi'].map(h => (
+                                                <th key={h} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-neutral-500 whitespace-nowrap">
+                                                    {h}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filtered.map((lead, idx) => (
+                                            <tr
+                                                key={lead.id}
+                                                className={`border-b border-white/[0.04] hover:bg-white/[0.02] transition cursor-pointer ${
+                                                    idx % 2 === 0 ? '' : 'bg-white/[0.01]'
+                                                }`}
+                                                onClick={() => setDetailTarget(lead)}
+                                            >
+                                                {/* Brand */}
+                                                <td className="px-4 py-3">
+                                                    <p className="font-semibold text-neutral-100 whitespace-nowrap">{lead.brand_name}</p>
+                                                </td>
+
+                                                {/* Industry */}
+                                                <td className="px-4 py-3 text-neutral-400 whitespace-nowrap">{lead.industry}</td>
+
+                                                {/* PIC */}
+                                                <td className="px-4 py-3 text-neutral-300 whitespace-nowrap">{lead.pic_name}</td>
+
+                                                {/* WhatsApp — CTA link */}
+                                                <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                                    <a
+                                                        id={`wa-cta-${lead.id}`}
+                                                        href={`https://wa.me/${formatWA(lead.whatsapp)}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 transition whitespace-nowrap"
+                                                    >
+                                                        💬 {lead.whatsapp}
+                                                    </a>
+                                                </td>
+
+                                                {/* Feature Flags */}
+                                                <td className="px-4 py-3">
+                                                    <FlagBadges flags={lead.feature_flags} />
+                                                </td>
+
+                                                {/* Status */}
+                                                <td className="px-4 py-3">
+                                                    <StatusBadge status={lead.status} />
+                                                </td>
+
+                                                {/* Created At */}
+                                                <td className="px-4 py-3 text-neutral-500 text-xs whitespace-nowrap">
+                                                    {formatDate(lead.created_at)}
+                                                </td>
+
+                                                {/* Actions */}
+                                                <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                                                    <button
+                                                        id={`patch-status-${lead.id}`}
+                                                        onClick={() => setPatchTarget(lead)}
+                                                        className="px-2.5 py-1 rounded-lg border border-orange-500/30 text-orange-400 text-[11px] font-semibold hover:bg-orange-500/10 transition whitespace-nowrap"
+                                                    >
+                                                        Update Status
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="px-4 py-3 border-t border-white/[0.05] bg-white/[0.01]">
+                                <p className="text-xs text-neutral-600">
+                                    Menampilkan <strong className="text-neutral-400">{filtered.length}</strong> dari{' '}
+                                    <strong className="text-neutral-400">{leads.length}</strong> leads · Auto-refresh setiap 30 detik
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </main>
+
+            {/* Status Patch Modal */}
+            {patchTarget && (
+                <StatusModal
+                    lead={patchTarget}
+                    onClose={() => setPatchTarget(null)}
+                    onUpdated={handleStatusUpdated}
+                />
+            )}
+
+            {/* Detail Drawer */}
+            {detailTarget && (
+                <DetailDrawer
+                    lead={detailTarget}
+                    onClose={() => setDetailTarget(null)}
+                />
+            )}
+        </>
+    );
 }
