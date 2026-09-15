@@ -48,18 +48,28 @@ export type DashboardTab =
 
 export interface ConversationMessage {
   id: number | string;
-  sender: 'customer' | 'agent' | 'bot';
+  sender: 'customer' | 'agent' | 'bot' | 'system' | string;
+  senderName?: string;
   text: string;
   time: string;
+  isQris?: boolean;
+  qrisData?: any;
 }
 
 export interface ChatConversation {
   id: string;
   customerPhone: string;
   customerName?: string;
+  avatarInitials?: string;
   lastMessage: string;
   time: string;
   status: 'online' | 'offline';
+  assignedTo?: 'my_chat' | 'unassigned' | string;
+  assignedAgentName?: string;
+  isBotActive?: boolean;
+  tag?: string;
+  unreadCount?: number;
+  crm?: any;
   messages: ConversationMessage[];
 }
 
