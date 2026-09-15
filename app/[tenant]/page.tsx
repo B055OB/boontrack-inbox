@@ -434,6 +434,29 @@ export default function TenantStorefrontPage() {
     };
   }, [tenantSlug, displayName]);
 
+  // 0c2. REALTIME THEME & CHAT TOGGLE SYNC
+  useEffect(() => {
+    const handleTemplateChange = (e: any) => {
+      if (e?.detail) {
+        setTenantMetadata((prev: any) => ({
+          ...(prev || {}),
+          theme: {
+            ...(prev?.theme || {}),
+            template: e.detail.template ?? prev?.theme?.template,
+            chat_enabled: e.detail.chat_enabled ?? prev?.theme?.chat_enabled,
+          },
+          chat_enabled: e.detail.chat_enabled ?? prev?.chat_enabled,
+        }));
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("storefront-template-changed", handleTemplateChange);
+      return () => {
+        window.removeEventListener("storefront-template-changed", handleTemplateChange);
+      };
+    }
+  }, []);
+
   // 0d. INIT CHAT MESSAGES
   useEffect(() => {
     const activeName = storeName || displayName.toUpperCase();
@@ -642,7 +665,15 @@ export default function TenantStorefrontPage() {
     'default';
   // Kunci Default: pastikan fallback selalu ke default (Katalog Grid Standar)
   const currentTemplate = rawTemplate === 'microsite' ? 'microsite' : (rawTemplate === 'personal' ? 'personal' : 'default');
-  const isChatEnabled = currentTheme.chat_enabled !== false;
+  
+  // Guard Web Chat Widget: strictly check toggle status (boolean / string)
+  const rawChatEnabled =
+    tenantMetadata?.theme?.chat_enabled ??
+    tenant?.metadata?.theme?.chat_enabled ??
+    tenantMetadata?.chat_enabled ??
+    tenant?.metadata?.chat_enabled ??
+    currentTheme.chat_enabled;
+  const isChatEnabled = rawChatEnabled !== false && rawChatEnabled !== 'false';
 
   // Resolusi logo toko dengan prioritas terlengkap
   const activeLogo =

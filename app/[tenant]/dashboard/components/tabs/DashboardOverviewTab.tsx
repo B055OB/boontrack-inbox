@@ -312,6 +312,22 @@ export default function DashboardOverviewTab({
               )}
             </button>
 
+            {/* SHORTCUT PESANAN & ORDER DI HEADER UTAMA */}
+            <button
+              type="button"
+              onClick={() => onNavigateTab('orders')}
+              className="px-3.5 sm:px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-md shadow-emerald-600/20 shrink-0"
+              title="Akses Langsung Pesanan & Order"
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Pesanan &amp; Order</span>
+              {transactions.length > 0 && (
+                <span className="px-1.5 py-0.5 bg-white text-emerald-700 text-[10px] font-black rounded-full leading-none">
+                  {transactions.length}
+                </span>
+              )}
+            </button>
+
             <Link
               href={`/${tenantSlug}`}
               target="_blank"
@@ -341,7 +357,23 @@ export default function DashboardOverviewTab({
               </p>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 flex-wrap">
+              {/* SHORTCUT PESANAN & ORDER DI BANNER UTAMA */}
+              <button
+                type="button"
+                onClick={() => onNavigateTab('orders')}
+                className="px-3.5 sm:px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-md transition active:scale-95 cursor-pointer flex items-center gap-1.5"
+                title="Akses Instan Pesanan & Order"
+              >
+                <ShoppingBag className="w-3.5 h-3.5 text-slate-900" />
+                <span>Pesanan &amp; Order</span>
+                {transactions.length > 0 && (
+                  <span className="px-1.5 py-0.5 bg-slate-900 text-emerald-400 text-[10px] font-black rounded-full leading-none">
+                    {transactions.length}
+                  </span>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={onOpenNewProduct}
