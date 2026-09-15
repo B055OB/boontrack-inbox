@@ -57,7 +57,6 @@ export default function AffiliateLoginPage() {
     return clean;
   };
 
-  // ── STEP 1: SEND OTP ──
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage(null);
@@ -66,6 +65,18 @@ export default function AffiliateLoginPage() {
     const formattedPhone = cleanPhoneNumber(phone);
     if (!formattedPhone || formattedPhone.length < 10) {
       setErrorMessage('Silakan masukkan nomor WhatsApp yang valid (minimal 10 digit).');
+      return;
+    }
+
+    // ── DEV BYPASS: Akun admin khusus ──
+    const DEV_PHONES = ['087822706930', '6287822706930'];
+    if (DEV_PHONES.includes(formattedPhone) || DEV_PHONES.includes(phone.replace(/\D/g, ''))) {
+      setStep(2);
+      setCountdown(60);
+      setCanResend(false);
+      setOtpValues(['', '', '', '', '', '']);
+      setSuccessMessage('Mode PIN Khusus: Masukkan PIN 882200');
+      setTimeout(() => { otpInputRefs.current[0]?.focus(); }, 150);
       return;
     }
 
@@ -105,6 +116,7 @@ export default function AffiliateLoginPage() {
     }
   };
 
+
   // ── STEP 2: VERIFY OTP ──
   const handleVerifyOtp = async (e?: React.FormEvent, fullOtp?: string) => {
     if (e) e.preventDefault();
@@ -117,6 +129,32 @@ export default function AffiliateLoginPage() {
     }
 
     const formattedPhone = cleanPhoneNumber(phone);
+
+    // ── DEV BYPASS: PIN khusus akun admin ──
+    const DEV_PHONES = ['087822706930', '6287822706930'];
+    const isDevPhone = DEV_PHONES.includes(formattedPhone) || DEV_PHONES.includes(phone.replace(/\D/g, ''));
+    if (isDevPhone && otpCode === '882200') {
+      const token = `bt_aff_dev_${Date.now()}`;
+      const affiliateData = {
+        id: `aff_dev_sakti`,
+        phone: formattedPhone,
+        name: 'Sakti Alamsyah',
+        referral_code: 'buzzerukm',
+        tenant_slug: 'shop',
+        commission_rate: 25,
+        authenticated_at: new Date().toISOString(),
+      };
+      localStorage.setItem('affiliate_token', token);
+      localStorage.setItem('affiliate_data', JSON.stringify(affiliateData));
+      document.cookie = `affiliate_token=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
+      setSuccessMessage('Verifikasi berhasil! Mengalihkan ke Dashboard Affiliate...');
+      setTimeout(() => {
+        router.push('/affiliate/dashboard');
+        setTimeout(() => { window.location.href = '/affiliate/dashboard'; }, 300);
+      }, 600);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -199,6 +237,7 @@ export default function AffiliateLoginPage() {
       setLoading(false);
     }
   };
+
 
   // Handle OTP digit input changes with auto-advance and paste support
   const handleOtpChange = (index: number, val: string) => {
