@@ -267,12 +267,8 @@ export default function TenantDashboardPage() {
   const isPreviewEnabledTab =
     activeTab === 'dashboard' ||
     activeTab === 'overview' ||
-    activeTab === 'microsite' ||
-    activeTab === 'links' ||
     activeTab === 'themes' ||
-    activeTab === 'storefront' ||
-    activeTab === 'catalog' ||
-    activeTab === 'products';
+    activeTab === 'storefront';
 
   return (
     <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col lg:flex-row antialiased">
@@ -808,35 +804,11 @@ export default function TenantDashboardPage() {
         />
       )}
 
-            {/* PRATINJAU LANGSUNG MOBILE & TABLET (< xl): STACKED AT BOTTOM OF CANVAS */}
-            {isPreviewEnabledTab && (
-              <div className="xl:hidden w-full max-w-[360px] mx-auto my-8 pt-6 border-t border-slate-200">
-                <div className="text-center mb-3">
-                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">
-                    Pratinjau Langsung Etalase Toko
-                  </span>
-                  <p className="text-[11px] text-slate-500">
-                    Tampilan real-time yang dilihat pelanggan di smartphone
-                  </p>
-                </div>
-                <LivePhonePreview
-                  tenantSlug={tenantSlug}
-                  displayName={storeDisplayName || displayName}
-                  storeBio={storeBio}
-                  storeLogoUrl={storeLogoUrl}
-                  storeWhatsapp={storeWhatsapp}
-                  visualTheme={activeVisualTheme}
-                  buttons={livePreviewButtons}
-                  showProducts={livePreviewShowProducts}
-                  products={products}
-                />
-              </div>
-            )}
           </div>
 
-          {/* KOLOM 3: STICKY LIVE PHONE PREVIEW DESKTOP (WYSIWYG, >= xl) */}
+          {/* KOLOM 3: STICKY LIVE PHONE PREVIEW DESKTOP (SPLIT-SCREEN DUA KOLOM, >= lg) */}
           {isPreviewEnabledTab && (
-            <div className="hidden xl:block w-[340px] xl:w-[360px] sticky top-20 shrink-0 self-start">
+            <div className="hidden lg:block w-[360px] xl:w-[380px] sticky top-20 shrink-0 self-start">
               <LivePhonePreview
                 tenantSlug={tenantSlug}
                 displayName={storeDisplayName || displayName}

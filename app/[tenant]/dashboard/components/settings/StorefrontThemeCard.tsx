@@ -123,7 +123,7 @@ export default function StorefrontThemeCard({
     currentVisualTheme || 'clean_minimal'
   );
   const [chatEnabled, setChatEnabled] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -355,15 +355,9 @@ export default function StorefrontThemeCard({
         </div>
       )}
 
-      {isLoading ? (
-        <div className="p-8 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-500 font-medium">
-          <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
-          <span>Memuat preferensi tema visual toko...</span>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* 5 Theme Options Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+      {/* 5 Theme Options Grid */}
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {VISUAL_THEMES.map((theme) => {
               const isSelected = selectedTheme === theme.id;
               const locked = isThemeLocked(theme);
@@ -384,9 +378,18 @@ export default function StorefrontThemeCard({
                     {/* Top row: Swatches & Badges */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100/80 border border-slate-200/60">
-                        <span className={`w-4 h-4 rounded-md ${theme.swatches.bg} border border-black/10`} />
-                        <span className={`w-4 h-4 rounded-md ${theme.swatches.card} border border-black/10`} />
-                        <span className={`w-4 h-4 rounded-md ${theme.swatches.accent} border border-black/10`} />
+                        <span
+                          className="w-4 h-4 rounded-md border border-black/10 shadow-2xs"
+                          style={{ backgroundColor: theme.swatches.bg }}
+                        />
+                        <span
+                          className="w-4 h-4 rounded-md border border-black/10 shadow-2xs"
+                          style={{ backgroundColor: theme.swatches.card }}
+                        />
+                        <span
+                          className="w-4 h-4 rounded-md border border-black/10 shadow-2xs"
+                          style={{ backgroundColor: theme.swatches.accent }}
+                        />
                       </div>
 
                       {locked ? (
@@ -494,7 +497,6 @@ export default function StorefrontThemeCard({
             </button>
           </div>
         </div>
-      )}
 
       {/* Upgrade Paywall Modal */}
       {showUpgradeModal && (
