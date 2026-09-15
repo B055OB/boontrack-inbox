@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Bell } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -12,6 +12,12 @@ interface OrderNotificationBellProps {
 export default function OrderNotificationBell({ tenantSlug, onNewOrder }: OrderNotificationBellProps) {
   const [unseenCount, setUnseenCount] = useState(0);
   const [isRinging, setIsRinging] = useState(false);
+
+  // Simpan callback ke ref agar tidak memicu re-render atau re-subscribe pada useEffect
+  const onNewOrderRef = useRef(onNewOrder);
+  useEffect(() => {
+    onNewOrderRef.current = onNewOrder;
+  }, [onNewOrder]);
 
   // Audio synthesizer Web Audio API tanpa butuh file .mp3 eksternal
   const playCashRegisterChime = () => {
@@ -46,23 +52,32 @@ export default function OrderNotificationBell({ tenantSlug, onNewOrder }: OrderN
     const supabase = getSupabase();
     if (!supabase || !tenantSlug) return;
 
-    // Listener Realtime database order untuk tenant bersangkutan
+    // Gunakan instance-unique channel id untuk mencegah collision
+    // antar multiple components (mobile navbar & desktop header) atau HMR
+    const channelId = `realtime-orders:${tenantSlug}:${Math.random().toString(36).slice(2, 9)}`;
+
+    // Pola subscription bersih: inisialisasi, .on(), dan .subscribe() dalam 1 rantai tunggal
     const channel = supabase
-      .channel(`realtime-orders:${tenantSlug}`)
+      .channel(channelId)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'orders',
           filter: `tenant_slug=eq.${tenantSlug}`,
         },
         (payload: any) => {
+          // Hanya tangani event INSERT pesanan baru
+          if (payload.eventType && payload.eventType !== 'INSERT') {
+            return;
+          }
+
           setUnseenCount((prev) => prev + 1);
           setIsRinging(true);
           playCashRegisterChime();
 
-          // Dispatch Web Notification if granted
+          // Dispatch Web Notification jika diizinkan
           if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
             try {
               const orderTitle = payload?.new?.product_title || 'Pesanan Baru';
@@ -91,16 +106,23 @@ export default function OrderNotificationBell({ tenantSlug, onNewOrder }: OrderN
             }
           }
 
-          if (onNewOrder) onNewOrder();
+          if (onNewOrderRef.current) {
+            onNewOrderRef.current();
+          }
           setTimeout(() => setIsRinging(false), 1500);
         }
       )
       .subscribe();
 
+    // Cleanup channel yang tepat saat unmount atau dependency berubah
     return () => {
-      supabase.removeChannel(channel);
+      try {
+        supabase.removeChannel(channel);
+      } catch (err) {
+        console.debug('[OrderNotificationBell] Cleanup channel note:', err);
+      }
     };
-  }, [tenantSlug, onNewOrder]);
+  }, [tenantSlug]);
 
   const handleClear = () => {
     setUnseenCount(0);
@@ -114,7 +136,7 @@ export default function OrderNotificationBell({ tenantSlug, onNewOrder }: OrderN
       title={unseenCount > 0 ? `${unseenCount} Pesanan Baru Masuk!` : 'Notifikasi Pesanan'}
     >
       <Bell className={`w-4 h-4 ${isRinging ? 'animate-bounce text-emerald-600' : ''}`} />
-      
+
       {unseenCount > 0 && (
         <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-rose-600 text-white text-[9px] font-black rounded-full animate-pulse shadow-xs">
           {unseenCount > 99 ? '99+' : unseenCount}
