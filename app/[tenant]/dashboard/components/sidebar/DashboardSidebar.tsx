@@ -22,8 +22,57 @@ import {
   Palette,
   Sparkles,
   LayoutDashboard,
+  Wrench,
+  FileText,
+  Calendar,
+  Video,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { resolveDomainVertical, DomainVerticalKey } from '@/app/[tenant]/dashboard/components/modules';
+
+function getVerticalMenuConfig(storeCategory?: string) {
+  const verticalKey = resolveDomainVertical(storeCategory);
+  switch (verticalKey) {
+    case 'field-service':
+      return {
+        label: 'Layanan & Servis',
+        badge: 'Jasa',
+        icon: Wrench,
+      };
+    case 'digital-product':
+      return {
+        label: 'Produk & Materi Digital',
+        badge: 'Digital',
+        icon: FileText,
+      };
+    case 'pro-service':
+      return {
+        label: 'Konsultasi & Sesi',
+        badge: 'Konsul',
+        icon: Calendar,
+      };
+    case 'creator-agency':
+      return {
+        label: 'Paket & Jasa Kreator',
+        badge: 'Agency',
+        icon: Video,
+      };
+    case 'fnb-culinary':
+      return {
+        label: 'Menu Kuliner & FnB',
+        badge: 'FnB',
+        icon: UtensilsCrossed,
+      };
+    case 'physical-retail':
+    default:
+      return {
+        label: 'Katalog & Produk',
+        badge: 'Fisik',
+        icon: Package,
+      };
+  }
+}
 
 interface DashboardSidebarProps {
   tenantSlug: string;
@@ -38,6 +87,7 @@ interface DashboardSidebarProps {
   isSoloOrTrial?: boolean;
   productCount?: number;
   orderCount?: number;
+  storeCategory?: string;
   onOpenStoreSettings: () => void;
   onOpenUpgradeModal: () => void;
   onCloseMobileDrawer?: () => void;
@@ -57,6 +107,7 @@ export default function DashboardSidebar({
   isSoloOrTrial = false,
   productCount = 0,
   orderCount = 0,
+  storeCategory,
   onOpenStoreSettings,
   onOpenUpgradeModal,
   onCloseMobileDrawer,
@@ -299,31 +350,42 @@ export default function DashboardSidebar({
               </div>
             </button>
 
-            {/* 2. Katalog & Produk */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('catalog')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isMainTabActive('catalog')
-                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isMainTabActive('catalog') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
-                  <Package className="w-4 h-4" />
-                </div>
-                <span className="truncate">Katalog &amp; Produk</span>
-              </div>
-              {productCount > 0 ? (
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                  {productCount}
-                </span>
-              ) : null}
-            </button>
+            {/* 2. Katalog / Layanan Dinamis Sesuai 6 Kategori Bisnis */}
+            {(() => {
+              const verticalConfig = getVerticalMenuConfig(storeCategory);
+              const VerticalIcon = verticalConfig.icon;
+              return (
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('catalog')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isMainTabActive('catalog')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isMainTabActive('catalog') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
+                      <VerticalIcon className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">{verticalConfig.label}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
+                      {verticalConfig.badge}
+                    </span>
+                    {productCount > 0 ? (
+                      <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                        {productCount}
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })()}
 
             {/* Tampilan (Design & Themes) */}
             <button

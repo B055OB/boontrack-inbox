@@ -265,8 +265,6 @@ export default function TenantDashboardPage() {
   const storeHeaderName = storeDisplayName || displayName || tenantSlug;
 
   const isPreviewEnabledTab =
-    activeTab === 'dashboard' ||
-    activeTab === 'overview' ||
     activeTab === 'themes' ||
     activeTab === 'storefront';
 
@@ -299,6 +297,7 @@ export default function TenantDashboardPage() {
               displayName={displayName}
               storeDisplayName={storeDisplayName}
               storeLogoUrl={storeLogoUrl}
+              storeCategory={storeCategory || businessType}
               activeTab={activeTab}
               setActiveTab={(tab) => {
                 setActiveTab(tab);
@@ -332,6 +331,7 @@ export default function TenantDashboardPage() {
         displayName={displayName}
         storeDisplayName={storeDisplayName}
         storeLogoUrl={storeLogoUrl}
+        storeCategory={storeCategory || businessType}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isTeamScale={isTeamScale}
