@@ -113,6 +113,8 @@ export async function GET(
         features,
         bot_strategy: metadata.bot_strategy || 'trust_builder',
         bot_mode: metadata.bot_mode || 'HYBRID',
+        is_bot_active: metadata.is_bot_active !== false,
+        bot_paused: Boolean(metadata.bot_paused === true),
         product: metadata.product || null,
         products: Array.isArray(metadata.products) ? metadata.products : (metadata.product ? [metadata.product] : []),
         ai_knowledge: metadata.ai_knowledge || {
@@ -190,6 +192,8 @@ export async function PUT(
       theme,
       template,
       microsite,
+      is_bot_active,
+      bot_paused,
     } = body;
 
     const supabase = getSupabase();
@@ -231,6 +235,8 @@ export async function PUT(
       ...(effectiveStoreName !== undefined ? { store_name: effectiveStoreName } : {}),
       ...(bot_strategy ? { bot_strategy } : {}),
       ...(bot_mode ? { bot_mode } : {}),
+      is_bot_active: is_bot_active !== undefined ? Boolean(is_bot_active) : (existing.metadata?.is_bot_active !== false),
+      bot_paused: bot_paused !== undefined ? Boolean(bot_paused) : Boolean(existing.metadata?.bot_paused === true),
       ...(plan_tier ? { plan_tier } : {}),
       features: updatedFeatures,
       ...(product ? { product } : {}),

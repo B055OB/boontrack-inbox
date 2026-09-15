@@ -32,11 +32,11 @@ const nextConfig: NextConfig = {
       fallback: [
         {
           source: "/api/orders",
-          destination: `${process.env.CORE_BACKEND_URL || "https://boontrack-core-production.up.railway.app"}/api/v1/orders`,
+          destination: `${process.env.CORE_BACKEND_URL || "https://api.boontrack.com"}/api/v1/orders`,
         },
         {
           source: "/api/v1/:path*",
-          destination: `${process.env.CORE_BACKEND_URL || "https://boontrack-core-production.up.railway.app"}/api/v1/:path*`,
+          destination: `${process.env.CORE_BACKEND_URL || "https://api.boontrack.com"}/api/v1/:path*`,
         },
       ],
     };
@@ -44,4 +44,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-
+

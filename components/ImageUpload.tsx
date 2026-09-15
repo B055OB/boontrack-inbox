@@ -117,7 +117,7 @@ export default function ImageUpload({
     return (
       process.env.NEXT_PUBLIC_API_URL ||
       process.env.NEXT_PUBLIC_CORE_API_URL ||
-      'https://boontrack-core-production.up.railway.app'
+      'https://api.boontrack.com'
     ).replace(/\/+$/, '');
   };
 

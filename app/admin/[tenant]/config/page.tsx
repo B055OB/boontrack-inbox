@@ -43,7 +43,7 @@ export default function TenantConfigEditorPage() {
   const CORE_API_URL =
     process.env.NEXT_PUBLIC_CORE_API_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    'https://boontrack-core-production.up.railway.app';
+    'https://api.boontrack.com';
 
   const [prevSlug, setPrevSlug] = useState(tenantSlug);
   const [config, setConfig] = useState<TenantConfig | null>(() =>

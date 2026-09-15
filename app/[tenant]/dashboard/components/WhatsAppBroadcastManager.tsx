@@ -503,7 +503,7 @@ export default function WhatsAppBroadcastManager({
       const endpoints = [
         `/api/v1/broadcast/meta/send-template`,
         `https://api.boontrack.com/api/v1/broadcast/meta/send-template`,
-        `https://boontrack-core-production.up.railway.app/api/v1/broadcast/meta/send-template`,
+        
       ];
 
       let sentSuccess = false;

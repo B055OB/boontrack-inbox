@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Palette,
   CheckCircle2,
@@ -39,74 +39,74 @@ export interface VisualThemeOption {
 export const VISUAL_THEMES: VisualThemeOption[] = [
   {
     id: 'clean_minimal',
-    title: 'Clean Minimal',
-    subtitle: 'Default Storefront',
-    description: 'Layout modern & terang dengan kontras bersih. Terbuka untuk semua tier termasuk Solo Starter.',
-    badge: 'Semua Tier',
+    title: 'Clean Minimalist',
+    subtitle: 'Putih Bersih & Elegan',
+    description: 'Tata letak putih modern dengan kontras tinggi, navigasi ringan, dan fokus konversi checkout.',
+    badge: 'GRATIS (Semua Tier)',
     isLockedForSolo: false,
     swatches: {
-      bg: 'bg-slate-100',
-      card: 'bg-white border-slate-200',
-      accent: 'bg-indigo-600',
+      bg: '#FFFFFF',
+      card: '#F8FAFC',
+      accent: '#2563EB',
     },
   },
   {
     id: 'aurora_gradient',
-    title: 'Aurora Gradient',
-    subtitle: 'Cyan-Indigo Glassmorphism',
-    description: 'Gradien cyan ke indigo memukau dengan kartu kaca transparan. Tema aktif storefront saat ini.',
-    badge: 'Populer',
+    title: 'Aurora Vibrant Gradient',
+    subtitle: 'Gradasi Dinamis & Estetik',
+    description: 'Kombinasi warna ungu-biru modern yang hidup. Sangat cocok untuk produk kecantikan, fashion, & lifestyle.',
+    badge: 'PREMIUM (Eksklusif)',
     isLockedForSolo: true,
     swatches: {
-      bg: 'bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600',
-      card: 'bg-white/30 backdrop-blur-xs',
-      accent: 'bg-cyan-400',
+      bg: '#FAF5FF',
+      card: '#FFFFFF',
+      accent: '#9333EA',
     },
   },
   {
     id: 'midnight_luxe',
-    title: 'Midnight Luxe',
-    subtitle: 'Deep Dark / Neon Gold Accent',
-    description: 'Mode gelap eksklusif dipadu aksen emas neon untuk citra produk premium & personal branding otoritas.',
-    badge: 'Luxe',
+    title: 'Midnight Dark Luxe',
+    subtitle: 'Dark Mode Maskulin & Mewah',
+    description: 'Tampilan gelap elegan berkelas premium. Ideal untuk brand gadget, otomotif, jam tangan, & clothing streetwear.',
+    badge: 'PREMIUM (Eksklusif)',
     isLockedForSolo: true,
     swatches: {
-      bg: 'bg-slate-950',
-      card: 'bg-slate-900 border-amber-500/40',
-      accent: 'bg-amber-400',
+      bg: '#0F172A',
+      card: '#1E293B',
+      accent: '#38BDF8',
     },
   },
   {
     id: 'warm_terra',
-    title: 'Warm Terra',
-    subtitle: 'Earthy Peach / Sand Palette',
-    description: 'Nuansa terakota & sand hangat yang organik, cocok untuk produk artisan, kuliner, fesyen & kopi.',
-    badge: 'Artisan',
+    title: 'Warm Terracotta Organic',
+    subtitle: 'Nuansa Hangat & Alami',
+    description: 'Palet warna earth-tone hangat ramah mata. Sangat pas untuk kuliner (FnB), kafe, kopi, dan produk artisan kriya.',
+    badge: 'PREMIUM (Eksklusif)',
     isLockedForSolo: true,
     swatches: {
-      bg: 'bg-[#FFF7ED]',
-      card: 'bg-[#431407]',
-      accent: 'bg-[#EA580C]',
+      bg: '#FFFBEB',
+      card: '#FFFFFF',
+      accent: '#D97706',
     },
   },
   {
     id: 'bold_performance',
-    title: 'Bold Performance',
-    subtitle: 'High-Contrast CTA Neo-Brutalism',
-    description: 'Desain neo-brutalism dengan tombol aksi tegas berbayang kontras tinggi untuk mendongkrak konversi checkout.',
-    badge: 'High Conversion',
+    title: 'Bold Ads Performance',
+    subtitle: 'Kontras Maksimal Konversi Iklan',
+    description: 'Warna berani dengan tombol CTA mencolok. Didesain khusus menaikkan ROI iklan Meta Ads & TikTok Ads.',
+    badge: 'PREMIUM (Eksklusif)',
     isLockedForSolo: true,
     swatches: {
-      bg: 'bg-slate-200',
-      card: 'bg-emerald-400 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]',
-      accent: 'bg-emerald-500',
+      bg: '#F0FDF4',
+      card: '#FFFFFF',
+      accent: '#059669',
     },
   },
 ];
 
 interface StorefrontThemeCardProps {
   tenantSlug: string;
-  isTeamScale: boolean;
+  isTeamScale?: boolean;
   isAdsPerformance?: boolean;
   onThemeChange?: (themeId: VisualThemeType) => void;
   currentVisualTheme?: VisualThemeType;
@@ -114,7 +114,7 @@ interface StorefrontThemeCardProps {
 
 export default function StorefrontThemeCard({
   tenantSlug,
-  isTeamScale,
+  isTeamScale = false,
   isAdsPerformance = false,
   onThemeChange,
   currentVisualTheme,
@@ -137,40 +137,50 @@ export default function StorefrontThemeCard({
     }
   }, [currentVisualTheme]);
 
-  // 1. Fetch initial theme config dari database & API
-  const fetchTheme = useCallback(async () => {
-    if (!tenantSlug) return;
-    setIsLoading(true);
-    setErrorMessage(null);
+  // Flag ref agar fetch tema HANYA dieksekusi 1 kali saat komponen mount
+  const hasFetchedRef = useRef(false);
 
-    try {
-      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
-        cache: 'no-store',
-      });
+  // 1. Fetch initial theme config dari database & API (Aman tanpa infinite loop)
+  useEffect(() => {
+    if (!tenantSlug || hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.theme) {
-          const resolvedTheme: VisualThemeType =
-            data.theme.visual_theme ||
-            (data.theme.template === 'microsite' ? 'aurora_gradient' : 'clean_minimal');
-          setSelectedTheme(resolvedTheme);
-          setChatEnabled(data.theme.chat_enabled !== false);
-          if (onThemeChange) {
-            onThemeChange(resolvedTheme);
+    let isMounted = true;
+    async function loadTheme() {
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
+          cache: 'no-store',
+        });
+
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (data?.theme) {
+            const resolvedTheme: VisualThemeType =
+              data.theme.visual_theme ||
+              (data.theme.template === 'microsite' ? 'aurora_gradient' : 'clean_minimal');
+            setSelectedTheme(resolvedTheme);
+            setChatEnabled(data.theme.chat_enabled !== false);
+            // CATATAN: JANGAN memanggil onThemeChange di sini agar tidak memicu re-render/re-fetch loop di parent
           }
         }
+      } catch (err) {
+        console.warn('[StorefrontThemeCard] Fetch theme error:', err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
-    } catch (err) {
-      console.warn('[StorefrontThemeCard] Fetch theme error:', err);
-    } finally {
-      setIsLoading(false);
     }
-  }, [tenantSlug, onThemeChange]);
 
-  useEffect(() => {
-    fetchTheme();
-  }, [fetchTheme]);
+    loadTheme();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug]);
 
   // 2. Save theme change persistently to database & settings API
   const saveThemeConfig = async (newThemeId: VisualThemeType, newChatEnabled: boolean) => {
@@ -246,18 +256,6 @@ export default function StorefrontThemeCard({
         console.warn('[StorefrontThemeCard] Direct Supabase update note:', sbErr);
       }
 
-      if (onThemeChange) {
-        onThemeChange(newThemeId);
-      }
-
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('storefront-theme-changed', {
-            detail: { visual_theme: newThemeId, chat_enabled: newChatEnabled },
-          })
-        );
-      }
-
       setToastMessage('✅ Tema visual berhasil diubah!');
       setTimeout(() => setToastMessage(null), 3000);
     } catch (err: unknown) {
@@ -282,13 +280,34 @@ export default function StorefrontThemeCard({
       return;
     }
 
+    // 1. Optimistic update: Langsung perbarui state lokal & LivePhonePreview seketika
     setSelectedTheme(theme.id);
+    if (onThemeChange) {
+      onThemeChange(theme.id);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('storefront-theme-changed', {
+          detail: { visual_theme: theme.id, chat_enabled: chatEnabled },
+        })
+      );
+    }
+
+    // 2. Eksekusi simpan ke database secara terisolasi di background tanpa fetch GET ulang
     saveThemeConfig(theme.id, chatEnabled);
   };
 
   const handleToggleChat = () => {
     const nextVal = !chatEnabled;
+    setSelectedTheme(selectedTheme);
     setChatEnabled(nextVal);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('storefront-theme-changed', {
+          detail: { visual_theme: selectedTheme, chat_enabled: nextVal },
+        })
+      );
+    }
     saveThemeConfig(selectedTheme, nextVal);
   };
 

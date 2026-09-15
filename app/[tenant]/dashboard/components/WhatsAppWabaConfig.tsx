@@ -43,8 +43,9 @@ export default function WhatsAppWabaConfig({
   const [showAccessToken, setShowAccessToken] = useState(false);
 
   // Read-only Webhook Configuration
-  const coreBase = (process.env.NEXT_PUBLIC_CORE_API_URL || process.env.NEXT_PUBLIC_API_URL || 'https://boontrack-core-production.up.railway.app').replace(/\/+$/, '');
-  const webhookCallbackUrl = `${coreBase}/webhook/meta/whatsapp`;
+  // Read-only Webhook Configuration for Meta Developer Console
+  // PENGECUALIAN: Direct Railway origin dipertahankan khusus handshake hub.challenge Meta agar tidak terhadang Cloudflare
+  const webhookCallbackUrl = 'https://boontrack-core-production.up.railway.app/webhook/meta/whatsapp';
   const webhookVerifyToken = 'boontrack_waba_webhook_verify_token';
 
   // Copy state

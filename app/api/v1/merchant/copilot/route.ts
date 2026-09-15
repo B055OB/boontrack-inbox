@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_BACKEND_URL,
       'http://localhost:8000',
       'http://127.0.0.1:8000',
-      'https://boontrack-core-production.up.railway.app',
+      'https://api.boontrack.com',
     ].filter(Boolean) as string[];
 
     const uniqueBases = Array.from(new Set(backendCandidates.map((u) => u.replace(/\/$/, ''))));

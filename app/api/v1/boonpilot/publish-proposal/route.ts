@@ -77,6 +77,8 @@ export async function POST(req: NextRequest) {
           },
           playbook: mappedPlaybook,
           seller_playbook: mappedPlaybook,
+          is_bot_active: currentMetadata.is_bot_active !== false,
+          bot_paused: Boolean(currentMetadata.bot_paused === true),
         };
 
         if (tenantData) {
@@ -106,6 +108,8 @@ export async function POST(req: NextRequest) {
             category: 'service',
             metadata: {
               plan_tier: 'SOLO_TRIAL',
+              is_bot_active: true,
+              bot_paused: false,
               ...updatedMetadata,
             },
             updated_at: new Date().toISOString(),

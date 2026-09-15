@@ -161,7 +161,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       getBackendApiUrl("/api/v1/payments/qris/create"),
       "/api/v1/payments/qris/create",
       "https://api.boontrack.com/api/v1/payments/qris/create",
-      "https://boontrack-core-production.up.railway.app/api/v1/payments/qris/create"
+      "https://api.boontrack.com/api/v1/payments/qris/create"
     ];
 
     const requestBody = JSON.stringify({

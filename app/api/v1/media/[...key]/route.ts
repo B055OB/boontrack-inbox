@@ -118,7 +118,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
   // 3. Coba ambil dari backend Railway
   try {
-    const railwayUrl = `https://boontrack-core-production.up.railway.app/assets/uploads/${joinedKey.split('/').pop()}`;
+    const railwayUrl = `https://api.boontrack.com/assets/uploads/${joinedKey.split('/').pop()}`;
     const res = await fetch(railwayUrl);
     if (res.ok) {
       const buffer = await res.arrayBuffer();

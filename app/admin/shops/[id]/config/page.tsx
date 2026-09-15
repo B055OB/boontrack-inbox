@@ -1158,14 +1158,14 @@ export default function ShopConfigPage() {
                             <input
                               type="text"
                               readOnly
-                              value={`https://boontrack-core-production.up.railway.app/api/v1/payments/${gatewayProvider}/callback`}
+                              value={`https://api.boontrack.com/api/v1/payments/${gatewayProvider}/callback`}
                               className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-slate-300 select-all"
                             />
                             <button
                               type="button"
                               onClick={() =>
                                 copyToClipboard(
-                                  `https://boontrack-core-production.up.railway.app/api/v1/payments/${gatewayProvider}/callback`,
+                                  `https://api.boontrack.com/api/v1/payments/${gatewayProvider}/callback`,
                                   'webhook'
                                 )
                               }

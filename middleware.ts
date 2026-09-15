@@ -91,7 +91,7 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
     process.env.CORE_API_URL ||
     process.env.NEXT_PUBLIC_CORE_API_URL ||
     process.env.CORE_BACKEND_URL ||
-    'https://boontrack-core-production.up.railway.app';
+    'https://api.boontrack.com';
 
   // 1. Fetch lookup ke Core Backend
   try {

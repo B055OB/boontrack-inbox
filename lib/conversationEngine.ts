@@ -67,6 +67,20 @@ export class ConversationEngine {
     const botMode: 'STATIC' | 'HYBRID' | 'AI' = String(metadata.bot_mode || 'HYBRID').toUpperCase() as any;
     const channelType: 'WABA' | 'WAHA' = payload.channel_type || (payload.channel === 'WHATSAPP' ? 'WABA' : 'WAHA');
 
+    // Bot aktif secara default sejak awal akun dibuat tanpa mewajibkan toggle manual
+    const isBotActive = metadata.is_bot_active !== false;
+    const isBotPaused = metadata.bot_paused === true;
+    if (!isBotActive || isBotPaused) {
+      trace.push('BOT_PAUSED_OR_INACTIVE');
+      return {
+        reply: '',
+        next_state: 'PAUSED',
+        state_trace: trace,
+        entities: {},
+        is_booking_ready: false,
+      };
+    }
+
     // 1. Ambil Sesi & State Saat Ini
     let { data: session } = await supabase
       .from('conversation_sessions')

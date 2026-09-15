@@ -84,7 +84,7 @@ export default function AffiliateLoginPage() {
 
     try {
       const res = await fetch(
-        'https://boontrack-core-production.up.railway.app/api/v1/auth/affiliate/send-otp',
+        'https://api.boontrack.com/api/v1/auth/affiliate/send-otp',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -158,7 +158,7 @@ export default function AffiliateLoginPage() {
 
     try {
       const res = await fetch(
-        'https://boontrack-core-production.up.railway.app/api/v1/auth/affiliate/verify-otp',
+        'https://api.boontrack.com/api/v1/auth/affiliate/verify-otp',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -202,9 +202,12 @@ export default function TenantDashboardPage() {
   const [activeVisualTheme, setActiveVisualTheme] = React.useState<VisualThemeType>('aurora_gradient');
   const [livePreviewButtons, setLivePreviewButtons] = React.useState<any[]>([]);
   const [livePreviewShowProducts, setLivePreviewShowProducts] = React.useState(true);
+  const hasLoadedPreviewDataRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!tenantSlug) return;
+    if (!tenantSlug || hasLoadedPreviewDataRef.current) return;
+    hasLoadedPreviewDataRef.current = true;
+
     async function loadInitialData() {
       try {
         const supabase = getSupabase();
@@ -242,6 +245,12 @@ export default function TenantDashboardPage() {
     loadInitialData();
   }, [tenantSlug]);
 
+  const handleThemeChange = React.useCallback((themeId: VisualThemeType) => {
+    setActiveVisualTheme(themeId);
+    setSaveFeedback('✅ Tema visual storefront berhasil diubah!');
+    setTimeout(() => setSaveFeedback(null), 3000);
+  }, []);
+
   React.useEffect(() => {
     function handleThemeEvent(e: any) {
       if (e.detail?.visual_theme) {
@@ -254,6 +263,14 @@ export default function TenantDashboardPage() {
 
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState(false);
   const storeHeaderName = storeDisplayName || displayName || tenantSlug;
+
+  const isPreviewEnabledTab =
+    activeTab === 'microsite' ||
+    activeTab === 'links' ||
+    activeTab === 'themes' ||
+    activeTab === 'storefront' ||
+    activeTab === 'catalog' ||
+    activeTab === 'products';
 
   return (
     <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col lg:flex-row antialiased">
@@ -541,11 +558,7 @@ export default function TenantDashboardPage() {
             isTeamScale={isTeamScale}
             isAdsPerformance={isAdsPerformance}
             currentVisualTheme={activeVisualTheme}
-            onThemeChange={(themeId) => {
-              setActiveVisualTheme(themeId);
-              setSaveFeedback('✅ Tema visual storefront berhasil diubah!');
-              setTimeout(() => setSaveFeedback(null), 3000);
-            }}
+            onThemeChange={handleThemeChange}
           />
 
           <CustomDomainCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
@@ -794,15 +807,34 @@ export default function TenantDashboardPage() {
       )}
 
             {/* PRATINJAU LANGSUNG MOBILE & TABLET (< xl): STACKED AT BOTTOM OF CANVAS */}
-            <div className="xl:hidden w-full max-w-[360px] mx-auto my-8 pt-6 border-t border-slate-200">
-              <div className="text-center mb-3">
-                <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">
-                  Pratinjau Langsung Etalase Toko
-                </span>
-                <p className="text-[11px] text-slate-500">
-                  Tampilan real-time yang dilihat pelanggan di smartphone
-                </p>
+            {isPreviewEnabledTab && (
+              <div className="xl:hidden w-full max-w-[360px] mx-auto my-8 pt-6 border-t border-slate-200">
+                <div className="text-center mb-3">
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">
+                    Pratinjau Langsung Etalase Toko
+                  </span>
+                  <p className="text-[11px] text-slate-500">
+                    Tampilan real-time yang dilihat pelanggan di smartphone
+                  </p>
+                </div>
+                <LivePhonePreview
+                  tenantSlug={tenantSlug}
+                  displayName={storeDisplayName || displayName}
+                  storeBio={storeBio}
+                  storeLogoUrl={storeLogoUrl}
+                  storeWhatsapp={storeWhatsapp}
+                  visualTheme={activeVisualTheme}
+                  buttons={livePreviewButtons}
+                  showProducts={livePreviewShowProducts}
+                  products={products}
+                />
               </div>
+            )}
+          </div>
+
+          {/* KOLOM 3: STICKY LIVE PHONE PREVIEW DESKTOP (WYSIWYG, >= xl) */}
+          {isPreviewEnabledTab && (
+            <div className="hidden xl:block w-[340px] xl:w-[360px] sticky top-20 shrink-0 self-start">
               <LivePhonePreview
                 tenantSlug={tenantSlug}
                 displayName={storeDisplayName || displayName}
@@ -815,22 +847,7 @@ export default function TenantDashboardPage() {
                 products={products}
               />
             </div>
-          </div>
-
-          {/* KOLOM 3: STICKY LIVE PHONE PREVIEW DESKTOP (WYSIWYG, >= xl) */}
-          <div className="hidden xl:block w-[340px] xl:w-[360px] sticky top-20 shrink-0 self-start">
-            <LivePhonePreview
-              tenantSlug={tenantSlug}
-              displayName={storeDisplayName || displayName}
-              storeBio={storeBio}
-              storeLogoUrl={storeLogoUrl}
-              storeWhatsapp={storeWhatsapp}
-              visualTheme={activeVisualTheme}
-              buttons={livePreviewButtons}
-              showProducts={livePreviewShowProducts}
-              products={products}
-            />
-          </div>
+          )}
         </div>
       </div>
 

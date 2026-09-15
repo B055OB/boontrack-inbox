@@ -70,7 +70,7 @@ export default function SuperAdminDashboard() {
   const CORE_API_URL =
     process.env.NEXT_PUBLIC_CORE_API_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    'https://boontrack-core-production.up.railway.app';
+    'https://api.boontrack.com';
 
   const [isAdminAuth, setIsAdminAuth] = useState(() => {
     if (typeof window !== 'undefined') {

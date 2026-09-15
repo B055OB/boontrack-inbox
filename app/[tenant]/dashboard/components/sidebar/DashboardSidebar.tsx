@@ -21,6 +21,7 @@ import {
   LogOut,
   Palette,
   Sparkles,
+  LayoutDashboard,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -94,6 +95,7 @@ export default function DashboardSidebar({
   const nameToShow = storeDisplayName || displayName || tenantSlug;
 
   const isMainTabActive = (tab: string) => {
+    if (tab === 'dashboard' && (activeTab === 'dashboard' || activeTab === 'overview')) return true;
     if (tab === 'microsite' && (activeTab === 'microsite' || activeTab === 'links')) return true;
     if (tab === 'catalog' && (activeTab === 'catalog' || activeTab === 'products')) return true;
     if (tab === 'themes' && (activeTab === 'themes' || activeTab === 'storefront')) return true;
@@ -105,7 +107,7 @@ export default function DashboardSidebar({
     if (tab === 'whatsapp' && (activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply')) return true;
     if (tab === 'inbox' && activeTab === 'inbox') return true;
     if (tab === 'ads_tracking' && activeTab === 'ads_tracking') return true;
-    if (tab === 'finance' && (activeTab === 'finance' || activeTab === 'overview')) return true;
+    if (tab === 'finance' && activeTab === 'finance') return true;
     if (tab === 'orders' && activeTab === 'orders') return true;
     return false;
   };
@@ -252,7 +254,7 @@ export default function DashboardSidebar({
         {/* Quick Action: Lihat Etalase Toko */}
         <div className="mt-2">
           <Link
-            href={`/${tenantSlug}`}
+            href={`https://shop.boontrack.com/${tenantSlug}`}
             target="_blank"
             className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50/70 border border-slate-200/80 text-slate-600 hover:text-indigo-600 text-[11px] font-bold transition group shadow-2xs"
           >
@@ -276,7 +278,28 @@ export default function DashboardSidebar({
           </span>
 
           <div className="space-y-1">
-            {/* Links (Tautan & Microsite) */}
+            {/* 1. Dashboard / Beranda */}
+            <button
+              type="button"
+              onClick={() => handleSelectTab('dashboard')}
+              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                isMainTabActive('dashboard')
+                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+              }`}
+            >
+              {isMainTabActive('dashboard') && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+              )}
+              <div className="flex items-center gap-2.5 truncate">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
+                  <LayoutDashboard className="w-4 h-4" />
+                </div>
+                <span className="truncate">Dashboard</span>
+              </div>
+            </button>
+
+            {/* 2. Tautan & Microsite */}
             <button
               type="button"
               onClick={() => handleSelectTab('microsite')}
@@ -293,7 +316,7 @@ export default function DashboardSidebar({
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
                   <LinkIcon className="w-4 h-4" />
                 </div>
-                <span className="truncate">Links (Tautan)</span>
+                <span className="truncate">Tautan &amp; Microsite</span>
               </div>
             </button>
 

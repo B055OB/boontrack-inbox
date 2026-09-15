@@ -177,12 +177,23 @@ export default function DashboardOverviewTab({
     }
   };
 
-  const handleCopyStoreLink = () => {
-    if (typeof window !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(storePublicUrl);
+  const handleCopyStoreLink = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(storePublicUrl);
+      } else if (typeof document !== 'undefined') {
+        const textArea = document.createElement('textarea');
+        textArea.value = storePublicUrl;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
       setHasCopiedUrl(true);
-      if (onSavedFeedback) onSavedFeedback('Tautan toko tersalin ke clipboard!');
+      if (onSavedFeedback) onSavedFeedback('Tautan toko berhasil disalin!');
       setTimeout(() => setHasCopiedUrl(false), 2500);
+    } catch (err) {
+      console.warn('Gagal menyalin tautan toko:', err);
     }
   };
 

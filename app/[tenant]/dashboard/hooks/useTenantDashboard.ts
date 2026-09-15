@@ -289,6 +289,8 @@ export function useTenantDashboard() {
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [botStrategy, setBotStrategy] = useState<'trust_builder' | 'balanced' | 'hard_selling'>('trust_builder');
   const [botMode, setBotMode] = useState<'STATIC' | 'HYBRID' | 'AI'>('HYBRID');
+  const [isBotActive, setIsBotActive] = useState<boolean>(true);
+  const [botPaused, setBotPaused] = useState<boolean>(false);
   const [isSavingStrategy, setIsSavingStrategy] = useState(false);
   const [strategyFeedback, setStrategyFeedback] = useState<string | null>(null);
 
@@ -674,6 +676,8 @@ export function useTenantDashboard() {
           if (menuMode) {
             setBotMode(menuMode as 'STATIC' | 'HYBRID' | 'AI');
           }
+          setIsBotActive(tenant?.metadata?.is_bot_active !== false);
+          setBotPaused(Boolean(tenant?.metadata?.bot_paused === true));
         }
       } catch (err) {
         console.error('Gagal memuat data tenant:', err);
@@ -1295,6 +1299,8 @@ export function useTenantDashboard() {
         system_prompt: aiForm.system_prompt,
         bot_strategy: botStrategy,
         bot_mode: botMode,
+        is_bot_active: isBotActive,
+        bot_paused: botPaused,
         faqs,
         interactive_menus: interactiveMenus,
         interactive_menu: {
@@ -1526,6 +1532,10 @@ export function useTenantDashboard() {
     setBotStrategy,
     botMode,
     setBotMode,
+    isBotActive,
+    setIsBotActive,
+    botPaused,
+    setBotPaused,
     isSavingAi,
     isLoadingAi,
     isSavingStrategy,

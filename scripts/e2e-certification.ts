@@ -191,7 +191,7 @@ async function runCertification() {
 
   // 3.2: Core Backend WhatsApp Webhook Routing
   try {
-    const whUrl = 'https://boontrack-core-production.up.railway.app/webhook/whatsapp';
+    const whUrl = 'https://api.boontrack.com/webhook/whatsapp';
     const whRes = await fetch(whUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

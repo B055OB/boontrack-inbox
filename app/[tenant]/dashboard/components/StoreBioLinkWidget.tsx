@@ -12,7 +12,7 @@ export default function StoreBioLinkWidget({ tenantSlug }: StoreBioLinkWidgetPro
 
   if (!tenantSlug) return null;
 
-  const bioShortlink = `https://boontrack.com/${tenantSlug}`;
+  const bioShortlink = `https://shop.boontrack.com/${tenantSlug}`;
   const storefrontUrl = `https://shop.boontrack.com/${tenantSlug}`;
 
   const handleCopy = async () => {
