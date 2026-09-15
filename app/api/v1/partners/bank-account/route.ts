@@ -35,6 +35,9 @@ export async function POST(req: NextRequest) {
 
         if (existing) {
           await supabase.from('affiliates').update({
+            bank_name,
+            bank_account_number: cleanAccount,
+            bank_account_holder: cleanHolder,
             metadata: {
               ...(existing.metadata || {}),
               bank_name,

@@ -47,21 +47,54 @@ export async function POST(req: NextRequest) {
       created_at: new Date().toISOString(),
     };
 
-    // Try saving to Supabase if table exists
+    // Try saving to Supabase (dual persistence: payout_requests table & affiliate payout history)
     try {
       const supabase = getSupabase();
       if (supabase) {
-        await supabase.from('payout_requests').insert({
-          id: payoutId,
-          partner_id: payoutItem.partner_id,
-          amount: numAmount,
-          bank_name,
-          account_number,
-          account_holder,
-          status: 'PENDING',
-          metadata: { notes: payoutItem.notes, phone: payoutItem.partner_phone, name: payoutItem.partner_name },
-          created_at: payoutItem.created_at,
-        });
+        try {
+          await supabase.from('payout_requests').insert({
+            id: payoutId,
+            partner_id: payoutItem.partner_id,
+            amount: numAmount,
+            bank_name,
+            account_number,
+            account_holder,
+            status: 'PENDING',
+            metadata: { notes: payoutItem.notes, phone: payoutItem.partner_phone, name: payoutItem.partner_name },
+            created_at: payoutItem.created_at,
+          });
+        } catch (tErr) {
+          console.warn('Supabase payout_requests table insert skipped:', tErr);
+        }
+
+        if (partner_id && partner_id !== 'partner-active') {
+          const { data: aff } = await supabase
+            .from('affiliates')
+            .select('id, payout_bank_details, metadata')
+            .eq('id', partner_id)
+            .maybeSingle();
+
+          if (aff) {
+            const curDetails = aff.payout_bank_details || {};
+            const hist = Array.isArray(curDetails.history) ? curDetails.history : [];
+            await supabase
+              .from('affiliates')
+              .update({
+                bank_name,
+                bank_account_number: account_number,
+                bank_account_holder: account_holder,
+                payout_bank_details: {
+                  ...curDetails,
+                  bank_name,
+                  account_number,
+                  account_holder,
+                  history: [payoutItem, ...hist],
+                },
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', aff.id);
+          }
+        }
       }
     } catch (e) {
       console.warn('Supabase payout insert note:', e);
