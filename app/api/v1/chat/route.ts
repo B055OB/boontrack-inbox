@@ -170,7 +170,18 @@ export async function POST(req: NextRequest) {
       if (coreRes.ok) {
         const coreData = await coreRes.json();
         if (coreData.reply || coreData.response || coreData.message) {
-          reply = coreData.reply || coreData.response || coreData.message;
+          return NextResponse.json({
+            success: true,
+            reply: coreData.reply || coreData.response || coreData.message,
+            tenant_id: slug,
+            tenant_slug: slug,
+            checkout_url: checkoutUrl,
+            quick_actions: coreData.quick_actions,
+            business_category: coreData.business_category,
+            action: coreData.action,
+            type: coreData.type,
+            unassigned_triggered: coreData.unassigned_triggered,
+          });
         }
       }
     } catch {

@@ -232,13 +232,24 @@ export default function TenantStorefrontPage() {
     if (Array.isArray(tenantMetadata?.quick_replies) && tenantMetadata.quick_replies.length > 0) {
       return tenantMetadata.quick_replies;
     }
-    return [
-      "📦 Daftar Produk & Harga",
-      "💳 Info Pemesanan & Pembayaran",
-      "💬 Chat dengan Admin",
-      "⭐ Info Layanan Resmi"
-    ];
-  }, [tenantMetadata?.quick_replies]);
+    const raw = String(tenant?.category || tenantMetadata?.category || tenantMetadata?.vertical || "").toUpperCase();
+    if (raw.includes("FOOD") || raw.includes("FNB") || raw.includes("CULINARY") || raw.includes("RESTO") || raw.includes("KULINER")) {
+      return ["🛵 Pesan Antar (Delivery)", "🥡 Ambil di Resto (Takeaway)", "📍 Lokasi & Jam Dapur"];
+    }
+    if (raw.includes("FIELD") || raw.includes("TEKNISI") || raw.includes("TOREN") || raw.includes("REPARASI") || raw.includes("SERVICE")) {
+      return ["📅 Jadwalkan Servis/Teknisi", "💰 Tarif & Area Layanan", "🛠️ Konsultasi CS"];
+    }
+    if (raw.includes("PRO") || raw.includes("CONSULT") || raw.includes("AGENCY_PRO") || raw.includes("LEGAL") || raw.includes("KLINIK")) {
+      return ["📝 Jadwal Konsultasi/Janji Temu", "📋 Portofolio & Brief", "🚗 Simulasi/Paket Layanan"];
+    }
+    if (raw.includes("DIGITAL") || raw.includes("COURSE") || raw.includes("SOFTWARE") || raw.includes("EBOOK") || raw.includes("KELAS")) {
+      return ["⚡ Akses Download & Materi", "🔑 Kendala Akun & Lisensi", "📚 Kurikulum Produk"];
+    }
+    if (raw.includes("CREATOR") || raw.includes("TALENT") || raw.includes("ENDORSE") || raw.includes("INFLUENCER") || raw.includes("KOL")) {
+      return ["📊 Rate Card & Paket Endorse", "📦 Kirim Brief/Sampel", "📅 Jadwal Live Talent"];
+    }
+    return ["📦 Cek Katalog & Promo", "🚚 Cek Ongkir & Resi", "💬 Hubungi Live CS"];
+  }, [tenant?.category, tenantMetadata?.category, tenantMetadata?.vertical, tenantMetadata?.quick_replies]);
 
   // Dynamic Header & Product CTA Button Labels (Zero Hardcoding via Tenant Metadata)
   const headerCtaText = useMemo(() => {
