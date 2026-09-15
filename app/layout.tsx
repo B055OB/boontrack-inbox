@@ -58,16 +58,12 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <PwaRegister />
-        {/* ads-tracker.js hanya aktif di storefront publik, skip di /admin/* */}
+        {/* ads-tracker.js — lazyOnload, skip /admin/* routes */}
         <Script
-          src="/ads-tracker.js"
+          id="ads-tracker"
           strategy="lazyOnload"
-          data-skip-admin="true"
-          onLoad={() => {
-            // Guard runtime: jangan jalankan di halaman admin dashboard
-            if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
-              return;
-            }
+          dangerouslySetInnerHTML={{
+            __html: `(function(){if(window.location.pathname.startsWith('/admin'))return;var s=document.createElement('script');s.src='/ads-tracker.js';s.async=true;document.head.appendChild(s);})();`,
           }}
         />
         {children}
