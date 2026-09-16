@@ -48,7 +48,7 @@ const CATEGORIES = [
   },
   {
     id: "fnb",
-    label: "Kuliner & F&B",
+    label: "Food & Beverage (Kuliner)",
     desc: "Frozen food, makanan, camilan, minuman",
     icon: UtensilsCrossed,
     comingSoon: true,
@@ -809,6 +809,7 @@ export default function RegisterShopPage() {
                         type="button"
                         key={cat.id}
                         disabled={isComingSoon}
+                        aria-disabled={isComingSoon}
                         onClick={() => {
                           if (!isComingSoon) {
                             setCategory(cat.id);
@@ -816,7 +817,7 @@ export default function RegisterShopPage() {
                         }}
                         className={`p-3.5 rounded-2xl border text-left flex flex-col justify-between gap-2 transition-all ${
                           isComingSoon
-                            ? "border-slate-200/80 bg-slate-100/70 text-slate-400 opacity-75 cursor-not-allowed select-none"
+                            ? "border-slate-200/90 bg-slate-100/80 text-slate-400 opacity-70 cursor-not-allowed select-none shadow-none pointer-events-none"
                             : isSelected
                             ? cat.id === "local_service"
                               ? "border-amber-500 bg-amber-50/70 text-amber-950 font-bold shadow-xs ring-1 ring-amber-500 cursor-pointer"
@@ -837,7 +838,7 @@ export default function RegisterShopPage() {
                             }`}
                           />
                           {isComingSoon ? (
-                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-300">
+                            <span className="text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
                               Coming Soon
                             </span>
                           ) : isSelected && (

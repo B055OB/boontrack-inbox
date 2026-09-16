@@ -495,11 +495,7 @@ function AffiliateRegisterContent() {
                         Formulir Kemitraan Affiliate
                       </h2>
                       <p className="text-xs text-slate-400 mt-1">
-                        Tahap {currentStep} dari 2: {
-                          currentStep === 1
-                            ? 'Informasi Data Diri'
-                            : 'Rekening Pencairan Komisi'
-                        }
+                        Lengkapi 2 tahapan registrasi untuk mengaktifkan akun kemitraan Anda.
                       </p>
                     </div>
 
@@ -510,7 +506,7 @@ function AffiliateRegisterContent() {
                           key={stepNum}
                           className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                             currentStep === stepNum
-                              ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-500/20'
+                              ? 'bg-emerald-500 text-slate-950 ring-4 ring-emerald-500/20 shadow-md shadow-emerald-500/20'
                               : currentStep > stepNum
                               ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/40'
                               : 'bg-slate-800 text-slate-500'
@@ -519,6 +515,63 @@ function AffiliateRegisterContent() {
                           {currentStep > stepNum ? <Check className="w-3.5 h-3.5" /> : stepNum}
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Stepper Progress Bar & Separated Labels */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <div
+                      className={`p-3 rounded-2xl border transition-all ${
+                        currentStep === 1
+                          ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 shadow-sm ring-1 ring-emerald-500/20'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${
+                            currentStep === 1
+                              ? 'bg-emerald-500 text-slate-950'
+                              : currentStep > 1
+                              ? 'bg-emerald-900 text-emerald-400'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          {currentStep > 1 ? <Check className="w-3.5 h-3.5" /> : '1'}
+                        </span>
+                        <div className="min-w-0">
+                          <span className={`text-xs block leading-tight ${currentStep === 1 ? 'font-black text-emerald-400' : 'font-semibold text-slate-300'}`}>
+                            Langkah 1: Data Diri
+                          </span>
+                          <span className="text-[10px] text-slate-500 leading-none">Identitas &amp; Kontak WhatsApp</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`p-3 rounded-2xl border transition-all ${
+                        currentStep === 2
+                          ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 shadow-sm ring-1 ring-emerald-500/20'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-500'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${
+                            currentStep === 2
+                              ? 'bg-emerald-500 text-slate-950'
+                              : 'bg-slate-800 text-slate-400'
+                          }`}
+                        >
+                          2
+                        </span>
+                        <div className="min-w-0">
+                          <span className={`text-xs block leading-tight ${currentStep === 2 ? 'font-black text-emerald-400' : 'font-semibold text-slate-400'}`}>
+                            Langkah 2: Rekening Pencairan Komisi
+                          </span>
+                          <span className="text-[10px] text-slate-500 leading-none">Bank Transfer / E-Wallet</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -540,8 +593,7 @@ function AffiliateRegisterContent() {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  
-                      STEP 1: DATA DIRI
+                  {/* STEP 1: DATA DIRI */}
                   {currentStep === 1 && (
                     <div className="space-y-4 animate-in fade-in duration-200">
                       
@@ -652,7 +704,7 @@ function AffiliateRegisterContent() {
                     </div>
                   )}
 
-                      STEP 2: REKENING PENCAIRAN KOMISI
+                  {/* STEP 2: REKENING PENCAIRAN KOMISI */}
                   {currentStep === 2 && (
                     <div className="space-y-5 animate-in fade-in duration-200">
                       
