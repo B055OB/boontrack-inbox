@@ -21,6 +21,7 @@ import {
   ArrowRight,
   Store,
   ShieldAlert,
+  ShieldCheck,
   Check,
   Bell,
   Activity,
@@ -468,6 +469,13 @@ export default function SuperAdminDashboard() {
             <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
             <span>Unit Economics</span>
           </Link>
+          <Link
+            href="/admin/affiliates"
+            className="px-3.5 py-2 rounded-xl bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 hover:text-white font-semibold text-xs border border-indigo-500/40 transition shrink-0 flex items-center gap-1.5"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Affiliate &amp; AM Engine</span>
+          </Link>
         </div>
 
         {/* Master Card Shop Hub */}
@@ -498,6 +506,13 @@ export default function SuperAdminDashboard() {
             >
               <Store className="w-4 h-4" />
               <span>Semua Toko</span>
+            </Link>
+            <Link
+              href="/admin/affiliates"
+              className="px-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-1.5 active:scale-95 text-center cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Affiliate &amp; AM</span>
             </Link>
             <Link
               href="/admin/push-notification"

@@ -192,39 +192,82 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const isAM = (affiliate.role || '').toLowerCase() === 'am';
     const affRefCode = (affiliate.referral_code || '').toLowerCase();
     const rawRate = Number(affiliate.commission_rate) || 0.3;
     const commissionPercent = rawRate <= 1 ? Math.round(rawRate * 100) : Math.round(rawRate);
 
-    // 3. Fetch Attributions
+    // 3. Multi-Tier Sub-Affiliate Network Resolution
+    let subAffiliates: any[] = [];
+    let networkAffiliateIds: string[] = [affiliate.id];
+    const networkRefCodes = new Map<string, any>();
+    const networkAffById = new Map<string, any>();
+
+    networkRefCodes.set(affRefCode, { ...affiliate, is_am_self: true });
+    networkAffById.set(affiliate.id, { ...affiliate, is_am_self: true });
+
+    if (isAM) {
+      const { data: subData } = await supabase
+        .from('affiliates')
+        .select('*')
+        .eq('parent_am_id', affiliate.id)
+        .order('created_at', { ascending: false });
+
+      subAffiliates = subData || [];
+      subAffiliates.forEach((sub: any) => {
+        networkAffiliateIds.push(sub.id);
+        networkAffById.set(sub.id, { ...sub, is_am_self: false });
+        const code = (sub.referral_code || '').toLowerCase().trim();
+        if (code) {
+          networkRefCodes.set(code, { ...sub, is_am_self: false });
+        }
+      });
+    }
+
+    // 4. Fetch Attributions across network
     const { data: attributions } = await supabase
       .from('attributions')
-      .select('id, session_id, tenant_id, utm_source, utm_medium, utm_campaign, created_at')
-      .eq('affiliate_id', affiliate.id);
+      .select('id, session_id, tenant_id, affiliate_id, utm_source, utm_medium, utm_campaign, created_at')
+      .in('affiliate_id', networkAffiliateIds);
 
-    const attributedTenantIds = new Set(
-      (attributions || []).map((a: any) => a.tenant_id).filter(Boolean)
-    );
+    const attributionTenantMap = new Map<string, any>();
+    (attributions || []).forEach((a: any) => {
+      if (a.tenant_id) {
+        attributionTenantMap.set(a.tenant_id, a);
+      }
+    });
 
-    // 4. Fetch Associated Tenants
+    // 5. Fetch Associated Tenants
     const { data: allTenants } = await supabase
       .from('tenants')
       .select('id, name, slug, tier, status, is_active, created_at, trial_ends_at, monthly_fee, due_date, metadata')
       .order('created_at', { ascending: false });
 
-    const matchedTenants = (allTenants || []).filter((t: any) => {
+    // Helper to resolve which affiliate in the network brought the tenant
+    const resolveRecruiter = (t: any) => {
       const m = t.metadata || {};
       const ref = (m.referral_code || m.ref || m.affiliate_code || '').toString().trim().toLowerCase();
       const metaAffId = (m.affiliate_id || m.referrer_id || '').toString().trim();
+      const attr = attributionTenantMap.get(t.id);
 
-      const isRefMatch = Boolean(affRefCode && ref === affRefCode);
-      const isIdMatch = Boolean(metaAffId && metaAffId === affiliate.id);
-      const isAttributionMatch = attributedTenantIds.has(t.id);
+      if (metaAffId && networkAffById.has(metaAffId)) {
+        return networkAffById.get(metaAffId);
+      }
+      if (ref && networkRefCodes.has(ref)) {
+        return networkRefCodes.get(ref);
+      }
+      if (attr && networkAffById.has(attr.affiliate_id)) {
+        return networkAffById.get(attr.affiliate_id);
+      }
+      return null;
+    };
 
-      return isRefMatch || isIdMatch || isAttributionMatch;
+    const matchedTenants = (allTenants || []).filter((t: any) => {
+      const recruiter = resolveRecruiter(t);
+      return Boolean(recruiter);
     });
 
-    // 5. Fetch Payout History
+    // 6. Fetch Payout History (Personal for this affiliate)
     let payoutList: any[] = [];
     try {
       const { data: prData, error: prErr } = await supabase
@@ -256,9 +299,12 @@ export async function GET(req: NextRequest) {
       payoutList = embeddedHistory;
     }
 
-    // 6. Transform Leads
+    // 7. Transform Leads
     const leads = matchedTenants.map((t: any) => {
       const meta = t.metadata || {};
+      const recruiter = resolveRecruiter(t);
+      const isDirect = recruiter ? recruiter.id === affiliate.id : true;
+
       const tierUpper = (t.tier || meta.tier || meta.plan_tier || '').toUpperCase();
       const isTrialTier = tierUpper.includes('TRIAL') || tierUpper === 'SOLO_TRIAL';
       const rawStatus = (t.status || '').toLowerCase();
@@ -270,7 +316,8 @@ export async function GET(req: NextRequest) {
           ? 299000
           : 199000
       );
-      const potentialComm = Math.round(fee * (commissionPercent / 100));
+      const leadRate = Number(recruiter?.commission_rate) || (rawRate <= 1 ? rawRate : rawRate / 100);
+      const potentialComm = Math.round(fee * (leadRate <= 1 ? leadRate : leadRate / 100));
 
       let storeStatus: 'Trial' | 'Berlangganan' | 'Expired' = 'Trial';
       if (rawStatus === 'expired' || rawStatus === 'inactive' || t.is_active === false) {
@@ -288,7 +335,7 @@ export async function GET(req: NextRequest) {
         date: t.created_at || meta.onboarded_at || new Date().toISOString(),
         store_name: t.name || t.slug || 'Toko Mitra',
         store_slug: t.slug,
-        phone: meta.wa_number || meta.whatsapp_number || meta.phone || affiliate.phone || '-',
+        phone: meta.wa_number || meta.whatsapp_number || meta.phone || recruiter?.phone || '-',
         utm_source: meta.utm_source || meta.source || 'organik',
         utm_medium: meta.utm_medium || meta.medium || '-',
         utm_campaign: meta.utm_campaign || meta.campaign || '-',
@@ -296,14 +343,48 @@ export async function GET(req: NextRequest) {
         tier: t.tier || meta.tier || meta.plan_tier || 'STARTER',
         monthly_fee: fee,
         potential_commission: potentialComm,
+        recruiter_id: recruiter?.id || affiliate.id,
+        recruiter_name: recruiter?.name || affiliate.name || 'Mitra',
+        recruiter_code: recruiter?.referral_code || affRefCode,
+        is_direct: isDirect,
       };
     });
 
-    // 7. Calculate Metrics
-    const totalLeads = matchedTenants.length;
+    // 8. Calculate Sub-Affiliates performance list (Only populated for AM)
+    const subAffiliateStats = isAM
+      ? subAffiliates.map((sub: any) => {
+          const subLeads = leads.filter((l: any) => l.recruiter_id === sub.id);
+          const trialCount = subLeads.filter((l: any) => l.status === 'Trial').length;
+          const subscribedCount = subLeads.filter((l: any) => l.status === 'Berlangganan').length;
+          const pipelineOmzet = subLeads.reduce((acc: number, l: any) => acc + (l.monthly_fee || 0), 0);
+          const subPotentialComm = subLeads.reduce((acc: number, l: any) => acc + (l.potential_commission || 0), 0);
+          const rateVal = Number(sub.commission_rate) || 0.25;
+
+          return {
+            id: sub.id,
+            name: sub.name || 'Mitra Affiliate',
+            phone: sub.phone || sub.phone_number || '-',
+            email: sub.email || '-',
+            referral_code: sub.referral_code || '',
+            region: sub.region || 'ID-NATIONAL',
+            created_at: sub.created_at || new Date().toISOString(),
+            status: sub.status || 'ACTIVE',
+            commission_rate: rateVal <= 1 ? Math.round(rateVal * 100) : Math.round(rateVal),
+            total_leads: subLeads.length,
+            trial_stores: trialCount,
+            active_subscribed: subscribedCount,
+            pipeline_omzet: pipelineOmzet,
+            potential_commission: subPotentialComm,
+          };
+        })
+      : [];
+
+    // 9. Calculate Overall Metrics
+    const totalLeads = leads.length;
     const activeTrialStores = leads.filter((l) => l.status === 'Trial').length;
     const activeSubscribedStores = leads.filter((l) => l.status === 'Berlangganan').length;
     const totalPotentialCommission = leads.reduce((acc, l) => acc + l.potential_commission, 0);
+    const totalPipelineOmzet = leads.reduce((acc, l) => acc + l.monthly_fee, 0);
     const balanceReady = Number(affiliate.balance) || 0;
     const totalWithdrawn = Number(affiliate.total_withdrawn) || 0;
 
@@ -315,6 +396,10 @@ export async function GET(req: NextRequest) {
           name: affiliate.name || 'Mitra BoonTrack',
           phone_number: affiliate.phone || affiliate.phone_number || '-',
           referral_code: affiliate.referral_code || affRefCode,
+          role: affiliate.role || 'affiliate',
+          region: affiliate.region || 'ID-NATIONAL',
+          parent_am_id: affiliate.parent_am_id || null,
+          is_am: isAM,
           commission_rate: commissionPercent,
           status: affiliate.status || 'ACTIVE',
           is_ref_customized: Boolean(affiliate.is_ref_customized),
@@ -322,15 +407,21 @@ export async function GET(req: NextRequest) {
           bank_account_number: affiliate.bank_account_number || affiliate.metadata?.bank_account_number || '',
           bank_account_holder: affiliate.bank_account_holder || affiliate.metadata?.bank_account_holder || '',
         },
-        referral_url: `https://${affRefCode}.boontrack.com/`,
+        is_am: isAM,
+        sub_affiliates: subAffiliateStats,
+        referral_url: isAM && affRefCode === 'buzzerukm'
+          ? `https://buzzerukm.boontrack.com/`
+          : `https://shop.boontrack.com/?ref=${affRefCode}`,
         metrics: {
           total_clicks: attributions?.length || 0,
           total_leads: totalLeads,
           trial_stores: activeTrialStores,
           active_subscribed: activeSubscribedStores,
           potential_commission: totalPotentialCommission,
+          pipeline_omzet: totalPipelineOmzet,
           ready_to_withdraw: balanceReady,
           already_paid: totalWithdrawn,
+          total_sub_affiliates: isAM ? subAffiliates.length : 0,
         },
         leads,
         payouts: payoutList,

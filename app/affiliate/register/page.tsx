@@ -265,6 +265,9 @@ function AffiliateRegisterContent() {
       referral_code: cleanSlug || undefined,
       am_referral_code: resolvedAmCode,
       am_pembina: resolvedAmCode,
+      role: 'affiliate',
+      parent_am_id: '43e48443-dcfa-47a6-818c-5144e3a34db4', // Kang Sakti (buzzerukm) Master AM
+      region: 'ID-NATIONAL',
       bank_name: bankName,
       bank_account_number: bankAccountNumber.trim(),
       bank_account_holder: bankAccountHolder.trim().toUpperCase(),

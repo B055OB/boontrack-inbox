@@ -52,6 +52,27 @@ export interface LeadItem {
   tier: string;
   monthly_fee: number;
   potential_commission: number;
+  recruiter_id?: string;
+  recruiter_name?: string;
+  recruiter_code?: string;
+  is_direct?: boolean;
+}
+
+export interface SubAffiliateItem {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  referral_code: string;
+  region: string;
+  created_at: string;
+  status: string;
+  commission_rate: number;
+  total_leads: number;
+  trial_stores: number;
+  active_subscribed: number;
+  pipeline_omzet: number;
+  potential_commission: number;
 }
 
 export interface PayoutItem {
@@ -73,6 +94,10 @@ interface PortalResponse {
     name: string;
     phone_number: string;
     referral_code: string;
+    role?: 'am' | 'affiliate' | string;
+    region?: string;
+    parent_am_id?: string | null;
+    is_am?: boolean;
     commission_rate: number;
     status: string;
     is_ref_customized?: boolean;
@@ -80,6 +105,8 @@ interface PortalResponse {
     bank_account_number?: string;
     bank_account_holder?: string;
   };
+  is_am?: boolean;
+  sub_affiliates?: SubAffiliateItem[];
   referral_url: string;
   metrics: {
     total_clicks: number;
@@ -87,8 +114,10 @@ interface PortalResponse {
     trial_stores: number;
     active_subscribed: number;
     potential_commission: number;
+    pipeline_omzet?: number;
     ready_to_withdraw: number;
     already_paid: number;
+    total_sub_affiliates?: number;
   };
   leads: LeadItem[];
   payouts: PayoutItem[];
@@ -841,10 +870,19 @@ function AffiliatePortalContent() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900/90 border border-slate-800/80 p-5 sm:p-6 rounded-3xl backdrop-blur-md shadow-2xl">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase flex items-center gap-1">
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase flex items-center gap-1 border ${
+                data?.is_am || data?.affiliate?.role === 'am'
+                  ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                  : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+              }`}>
                 <ShieldCheck className="w-3 h-3" />
-                <span>Mitra Affiliate Resmi</span>
+                <span>{data?.is_am || data?.affiliate?.role === 'am' ? 'Affiliate Manager (AM) Resmi' : 'Mitra Affiliate Resmi'}</span>
               </span>
+              {(data?.is_am || data?.affiliate?.role === 'am') && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  Regional: {data.affiliate.region || 'ID-NATIONAL'}
+                </span>
+              )}
               <span className="text-xs text-slate-400">&bull; Multi-Tenant Growth Engine</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-white mt-1.5 flex items-center gap-2 flex-wrap">
@@ -1369,6 +1407,144 @@ function AffiliatePortalContent() {
               </div>
             </div>
 
+            {/* ── MODUL AM: JARINGAN SUB-AFFILIATE SAYA (HANYA MUNCUL JIKA ROLE == 'am') ── */}
+            {(data.is_am || data.affiliate.role === 'am') && (
+              <div className="bg-slate-900/90 border border-indigo-500/40 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-4 relative overflow-hidden">
+                {/* Subtle Glow Background */}
+                <div className="absolute -top-24 -right-24 w-72 h-72 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4 relative">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-indigo-400" />
+                        <span>Multi-Tier AM Hierarchy</span>
+                      </span>
+                      <span className="text-xs text-slate-400">&bull; Wilayah: {data.affiliate.region || 'ID-NATIONAL'}</span>
+                    </div>
+                    <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                      <Users className="w-4 h-4 text-indigo-400" />
+                      <span>Jaringan Sub-Affiliate Saya ({data.sub_affiliates?.length || 0} Mitra Downline)</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Daftar mitra affiliate di bawah naungan regional Anda. Seluruh konversi dan toko yang mereka bawa teragregasi otomatis ke pipeline Anda.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="px-3.5 py-2 rounded-2xl bg-indigo-950/70 border border-indigo-500/30 text-xs">
+                      <span className="text-slate-400 block text-[10px]">Total Pipeline Jaringan:</span>
+                      <span className="font-mono font-bold text-indigo-300 text-sm">
+                        Rp {(data.sub_affiliates || []).reduce((acc, s) => acc + (s.pipeline_omzet || 0), 0).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-affiliate Table */}
+                <div className="overflow-x-auto rounded-2xl border border-slate-800/80">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Mitra Affiliate</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Kode Referral</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Cakupan Wilayah</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Rate Komisi</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Toko / Lead Binaan</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Pipeline Omzet</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px] text-right">Kontak Mitra</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 font-sans">
+                      {(data.sub_affiliates || []).length > 0 ? (
+                        data.sub_affiliates!.map((sub) => {
+                          const cleanPhone = (sub.phone || '').replace(/\D/g, '').replace(/^0/, '62');
+                          const waMsg = `Halo Kak ${sub.name}! Saya ${data.affiliate.name} (Affiliate Manager BoonTrack). Bagaimana perkembangan promosi dan onboarding toko UKM binaan Anda? Ada kendala yang bisa saya support?`;
+                          const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waMsg)}`;
+
+                          return (
+                            <tr key={sub.id} className="hover:bg-slate-800/40 transition">
+                              <td className="p-3.5">
+                                <div className="font-bold text-white flex items-center gap-2">
+                                  <span>{sub.name}</span>
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                                    {sub.status}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">{sub.email || '-'}</div>
+                              </td>
+
+                              <td className="p-3.5">
+                                <span className="px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-mono font-bold text-xs">
+                                  {sub.referral_code}
+                                </span>
+                              </td>
+
+                              <td className="p-3.5 text-slate-300 text-[11px]">
+                                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">
+                                  {sub.region || 'ID-NATIONAL'}
+                                </span>
+                              </td>
+
+                              <td className="p-3.5 font-mono text-xs text-slate-300">
+                                {sub.commission_rate}%
+                              </td>
+
+                              <td className="p-3.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-white text-xs">{sub.total_leads} Toko</span>
+                                  {sub.trial_stores > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                                      {sub.trial_stores} Trial
+                                    </span>
+                                  )}
+                                  {sub.active_subscribed > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">
+                                      {sub.active_subscribed} Aktif
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="p-3.5 font-mono font-bold text-indigo-300">
+                                Rp {sub.pipeline_omzet.toLocaleString('id-ID')}
+                              </td>
+
+                              <td className="p-3.5 text-right whitespace-nowrap">
+                                {sub.phone && sub.phone !== '-' ? (
+                                  <a
+                                    href={waLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs inline-flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5" />
+                                    <span>Chat WA</span>
+                                  </a>
+                                ) : (
+                                  <span className="text-[10px] text-slate-500 italic">No WA -</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-slate-500 space-y-2">
+                            <Users className="w-8 h-8 text-slate-600 mx-auto" />
+                            <div className="font-bold text-slate-300 text-xs">Belum Ada Sub-Affiliate Terdaftar</div>
+                            <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                              Belum ada mitra affiliate yang terdaftar di bawah naungan Anda. Mitra baru yang mendaftar via portal pendaftaran publik akan otomatis terhubung ke jaringan AM Anda.
+                            </p>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* ── MODUL 3: TABEL CALON LEAD & PROSPEK TOKO TRIAL ── */}
             <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
@@ -1378,7 +1554,9 @@ function AffiliatePortalContent() {
                     <span>Data Calon Lead & Toko Mitra Terdaftar ({filteredLeads.length})</span>
                   </h2>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Daftar merchant yang telah membuat toko melalui link referal Anda. Follow-up toko trial agar segera berlangganan paket penuh.
+                    {data.is_am || data.affiliate.role === 'am'
+                      ? 'Daftar gabungan seluruh merchant yang direkrut langsung oleh Anda maupun oleh seluruh mitra sub-affiliate di bawah jaringan Anda.'
+                      : 'Daftar merchant yang telah membuat toko melalui link referal Anda. Follow-up toko trial agar segera berlangganan paket penuh.'}
                   </p>
                 </div>
 
@@ -1420,6 +1598,9 @@ function AffiliatePortalContent() {
                     <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
                       <th className="p-3.5 font-bold uppercase text-[10px]">Tanggal</th>
                       <th className="p-3.5 font-bold uppercase text-[10px]">Nama Toko / Merchant</th>
+                      {(data.is_am || data.affiliate.role === 'am') && (
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Sumber Rekrut</th>
+                      )}
                       <th className="p-3.5 font-bold uppercase text-[10px]">No. WhatsApp</th>
                       <th className="p-3.5 font-bold uppercase text-[10px]">Sumber UTM</th>
                       <th className="p-3.5 font-bold uppercase text-[10px]">Status Toko</th>
@@ -1445,6 +1626,23 @@ function AffiliatePortalContent() {
                               <span>shop.boontrack.com/{lead.store_slug}</span>
                             </div>
                           </td>
+
+                          {(data.is_am || data.affiliate.role === 'am') && (
+                            <td className="p-3.5 whitespace-nowrap">
+                              {lead.is_direct ? (
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold">
+                                  Direct (AM)
+                                </span>
+                              ) : (
+                                <span
+                                  className="px-2 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-[10px] font-bold"
+                                  title={`Direkrut oleh: ${lead.recruiter_name} (${lead.recruiter_code})`}
+                                >
+                                  Sub: {lead.recruiter_code}
+                                </span>
+                              )}
+                            </td>
+                          )}
 
                           <td className="p-3.5 text-slate-300 font-mono whitespace-nowrap">
                             {lead.phone}
@@ -1500,7 +1698,7 @@ function AffiliatePortalContent() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={7} className="p-8 text-center text-slate-500 space-y-2">
+                        <td colSpan={data.is_am || data.affiliate.role === 'am' ? 8 : 7} className="p-8 text-center text-slate-500 space-y-2">
                           <Users className="w-8 h-8 text-slate-600 mx-auto" />
                           <div className="font-bold text-slate-300 text-xs">Belum Ada Merchant Lead Terdaftar</div>
                           <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
