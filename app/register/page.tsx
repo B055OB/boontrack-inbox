@@ -683,10 +683,54 @@ export default function RegisterShopPage() {
       let matchedAffiliateId: string | null = null;
       let matchedAffiliateName: string | null = null;
 
+      // 1. Panggil Endpoint Backend API Onboard secara primer untuk INSERT ke tabel tenants & attributions di Supabase
+      const onboardPayload = {
+        slug,
+        rawSlug: slug,
+        tenant_slug: slug,
+        storeName,
+        waNumber: formattedPhone,
+        phone: formattedPhone,
+        merchantName: merchantData.name,
+        merchant_name: merchantData.name,
+        email: merchantData.email,
+        customer_email: merchantData.email,
+        pin: cleanPin,
+        password: cleanPin,
+        access_pin: cleanPin,
+        category: resolvedBusinessType,
+        business_type: resolvedBusinessType,
+        vertical_type: resolvedBusinessType,
+        selectedPlan,
+        plan_tier: targetPlanTier,
+        amount: planAmount,
+        trial_days: isTrial ? 7 : 0,
+        referralCode: cleanRef,
+        referral_code: cleanRef,
+        ref: cleanRef,
+        affiliate_code: cleanRef,
+        utm_source: utmParams.utm_source,
+        utm_medium: utmParams.utm_medium,
+        utm_campaign: utmParams.utm_campaign,
+        utm_content: utmParams.utm_content,
+        utm_term: utmParams.utm_term,
+      };
+
+      const onboardRes = await fetch("/api/v1/tenants/onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(onboardPayload),
+      });
+
+      const onboardData = await onboardRes.json().catch(() => ({}));
+      if (!onboardRes.ok || !onboardData.success) {
+        throw new Error(onboardData.error || "Gagal mendaftarkan toko ke database server. Silakan coba beberapa saat lagi.");
+      }
+
+      // 2. Redundansi Client-Side Direct Sync ke Supabase (jika tersedia)
       try {
         const supabase = getSupabase();
         if (supabase) {
-          // Lookup mitra affiliate pemilik referral_code di database
           if (cleanRef) {
             try {
               const { data: affData } = await supabase
@@ -699,12 +743,10 @@ export default function RegisterShopPage() {
                 matchedAffiliateId = affData.id;
                 matchedAffiliateName = affData.name;
               }
-            } catch (lookupErr) {
-              console.warn('Lookup affiliate by referral code error:', lookupErr);
-            }
+            } catch (_) {}
           }
 
-          const { data: upsertedTenant } = await supabase.from('tenants').upsert(
+          const { data: directTenant } = await supabase.from('tenants').upsert(
             {
               slug,
               name: storeName,
@@ -715,6 +757,8 @@ export default function RegisterShopPage() {
               is_active: true,
               trial_ends_at: isTrial ? trialEndsAt : null,
               subscription_ends_at: isTrial ? trialEndsAt : new Date(Date.now() + 30 * 86400000).toISOString(),
+              access_username: slug,
+              access_password: cleanPin,
               metadata: {
                 merchant_name: merchantData.name,
                 whatsapp_number: formattedPhone,
@@ -741,9 +785,6 @@ export default function RegisterShopPage() {
                 utm_campaign: utmParams.utm_campaign || undefined,
                 utm_content: utmParams.utm_content || undefined,
                 utm_term: utmParams.utm_term || undefined,
-                source: utmParams.utm_source || 'organik',
-                medium: utmParams.utm_medium || undefined,
-                campaign: utmParams.utm_campaign || undefined,
                 capabilities: {
                   inbox: selectedPlan === 'team_scale',
                   ai_bot: true,
@@ -756,12 +797,10 @@ export default function RegisterShopPage() {
             { onConflict: 'slug' }
           ).select('id, slug').maybeSingle();
 
-          // Simpan record atribusi jika terdaftar via referral affiliate
-          const effectiveTenantId = upsertedTenant?.id;
-          if (effectiveTenantId && (matchedAffiliateId || cleanRef)) {
+          if (directTenant?.id && (matchedAffiliateId || cleanRef)) {
             try {
               await supabase.from('attributions').insert({
-                tenant_id: effectiveTenantId,
+                tenant_id: directTenant.id,
                 session_id: `reg_${slug}_${Date.now()}`,
                 affiliate_id: matchedAffiliateId || null,
                 utm_source: utmParams.utm_source || 'organik',
@@ -772,16 +811,14 @@ export default function RegisterShopPage() {
                 ip_hash: 'merchant_reg',
                 created_at: new Date().toISOString(),
               });
-            } catch (attrErr) {
-              console.warn('Attribution insert note:', attrErr);
-            }
+            } catch (_) {}
           }
         }
       } catch (dbErr) {
-        console.warn('Supabase tenant direct upsert note:', dbErr);
+        console.warn('Supabase client-side direct upsert note:', dbErr);
       }
 
-      // 2. Kirim payload registrasi ke Core Backend API
+      // 3. Kirim payload registrasi ke Core Backend API untuk integrasi subscription/invoicing
       const res = await fetch(
         "https://api.boontrack.com/api/v1/shop/subscriptions/create",
         {
@@ -814,33 +851,6 @@ export default function RegisterShopPage() {
           }),
         }
       ).catch(() => null);
-
-      // Sinkronisasi background ke internal Next.js onboarding gateway
-      fetch("/api/v1/tenants/onboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rawSlug: slug,
-          storeName,
-          waNumber: formattedPhone,
-          category: resolvedBusinessType,
-          business_type: resolvedBusinessType,
-          referralCode: cleanRef,
-          referral_code: cleanRef,
-          affiliate_id: matchedAffiliateId,
-          referrer_id: matchedAffiliateId,
-          productName: storeName,
-          productPrice: 0,
-          bankName: 'BCA',
-          bankAccountNumber: '-',
-          bankAccountHolder: merchantData.name,
-          utm_source: utmParams.utm_source,
-          utm_medium: utmParams.utm_medium,
-          utm_campaign: utmParams.utm_campaign,
-          utm_content: utmParams.utm_content,
-          utm_term: utmParams.utm_term,
-        }),
-      }).catch(() => null);
 
       const data = res && res.ok ? await res.json().catch(() => ({})) : {};
 
