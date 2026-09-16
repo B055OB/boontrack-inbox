@@ -125,10 +125,12 @@ function AffiliatePortalContent() {
   const [tenantSlug, setTenantSlug] = useState(initialTenant);
   const [affiliateCode, setAffiliateCode] = useState(initialRef);
   const activeCode = (affiliateCode || 'buzzerukm').toLowerCase();
+  const isBuzzerUkm = activeCode === 'buzzerukm';
   const [data, setData] = useState<PortalResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [copiedBase, setCopiedBase] = useState(false);
+  const [copiedRecruit, setCopiedRecruit] = useState(false);
   const [copiedCustomUtm, setCopiedCustomUtm] = useState(false);
 
   // Active Authenticated Session State
@@ -152,7 +154,7 @@ function AffiliatePortalContent() {
   const [claimSuccessMsg, setClaimSuccessMsg] = useState('');
 
   // 2. UTM Builder States
-  const [targetUrlType, setTargetUrlType] = useState<'register' | 'storefront' | 'custom'>('register');
+  const [targetUrlType, setTargetUrlType] = useState<'register' | 'storefront' | 'recruit' | 'custom'>('register');
   const [customTargetUrl, setCustomTargetUrl] = useState('');
   const [utmSource, setUtmSource] = useState('wa_group');
   const [utmMedium, setUtmMedium] = useState('chat');
@@ -648,39 +650,68 @@ function AffiliatePortalContent() {
     }
   };
 
-  // ── DYNAMIC UTM LINK BUILDER (SUBDOMAIN FORMAT) ──
+  // ── DYNAMIC HYBRID UTM LINK BUILDER ──
   const generatedCustomUrl = useMemo(() => {
-    let baseUrl = `https://${activeCode}.boontrack.com/register`;
-    if (targetUrlType === 'storefront') {
-      baseUrl = `https://${activeCode}.boontrack.com/`;
-    } else if (targetUrlType === 'custom') {
-      baseUrl = customTargetUrl.trim() || `https://${activeCode}.boontrack.com/register`;
+    let baseUrl = '';
+    if (isBuzzerUkm) {
+      if (targetUrlType === 'register') {
+        baseUrl = 'https://buzzerukm.boontrack.com/register';
+      } else if (targetUrlType === 'storefront') {
+        baseUrl = 'https://buzzerukm.boontrack.com/';
+      } else if (targetUrlType === 'recruit') {
+        baseUrl = 'https://buzzerukm.boontrack.com/affiliate/register';
+      } else if (targetUrlType === 'custom') {
+        baseUrl = customTargetUrl.trim() || 'https://buzzerukm.boontrack.com/register';
+      }
+    } else {
+      if (targetUrlType === 'register') {
+        baseUrl = `https://shop.boontrack.com/register?ref=${encodeURIComponent(activeCode)}`;
+      } else if (targetUrlType === 'storefront') {
+        baseUrl = `https://shop.boontrack.com/?ref=${encodeURIComponent(activeCode)}`;
+      } else if (targetUrlType === 'recruit') {
+        baseUrl = `https://shop.boontrack.com/affiliate/register?ref=${encodeURIComponent(activeCode)}`;
+      } else if (targetUrlType === 'custom') {
+        baseUrl = customTargetUrl.trim() || `https://shop.boontrack.com/register?ref=${encodeURIComponent(activeCode)}`;
+      }
     }
 
     try {
       const u = new URL(baseUrl);
+      if (!isBuzzerUkm) {
+        u.searchParams.set('ref', activeCode);
+      }
       if (utmSource) u.searchParams.set('utm_source', utmSource.trim().toLowerCase());
       if (utmMedium) u.searchParams.set('utm_medium', utmMedium.trim().toLowerCase());
       if (utmCampaign) u.searchParams.set('utm_campaign', utmCampaign.trim().toLowerCase());
       return u.toString();
     } catch {
       const qs = [
+        !isBuzzerUkm ? `ref=${encodeURIComponent(activeCode)}` : '',
         utmSource ? `utm_source=${encodeURIComponent(utmSource.trim().toLowerCase())}` : '',
         utmMedium ? `utm_medium=${encodeURIComponent(utmMedium.trim().toLowerCase())}` : '',
         utmCampaign ? `utm_campaign=${encodeURIComponent(utmCampaign.trim().toLowerCase())}` : '',
       ].filter(Boolean).join('&');
       return qs ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${qs}` : baseUrl;
     }
-  }, [targetUrlType, customTargetUrl, activeCode, utmSource, utmMedium, utmCampaign]);
+  }, [targetUrlType, customTargetUrl, activeCode, isBuzzerUkm, utmSource, utmMedium, utmCampaign]);
 
-  const defaultReferralLink = `https://${activeCode}.boontrack.com/`;
+  const defaultReferralLink = isBuzzerUkm
+    ? 'https://buzzerukm.boontrack.com/'
+    : `https://shop.boontrack.com/?ref=${activeCode}`;
 
-  const copyToClipboard = (text: string, type: 'base' | 'customUtm') => {
+  const recruitReferralLink = isBuzzerUkm
+    ? 'https://buzzerukm.boontrack.com/affiliate/register'
+    : `https://shop.boontrack.com/affiliate/register?ref=${activeCode}`;
+
+  const copyToClipboard = (text: string, type: 'base' | 'customUtm' | 'recruit') => {
     if (typeof navigator !== 'undefined') {
       navigator.clipboard.writeText(text);
       if (type === 'base') {
         setCopiedBase(true);
         setTimeout(() => setCopiedBase(false), 2000);
+      } else if (type === 'recruit') {
+        setCopiedRecruit(true);
+        setTimeout(() => setCopiedRecruit(false), 2000);
       } else {
         setCopiedCustomUtm(true);
         setTimeout(() => setCopiedCustomUtm(false), 2000);
@@ -949,7 +980,7 @@ function AffiliatePortalContent() {
                   <label className="text-[11px] font-bold text-slate-300 block mb-1.5 flex items-center gap-1">
                     <span>Halaman Tujuan Promosi:</span>
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2">
                     <button
                       type="button"
                       onClick={() => setTargetUrlType('register')}
@@ -960,7 +991,11 @@ function AffiliatePortalContent() {
                       }`}
                     >
                       <div className="font-bold text-white">Form Daftar UKM</div>
-                      <div className="text-[10px] text-slate-400 font-mono">/{activeCode}.boontrack.com/register</div>
+                      <div className="text-[10px] text-slate-400 font-mono truncate">
+                        {isBuzzerUkm
+                          ? 'https://buzzerukm.boontrack.com/register'
+                          : `https://shop.boontrack.com/register?ref=${activeCode}`}
+                      </div>
                     </button>
 
                     <button
@@ -973,7 +1008,28 @@ function AffiliatePortalContent() {
                       }`}
                     >
                       <div className="font-bold text-white">Beranda Platform</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{activeCode}.boontrack.com</div>
+                      <div className="text-[10px] text-slate-400 font-mono truncate">
+                        {isBuzzerUkm
+                          ? 'https://buzzerukm.boontrack.com/'
+                          : `https://shop.boontrack.com/?ref=${activeCode}`}
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTargetUrlType('recruit')}
+                      className={`p-2.5 rounded-xl text-xs font-semibold border transition text-left cursor-pointer ${
+                        targetUrlType === 'recruit'
+                          ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="font-bold text-white">Link Rekrut Affiliate</div>
+                      <div className="text-[10px] text-slate-400 font-mono truncate">
+                        {isBuzzerUkm
+                          ? 'https://buzzerukm.boontrack.com/affiliate/register'
+                          : `https://shop.boontrack.com/affiliate/register?ref=${activeCode}`}
+                      </div>
                     </button>
                   </div>
                 </div>
@@ -1093,18 +1149,29 @@ function AffiliatePortalContent() {
 
               {/* Quick Base Referral Link */}
               <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
-                <div className="flex items-center gap-2 font-mono text-[11px]">
-                  <span className="text-slate-500">Link Standar:</span>
-                  <span className="text-slate-300">{defaultReferralLink}</span>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 font-mono text-[11px] truncate max-w-[500px]">
+                  <span className="text-slate-500 whitespace-nowrap">Link Standar:</span>
+                  <span className="text-slate-300 truncate">{defaultReferralLink}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(defaultReferralLink, 'base')}
-                  className="text-xs text-blue-400 hover:text-blue-300 font-bold transition flex items-center gap-1 cursor-pointer self-start sm:self-auto"
-                >
-                  {copiedBase ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedBase ? 'Tersalin' : 'Salin Link Standar'}</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(defaultReferralLink, 'base')}
+                    className="text-xs text-blue-400 hover:text-blue-300 font-bold transition flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+                  >
+                    {copiedBase ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedBase ? 'Tersalin' : 'Salin Link Toko'}</span>
+                  </button>
+                  <span className="text-slate-700">|</span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(recruitReferralLink, 'recruit')}
+                    className="text-xs text-purple-400 hover:text-purple-300 font-bold transition flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+                  >
+                    {copiedRecruit ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedRecruit ? 'Tersalin' : 'Salin Link Rekrut'}</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1117,42 +1184,46 @@ function AffiliatePortalContent() {
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                      <span>Kustomisasi Kode Referral &amp; Subdomain Personal</span>
+                      <span>Kustomisasi Kode Referral Personal</span>
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Ubah kode referral dan subdomain personal Anda agar mudah diingat calon merchant saat promosi.
+                      Ubah kode referral personal Anda agar mudah diingat calon merchant saat promosi.
                     </p>
                   </div>
                 </div>
 
                 <div className="text-[11px] font-mono">
                   <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                    Aktif: {activeCode}.boontrack.com
+                    {isBuzzerUkm
+                      ? 'Aktif: https://buzzerukm.boontrack.com/'
+                      : `Aktif: https://shop.boontrack.com/?ref=${activeCode}`}
                   </span>
                 </div>
               </div>
 
               <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-300 block">
-                  Subdomain &amp; Kode Referral Anda:
+                  Kustomisasi Kode Referral Anda:
                 </label>
 
                 <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
                   <div className="flex items-center rounded-xl bg-slate-950 border border-slate-800 overflow-hidden flex-1 focus-within:border-purple-500 transition">
                     <span className="px-3.5 py-3 text-xs font-mono text-slate-400 bg-slate-900/80 border-r border-slate-800 select-none whitespace-nowrap">
-                      https://
+                      {customSlugInput.toLowerCase() === 'buzzerukm' ? 'https://' : 'shop.boontrack.com/?ref='}
                     </span>
                     <input
                       type="text"
                       value={customSlugInput}
                       onChange={(e) => setCustomSlugInput(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                      placeholder="buzzerukm"
+                      placeholder={isBuzzerUkm ? 'buzzerukm' : 'kode-anda'}
                       maxLength={30}
                       className="flex-1 bg-transparent px-3 py-3 text-xs md:text-sm font-mono font-bold text-purple-300 focus:outline-none"
                     />
-                    <span className="px-3.5 py-3 text-xs font-mono text-slate-400 bg-slate-900/80 border-l border-slate-800 select-none whitespace-nowrap">
-                      .boontrack.com
-                    </span>
+                    {customSlugInput.toLowerCase() === 'buzzerukm' && (
+                      <span className="px-3.5 py-3 text-xs font-mono text-slate-400 bg-slate-900/80 border-l border-slate-800 select-none whitespace-nowrap">
+                        .boontrack.com
+                      </span>
+                    )}
                   </div>
 
                   <button
@@ -1172,6 +1243,16 @@ function AffiliatePortalContent() {
                     )}
                     <span>Simpan / Perbarui Slug</span>
                   </button>
+                </div>
+
+                {/* Live Preview Box */}
+                <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs font-mono">
+                  <span className="text-slate-400">Preview Link Promosi:</span>
+                  <span className="text-emerald-400 font-bold truncate">
+                    {customSlugInput.trim().toLowerCase() === 'buzzerukm'
+                      ? 'https://buzzerukm.boontrack.com/'
+                      : `https://shop.boontrack.com/?ref=${customSlugInput.trim() || activeCode}`}
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs pt-1">

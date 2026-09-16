@@ -666,12 +666,12 @@ function AffiliateRegisterContent() {
                       {/* Custom Subdomain / Kode Referral Pribadi */}
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                          <span>Custom Subdomain / Kode Referral</span>
+                          <span>Kode Referral / Subdomain Pribadi</span>
                           <span className="text-[10px] text-emerald-400 font-normal">Opsional (Bisa diubah nanti)</span>
                         </label>
                         <div className="relative">
                           <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-mono text-slate-400 border-r border-slate-800 pr-2.5 select-none">
-                            <span>https://</span>
+                            <span>{customSlug.toLowerCase() === 'buzzerukm' ? 'https://' : 'shop.boontrack.com/?ref='}</span>
                           </div>
                           <input
                             type="text"
@@ -680,22 +680,28 @@ function AffiliateRegisterContent() {
                               const val = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
                               setCustomSlug(val);
                             }}
-                            placeholder="Contoh: buzzerukm, tokoberkah"
+                            placeholder="buzzerukm atau kode-anda"
                             maxLength={30}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-24 pr-28 py-3 text-sm font-mono text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+                            className={`w-full bg-slate-950 border border-slate-800 rounded-xl py-3 text-sm font-mono text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition ${
+                              customSlug.toLowerCase() === 'buzzerukm' ? 'pl-24 pr-28' : 'pl-48 pr-4'
+                            }`}
                           />
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-mono text-slate-500 select-none pointer-events-none">
-                            <span>.boontrack.com</span>
-                          </div>
+                          {customSlug.toLowerCase() === 'buzzerukm' && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-mono text-slate-500 select-none pointer-events-none">
+                              <span>.boontrack.com</span>
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-0.5">
                           <span>Preview link promosi Anda:</span>
-                          <span className="text-emerald-400 font-bold truncate max-w-[240px]">
-                            https://{customSlug ? customSlug.toLowerCase() : 'nama'}.boontrack.com/
+                          <span className="text-emerald-400 font-bold truncate max-w-[280px]">
+                            {customSlug.trim().toLowerCase() === 'buzzerukm'
+                              ? 'https://buzzerukm.boontrack.com/'
+                              : `https://shop.boontrack.com/?ref=${customSlug ? customSlug.toLowerCase() : 'kode'}`}
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-500 leading-tight">
-                          Kode ini adalah link promosi &amp; subdomain toko milik Anda untuk disebarkan ke merchant (terpisah dari Upline Pembina di atas).
+                          Kode ini adalah link promosi milik Anda untuk disebarkan ke merchant (terpisah dari Upline Pembina di atas).
                         </p>
                       </div>
 
