@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,6 +10,7 @@ export async function POST(req: NextRequest) {
       partner_name,
       partner_phone,
       amount,
+      payout_type,
       bank_name,
       account_number,
       account_holder,
@@ -31,7 +32,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const payoutId = `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
+    const payoutType = payout_type === 'AM_OVERRIDE' ? 'AM_OVERRIDE' : 'PERSONAL_COMMISSION';
+    const prefix = payoutType === 'AM_OVERRIDE' ? 'PO-AM' : 'PO';
+    const payoutId = `${prefix}-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
 
     const payoutItem = {
       id: payoutId,
@@ -39,38 +42,46 @@ export async function POST(req: NextRequest) {
       partner_name: partner_name || 'Mitra Partner',
       partner_phone: partner_phone || '08123456789',
       amount: numAmount,
+      payout_type: payoutType,
       bank_name,
       account_number,
       account_holder,
       status: 'PENDING',
-      notes: notes || 'Pengajuan penarikan dana komisi platform',
+      notes: notes || (payoutType === 'AM_OVERRIDE' ? 'Penarikan Hak Override AM (5%)' : 'Pengajuan penarikan dana komisi platform'),
       created_at: new Date().toISOString(),
     };
 
-    // Try saving to Supabase (dual persistence: payout_requests table & affiliate payout history)
+    // Save to Supabase (dual persistence: payout_requests table & affiliate payout history)
     try {
-      const supabase = getSupabase();
+      const supabase = getSupabaseAdmin() || getSupabase();
       if (supabase) {
         try {
           await supabase.from('payout_requests').insert({
             id: payoutId,
             partner_id: payoutItem.partner_id,
             amount: numAmount,
+            payout_type: payoutType,
             bank_name,
             account_number,
             account_holder,
             status: 'PENDING',
-            metadata: { notes: payoutItem.notes, phone: payoutItem.partner_phone, name: payoutItem.partner_name },
+            notes: payoutItem.notes,
+            metadata: {
+              notes: payoutItem.notes,
+              phone: payoutItem.partner_phone,
+              name: payoutItem.partner_name,
+              payout_type: payoutType,
+            },
             created_at: payoutItem.created_at,
           });
         } catch (tErr) {
-          console.warn('Supabase payout_requests table insert skipped:', tErr);
+          console.warn('Supabase payout_requests table insert note:', tErr);
         }
 
         if (partner_id && partner_id !== 'partner-active') {
           const { data: aff } = await supabase
             .from('affiliates')
-            .select('id, payout_bank_details, metadata')
+            .select('id, balance, total_withdrawn, payout_bank_details, metadata')
             .eq('id', partner_id)
             .maybeSingle();
 

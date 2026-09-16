@@ -56,6 +56,8 @@ export interface LeadItem {
   recruiter_name?: string;
   recruiter_code?: string;
   is_direct?: boolean;
+  recruiter_commission?: number;
+  am_override_commission?: number;
 }
 
 export interface SubAffiliateItem {
@@ -73,6 +75,7 @@ export interface SubAffiliateItem {
   active_subscribed: number;
   pipeline_omzet: number;
   potential_commission: number;
+  am_override_5pct?: number;
 }
 
 export interface PayoutItem {
@@ -92,6 +95,7 @@ interface PortalResponse {
   affiliate: {
     id: string;
     name: string;
+    email?: string;
     phone_number: string;
     referral_code: string;
     role?: 'am' | 'affiliate' | string;
@@ -106,6 +110,14 @@ interface PortalResponse {
     bank_account_holder?: string;
   };
   is_am?: boolean;
+  am_override?: {
+    override_rate: number;
+    sub_affiliates_omzet: number;
+    am_override_earnings: number;
+    am_ready_to_withdraw: number;
+    potential_override?: number;
+    direct_potential_commission?: number;
+  };
   sub_affiliates?: SubAffiliateItem[];
   referral_url: string;
   metrics: {
@@ -117,8 +129,11 @@ interface PortalResponse {
     pipeline_omzet?: number;
     ready_to_withdraw: number;
     already_paid: number;
-    total_sub_affiliates?: number;
+    direct_potential_commission?: number;
+    downline_potential_override?: number;
+    downline_pipeline_omzet?: number;
   };
+  total_sub_affiliates?: number;
   leads: LeadItem[];
   payouts: PayoutItem[];
 }
@@ -265,9 +280,105 @@ function AffiliatePortalContent() {
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState<number | ''>(50000);
   const [withdrawNotes, setWithdrawNotes] = useState('');
+  const [withdrawType, setWithdrawType] = useState<'PERSONAL_COMMISSION' | 'AM_OVERRIDE'>('PERSONAL_COMMISSION');
   const [isSubmittingWithdraw, setIsSubmittingWithdraw] = useState(false);
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState('');
   const [withdrawErrorMsg, setWithdrawErrorMsg] = useState('');
+
+  // 6. Profile Edit States
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [editProfileName, setEditProfileName] = useState('');
+  const [editProfilePhone, setEditProfilePhone] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState('');
+  const [profileErrorMsg, setProfileErrorMsg] = useState('');
+
+  const handleOpenAmWithdraw = () => {
+    setWithdrawType('AM_OVERRIDE');
+    const amAvailable = data?.am_override?.am_ready_to_withdraw || data?.metrics?.ready_to_withdraw || 0;
+    setWithdrawAmount(amAvailable >= 50000 ? amAvailable : 50000);
+    setWithdrawNotes('Penarikan Hak Override AM (5%)');
+    setWithdrawErrorMsg('');
+    setWithdrawSuccessMsg('');
+    setIsWithdrawModalOpen(true);
+  };
+
+  const handleOpenPersonalWithdraw = () => {
+    setWithdrawType('PERSONAL_COMMISSION');
+    const available = data?.metrics?.ready_to_withdraw || 0;
+    setWithdrawAmount(available >= 50000 ? available : 50000);
+    setWithdrawNotes('Penarikan komisi platform');
+    setWithdrawErrorMsg('');
+    setWithdrawSuccessMsg('');
+    setIsWithdrawModalOpen(true);
+  };
+
+  const handleOpenProfileModal = () => {
+    setEditProfileName(data?.affiliate.name || '');
+    setEditProfilePhone(data?.affiliate.phone_number || '');
+    setProfileErrorMsg('');
+    setProfileSuccessMsg('');
+    setIsProfileModalOpen(true);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editProfileName.trim()) {
+      setProfileErrorMsg('Nama lengkap tidak boleh kosong.');
+      return;
+    }
+    const cleanPhone = editProfilePhone.replace(/\D/g, '');
+    if (cleanPhone.length < 8) {
+      setProfileErrorMsg('Nomor WhatsApp tidak valid (minimal 8 digit).');
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setProfileErrorMsg('');
+    setProfileSuccessMsg('');
+
+    try {
+      const token = localStorage.getItem('affiliate_token') || getCookieValue('affiliate_token');
+      const res = await fetch('/api/v1/affiliate/me', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: editProfileName.trim(),
+          phone: cleanPhone,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.detail || 'Gagal memperbarui profil.');
+      }
+
+      setProfileSuccessMsg('Profil berhasil diperbarui dan disinkronkan ke database!');
+      if (data) {
+        setData({
+          ...data,
+          affiliate: {
+            ...data.affiliate,
+            name: editProfileName.trim(),
+            phone_number: cleanPhone,
+          },
+        });
+      }
+
+      setTimeout(() => {
+        setIsProfileModalOpen(false);
+        setProfileSuccessMsg('');
+      }, 1500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan sistem.';
+      setProfileErrorMsg(msg);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   // ── P0: DECOUPLED AUTH DASHBOARD FETCH FLOW (/api/v1/affiliate/me) ──
   const loadDashboardMe = useCallback(async () => {
@@ -667,7 +778,10 @@ function AffiliatePortalContent() {
       return;
     }
 
-    const available = data?.metrics.ready_to_withdraw || 0;
+    const available = withdrawType === 'AM_OVERRIDE'
+      ? (data?.am_override?.am_ready_to_withdraw || data?.metrics.ready_to_withdraw || 0)
+      : (data?.metrics.ready_to_withdraw || 0);
+
     if (num > available) {
       setWithdrawErrorMsg(`Saldo tidak mencukupi. Saldo siap cair Anda saat ini Rp ${available.toLocaleString('id-ID')}.`);
       return;
@@ -691,10 +805,11 @@ function AffiliatePortalContent() {
           partner_name: data?.affiliate.name,
           partner_phone: data?.affiliate.phone_number,
           amount: num,
+          payout_type: withdrawType,
           bank_name: bankName,
           account_number: accountNumber,
           account_holder: accountHolder,
-          notes: withdrawNotes,
+          notes: withdrawNotes || (withdrawType === 'AM_OVERRIDE' ? 'Penarikan Hak Override AM (5%)' : 'Penarikan komisi platform'),
         }),
       });
       const result = await res.json();
@@ -705,13 +820,13 @@ function AffiliatePortalContent() {
       setWithdrawSuccessMsg(result.message || 'Pengajuan penarikan berhasil dikirim!');
 
       const newPayoutItem: PayoutItem = result.payout || {
-        id: `PO-${Date.now().toString().slice(-6)}`,
+        id: `${withdrawType === 'AM_OVERRIDE' ? 'PO-AM' : 'PO'}-${Date.now().toString().slice(-6)}`,
         amount: num,
         bank_name: bankName,
         account_number: accountNumber,
         account_holder: accountHolder,
         status: 'PENDING',
-        notes: withdrawNotes || 'Penarikan komisi platform',
+        notes: withdrawNotes || (withdrawType === 'AM_OVERRIDE' ? 'Penarikan Hak Override AM (5%)' : 'Penarikan komisi platform'),
         created_at: new Date().toISOString(),
       };
 
@@ -723,6 +838,14 @@ function AffiliatePortalContent() {
             ...data.metrics,
             ready_to_withdraw: Math.max(0, data.metrics.ready_to_withdraw - num),
           },
+          ...(data.am_override && withdrawType === 'AM_OVERRIDE'
+            ? {
+                am_override: {
+                  ...data.am_override,
+                  am_ready_to_withdraw: Math.max(0, data.am_override.am_ready_to_withdraw - num),
+                },
+              }
+            : {}),
           payouts: [newPayoutItem, ...(data.payouts || [])],
         });
       }
@@ -963,6 +1086,53 @@ function AffiliatePortalContent() {
           </div>
         </div>
 
+        {/* ── IDENTITAS AKUN & MANAJEMEN PROFIL MITRA ── */}
+        {data && (
+          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5 flex-wrap">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-indigo-600 text-slate-950 font-black text-sm flex items-center justify-center uppercase shadow-md shrink-0">
+                {data.affiliate.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-base font-black text-white">{data.affiliate.name}</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                    Ref: {data.affiliate.referral_code}
+                  </span>
+                  {(data.is_am || data.affiliate.role === 'am') && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      AM ({data.affiliate.region || 'ID-NATIONAL'})
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
+                  <span className="flex items-center gap-1 font-mono text-[11px]">
+                    <span className="text-slate-500">Email Login:</span>
+                    <span className="text-slate-300 font-semibold">{data.affiliate.email || 'Login via Magic Link'}</span>
+                    <span title="Email login read-only (Magic Link Supabase)">
+                      <Lock className="w-3 h-3 text-slate-500 ml-0.5" />
+                    </span>
+                  </span>
+                  <span>&bull;</span>
+                  <span className="flex items-center gap-1 font-mono text-[11px]">
+                    <span className="text-slate-500">WhatsApp:</span>
+                    <span className="text-slate-300 font-semibold">{data.affiliate.phone_number}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenProfileModal}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer self-stretch sm:self-auto justify-center"
+            >
+              <Pencil className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Edit Nama &amp; WhatsApp</span>
+            </button>
+          </div>
+        )}
+
         {errorMsg && (
           <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
@@ -996,17 +1166,65 @@ function AffiliatePortalContent() {
 
         {data && (
           <>
+            {/* ── KARTU KHUSUS AM: HAK OVERRIDE & SALDO AM (HANYA UNTUK ROLE == 'am') ── */}
+            {(data.is_am || data.affiliate.role === 'am') && data.am_override && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 1. Hak Override AM (5%) */}
+                <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-indigo-950/80 via-slate-900 to-purple-950/40 border border-indigo-500/40 shadow-xl space-y-2 relative overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-indigo-400" />
+                      <span>Hak Override AM (5%)</span>
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      5% Downline Pool
+                    </span>
+                  </div>
+                  <div className="text-2xl sm:text-3xl font-black text-white">
+                    Rp {data.am_override.am_override_earnings.toLocaleString('id-ID')}
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Dihitung otomatis dari 5% total omzet toko binaan seluruh sub-affiliate (Rp {data.am_override.sub_affiliates_omzet.toLocaleString('id-ID')}).
+                  </p>
+                </div>
+
+                {/* 2. Saldo AM Siap Tarik */}
+                <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-purple-950/80 via-slate-900 to-indigo-950/40 border border-purple-500/40 shadow-xl space-y-2 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Wallet className="w-4 h-4 text-purple-400" />
+                        <span>Saldo AM Siap Tarik</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">Min. Rp 50.000</span>
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-black text-emerald-400 mt-1">
+                      Rp {data.am_override.am_ready_to_withdraw.toLocaleString('id-ID')}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenAmWithdraw}
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-indigo-600/30 cursor-pointer active:scale-95 mt-2"
+                  >
+                    <ArrowUpRight className="w-4 h-4" />
+                    <span>Tarik Saldo AM (5%)</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* ── MODUL 3: PIPELINE METRIK (5 KARTU METRIK UTAMA) ── */}
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                   <Layers className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Ringkasan Pipeline Performa & Komisi Afiliasi</span>
+                  <span>Ringkasan Pipeline Performa &amp; Komisi Afiliasi</span>
                 </h3>
 
                 <button
                   type="button"
-                  onClick={() => setIsWithdrawModalOpen(true)}
+                  onClick={handleOpenPersonalWithdraw}
                   className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 transition shadow-md shadow-emerald-500/20 cursor-pointer"
                 >
                   <ArrowUpRight className="w-3.5 h-3.5" />
@@ -1042,13 +1260,17 @@ function AffiliatePortalContent() {
                 {/* 3. Potensi Komisi (Pipeline Konversi) */}
                 <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/90 border border-purple-500/30 shadow-sm space-y-1.5">
                   <div className="flex items-center justify-between text-purple-400 text-xs font-semibold">
-                    <span>Potensi Komisi</span>
+                    <span>{data.is_am || data.affiliate.role === 'am' ? 'Potensi Override AM (5%)' : 'Potensi Komisi'}</span>
                     <TrendingUp className="w-4 h-4 text-purple-400" />
                   </div>
                   <div className="text-xl sm:text-2xl font-black text-purple-300">
                     Rp {data.metrics.potential_commission.toLocaleString('id-ID')}
                   </div>
-                  <p className="text-[11px] text-slate-500">Estimasi pipeline ({data.affiliate.commission_rate}%)</p>
+                  <p className="text-[11px] text-slate-500">
+                    {data.is_am || data.affiliate.role === 'am'
+                      ? 'Override manajerial 5% dari transaksi jaringan binaan'
+                      : `Estimasi pipeline (${data.affiliate.commission_rate}%)`}
+                  </p>
                 </div>
 
                 {/* 4. Toko Berlangganan Aktif */}
@@ -1099,7 +1321,9 @@ function AffiliatePortalContent() {
                   </p>
                 </div>
                 <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-mono text-emerald-300 font-bold self-start sm:self-auto">
-                  Komisi Anda: {data.affiliate.commission_rate}% Platform Payout
+                  {(data.is_am || data.affiliate.role === 'am')
+                    ? `Hak Komisi: Direct ${data.affiliate.commission_rate}% + Override AM 5%`
+                    : `Komisi Anda: ${data.affiliate.commission_rate}% Platform Payout`}
                 </span>
               </div>
 
@@ -1424,10 +1648,10 @@ function AffiliatePortalContent() {
                     </div>
                     <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
                       <Users className="w-4 h-4 text-indigo-400" />
-                      <span>Jaringan Sub-Affiliate Saya ({data.sub_affiliates?.length || 0} Mitra Downline)</span>
+                      <span>Jaringan Mitra Affiliate Binaan ({data.sub_affiliates?.length || 0} Mitra Binaan)</span>
                     </h2>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Daftar mitra affiliate di bawah naungan regional Anda. Seluruh konversi dan toko yang mereka bawa teragregasi otomatis ke pipeline Anda.
+                      Daftar mitra affiliate binaan di bawah naungan AM Anda. Seluruh lead toko, pipeline omzet, dan hak override 5% terhubung secara otomatis.
                     </p>
                   </div>
 
@@ -1446,12 +1670,12 @@ function AffiliatePortalContent() {
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
-                        <th className="p-3.5 font-bold uppercase text-[10px]">Mitra Affiliate</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Nama Mitra</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Email / WhatsApp</th>
                         <th className="p-3.5 font-bold uppercase text-[10px]">Kode Referral</th>
-                        <th className="p-3.5 font-bold uppercase text-[10px]">Cakupan Wilayah</th>
-                        <th className="p-3.5 font-bold uppercase text-[10px]">Rate Komisi</th>
-                        <th className="p-3.5 font-bold uppercase text-[10px]">Toko / Lead Binaan</th>
-                        <th className="p-3.5 font-bold uppercase text-[10px]">Pipeline Omzet</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Total Toko / Lead</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Tanggal Bergabung</th>
+                        <th className="p-3.5 font-bold uppercase text-[10px]">Pipeline &amp; Hak Override (5%)</th>
                         <th className="p-3.5 font-bold uppercase text-[10px] text-right">Kontak Mitra</th>
                       </tr>
                     </thead>
@@ -1471,7 +1695,12 @@ function AffiliatePortalContent() {
                                     {sub.status}
                                   </span>
                                 </div>
-                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">{sub.email || '-'}</div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">Wilayah: {sub.region || 'ID-NATIONAL'}</div>
+                              </td>
+
+                              <td className="p-3.5">
+                                <div className="font-mono text-xs text-slate-200">{sub.phone || '-'}</div>
+                                <div className="font-mono text-[10px] text-slate-400">{sub.email || '-'}</div>
                               </td>
 
                               <td className="p-3.5">
@@ -1480,18 +1709,8 @@ function AffiliatePortalContent() {
                                 </span>
                               </td>
 
-                              <td className="p-3.5 text-slate-300 text-[11px]">
-                                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">
-                                  {sub.region || 'ID-NATIONAL'}
-                                </span>
-                              </td>
-
-                              <td className="p-3.5 font-mono text-xs text-slate-300">
-                                {sub.commission_rate}%
-                              </td>
-
                               <td className="p-3.5">
-                                <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-white text-xs">{sub.total_leads} Toko</span>
                                   {sub.trial_stores > 0 && (
                                     <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/20">
@@ -1506,8 +1725,21 @@ function AffiliatePortalContent() {
                                 </div>
                               </td>
 
-                              <td className="p-3.5 font-mono font-bold text-indigo-300">
-                                Rp {sub.pipeline_omzet.toLocaleString('id-ID')}
+                              <td className="p-3.5 text-slate-400 font-mono text-[11px] whitespace-nowrap">
+                                {new Date(sub.created_at).toLocaleDateString('id-ID', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })}
+                              </td>
+
+                              <td className="p-3.5">
+                                <div className="font-mono font-bold text-slate-200 text-xs">
+                                  Rp {sub.pipeline_omzet.toLocaleString('id-ID')}
+                                </div>
+                                <div className="text-[10px] font-mono text-indigo-300 font-bold">
+                                  Hak AM (5%): Rp {(sub.am_override_5pct || Math.round(sub.pipeline_omzet * 0.05)).toLocaleString('id-ID')}
+                                </div>
                               </td>
 
                               <td className="p-3.5 text-right whitespace-nowrap">
@@ -1675,8 +1907,24 @@ function AffiliatePortalContent() {
                             )}
                           </td>
 
-                          <td className="p-3.5 whitespace-nowrap font-mono font-bold text-emerald-400">
-                            Rp {lead.potential_commission.toLocaleString('id-ID')}
+                          <td className="p-3.5 whitespace-nowrap">
+                            <div className="font-mono font-bold text-emerald-400">
+                              Rp {lead.potential_commission.toLocaleString('id-ID')}
+                            </div>
+                            {(data.is_am || data.affiliate.role === 'am') && (
+                              <div className="text-[10px] font-mono mt-0.5">
+                                {lead.is_direct ? (
+                                  <span className="text-emerald-300 font-semibold">Direct ({data.affiliate.commission_rate}%)</span>
+                                ) : (
+                                  <span>
+                                    <span className="text-indigo-300 font-semibold">Override AM (5%)</span>
+                                    <span className="text-slate-500 ml-1">
+                                      (Mitra: Rp {(lead.recruiter_commission || Math.round(lead.monthly_fee * 0.25)).toLocaleString('id-ID')})
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </td>
 
                           <td className="p-3.5 text-right whitespace-nowrap">
@@ -2018,12 +2266,22 @@ function AffiliatePortalContent() {
             </button>
 
             <div className="flex items-center gap-2.5">
-              <div className="p-2.5 bg-emerald-500/10 rounded-2xl text-emerald-400 border border-emerald-500/20">
+              <div className={`p-2.5 rounded-2xl border ${
+                withdrawType === 'AM_OVERRIDE'
+                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+              }`}>
                 <Wallet className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Ajukan Penarikan Komisi</h3>
-                <p className="text-xs text-slate-400">Pencairan dana komisi ke rekening bank terdaftar</p>
+                <h3 className="text-base font-bold text-white">
+                  {withdrawType === 'AM_OVERRIDE' ? 'Tarik Saldo AM (5%)' : 'Ajukan Penarikan Komisi'}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {withdrawType === 'AM_OVERRIDE'
+                    ? 'Pencairan hak override manajerial 5% ke rekening bank terdaftar'
+                    : 'Pencairan dana komisi direct ke rekening bank terdaftar'}
+                </p>
               </div>
             </div>
 
@@ -2037,9 +2295,14 @@ function AffiliatePortalContent() {
               <form onSubmit={handleSubmitWithdraw} className="space-y-4">
                 <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-between">
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Saldo Siap Ditarik</span>
-                    <span className="text-xl font-black text-emerald-400">
-                      Rp {(data?.metrics.ready_to_withdraw || 0).toLocaleString('id-ID')}
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                      {withdrawType === 'AM_OVERRIDE' ? 'Saldo AM Siap Ditarik (5%)' : 'Saldo Komisi Siap Ditarik'}
+                    </span>
+                    <span className={`text-xl font-black ${withdrawType === 'AM_OVERRIDE' ? 'text-purple-400' : 'text-emerald-400'}`}>
+                      Rp {(withdrawType === 'AM_OVERRIDE'
+                        ? (data?.am_override?.am_ready_to_withdraw ?? data?.metrics.ready_to_withdraw ?? 0)
+                        : (data?.metrics.ready_to_withdraw ?? 0)
+                      ).toLocaleString('id-ID')}
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400 font-mono">Min. Rp 50.000</span>
@@ -2054,7 +2317,11 @@ function AffiliatePortalContent() {
                     <input
                       type="number"
                       min={50000}
-                      max={data?.metrics.ready_to_withdraw || 999999999}
+                      max={
+                        withdrawType === 'AM_OVERRIDE'
+                          ? (data?.am_override?.am_ready_to_withdraw ?? data?.metrics.ready_to_withdraw ?? 999999999)
+                          : (data?.metrics.ready_to_withdraw ?? 999999999)
+                      }
                       value={withdrawAmount}
                       onChange={(e) => setWithdrawAmount(e.target.value ? Number(e.target.value) : '')}
                       placeholder="50000"
@@ -2070,7 +2337,9 @@ function AffiliatePortalContent() {
                         onClick={() => setWithdrawAmount(amt)}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
                           withdrawAmount === amt
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                            ? (withdrawType === 'AM_OVERRIDE'
+                                ? 'bg-purple-600 text-white border-purple-500'
+                                : 'bg-emerald-500 text-slate-950 border-emerald-400')
                             : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
                         }`}
                       >
@@ -2079,8 +2348,18 @@ function AffiliatePortalContent() {
                     ))}
                     <button
                       type="button"
-                      onClick={() => setWithdrawAmount(data?.metrics.ready_to_withdraw || 0)}
-                      className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-emerald-300 border border-slate-700 hover:border-emerald-500 transition cursor-pointer"
+                      onClick={() =>
+                        setWithdrawAmount(
+                          withdrawType === 'AM_OVERRIDE'
+                            ? (data?.am_override?.am_ready_to_withdraw ?? data?.metrics.ready_to_withdraw ?? 0)
+                            : (data?.metrics.ready_to_withdraw ?? 0)
+                        )
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        withdrawType === 'AM_OVERRIDE'
+                          ? 'bg-slate-800 text-purple-300 border-slate-700 hover:border-purple-500'
+                          : 'bg-slate-800 text-emerald-300 border-slate-700 hover:border-emerald-500'
+                      }`}
                     >
                       Semua Saldo
                     </button>
@@ -2254,6 +2533,140 @@ function AffiliatePortalContent() {
                     <Check className="w-3.5 h-3.5" />
                   )}
                   <span>Simpan Perubahan</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL IDENTITAS AKUN & MANAJEMEN PROFIL MITRA ── */}
+      {isProfileModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-400 border border-indigo-500/20">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Edit Profil Mitra</h3>
+                  <p className="text-[11px] text-slate-400">Sinkronisasi data akun ke database Supabase</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsProfileModalOpen(false);
+                  setProfileErrorMsg('');
+                  setProfileSuccessMsg('');
+                }}
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {profileSuccessMsg && (
+              <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{profileSuccessMsg}</span>
+              </div>
+            )}
+
+            {profileErrorMsg && (
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{profileErrorMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveProfile} className="space-y-3.5">
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Email Login (Read-Only Magic Link):
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={data?.affiliate.email || ''}
+                    readOnly
+                    disabled
+                    className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-slate-400 font-mono cursor-not-allowed"
+                  />
+                  <span title="Email login terhubung dengan Magic Link Auth Supabase">
+                    <Lock className="w-3.5 h-3.5 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Email login dijadikan acuan login Magic Link dan identitas akun Supabase.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Kode Referral Personal:
+                </label>
+                <input
+                  type="text"
+                  value={data?.affiliate.referral_code || ''}
+                  readOnly
+                  disabled
+                  className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs text-indigo-300 font-mono font-bold cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Nama Lengkap:
+                </label>
+                <input
+                  type="text"
+                  value={editProfileName}
+                  onChange={(e) => setEditProfileName(e.target.value)}
+                  placeholder="Nama Lengkap Mitra"
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Nomor WhatsApp:
+                </label>
+                <input
+                  type="text"
+                  value={editProfilePhone}
+                  onChange={(e) => setEditProfilePhone(e.target.value)}
+                  placeholder="Contoh: 087822706930"
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileModalOpen(false);
+                    setProfileErrorMsg('');
+                    setProfileSuccessMsg('');
+                  }}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isSavingProfile ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5" />
+                  )}
+                  <span>Simpan Profil</span>
                 </button>
               </div>
             </form>
