@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -114,13 +114,27 @@ const UTM_MEDIUM_PRESETS = [
   { id: 'referral', label: 'Referral' },
 ];
 
+const getCookieValue = (name: string): string => {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : '';
+};
+
+const normalizeRefCode = (code: string): string => {
+  let clean = (code || '').trim().toLowerCase();
+  if (clean === 'mafiasakti' || clean === 'kangsakti') {
+    return 'buzzerukm';
+  }
+  return clean;
+};
+
 function AffiliatePortalContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   // URL parameters or defaults
   const initialTenant = searchParams.get('tenant') || 'shop';
-  const initialRef = (searchParams.get('code') || searchParams.get('ref') || '').trim();
+  const initialRef = normalizeRefCode(searchParams.get('code') || searchParams.get('ref') || searchParams.get('affiliate') || '');
 
   const [tenantSlug, setTenantSlug] = useState(initialTenant);
   const [affiliateCode, setAffiliateCode] = useState(initialRef);
@@ -146,8 +160,7 @@ function AffiliatePortalContent() {
   // Resolusi activeCode secara dinamis:
   // 1. Data affiliate terverifikasi dari backend/database
   // 2. authSession.referral_code
-  // 3. affiliateCode (dari parameter URL ?code= / ?ref= atau localStorage)
-  // 4. Kosong / string kosong (jika belum login/belum dicari)
+  // 3. affiliateCode (dari parameter URL ?code= / ?ref= atau cookie/localStorage)
   const activeCode = (
     data?.affiliate?.referral_code ||
     authSession?.referral_code ||
@@ -206,67 +219,42 @@ function AffiliatePortalContent() {
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState('');
   const [withdrawErrorMsg, setWithdrawErrorMsg] = useState('');
 
-  // Load Session from localStorage on mount & auto-load referral code
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
+  // Helper resolusi kode referral otomatis dari auth session / cookie / subdomain / URL query
+  const resolveCandidateCode = useCallback((): string => {
+    if (typeof window === 'undefined') return '';
+    // 1. URL search params (?code=, ?ref=, ?affiliate=, ?upline=)
+    const qCode = searchParams.get('code') || searchParams.get('ref') || searchParams.get('affiliate') || searchParams.get('upline');
+    if (qCode) return normalizeRefCode(qCode);
+
+    // 2. Subdomain check (e.g. ob.boontrack.com -> ob)
+    const host = window.location.hostname;
+    const parts = host.split('.');
+    if (parts.length >= 3 && !['www', 'shop', 'api', 'admin', 'app', 'localhost'].includes(parts[0])) {
+      return normalizeRefCode(parts[0]);
+    }
+
+    // 3. Cookies
+    const cookieCode = getCookieValue('affiliate_code') || getCookieValue('boontrack_affiliate_code') || getCookieValue('ref');
+    if (cookieCode) return normalizeRefCode(cookieCode);
+
+    // 4. localStorage
+    const lsCode = localStorage.getItem('boontrack_affiliate_code') || localStorage.getItem('affiliate_code');
+    if (lsCode) return normalizeRefCode(lsCode);
+
+    const storedUser = localStorage.getItem('affiliate_data') || localStorage.getItem('boontrack_affiliate_user');
+    if (storedUser) {
       try {
-        const queryCode = searchParams.get('code') || searchParams.get('ref');
-        const storedCode =
-          localStorage.getItem('boontrack_affiliate_code') ||
-          localStorage.getItem('affiliate_code');
-        let activeRef = (queryCode || storedCode || '').trim().toLowerCase();
-        if (activeRef === 'mafiasakti' || activeRef === 'kangsakti') {
-          activeRef = 'buzzerukm';
-        }
-
-        if (activeRef) {
-          setAffiliateCode(activeRef);
-          setCustomSlugInput(activeRef.toUpperCase());
-        }
-
-        const stored = localStorage.getItem('affiliate_data') || localStorage.getItem('boontrack_affiliate_user');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setAuthSession(parsed);
-          if (parsed.tenant_slug && !searchParams.get('tenant')) {
-            setTenantSlug(parsed.tenant_slug);
-          }
-          if (parsed.referral_code && !activeRef) {
-            setAffiliateCode(parsed.referral_code.toLowerCase());
-            setCustomSlugInput(parsed.referral_code.toUpperCase());
-          }
-          if (parsed.is_ref_customized !== undefined) {
-            setIsRefCustomized(Boolean(parsed.is_ref_customized));
-          }
-          if (parsed.bank_name) setBankName(parsed.bank_name);
-          if (parsed.bank_account_number) setAccountNumber(parsed.bank_account_number);
-          if (parsed.bank_account_holder) setAccountHolder(parsed.bank_account_holder);
-        }
-
-        if (!activeRef && !stored) {
-          setLoading(false);
-        }
-      } catch (e) {
-        console.warn('Error reading affiliate session:', e);
-        setLoading(false);
-      }
+        const parsed = JSON.parse(storedUser);
+        if (parsed.referral_code) return normalizeRefCode(parsed.referral_code);
+      } catch (_) {}
     }
-  }, [searchParams]);
 
-  // Sync state if URL query params change
-  useEffect(() => {
-    const qTenant = searchParams.get('tenant');
-    const qRef = searchParams.get('code') || searchParams.get('ref');
-    if (qTenant) setTenantSlug(qTenant);
-    if (qRef) {
-      setAffiliateCode(qRef.trim().toLowerCase());
-      setCustomSlugInput(qRef.trim().toUpperCase());
-    }
+    return '';
   }, [searchParams]);
 
   // Case-Insensitive Fetch of Affiliate Portal Data
   const fetchAffiliateData = useCallback(async (tSlug: string, aCode: string) => {
-    const normalizedCode = (aCode || '').trim().toLowerCase();
+    const normalizedCode = normalizeRefCode(aCode);
     if (!normalizedCode || normalizedCode.length < 2) {
       setLoading(false);
       return;
@@ -324,24 +312,65 @@ function AffiliatePortalContent() {
     }
   }, []);
 
-  // Debounced 500ms auto-fetch saat affiliateCode berubah (hanya jika >= 2 karakter)
+  // Alur autentikasi langsung: baca sesi/cookie/URL dan auto-fetch data tanpa jeda
   useEffect(() => {
-    const code = affiliateCode.trim();
-    if (!code || code.length < 2) {
-      setErrorMsg('');
-      if (!code) {
-        setData(null);
+    if (typeof window !== 'undefined') {
+      try {
+        const detectedCode = resolveCandidateCode();
+
+        const stored = localStorage.getItem('affiliate_data') || localStorage.getItem('boontrack_affiliate_user');
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            setAuthSession(parsed);
+            if (parsed.tenant_slug && !searchParams.get('tenant')) {
+              setTenantSlug(parsed.tenant_slug);
+            }
+            if (parsed.is_ref_customized !== undefined) {
+              setIsRefCustomized(Boolean(parsed.is_ref_customized));
+            }
+            if (parsed.bank_name) setBankName(parsed.bank_name);
+            if (parsed.bank_account_number) setAccountNumber(parsed.bank_account_number);
+            if (parsed.bank_account_holder) setAccountHolder(parsed.bank_account_holder);
+          } catch (_) {}
+        }
+
+        if (detectedCode) {
+          setAffiliateCode(detectedCode);
+          setCustomSlugInput(detectedCode.toUpperCase());
+
+          // Sinkronisasi cookie & localStorage
+          localStorage.setItem('boontrack_affiliate_code', detectedCode);
+          localStorage.setItem('affiliate_code', detectedCode);
+          document.cookie = `affiliate_code=${encodeURIComponent(detectedCode)}; path=/; max-age=604800; SameSite=Lax; Secure`;
+
+          // Langsung panggil fetch data secara instan
+          fetchAffiliateData(searchParams.get('tenant') || 'shop', detectedCode);
+        } else {
+          // Tidak ada sesi dan tidak ada kode di URL query
+          setLoading(false);
+        }
+      } catch (e) {
+        console.warn('Error reading affiliate session:', e);
         setLoading(false);
       }
-      return;
     }
+  }, [searchParams, resolveCandidateCode, fetchAffiliateData]);
 
-    const timer = setTimeout(() => {
-      fetchAffiliateData(tenantSlug, code);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [fetchAffiliateData, tenantSlug, affiliateCode]);
+  // Sinkronisasi state jika query URL berubah
+  useEffect(() => {
+    const qTenant = searchParams.get('tenant');
+    const qRef = searchParams.get('code') || searchParams.get('ref') || searchParams.get('affiliate');
+    if (qTenant) setTenantSlug(qTenant);
+    if (qRef) {
+      const normalized = normalizeRefCode(qRef);
+      if (normalized && normalized !== affiliateCode) {
+        setAffiliateCode(normalized);
+        setCustomSlugInput(normalized.toUpperCase());
+        fetchAffiliateData(qTenant || tenantSlug, normalized);
+      }
+    }
+  }, [searchParams, affiliateCode, tenantSlug, fetchAffiliateData]);
 
   // Debounced 300ms Referral Slug Checker
   useEffect(() => {
@@ -667,22 +696,18 @@ function AffiliatePortalContent() {
     }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const code = affiliateCode.trim();
-    if (!code || code.length < 2) {
-      setErrorMsg('Masukkan minimal 2 karakter kode referral mitra.');
-      return;
-    }
-    fetchAffiliateData(tenantSlug, code);
-  };
-
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('affiliate_token');
       localStorage.removeItem('affiliate_data');
+      localStorage.removeItem('boontrack_affiliate_code');
+      localStorage.removeItem('affiliate_code');
+      localStorage.removeItem('boontrack_affiliate_user');
       document.cookie = 'affiliate_token=; path=/; max-age=0; SameSite=Lax; Secure';
+      document.cookie = 'affiliate_code=; path=/; max-age=0; SameSite=Lax; Secure';
       setAuthSession(null);
+      setData(null);
+      setAffiliateCode('');
       window.location.href = '/affiliate/login';
     }
   };
@@ -822,12 +847,24 @@ function AffiliatePortalContent() {
 
           <div className="flex items-center gap-2.5 flex-wrap self-stretch sm:self-auto justify-end">
             <button
-              onClick={() => fetchAffiliateData(tenantSlug, affiliateCode)}
+              onClick={() => fetchAffiliateData(tenantSlug, activeCode || affiliateCode)}
               className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer border border-slate-700"
               title="Refresh Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
             </button>
+
+            {defaultReferralLink && (
+              <button
+                type="button"
+                onClick={() => copyToClipboard(defaultReferralLink, 'base')}
+                className="px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                title="Salin Link Promosi Utama"
+              >
+                {copiedBase ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedBase ? 'Link Disalin!' : 'Salin Link Promo'}</span>
+              </button>
+            )}
 
             {authSession ? (
               <button
@@ -848,51 +885,13 @@ function AffiliatePortalContent() {
               </Link>
             )}
 
-            <div className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-emerald-400 flex items-center gap-1.5">
+            <div className="px-3.5 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-emerald-400 flex items-center gap-2 shadow-inner">
               <span className={`w-2 h-2 rounded-full ${activeCode ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
-              <span>Kode: <strong>{activeCode || 'Belum dipilih'}</strong></span>
+              <span className="text-slate-400">Kode:</span>
+              <strong className="text-white uppercase">{activeCode || 'Belum dipilih'}</strong>
             </div>
           </div>
         </div>
-
-        {/* ── TOOLBAR / KODE INPUT SEARCH ── */}
-        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/60 border border-slate-800 p-3.5 rounded-2xl">
-          <div className="flex-1 w-full">
-            <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Target Platform</label>
-            <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 font-mono flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span>shop.boontrack.com/register</span>
-              </div>
-              <span className="text-[10px] text-emerald-400 font-semibold uppercase">Funnel UKM Trial</span>
-            </div>
-          </div>
-
-          <div className="w-full sm:w-1/3">
-            <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Kode Referral Mitra (Min. 2 Karakter)</label>
-            <input
-              type="text"
-              value={affiliateCode}
-              onChange={(e) => {
-                const val = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
-                setAffiliateCode(val);
-                if (!isRefCustomized) setCustomSlugInput(val);
-              }}
-              placeholder="Contoh: ob atau buzzerukm"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-
-          <div className="w-full sm:w-auto self-end pt-2 sm:pt-0">
-            <button
-              type="submit"
-              className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>Cari Mitra</span>
-            </button>
-          </div>
-        </form>
 
         {errorMsg && (
           <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
@@ -905,6 +904,23 @@ function AffiliatePortalContent() {
           <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{claimSuccessMsg}</span>
+          </div>
+        )}
+
+        {loading && (
+          <div className="space-y-6 animate-pulse">
+            <div className="h-5 w-64 bg-slate-800/80 rounded-lg" />
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-28 rounded-3xl bg-slate-900/80 border border-slate-800/60 p-4 space-y-2.5">
+                  <div className="h-3 w-16 bg-slate-800 rounded" />
+                  <div className="h-7 w-20 bg-slate-800 rounded-lg" />
+                  <div className="h-2.5 w-24 bg-slate-800/60 rounded" />
+                </div>
+              ))}
+            </div>
+            <div className="h-36 rounded-3xl bg-slate-900/80 border border-slate-800/60 p-6" />
+            <div className="h-56 rounded-3xl bg-slate-900/80 border border-slate-800/60 p-6" />
           </div>
         )}
 
@@ -1712,26 +1728,24 @@ function AffiliatePortalContent() {
         )}
 
         {!data && !loading && (
-          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 sm:p-12 text-center space-y-4 max-w-xl mx-auto shadow-xl">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 sm:p-12 text-center space-y-4 max-w-lg mx-auto shadow-2xl">
             <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
-              <Users className="w-7 h-7" />
+              <Lock className="w-7 h-7" />
             </div>
             <div className="space-y-1.5">
-              <h3 className="text-base sm:text-lg font-bold text-white">
-                {activeCode
-                  ? `Data Mitra "${activeCode}" Belum Dimuat`
-                  : 'Silakan Masukkan Kode Referral atau Login'}
+              <h3 className="text-base sm:text-lg font-black text-white">
+                {errorMsg || 'Sesi Kemitraan Belum Terdeteksi'}
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
-                {activeCode
-                  ? 'Klik tombol "Cari Mitra" di atas untuk memuat data komisi, leads toko, dan link promosi personal Anda.'
-                  : 'Masukkan kode referral unik Anda pada formulir pencarian di atas, atau login dengan nomor WhatsApp terdaftar untuk mengakses dashboard kemitraan.'}
+                {errorMsg
+                  ? 'Gagal memuat profil kemitraan. Silakan login kembali dengan nomor WhatsApp Anda.'
+                  : 'Silakan login menggunakan nomor WhatsApp atau akses melalui tautan referral unik Anda untuk membuka dashboard kemitraan.'}
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <Link
                 href="/affiliate/login"
-                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center gap-2"
+                className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center gap-2"
               >
                 <Smartphone className="w-4 h-4" />
                 <span>Login Mitra WhatsApp</span>

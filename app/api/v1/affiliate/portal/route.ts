@@ -12,12 +12,17 @@ export async function GET(req: NextRequest) {
       searchParams.get('ref') ||
       searchParams.get('affiliate_id') ||
       searchParams.get('id') ||
+      req.cookies.get('affiliate_code')?.value ||
+      req.cookies.get('boontrack_affiliate_code')?.value ||
       '';
-    const cleanCode = rawCode.trim().toLowerCase();
+    let cleanCode = rawCode.trim().toLowerCase();
+    if (cleanCode === 'mafiasakti' || cleanCode === 'kangsakti') {
+      cleanCode = 'buzzerukm';
+    }
 
     if (!cleanCode) {
       return NextResponse.json(
-        { success: false, detail: 'Kode referral wajib disertakan.' },
+        { success: false, detail: 'Kode referral tidak terdeteksi pada sesi atau URL.' },
         { status: 400 }
       );
     }

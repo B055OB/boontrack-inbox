@@ -147,8 +147,8 @@ export default function AffiliateLoginPage() {
       localStorage.setItem('affiliate_token', token);
       localStorage.setItem('affiliate_data', JSON.stringify(affiliateData));
       localStorage.setItem('boontrack_affiliate_code', affiliateData.referral_code);
-      localStorage.setItem('affiliate_code', affiliateData.referral_code);
       document.cookie = `affiliate_token=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
+      document.cookie = `affiliate_code=${encodeURIComponent(affiliateData.referral_code)}; path=/; max-age=604800; SameSite=Lax; Secure`;
       setSuccessMessage('Verifikasi berhasil! Mengalihkan ke Dashboard Affiliate...');
       setTimeout(() => {
         window.location.href = `/affiliate/dashboard?code=${encodeURIComponent(affiliateData.referral_code)}`;
@@ -218,10 +218,11 @@ export default function AffiliateLoginPage() {
 
       // 3. Save Session to localStorage & Secure Cookie
       localStorage.setItem('affiliate_token', token);
-      document.cookie = `affiliate_token=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
       localStorage.setItem('affiliate_data', JSON.stringify(affiliateData));
       localStorage.setItem('boontrack_affiliate_code', resolvedCode);
       localStorage.setItem('affiliate_code', resolvedCode);
+      document.cookie = `affiliate_token=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
+      document.cookie = `affiliate_code=${encodeURIComponent(resolvedCode)}; path=/; max-age=604800; SameSite=Lax; Secure`;
 
       setSuccessMessage('Verifikasi berhasil! Mengalihkan ke Dashboard Affiliate...');
 
