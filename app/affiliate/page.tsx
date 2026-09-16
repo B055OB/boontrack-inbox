@@ -246,6 +246,8 @@ function AffiliatePortalContent() {
       try {
         const parsed = JSON.parse(storedUser);
         if (parsed.referral_code) return normalizeRefCode(parsed.referral_code);
+        if (parsed.phone) return parsed.phone.trim();
+        if (parsed.id) return parsed.id.trim();
       } catch (_) {}
     }
 
@@ -274,8 +276,20 @@ function AffiliatePortalContent() {
         setData(json.data);
         const aff = json.data.affiliate;
         if (aff) {
-          if (aff.referral_code) {
-            setCustomSlugInput(aff.referral_code.toLowerCase());
+          const canonicalCode = (aff.referral_code || normalizedCode).toLowerCase();
+          setAffiliateCode(canonicalCode);
+          setCustomSlugInput(canonicalCode);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('boontrack_affiliate_code', canonicalCode);
+            localStorage.setItem('affiliate_code', canonicalCode);
+            document.cookie = `affiliate_code=${encodeURIComponent(canonicalCode)}; path=/; max-age=604800; SameSite=Lax; Secure`;
+            try {
+              const url = new URL(window.location.href);
+              if (!url.searchParams.get('code') && !url.searchParams.get('ref')) {
+                url.searchParams.set('code', canonicalCode);
+                window.history.replaceState(null, '', url.toString());
+              }
+            } catch (_) {}
           }
           if (aff.is_ref_customized !== undefined) {
             setIsRefCustomized(Boolean(aff.is_ref_customized));
@@ -885,10 +899,27 @@ function AffiliatePortalContent() {
               </Link>
             )}
 
-            <div className="px-3.5 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-emerald-400 flex items-center gap-2 shadow-inner">
-              <span className={`w-2 h-2 rounded-full ${activeCode ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
-              <span className="text-slate-400">Kode:</span>
-              <strong className="text-white uppercase">{activeCode || 'Belum dipilih'}</strong>
+            {/* ── INFO PROFIL MITRA STATIS (READ-ONLY) ── */}
+            <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-slate-950/90 border border-slate-800 shadow-inner">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 font-black text-xs flex items-center justify-center shadow-sm uppercase shrink-0">
+                {data?.affiliate?.name
+                  ? data.affiliate.name.slice(0, 2).toUpperCase()
+                  : authSession?.name
+                  ? authSession.name.slice(0, 2).toUpperCase()
+                  : (activeCode || 'MB').slice(0, 2).toUpperCase()}
+              </div>
+              <div className="text-left leading-tight">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-white max-w-[130px] truncate">
+                    {data?.affiliate?.name || authSession?.name || 'Mitra BoonTrack'}
+                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" title="Sesi Terhubung" />
+                </div>
+                <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1 mt-0.5">
+                  <span>Referral:</span>
+                  <span className="font-bold text-emerald-400 uppercase tracking-wider">{activeCode || '-'}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
