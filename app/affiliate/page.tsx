@@ -37,6 +37,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { BANK_OPTIONS } from '@/lib/partner-service';
+import { getSupabase } from '@/lib/supabaseClient';
 
 export interface LeadItem {
   id: string;
@@ -246,7 +247,50 @@ function AffiliatePortalContent() {
     setLoading(true);
     setErrorMsg('');
 
-    const token = localStorage.getItem('affiliate_token') || getCookieValue('affiliate_token');
+    let token = '';
+
+    // 1. Ekstraksi access_token dari hash URL (magic link email)
+    if (window.location.hash) {
+      try {
+        const hashStr = window.location.hash.startsWith('#')
+          ? window.location.hash.substring(1)
+          : window.location.hash;
+        const hashParams = new URLSearchParams(hashStr);
+        const hashToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+
+        if (hashToken) {
+          token = hashToken;
+          localStorage.setItem('affiliate_token', hashToken);
+          document.cookie = `affiliate_token=${encodeURIComponent(hashToken)}; path=/; max-age=604800; SameSite=Lax; Secure`;
+          if (refreshToken) {
+            localStorage.setItem('affiliate_refresh_token', refreshToken);
+          }
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+      } catch (_) {}
+    }
+
+    // 2. Cek session dari Supabase Auth Client
+    if (!token) {
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session?.access_token) {
+            token = sessionData.session.access_token;
+            localStorage.setItem('affiliate_token', token);
+            document.cookie = `affiliate_token=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax; Secure`;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. Fallback ke localStorage atau cookie
+    if (!token) {
+      token = localStorage.getItem('affiliate_token') || getCookieValue('affiliate_token');
+    }
+
     if (!token) {
       setAuthState('unauthenticated');
       setData(null);
@@ -1746,34 +1790,16 @@ function AffiliatePortalContent() {
           </div>
         )}
 
-        {!data && !loading && authState !== 'forbidden' && (
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 sm:p-12 text-center space-y-4 max-w-lg mx-auto shadow-2xl">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
-              <Lock className="w-7 h-7" />
-            </div>
-            <div className="space-y-1.5">
-              <h3 className="text-base sm:text-lg font-black text-white">
-                Login Mitra WhatsApp Diperlukan
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
-                Sesi autentikasi mitra belum terdeteksi. Silakan masuk menggunakan nomor WhatsApp terdaftar Anda untuk membuka dashboard kemitraan.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-              <Link
-                href="/affiliate/login"
-                className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center gap-2"
-              >
-                <Smartphone className="w-4 h-4" />
-                <span>Login Mitra WhatsApp</span>
-              </Link>
-              <Link
-                href="/affiliate/register"
-                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center gap-2"
-              >
-                <span>Daftar Mitra Baru</span>
-              </Link>
-            </div>
+        {!data && !loading && authState === 'unauthenticated' && (
+          <div className="py-12 text-center space-y-3">
+            <p className="text-xs text-slate-400">Sesi belum aktif atau telah berakhir.</p>
+            <Link
+              href="/affiliate/login"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 underline underline-offset-4"
+            >
+              <span>Masuk ke Akun Kemitraan</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
           </div>
         )}
 

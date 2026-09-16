@@ -9,6 +9,20 @@ export default function DashboardRootRedirect() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      if (window.location.hash && window.location.hash.includes('access_token')) {
+        const hashStr = window.location.hash.startsWith('#')
+          ? window.location.hash.substring(1)
+          : window.location.hash;
+        const hashParams = new URLSearchParams(hashStr);
+        const token = hashParams.get('access_token');
+        if (token) {
+          localStorage.setItem('affiliate_token', token);
+          document.cookie = `affiliate_token=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax; Secure`;
+        }
+        router.replace(`/affiliate/dashboard${window.location.hash}`);
+        return;
+      }
+
       const activeStore =
         localStorage.getItem('merchant_store') ||
         localStorage.getItem('merchant_session') ||

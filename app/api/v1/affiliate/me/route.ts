@@ -4,7 +4,7 @@ import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 
 export const dynamic = 'force-dynamic';
 
-function parseJwt(token: string): { sub?: string; phone?: string; affiliate_code?: string; exp?: number } | null {
+function parseJwt(token: string): { sub?: string; email?: string; phone?: string; affiliate_code?: string; exp?: number } | null {
   try {
     const parts = token.split('.');
     if (parts.length < 2) return null;
@@ -88,6 +88,16 @@ export async function GET(req: NextRequest) {
           affiliate = affBySub;
         }
 
+        // Search by email (from Supabase Auth Magic Link)
+        if (!affiliate && jwtPayload.email) {
+          const { data: affByEmail } = await supabase
+            .from('affiliates')
+            .select('*')
+            .ilike('email', jwtPayload.email.trim())
+            .maybeSingle();
+          affiliate = affByEmail;
+        }
+
         // Fallback search by phone
         if (!affiliate && jwtPayload.phone) {
           const cleanPhone = jwtPayload.phone.replace(/\D/g, '');
@@ -108,6 +118,43 @@ export async function GET(req: NextRequest) {
             .ilike('referral_code', jwtPayload.affiliate_code.trim())
             .maybeSingle();
           affiliate = affByCode;
+        }
+      }
+
+      // Case C: Verify via Supabase Auth client directly (for Magic Link sessions)
+      if (!affiliate) {
+        try {
+          const { data: authData } = await supabase.auth.getUser(token);
+          const authUser = authData?.user;
+          if (authUser) {
+            if (authUser.email) {
+              const { data: affByEmail } = await supabase
+                .from('affiliates')
+                .select('*')
+                .ilike('email', authUser.email.trim())
+                .maybeSingle();
+              affiliate = affByEmail;
+            }
+            if (!affiliate && authUser.phone) {
+              const uPhone = authUser.phone.replace(/\D/g, '');
+              const { data: affByPhone } = await supabase
+                .from('affiliates')
+                .select('*')
+                .or(`phone.eq.${uPhone},phone_number.eq.${uPhone}`)
+                .maybeSingle();
+              affiliate = affByPhone;
+            }
+            if (!affiliate && authUser.id) {
+              const { data: affById } = await supabase
+                .from('affiliates')
+                .select('*')
+                .eq('id', authUser.id)
+                .maybeSingle();
+              affiliate = affById;
+            }
+          }
+        } catch {
+          // Token might not be Supabase Auth format, continue to fallback
         }
       }
 
