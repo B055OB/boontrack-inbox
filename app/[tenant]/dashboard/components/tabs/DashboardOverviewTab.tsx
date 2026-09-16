@@ -47,6 +47,7 @@ interface DashboardOverviewTabProps {
   isTeamScale?: boolean;
   isAdsPerformance?: boolean;
   isSoloOrTrial?: boolean;
+  storeCategory?: string;
   onOpenStoreSettings: () => void;
   onOpenNewProduct: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -69,6 +70,7 @@ export default function DashboardOverviewTab({
   isTeamScale = false,
   isAdsPerformance = false,
   isSoloOrTrial = false,
+  storeCategory,
   onOpenStoreSettings,
   onOpenNewProduct,
   onNavigateTab,
@@ -205,6 +207,98 @@ export default function DashboardOverviewTab({
   const isTemplateConfigured = Boolean(activeTemplate);
   const isStoreShared = hasCopiedUrl;
 
+  const normCat = (storeCategory || '').toUpperCase();
+  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'TRAVEL', 'UMROH'].some((k) => normCat.includes(k));
+  const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'REPAIR'].some((k) => normCat.includes(k));
+  const isDigital = ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK'].some((k) => normCat.includes(k));
+  const isCreator = ['CREATOR', 'AGENCY'].some((k) => normCat.includes(k));
+  const isCulinary = ['FOOD', 'FNB', 'KULINER'].some((k) => normCat.includes(k));
+
+  const productStepTitle = isProService
+    ? 'Buat Paket Sesi & Layanan Konsultasi'
+    : isFieldService
+    ? 'Buat Layanan Jasa / Servis Lapangan'
+    : isDigital
+    ? 'Unggah Aset & Modul Digital'
+    : isCreator
+    ? 'Buat Paket Jasa & Kampanye Kreator'
+    : isCulinary
+    ? 'Tambah Menu Kuliner & Makanan'
+    : 'Tambah Produk & Stok Fisik Pertama';
+
+  const productStepDesc = isProService
+    ? 'Tentukan tarif per sesi/jam, durasi pertemuan, dan form kuesioner klien.'
+    : isFieldService
+    ? 'Tentukan jenis servis panggilan, estimasi pengerjaan, dan area kunjungan teknisi.'
+    : isDigital
+    ? 'Masukkan modul e-course, rekaman video, link webinar, atau file ebook.'
+    : isCreator
+    ? 'Tawarkan jasa video UGC, endorse medsos, atau paket kolaborasi live streaming.'
+    : isCulinary
+    ? 'Upload foto menu lezat, varian porsi/rasa, dan catatan pesanan dapur.'
+    : 'Masukkan foto produk menarik, harga promo, stok gudang, dan berat paket.';
+
+  const productStepAction = isProductAdded
+    ? '+ Tambah Lagi'
+    : isProService
+    ? '+ Buat Sesi'
+    : isFieldService
+    ? '+ Buat Layanan'
+    : isDigital
+    ? '+ Upload Aset'
+    : isCreator
+    ? '+ Buat Paket'
+    : isCulinary
+    ? '+ Tambah Menu'
+    : '+ Tambah Produk';
+
+  const operationalStep = isProService
+    ? {
+        id: 'operational',
+        title: 'Atur Kalender & Jadwal Janji Temu',
+        desc: 'Atur jam kerja, hari operasional, dan batas kuota booking sesi klien.',
+        isDone: false,
+        actionLabel: 'Atur Kalender',
+        onAction: () => onNavigateTab('booking'),
+      }
+    : isFieldService
+    ? {
+        id: 'operational',
+        title: 'Atur Slot & Jadwal Kunjungan Teknisi',
+        desc: 'Atur jam operasional tim lapangan dan kuota pemesanan harian.',
+        isDone: false,
+        actionLabel: 'Atur Jadwal',
+        onAction: () => onNavigateTab('booking'),
+      }
+    : isDigital
+    ? {
+        id: 'operational',
+        title: 'Atur Akses Unduh & Delivery Otomatis',
+        desc: 'Pastikan file unduhan dan akses materi langsung terkirim setelah pembayaran lunas.',
+        isDone: false,
+        actionLabel: 'Atur Akses',
+        onAction: () => onNavigateTab('downloads'),
+      }
+    : isCreator
+    ? {
+        id: 'operational',
+        title: 'Atur Kampanye & Brief Klien',
+        desc: 'Kelola formulir brief dan ketentuan kolaborasi bersama brand klien.',
+        isDone: false,
+        actionLabel: 'Kelola Kampanye',
+        onAction: () => onNavigateTab('campaigns'),
+      }
+    : {
+        id: 'operational',
+        title: isCulinary ? 'Atur Kurir Instan & Titik Dapur' : 'Aktivasi Logistik & Multi-Ekspedisi',
+        desc: isCulinary
+          ? 'Aktifkan kurir instan/same-day dengan radius kilometer lokasi dapur Anda.'
+          : 'Tentukan titik jemput gudang agar ongkir kurir otomatis (JNE, J&T, SiCepat) aktif akurat.',
+        isDone: false,
+        actionLabel: isCulinary ? 'Atur Pengiriman' : 'Atur Ekspedisi',
+        onAction: () => onNavigateTab('shipping'),
+      };
+
   const checklistItems = [
     {
       id: 'profile',
@@ -224,12 +318,13 @@ export default function DashboardOverviewTab({
     },
     {
       id: 'products',
-      title: 'Tambah Produk / Jasa Pertama',
-      desc: 'Masukkan minimal 1 produk, layanan jasa lapangan, atau modul e-course Anda.',
+      title: productStepTitle,
+      desc: productStepDesc,
       isDone: isProductAdded,
-      actionLabel: isProductAdded ? '+ Tambah Lagi' : '+ Tambah Produk',
+      actionLabel: productStepAction,
       onAction: onOpenNewProduct,
     },
+    operationalStep,
     {
       id: 'template',
       title: 'Pilih Template & Desain Etalase',

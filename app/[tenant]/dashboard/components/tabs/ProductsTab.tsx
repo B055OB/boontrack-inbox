@@ -73,6 +73,49 @@ export default function ProductsTab({
 
   const categories = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
 
+  const rawCat = (storeCategory || '').toUpperCase();
+  const isProfessional =
+    rawCat.includes('PROFESSIONAL') ||
+    rawCat.includes('CONSULT') ||
+    rawCat.includes('LEGAL') ||
+    rawCat.includes('TRAVEL');
+  const isFieldService = rawCat.includes('FIELD') || (rawCat.includes('SERVICE') && !isProfessional);
+  const isServiceCategory = isProfessional || isFieldService;
+  const isDigitalCategory = rawCat.includes('DIGITAL');
+  const isCreatorAgency = rawCat.includes('CREATOR') || rawCat.includes('AGENCY');
+  const isFoodCategory = rawCat.includes('FOOD') || rawCat.includes('KULINER') || rawCat.includes('F&B');
+  const isPhysicalCategory = !isServiceCategory && !isDigitalCategory && !isCreatorAgency;
+
+  let headerTitle = `Katalog Produk & Layanan (${products.length})`;
+  let headerDesc = 'Kelola daftar produk, harga promo, link akses digital, dan foto etalase.';
+  let addBtnText = 'Tambah Produk Baru';
+
+  if (isProfessional) {
+    headerTitle = `Katalog Jasa & Sesi Konsultasi (${products.length})`;
+    headerDesc = 'Kelola paket sesi konsultasi, durasi tatap muka/online, dan tarif honorarium jasa.';
+    addBtnText = 'Tambah Sesi / Jasa Baru';
+  } else if (isFieldService) {
+    headerTitle = `Katalog Layanan & Servis Lapangan (${products.length})`;
+    headerDesc = 'Kelola menu pengerjaan servis, tarif transport teknisi, dan paket kunjungan.';
+    addBtnText = 'Tambah Layanan Baru';
+  } else if (isDigitalCategory) {
+    headerTitle = `Aset & Produk Digital (${products.length})`;
+    headerDesc = 'Kelola file download, modul e-course, lisensi software, dan delivery instan.';
+    addBtnText = 'Tambah Aset Digital';
+  } else if (isCreatorAgency) {
+    headerTitle = `Paket Jasa & Kampanye Kreator (${products.length})`;
+    headerDesc = 'Kelola paket endorsement, slot live shopping, dan brief produksi konten UGC.';
+    addBtnText = 'Tambah Paket Kreator';
+  } else if (isFoodCategory) {
+    headerTitle = `Daftar Menu & Kuliner (${products.length})`;
+    headerDesc = 'Kelola varian hidangan, porsi makanan/minuman, dan kesiapan stok dapur.';
+    addBtnText = 'Tambah Menu Baru';
+  } else if (isPhysicalCategory) {
+    headerTitle = `Katalog Produk & Stok Fisik (${products.length})`;
+    headerDesc = 'Kelola daftar produk fisik, variasi SKU, stok gudang, dan bobot pengiriman.';
+    addBtnText = 'Tambah Produk Baru';
+  }
+
   const filteredProducts = products.filter((p) => {
     const q = searchQuery.toLowerCase();
     const matchSearch =
@@ -90,22 +133,24 @@ export default function ProductsTab({
         <div>
           <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
             <Package className="w-5 h-5 text-blue-600" />
-            <span>Katalog Produk & Layanan ({products.length})</span>
+            <span>{headerTitle}</span>
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Kelola daftar produk, harga promo, link akses digital, dan foto etalase.
+            {headerDesc}
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            type="button"
-            onClick={onOpenBulkImport}
-            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Import Massal (.xlsx / .csv)</span>
-          </button>
+          {isPhysicalCategory && (
+            <button
+              type="button"
+              onClick={onOpenBulkImport}
+              className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Import Massal (.xlsx / .csv)</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -113,7 +158,7 @@ export default function ProductsTab({
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>Tambah Produk Baru</span>
+            <span>{addBtnText}</span>
           </button>
         </div>
       </div>
@@ -244,82 +289,104 @@ export default function ProductsTab({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredProducts.map((p) => (
-                <div
-                  key={p.id}
-                  className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
-                >
-                  <div className="flex items-start gap-4">
-                    <ProductCardImage src={p.image} alt={p.name} />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase tracking-wider">
-                        {p.category}
-                      </span>
-                      <h3 className="font-bold text-slate-900 text-sm mt-1 line-clamp-1">
-                        {p.name}
-                      </h3>
-                      <div className="flex items-baseline gap-1 mt-1">
-                        <span className="text-xs font-black text-blue-600">
-                          Rp {(p.promo_price || p.price).toLocaleString("id-ID")}
-                        </span>
-                        {p.promo_price ? (
-                          <span className="text-[11px] text-slate-400 line-through">
-                            Rp {p.price.toLocaleString("id-ID")}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="text-xs text-slate-500 line-clamp-2 mt-1.5">
-                        {p.description}
-                      </p>
-                    </div>
-                  </div>
+              {filteredProducts.map((p) => {
+                const itemFulfillment = resolveFulfillmentRequirements(
+                  p.product_type || p.type || (isServiceCategory ? 'SERVICE' : isDigitalCategory ? 'DIGITAL' : 'PHYSICAL')
+                );
+                const isServiceItem = itemFulfillment.strategy === 'SERVICE' || isServiceCategory;
+                const isDigitalItem = !isServiceItem && (itemFulfillment.strategy === 'DIGITAL' || p.is_unlimited || isDigitalCategory);
+                const isPhysicalItem = !isServiceItem && !isDigitalItem;
 
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono text-slate-400 font-bold">
-                        SKU: {p.sku || 'SKU-AUTO'}
-                      </span>
-                      {p.is_unlimited ? (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                          Digital (Unlimited)
+                return (
+                  <div
+                    key={p.id}
+                    className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-start gap-4">
+                      <ProductCardImage src={p.image} alt={p.name} />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase tracking-wider">
+                          {p.category}
                         </span>
-                      ) : p.stock === 0 ? (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                          Stok Habis
+                        <h3 className="font-bold text-slate-900 text-sm mt-1 line-clamp-1">
+                          {p.name}
+                        </h3>
+                        <div className="flex items-baseline gap-1 mt-1">
+                          <span className="text-xs font-black text-blue-600">
+                            Rp {(p.promo_price || p.price).toLocaleString("id-ID")}
+                          </span>
+                          {p.promo_price ? (
+                            <span className="text-[11px] text-slate-400 line-through">
+                              Rp {p.price.toLocaleString("id-ID")}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-slate-500 line-clamp-2 mt-1.5">
+                          {p.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-slate-400 font-bold">
+                          SKU: {p.sku || 'SKU-AUTO'}
                         </span>
-                      ) : p.stock <= 10 ? (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                          Stok Menipis ({p.stock} Unit)
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          Stok: {p.stock} Unit
-                        </span>
+                        {isServiceItem ? (
+                          isProfessional || p.product_type === 'PROFESSIONAL_SERVICE' ? (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              Sesi Konsultasi (Booking)
+                            </span>
+                          ) : isFieldService || p.product_type === 'FIELD_SERVICE' ? (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Layanan Lapangan (Booking)
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                              Layanan Jasa
+                            </span>
+                          )
+                        ) : isDigitalItem ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                            Aset Digital (Unlimited)
+                          </span>
+                        ) : p.stock === 0 ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            Stok Habis
+                          </span>
+                        ) : p.stock <= 10 ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            Stok Menipis ({p.stock} Unit)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Stok: {p.stock} Unit
+                          </span>
+                        )}
+                      </div>
+
+                      {isPhysicalItem && (
+                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => handleQuickStockChange(p.id, -1)}
+                            className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shadow-xs transition cursor-pointer"
+                            title="Kurangi Stok"
+                          >
+                            -
+                          </button>
+                          <span className="px-2 font-bold font-mono text-xs text-slate-900">{p.stock}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleQuickStockChange(p.id, 1)}
+                            className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shadow-xs transition cursor-pointer"
+                            title="Tambah Stok"
+                          >
+                            +
+                          </button>
+                        </div>
                       )}
                     </div>
-
-                    {!p.is_unlimited && (
-                      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStockChange(p.id, -1)}
-                          className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shadow-xs transition cursor-pointer"
-                          title="Kurangi Stok"
-                        >
-                          -
-                        </button>
-                        <span className="px-2 font-bold font-mono text-xs text-slate-900">{p.stock}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleQuickStockChange(p.id, 1)}
-                          className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shadow-xs transition cursor-pointer"
-                          title="Tambah Stok"
-                        >
-                          +
-                        </button>
-                      </div>
-                    )}
-                  </div>
 
                   <div className="pt-3 mt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
                     <button
@@ -420,8 +487,9 @@ export default function ProductsTab({
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
           )}
         </div>
       )}

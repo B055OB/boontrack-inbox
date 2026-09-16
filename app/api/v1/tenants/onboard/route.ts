@@ -25,6 +25,12 @@ export async function POST(req: NextRequest) {
       bankName,
       bankAccountNumber,
       bankAccountHolder,
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      utm_content,
+      utm_term,
+      utms,
     } = body;
 
     if (!storeName || !waNumber || !category) {
@@ -32,17 +38,6 @@ export async function POST(req: NextRequest) {
         {
           success: false,
           error: 'Nama toko, nomor WhatsApp, dan kategori industri wajib diisi.',
-        },
-        { status: 400 }
-      );
-    }
-
-    const catUpper = String(category || '').toUpperCase();
-    if (catUpper === 'FNB' || catUpper === 'FOOD' || catUpper === 'KULINER') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Kategori Kuliner & F&B (Food & Beverage) saat ini berstatus Coming Soon (dalam tahap pengembangan). Silakan pilih kategori bisnis lainnya.',
         },
         { status: 400 }
       );
@@ -66,7 +61,27 @@ export async function POST(req: NextRequest) {
           .replace(/(^-|-$)/g, '')
       ) || `tenant-${Date.now().toString().slice(-6)}`;
 
-    const isDigital = productType === 'digital' || category === 'digital';
+    const catUpper = String(body.business_type || category || '').toUpperCase();
+    const isDigital = productType === 'digital' || category === 'digital' || catUpper === 'DIGITAL';
+    const isProService = ['PROFESSIONAL', 'CONSULT', 'LEGAL', 'TRAVEL', 'UMROH', 'PRO_SERVICE'].some(k => catUpper.includes(k));
+    const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'REPAIR', 'JASA'].some(k => catUpper.includes(k));
+    const isFood = catUpper === 'FOOD' || catUpper === 'FNB' || catUpper === 'KULINER';
+    const isCreator = catUpper === 'CREATOR_AGENCY' || catUpper === 'CREATOR' || catUpper === 'AGENCY';
+
+    const resolvedBusinessType = isProService
+      ? 'PROFESSIONAL_SERVICE'
+      : isFieldService
+      ? 'FIELD_SERVICE'
+      : isFood
+      ? 'FOOD'
+      : isCreator
+      ? 'CREATOR_AGENCY'
+      : isDigital
+      ? 'DIGITAL'
+      : (body.business_type || category || 'PHYSICAL');
+
+    const isServiceStore = isProService || isFieldService;
+    const isPhysicalStore = isFood || (!isServiceStore && !isDigital && !isCreator);
 
     // Meta WhatsApp Sandbox Bot Number
     const botNumber = process.env.NEXT_PUBLIC_META_BOT_NUMBER || '15556769563';
@@ -77,21 +92,15 @@ export async function POST(req: NextRequest) {
     // Try to record into Supabase if accessible
     try {
       const supabase = getSupabase();
-      const catUpper = String(body.business_type || category || '').toUpperCase();
-      const isProService = ['PROFESSIONAL', 'CONSULT', 'LEGAL', 'TRAVEL', 'UMROH', 'PRO_SERVICE'].some(k => catUpper.includes(k));
-      const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'REPAIR', 'JASA'].some(k => catUpper.includes(k));
-
-      const resolvedBusinessType = isProService
-        ? 'PROFESSIONAL_SERVICE'
-        : isFieldService
-        ? 'FIELD_SERVICE'
-        : isDigital
-        ? 'DIGITAL'
-        : (body.business_type || category || 'PHYSICAL');
-
-      const isServiceStore = isProService || isFieldService;
-      const isPhysicalStore = !isServiceStore && !isDigital;
       const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
+
+      const utmObj = {
+        source: utm_source || utms?.source || utms?.utm_source || null,
+        medium: utm_medium || utms?.medium || utms?.utm_medium || null,
+        campaign: utm_campaign || utms?.campaign || utms?.utm_campaign || null,
+        content: utm_content || utms?.content || utms?.utm_content || null,
+        term: utm_term || utms?.term || utms?.utm_term || null,
+      };
 
       await supabase.from('tenants').upsert(
         {
@@ -113,6 +122,7 @@ export async function POST(req: NextRequest) {
             subscription_ends_at: trialEndsAt,
             wa_number: formattedWa,
             referral_code: referralCode || null,
+            utm_params: utmObj,
             capabilities: {
               inbox: true,
               ai_bot: true,
@@ -138,6 +148,22 @@ export async function POST(req: NextRequest) {
         },
         { onConflict: 'slug' }
       );
+
+      if (referralCode) {
+        try {
+          await supabase.from('attributions').insert({
+            tenant_slug: generatedSlug,
+            merchant_slug: generatedSlug,
+            referral_code: String(referralCode).toLowerCase().trim(),
+            utm_source: utmObj.source,
+            utm_medium: utmObj.medium,
+            utm_campaign: utmObj.campaign,
+            created_at: new Date().toISOString(),
+          });
+        } catch (attrErr) {
+          console.warn('Attribution insert note:', attrErr);
+        }
+      }
     } catch (dbErr) {
       // Supabase is optional / fallback enabled for pilot
       console.warn('Supabase tenant upsert skipped or offline:', dbErr);

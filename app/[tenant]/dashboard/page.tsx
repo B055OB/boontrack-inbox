@@ -556,6 +556,7 @@ export default function TenantDashboardPage() {
           isTeamScale={isTeamScale}
           isAdsPerformance={isAdsPerformance}
           isSoloOrTrial={isSoloOrTrial}
+          storeCategory={storeCategory || businessType}
           onOpenStoreSettings={() => {
             setNameError(null);
             setIsStoreSettingsOpen(true);

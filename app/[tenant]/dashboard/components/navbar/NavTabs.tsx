@@ -209,6 +209,8 @@ export default function NavTabs({
             <span>
               {isDakwah
                 ? `Katalog Materi / Program Dakwah (${productCount})`
+                : rawCat === 'PROFESSIONAL_SERVICE' || rawCat === 'PROFESSIONAL_CONSULT'
+                ? `Katalog Jasa & Konsultasi (${productCount})`
                 : isService
                 ? `Katalog Jasa & Layanan (${productCount})`
                 : isDigital
@@ -309,9 +311,9 @@ export default function NavTabs({
               }`}
             >
               <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>{isDakwah ? 'Jadwal Kajian & Zoom' : 'Booking & Jadwal'}</span>
+              <span>{isDakwah ? 'Jadwal Kajian & Zoom' : rawCat === 'PROFESSIONAL_SERVICE' || rawCat === 'PROFESSIONAL_CONSULT' ? 'Jadwal & Sesi Konsultasi' : 'Booking & Jadwal'}</span>
               <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
-                {isDakwah ? 'KAJIAN' : 'JASA'}
+                {isDakwah ? 'KAJIAN' : rawCat === 'PROFESSIONAL_SERVICE' || rawCat === 'PROFESSIONAL_CONSULT' ? 'KONSULTASI' : 'JASA'}
               </span>
             </button>
           )}

@@ -35,26 +35,26 @@ const STATIC_QRIS =
 
 const CATEGORIES = [
   {
-    id: "retail_physical",
+    id: "PHYSICAL",
     label: "Retail & Produk Fisik",
     desc: "Fashion, skincare, RT, aksesoris",
     icon: ShoppingBag,
   },
   {
-    id: "digital",
+    id: "DIGITAL",
     label: "Produk Digital",
     desc: "E-course, ebook, webinar, tools, lisensi",
     icon: GraduationCap,
   },
   {
-    id: "fnb",
+    id: "FOOD",
     label: "Food & Beverage (Kuliner)",
     desc: "Frozen food, makanan, camilan, minuman",
     icon: UtensilsCrossed,
     comingSoon: true,
   },
   {
-    id: "local_service",
+    id: "FIELD_SERVICE",
     label: "Jasa Booking Panggilan & Lapangan",
     desc: "Servis AC, kuras toren, sedot WC, teknisi",
     icon: Wrench,
@@ -66,7 +66,7 @@ const CATEGORIES = [
     icon: Briefcase,
   },
   {
-    id: "affiliate_creator",
+    id: "CREATOR_AGENCY",
     label: "Affiliate, Agensi Live & Kreator",
     desc: "Live host, video sample creator, VIP channel",
     icon: Video,
@@ -82,24 +82,25 @@ export type CanonicalBusinessType =
   | "CREATOR_AGENCY";
 
 const VERTICAL_MAP: Record<string, CanonicalBusinessType> = {
+  PHYSICAL: "PHYSICAL",
   retail_physical: "PHYSICAL",
   physical: "PHYSICAL",
-  PHYSICAL: "PHYSICAL",
-  digital: "DIGITAL",
   DIGITAL: "DIGITAL",
-  fnb: "FOOD",
+  digital: "DIGITAL",
   FOOD: "FOOD",
+  fnb: "FOOD",
+  food: "FOOD",
+  FIELD_SERVICE: "FIELD_SERVICE",
   local_service: "FIELD_SERVICE",
   field_service: "FIELD_SERVICE",
-  FIELD_SERVICE: "FIELD_SERVICE",
   service: "FIELD_SERVICE",
+  PROFESSIONAL_SERVICE: "PROFESSIONAL_SERVICE",
   professional_consult: "PROFESSIONAL_SERVICE",
   professional_service: "PROFESSIONAL_SERVICE",
-  PROFESSIONAL_SERVICE: "PROFESSIONAL_SERVICE",
   SERVICE: "PROFESSIONAL_SERVICE",
+  CREATOR_AGENCY: "CREATOR_AGENCY",
   affiliate_creator: "CREATOR_AGENCY",
   creator_agency: "CREATOR_AGENCY",
-  CREATOR_AGENCY: "CREATOR_AGENCY",
 };
 
 export const PLAN_PRICING: Record<
@@ -429,7 +430,7 @@ export default function RegisterShopPage() {
   const [status, setStatus] = useState<
     "idle" | "checking" | "available" | "taken"
   >("idle");
-  const [category, setCategory] = useState("retail_physical");
+  const [category, setCategory] = useState<string>("PHYSICAL");
   const [selectedPlan, setSelectedPlan] = useState<
     "solo" | "ads_performance" | "team_scale"
   >("solo");
@@ -441,6 +442,13 @@ export default function RegisterShopPage() {
   });
   const [referralCode, setReferralCode] = useState("");
   const [isReferralLocked, setIsReferralLocked] = useState(false);
+  const [utmParams, setUtmParams] = useState({
+    utm_source: "organik",
+    utm_medium: "",
+    utm_campaign: "",
+    utm_content: "",
+    utm_term: "",
+  });
   const [loadingPay, setLoadingPay] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
@@ -511,6 +519,46 @@ export default function RegisterShopPage() {
           localStorage.setItem("boontrack_referral_code", refCode);
           document.cookie = `boontrack_merchant_ref=${refCode}; path=/; max-age=2592000; SameSite=Lax`;
         } catch (_) {}
+      }
+
+      // ── DETEKSI PARAMETER UTM TRACKING & SUMBER PROMOSI ──
+      const source = (params.get("utm_source") || params.get("source") || "").trim();
+      const medium = (params.get("utm_medium") || params.get("medium") || "").trim();
+      const campaign = (params.get("utm_campaign") || params.get("campaign") || "").trim();
+      const content = (params.get("utm_content") || "").trim();
+      const term = (params.get("utm_term") || "").trim();
+
+      let storedSource = "";
+      let storedMedium = "";
+      let storedCampaign = "";
+      try {
+        storedSource = localStorage.getItem("boontrack_utm_source") || "";
+        storedMedium = localStorage.getItem("boontrack_utm_medium") || "";
+        storedCampaign = localStorage.getItem("boontrack_utm_campaign") || "";
+      } catch (_) {}
+
+      const effectiveUtm = {
+        utm_source: source || storedSource || "organik",
+        utm_medium: medium || storedMedium || "",
+        utm_campaign: campaign || storedCampaign || "",
+        utm_content: content || "",
+        utm_term: term || "",
+      };
+      setUtmParams(effectiveUtm);
+
+      try {
+        if (source) localStorage.setItem("boontrack_utm_source", source);
+        if (medium) localStorage.setItem("boontrack_utm_medium", medium);
+        if (campaign) localStorage.setItem("boontrack_utm_campaign", campaign);
+      } catch (_) {}
+
+      // Deteksi pre-selected category via parameter URL (?category=... / ?type=...)
+      const rawCategoryParam = (params.get("category") || params.get("type") || params.get("vertical") || "").trim();
+      if (rawCategoryParam) {
+        const mapped = VERTICAL_MAP[rawCategoryParam] || VERTICAL_MAP[rawCategoryParam.toLowerCase()];
+        if (mapped && mapped !== 'FOOD') {
+          setCategory(mapped);
+        }
       }
 
       if (initialPlan === "solo" || initialPlan === "growth") {
@@ -660,6 +708,14 @@ export default function RegisterShopPage() {
                 business_type: resolvedBusinessType,
                 vertical_type: resolvedBusinessType,
                 category: resolvedBusinessType,
+                utm_source: utmParams.utm_source || 'organik',
+                utm_medium: utmParams.utm_medium || undefined,
+                utm_campaign: utmParams.utm_campaign || undefined,
+                utm_content: utmParams.utm_content || undefined,
+                utm_term: utmParams.utm_term || undefined,
+                source: utmParams.utm_source || 'organik',
+                medium: utmParams.utm_medium || undefined,
+                campaign: utmParams.utm_campaign || undefined,
                 capabilities: {
                   inbox: selectedPlan === 'team_scale',
                   ai_bot: true,
@@ -671,6 +727,24 @@ export default function RegisterShopPage() {
             },
             { onConflict: 'slug' }
           );
+
+          // Simpan record atribusi jika terdaftar via referral affiliate
+          if (cleanRef) {
+            try {
+              await supabase.from('attributions').insert({
+                session_id: `reg_${slug}_${Date.now()}`,
+                utm_source: utmParams.utm_source || 'organik',
+                utm_medium: utmParams.utm_medium || null,
+                utm_campaign: utmParams.utm_campaign || null,
+                metadata: {
+                  tenant_slug: slug,
+                  referral_code: cleanRef,
+                  action: 'merchant_registration',
+                },
+                created_at: new Date().toISOString(),
+              });
+            } catch (_) {}
+          }
         }
       } catch (dbErr) {
         console.warn('Supabase tenant direct upsert note:', dbErr);
@@ -699,6 +773,11 @@ export default function RegisterShopPage() {
             referral_code: cleanRef || undefined,
             affiliate_code: cleanRef || undefined,
             ref: cleanRef || undefined,
+            utm_source: utmParams.utm_source || undefined,
+            utm_medium: utmParams.utm_medium || undefined,
+            utm_campaign: utmParams.utm_campaign || undefined,
+            utm_content: utmParams.utm_content || undefined,
+            utm_term: utmParams.utm_term || undefined,
           }),
         }
       ).catch(() => null);
@@ -887,9 +966,9 @@ export default function RegisterShopPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                   {CATEGORIES.map((cat) => {
                     const Icon = cat.icon;
-                    const isComingSoon = Boolean((cat as any).comingSoon || cat.id === "fnb");
-                    const isSelected = category === cat.id && !isComingSoon;
-                    const vertical = VERTICAL_MAP[cat.id] ?? "RETAIL";
+                    const isComingSoon = Boolean((cat as any).comingSoon || cat.id === "FOOD" || cat.id === "fnb");
+                    const isSelected = (category === cat.id || VERTICAL_MAP[category] === cat.id) && !isComingSoon;
+                    const vertical = VERTICAL_MAP[cat.id] ?? cat.id;
                     return (
                       <button
                         type="button"
@@ -907,8 +986,12 @@ export default function RegisterShopPage() {
                             : isSelected
                             ? cat.id === "PROFESSIONAL_SERVICE" || cat.id === "professional_consult"
                               ? "border-indigo-600 bg-indigo-50/70 text-indigo-950 font-bold shadow-xs ring-1 ring-indigo-600 cursor-pointer"
-                              : cat.id === "local_service"
+                              : cat.id === "FIELD_SERVICE" || cat.id === "local_service"
                               ? "border-amber-500 bg-amber-50/70 text-amber-950 font-bold shadow-xs ring-1 ring-amber-500 cursor-pointer"
+                              : cat.id === "CREATOR_AGENCY" || cat.id === "affiliate_creator"
+                              ? "border-pink-600 bg-pink-50/70 text-pink-950 font-bold shadow-xs ring-1 ring-pink-600 cursor-pointer"
+                              : cat.id === "DIGITAL" || cat.id === "digital"
+                              ? "border-violet-600 bg-violet-50/70 text-violet-950 font-bold shadow-xs ring-1 ring-violet-600 cursor-pointer"
                               : "border-blue-600 bg-blue-50/70 text-blue-950 font-bold shadow-xs ring-1 ring-blue-600 cursor-pointer"
                             : "border-slate-200 hover:border-slate-300 bg-slate-50 text-slate-600 text-xs cursor-pointer"
                         }`}
@@ -921,8 +1004,12 @@ export default function RegisterShopPage() {
                                 : isSelected
                                 ? cat.id === "PROFESSIONAL_SERVICE" || cat.id === "professional_consult"
                                   ? "text-indigo-600"
-                                  : cat.id === "local_service"
+                                  : cat.id === "FIELD_SERVICE" || cat.id === "local_service"
                                   ? "text-amber-600"
+                                  : cat.id === "CREATOR_AGENCY" || cat.id === "affiliate_creator"
+                                  ? "text-pink-600"
+                                  : cat.id === "DIGITAL" || cat.id === "digital"
+                                  ? "text-violet-600"
                                   : "text-blue-600"
                                 : "text-slate-400"
                             }`}
@@ -938,6 +1025,10 @@ export default function RegisterShopPage() {
                                   ? "bg-indigo-100 text-indigo-800 border border-indigo-300"
                                   : vertical === "FIELD_SERVICE"
                                   ? "bg-amber-100 text-amber-700 border border-amber-300"
+                                  : vertical === "CREATOR_AGENCY"
+                                  ? "bg-pink-100 text-pink-700 border border-pink-300"
+                                  : vertical === "DIGITAL"
+                                  ? "bg-violet-100 text-violet-700 border border-violet-300"
                                   : "bg-blue-100 text-blue-700 border border-blue-300"
                               }`}
                             >
