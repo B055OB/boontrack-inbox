@@ -1377,14 +1377,15 @@ export function useTenantDashboard() {
   };
 
   // 10. WhatsApp Engine Handlers (Strict Payload & Direct Base64 Capture)
-  const handleConnectGrowthSession = async () => {
+  const handleConnectGrowthSession = async (isReload = false) => {
     if (!tenantSlug) return;
     setIsQrLoading(true);
     setWaErrorMessage(null);
     setPairingCodeResult(null);
 
     try {
-      const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`, {
+      const url = `/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}${isReload ? '&action=reload' : ''}`;
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });

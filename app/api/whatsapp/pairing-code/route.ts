@@ -10,27 +10,57 @@ const EVOLUTION_API_KEY =
   "4398809d97f770b1a2b243ed0ee33bf3312d02dec42be8789ea3512f487f4c5e";
 
 async function fetchPairing(instanceName: string, phone: string) {
-  const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${encodeURIComponent(instanceName)}?number=${encodeURIComponent(phone)}&pairing=true`;
+  const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${encodeURIComponent(instanceName)}?number=${encodeURIComponent(phone)}`;
   const res = await fetch(url, {
     method: "GET",
     headers: {
       apikey: EVOLUTION_API_KEY,
     },
     cache: "no-store",
-  });
+  }).catch(() => null);
+
+  if (!res) return { status: 500, data: {} };
   const data = await res.json().catch(() => ({}));
-  return { res, data };
+  return { status: res.status, data };
 }
 
-async function restartInstance(instanceName: string) {
-  const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/restart/${encodeURIComponent(instanceName)}`;
-  const res = await fetch(url, {
+async function recreateInstanceForPairing(instanceName: string, phone: string) {
+  const coreBase = (
+    process.env.CORE_API_URL ||
+    process.env.NEXT_PUBLIC_CORE_API_URL ||
+    "https://api.boontrack.com"
+  ).replace(/\/$/, "");
+
+  // Delete previous instance
+  await fetch(`${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/delete/${encodeURIComponent(instanceName)}`, {
+    method: "DELETE",
+    headers: { apikey: EVOLUTION_API_KEY },
+  }).catch(() => null);
+
+  await new Promise((r) => setTimeout(r, 600));
+
+  // Re-create instance configured with number
+  await fetch(`${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/create`, {
     method: "POST",
     headers: {
+      "Content-Type": "application/json",
       apikey: EVOLUTION_API_KEY,
     },
+    body: JSON.stringify({
+      instanceName,
+      integration: "WHATSAPP-BAILEYS",
+      number: phone,
+      qrcode: false,
+      webhook: `${coreBase}/webhook/whatsapp`,
+      webhook_by_events: false,
+      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+    }),
   }).catch(() => null);
-  return res;
+
+  await new Promise((r) => setTimeout(r, 800));
+
+  // Connect to retrieve pairing code
+  return await fetchPairing(instanceName, phone);
 }
 
 export async function POST(req: NextRequest) {
@@ -38,12 +68,18 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const body = await req.json().catch(() => ({}));
 
-    const rawTenant = searchParams.get("tenant") || body.tenant || body.tenant_slug;
+    const rawTenant =
+      searchParams.get("tenant") ||
+      searchParams.get("slug") ||
+      body.tenant ||
+      body.tenant_slug ||
+      body.slug ||
+      "";
     const tenantSlug = typeof rawTenant === "string" ? rawTenant.trim() : "";
 
     if (!tenantSlug) {
       return NextResponse.json(
-        { success: false, error: "Missing required parameter: tenant" },
+        { success: false, error: "Missing required parameter: tenant slug" },
         { status: 400 }
       );
     }
@@ -55,8 +91,7 @@ export async function POST(req: NextRequest) {
       searchParams.get("phone") ||
       "";
 
-    // Normalisasi nomor telepon:
-    // Bersihkan karakter non-angka, spasi, tanda plus (+), atau strip (-)
+    // Normalisasi nomor telepon: E.164 (628...)
     let cleanPhone = String(rawPhone).replace(/\D/g, "");
     if (cleanPhone.startsWith("08")) {
       cleanPhone = "628" + cleanPhone.slice(2);
@@ -73,55 +108,48 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Format target instance langsung presisi (tenant_{tenantSlug})
-    const targetInstance = tenantSlug.startsWith("tenant_")
-      ? tenantSlug
-      : `tenant_${tenantSlug}`;
+    // Instance name wajib dinamis membaca slug tenant aktif 1:1
+    const targetInstance = tenantSlug;
 
-    // 1. Ambil pairing code pertama via GET /instance/connect/${targetInstance}?number=${cleanPhone}
+    // 1. Coba ambil pairing code via GET /instance/connect/${targetInstance}?number=${cleanPhone}
     let pairingResult = await fetchPairing(targetInstance, cleanPhone);
 
-    // Jika instance belum ada di Evolution API (404), buat instance terlebih dahulu
-    if (pairingResult.res.status === 404) {
-      await fetch(`${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: EVOLUTION_API_KEY,
-        },
-        body: JSON.stringify({
-          instanceName: targetInstance,
-          integration: "WHATSAPP-BAILEYS",
-          qrcode: true,
-        }),
-      }).catch(() => null);
+    let pairingCode =
+      pairingResult.data?.pairingCode ||
+      pairingResult.data?.code ||
+      pairingResult.data?.qrcode?.pairingCode ||
+      null;
 
-      pairingResult = await fetchPairing(targetInstance, cleanPhone);
+    // Filter kode: jika kode berupa QR string mentah (mengandung @ atau panjang > 12), abaikan
+    if (typeof pairingCode === "string" && (pairingCode.includes("@") || pairingCode.includes("=") || pairingCode.length > 12)) {
+      pairingCode = null;
     }
 
-    // Ekstraksi pairing code (memeriksa pairingCode, code, atau qrcode.pairingCode)
-    const data = pairingResult.data;
-    let pairingCode = data?.pairingCode || data?.code || data?.qrcode?.pairingCode || null;
-
-    // Jika pairingCode masih null atau belum terbit:
+    // 2. Jika pairingCode belum terbit atau instance 404, re-inisialisasi instance dengan number parameter
     if (!pairingCode) {
-      // 1. Kirim POST /instance/restart/${targetInstance}
-      await restartInstance(targetInstance);
+      console.log(`[WhatsAppPairing] Inisialisasi pairing socket dengan nomor untuk instance: ${targetInstance}`);
+      const retryResult = await recreateInstanceForPairing(targetInstance, cleanPhone);
+      pairingCode =
+        retryResult.data?.pairingCode ||
+        retryResult.data?.code ||
+        retryResult.data?.qrcode?.pairingCode ||
+        null;
 
-      // 2. Beri jeda 2000 ms
-      await new Promise((r) => setTimeout(r, 2000));
-
-      // 3. Panggil ulang GET /instance/connect/${targetInstance}?number=${cleanPhone}
-      const retryResult = await fetchPairing(targetInstance, cleanPhone);
-      pairingCode = retryResult.data?.pairingCode || retryResult.data?.code || retryResult.data?.qrcode?.pairingCode || null;
+      if (typeof pairingCode === "string" && (pairingCode.includes("@") || pairingCode.includes("=") || pairingCode.length > 12)) {
+        pairingCode = null;
+      }
     }
 
-    // Validasi dan format pairing code jika valid
+    // Validasi format resmi 8 digit alfanumerik (misal: XXXX-XXXX atau 8 karakter)
     let cleanPairingCode: string | null = null;
     if (pairingCode && typeof pairingCode === "string") {
       const trimmed = pairingCode.trim();
-      // Pastikan bukan raw QR string (tidak mengandung @ atau = dan panjang <= 12)
-      if (!trimmed.includes("@") && !trimmed.includes("=") && trimmed.length <= 12) {
+      const isValid =
+        /^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/.test(trimmed) ||
+        /^[A-Za-z0-9]{8}$/.test(trimmed) ||
+        (trimmed.length >= 8 && trimmed.length <= 10 && !/[^A-Za-z0-9-]/.test(trimmed));
+
+      if (isValid) {
         cleanPairingCode = trimmed;
       }
     }
@@ -130,25 +158,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         pairing_code: cleanPairingCode,
+        tenant_slug: tenantSlug,
       });
     }
 
-    // Cegah intersepsi HTML Cloudflare 502: kembalikan status 200 dengan flag retry
+    // Jika socket masih warming up
     return NextResponse.json(
       {
         success: false,
         retry: true,
         error:
-          "Evolution API sedang menyiapkan socket pairing. Silakan klik Dapatkan Kode sekali lagi atau scan barcode QR di sebelah.",
+          "Evolution API sedang menyiapkan socket pairing WhatsApp. Silakan klik 'Dapatkan Kode' sekali lagi atau gunakan Scan QR Code di atas.",
       },
       { status: 200 }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Gagal berkomunikasi dengan Evolution API";
     return NextResponse.json(
       {
         success: false,
         retry: true,
-        error: err.message || "Gagal berkomunikasi dengan Evolution API",
+        error: msg,
       },
       { status: 200 }
     );
