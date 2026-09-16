@@ -517,7 +517,7 @@ export function useTenantDashboard() {
           if (isLocalSession) {
             setTenantFeatureFlags(prev => ({ ...prev, tier: 'SOLO_TRIAL' }));
             setPlanTier('growth');
-            setTrialDaysLeft(14);
+            setTrialDaysLeft(7);
           } else {
             router.replace('/login');
             return;
@@ -659,6 +659,27 @@ export function useTenantDashboard() {
             setPlanTier('ads_performance');
           } else {
             setPlanTier('growth');
+          }
+
+          // Hitung sisa hari Reverse Trial (7 Hari)
+          const isTrialStore = rawTier.includes('trial') || resolvedTier === 'SOLO_TRIAL';
+          if (isTrialStore) {
+            const trialEnds = tenant.trial_ends_at || tenant.metadata?.trial_ends_at;
+            if (trialEnds) {
+              const msLeft = new Date(trialEnds).getTime() - Date.now();
+              const days = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60 * 24)));
+              setTrialDaysLeft(days);
+            } else if (tenant.created_at) {
+              const createdAt = new Date(tenant.created_at).getTime();
+              const trialDurationMs = 7 * 24 * 60 * 60 * 1000;
+              const msLeft = createdAt + trialDurationMs - Date.now();
+              const days = Math.max(0, Math.min(7, Math.ceil(msLeft / (1000 * 60 * 60 * 24))));
+              setTrialDaysLeft(days);
+            } else {
+              setTrialDaysLeft(7);
+            }
+          } else {
+            setTrialDaysLeft(null);
           }
 
           // Hydrate Interactive Menu dari metadata tenant

@@ -508,6 +508,8 @@ export default function TenantDashboardPage() {
           isTeamScale={isTeamScale}
           isAdsPerformance={isAdsPerformance}
           handleUpgradeTier={handleUpgradeTier}
+          isSoloOrTrial={isSoloOrTrial}
+          trialDaysLeft={trialDaysLeft}
         />
       )}
 

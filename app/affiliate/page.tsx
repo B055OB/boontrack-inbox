@@ -772,10 +772,10 @@ function AffiliatePortalContent() {
                   <p className="text-[11px] text-slate-500">Merchant terdaftar via ref</p>
                 </div>
 
-                {/* 2. Toko Aktif Trial (14 Hari) */}
+                {/* 2. Toko Aktif Trial (7 Hari) */}
                 <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-sm space-y-1.5">
                   <div className="flex items-center justify-between text-amber-400 text-xs font-semibold">
-                    <span>Toko Trial (14 Hari)</span>
+                    <span>Toko Trial (7 Hari)</span>
                     <Clock className="w-4 h-4 text-amber-400" />
                   </div>
                   <div className="text-2xl sm:text-3xl font-black text-amber-400">
@@ -975,7 +975,7 @@ function AffiliatePortalContent() {
 
                   <a
                     href={`https://wa.me/?text=${encodeURIComponent(
-                      `Halo! Mau jualan otomatis dengan toko online AI dan bot WhatsApp 24 jam? Coba gratis 14 hari di BoonTrack: ${generatedCustomUrl}`
+                      `Halo! Mau jualan otomatis dengan toko online AI dan bot WhatsApp 24 jam? Coba gratis 7 hari di BoonTrack: ${generatedCustomUrl}`
                     )}`}
                     target="_blank"
                     rel="noreferrer"
@@ -1212,7 +1212,7 @@ function AffiliatePortalContent() {
                             {lead.status === 'Trial' && (
                               <span className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center gap-1 w-fit">
                                 <Clock className="w-3 h-3" />
-                                <span>Trial (14 Hari)</span>
+                                <span>Trial (7 Hari)</span>
                               </span>
                             )}
                             {lead.status === 'Berlangganan' && (

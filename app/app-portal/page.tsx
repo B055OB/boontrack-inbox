@@ -330,13 +330,13 @@ export default function AppPortalPage() {
                     <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
 
                     <span className="text-xs font-bold uppercase tracking-wider text-orange-200 bg-white/20 px-3 py-1 rounded-full border border-white/20">
-                        14-Day Zero-Risk Pilot Implementation
+                        7-Day Zero-Risk Pilot Implementation
                     </span>
                     <h2 className="text-3xl sm:text-4xl font-black mt-4">
                         Uji Coba di Cabang Anda Tanpa Risiko Finansial.
                     </h2>
                     <p className="mt-4 text-orange-100 text-sm leading-relaxed max-w-2xl mx-auto">
-                        Kami rekayasa arsitektur chat dan hardware di 1 cabang Anda selama 14 hari. Tanpa biaya langganan jika sistem gagal mengoptimalkan waktu operasional Anda.
+                        Kami rekayasa arsitektur chat dan hardware di 1 cabang Anda selama 7 hari. Tanpa biaya langganan jika sistem gagal mengoptimalkan waktu operasional Anda.
                     </p>
                     <div className="mt-8 flex justify-center">
                         <a
@@ -345,7 +345,7 @@ export default function AppPortalPage() {
                             rel="noopener noreferrer"
                             className="px-8 py-4 rounded-xl bg-white text-orange-600 font-black text-sm hover:bg-orange-50 shadow-lg transition transform active:scale-95"
                         >
-                            Klaim Pilot 14 Hari Tanpa Risiko &rarr;
+                            Klaim Pilot 7 Hari Tanpa Risiko &rarr;
                         </a>
                     </div>
                 </div>

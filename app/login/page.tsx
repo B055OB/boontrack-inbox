@@ -324,7 +324,7 @@ export default function MerchantLoginPage() {
         <div className="text-center text-xs text-slate-500">
           Belum memiliki toko online di BoonTrack?{' '}
           <Link href="/register" className="text-blue-400 hover:text-blue-300 font-bold underline transition">
-            Klaim & Buka Toko Baru (Coba Gratis 14 Hari)
+            Klaim & Buka Toko Baru (Coba Gratis 7 Hari)
           </Link>
         </div>
       </div>

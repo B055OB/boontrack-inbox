@@ -21,6 +21,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const categoryCheck = String(body.category || body.business_category || body.business_type || '').toUpperCase();
+    if (categoryCheck === 'FNB' || categoryCheck === 'FOOD' || categoryCheck === 'KULINER') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Kategori Kuliner & F&B (Food & Beverage) saat ini berstatus Coming Soon. Silakan pilih kategori lainnya.',
+        },
+        { status: 400 }
+      );
+    }
+
     // 1. Forward trigger ke Core Backend Notification Service (Railway / api.boontrack.com)
     try {
       await fetch('https://api.boontrack.com/api/v1/shop/subscriptions/notify', {
@@ -60,7 +71,7 @@ export async function POST(req: NextRequest) {
               <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 16px;">
                 <h2 style="color: #0f172a;">Selamat Datang, ${merchant_name || 'Merchant'}!</h2>
                 <p style="color: #475569; font-size: 14px;">
-                  Toko online <strong>${store_name || tenant_slug}</strong> telah berhasil dibuat dengan <strong>Masa Coba Gratis (Reverse Trial 14 Hari)</strong>.
+                  Toko online <strong>${store_name || tenant_slug}</strong> telah berhasil dibuat dengan <strong>Masa Coba Gratis (Reverse Trial 7 Hari)</strong>.
                 </p>
                 <div style="background: #f8fafc; padding: 16px; border-radius: 12px; margin: 20px 0; border: 1px solid #cbd5e1;">
                   <p style="margin: 0 0 8px 0; font-size: 14px;"><strong>Domain Toko:</strong> shop.boontrack.com/${tenant_slug}</p>

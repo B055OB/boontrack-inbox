@@ -37,6 +37,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const catUpper = String(category || '').toUpperCase();
+    if (catUpper === 'FNB' || catUpper === 'FOOD' || catUpper === 'KULINER') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Kategori Kuliner & F&B (Food & Beverage) saat ini berstatus Coming Soon (dalam tahap pengembangan). Silakan pilih kategori bisnis lainnya.',
+        },
+        { status: 400 }
+      );
+    }
+
     // Format WhatsApp number to standard international format (628...)
     let formattedWa = waNumber.replace(/[^0-9]/g, '');
     if (formattedWa.startsWith('0')) {

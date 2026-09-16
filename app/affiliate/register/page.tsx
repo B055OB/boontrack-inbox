@@ -199,8 +199,6 @@ function AffiliateRegisterContent() {
   const handleNext = () => {
     if (currentStep === 1 && validateStep1()) {
       setCurrentStep(2);
-    } else if (currentStep === 2 && validateStep2()) {
-      setCurrentStep(3);
     }
   };
 
@@ -214,7 +212,7 @@ function AffiliateRegisterContent() {
   // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep3()) return;
+    if (!validateStep1() || !validateStep2()) return;
 
     setLoading(true);
     setErrorMessage(null);
@@ -234,12 +232,7 @@ function AffiliateRegisterContent() {
       bank_name: bankName,
       bank_account_number: bankAccountNumber.trim(),
       bank_account_holder: bankAccountHolder.trim().toUpperCase(),
-      experience_level: experienceLevel,
-      promotion_channels: selectedChannels,
-      promotion_channel: selectedChannels.join(', '),
-      audience_size: audienceSize,
-      portfolio_url: portfolioUrl.trim() || null,
-      promotion_plan: promotionPlan.trim(),
+      agreed_to_rules: true,
       agreed_to_terms: true,
     };
 
@@ -269,8 +262,22 @@ function AffiliateRegisterContent() {
         throw new Error(errorDetail);
       }
 
+      // Simpan token untuk sesi dashboard affiliate
+      if (data?.access_token) {
+        try {
+          localStorage.setItem('boontrack_affiliate_token', data.access_token);
+          localStorage.setItem('affiliate_token', data.access_token);
+          if (data.affiliate) {
+            localStorage.setItem('boontrack_affiliate_user', JSON.stringify(data.affiliate));
+          }
+        } catch (_) {}
+      }
+
       // Success
       setIsSuccess(true);
+      setTimeout(() => {
+        router.push('/affiliate/dashboard');
+      }, 2000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal menghubungi server pendaftaran.';
       setErrorMessage(msg);
@@ -400,9 +407,9 @@ function AffiliateRegisterContent() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold">
-                    <Clock className="w-3.5 h-3.5 animate-pulse" />
-                    <span>STATUS: PENDING_REVIEW</span>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>STATUS: AKTIF & TERVERIFIKASI</span>
                   </div>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
                     Pendaftaran Kemitraan Berhasil Dikirim!
@@ -457,13 +464,14 @@ function AffiliateRegisterContent() {
 
                 {/* Actions */}
                 <div className="pt-4 flex flex-col sm:flex-row gap-3">
-                  <Link
-                    href="/affiliate/login"
-                    className="flex-1 py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer"
+                  <button
+                    type="button"
+                    onClick={() => router.push('/affiliate/dashboard')}
+                    className="flex-1 py-3.5 px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 transition shadow-xl shadow-emerald-500/30 cursor-pointer"
                   >
-                    <span>Masuk ke Halaman Login</span>
+                    <span>Buka Dashboard Kemitraan Sekarang</span>
                     <ArrowRight className="w-4 h-4" />
-                  </Link>
+                  </button>
                   <a
                     href="https://wa.me/6281234567890?text=Halo%20Admin%20BoonTrack,%20saya%20sudah%20mendaftar%20affiliate%20dengan%20nama%20"
                     target="_blank"
@@ -487,19 +495,17 @@ function AffiliateRegisterContent() {
                         Formulir Kemitraan Affiliate
                       </h2>
                       <p className="text-xs text-slate-400 mt-1">
-                        Tahap {currentStep} dari 3: {
+                        Tahap {currentStep} dari 2: {
                           currentStep === 1
                             ? 'Informasi Data Diri'
-                            : currentStep === 2
-                            ? 'Rekening Pencairan Komisi'
-                            : 'Kualifikasi & Rencana Promosi'
+                            : 'Rekening Pencairan Komisi'
                         }
                       </p>
                     </div>
 
                     {/* Step Badges */}
                     <div className="flex items-center gap-1.5">
-                      {[1, 2, 3].map((stepNum) => (
+                      {[1, 2].map((stepNum) => (
                         <div
                           key={stepNum}
                           className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
@@ -520,7 +526,7 @@ function AffiliateRegisterContent() {
                   <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                     <div
                       className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full transition-all duration-300"
-                      style={{ width: `${(currentStep / 3) * 100}%` }}
+                      style={{ width: `${(currentStep / 2) * 100}%` }}
                     />
                   </div>
                 </div>
@@ -535,9 +541,7 @@ function AffiliateRegisterContent() {
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                   
-                  {/* ─────────────────────────────────────────────────────────────
                       STEP 1: DATA DIRI
-                  ───────────────────────────────────────────────────────────── */}
                   {currentStep === 1 && (
                     <div className="space-y-4 animate-in fade-in duration-200">
                       
@@ -648,9 +652,7 @@ function AffiliateRegisterContent() {
                     </div>
                   )}
 
-                  {/* ─────────────────────────────────────────────────────────────
                       STEP 2: REKENING PENCAIRAN KOMISI
-                  ───────────────────────────────────────────────────────────── */}
                   {currentStep === 2 && (
                     <div className="space-y-5 animate-in fade-in duration-200">
                       
@@ -732,154 +734,6 @@ function AffiliateRegisterContent() {
                     </div>
                   )}
 
-                  {/* ─────────────────────────────────────────────────────────────
-                      STEP 3: SCREENING & KUALIFIKASI PROMOSI
-                  ───────────────────────────────────────────────────────────── */}
-                  {currentStep === 3 && (
-                    <div className="space-y-5 animate-in fade-in duration-200">
-                      
-                      {/* Experience Radio Cards */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-300 block">
-                          Tingkat Pengalaman Affiliate Marketing
-                        </label>
-                        <div className="grid gap-2">
-                          {EXPERIENCE_OPTIONS.map((exp) => (
-                            <label
-                              key={exp.id}
-                              onClick={() => setExperienceLevel(exp.id)}
-                              className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
-                                experienceLevel === exp.id
-                                  ? 'bg-emerald-950/40 border-emerald-500/50 text-white'
-                                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name="experience"
-                                value={exp.id}
-                                checked={experienceLevel === exp.id}
-                                onChange={() => setExperienceLevel(exp.id)}
-                                className="mt-1 accent-emerald-500"
-                              />
-                              <div>
-                                <div className="text-xs font-bold text-slate-200">{exp.label}</div>
-                                <div className="text-[11px] text-slate-400">{exp.desc}</div>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Promo Channels (Multi-select) */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                          <span>Kanal Promosi Utama (Bisa pilih lebih dari satu)</span>
-                          <span className="text-[10px] text-emerald-400 font-normal">Pilih minimal 1</span>
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {PROMO_CHANNELS.map((ch) => {
-                            const active = selectedChannels.includes(ch.id);
-                            return (
-                              <button
-                                type="button"
-                                key={ch.id}
-                                onClick={() => handleToggleChannel(ch.id)}
-                                className={`text-left p-3 rounded-xl border text-xs font-semibold flex items-center gap-2.5 transition ${
-                                  active
-                                    ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
-                                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                                }`}
-                              >
-                                <div
-                                  className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${
-                                    active ? 'bg-emerald-500 text-slate-950' : 'border border-slate-700'
-                                  }`}
-                                >
-                                  {active && <Check className="w-3 h-3 stroke-[3]" />}
-                                </div>
-                                <span className="flex-1">{ch.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Audience Size */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-300 block">
-                          Estimasi Database / Jangkauan Audiens
-                        </label>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          {AUDIENCE_SIZES.map((aud) => (
-                            <button
-                              type="button"
-                              key={aud.id}
-                              onClick={() => setAudienceSize(aud.id)}
-                              className={`p-2.5 rounded-xl border text-xs font-semibold text-center transition ${
-                                audienceSize === aud.id
-                                  ? 'bg-emerald-950/60 border-emerald-500/60 text-emerald-300'
-                                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                              }`}
-                            >
-                              {aud.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Portfolio / Link Profil (Optional) */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                          <span>Link Portofolio / Profil Medsos (Opsional)</span>
-                          <span className="text-[10px] text-slate-500 font-normal">TikTok, Instagram, Channel TG</span>
-                        </label>
-                        <input
-                          type="url"
-                          value={portfolioUrl}
-                          onChange={(e) => setPortfolioUrl(e.target.value)}
-                          placeholder="https://tiktok.com/@akunanda atau https://t.me/channelanda"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-                        />
-                      </div>
-
-                      {/* Promotion Plan & Motivation Textarea */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                          <span>Rencana & Strategi Promosi Anda</span>
-                          <span className="text-[10px] text-emerald-400 font-normal">Min. 20 karakter</span>
-                        </label>
-                        <textarea
-                          rows={3}
-                          value={promotionPlan}
-                          onChange={(e) => setPromotionPlan(e.target.value)}
-                          placeholder="Jelaskan secara singkat bagaimana rencana Anda mempromosikan produk BoonTrack (misal: sharing review di grup WA, live TikTok rutin, atau iklan FB Ads)..."
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition resize-none leading-relaxed"
-                          required
-                        />
-                      </div>
-
-                      {/* Agreement Checkbox */}
-                      <div className="pt-2">
-                        <label className="flex items-start gap-3 p-3.5 rounded-2xl bg-slate-950 border border-slate-800/80 cursor-pointer group">
-                          <input
-                            type="checkbox"
-                            checked={agreedTerms}
-                            onChange={(e) => setAgreedTerms(e.target.checked)}
-                            className="mt-0.5 w-4 h-4 rounded bg-slate-900 border-slate-700 text-emerald-500 focus:ring-emerald-500/40 accent-emerald-500 shrink-0"
-                          />
-                          <span className="text-xs text-slate-300 leading-relaxed select-none">
-                            Saya menyetujui seluruh <strong>Terms of Partnership</strong> BoonTrack Shop, berkomitmen menjunjung etika promosi bebas spam/fraud, dan mengonfirmasi bahwa data rekening bank yang dicantumkan adalah sah milik saya.
-                          </span>
-                        </label>
-                      </div>
-
-                    </div>
-                  )}
-
-                  {/* ─────────────────────────────────────────────────────────────
-                      FOOTER NAVIGATION CONTROLS
-                  ───────────────────────────────────────────────────────────── */}
                   <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between gap-3">
                     {currentStep > 1 ? (
                       <button
@@ -895,30 +749,30 @@ function AffiliateRegisterContent() {
                       <div />
                     )}
 
-                    {currentStep < 3 ? (
+                    {currentStep === 1 ? (
                       <button
                         type="button"
                         onClick={handleNext}
                         className="py-3 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-emerald-500/20 cursor-pointer"
                       >
-                        <span>Lanjut ke Tahap {currentStep + 1}</span>
+                        <span>Lanjut ke Data Rekening</span>
                         <ArrowRight className="w-4 h-4" />
                       </button>
                     ) : (
                       <button
                         type="submit"
-                        disabled={loading || !agreedTerms}
+                        disabled={loading}
                         className="py-3.5 px-7 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-extrabold text-xs flex items-center gap-2 transition shadow-xl shadow-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
                         {loading ? (
                           <>
                             <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                            <span>Memproses Pendaftaran...</span>
+                            <span>Menyimpan Pendaftaran...</span>
                           </>
                         ) : (
                           <>
                             <Send className="w-4 h-4" />
-                            <span>Kirim Pendaftaran Kemitraan</span>
+                            <span>Daftar & Masuk Dashboard Kemitraan</span>
                           </>
                         )}
                       </button>

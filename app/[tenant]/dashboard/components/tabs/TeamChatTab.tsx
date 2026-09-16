@@ -82,6 +82,8 @@ export interface TeamChatTabProps {
   isTeamScale: boolean;
   isAdsPerformance: boolean;
   handleUpgradeTier: (tier: any) => void;
+  isSoloOrTrial?: boolean;
+  trialDaysLeft?: number | null;
 }
 
 // ── DEFAULT MOCK DATA UNTUK PURE PRESENTATION LAYER ──────────────────────────
@@ -239,6 +241,8 @@ export default function TeamChatTab({
   isTeamScale,
   isAdsPerformance,
   handleUpgradeTier,
+  isSoloOrTrial = false,
+  trialDaysLeft = null,
 }: TeamChatTabProps) {
   // Local state for presentation layer
   const [conversationsList, setConversationsList] = useState<ChatConversation[]>(() => {
@@ -589,6 +593,10 @@ export default function TeamChatTab({
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
                 ADS PERFORMANCE • 2 CS SEATS
               </span>
+            ) : isSoloOrTrial ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1">
+                <Clock className="w-2.5 h-2.5 text-amber-600 animate-pulse" /> REVERSE TRIAL (7 HARI) • {trialDaysLeft !== null ? `${trialDaysLeft} HARI TERSISA` : '7 HARI'}
+              </span>
             ) : (
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
                 <Lock className="w-2.5 h-2.5 text-amber-500" /> TIER SOLO • 1 SEAT
@@ -617,6 +625,32 @@ export default function TeamChatTab({
           )}
         </div>
       </div>
+
+      {/* ── TRIAL 7 HARI NOTIFICATION BANNER (INBOX WORKSPACE) ─────────────── */}
+      {isSoloOrTrial && (
+        <div className="w-full px-4 py-2.5 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-amber-900 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700 shrink-0">
+              <Clock className="w-4 h-4 animate-pulse" />
+            </div>
+            <p className="truncate">
+              <strong>Masa Coba Gratis (Reverse Trial 7 Hari):</strong>{' '}
+              <span className="font-extrabold text-amber-950 font-mono">
+                {trialDaysLeft !== null ? `${Math.max(0, trialDaysLeft)} hari tersisa` : '7 hari tersisa'}
+              </span>
+              . Simulasi Live CS, otomasi bot AI, dan quick POS QRIS dapat Anda coba langsung di sini.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleUpgradeTier?.('ads_performance')}
+            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold shadow-xs transition shrink-0 cursor-pointer flex items-center gap-1"
+          >
+            <Sparkles className="w-3 h-3 text-yellow-300" />
+            <span>Upgrade Ads Performance</span>
+          </button>
+        </div>
+      )}
 
       {/* ── 3-PANEL WORKSPACE CONTAINER (100% W-FULL CANVAS) ───────────────── */}
       <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[680px] lg:h-[calc(100vh-210px)]">

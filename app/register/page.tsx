@@ -51,6 +51,7 @@ const CATEGORIES = [
     label: "Kuliner & F&B",
     desc: "Frozen food, makanan, camilan, minuman",
     icon: UtensilsCrossed,
+    comingSoon: true,
   },
   {
     id: "local_service",
@@ -542,12 +543,18 @@ export default function RegisterShopPage() {
     if (formattedPhone.startsWith('0')) formattedPhone = '62' + formattedPhone.slice(1);
     else if (formattedPhone.startsWith('8')) formattedPhone = '62' + formattedPhone;
 
-    const trialEndsAt = new Date(Date.now() + 14 * 86400000).toISOString();
+    if (category === "fnb" || VERTICAL_MAP[category] === "FOOD") {
+      setPayError("Kategori Kuliner & F&B saat ini berstatus Coming Soon (dalam tahap pengembangan). Silakan pilih kategori bisnis lainnya.");
+      setLoadingPay(false);
+      return;
+    }
+
+    const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
 
     try {
       // 1. Simpan tenant langsung ke Supabase tenants table agar data toko & PIN benar-benar tersimpan
       const resolvedBusinessType = VERTICAL_MAP[category] || 'PHYSICAL';
-      const isPhysicalStore = resolvedBusinessType === 'PHYSICAL' || resolvedBusinessType === 'FOOD';
+      const isPhysicalStore = (resolvedBusinessType as string) === 'PHYSICAL' || (resolvedBusinessType as string) === 'FOOD';
       const isServiceStore = resolvedBusinessType === 'FIELD_SERVICE' || resolvedBusinessType === 'PROFESSIONAL_SERVICE';
 
       try {
@@ -596,7 +603,7 @@ export default function RegisterShopPage() {
             tenant_slug: slug,
             plan_tier: targetPlanTier,
             amount: planAmount,
-            trial_days: isTrial ? 14 : 0,
+            trial_days: isTrial ? 7 : 0,
             business_category: category,
             business_type: resolvedBusinessType,
             vertical_type: resolvedBusinessType,
@@ -688,7 +695,7 @@ export default function RegisterShopPage() {
   };
 
   const planLabel = {
-    solo: "Gratis Rp 0 (Trial 14 Hari)",
+    solo: "Gratis Rp 0 (Trial 7 Hari)",
     ads_performance: "Rp 299 ribu",
     team_scale: "Rp 499 ribu",
   };
@@ -794,32 +801,46 @@ export default function RegisterShopPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                   {CATEGORIES.map((cat) => {
                     const Icon = cat.icon;
-                    const isSelected = category === cat.id;
+                    const isComingSoon = Boolean((cat as any).comingSoon || cat.id === "fnb");
+                    const isSelected = category === cat.id && !isComingSoon;
                     const vertical = VERTICAL_MAP[cat.id] ?? "RETAIL";
                     return (
                       <button
                         type="button"
                         key={cat.id}
-                        onClick={() => setCategory(cat.id)}
-                        className={`p-3.5 rounded-2xl border text-left flex flex-col justify-between gap-2 transition-all cursor-pointer ${
-                          isSelected
+                        disabled={isComingSoon}
+                        onClick={() => {
+                          if (!isComingSoon) {
+                            setCategory(cat.id);
+                          }
+                        }}
+                        className={`p-3.5 rounded-2xl border text-left flex flex-col justify-between gap-2 transition-all ${
+                          isComingSoon
+                            ? "border-slate-200/80 bg-slate-100/70 text-slate-400 opacity-75 cursor-not-allowed select-none"
+                            : isSelected
                             ? cat.id === "local_service"
-                              ? "border-amber-500 bg-amber-50/70 text-amber-950 font-bold shadow-xs ring-1 ring-amber-500"
-                              : "border-blue-600 bg-blue-50/70 text-blue-950 font-bold shadow-xs ring-1 ring-blue-600"
-                            : "border-slate-200 hover:border-slate-300 bg-slate-50 text-slate-600 text-xs"
+                              ? "border-amber-500 bg-amber-50/70 text-amber-950 font-bold shadow-xs ring-1 ring-amber-500 cursor-pointer"
+                              : "border-blue-600 bg-blue-50/70 text-blue-950 font-bold shadow-xs ring-1 ring-blue-600 cursor-pointer"
+                            : "border-slate-200 hover:border-slate-300 bg-slate-50 text-slate-600 text-xs cursor-pointer"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-1 w-full">
                           <Icon
                             className={`w-4 h-4 shrink-0 ${
-                              isSelected
+                              isComingSoon
+                                ? "text-slate-400"
+                                : isSelected
                                 ? cat.id === "local_service"
                                   ? "text-amber-600"
                                   : "text-blue-600"
                                 : "text-slate-400"
                             }`}
                           />
-                          {isSelected && (
+                          {isComingSoon ? (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-300">
+                              Coming Soon
+                            </span>
+                          ) : isSelected && (
                             <span
                               className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide ${
                                 cat.id === "local_service"
@@ -832,11 +853,11 @@ export default function RegisterShopPage() {
                           )}
                         </div>
                         <div>
-                          <span className="text-xs leading-tight font-bold block text-slate-900">
+                          <span className={`text-xs leading-tight font-bold block ${isComingSoon ? "text-slate-500" : "text-slate-900"}`}>
                             {cat.label}
                           </span>
                           <span className="text-[10px] leading-snug text-slate-500 font-normal mt-0.5 block">
-                            {cat.desc}
+                            {isComingSoon ? "Fitur operasional F&B masih dalam tahap pengembangan." : cat.desc}
                           </span>
                         </div>
                       </button>
@@ -954,7 +975,7 @@ export default function RegisterShopPage() {
                     <div>
                       <div className="flex justify-between items-start mb-1">
                         <span className="font-black text-slate-900 text-xs">
-                          Solo (Trial 14 Hari)
+                          Solo (Trial 7 Hari)
                         </span>
                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                           Reverse Trial
@@ -971,13 +992,13 @@ export default function RegisterShopPage() {
                           Rp 0
                         </span>
                         <span className="text-[10px] text-slate-400 font-normal">
-                          /14 hari trial
+                          /7 hari trial
                         </span>
                       </div>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-2 leading-tight">
                       Katalog Tanpa Batas, Cek Ongkir Otomatis Multi-Ekspedisi,
-                      Akses Gratis 14 Hari Tanpa Biaya Awal
+                      Akses Gratis 7 Hari Tanpa Biaya Awal
                     </p>
                   </div>
 
@@ -1086,7 +1107,7 @@ export default function RegisterShopPage() {
                       ? "Mengaktifkan Toko Gratis..."
                       : "Menyiapkan Invoice QRIS..."
                     : selectedPlan === "solo"
-                    ? "Mulai Coba Gratis 14 Hari (Rp 0) ->"
+                    ? "Mulai Coba Gratis 7 Hari (Rp 0) ->"
                     : `Aktivasi & Bayar (${planLabel[selectedPlan]})`}
                 </span>
                 {selectedPlan !== "solo" && <ArrowRight className="w-4 h-4 ml-1" />}
