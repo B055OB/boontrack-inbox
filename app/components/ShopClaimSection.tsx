@@ -2,19 +2,19 @@
 import { useState } from 'react';
 
 export const PLAN_PRICING = {
+  starter: 199000,
   solo: 199000,
-  growth: 199000,
   ads_performance: 299000,
-  growth_tracking: 299000,
   team_scale: 499000,
-  pro_scale: 499000,
 } as const;
+
+export type ShopClaimPlan = 'starter' | 'ads_performance' | 'team_scale';
 
 export default function ShopClaimSection() {
   const [storeName, setStoreName] = useState('');
   const [slug, setSlug] = useState('');
   const [status, setStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
-  const [selectedPlan, setSelectedPlan] = useState<'growth' | 'growth_tracking' | 'pro_scale'>('growth_tracking');
+  const [selectedPlan, setSelectedPlan] = useState<ShopClaimPlan>('ads_performance');
   const [merchantData, setMerchantData] = useState({ name: '', phone: '', email: '' });
   const [loadingPay, setLoadingPay] = useState(false);
 
@@ -74,42 +74,36 @@ export default function ShopClaimSection() {
 
       <div className="space-y-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Nama Toko / Brand</label>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Nama Toko Online</label>
+          <div className="flex gap-2">
             <input
               type="text"
-              placeholder="Contoh: Toko Berkah 99"
+              placeholder="Contoh: Toko Berkah Jaya"
               value={storeName}
               onChange={(e) => handleSlugInput(e.target.value)}
-              className="flex-1 px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-base md:text-sm"
+              className="flex-1 px-4 py-2.5 border rounded-xl text-base md:text-sm outline-none focus:ring-2 focus:ring-blue-500 transition"
             />
             <button
+              type="button"
               onClick={handleCheckAvailability}
-              disabled={status === 'checking' || !slug}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition disabled:opacity-50 cursor-pointer shrink-0"
+              className="px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition cursor-pointer"
             >
-              {status === 'checking' ? 'Mengecek...' : 'Cek Ketersediaan'}
+              Cek Domain
             </button>
           </div>
           {slug && (
-            <p className="text-xs text-gray-400 mt-1">Domain: <span className="font-mono text-gray-600 font-semibold">shop.boontrack.com/{slug}</span></p>
+            <p className="text-xs text-gray-500 mt-1 font-mono">
+              Domain: <span className="font-bold text-blue-600">shop.boontrack.com/{slug}</span>
+              {status === 'available' && <span className="text-green-600 font-bold ml-2">✓ Tersedia</span>}
+              {status === 'taken' && <span className="text-red-500 font-bold ml-2">✗ Sudah Dipakai</span>}
+            </p>
           )}
         </div>
 
-        {status === 'taken' && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-            ❌ Nama toko <b>{slug}</b> sudah dipakai. Silakan gunakan nama lain.
-          </div>
-        )}
-
         {status === 'available' && (
-          <form onSubmit={handleRegisterAndPay} className="space-y-3 pt-2">
-            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm">
-              🎉 <b>shop.boontrack.com/{slug}</b> tersedia! Lengkapi data registrasi:
-            </div>
-
+          <form onSubmit={handleRegisterAndPay} className="space-y-3 pt-2 border-t border-gray-100">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Nama Pemilik Toko</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Nama Pemilik</label>
               <input
                 type="text"
                 required
@@ -121,7 +115,7 @@ export default function ShopClaimSection() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Nomor WhatsApp Aktif</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Nomor WhatsApp</label>
               <input
                 type="tel"
                 required
@@ -148,15 +142,15 @@ export default function ShopClaimSection() {
               <label className="block text-xs font-semibold text-gray-700 uppercase mb-2">Pilih Paket Langganan</label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 
-                {/* Growth */}
+                {/* 1. Solo / Starter */}
                 <div
-                  onClick={() => setSelectedPlan('growth')}
+                  onClick={() => setSelectedPlan('starter')}
                   className={`p-3 border rounded-xl cursor-pointer text-left transition ${
-                    selectedPlan === 'growth' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'
+                    selectedPlan === 'starter' ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex justify-between items-center">
-                    <p className="font-bold text-xs text-gray-900">Growth</p>
+                    <p className="font-bold text-xs text-gray-900">Solo / Starter</p>
                     <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">Hemat 43%</span>
                   </div>
                   <div className="flex items-baseline gap-1 mt-1 flex-wrap">
@@ -165,20 +159,20 @@ export default function ShopClaimSection() {
                     <span className="text-[10px] font-normal text-gray-500">/bln</span>
                   </div>
                   <p className="text-[10px] text-gray-500 mt-1 font-medium leading-snug">
-                    Starter Pack: AI Webchat & WA (Jalur Unofficial), QRIS Otomatis
+                    Starter Pack: AI Webchat &amp; WA Bot, QRIS Otomatis, Cek Ongkir
                   </p>
                 </div>
 
-                {/* Growth Tracking System */}
+                {/* 2. Ads Performance */}
                 <div
-                  onClick={() => setSelectedPlan('growth_tracking')}
+                  onClick={() => setSelectedPlan('ads_performance')}
                   className={`p-3 border-2 rounded-xl cursor-pointer text-left transition relative ${
-                    selectedPlan === 'growth_tracking' ? 'border-blue-600 bg-blue-50/60 shadow-sm' : 'border-blue-200 hover:border-blue-300'
+                    selectedPlan === 'ads_performance' ? 'border-blue-600 bg-blue-50/60 shadow-sm' : 'border-blue-200 hover:border-blue-300'
                   }`}
                 >
                   <div className="flex justify-between items-center">
-                    <p className="font-bold text-xs text-blue-900">Growth Tracking</p>
-                    <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1 py-0.5 rounded">Paling Hemat</span>
+                    <p className="font-bold text-xs text-blue-900">Ads Performance</p>
+                    <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1 py-0.5 rounded">Paling Populer</span>
                   </div>
                   <div className="flex items-baseline gap-1 mt-1 flex-wrap">
                     <span className="text-[10px] text-gray-400 line-through">Rp 599 ribu</span>
@@ -186,19 +180,19 @@ export default function ShopClaimSection() {
                     <span className="text-[10px] font-normal text-gray-500">/bln</span>
                   </div>
                   <p className="text-[10px] text-gray-600 mt-1 font-medium leading-snug">
-                    Scale-Up: Meta CAPI + TikTok, Cek Ongkir Kurir & Resi Otomatis
+                    Scale-Up Ads: Meta CAPI + TikTok, God Button &amp; 2 Seats CS
                   </p>
                 </div>
 
-                {/* Pro Scale */}
+                {/* 3. Team Scale */}
                 <div
-                  onClick={() => setSelectedPlan('pro_scale')}
+                  onClick={() => setSelectedPlan('team_scale')}
                   className={`p-3 border rounded-xl cursor-pointer text-left transition ${
-                    selectedPlan === 'pro_scale' ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-gray-200 hover:border-gray-300'
+                    selectedPlan === 'team_scale' ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-500' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <div className="flex justify-between items-center">
-                    <p className="font-bold text-xs text-gray-900">Pro Scale</p>
+                    <p className="font-bold text-xs text-gray-900">Team Scale</p>
                     <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded">Official Meta</span>
                   </div>
                   <div className="flex items-baseline gap-1 mt-1 flex-wrap">
@@ -207,7 +201,7 @@ export default function ShopClaimSection() {
                     <span className="text-[10px] font-normal text-gray-500">/bln</span>
                   </div>
                   <p className="text-[10px] text-gray-500 mt-1 font-medium leading-snug">
-                    Enterprise: Official Meta Cloud API, Anti-Banned, Centang Hijau
+                    Full Tim: Multi-Seat CS, Official Meta Cloud API, Broadcast WA
                   </p>
                 </div>
 
@@ -222,9 +216,9 @@ export default function ShopClaimSection() {
               {loadingPay
                 ? 'Menyiapkan Pembayaran...'
                 : `Aktivasi & Bayar (${
-                    selectedPlan === 'growth'
+                    selectedPlan === 'starter'
                       ? 'Rp 199 ribu'
-                      : selectedPlan === 'growth_tracking'
+                      : selectedPlan === 'ads_performance'
                       ? 'Rp 299 ribu'
                       : 'Rp 499 ribu'
                   })`}

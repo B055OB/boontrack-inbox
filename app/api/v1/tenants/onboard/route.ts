@@ -15,8 +15,30 @@ export async function POST(req: NextRequest) {
     const merchantName = body.merchantName || body.merchant_name || storeName;
     const customerEmail = body.email || body.customer_email || null;
     const pin = String(body.pin || body.password || body.access_pin || '123456').trim();
-    const selectedPlan = String(body.selectedPlan || body.plan_tier || body.plan || 'solo').toLowerCase();
-    const isTrial = selectedPlan === 'solo' || selectedPlan === 'solo_trial';
+    const rawPlan = String(body.selectedPlan || body.plan_tier || body.tier || body.plan || 'starter').toLowerCase();
+
+    // Standarisasi 3 Tier Resmi & Pemetaan ke Enum PostgreSQL (tenant_tier_enum):
+    // 1. "Solo / Starter" -> enum database: 'STARTER'
+    // 2. "Ads Performance" -> enum database: 'PRO_SCALE'
+    // 3. "Team Scale" -> enum database: 'ENTERPRISE'
+    let dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = 'STARTER';
+    let canonicalPlanTier: 'STARTER' | 'ADS_PERFORMANCE' | 'TEAM_SCALE' = 'STARTER';
+    let isTrial = false;
+
+    if (rawPlan.includes('team') || rawPlan.includes('enterprise') || rawPlan.includes('scale')) {
+      dbTier = 'ENTERPRISE';
+      canonicalPlanTier = 'TEAM_SCALE';
+      isTrial = false;
+    } else if (rawPlan.includes('ads') || rawPlan.includes('performance') || rawPlan.includes('pro')) {
+      dbTier = 'PRO_SCALE';
+      canonicalPlanTier = 'ADS_PERFORMANCE';
+      isTrial = false;
+    } else {
+      // Solo / Starter (Default)
+      dbTier = 'STARTER';
+      canonicalPlanTier = 'STARTER';
+      isTrial = true;
+    }
 
     const category = body.category || body.business_type || 'PHYSICAL';
     const referralCode = body.referralCode || body.referral_code || body.ref || body.affiliate_code || null;
@@ -133,8 +155,6 @@ export async function POST(req: NextRequest) {
     const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
     const subscriptionEndsAt = isTrial ? trialEndsAt : new Date(Date.now() + 30 * 86400000).toISOString();
 
-    // Map database enum: PostgreSQL tenant_tier_enum only allows STARTER, FREE, GROWTH, PRO_SCALE, ENTERPRISE
-    const dbTier = isTrial ? 'STARTER' : selectedPlan === 'team_scale' ? 'ENTERPRISE' : 'PRO_SCALE';
     const storeStatus = isTrial ? 'trial' : 'active';
 
     // 1. INSERT / UPSERT ke tabel tenants di Supabase
@@ -163,8 +183,8 @@ export async function POST(req: NextRequest) {
             email: customerEmail,
             access_pin: pin,
             pin_hash: pin,
-            plan_tier: isTrial ? 'SOLO_TRIAL' : selectedPlan,
-            tier: isTrial ? 'SOLO_TRIAL' : selectedPlan,
+            plan_tier: canonicalPlanTier,
+            tier: dbTier,
             created_via: isTrial ? 'register_solo_trial' : 'register_paid',
             trial_ends_at: isTrial ? trialEndsAt : null,
             subscription_ends_at: subscriptionEndsAt,
@@ -185,7 +205,7 @@ export async function POST(req: NextRequest) {
             utm_content: utmObj.content,
             utm_term: utmObj.term,
             capabilities: {
-              inbox: selectedPlan === 'team_scale',
+              inbox: dbTier === 'ENTERPRISE',
               ai_bot: true,
               shipping: isPhysicalStore,
               booking: isServiceStore,
@@ -271,6 +291,7 @@ export async function POST(req: NextRequest) {
         referralCode: cleanRef,
         affiliateId: matchedAffiliateId,
         tier: dbTier,
+        planTier: canonicalPlanTier,
         isTrial,
       },
       redirectWaUrl,

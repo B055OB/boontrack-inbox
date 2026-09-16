@@ -103,10 +103,10 @@ const VERTICAL_MAP: Record<string, CanonicalBusinessType> = {
   creator_agency: "CREATOR_AGENCY",
 };
 
-export const PLAN_PRICING: Record<
-  "solo" | "ads_performance" | "team_scale",
-  number
-> = {
+export type OfficialPlan = "starter" | "solo" | "ads_performance" | "team_scale";
+
+export const PLAN_PRICING: Record<OfficialPlan, number> = {
+  starter: 0,
   solo: 0,
   ads_performance: 299000,
   team_scale: 499000,
@@ -431,9 +431,8 @@ export default function RegisterShopPage() {
     "idle" | "checking" | "available" | "taken"
   >("idle");
   const [category, setCategory] = useState<string>("PHYSICAL");
-  const [selectedPlan, setSelectedPlan] = useState<
-    "solo" | "ads_performance" | "team_scale"
-  >("solo");
+  const [selectedPlan, setSelectedPlan] = useState<OfficialPlan>("starter");
+  const isTrialPlan = selectedPlan === "starter" || selectedPlan === "solo";
   const [merchantData, setMerchantData] = useState({
     name: "",
     phone: "",
@@ -561,8 +560,8 @@ export default function RegisterShopPage() {
         }
       }
 
-      if (initialPlan === "solo" || initialPlan === "growth") {
-        setSelectedPlan("solo");
+      if (initialPlan === "solo" || initialPlan === "starter" || initialPlan === "growth") {
+        setSelectedPlan("starter");
       } else if (
         initialPlan === "ads_performance" ||
         initialPlan === "growth_tracking"
@@ -647,9 +646,22 @@ export default function RegisterShopPage() {
       return;
     }
 
-    const isTrial = selectedPlan === 'solo';
+    // Standarisasi 3 Tier Resmi:
+    // 1. "Solo / Starter" -> enum database: 'STARTER'
+    // 2. "Ads Performance" -> enum database: 'PRO_SCALE'
+    // 3. "Team Scale" -> enum database: 'ENTERPRISE'
+    const isTrial = selectedPlan === 'starter' || selectedPlan === 'solo';
     const planAmount = isTrial ? 0 : (PLAN_PRICING[selectedPlan] ?? 299000);
-    const targetPlanTier = isTrial ? 'solo_trial' : selectedPlan;
+    const dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = isTrial
+      ? 'STARTER'
+      : selectedPlan === 'team_scale'
+      ? 'ENTERPRISE'
+      : 'PRO_SCALE';
+    const targetPlanTier: 'STARTER' | 'ADS_PERFORMANCE' | 'TEAM_SCALE' = isTrial
+      ? 'STARTER'
+      : selectedPlan === 'team_scale'
+      ? 'TEAM_SCALE'
+      : 'ADS_PERFORMANCE';
 
     // Standarisasi nomor telepon WhatsApp (format 62...)
     let formattedPhone = merchantData.phone.replace(/[^0-9]/g, '');
@@ -752,7 +764,7 @@ export default function RegisterShopPage() {
               name: storeName,
               category: resolvedBusinessType,
               business_type: resolvedBusinessType,
-              tier: isTrial ? 'STARTER' : (selectedPlan === 'team_scale' ? 'ENTERPRISE' : 'PRO_SCALE'),
+              tier: dbTier,
               status: isTrial ? 'trial' : 'active',
               is_active: true,
               trial_ends_at: isTrial ? trialEndsAt : null,
@@ -768,7 +780,8 @@ export default function RegisterShopPage() {
                 access_pin: cleanPin,
                 pin_hash: cleanPin,
                 trial_ends_at: isTrial ? trialEndsAt : null,
-                subscription_ends_at: isTrial ? trialEndsAt : new Date(Date.now() + 30 * 86400000).toISOString(),
+                plan_tier: targetPlanTier,
+                tier: dbTier,
                 created_via: isTrial ? 'register_solo_trial' : 'register_paid',
                 referral_code: cleanRef,
                 affiliate_code: cleanRef,
@@ -786,7 +799,7 @@ export default function RegisterShopPage() {
                 utm_content: utmParams.utm_content || undefined,
                 utm_term: utmParams.utm_term || undefined,
                 capabilities: {
-                  inbox: selectedPlan === 'team_scale',
+                  inbox: dbTier === 'ENTERPRISE',
                   ai_bot: true,
                   shipping: isPhysicalStore,
                   booking: isServiceStore,
@@ -1272,11 +1285,11 @@ export default function RegisterShopPage() {
                   4. Pilih Paket Langganan:
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Solo 199k */}
+                  {/* 1. Solo / Starter */}
                   <div
-                    onClick={() => setSelectedPlan("solo")}
+                    onClick={() => setSelectedPlan("starter")}
                     className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                      selectedPlan === "solo"
+                      selectedPlan === "starter" || selectedPlan === "solo"
                         ? "border-blue-600 bg-blue-50/50 shadow-xs ring-1 ring-blue-500"
                         : "border-slate-200 hover:border-slate-300 bg-white"
                     }`}
@@ -1284,10 +1297,10 @@ export default function RegisterShopPage() {
                     <div>
                       <div className="flex justify-between items-start mb-1">
                         <span className="font-black text-slate-900 text-xs">
-                          Solo (Trial 7 Hari)
+                          Solo / Starter
                         </span>
                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                          Reverse Trial
+                          Trial 7 Hari
                         </span>
                       </div>
                       <p className="text-[10px] text-emerald-600 font-semibold mb-1.5">
@@ -1311,7 +1324,7 @@ export default function RegisterShopPage() {
                     </p>
                   </div>
 
-                  {/* Ads Performance 299k */}
+                  {/* 2. Ads Performance */}
                   <div
                     onClick={() => setSelectedPlan("ads_performance")}
                     className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between relative ${
@@ -1345,12 +1358,12 @@ export default function RegisterShopPage() {
                       </div>
                     </div>
                     <p className="text-[11px] text-slate-600 mt-2 leading-tight font-medium">
-                      Semua Fitur Solo + Meta &amp; TikTok CAPI Server-Side,
+                      Semua Fitur Solo / Starter + Meta &amp; TikTok CAPI Server-Side,
                       God Button &amp; 2 Seats CS Inbox
                     </p>
                   </div>
 
-                  {/* Team Scale 499k */}
+                  {/* 3. Team Scale */}
                   <div
                     onClick={() => setSelectedPlan("team_scale")}
                     className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
@@ -1369,7 +1382,7 @@ export default function RegisterShopPage() {
                         </span>
                       </div>
                       <p className="text-[10px] text-emerald-700 font-semibold mb-1.5">
-                        Full Skala Tim
+                        Full Skala Tim &amp; WABA
                       </p>
                       <div className="flex items-baseline gap-1.5 flex-wrap">
                         <span className="text-xs text-slate-400 line-through">
@@ -1405,21 +1418,23 @@ export default function RegisterShopPage() {
                 disabled={loadingPay || !slug}
                 className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                {selectedPlan === "solo" ? (
+                {isTrialPlan ? (
                   <Sparkles className="w-4 h-4 text-yellow-300" />
                 ) : (
                   <CreditCard className="w-4 h-4" />
                 )}
                 <span>
                   {loadingPay
-                    ? selectedPlan === "solo"
+                    ? isTrialPlan
                       ? "Mengaktifkan Toko Gratis..."
                       : "Menyiapkan Invoice QRIS..."
-                    : selectedPlan === "solo"
+                    : isTrialPlan
                     ? "Mulai Coba Gratis 7 Hari (Rp 0) ->"
-                    : `Aktivasi & Bayar (${planLabel[selectedPlan]})`}
+                    : selectedPlan === "team_scale"
+                    ? "Aktivasi & Bayar (Rp 499k)"
+                    : "Aktivasi & Bayar (Rp 299k)"}
                 </span>
-                {selectedPlan !== "solo" && <ArrowRight className="w-4 h-4 ml-1" />}
+                {!isTrialPlan && <ArrowRight className="w-4 h-4 ml-1" />}
               </button>
 
               <p className="text-[11px] text-center text-slate-500 leading-relaxed pt-1">
