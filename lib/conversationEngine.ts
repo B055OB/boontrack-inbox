@@ -7,6 +7,7 @@ import {
   formatInteractiveMenu,
   formatInteractiveMenusSummary,
 } from '@/lib/whatsappFormatter';
+import { processZeroAiMessage } from '@/lib/zero-ai-engine';
 
 function getEngineSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
@@ -79,6 +80,39 @@ export class ConversationEngine {
         entities: {},
         is_booking_ready: false,
       };
+    }
+
+    // --- BOONTRACK ZERO-AI COMMERCE ASSISTANT (ZERO-TOKEN DETERMINISTIC ENGINE) ---
+    const zeroAiRes = await processZeroAiMessage({
+      tenant_slug: tenant_id,
+      message,
+      sender_phone: user_identifier,
+      interactive_reply: payload.interactive_reply,
+      channel_type: channelType,
+    });
+
+    if (zeroAiRes.handled) {
+      trace.push(`ZERO_AI_${zeroAiRes.type}`);
+      if (zeroAiRes.silent) {
+        return {
+          reply: '',
+          next_state: 'HUMAN_TAKEOVER',
+          state_trace: trace,
+          entities: {},
+          is_booking_ready: false,
+        };
+      }
+
+      if (zeroAiRes.reply) {
+        return {
+          reply: zeroAiRes.reply,
+          next_state: zeroAiRes.intent_key || 'MENU_OPTION',
+          state_trace: trace,
+          entities: {},
+          is_booking_ready: false,
+          interactive_payload: zeroAiRes.interactive_payload,
+        };
+      }
     }
 
     // 1. Ambil Sesi & State Saat Ini

@@ -11,6 +11,7 @@ import {
   formatInteractiveMenu,
   formatInteractiveMenusSummary,
 } from '@/lib/whatsappFormatter';
+import { processZeroAiMessage } from '@/lib/zero-ai-engine';
 
 interface ProductContext {
   name?: string;
@@ -95,6 +96,42 @@ export async function POST(req: NextRequest) {
         type: funnelRes.isBookingCreated ? 'BOOKING_CONFIRMED' : 'TEXT',
         booking: funnelRes.bookingData,
       });
+    }
+
+    // --- BOONTRACK ZERO-AI COMMERCE ASSISTANT (ZERO-TOKEN DETERMINISTIC ENGINE) ---
+    const zeroAiRes = await processZeroAiMessage({
+      tenant_slug: slug,
+      message,
+      sender_phone: senderPhone,
+      interactive_reply: body.interactive_reply,
+      channel_type: channel === 'WABA' ? 'WABA' : 'WAHA',
+    });
+
+    if (zeroAiRes.handled) {
+      if (zeroAiRes.silent) {
+        return NextResponse.json({
+          success: true,
+          silent: true,
+          reply: '',
+          tenant_id: slug,
+          tenant_slug: slug,
+          type: 'HUMAN_TAKEOVER_SILENT',
+          data: zeroAiRes.data,
+        });
+      }
+
+      if (zeroAiRes.reply) {
+        return NextResponse.json({
+          success: true,
+          reply: zeroAiRes.reply,
+          tenant_id: slug,
+          tenant_slug: slug,
+          checkout_url: checkoutUrl,
+          type: zeroAiRes.type,
+          intent_key: zeroAiRes.intent_key,
+          interactive_payload: zeroAiRes.interactive_payload,
+        });
+      }
     }
 
     // --- INBOUND FAST-PATH 1: WABA Interactive Reply / Numbered Option Match (BYPASS LLM) ---

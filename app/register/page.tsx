@@ -28,6 +28,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
+import BoonPilotVerificationPrompt from "@/components/BoonPilotVerificationPrompt";
 
 const STATIC_QRIS =
   process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
@@ -551,6 +552,14 @@ export default function RegisterShopPage() {
   // Invoice modal state
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
 
+  // Boon Pilot Email Verification state
+  const [verificationData, setVerificationData] = useState<{
+    email: string;
+    name: string;
+    slug: string;
+    storeName: string;
+  } | null>(null);
+
   const sanitize = (val: string) => {
     return val
       .toLowerCase()
@@ -970,20 +979,22 @@ export default function RegisterShopPage() {
         }),
       }).catch((notifyErr) => console.warn('Credentials notification dispatch note:', notifyErr));
 
-      // 4. REVERSE-TRIAL: Set auth session cookie / localStorage secara otomatis & redirect langsung ke dashboard
-      if (isTrial) {
-        if (typeof window !== "undefined") {
-          localStorage.setItem("merchant_store", slug);
-          localStorage.setItem("merchant_pin", cleanPin);
-          localStorage.setItem("merchant_login_at", new Date().toISOString());
-          document.cookie = `merchant_store=${slug}; path=/; max-age=2592000; SameSite=Lax`;
-          document.cookie = `merchant_session=${slug}; path=/; max-age=2592000; SameSite=Lax`;
-          document.cookie = `bt_tenant=${slug}; path=/; max-age=2592000; SameSite=Lax`;
-        }
-
-        router.push(`/${slug}/dashboard`);
-        return;
+      // 4. Wajib Konfirmasi Email (Boon Pilot Activation Guard)
+      // Tampilkan layar "Cek Email Anda" meminta pengguna membuka inbox untuk aktivasi akun
+      if (typeof window !== "undefined") {
+        localStorage.setItem("merchant_store", slug);
+        localStorage.setItem("merchant_pin", cleanPin);
+        document.cookie = `merchant_store=${slug}; path=/; max-age=2592000; SameSite=Lax`;
       }
+
+      setVerificationData({
+        email: merchantData.email,
+        name: merchantData.name,
+        slug,
+        storeName,
+      });
+      setLoadingPay(false);
+      return;
 
       // PAKET BERBAYAR LANGSUNG (Ads Performance / Team Scale): Tampilkan modal QRIS
       const invoiceId: string =
@@ -1048,6 +1059,20 @@ export default function RegisterShopPage() {
           onClose={() => setInvoiceData(null)}
           onPaid={handlePaymentSuccess}
         />
+      )}
+
+      {/* ── BOON PILOT EMAIL VERIFICATION PROMPT ────────────────────────── */}
+      {verificationData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 overflow-y-auto">
+          <BoonPilotVerificationPrompt
+            email={verificationData.email}
+            name={verificationData.name}
+            type="merchant"
+            slug={verificationData.slug}
+            storeName={verificationData.storeName}
+            onBack={() => setVerificationData(null)}
+          />
+        </div>
       )}
 
       <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans py-10 px-4 sm:px-6 flex flex-col justify-center items-center">

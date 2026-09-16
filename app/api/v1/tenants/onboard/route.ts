@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
+import { sendBoonPilotVerificationEmail } from '@/lib/boonpilot-email';
+import { buildDefaultIndustryMenu } from '@/lib/zero-ai-engine';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -176,7 +179,17 @@ export async function POST(req: NextRequest) {
 
     const storeStatus = isTrial ? 'trial' : 'active';
 
-    // 1. INSERT / UPSERT ke tabel tenants di Supabase
+    // Generate verification token (24 hours expiry)
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationExpiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+
+    // Generate default dynamic Zero-AI navigation menu based on 6 official industry categories
+    const defaultIndustryMenu = buildDefaultIndustryMenu(resolvedBusinessType, {
+      name: storeName,
+      slug: generatedSlug,
+    });
+
+    // 1. INSERT / UPSERT ke tabel tenants di Supabase dengan status belum aktif (unverified)
     const { data: upsertedTenant, error: upsertError } = await supabase
       .from('tenants')
       .upsert(
@@ -186,8 +199,8 @@ export async function POST(req: NextRequest) {
           category: resolvedBusinessType,
           business_type: resolvedBusinessType,
           tier: dbTier,
-          status: storeStatus,
-          is_active: true,
+          status: 'unverified',
+          is_active: false,
           trial_ends_at: isTrial ? trialEndsAt : null,
           subscription_ends_at: subscriptionEndsAt,
           access_username: generatedSlug,
@@ -200,6 +213,9 @@ export async function POST(req: NextRequest) {
             wa_number: formattedWa,
             phone: formattedWa,
             email: customerEmail,
+            email_verified: false,
+            verification_token: verificationToken,
+            verification_expires_at: verificationExpiresAt,
             access_pin: pin,
             pin_hash: pin,
             plan_tier: canonicalPlanTier,
@@ -217,6 +233,10 @@ export async function POST(req: NextRequest) {
             business_type: resolvedBusinessType,
             vertical_type: resolvedBusinessType,
             category: resolvedBusinessType,
+            interactive_menus: [defaultIndustryMenu],
+            bot_mode: 'STATIC',
+            bot_status: 'BOT_ACTIVE',
+            is_bot_active: true,
             utm_params: utmObj,
             utm_source: utmObj.source,
             utm_medium: utmObj.medium,
@@ -288,7 +308,29 @@ export async function POST(req: NextRequest) {
     const botNumber = process.env.NEXT_PUBLIC_META_BOT_NUMBER || '15556769563';
     const redirectWaUrl = `https://wa.me/${botNumber}?text=Halo%20Admin%20BoonTrack%2C%20saya%20baru%20saja%20mendaftar%20toko%20${encodeURIComponent(generatedSlug)}`;
 
-    // 3. Forward/Sync ke Core Backend jika online
+    // 3. Kirim Email Aktivasi Resmi dari Boon Pilot via Resend
+    let verificationSent = false;
+    if (customerEmail) {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
+        const verificationUrl = `${baseUrl}/auth/verify?token=${verificationToken}&type=merchant&slug=${generatedSlug}&id=${effectiveTenantId || ''}`;
+
+        const emailResult = await sendBoonPilotVerificationEmail({
+          to: customerEmail,
+          name: merchantName || storeName,
+          role: 'merchant',
+          verificationUrl,
+          storeName,
+          expiresInHours: 24,
+        });
+
+        verificationSent = Boolean(emailResult.success);
+      } catch (mailErr) {
+        console.warn('[Onboard] Error sending Boon Pilot verification email:', mailErr);
+      }
+    }
+
+    // 4. Forward/Sync ke Core Backend jika online
     try {
       await fetch(getBackendApiUrl('/api/v1/tenants/onboard'), {
         method: 'POST',
@@ -302,11 +344,15 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Toko berhasil didaftarkan dan disimpan ke database.',
+      message: 'Toko berhasil didaftarkan. Silakan konfirmasi email Anda untuk aktivasi.',
+      needs_verification: true,
+      verification_sent: verificationSent,
+      email: customerEmail,
       tenant: {
         id: effectiveTenantId,
         slug: generatedSlug,
         storeName,
+        email: customerEmail,
         category: resolvedBusinessType,
         referralCode: cleanRef,
         affiliateId: matchedAffiliateId,

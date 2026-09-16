@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
             Authorization: `Bearer ${resendKey}`,
           },
           body: JSON.stringify({
-            from: 'BoonTrack <support@boontrack.com>',
+            from: process.env.RESEND_FROM || process.env.EMAIL_FROM || 'Boon Pilot <pilot@boontrack.com>',
             to: [email],
             subject: `🎉 Selamat Datang di BoonTrack Shop! Kredensial Toko ${store_name || tenant_slug}`,
             html: `
