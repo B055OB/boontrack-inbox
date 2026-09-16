@@ -109,14 +109,57 @@ async function handleVerify(req: NextRequest) {
       });
     }
 
-    // ── CASE B: MERCHANT / TENANT ACTIVATION (DEFAULT) ──
     let tenantQuery = supabase.from('tenants').select('*');
     if (slug) {
       tenantQuery = tenantQuery.eq('slug', slug);
     } else if (id) {
       tenantQuery = tenantQuery.eq('id', id);
+    } else {
+      tenantQuery = tenantQuery.eq('metadata->>verification_token', token);
     }
-    const { data: tenantList, error: tErr } = await tenantQuery;
+    let { data: tenantList, error: tErr } = await tenantQuery;
+
+    // Fallback: if not found by metadata query, check affiliates
+    if ((!tenantList || tenantList.length === 0) && !slug && !id) {
+      const { data: affDirect } = await supabase
+        .from('affiliates')
+        .select('*')
+        .eq('metadata->>verification_token', token);
+
+      if (affDirect && affDirect.length > 0) {
+        const matchedAff = affDirect[0];
+        const tokenExpiresAt = matchedAff.metadata?.verification_expires_at;
+        if (tokenExpiresAt && new Date(tokenExpiresAt).getTime() < Date.now()) {
+          return NextResponse.json(
+            { success: false, error: 'Tautan aktivasi telah kedaluwarsa. Silakan minta kirim ulang email.' },
+            { status: 400 }
+          );
+        }
+
+        const updatedMeta = {
+          ...(matchedAff.metadata || {}),
+          email_verified: true,
+          email_verified_at: new Date().toISOString(),
+          verification_token: null,
+        };
+
+        await supabase
+          .from('affiliates')
+          .update({
+            status: 'ACTIVE',
+            metadata: updatedMeta,
+          })
+          .eq('id', matchedAff.id);
+
+        return NextResponse.json({
+          success: true,
+          message: 'Akun kemitraan affiliate Anda berhasil diaktifkan!',
+          type: 'affiliate',
+          referral_code: matchedAff.referral_code,
+          redirect_url: '/affiliate/dashboard',
+        });
+      }
+    }
 
     if (tErr || !tenantList || tenantList.length === 0) {
       return NextResponse.json(

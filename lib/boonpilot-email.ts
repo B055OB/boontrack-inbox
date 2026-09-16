@@ -144,7 +144,7 @@ export function buildBoonPilotVerificationHtml(options: BoonPilotEmailOptions): 
 export async function sendBoonPilotVerificationEmail(
   options: BoonPilotEmailOptions
 ): Promise<SendEmailResult> {
-  const resendApiKey = process.env.RESEND_API_KEY || '';
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim().replace(/^["']|["']$/g, '');
 
   if (!resendApiKey) {
     console.warn('[BoonPilotEmail] RESEND_API_KEY is not configured in environment.');
@@ -216,13 +216,44 @@ export async function sendBoonPilotVerificationEmail(
       };
     }
 
-    const errDetail = fallbackData?.message || fallbackData?.error || 'Gagal mengirim email via Resend API.';
+    console.warn('[BoonPilotEmail] Fallback sender note, trying onboarding@resend.dev...', fallbackData);
+  } catch (fallbackErr) {
+    console.warn('[BoonPilotEmail] Error on fallback sender attempt:', fallbackErr);
+  }
+
+  // Attempt 3: Default Resend testing sender if custom domain is not yet verified
+  try {
+    const devRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify({
+        from: 'Boon Pilot <onboarding@resend.dev>',
+        to: [options.to],
+        subject,
+        html: htmlContent,
+      }),
+    });
+
+    const devData = await devRes.json().catch(() => ({}));
+
+    if (devRes.ok && devData?.id) {
+      return {
+        success: true,
+        messageId: devData.id,
+        senderUsed: 'Boon Pilot <onboarding@resend.dev>',
+      };
+    }
+
+    const errDetail = devData?.message || devData?.error || 'Gagal mengirim email via Resend API.';
     return {
       success: false,
       error: errDetail,
     };
-  } catch (fallbackErr: unknown) {
-    const msg = fallbackErr instanceof Error ? fallbackErr.message : 'Kesalahan jaringan saat memanggil Resend API.';
+  } catch (devErr: unknown) {
+    const msg = devErr instanceof Error ? devErr.message : 'Kesalahan jaringan saat memanggil Resend API.';
     return {
       success: false,
       error: msg,

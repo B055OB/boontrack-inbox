@@ -13,12 +13,14 @@ import {
   Store,
   ExternalLink,
   ShieldCheck,
+  Bot,
 } from 'lucide-react';
 
-function VerifyContent() {
+function ConfirmContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  // Support various parameter naming conventions (token, token_hash, code)
   const token =
     searchParams.get('token') ||
     searchParams.get('token_hash') ||
@@ -30,6 +32,7 @@ function VerifyContent() {
 
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
   const [message, setMessage] = useState('Boon Pilot sedang memverifikasi token aktivasi akun Anda...');
+  const [storeName, setStoreName] = useState('');
   const [redirectUrl, setRedirectUrl] = useState('');
   const [resendEmail, setResendEmail] = useState('');
   const [isResending, setIsResending] = useState(false);
@@ -60,13 +63,17 @@ function VerifyContent() {
         if (res.ok && data.success) {
           setStatus('success');
           setMessage(data.message || 'Akun Anda berhasil diaktifkan!');
-          const dest = data.redirect_url || (type === 'affiliate' ? '/affiliate/dashboard' : `/${slug || 'login'}`);
+          if (data.store_name) setStoreName(data.store_name);
+
+          const dest =
+            data.redirect_url ||
+            (type === 'affiliate' ? '/affiliate/dashboard' : `/${data.tenant_slug || slug || 'login'}`);
           setRedirectUrl(dest);
 
-          // Auto-redirect after 3.5 seconds
+          // Auto-redirect after 4 seconds
           setTimeout(() => {
             router.push(dest);
-          }, 3500);
+          }, 4000);
         } else {
           setStatus('error');
           setMessage(data.error || 'Tautan aktivasi tidak valid atau telah kedaluwarsa.');
@@ -116,26 +123,26 @@ function VerifyContent() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans">
-      {/* Background Glows */}
+      {/* Background Ambient Glows */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[550px] h-[550px] bg-emerald-600/10 rounded-full blur-[140px]" />
-        <div className="absolute bottom-10 right-1/4 w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-10 right-1/4 w-[400px] h-[400px] bg-teal-600/10 rounded-full blur-[120px]" />
       </div>
 
       <div className="relative z-10 w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl text-center space-y-6">
         {/* Header Persona Badge */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-300">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-300 shadow-sm">
+          <Bot className="w-3.5 h-3.5 text-emerald-400" />
           <span>Boon Pilot Account Activation</span>
         </div>
 
         {/* ── STATE: VERIFYING ── */}
         {status === 'verifying' && (
-          <div className="space-y-4 py-6">
+          <div className="space-y-5 py-6">
             <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto animate-bounce">
               <RefreshCw className="w-8 h-8 animate-spin" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <h2 className="text-lg font-extrabold text-white">Memverifikasi Akun...</h2>
               <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
                 {message}
@@ -155,21 +162,27 @@ function VerifyContent() {
               <h2 className="text-xl font-extrabold text-white">
                 Akun Berhasil Diaktifkan! 🚀
               </h2>
-              <p className="text-xs text-slate-300 leading-relaxed max-w-xs mx-auto">
-                {message} Boon Pilot siap mendampingi kamu mengembangkan toko online &amp; sistem tokomu.
+              {storeName && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800/80 border border-slate-700 text-xs font-semibold text-emerald-300">
+                  <Store className="w-3.5 h-3.5" />
+                  <span>{storeName}</span>
+                </div>
+              )}
+              <p className="text-xs text-slate-300 leading-relaxed max-w-xs mx-auto pt-1">
+                {message} Boon Pilot siap mendampingi kamu mengembangkan toko online dan mengotomatisasi penjualanmu.
               </p>
             </div>
 
             <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs text-slate-400 font-mono">
-              <span>Mengarahkan otomatis ke dashboard dalam 3 detik...</span>
+              <span>Mengarahkan otomatis ke dashboard dalam 4 detik...</span>
             </div>
 
             {redirectUrl && (
               <Link
                 href={redirectUrl}
-                className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-500/20"
+                className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-500/25 cursor-pointer"
               >
-                <span>Buka Dashboard Sekarang</span>
+                <span>Buka Dashboard Toko Sekarang</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
             )}
@@ -246,7 +259,7 @@ function VerifyContent() {
   );
 }
 
-export default function AuthVerifyPage() {
+export default function AuthConfirmPage() {
   return (
     <Suspense
       fallback={
@@ -255,7 +268,7 @@ export default function AuthVerifyPage() {
         </div>
       }
     >
-      <VerifyContent />
+      <ConfirmContent />
     </Suspense>
   );
 }
