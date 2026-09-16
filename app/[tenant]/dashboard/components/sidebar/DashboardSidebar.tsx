@@ -37,11 +37,31 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { resolveDomainVertical, DomainVerticalKey } from '@/app/[tenant]/dashboard/components/modules';
 
 function getVerticalMenuConfig(storeCategory?: string) {
+  const norm = (storeCategory || '').toUpperCase().trim();
+  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'TRAVEL', 'UMROH'].some((k) => norm.includes(k));
+  const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'REPAIR', 'TEKNISI'].some((k) => norm.includes(k));
+
+  if (isProService) {
+    return {
+      label: 'Katalog Jasa & Konsultasi',
+      badge: 'Jasa',
+      icon: Calendar,
+    };
+  }
+
+  if (isFieldService) {
+    return {
+      label: 'Layanan & Servis Lapangan',
+      badge: 'Jasa',
+      icon: Wrench,
+    };
+  }
+
   const verticalKey = resolveDomainVertical(storeCategory);
   switch (verticalKey) {
     case 'field-service':
       return {
-        label: 'Layanan & Servis',
+        label: 'Layanan & Servis Lapangan',
         badge: 'Jasa',
         icon: Wrench,
       };
@@ -53,8 +73,8 @@ function getVerticalMenuConfig(storeCategory?: string) {
       };
     case 'pro-service':
       return {
-        label: 'Konsultasi & Sesi',
-        badge: 'Konsul',
+        label: 'Katalog Jasa & Konsultasi',
+        badge: 'Jasa',
         icon: Calendar,
       };
     case 'creator-agency':
@@ -80,16 +100,34 @@ function getVerticalMenuConfig(storeCategory?: string) {
 }
 
 function getVerticalOperationalMenuConfig(storeCategory?: string) {
+  const norm = (storeCategory || '').toUpperCase().trim();
+  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'TRAVEL', 'UMROH'].some((k) => norm.includes(k));
+  const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'REPAIR', 'TEKNISI'].some((k) => norm.includes(k));
+
+  if (isProService) {
+    return {
+      label: 'Jadwal & Sesi Konsultasi',
+      targetTab: 'booking',
+      badge: 'SESI',
+      icon: Calendar,
+      colorClass: 'bg-blue-50 text-blue-600',
+      hideShipping: true,
+    };
+  }
+
+  if (isFieldService) {
+    return {
+      label: 'Jadwal & Booking Servis',
+      targetTab: 'booking',
+      badge: 'SLOT',
+      icon: CalendarCheck,
+      colorClass: 'bg-emerald-50 text-emerald-600',
+      hideShipping: true,
+    };
+  }
+
   const verticalKey = resolveDomainVertical(storeCategory);
   switch (verticalKey) {
-    case 'field-service':
-      return {
-        label: 'Jadwal & Booking Servis',
-        targetTab: 'booking',
-        badge: 'SLOT',
-        icon: CalendarCheck,
-        colorClass: 'bg-emerald-50 text-emerald-600',
-      };
     case 'pro-service':
       return {
         label: 'Jadwal & Sesi Konsultasi',
@@ -97,6 +135,16 @@ function getVerticalOperationalMenuConfig(storeCategory?: string) {
         badge: 'SESI',
         icon: Calendar,
         colorClass: 'bg-blue-50 text-blue-600',
+        hideShipping: true,
+      };
+    case 'field-service':
+      return {
+        label: 'Jadwal & Booking Servis',
+        targetTab: 'booking',
+        badge: 'SLOT',
+        icon: CalendarCheck,
+        colorClass: 'bg-emerald-50 text-emerald-600',
+        hideShipping: true,
       };
     case 'digital-product':
       return {
@@ -105,6 +153,7 @@ function getVerticalOperationalMenuConfig(storeCategory?: string) {
         badge: 'AKSES',
         icon: FolderKey,
         colorClass: 'bg-indigo-50 text-indigo-600',
+        hideShipping: true,
       };
     case 'creator-agency':
       return {
@@ -113,6 +162,7 @@ function getVerticalOperationalMenuConfig(storeCategory?: string) {
         badge: 'UGC',
         icon: Share2,
         colorClass: 'bg-pink-50 text-pink-600',
+        hideShipping: true,
       };
     case 'fnb-culinary':
       return {
@@ -121,6 +171,7 @@ function getVerticalOperationalMenuConfig(storeCategory?: string) {
         badge: 'INSTAN',
         icon: Bike,
         colorClass: 'bg-amber-50 text-amber-600',
+        hideShipping: false,
       };
     case 'physical-retail':
     default:
@@ -130,6 +181,7 @@ function getVerticalOperationalMenuConfig(storeCategory?: string) {
         badge: 'KURIR',
         icon: Truck,
         colorClass: 'bg-teal-50 text-teal-600',
+        hideShipping: false,
       };
   }
 }
@@ -450,6 +502,10 @@ export default function DashboardSidebar({
             {/* 3. Menu Operasional Khusus Dinamis Sesuai 6 Kategori Bisnis */}
             {(() => {
               const opConfig = getVerticalOperationalMenuConfig(storeCategory);
+              if (opConfig.targetTab === 'shipping' && opConfig.hideShipping) {
+                return null;
+              }
+
               const OpIcon = opConfig.icon;
               const isOpActive =
                 activeTab === opConfig.targetTab ||

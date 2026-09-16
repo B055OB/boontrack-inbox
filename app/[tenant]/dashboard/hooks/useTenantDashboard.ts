@@ -638,13 +638,21 @@ export function useTenantDashboard() {
           }
 
           // Category
-          const rawCat = (tenant.category || tenant.metadata?.vertical_type || tenant.metadata?.business_category || 'PHYSICAL').toUpperCase();
+          const rawCat = (
+            tenant.business_type ||
+            tenant.category ||
+            tenant.metadata?.business_type ||
+            tenant.metadata?.vertical_type ||
+            tenant.metadata?.business_category ||
+            'PHYSICAL'
+          ).toUpperCase();
+
           if (['FOOD', 'FNB', 'KULINER'].some(k => rawCat.includes(k))) {
             setStoreCategory('FOOD');
-          } else if (['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'REPAIR'].some(k => rawCat.includes(k))) {
-            setStoreCategory('LOCAL_SERVICE');
-          } else if (['PROFESSIONAL', 'CONSULT'].some(k => rawCat.includes(k))) {
+          } else if (['PROFESSIONAL', 'CONSULT', 'LEGAL', 'TRAVEL', 'UMROH', 'PRO_SERVICE'].some(k => rawCat.includes(k))) {
             setStoreCategory('PROFESSIONAL_SERVICE');
+          } else if (['LOCAL_SERVICE', 'FIELD_SERVICE', 'SERVICE', 'REPAIR', 'JASA'].some(k => rawCat.includes(k))) {
+            setStoreCategory('LOCAL_SERVICE');
           } else if (['AGENCY', 'CREATOR'].some(k => rawCat.includes(k))) {
             setStoreCategory('CREATOR_AGENCY');
           } else if (['DIGITAL', 'COURSE', 'SOFTWARE'].some(k => rawCat.includes(k))) {

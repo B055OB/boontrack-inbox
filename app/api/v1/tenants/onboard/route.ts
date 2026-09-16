@@ -77,8 +77,22 @@ export async function POST(req: NextRequest) {
     // Try to record into Supabase if accessible
     try {
       const supabase = getSupabase();
-      const resolvedBusinessType = body.business_type || category || (isDigital ? 'DIGITAL' : 'PHYSICAL');
+      const catUpper = String(body.business_type || category || '').toUpperCase();
+      const isProService = ['PROFESSIONAL', 'CONSULT', 'LEGAL', 'TRAVEL', 'UMROH', 'PRO_SERVICE'].some(k => catUpper.includes(k));
+      const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'REPAIR', 'JASA'].some(k => catUpper.includes(k));
+
+      const resolvedBusinessType = isProService
+        ? 'PROFESSIONAL_SERVICE'
+        : isFieldService
+        ? 'FIELD_SERVICE'
+        : isDigital
+        ? 'DIGITAL'
+        : (body.business_type || category || 'PHYSICAL');
+
+      const isServiceStore = isProService || isFieldService;
+      const isPhysicalStore = !isServiceStore && !isDigital;
       const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
+
       await supabase.from('tenants').upsert(
         {
           slug: generatedSlug,
@@ -90,14 +104,23 @@ export async function POST(req: NextRequest) {
           metadata: {
             template: template || 'COMMERCE_TEMPLATE',
             onboarding_mode: onboardingMode || 'SELF_SERVICE',
+            business_category: resolvedBusinessType,
             business_type: resolvedBusinessType,
+            vertical_type: resolvedBusinessType,
+            category: resolvedBusinessType,
             plan_tier: 'SOLO_TRIAL',
             trial_ends_at: trialEndsAt,
             subscription_ends_at: trialEndsAt,
             wa_number: formattedWa,
             referral_code: referralCode || null,
+            capabilities: {
+              inbox: true,
+              ai_bot: true,
+              shipping: isPhysicalStore,
+              booking: isServiceStore,
+            },
             product: {
-              type: isDigital ? 'digital' : 'physical',
+              type: isDigital ? 'digital' : isServiceStore ? 'service' : 'physical',
               name: productName,
               price: productPrice,
               promo: promoBundle,

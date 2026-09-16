@@ -60,7 +60,7 @@ const CATEGORIES = [
     icon: Wrench,
   },
   {
-    id: "professional_consult",
+    id: "PROFESSIONAL_SERVICE",
     label: "Jasa Travel, Konsultan, Umroh & Legal",
     desc: "Biro travel, haji & umroh, legal, agensi, konsultan",
     icon: Briefcase,
@@ -83,11 +83,23 @@ export type CanonicalBusinessType =
 
 const VERTICAL_MAP: Record<string, CanonicalBusinessType> = {
   retail_physical: "PHYSICAL",
+  physical: "PHYSICAL",
+  PHYSICAL: "PHYSICAL",
   digital: "DIGITAL",
+  DIGITAL: "DIGITAL",
   fnb: "FOOD",
+  FOOD: "FOOD",
   local_service: "FIELD_SERVICE",
+  field_service: "FIELD_SERVICE",
+  FIELD_SERVICE: "FIELD_SERVICE",
+  service: "FIELD_SERVICE",
   professional_consult: "PROFESSIONAL_SERVICE",
+  professional_service: "PROFESSIONAL_SERVICE",
+  PROFESSIONAL_SERVICE: "PROFESSIONAL_SERVICE",
+  SERVICE: "PROFESSIONAL_SERVICE",
   affiliate_creator: "CREATOR_AGENCY",
+  creator_agency: "CREATOR_AGENCY",
+  CREATOR_AGENCY: "CREATOR_AGENCY",
 };
 
 export const PLAN_PRICING: Record<
@@ -606,7 +618,16 @@ export default function RegisterShopPage() {
 
     try {
       // 1. Simpan tenant langsung ke Supabase tenants table agar data toko & PIN benar-benar tersimpan
-      const resolvedBusinessType = VERTICAL_MAP[category] || 'PHYSICAL';
+      const resolvedBusinessType: CanonicalBusinessType =
+        VERTICAL_MAP[category] ||
+        (category === 'PROFESSIONAL_SERVICE' || category === 'professional_consult'
+          ? 'PROFESSIONAL_SERVICE'
+          : category === 'local_service' || category === 'FIELD_SERVICE'
+          ? 'FIELD_SERVICE'
+          : category === 'digital' || category === 'DIGITAL'
+          ? 'DIGITAL'
+          : 'PHYSICAL');
+
       const isPhysicalStore = (resolvedBusinessType as string) === 'PHYSICAL' || (resolvedBusinessType as string) === 'FOOD';
       const isServiceStore = resolvedBusinessType === 'FIELD_SERVICE' || resolvedBusinessType === 'PROFESSIONAL_SERVICE';
 
@@ -635,9 +656,10 @@ export default function RegisterShopPage() {
                 referral_code: cleanRef,
                 affiliate_code: cleanRef,
                 ref: cleanRef,
-                business_category: category,
+                business_category: resolvedBusinessType,
                 business_type: resolvedBusinessType,
                 vertical_type: resolvedBusinessType,
+                category: resolvedBusinessType,
                 capabilities: {
                   inbox: selectedPlan === 'team_scale',
                   ai_bot: true,
@@ -665,7 +687,7 @@ export default function RegisterShopPage() {
             plan_tier: targetPlanTier,
             amount: planAmount,
             trial_days: isTrial ? 7 : 0,
-            business_category: category,
+            business_category: resolvedBusinessType,
             business_type: resolvedBusinessType,
             vertical_type: resolvedBusinessType,
             category: resolvedBusinessType,
@@ -883,7 +905,9 @@ export default function RegisterShopPage() {
                           isComingSoon
                             ? "border-slate-200/90 bg-slate-100/80 text-slate-400 opacity-70 cursor-not-allowed select-none shadow-none pointer-events-none"
                             : isSelected
-                            ? cat.id === "local_service"
+                            ? cat.id === "PROFESSIONAL_SERVICE" || cat.id === "professional_consult"
+                              ? "border-indigo-600 bg-indigo-50/70 text-indigo-950 font-bold shadow-xs ring-1 ring-indigo-600 cursor-pointer"
+                              : cat.id === "local_service"
                               ? "border-amber-500 bg-amber-50/70 text-amber-950 font-bold shadow-xs ring-1 ring-amber-500 cursor-pointer"
                               : "border-blue-600 bg-blue-50/70 text-blue-950 font-bold shadow-xs ring-1 ring-blue-600 cursor-pointer"
                             : "border-slate-200 hover:border-slate-300 bg-slate-50 text-slate-600 text-xs cursor-pointer"
@@ -895,7 +919,9 @@ export default function RegisterShopPage() {
                               isComingSoon
                                 ? "text-slate-400"
                                 : isSelected
-                                ? cat.id === "local_service"
+                                ? cat.id === "PROFESSIONAL_SERVICE" || cat.id === "professional_consult"
+                                  ? "text-indigo-600"
+                                  : cat.id === "local_service"
                                   ? "text-amber-600"
                                   : "text-blue-600"
                                 : "text-slate-400"
@@ -908,7 +934,9 @@ export default function RegisterShopPage() {
                           ) : isSelected && (
                             <span
                               className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide ${
-                                cat.id === "local_service"
+                                vertical === "PROFESSIONAL_SERVICE"
+                                  ? "bg-indigo-100 text-indigo-800 border border-indigo-300"
+                                  : vertical === "FIELD_SERVICE"
                                   ? "bg-amber-100 text-amber-700 border border-amber-300"
                                   : "bg-blue-100 text-blue-700 border border-blue-300"
                               }`}

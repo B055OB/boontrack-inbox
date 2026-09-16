@@ -122,8 +122,8 @@ export function mapBusinessCategoryToProductType(storeCategory?: string): Produc
   const cat = (storeCategory || '').toUpperCase();
   if (['FOOD', 'FNB', 'KULINER', 'RESTO', 'MAKANAN'].some((k) => cat.includes(k))) return 'FOOD';
   if (['DIGITAL', 'COURSE', 'SOFTWARE', 'CREATOR_SERVICE', 'KONTEN'].some((k) => cat.includes(k))) return 'DIGITAL';
-  if (['FIELD_SERVICE', 'LOCAL_SERVICE', 'REPAIR', 'LAUNDRY', 'SALON', 'JASA_LAPANGAN', 'SERVICE'].some((k) => cat.includes(k))) return 'FIELD_SERVICE';
-  if (['PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'ACCOUNTING'].some((k) => cat.includes(k))) return 'PROFESSIONAL_SERVICE';
+  if (['PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'ACCOUNTING', 'PRO_SERVICE', 'TRAVEL', 'UMROH'].some((k) => cat.includes(k))) return 'PROFESSIONAL_SERVICE';
+  if (['FIELD_SERVICE', 'LOCAL_SERVICE', 'REPAIR', 'LAUNDRY', 'SALON', 'JASA_LAPANGAN', 'SERVICE', 'JASA'].some((k) => cat.includes(k))) return 'FIELD_SERVICE';
   if (['AGENCY', 'MARKETING_AGENCY', 'DEV_AGENCY', 'CREATOR'].some((k) => cat.includes(k))) return 'AGENCY';
   return 'PHYSICAL';
 }
