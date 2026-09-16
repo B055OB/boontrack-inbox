@@ -262,13 +262,28 @@ function AffiliateRegisterContent() {
         throw new Error(errorDetail);
       }
 
-      // Simpan token untuk sesi dashboard affiliate
+      const refCode =
+        data?.affiliate?.referral_code ||
+        data?.affiliate?.affiliate_code ||
+        data?.referral_code ||
+        data?.affiliate_code ||
+        resolvedAmCode;
+
+      // Simpan token & kode referral untuk sesi dashboard affiliate
+      if (refCode) {
+        try {
+          localStorage.setItem('boontrack_affiliate_code', refCode);
+          localStorage.setItem('affiliate_code', refCode);
+        } catch (_) {}
+      }
+
       if (data?.access_token) {
         try {
           localStorage.setItem('boontrack_affiliate_token', data.access_token);
           localStorage.setItem('affiliate_token', data.access_token);
           if (data.affiliate) {
             localStorage.setItem('boontrack_affiliate_user', JSON.stringify(data.affiliate));
+            localStorage.setItem('affiliate_data', JSON.stringify(data.affiliate));
           }
         } catch (_) {}
       }
@@ -276,7 +291,7 @@ function AffiliateRegisterContent() {
       // Success
       setIsSuccess(true);
       setTimeout(() => {
-        router.push('/affiliate/dashboard');
+        router.push(refCode ? `/affiliate/dashboard?code=${encodeURIComponent(refCode)}` : '/affiliate/dashboard');
       }, 2000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal menghubungi server pendaftaran.';

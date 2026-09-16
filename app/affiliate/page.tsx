@@ -190,18 +190,29 @@ function AffiliatePortalContent() {
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState('');
   const [withdrawErrorMsg, setWithdrawErrorMsg] = useState('');
 
-  // Load Session from localStorage on mount
+  // Load Session from localStorage on mount & auto-load referral code
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        const stored = localStorage.getItem('affiliate_data');
+        const queryCode = searchParams.get('code') || searchParams.get('ref');
+        const storedCode =
+          localStorage.getItem('boontrack_affiliate_code') ||
+          localStorage.getItem('affiliate_code');
+        const activeRef = (queryCode || storedCode || '').trim();
+
+        if (activeRef) {
+          setAffiliateCode(activeRef.toLowerCase());
+          setCustomSlugInput(activeRef.toUpperCase());
+        }
+
+        const stored = localStorage.getItem('affiliate_data') || localStorage.getItem('boontrack_affiliate_user');
         if (stored) {
           const parsed = JSON.parse(stored);
           setAuthSession(parsed);
           if (parsed.tenant_slug && !searchParams.get('tenant')) {
             setTenantSlug(parsed.tenant_slug);
           }
-          if (parsed.referral_code && !searchParams.get('ref') && !searchParams.get('code')) {
+          if (parsed.referral_code && !activeRef) {
             setAffiliateCode(parsed.referral_code.toLowerCase());
             setCustomSlugInput(parsed.referral_code.toUpperCase());
           }
@@ -212,8 +223,13 @@ function AffiliatePortalContent() {
           if (parsed.bank_account_number) setAccountNumber(parsed.bank_account_number);
           if (parsed.bank_account_holder) setAccountHolder(parsed.bank_account_holder);
         }
+
+        if (!activeRef && !stored) {
+          setLoading(false);
+        }
       } catch (e) {
         console.warn('Error reading affiliate session:', e);
+        setLoading(false);
       }
     }
   }, [searchParams]);
@@ -221,7 +237,7 @@ function AffiliatePortalContent() {
   // Sync state if URL query params change
   useEffect(() => {
     const qTenant = searchParams.get('tenant');
-    const qRef = searchParams.get('ref') || searchParams.get('code');
+    const qRef = searchParams.get('code') || searchParams.get('ref');
     if (qTenant) setTenantSlug(qTenant);
     if (qRef) {
       setAffiliateCode(qRef.trim().toLowerCase());
@@ -446,7 +462,8 @@ function AffiliatePortalContent() {
         body: JSON.stringify({
           affiliate_id: data?.affiliate?.id,
           partner_id: data?.affiliate?.id,
-          phone: authSession?.phone,
+          referral_code: data?.affiliate?.referral_code || affiliateCode || activeCode,
+          phone: data?.affiliate?.phone_number || authSession?.phone,
           bank_name: targetBank,
           bank_account_number: cleanNum,
           bank_account_holder: cleanHolder,
@@ -461,7 +478,8 @@ function AffiliatePortalContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             partner_id: data?.affiliate?.id,
-            phone: authSession?.phone,
+            referral_code: data?.affiliate?.referral_code || affiliateCode || activeCode,
+            phone: data?.affiliate?.phone_number || authSession?.phone,
             bank_name: targetBank,
             account_number: cleanNum,
             account_holder: cleanHolder,
@@ -771,7 +789,7 @@ function AffiliatePortalContent() {
                 setAffiliateCode(val);
                 if (!isRefCustomized) setCustomSlugInput(val.toUpperCase());
               }}
-              placeholder="Contoh: buzzerukm atau BUZZERUKM"
+              placeholder="Contoh: buzzerukm atau KANGSAKTI"
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
             />
           </div>
@@ -928,7 +946,7 @@ function AffiliatePortalContent() {
                       }`}
                     >
                       <div className="font-bold text-white">Form Daftar UKM</div>
-                      <div className="text-[10px] text-slate-400">/register (Trial 14h)</div>
+                      <div className="text-[10px] text-slate-400">/register (Trial 7h)</div>
                     </button>
 
                     <button
@@ -1124,7 +1142,7 @@ function AffiliatePortalContent() {
                       readOnly={isRefCustomized}
                       value={customSlugInput}
                       onChange={(e) => setCustomSlugInput(e.target.value.toUpperCase())}
-                      placeholder="CONTOH88"
+                      placeholder="KANGSAKTI"
                       maxLength={20}
                       className={`flex-1 bg-transparent px-3 py-3 text-xs md:text-sm font-mono font-bold uppercase focus:outline-none ${
                         isRefCustomized ? 'text-slate-400 cursor-not-allowed' : 'text-purple-300'

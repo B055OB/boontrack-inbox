@@ -146,10 +146,12 @@ export default function AffiliateLoginPage() {
       };
       localStorage.setItem('affiliate_token', token);
       localStorage.setItem('affiliate_data', JSON.stringify(affiliateData));
+      localStorage.setItem('boontrack_affiliate_code', affiliateData.referral_code);
+      localStorage.setItem('affiliate_code', affiliateData.referral_code);
       document.cookie = `affiliate_token=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
       setSuccessMessage('Verifikasi berhasil! Mengalihkan ke Dashboard Affiliate...');
       setTimeout(() => {
-        window.location.href = '/dashboard';
+        window.location.href = `/affiliate/dashboard?code=${encodeURIComponent(affiliateData.referral_code)}`;
       }, 600);
       return;
     }
@@ -218,15 +220,18 @@ export default function AffiliateLoginPage() {
       localStorage.setItem('affiliate_token', token);
       document.cookie = `affiliate_token=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
       localStorage.setItem('affiliate_data', JSON.stringify(affiliateData));
+      localStorage.setItem('boontrack_affiliate_code', resolvedCode);
+      localStorage.setItem('affiliate_code', resolvedCode);
 
       setSuccessMessage('Verifikasi berhasil! Mengalihkan ke Dashboard Affiliate...');
 
-      // Redirect to Affiliate Dashboard
+      // Redirect to Affiliate Dashboard with code query parameter
+      const targetUrl = `/affiliate/dashboard?code=${encodeURIComponent(resolvedCode)}`;
       setTimeout(() => {
-        router.push('/affiliate/dashboard');
+        router.push(targetUrl);
         // Fallback redirection
         setTimeout(() => {
-          window.location.href = '/affiliate/dashboard';
+          window.location.href = targetUrl;
         }, 300);
       }, 600);
     } catch (err: unknown) {

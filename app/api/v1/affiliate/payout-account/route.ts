@@ -19,6 +19,9 @@ async function handleUpdatePayoutAccount(req: NextRequest) {
       affiliate_id,
       partner_id,
       id,
+      referral_code,
+      affiliate_code,
+      code,
       phone,
       phone_number,
       bank_name,
@@ -46,6 +49,7 @@ async function handleUpdatePayoutAccount(req: NextRequest) {
     }
 
     const targetId = affiliate_id || partner_id || id;
+    const targetCode = (referral_code || affiliate_code || code || '').trim();
     const targetPhone = phone || phone_number ? cleanPhone(phone || phone_number) : null;
 
     let updatedAffiliate = null;
@@ -57,6 +61,8 @@ async function handleUpdatePayoutAccount(req: NextRequest) {
         let query = supabase.from('affiliates').select('*');
         if (targetId) {
           query = query.eq('id', targetId);
+        } else if (targetCode) {
+          query = query.or(`referral_code.eq.${targetCode},affiliate_code.eq.${targetCode}`);
         } else if (targetPhone) {
           query = query.or(`phone.eq.${targetPhone},phone_number.eq.${targetPhone}`);
         }
@@ -109,6 +115,8 @@ async function handleUpdatePayoutAccount(req: NextRequest) {
         },
         body: JSON.stringify({
           affiliate_id: targetId,
+          referral_code: targetCode,
+          affiliate_code: targetCode,
           phone: targetPhone,
           bank_name: resolvedBank,
           bank_account_number: resolvedNumber,
