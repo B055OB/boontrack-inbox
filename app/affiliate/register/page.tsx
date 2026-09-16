@@ -84,6 +84,7 @@ function AffiliateRegisterContent() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [customSlug, setCustomSlug] = useState('');
 
   // Default AM Account: Kang Sakti
   const DEFAULT_AM_CODE = process.env.NEXT_PUBLIC_DEFAULT_AM_CODE || 'KANGSAKTI';
@@ -166,6 +167,17 @@ function AffiliateRegisterContent() {
       setErrorMessage('Konfirmasi kata sandi tidak cocok.');
       return false;
     }
+    if (customSlug.trim()) {
+      const clean = customSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+      if (clean.length < 3 || clean.length > 30) {
+        setErrorMessage('Custom subdomain / slug minimal 3 karakter dan maksimal 30 karakter.');
+        return false;
+      }
+      if (!/^[a-z0-9-]+$/.test(clean)) {
+        setErrorMessage('Custom subdomain hanya boleh mengandung huruf kecil (a-z), angka (0-9), dan tanda strip (-).');
+        return false;
+      }
+    }
     setErrorMessage(null);
     return true;
   };
@@ -228,6 +240,7 @@ function AffiliateRegisterContent() {
     setErrorMessage(null);
 
     const formattedPhone = cleanPhone(phone);
+    const cleanSlug = customSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
 
     const payload = {
       name: fullName.trim(),
@@ -236,8 +249,9 @@ function AffiliateRegisterContent() {
       phone_number: formattedPhone,
       email: email.trim().toLowerCase(),
       password: password,
+      custom_slug: cleanSlug || undefined,
+      referral_code: cleanSlug || undefined,
       am_referral_code: resolvedAmCode,
-      referral_code: resolvedAmCode,
       am_pembina: resolvedAmCode,
       bank_name: bankName,
       bank_account_number: bankAccountNumber.trim(),
@@ -273,6 +287,7 @@ function AffiliateRegisterContent() {
       }
 
       const refCode =
+        cleanSlug ||
         data?.affiliate?.referral_code ||
         data?.affiliate?.affiliate_code ||
         data?.referral_code ||
@@ -645,6 +660,42 @@ function AffiliateRegisterContent() {
                         </div>
                         <p className="text-[11px] text-slate-500">
                           Pendaftaran akun affiliate Anda otomatis dibina langsung di bawah jaringan <strong className="text-emerald-400 font-mono font-bold">{resolvedAmCode}</strong>.
+                        </p>
+                      </div>
+
+                      {/* Custom Subdomain / Kode Referral Pribadi */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                          <span>Custom Subdomain / Kode Referral</span>
+                          <span className="text-[10px] text-emerald-400 font-normal">Opsional (Bisa diubah nanti)</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-mono text-slate-400 border-r border-slate-800 pr-2.5 select-none">
+                            <span>https://</span>
+                          </div>
+                          <input
+                            type="text"
+                            value={customSlug}
+                            onChange={(e) => {
+                              const val = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+                              setCustomSlug(val);
+                            }}
+                            placeholder="Contoh: buzzerukm, tokoberkah"
+                            maxLength={30}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-24 pr-28 py-3 text-sm font-mono text-emerald-400 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-mono text-slate-500 select-none pointer-events-none">
+                            <span>.boontrack.com</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-0.5">
+                          <span>Preview link promosi Anda:</span>
+                          <span className="text-emerald-400 font-bold truncate max-w-[240px]">
+                            https://{customSlug ? customSlug.toLowerCase() : 'nama'}.boontrack.com/
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-tight">
+                          Kode ini adalah link promosi &amp; subdomain toko milik Anda untuk disebarkan ke merchant (terpisah dari Upline Pembina di atas).
                         </p>
                       </div>
 

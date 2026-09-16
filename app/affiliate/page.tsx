@@ -124,6 +124,7 @@ function AffiliatePortalContent() {
 
   const [tenantSlug, setTenantSlug] = useState(initialTenant);
   const [affiliateCode, setAffiliateCode] = useState(initialRef);
+  const activeCode = (affiliateCode || 'buzzerukm').toLowerCase();
   const [data, setData] = useState<PortalResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -310,8 +311,7 @@ function AffiliatePortalContent() {
 
   // Debounced 300ms Referral Slug Checker
   useEffect(() => {
-    if (isRefCustomized) return;
-    const clean = customSlugInput.trim().toUpperCase();
+    const clean = customSlugInput.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
 
     if (!clean) {
       setSlugCheckStatus('idle');
@@ -325,91 +325,100 @@ function AffiliatePortalContent() {
       return;
     }
 
-    if (clean.length > 20) {
+    if (clean.length > 30) {
       setSlugCheckStatus('unavailable');
-      setSlugFeedback('❌ Maksimal 20 karakter alfanumerik');
+      setSlugFeedback('❌ Maksimal 30 karakter');
       return;
     }
 
-    if (!/^[A-Z0-9_-]+$/.test(clean)) {
-      setSlugCheckStatus('unavailable');
-      setSlugFeedback('❌ Hanya huruf A-Z, angka 0-9, dash (-), atau underscore (_)');
-      return;
-    }
-
-    if (clean === affiliateCode.toUpperCase()) {
+    if (clean === activeCode) {
       setSlugCheckStatus('available');
-      setSlugFeedback('✅ Kode aktif Anda saat ini');
+      setSlugFeedback('✅ Subdomain aktif Anda saat ini');
       return;
     }
 
     setSlugCheckStatus('checking');
-    setSlugFeedback('Memeriksa ketersediaan kode...');
+    setSlugFeedback('Memeriksa ketersediaan slug...');
 
     const timer = setTimeout(async () => {
       try {
         const res = await fetch('/api/v1/partners/check-ref-slug', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug: clean, current_code: affiliateCode }),
+          body: JSON.stringify({ slug: clean, current_code: activeCode }),
         });
         const result = await res.json();
         if (result.available) {
           setSlugCheckStatus('available');
-          setSlugFeedback('✅ Kode tersedia');
+          setSlugFeedback('✅ Slug tersedia');
         } else {
           setSlugCheckStatus('unavailable');
-          setSlugFeedback(`❌ ${result.message || 'Kode sudah dipakai / tidak valid'}`);
+          setSlugFeedback(`❌ ${result.message || 'Slug sudah dipakai / tidak valid'}`);
         }
       } catch {
         setSlugCheckStatus('unavailable');
-        setSlugFeedback('❌ Gagal memeriksa ketersediaan kode.');
+        setSlugFeedback('❌ Gagal memeriksa ketersediaan slug.');
       }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [customSlugInput, affiliateCode, isRefCustomized]);
+  }, [customSlugInput, activeCode]);
 
-  // Claim & Lock Slug Handler
-  const handleClaimSlug = async () => {
-    const clean = customSlugInput.trim().toUpperCase();
-    if (!clean || slugCheckStatus !== 'available') return;
+  // Simpan / Perbarui Slug Handler
+  const handleUpdateSlug = async () => {
+    const raw = customSlugInput.trim().toLowerCase();
+    const clean = raw.replace(/[^a-z0-9-]/g, '');
+
+    if (!clean || clean.length < 3 || clean.length > 30) {
+      alert('Format slug tidak valid. Minimal 3 karakter dan maksimal 30 karakter (hanya huruf kecil a-z, angka 0-9, dan strip).');
+      return;
+    }
+
+    if (clean === activeCode) {
+      alert('Slug baru sama dengan slug yang sedang aktif saat ini.');
+      return;
+    }
 
     const confirmed = window.confirm(
-      `Perhatian: Kode referral hanya dapat diubah 1 KALI seumur hidup dan akan TERKUNCI PERMANEN menjadi "${clean}".\n\nApakah Anda yakin ingin mengklaim dan mengunci kode ini?`
+      `Perhatian:\nMengubah slug akan mengubah link promosi Anda. Link lama tidak akan mengarah ke akun Anda lagi.\n\nApakah Anda yakin ingin memperbarui slug menjadi "${clean}"?`
     );
     if (!confirmed) return;
 
     setIsClaimingSlug(true);
     setClaimSuccessMsg('');
     try {
-      const res = await fetch('/api/v1/partners/claim-ref-slug', {
-        method: 'POST',
+      const res = await fetch('/api/v1/affiliate/slug', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          affiliate_id: data?.affiliate.id,
+          current_code: activeCode,
+          phone: authSession?.phone || data?.affiliate.phone_number,
           new_slug: clean,
-          phone: authSession?.phone,
-          partner_id: data?.affiliate.id,
         }),
       });
-      const result = await res.json();
+
+      const result = await res.json().catch(() => ({}));
       if (!res.ok || !result.success) {
-        throw new Error(result.message || 'Gagal mengklaim kode referral.');
+        throw new Error(result.message || result.detail || 'Gagal memperbarui slug.');
       }
 
       setIsRefCustomized(true);
-      setAffiliateCode(clean.toLowerCase());
-      setClaimSuccessMsg(result.message || `Kode referral berhasil dikunci menjadi ${clean}!`);
+      setAffiliateCode(clean);
+      setCustomSlugInput(clean.toUpperCase());
+      setClaimSuccessMsg(result.message || `Slug referral berhasil diperbarui menjadi ${clean}!`);
 
       // Update localStorage session
       if (typeof window !== 'undefined') {
+        localStorage.setItem('boontrack_affiliate_code', clean);
+        localStorage.setItem('affiliate_code', clean);
         const stored = localStorage.getItem('affiliate_data');
         const prevData = stored ? JSON.parse(stored) : {};
         localStorage.setItem(
           'affiliate_data',
           JSON.stringify({
             ...prevData,
-            referral_code: clean.toLowerCase(),
+            referral_code: clean,
             is_ref_customized: true,
           })
         );
@@ -421,12 +430,15 @@ function AffiliatePortalContent() {
           ...data,
           affiliate: {
             ...data.affiliate,
-            referral_code: clean.toLowerCase(),
+            referral_code: clean,
             is_ref_customized: true,
           },
-          referral_url: `https://${clean.toLowerCase()}.boontrack.com/`,
+          referral_url: `https://${clean}.boontrack.com/`,
         });
       }
+
+      // Sync URL parameter
+      router.replace(`/affiliate/dashboard?code=${encodeURIComponent(clean)}`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Terjadi kesalahan sistem.';
       alert(msg);
@@ -637,8 +649,6 @@ function AffiliatePortalContent() {
   };
 
   // ── DYNAMIC UTM LINK BUILDER (SUBDOMAIN FORMAT) ──
-  const activeCode = (affiliateCode || 'buzzerukm').toLowerCase();
-
   const generatedCustomUrl = useMemo(() => {
     let baseUrl = `https://${activeCode}.boontrack.com/register`;
     if (targetUrlType === 'storefront') {
@@ -1098,7 +1108,7 @@ function AffiliatePortalContent() {
               </div>
             </div>
 
-            {/* ── CARD KUSTOMISASI KODE REFERRAL (FITUR KUNCI KODE) ── */}
+            {/* ── CARD KUSTOMISASI KODE REFERRAL (FITUR EDIT SLUG) ── */}
             <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3.5">
                 <div className="flex items-center gap-2">
@@ -1107,32 +1117,24 @@ function AffiliatePortalContent() {
                   </div>
                   <div>
                     <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                      <span>Kustomisasi Kode Referral Personal</span>
-                      {isRefCustomized && (
-                        <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-black uppercase flex items-center gap-1">
-                          <Lock className="w-3 h-3" />
-                          <span>Terkunci</span>
-                        </span>
-                      )}
+                      <span>Kustomisasi Kode Referral &amp; Subdomain Personal</span>
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Ubah kode referral default ke nama atau brand personal Anda agar mudah diingat calon merchant.
+                      Ubah kode referral dan subdomain personal Anda agar mudah diingat calon merchant saat promosi.
                     </p>
                   </div>
                 </div>
 
-                <div className="text-[11px] text-slate-400 font-mono">
-                  Status: {isRefCustomized ? (
-                    <span className="text-amber-400 font-bold">Terkunci (1x Ubah)</span>
-                  ) : (
-                    <span className="text-emerald-400 font-bold">Dapat Diklaim</span>
-                  )}
+                <div className="text-[11px] font-mono">
+                  <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                    Aktif: {activeCode}.boontrack.com
+                  </span>
                 </div>
               </div>
 
               <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-300 block">
-                  Preview Kode Referral Anda:
+                  Subdomain &amp; Kode Referral Anda:
                 </label>
 
                 <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
@@ -1142,69 +1144,55 @@ function AffiliatePortalContent() {
                     </span>
                     <input
                       type="text"
-                      disabled={isRefCustomized}
-                      readOnly={isRefCustomized}
                       value={customSlugInput}
-                      onChange={(e) => setCustomSlugInput(e.target.value.toUpperCase())}
-                      placeholder="KANGSAKTI"
-                      maxLength={20}
-                      className={`flex-1 bg-transparent px-3 py-3 text-xs md:text-sm font-mono font-bold uppercase focus:outline-none ${
-                        isRefCustomized ? 'text-slate-400 cursor-not-allowed' : 'text-purple-300'
-                      }`}
+                      onChange={(e) => setCustomSlugInput(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                      placeholder="buzzerukm"
+                      maxLength={30}
+                      className="flex-1 bg-transparent px-3 py-3 text-xs md:text-sm font-mono font-bold text-purple-300 focus:outline-none"
                     />
                     <span className="px-3.5 py-3 text-xs font-mono text-slate-400 bg-slate-900/80 border-l border-slate-800 select-none whitespace-nowrap">
                       .boontrack.com
                     </span>
                   </div>
 
-                  {!isRefCustomized && (
-                    <button
-                      type="button"
-                      onClick={handleClaimSlug}
-                      disabled={isClaimingSlug || slugCheckStatus !== 'available' || customSlugInput.toLowerCase() === activeCode}
-                      className={`px-5 py-3 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg whitespace-nowrap ${
-                        slugCheckStatus === 'available' && customSlugInput.toLowerCase() !== activeCode
-                          ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/20'
-                          : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/60'
-                      }`}
-                    >
-                      {isClaimingSlug ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Lock className="w-4 h-4" />
-                      )}
-                      <span>Klaim & Kunci Kode</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleUpdateSlug}
+                    disabled={isClaimingSlug || customSlugInput.trim().toLowerCase() === activeCode || slugCheckStatus === 'unavailable'}
+                    className={`px-5 py-3 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg whitespace-nowrap ${
+                      customSlugInput.trim().toLowerCase() !== activeCode && slugCheckStatus !== 'unavailable'
+                        ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-600/20 active:scale-95'
+                        : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/60'
+                    }`}
+                  >
+                    {isClaimingSlug ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
+                    <span>Simpan / Perbarui Slug</span>
+                  </button>
                 </div>
 
-                {!isRefCustomized ? (
-                  <div className="flex items-center justify-between text-xs pt-1">
-                    <div>
-                      {slugCheckStatus === 'checking' && (
-                        <span className="text-slate-400 flex items-center gap-1.5 font-medium">
-                          <RefreshCw className="w-3 h-3 animate-spin text-purple-400" />
-                          <span>{slugFeedback}</span>
-                        </span>
-                      )}
-                      {slugCheckStatus === 'available' && (
-                        <span className="text-emerald-400 font-semibold">{slugFeedback}</span>
-                      )}
-                      {slugCheckStatus === 'unavailable' && (
-                        <span className="text-rose-400 font-semibold">{slugFeedback}</span>
-                      )}
-                      {slugCheckStatus === 'idle' && (
-                        <span className="text-slate-500 text-[11px]">Masukkan 3-20 karakter alfanumerik.</span>
-                      )}
-                    </div>
-                    <span className="text-[11px] text-slate-500">⚠️ Kode hanya dapat dikunci 1 kali.</span>
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <div>
+                    {slugCheckStatus === 'checking' && (
+                      <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                        <RefreshCw className="w-3 h-3 animate-spin text-purple-400" />
+                        <span>{slugFeedback}</span>
+                      </span>
+                    )}
+                    {slugCheckStatus === 'available' && (
+                      <span className="text-emerald-400 font-semibold">{slugFeedback}</span>
+                    )}
+                    {slugCheckStatus === 'unavailable' && (
+                      <span className="text-rose-400 font-semibold">{slugFeedback}</span>
+                    )}
                   </div>
-                ) : (
-                  <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 text-[11px] text-slate-400 flex items-center gap-2">
-                    <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span>Kode referral aktif Anda saat ini adalah <strong>{activeCode}</strong> (Terkunci permanen).</span>
+                  <div className="text-[10px] text-slate-500">
+                    Maks. 30 karakter (huruf kecil, angka, strip)
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
