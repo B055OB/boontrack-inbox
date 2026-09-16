@@ -459,6 +459,11 @@ export default function RegisterShopPage() {
         ""
       ).trim().toLowerCase();
 
+      // Normalisasi alias mafiasakti / kangsakti -> buzzerukm
+      if (refCode === "mafiasakti" || refCode === "kangsakti") {
+        refCode = "buzzerukm";
+      }
+
       // Deteksi otomatis jika URL browser membuka subdomain mitra (misal buzzerukm.boontrack.com)
       if (!refCode) {
         if (hostname.includes("buzzerukm")) {

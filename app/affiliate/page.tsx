@@ -214,10 +214,13 @@ function AffiliatePortalContent() {
         const storedCode =
           localStorage.getItem('boontrack_affiliate_code') ||
           localStorage.getItem('affiliate_code');
-        const activeRef = (queryCode || storedCode || '').trim();
+        let activeRef = (queryCode || storedCode || '').trim().toLowerCase();
+        if (activeRef === 'mafiasakti' || activeRef === 'kangsakti') {
+          activeRef = 'buzzerukm';
+        }
 
         if (activeRef) {
-          setAffiliateCode(activeRef.toLowerCase());
+          setAffiliateCode(activeRef);
           setCustomSlugInput(activeRef.toUpperCase());
         }
 

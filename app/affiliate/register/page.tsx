@@ -86,10 +86,10 @@ function AffiliateRegisterContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [customSlug, setCustomSlug] = useState('');
 
-  // Default AM Account: Kang Sakti
-  const DEFAULT_AM_CODE = process.env.NEXT_PUBLIC_DEFAULT_AM_CODE || 'KANGSAKTI';
+  // Default AM Account: buzzerukm
+  const DEFAULT_AM_CODE = 'buzzerukm';
 
-  // Resolved AM code (default Kang Sakti, overridden by ?ref= or ?am= if present)
+  // Resolved AM code (default buzzerukm, overridden by ?ref= or ?am= if present)
   const [resolvedAmCode, setResolvedAmCode] = useState<string>(DEFAULT_AM_CODE);
   const [bankName, setBankName] = useState(BANK_OPTIONS[0].id);
   const [bankAccountNumber, setBankAccountNumber] = useState('');
@@ -108,9 +108,19 @@ function AffiliateRegisterContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // Resolve AM Code: use query param ?ref= or ?am= if provided, or subdomain, otherwise fallback to Kang Sakti
+  // Helper untuk menampilkan label visual Upline Pembina
+  const getAmDisplayLabel = (code: string) => {
+    const clean = (code || '').toLowerCase().trim();
+    if (clean === 'buzzerukm' || clean === 'kangsakti' || clean === 'mafiasakti') {
+      return 'MAFIASAKTI (BUZZERUKM)';
+    }
+    return code ? code.toUpperCase() : 'MAFIASAKTI (BUZZERUKM)';
+  };
+
+  // Resolve AM Code: use query param ?ref= or ?am= if provided, or subdomain, otherwise fallback to buzzerukm
+  // Alias Support: mafiasakti & buzzerukm & kangsakti -> dinormalisasi ke kode database "buzzerukm"
   useEffect(() => {
-    let refCode = (searchParams.get('ref') || searchParams.get('am') || '').trim();
+    let refCode = (searchParams.get('ref') || searchParams.get('am') || searchParams.get('code') || '').trim();
     if (!refCode && typeof window !== 'undefined') {
       const hostParts = window.location.hostname.split('.');
       if (hostParts.length > 2) {
@@ -121,12 +131,14 @@ function AffiliateRegisterContent() {
         }
       }
     }
-    if (refCode) {
-      setResolvedAmCode(refCode.toUpperCase());
+
+    const cleanRef = (refCode || '').toLowerCase().trim();
+    if (!cleanRef || cleanRef === 'buzzerukm' || cleanRef === 'mafiasakti' || cleanRef === 'kangsakti') {
+      setResolvedAmCode('buzzerukm');
     } else {
-      setResolvedAmCode(DEFAULT_AM_CODE);
+      setResolvedAmCode(cleanRef);
     }
-  }, [searchParams, DEFAULT_AM_CODE]);
+  }, [searchParams]);
 
   // Clean phone number helper
   const cleanPhone = (val: string) => {
@@ -476,7 +488,7 @@ function AffiliateRegisterContent() {
                   <div className="flex justify-between">
                     <span className="text-slate-400">Account Manager Pembina (AM):</span>
                     <span className="font-bold text-teal-300 font-mono">
-                      {resolvedAmCode === DEFAULT_AM_CODE ? 'Kang Sakti (AM Utama)' : resolvedAmCode}
+                      {getAmDisplayLabel(resolvedAmCode)}
                     </span>
                   </div>
                 </div>
@@ -652,14 +664,14 @@ function AffiliateRegisterContent() {
                         <div className="relative mt-1">
                           <input
                             type="text"
-                            value={resolvedAmCode}
+                            value={getAmDisplayLabel(resolvedAmCode)}
                             readOnly
                             disabled
                             className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono font-black text-emerald-300 cursor-not-allowed select-all tracking-wider"
                           />
                         </div>
                         <p className="text-[11px] text-slate-500">
-                          Pendaftaran akun affiliate Anda otomatis dibina langsung di bawah jaringan <strong className="text-emerald-400 font-mono font-bold">{resolvedAmCode}</strong>.
+                          Pendaftaran akun affiliate Anda otomatis dibina langsung di bawah jaringan <strong className="text-emerald-400 font-mono font-bold">{getAmDisplayLabel(resolvedAmCode)}</strong>.
                         </p>
                       </div>
 
