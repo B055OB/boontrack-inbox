@@ -78,15 +78,20 @@ export async function POST(req: NextRequest) {
     try {
       const supabase = getSupabase();
       const resolvedBusinessType = body.business_type || category || (isDigital ? 'DIGITAL' : 'PHYSICAL');
+      const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
       await supabase.from('tenants').upsert(
         {
           slug: generatedSlug,
           name: storeName,
           category: resolvedBusinessType,
+          tier: 'SOLO_TRIAL',
+          trial_ends_at: trialEndsAt,
           metadata: {
             template: template || 'COMMERCE_TEMPLATE',
             onboarding_mode: onboardingMode || 'SELF_SERVICE',
             business_type: resolvedBusinessType,
+            plan_tier: 'SOLO_TRIAL',
+            trial_ends_at: trialEndsAt,
             wa_number: formattedWa,
             referral_code: referralCode || null,
             product: {

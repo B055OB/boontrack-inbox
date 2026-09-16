@@ -84,6 +84,7 @@ export interface TeamChatTabProps {
   handleUpgradeTier: (tier: any) => void;
   isSoloOrTrial?: boolean;
   trialDaysLeft?: number | null;
+  trialEndsAt?: string | null;
 }
 
 // ── DEFAULT MOCK DATA UNTUK PURE PRESENTATION LAYER ──────────────────────────
@@ -243,7 +244,19 @@ export default function TeamChatTab({
   handleUpgradeTier,
   isSoloOrTrial = false,
   trialDaysLeft = null,
+  trialEndsAt = null,
 }: TeamChatTabProps) {
+  // Kalkulasi dinamis real-time sisa hari dari trialEndsAt
+  const effectiveDaysLeft = useMemo(() => {
+    if (trialEndsAt) {
+      const diffMs = new Date(trialEndsAt).getTime() - Date.now();
+      return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    }
+    return trialDaysLeft !== null ? Math.max(0, trialDaysLeft) : null;
+  }, [trialEndsAt, trialDaysLeft]);
+
+  const isTrialExpired = effectiveDaysLeft !== null && effectiveDaysLeft <= 0;
+
   // Local state for presentation layer
   const [conversationsList, setConversationsList] = useState<ChatConversation[]>(() => {
     if (externalConversations && externalConversations.length > 0) {
@@ -594,9 +607,15 @@ export default function TeamChatTab({
                 ADS PERFORMANCE • 2 CS SEATS
               </span>
             ) : isSoloOrTrial ? (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1">
-                <Clock className="w-2.5 h-2.5 text-amber-600 animate-pulse" /> REVERSE TRIAL (7 HARI) • {trialDaysLeft !== null ? `${trialDaysLeft} HARI TERSISA` : '7 HARI'}
-              </span>
+              isTrialExpired ? (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
+                  <AlertCircle className="w-2.5 h-2.5 text-rose-600" /> TRIAL EXPIRED • 0 HARI
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5 text-amber-600 animate-pulse" /> REVERSE TRIAL (7 HARI) • {effectiveDaysLeft !== null ? `${effectiveDaysLeft} HARI TERSISA` : '7 HARI'}
+                </span>
+              )
             ) : (
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
                 <Lock className="w-2.5 h-2.5 text-amber-500" /> TIER SOLO • 1 SEAT
@@ -628,26 +647,50 @@ export default function TeamChatTab({
 
       {/* ── TRIAL 7 HARI NOTIFICATION BANNER (INBOX WORKSPACE) ─────────────── */}
       {isSoloOrTrial && (
-        <div className="w-full px-4 py-2.5 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-amber-900 shadow-xs">
+        <div
+          className={`w-full px-4 py-2.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs border ${
+            isTrialExpired
+              ? 'bg-rose-50 border-rose-200 text-rose-900'
+              : 'bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-amber-200 text-amber-900'
+          }`}
+        >
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700 shrink-0">
-              <Clock className="w-4 h-4 animate-pulse" />
+            <div
+              className={`p-1.5 rounded-lg shrink-0 ${
+                isTrialExpired ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+              }`}
+            >
+              {isTrialExpired ? (
+                <AlertCircle className="w-4 h-4" />
+              ) : (
+                <Clock className="w-4 h-4 animate-pulse" />
+              )}
             </div>
             <p className="truncate">
-              <strong>Masa Coba Gratis (Reverse Trial 7 Hari):</strong>{' '}
-              <span className="font-extrabold text-amber-950 font-mono">
-                {trialDaysLeft !== null ? `${Math.max(0, trialDaysLeft)} hari tersisa` : '7 hari tersisa'}
-              </span>
-              . Simulasi Live CS, otomasi bot AI, dan quick POS QRIS dapat Anda coba langsung di sini.
+              {isTrialExpired ? (
+                <span>
+                  <strong className="text-rose-700 font-extrabold uppercase">Masa Trial Habis:</strong> Akses live chat CS dan otomasi toko telah berakhir. Upgrade ke Ads Performance untuk membuka kembali gateway CS multi-agent.
+                </span>
+              ) : (
+                <span>
+                  <strong>Masa Coba Gratis (Reverse Trial 7 Hari):</strong>{' '}
+                  <span className="font-extrabold text-amber-950 font-mono">
+                    {effectiveDaysLeft !== null ? `${effectiveDaysLeft} hari tersisa` : '7 hari tersisa'}
+                  </span>
+                  . Simulasi Live CS, otomasi bot AI, dan quick POS QRIS dapat Anda coba langsung di sini.
+                </span>
+              )}
             </p>
           </div>
           <button
             type="button"
             onClick={() => handleUpgradeTier?.('ads_performance')}
-            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold shadow-xs transition shrink-0 cursor-pointer flex items-center gap-1"
+            className={`px-3 py-1 text-white rounded-xl text-[11px] font-bold shadow-xs transition shrink-0 cursor-pointer flex items-center gap-1 ${
+              isTrialExpired ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700'
+            }`}
           >
             <Sparkles className="w-3 h-3 text-yellow-300" />
-            <span>Upgrade Ads Performance</span>
+            <span>{isTrialExpired ? 'Aktivasi Paket Sekarang' : 'Upgrade Ads Performance'}</span>
           </button>
         </div>
       )}

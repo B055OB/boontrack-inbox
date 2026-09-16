@@ -57,12 +57,39 @@ export async function GET(
           });
         }
 
+        const rawTier = String(tenantRow.tier || metadata.tier || metadata.plan_tier || 'SOLO_TRIAL');
+        const isTrial = Boolean(rawTier.toLowerCase().includes('trial') || rawTier.toUpperCase() === 'SOLO_TRIAL');
+        let trialEndsAt: string | null = null;
+        let daysLeft: number | null = null;
+        let isExpired = false;
+
+        if (isTrial) {
+          if (tenantRow.trial_ends_at) {
+            trialEndsAt = new Date(tenantRow.trial_ends_at).toISOString();
+          } else if (metadata.trial_ends_at) {
+            trialEndsAt = new Date(metadata.trial_ends_at).toISOString();
+          } else if (tenantRow.created_at) {
+            trialEndsAt = new Date(new Date(tenantRow.created_at).getTime() + 7 * 86400000).toISOString();
+          } else {
+            trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
+          }
+
+          const diffMs = new Date(trialEndsAt).getTime() - Date.now();
+          daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+          isExpired = daysLeft <= 0;
+        }
+
         return NextResponse.json({
           success: true,
           tenant: {
             slug,
             name: tenantRow.name,
             category: tenantRow.category,
+            tier: rawTier,
+            is_trial: isTrial,
+            trial_ends_at: trialEndsAt,
+            days_left: daysLeft,
+            is_expired: isExpired,
             metadata,
             packages:
               packages.length > 0

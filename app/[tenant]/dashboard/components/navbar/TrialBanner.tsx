@@ -1,17 +1,19 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Clock, Sparkles, ArrowRight, AlertCircle } from 'lucide-react';
 
 interface TrialBannerProps {
   daysLeft: number | null;
   tier?: string;
+  trialEndsAt?: string | null;
   onUpgrade: (targetTier: 'ads_performance' | 'team_scale') => void;
 }
 
 export default function TrialBanner({
   daysLeft,
   tier,
+  trialEndsAt,
   onUpgrade,
 }: TrialBannerProps) {
   // Hanya tampilkan jika tier adalah trial (SOLO_TRIAL, solo_trial, dll.)
@@ -19,11 +21,20 @@ export default function TrialBanner({
     tier && (tier.toLowerCase().includes('trial') || tier.toUpperCase() === 'SOLO_TRIAL')
   );
 
-  if (!isTrial && daysLeft === null) {
+  // Kalkulasi dinamis real-time sisa hari dari trial_ends_at
+  const calculatedDays = useMemo(() => {
+    if (trialEndsAt) {
+      const diffMs = new Date(trialEndsAt).getTime() - Date.now();
+      return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    }
+    return daysLeft !== null ? Math.max(0, daysLeft) : null;
+  }, [trialEndsAt, daysLeft]);
+
+  if (!isTrial && calculatedDays === null) {
     return null;
   }
 
-  const safeDays = daysLeft !== null ? Math.max(0, daysLeft) : 0;
+  const safeDays = calculatedDays !== null ? calculatedDays : 0;
   const isExpired = safeDays === 0;
 
   return (
@@ -52,13 +63,19 @@ export default function TrialBanner({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-          <span className="font-extrabold tracking-wide uppercase text-[10px] sm:text-[11px] px-2 py-0.5 rounded-md bg-white/80 border border-amber-300/60 text-amber-800 shrink-0">
-            Reverse Trial
+          <span
+            className={`font-extrabold tracking-wide uppercase text-[10px] sm:text-[11px] px-2 py-0.5 rounded-md shrink-0 border ${
+              isExpired
+                ? 'bg-rose-100 border-rose-300 text-rose-800'
+                : 'bg-white/80 border-amber-300/60 text-amber-800'
+            }`}
+          >
+            {isExpired ? 'Trial Kedaluwarsa' : 'Reverse Trial'}
           </span>
           <p className="font-medium text-xs truncate">
             {isExpired ? (
               <span className="font-bold text-rose-700">
-                Masa Trial Solo telah berakhir! Akses storefront & fitur automasi dibatasi.
+                Masa Trial Solo telah berakhir (0 hari tersisa)! Akses storefront &amp; fitur automasi dibatasi.
               </span>
             ) : (
               <span>
@@ -66,7 +83,7 @@ export default function TrialBanner({
                 <strong className="font-black text-amber-950 font-mono">
                   {safeDays} hari tersisa
                 </strong>
-                . Nikmati fitur otomatisasi toko & katalog aktif tanpa biaya awal.
+                . {safeDays <= 3 ? 'Segera upgrade agar automasi toko & etalase tidak terputus.' : 'Nikmati fitur otomatisasi toko & katalog aktif tanpa biaya awal.'}
               </span>
             )}
           </p>
@@ -77,10 +94,14 @@ export default function TrialBanner({
         <button
           type="button"
           onClick={() => onUpgrade('ads_performance')}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-sm hover:shadow transition-all active:scale-95 cursor-pointer"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm hover:shadow transition-all active:scale-95 cursor-pointer text-white ${
+            isExpired
+              ? 'bg-rose-600 hover:bg-rose-700'
+              : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+          }`}
         >
           <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-          <span>Upgrade Sekarang</span>
+          <span>{isExpired ? 'Aktivasi Paket Sekarang' : 'Upgrade Sekarang'}</span>
           <ArrowRight className="w-3.5 h-3.5 opacity-80" />
         </button>
       </div>

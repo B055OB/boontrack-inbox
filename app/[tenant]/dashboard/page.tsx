@@ -71,6 +71,7 @@ export default function TenantDashboardPage() {
     openUpgradeModal,
 
     trialDaysLeft,
+    trialEndsAt,
     tenantFeatureFlags,
     isAiBotAllowed,
     isUpsellModalOpen,
@@ -453,6 +454,7 @@ export default function TenantDashboardPage() {
         {/* TRIAL BANNER IF ACTIVE */}
         <TrialBanner
           daysLeft={trialDaysLeft}
+          trialEndsAt={trialEndsAt}
           tier={tenantFeatureFlags?.tier}
           onUpgrade={handleUpgradeTier}
         />
@@ -510,6 +512,7 @@ export default function TenantDashboardPage() {
           handleUpgradeTier={handleUpgradeTier}
           isSoloOrTrial={isSoloOrTrial}
           trialDaysLeft={trialDaysLeft}
+          trialEndsAt={trialEndsAt}
         />
       )}
 
