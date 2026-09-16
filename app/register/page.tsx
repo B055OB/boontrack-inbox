@@ -427,6 +427,8 @@ export default function RegisterShopPage() {
     email: "",
     pin: "",
   });
+  const [referralCode, setReferralCode] = useState("");
+  const [isReferralLocked, setIsReferralLocked] = useState(false);
   const [loadingPay, setLoadingPay] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
@@ -447,6 +449,52 @@ export default function RegisterShopPage() {
       const params = new URLSearchParams(window.location.search);
       const initialStore = params.get("store") || params.get("claim") || "";
       const initialPlan = params.get("plan");
+
+      // ── DETEKSI KODE REFERRAL (QUERY PARAM, SUBDOMAIN, LOCALSTORAGE) ──
+      const hostname = window.location.hostname.toLowerCase();
+      let refCode = (
+        params.get("ref") ||
+        params.get("code") ||
+        params.get("referral") ||
+        ""
+      ).trim().toLowerCase();
+
+      // Deteksi otomatis jika URL browser membuka subdomain mitra (misal buzzerukm.boontrack.com)
+      if (!refCode) {
+        if (hostname.includes("buzzerukm")) {
+          refCode = "buzzerukm";
+        } else if (hostname.endsWith(".boontrack.com")) {
+          const sub = hostname.replace(".boontrack.com", "").split(".").pop() || "";
+          const RESERVED_HOSTS = new Set([
+            "shop", "app", "creator", "login", "register", "admin", "www", "chat", "manager", "affiliate", "api"
+          ]);
+          if (sub && !RESERVED_HOSTS.has(sub)) {
+            refCode = sub;
+          }
+        }
+      }
+
+      // Fallback ke localStorage / cookies jika belum ada
+      if (!refCode) {
+        try {
+          refCode = (
+            localStorage.getItem("boontrack_merchant_ref") ||
+            localStorage.getItem("boontrack_referral_code") ||
+            localStorage.getItem("affiliate_code") ||
+            ""
+          ).trim().toLowerCase();
+        } catch (_) {}
+      }
+
+      if (refCode) {
+        setReferralCode(refCode);
+        setIsReferralLocked(true);
+        try {
+          localStorage.setItem("boontrack_merchant_ref", refCode);
+          localStorage.setItem("boontrack_referral_code", refCode);
+          document.cookie = `boontrack_merchant_ref=${refCode}; path=/; max-age=2592000; SameSite=Lax`;
+        } catch (_) {}
+      }
 
       if (initialPlan === "solo" || initialPlan === "growth") {
         setSelectedPlan("solo");
@@ -557,6 +605,8 @@ export default function RegisterShopPage() {
       const isPhysicalStore = (resolvedBusinessType as string) === 'PHYSICAL' || (resolvedBusinessType as string) === 'FOOD';
       const isServiceStore = resolvedBusinessType === 'FIELD_SERVICE' || resolvedBusinessType === 'PROFESSIONAL_SERVICE';
 
+      const cleanRef = referralCode.trim().toLowerCase() || null;
+
       try {
         const supabase = getSupabase();
         if (supabase) {
@@ -577,6 +627,9 @@ export default function RegisterShopPage() {
                 trial_ends_at: isTrial ? trialEndsAt : null,
                 subscription_ends_at: isTrial ? trialEndsAt : new Date(Date.now() + 30 * 86400000).toISOString(),
                 created_via: isTrial ? 'register_solo_trial' : 'register_paid',
+                referral_code: cleanRef,
+                affiliate_code: cleanRef,
+                ref: cleanRef,
                 business_category: category,
                 business_type: resolvedBusinessType,
                 vertical_type: resolvedBusinessType,
@@ -616,6 +669,9 @@ export default function RegisterShopPage() {
             customer_email: merchantData.email,
             pin: cleanPin,
             password: cleanPin,
+            referral_code: cleanRef || undefined,
+            affiliate_code: cleanRef || undefined,
+            ref: cleanRef || undefined,
           }),
         }
       ).catch(() => null);
@@ -957,6 +1013,61 @@ export default function RegisterShopPage() {
                   />
                   <p className="text-[10px] text-slate-500 mt-1">
                     Ingat PIN ini untuk masuk kembali ke Dashboard Toko Anda kapan saja.
+                  </p>
+                </div>
+
+                {/* KODE REFERRAL / MITRA PEMBINA */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Kode Referral / Mitra Pembina</span>
+                    </span>
+                    {isReferralLocked ? (
+                      <span className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-wider flex items-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>Terverifikasi</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        Opsional
+                      </span>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      disabled={isReferralLocked}
+                      readOnly={isReferralLocked}
+                      placeholder="Contoh: buzzerukm atau ob"
+                      value={referralCode}
+                      onChange={(e) => {
+                        const val = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "");
+                        setReferralCode(val);
+                        try {
+                          if (val) {
+                            localStorage.setItem("boontrack_merchant_ref", val);
+                            document.cookie = `boontrack_merchant_ref=${val}; path=/; max-age=2592000; SameSite=Lax`;
+                          }
+                        } catch (_) {}
+                      }}
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-base md:text-xs font-mono font-bold transition outline-none ${
+                        isReferralLocked
+                          ? "bg-emerald-50/80 border border-emerald-300 text-emerald-700 cursor-not-allowed"
+                          : "bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:border-blue-600"
+                      }`}
+                    />
+                    {isReferralLocked && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[11px] font-bold text-emerald-600 pointer-events-none">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Terkunci</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    {isReferralLocked
+                      ? `Pendaftaran toko Anda terhubung dan dibina langsung oleh mitra "${referralCode}".`
+                      : "Masukkan kode referral mitra jika Anda mendaftar melalui rekomendasi partner."}
                   </p>
                 </div>
               </div>
