@@ -86,12 +86,14 @@ export async function POST(req: NextRequest) {
           category: resolvedBusinessType,
           tier: 'SOLO_TRIAL',
           trial_ends_at: trialEndsAt,
+          subscription_ends_at: trialEndsAt,
           metadata: {
             template: template || 'COMMERCE_TEMPLATE',
             onboarding_mode: onboardingMode || 'SELF_SERVICE',
             business_type: resolvedBusinessType,
             plan_tier: 'SOLO_TRIAL',
             trial_ends_at: trialEndsAt,
+            subscription_ends_at: trialEndsAt,
             wa_number: formattedWa,
             referral_code: referralCode || null,
             product: {

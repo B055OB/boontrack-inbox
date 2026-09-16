@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     const { data: tenant, error: dbErr } = await supabase
       .from('tenants')
-      .select('id, slug, name, tier, created_at, trial_ends_at, metadata, is_active')
+      .select('id, slug, name, tier, created_at, trial_ends_at, subscription_ends_at, metadata, is_active')
       .eq('slug', slug)
       .maybeSingle();
 
@@ -61,25 +61,33 @@ export async function GET(req: NextRequest) {
     const rawTier = String(tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'SOLO_TRIAL');
     const isTrial = Boolean(rawTier.toLowerCase().includes('trial') || rawTier.toUpperCase() === 'SOLO_TRIAL');
 
+    // Kolom resmi di database Supabase adalah subscription_ends_at (dan trial_ends_at)
+    const effectiveEndDateRaw =
+      tenant.trial_ends_at ||
+      tenant.subscription_ends_at ||
+      tenant.metadata?.trial_ends_at ||
+      tenant.metadata?.subscription_ends_at;
+
     let trialEndsAt: string | null = null;
+    let subscriptionEndsAt: string | null = null;
     let daysLeft: number | null = null;
     let isExpired = false;
 
-    if (isTrial) {
-      if (tenant.trial_ends_at) {
-        trialEndsAt = new Date(tenant.trial_ends_at).toISOString();
-      } else if (tenant.metadata?.trial_ends_at) {
-        trialEndsAt = new Date(tenant.metadata.trial_ends_at).toISOString();
-      } else if (tenant.created_at) {
-        trialEndsAt = new Date(new Date(tenant.created_at).getTime() + 7 * 86400000).toISOString();
-      } else {
-        trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
-      }
-
-      const diffMs = new Date(trialEndsAt).getTime() - Date.now();
-      daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-      isExpired = daysLeft <= 0;
+    if (effectiveEndDateRaw) {
+      trialEndsAt = new Date(effectiveEndDateRaw).toISOString();
+    } else if (tenant.created_at) {
+      trialEndsAt = new Date(new Date(tenant.created_at).getTime() + 7 * 86400000).toISOString();
+    } else {
+      trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
     }
+
+    subscriptionEndsAt = tenant.subscription_ends_at
+      ? new Date(tenant.subscription_ends_at).toISOString()
+      : trialEndsAt;
+
+    const diffMs = new Date(trialEndsAt).getTime() - Date.now();
+    daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    isExpired = daysLeft <= 0;
 
     return NextResponse.json({
       success: true,
@@ -88,6 +96,7 @@ export async function GET(req: NextRequest) {
       tier: rawTier,
       is_trial: isTrial,
       trial_ends_at: trialEndsAt,
+      subscription_ends_at: subscriptionEndsAt,
       days_left: daysLeft,
       is_expired: isExpired,
       status: isExpired ? 'EXPIRED' : (isTrial ? 'TRIAL' : 'ACTIVE'),

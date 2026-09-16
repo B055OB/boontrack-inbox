@@ -34,6 +34,7 @@ import {
   Layers,
   History,
   Info,
+  Pencil,
 } from 'lucide-react';
 import { BANK_OPTIONS } from '@/lib/partner-service';
 
@@ -167,6 +168,19 @@ function AffiliatePortalContent() {
   const [isSavingBank, setIsSavingBank] = useState(false);
   const [bankSaveSuccess, setBankSaveSuccess] = useState('');
   const [bankSaveError, setBankSaveError] = useState('');
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
+  const [editBankName, setEditBankName] = useState('BCA');
+  const [editAccountNumber, setEditAccountNumber] = useState('');
+  const [editAccountHolder, setEditAccountHolder] = useState('');
+
+  const handleOpenBankModal = () => {
+    setEditBankName(bankName || 'BCA');
+    setEditAccountNumber(accountNumber || '');
+    setEditAccountHolder(accountHolder || '');
+    setBankSaveError('');
+    setBankSaveSuccess('');
+    setIsBankModalOpen(true);
+  };
 
   // 5. Withdraw / Payout States
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
@@ -405,10 +419,14 @@ function AffiliatePortalContent() {
     }
   };
 
-  // Save Bank Account Handler
-  const handleSaveBank = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!bankName || !accountNumber || !accountHolder) {
+  // Save Bank Account Handler (Supports Direct Form & Modal)
+  const handleSaveBank = async (e?: React.FormEvent, isModalSource: boolean = false) => {
+    if (e) e.preventDefault();
+    const targetBank = isModalSource ? editBankName : (bankName || editBankName);
+    const targetNum = isModalSource ? editAccountNumber : (accountNumber || editAccountNumber);
+    const targetHolder = isModalSource ? editAccountHolder : (accountHolder || editAccountHolder);
+
+    if (!targetBank || !targetNum || !targetHolder) {
       setBankSaveError('Semua kolom rekening bank / e-wallet wajib diisi lengkap.');
       return;
     }
@@ -417,24 +435,62 @@ function AffiliatePortalContent() {
     setBankSaveSuccess('');
     setBankSaveError('');
 
+    const cleanNum = targetNum.trim().replace(/\s+/g, '');
+    const cleanHolder = targetHolder.trim().toUpperCase();
+
     try {
-      const res = await fetch('/api/v1/partners/bank-account', {
-        method: 'POST',
+      // 1. Panggil endpoint update payout-account
+      const res = await fetch('/api/v1/affiliate/payout-account', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          partner_id: data?.affiliate.id,
+          affiliate_id: data?.affiliate?.id,
+          partner_id: data?.affiliate?.id,
           phone: authSession?.phone,
-          bank_name: bankName,
-          account_number: accountNumber,
-          account_holder: accountHolder,
+          bank_name: targetBank,
+          bank_account_number: cleanNum,
+          bank_account_holder: cleanHolder,
         }),
       });
-      const result = await res.json();
+
+      const result = await res.json().catch(() => ({}));
       if (!res.ok || !result.success) {
-        throw new Error(result.message || 'Gagal menyimpan rekening.');
+        // Fallback ke /api/v1/partners/bank-account
+        const fallbackRes = await fetch('/api/v1/partners/bank-account', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            partner_id: data?.affiliate?.id,
+            phone: authSession?.phone,
+            bank_name: targetBank,
+            account_number: cleanNum,
+            account_holder: cleanHolder,
+          }),
+        });
+        const fallbackResult = await fallbackRes.json().catch(() => ({}));
+        if (!fallbackRes.ok || !fallbackResult.success) {
+          throw new Error(result.message || fallbackResult.message || 'Gagal menyimpan rekening.');
+        }
       }
 
+      setBankName(targetBank);
+      setAccountNumber(cleanNum);
+      setAccountHolder(cleanHolder);
       setBankSaveSuccess('Rekening pencairan dana berhasil disimpan & diverifikasi!');
+
+      // Update data.affiliate di memory
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          affiliate: {
+            ...prev.affiliate,
+            bank_name: targetBank,
+            bank_account_number: cleanNum,
+            bank_account_holder: cleanHolder,
+          },
+        };
+      });
 
       // Sync local session
       if (typeof window !== 'undefined') {
@@ -444,11 +500,17 @@ function AffiliatePortalContent() {
           'affiliate_data',
           JSON.stringify({
             ...prevData,
-            bank_name: bankName,
-            bank_account_number: accountNumber,
-            bank_account_holder: accountHolder,
+            bank_name: targetBank,
+            bank_account_number: cleanNum,
+            bank_account_holder: cleanHolder,
           })
         );
+      }
+
+      if (isModalSource) {
+        setTimeout(() => {
+          setIsBankModalOpen(false);
+        }, 600);
       }
 
       setTimeout(() => setBankSaveSuccess(''), 5000);
@@ -1306,63 +1368,110 @@ function AffiliatePortalContent() {
                   </div>
                 )}
 
-                <form onSubmit={handleSaveBank} className="space-y-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                      Pilihan Bank / E-Wallet:
-                    </label>
-                    <select
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                {accountNumber ? (
+                  <div className="space-y-4">
+                    {/* Visual Card Rekening Tersimpan */}
+                    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-850 to-blue-950/40 p-4 border border-slate-700/60 shadow-inner">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
+                            <CreditCard className="w-4 h-4 text-blue-400" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Bank / E-Wallet</span>
+                            <span className="text-sm font-black text-white">{bankName}</span>
+                          </div>
+                        </div>
+                        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Terverifikasi
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 mt-4 pt-3 border-t border-slate-700/40">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-medium">Nomor Rekening / No. HP:</span>
+                          <span className="text-sm sm:text-base font-black font-mono tracking-wider text-emerald-400 select-all">
+                            {accountNumber}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-medium">Nama Pemilik Rekening:</span>
+                          <span className="text-xs font-bold text-slate-200 uppercase tracking-wide">
+                            {accountHolder}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenBankModal}
+                      className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold rounded-xl transition shadow flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      {BANK_OPTIONS.map((b) => (
-                        <option key={b.id} value={b.id} className="bg-slate-900 text-white">
-                          {b.label}
-                        </option>
-                      ))}
-                    </select>
+                      <Pencil className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Ubah Rekening</span>
+                    </button>
                   </div>
+                ) : (
+                  <form onSubmit={(e) => handleSaveBank(e, false)} className="space-y-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                        Pilihan Bank / E-Wallet:
+                      </label>
+                      <select
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                      >
+                        {BANK_OPTIONS.map((b) => (
+                          <option key={b.id} value={b.id} className="bg-slate-900 text-white">
+                            {b.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                      Nomor Rekening / No. E-Wallet:
-                    </label>
-                    <input
-                      type="text"
-                      value={accountNumber}
-                      onChange={(e) => setAccountNumber(e.target.value)}
-                      placeholder="Contoh: 8820199201"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                        Nomor Rekening / No. E-Wallet:
+                      </label>
+                      <input
+                        type="text"
+                        value={accountNumber}
+                        onChange={(e) => setAccountNumber(e.target.value)}
+                        placeholder="Contoh: 8820199201"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                      Nama Pemilik Rekening:
-                    </label>
-                    <input
-                      type="text"
-                      value={accountHolder}
-                      onChange={(e) => setAccountHolder(e.target.value.toUpperCase())}
-                      placeholder="Contoh: SAKTI ALAMSYAH"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                        Nama Pemilik Rekening:
+                      </label>
+                      <input
+                        type="text"
+                        value={accountHolder}
+                        onChange={(e) => setAccountHolder(e.target.value.toUpperCase())}
+                        placeholder="Contoh: SAKTI ALAMSYAH"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
 
-                  <button
-                    type="submit"
-                    disabled={isSavingBank}
-                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    {isSavingBank ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <CreditCard className="w-3.5 h-3.5" />
-                    )}
-                    <span>Simpan Rekening Bank</span>
-                  </button>
-                </form>
+                    <button
+                      type="submit"
+                      disabled={isSavingBank}
+                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {isSavingBank ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CreditCard className="w-3.5 h-3.5" />
+                      )}
+                      <span>Simpan Rekening Bank</span>
+                    </button>
+                  </form>
+                )}
               </div>
 
               {/* Tabel Riwayat Penarikan Komisi (Col 2 & 3) */}
@@ -1611,6 +1720,115 @@ function AffiliatePortalContent() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL UBAH REKENING PENCAIRAN KOMISI ── */}
+      {isBankModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-500/10 rounded-xl text-blue-400 border border-blue-500/20">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Ubah Rekening Pencairan</h3>
+                  <p className="text-[11px] text-slate-400">Pembaruan rekening tujuan transfer komisi</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBankModalOpen(false)}
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {bankSaveSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{bankSaveSuccess}</span>
+              </div>
+            )}
+
+            {bankSaveError && (
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{bankSaveError}</span>
+              </div>
+            )}
+
+            <form onSubmit={(e) => handleSaveBank(e, true)} className="space-y-3.5">
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Pilihan Bank / E-Wallet:
+                </label>
+                <select
+                  value={editBankName}
+                  onChange={(e) => setEditBankName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                >
+                  {BANK_OPTIONS.map((b) => (
+                    <option key={b.id} value={b.id} className="bg-slate-900 text-white">
+                      {b.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Nomor Rekening / No. HP E-Wallet:
+                </label>
+                <input
+                  type="text"
+                  value={editAccountNumber}
+                  onChange={(e) => setEditAccountNumber(e.target.value)}
+                  placeholder="Contoh: 8820199201"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Nama Pemilik Rekening:
+                </label>
+                <input
+                  type="text"
+                  value={editAccountHolder}
+                  onChange={(e) => setEditAccountHolder(e.target.value.toUpperCase())}
+                  placeholder="Contoh: SAKTI ALAMSYAH"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white uppercase focus:outline-none focus:border-blue-500"
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBankModalOpen(false)}
+                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingBank}
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isSavingBank ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5" />
+                  )}
+                  <span>Simpan Perubahan</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

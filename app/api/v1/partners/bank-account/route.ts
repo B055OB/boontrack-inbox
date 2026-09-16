@@ -26,18 +26,29 @@ export async function POST(req: NextRequest) {
     try {
       const supabase = getSupabase();
       if (supabase && (partner_id || phone)) {
-        // Attempt update in affiliates or partners table metadata
-        const { data: existing } = await supabase
-          .from('affiliates')
-          .select('id, metadata')
-          .eq(partner_id ? 'id' : 'phone_number', partner_id || phone)
-          .maybeSingle();
+        let query = supabase.from('affiliates').select('id, metadata');
+        if (partner_id) {
+          query = query.eq('id', partner_id);
+        } else if (phone) {
+          const cp = String(phone).replace(/[^0-9]/g, '');
+          const norm = cp.startsWith('0') ? '62' + cp.slice(1) : cp;
+          query = query.or(`phone.eq.${norm},phone_number.eq.${norm},phone.eq.${phone},phone_number.eq.${phone}`);
+        }
+
+        const { data: existingRecords } = await query.limit(1);
+        const existing = existingRecords && existingRecords.length > 0 ? existingRecords[0] : null;
 
         if (existing) {
           await supabase.from('affiliates').update({
             bank_name,
             bank_account_number: cleanAccount,
             bank_account_holder: cleanHolder,
+            payout_bank_details: {
+              bank_name,
+              account_number: cleanAccount,
+              account_holder: cleanHolder,
+            },
+            is_bank_verified: true,
             metadata: {
               ...(existing.metadata || {}),
               bank_name,
