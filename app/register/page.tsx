@@ -75,33 +75,126 @@ const CATEGORIES = [
 
 export type CanonicalBusinessType =
   | "PHYSICAL"
+  | "RETAIL"
   | "DIGITAL"
   | "FOOD"
   | "FIELD_SERVICE"
   | "PROFESSIONAL_SERVICE"
   | "CREATOR_AGENCY";
 
-const VERTICAL_MAP: Record<string, CanonicalBusinessType> = {
+export const VERTICAL_MAP: Record<string, CanonicalBusinessType> = {
+  // Physical / Retail
   PHYSICAL: "PHYSICAL",
-  retail_physical: "PHYSICAL",
   physical: "PHYSICAL",
+  RETAIL: "PHYSICAL",
+  retail: "PHYSICAL",
+  RETAIL_PHYSICAL: "PHYSICAL",
+  retail_physical: "PHYSICAL",
+  FISIK: "PHYSICAL",
+  fisik: "PHYSICAL",
+  BARANG: "PHYSICAL",
+  barang: "PHYSICAL",
+  PRODUCT: "PHYSICAL",
+  product: "PHYSICAL",
+
+  // Digital
   DIGITAL: "DIGITAL",
   digital: "DIGITAL",
+  ECOURSE: "DIGITAL",
+  ecourse: "DIGITAL",
+  COURSE: "DIGITAL",
+  course: "DIGITAL",
+  EBOOK: "DIGITAL",
+  ebook: "DIGITAL",
+
+  // Food / FnB / Kuliner
   FOOD: "FOOD",
-  fnb: "FOOD",
   food: "FOOD",
+  FNB: "FOOD",
+  fnb: "FOOD",
+  KULINER: "FOOD",
+  kuliner: "FOOD",
+
+  // Field Service / Jasa Lapangan
   FIELD_SERVICE: "FIELD_SERVICE",
-  local_service: "FIELD_SERVICE",
   field_service: "FIELD_SERVICE",
+  LOCAL_SERVICE: "FIELD_SERVICE",
+  local_service: "FIELD_SERVICE",
+  SERVICE: "FIELD_SERVICE",
   service: "FIELD_SERVICE",
+  JASA: "FIELD_SERVICE",
+  jasa: "FIELD_SERVICE",
+  TEKNISI: "FIELD_SERVICE",
+  teknisi: "FIELD_SERVICE",
+
+  // Professional Service / Konsultan / Travel / Umroh
   PROFESSIONAL_SERVICE: "PROFESSIONAL_SERVICE",
-  professional_consult: "PROFESSIONAL_SERVICE",
   professional_service: "PROFESSIONAL_SERVICE",
-  SERVICE: "PROFESSIONAL_SERVICE",
+  PROFESSIONAL: "PROFESSIONAL_SERVICE",
+  professional: "PROFESSIONAL_SERVICE",
+  professional_consult: "PROFESSIONAL_SERVICE",
+  PRO_SERVICE: "PROFESSIONAL_SERVICE",
+  pro_service: "PROFESSIONAL_SERVICE",
+  CONSULTANT: "PROFESSIONAL_SERVICE",
+  consultant: "PROFESSIONAL_SERVICE",
+  LEGAL: "PROFESSIONAL_SERVICE",
+  legal: "PROFESSIONAL_SERVICE",
+  TRAVEL: "PROFESSIONAL_SERVICE",
+  travel: "PROFESSIONAL_SERVICE",
+  UMROH: "PROFESSIONAL_SERVICE",
+  umroh: "PROFESSIONAL_SERVICE",
+  AGENSI: "PROFESSIONAL_SERVICE",
+  agensi: "PROFESSIONAL_SERVICE",
+
+  // Creator Agency
   CREATOR_AGENCY: "CREATOR_AGENCY",
-  affiliate_creator: "CREATOR_AGENCY",
   creator_agency: "CREATOR_AGENCY",
+  CREATOR: "CREATOR_AGENCY",
+  creator: "CREATOR_AGENCY",
+  affiliate_creator: "CREATOR_AGENCY",
+  AGENCY: "CREATOR_AGENCY",
+  agency: "CREATOR_AGENCY",
 };
+
+export function resolveCanonicalCategory(raw?: string | null): CanonicalBusinessType {
+  if (!raw) return "PHYSICAL";
+  const clean = String(raw).trim().toUpperCase();
+
+  // 1. Direct canonical match
+  if (clean === "PROFESSIONAL_SERVICE" || clean === "PRO_SERVICE" || clean === "PROFESSIONAL_CONSULT") return "PROFESSIONAL_SERVICE";
+  if (clean === "FIELD_SERVICE" || clean === "LOCAL_SERVICE") return "FIELD_SERVICE";
+  if (clean === "DIGITAL" || clean === "DIGITAL_PRODUCT") return "DIGITAL";
+  if (clean === "FOOD" || clean === "FNB" || clean === "KULINER") return "FOOD";
+  if (clean === "CREATOR_AGENCY" || clean === "CREATOR" || clean === "AFFILIATE_CREATOR") return "CREATOR_AGENCY";
+  if (clean === "PHYSICAL" || clean === "RETAIL" || clean === "RETAIL_PHYSICAL") return "PHYSICAL";
+
+  // 2. Map lookup
+  if (VERTICAL_MAP[clean] || VERTICAL_MAP[clean.toLowerCase()]) {
+    return VERTICAL_MAP[clean] || VERTICAL_MAP[clean.toLowerCase()];
+  }
+
+  // 3. Keyword matching
+  if (clean.includes("PROFESSIONAL") || clean.includes("CONSULT") || clean.includes("LEGAL") || clean.includes("TRAVEL") || clean.includes("UMROH")) {
+    return "PROFESSIONAL_SERVICE";
+  }
+  if (clean.includes("FIELD") || clean.includes("BOOKING") || clean.includes("SERVICE") || clean.includes("JASA") || clean.includes("TEKNISI") || clean.includes("TOREN")) {
+    return "FIELD_SERVICE";
+  }
+  if (clean.includes("DIGITAL") || clean.includes("COURSE") || clean.includes("ECOURSE") || clean.includes("EBOOK")) {
+    return "DIGITAL";
+  }
+  if (clean.includes("FOOD") || clean.includes("KULINER") || clean.includes("FNB") || clean.includes("MINUMAN") || clean.includes("MAKANAN")) {
+    return "FOOD";
+  }
+  if (clean.includes("CREATOR") || clean.includes("AGENCY") || clean.includes("TALENT") || clean.includes("INFLUENCER")) {
+    return "CREATOR_AGENCY";
+  }
+  if (clean.includes("RETAIL") || clean.includes("FISIK") || clean.includes("PHYSICAL") || clean.includes("BARANG")) {
+    return "PHYSICAL";
+  }
+
+  return "PHYSICAL";
+}
 
 export type OfficialPlan = "starter" | "solo" | "ads_performance" | "team_scale";
 
@@ -678,18 +771,11 @@ export default function RegisterShopPage() {
 
     try {
       // 1. Simpan tenant langsung ke Supabase tenants table agar data toko & PIN benar-benar tersimpan
-      const resolvedBusinessType: CanonicalBusinessType =
-        VERTICAL_MAP[category] ||
-        (category === 'PROFESSIONAL_SERVICE' || category === 'professional_consult'
-          ? 'PROFESSIONAL_SERVICE'
-          : category === 'local_service' || category === 'FIELD_SERVICE'
-          ? 'FIELD_SERVICE'
-          : category === 'digital' || category === 'DIGITAL'
-          ? 'DIGITAL'
-          : 'PHYSICAL');
+      const resolvedBusinessType: CanonicalBusinessType = resolveCanonicalCategory(category);
 
-      const isPhysicalStore = (resolvedBusinessType as string) === 'PHYSICAL' || (resolvedBusinessType as string) === 'FOOD';
+      const isPhysicalStore = (resolvedBusinessType as string) === 'PHYSICAL' || (resolvedBusinessType as string) === 'RETAIL' || (resolvedBusinessType as string) === 'FOOD';
       const isServiceStore = resolvedBusinessType === 'FIELD_SERVICE' || resolvedBusinessType === 'PROFESSIONAL_SERVICE';
+      const isDigitalStore = resolvedBusinessType === 'DIGITAL';
 
       const cleanRef = referralCode.trim().toLowerCase() || null;
       let matchedAffiliateId: string | null = null;
@@ -713,6 +799,7 @@ export default function RegisterShopPage() {
         category: resolvedBusinessType,
         business_type: resolvedBusinessType,
         vertical_type: resolvedBusinessType,
+        business_category: resolvedBusinessType,
         selectedPlan,
         plan_tier: targetPlanTier,
         amount: planAmount,
@@ -1050,7 +1137,13 @@ export default function RegisterShopPage() {
                   {CATEGORIES.map((cat) => {
                     const Icon = cat.icon;
                     const isComingSoon = Boolean((cat as any).comingSoon || cat.id === "FOOD" || cat.id === "fnb");
-                    const isSelected = (category === cat.id || VERTICAL_MAP[category] === cat.id) && !isComingSoon;
+                    const canonicalSelected = resolveCanonicalCategory(category);
+                    const isSelected =
+                      !isComingSoon &&
+                      (category === cat.id ||
+                        canonicalSelected === cat.id ||
+                        (cat.id === "PHYSICAL" && (canonicalSelected === "PHYSICAL" || category === "RETAIL" || category === "retail_physical" || category === "retail")) ||
+                        VERTICAL_MAP[category] === cat.id);
                     const vertical = VERTICAL_MAP[cat.id] ?? cat.id;
                     return (
                       <button

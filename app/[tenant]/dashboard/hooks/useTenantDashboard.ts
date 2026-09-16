@@ -971,7 +971,7 @@ export function useTenantDashboard() {
 
     const finalSlug = (productForm.slug?.trim() || slugify(productForm.name)).toLowerCase();
     const cleanImage = sanitizeImageUrl(productForm.image);
-    const isPhysicalStock = storeCategory === 'PHYSICAL' || storeCategory === 'FOOD';
+    const isPhysicalStock = storeCategory === 'PHYSICAL' || storeCategory === 'RETAIL' || storeCategory === 'FOOD';
     const updatedProductItem: ProductItem = {
       ...productForm,
       is_unlimited: !isPhysicalStock ? true : (productForm.is_unlimited ?? false),

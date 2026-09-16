@@ -64,7 +64,17 @@ export async function POST(req: NextRequest) {
       utms,
     } = body;
 
-    if (!storeName || !waNumber || !category) {
+    const incomingCategory = (
+      category ||
+      body.business_category ||
+      body.business_type ||
+      body.vertical_type ||
+      body.category_id ||
+      body.industry ||
+      ''
+    ).toString().trim();
+
+    if (!storeName || !waNumber || !incomingCategory) {
       return NextResponse.json(
         {
           success: false,
@@ -91,28 +101,37 @@ export async function POST(req: NextRequest) {
         .replace(/(^-|-$)/g, '')
     ) || `tenant-${Date.now().toString().slice(-6)}`;
 
-    // Resolve canonical business category without hardcoding retail
-    const catUpper = String(category).toUpperCase();
-    const isDigital = productType === 'digital' || catUpper === 'DIGITAL';
+    // Resolve canonical business category without hardcoding retail / e-commerce
+    const catUpper = incomingCategory.toUpperCase();
+    const isDigital = productType === 'digital' || catUpper === 'DIGITAL' || catUpper.includes('COURSE') || catUpper.includes('ECOURSE') || catUpper.includes('EBOOK');
     const isProService = ['PROFESSIONAL', 'CONSULT', 'LEGAL', 'TRAVEL', 'UMROH', 'PRO_SERVICE'].some(k => catUpper.includes(k));
-    const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'REPAIR', 'JASA'].some(k => catUpper.includes(k));
-    const isFood = catUpper === 'FOOD' || catUpper === 'FNB' || catUpper === 'KULINER';
+    const isFieldService = !isProService && ['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'REPAIR', 'JASA', 'TEKNISI', 'BOOKING'].some(k => catUpper.includes(k));
+    const isFood = catUpper === 'FOOD' || catUpper === 'FNB' || catUpper === 'KULINER' || catUpper.includes('MAKANAN') || catUpper.includes('MINUMAN');
     const isCreator = catUpper === 'CREATOR_AGENCY' || catUpper === 'CREATOR' || catUpper === 'AGENCY';
+    const isRetail = catUpper === 'RETAIL' || catUpper === 'RETAIL_PHYSICAL' || catUpper.includes('RETAIL');
 
-    const resolvedBusinessType = isProService
-      ? 'PROFESSIONAL_SERVICE'
-      : isFieldService
-      ? 'FIELD_SERVICE'
-      : isFood
-      ? 'FOOD'
-      : isCreator
-      ? 'CREATOR_AGENCY'
-      : isDigital
-      ? 'DIGITAL'
-      : 'PHYSICAL';
+    let resolvedBusinessType: string;
+    if (isProService) {
+      resolvedBusinessType = 'PROFESSIONAL_SERVICE';
+    } else if (isFieldService) {
+      resolvedBusinessType = 'FIELD_SERVICE';
+    } else if (isFood) {
+      resolvedBusinessType = 'FOOD';
+    } else if (isCreator) {
+      resolvedBusinessType = 'CREATOR_AGENCY';
+    } else if (isDigital) {
+      resolvedBusinessType = 'DIGITAL';
+    } else if (isRetail) {
+      resolvedBusinessType = 'RETAIL';
+    } else if (incomingCategory) {
+      // Nilai kategori dari payload disimpan langsung apa adanya
+      resolvedBusinessType = incomingCategory;
+    } else {
+      resolvedBusinessType = 'PHYSICAL';
+    }
 
     const isServiceStore = isProService || isFieldService;
-    const isPhysicalStore = isFood || (!isServiceStore && !isDigital && !isCreator);
+    const isPhysicalStore = isFood || isRetail || (!isServiceStore && !isDigital && !isCreator);
 
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
@@ -209,6 +228,7 @@ export async function POST(req: NextRequest) {
               ai_bot: true,
               shipping: isPhysicalStore,
               booking: isServiceStore,
+              digital_fulfillment: isDigital,
             },
             product: {
               type: isDigital ? 'digital' : isServiceStore ? 'service' : 'physical',
