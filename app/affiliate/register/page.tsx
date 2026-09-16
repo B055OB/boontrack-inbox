@@ -107,11 +107,21 @@ function AffiliateRegisterContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // Resolve AM Code: use query param ?ref= or ?am= if provided, otherwise fallback to Kang Sakti
+  // Resolve AM Code: use query param ?ref= or ?am= if provided, or subdomain, otherwise fallback to Kang Sakti
   useEffect(() => {
-    const refCode = searchParams.get('ref') || searchParams.get('am') || '';
-    if (refCode.trim()) {
-      setResolvedAmCode(refCode.trim().toUpperCase());
+    let refCode = (searchParams.get('ref') || searchParams.get('am') || '').trim();
+    if (!refCode && typeof window !== 'undefined') {
+      const hostParts = window.location.hostname.split('.');
+      if (hostParts.length > 2) {
+        const sub = hostParts[0].toLowerCase();
+        const RESERVED = ['www', 'shop', 'affiliate', 'app', 'creator', 'admin', 'login'];
+        if (!RESERVED.includes(sub)) {
+          refCode = sub;
+        }
+      }
+    }
+    if (refCode) {
+      setResolvedAmCode(refCode.toUpperCase());
     } else {
       setResolvedAmCode(DEFAULT_AM_CODE);
     }
@@ -612,6 +622,32 @@ function AffiliateRegisterContent() {
                   {currentStep === 1 && (
                     <div className="space-y-4 animate-in fade-in duration-200">
                       
+                      {/* Upline Referral / AM Pembina (Otomatis Terisi & Terkunci) */}
+                      <div className="space-y-1.5 p-3.5 rounded-2xl bg-slate-950/90 border border-emerald-500/30 shadow-inner">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                            <span>Upline Pembina / Kode Referral</span>
+                          </label>
+                          <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                            <Lock className="w-2.5 h-2.5" />
+                            Terkunci &amp; Terverifikasi
+                          </span>
+                        </div>
+                        <div className="relative mt-1">
+                          <input
+                            type="text"
+                            value={resolvedAmCode}
+                            readOnly
+                            disabled
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono font-black text-emerald-300 cursor-not-allowed select-all tracking-wider"
+                          />
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          Pendaftaran akun affiliate Anda otomatis dibina langsung di bawah jaringan <strong className="text-emerald-400 font-mono font-bold">{resolvedAmCode}</strong>.
+                        </p>
+                      </div>
+
                       {/* Full Name */}
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-slate-300 flex items-center justify-between">

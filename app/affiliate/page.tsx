@@ -424,7 +424,7 @@ function AffiliatePortalContent() {
             referral_code: clean.toLowerCase(),
             is_ref_customized: true,
           },
-          referral_url: `https://shop.boontrack.com/register?ref=${clean.toLowerCase()}`,
+          referral_url: `https://${clean.toLowerCase()}.boontrack.com/`,
         });
       }
     } catch (err: unknown) {
@@ -636,30 +636,34 @@ function AffiliatePortalContent() {
     }
   };
 
-  // ── DYNAMIC UTM LINK BUILDER ──
+  // ── DYNAMIC UTM LINK BUILDER (SUBDOMAIN FORMAT) ──
   const activeCode = (affiliateCode || 'buzzerukm').toLowerCase();
 
   const generatedCustomUrl = useMemo(() => {
-    let baseUrl = 'https://shop.boontrack.com/register';
+    let baseUrl = `https://${activeCode}.boontrack.com/register`;
     if (targetUrlType === 'storefront') {
-      baseUrl = 'https://shop.boontrack.com';
+      baseUrl = `https://${activeCode}.boontrack.com/`;
     } else if (targetUrlType === 'custom') {
-      baseUrl = customTargetUrl.trim() || 'https://shop.boontrack.com/register';
+      baseUrl = customTargetUrl.trim() || `https://${activeCode}.boontrack.com/register`;
     }
 
     try {
       const u = new URL(baseUrl);
-      u.searchParams.set('ref', activeCode);
       if (utmSource) u.searchParams.set('utm_source', utmSource.trim().toLowerCase());
       if (utmMedium) u.searchParams.set('utm_medium', utmMedium.trim().toLowerCase());
       if (utmCampaign) u.searchParams.set('utm_campaign', utmCampaign.trim().toLowerCase());
       return u.toString();
     } catch {
-      return `${baseUrl}?ref=${activeCode}&utm_source=${utmSource}&utm_medium=${utmMedium}&utm_campaign=${utmCampaign}`;
+      const qs = [
+        utmSource ? `utm_source=${encodeURIComponent(utmSource.trim().toLowerCase())}` : '',
+        utmMedium ? `utm_medium=${encodeURIComponent(utmMedium.trim().toLowerCase())}` : '',
+        utmCampaign ? `utm_campaign=${encodeURIComponent(utmCampaign.trim().toLowerCase())}` : '',
+      ].filter(Boolean).join('&');
+      return qs ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${qs}` : baseUrl;
     }
   }, [targetUrlType, customTargetUrl, activeCode, utmSource, utmMedium, utmCampaign]);
 
-  const defaultReferralLink = `https://shop.boontrack.com/register?ref=${activeCode}`;
+  const defaultReferralLink = `https://${activeCode}.boontrack.com/`;
 
   const copyToClipboard = (text: string, type: 'base' | 'customUtm') => {
     if (typeof navigator !== 'undefined') {
@@ -946,7 +950,7 @@ function AffiliatePortalContent() {
                       }`}
                     >
                       <div className="font-bold text-white">Form Daftar UKM</div>
-                      <div className="text-[10px] text-slate-400">/register (Trial 7h)</div>
+                      <div className="text-[10px] text-slate-400 font-mono">/{activeCode}.boontrack.com/register</div>
                     </button>
 
                     <button
@@ -959,7 +963,7 @@ function AffiliatePortalContent() {
                       }`}
                     >
                       <div className="font-bold text-white">Beranda Platform</div>
-                      <div className="text-[10px] text-slate-400">shop.boontrack.com</div>
+                      <div className="text-[10px] text-slate-400 font-mono">{activeCode}.boontrack.com</div>
                     </button>
                   </div>
                 </div>
@@ -1134,7 +1138,7 @@ function AffiliatePortalContent() {
                 <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
                   <div className="flex items-center rounded-xl bg-slate-950 border border-slate-800 overflow-hidden flex-1 focus-within:border-purple-500 transition">
                     <span className="px-3.5 py-3 text-xs font-mono text-slate-400 bg-slate-900/80 border-r border-slate-800 select-none whitespace-nowrap">
-                      shop.boontrack.com/register?ref=
+                      https://
                     </span>
                     <input
                       type="text"
@@ -1148,6 +1152,9 @@ function AffiliatePortalContent() {
                         isRefCustomized ? 'text-slate-400 cursor-not-allowed' : 'text-purple-300'
                       }`}
                     />
+                    <span className="px-3.5 py-3 text-xs font-mono text-slate-400 bg-slate-900/80 border-l border-slate-800 select-none whitespace-nowrap">
+                      .boontrack.com
+                    </span>
                   </div>
 
                   {!isRefCustomized && (

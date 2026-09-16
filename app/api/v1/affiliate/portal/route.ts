@@ -169,7 +169,7 @@ export async function GET(req: NextRequest) {
           bank_account_number: affiliate.bank_account_number || affiliate.metadata?.bank_account_number || '',
           bank_account_holder: affiliate.bank_account_holder || affiliate.metadata?.bank_account_holder || '',
         },
-        referral_url: `https://shop.boontrack.com/register?ref=${affiliate.referral_code || cleanCode}`,
+        referral_url: `https://${(affiliate.referral_code || cleanCode).toLowerCase()}.boontrack.com/`,
         metrics: {
           total_clicks: attributions?.length || 0,
           total_leads: totalLeads,

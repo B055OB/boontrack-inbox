@@ -406,6 +406,30 @@ export default function TenantStorefrontPage() {
             console.warn("[Storefront] Fallback settings fetch failed:", fbErr);
           }
 
+          // Fallback: Periksa apakah slug subdomain adalah kode referral affiliate mitra
+          try {
+            const { data: affRow } = await supabase
+              .from("affiliates")
+              .select("id, referral_code")
+              .or(`referral_code.ilike.${tenantSlug},affiliate_code.ilike.${tenantSlug}`)
+              .limit(1)
+              .maybeSingle();
+
+            if (affRow) {
+              const affCode = (affRow.referral_code || tenantSlug).trim();
+              if (typeof window !== "undefined") {
+                try {
+                  localStorage.setItem("boontrack_affiliate_code", affCode);
+                  localStorage.setItem("affiliate_code", affCode);
+                } catch (_) {}
+                router.replace(`/register?ref=${encodeURIComponent(affCode)}`);
+              }
+              return;
+            }
+          } catch (affCheckErr) {
+            console.warn("[Storefront] Affiliate check error:", affCheckErr);
+          }
+
           if (isMounted) {
             setTenant(null);
             setStoreStatus("not_found");

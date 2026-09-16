@@ -236,6 +236,57 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // ===========================================================================
+  // SUBDOMAIN MITRA AFFILIATE (*.boontrack.com)
+  // Contoh: buzzerukm.boontrack.com/affiliate/register
+  // ===========================================================================
+  const RESERVED_CORE_SUBDOMAINS = new Set([
+    'login', 'register', 'daftar', 'api', 'dashboard', 'auth', 'admin',
+    'affiliate', 'manager', 'shop', 'creator', 'www', 'app', 'career', 'static', 'chat'
+  ]);
+
+  if (subdomain && !RESERVED_CORE_SUBDOMAINS.has(subdomain)) {
+    // 1. /affiliate/register -> Pertahankan path tujuannya, inject ?ref=${subdomain}
+    if (pathname === '/affiliate/register' || pathname.startsWith('/affiliate/register/')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/affiliate/register';
+      if (!url.searchParams.has('ref') && !url.searchParams.has('am')) {
+        url.searchParams.set('ref', subdomain);
+      }
+      return NextResponse.rewrite(url);
+    }
+
+    // 2. /affiliate/dashboard -> Pertahankan path tujuannya, inject ?code=${subdomain}
+    if (pathname === '/affiliate/dashboard' || pathname.startsWith('/affiliate/dashboard/')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/affiliate/dashboard';
+      if (!url.searchParams.has('code') && !url.searchParams.has('ref')) {
+        url.searchParams.set('code', subdomain);
+      }
+      return NextResponse.rewrite(url);
+    }
+
+    // 3. /affiliate root -> Pertahankan path, inject ?code=${subdomain}
+    if (pathname === '/affiliate' || pathname === '/affiliate/') {
+      const url = req.nextUrl.clone();
+      url.pathname = '/affiliate';
+      if (!url.searchParams.has('code') && !url.searchParams.has('ref')) {
+        url.searchParams.set('code', subdomain);
+      }
+      return NextResponse.rewrite(url);
+    }
+
+    // 4. /register -> Funnel registrasi UKM dari link promo subdomain mitra
+    if (pathname === '/register' || pathname.startsWith('/register/')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/register';
+      if (!url.searchParams.has('ref') && !url.searchParams.has('am')) {
+        url.searchParams.set('ref', subdomain);
+      }
+      return NextResponse.rewrite(url);
+    }
+  }
+
   // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===
   const isDashboardPath =
     pathname === '/dashboard' ||
