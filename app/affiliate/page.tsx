@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   TrendingUp,
@@ -120,6 +120,31 @@ const getCookieValue = (name: string): string => {
   return match ? decodeURIComponent(match[1]) : '';
 };
 
+export const RESERVED_ROUTING_KEYWORDS = new Set([
+  'affiliate',
+  'dashboard',
+  'portal',
+  'login',
+  'register',
+  'daftar',
+  'admin',
+  'api',
+  'auth',
+  'shop',
+  'creator',
+  'manager',
+  'www',
+  'app',
+  'static',
+  'chat',
+]);
+
+export const isReservedKeyword = (code: string | null | undefined): boolean => {
+  if (!code) return true;
+  const clean = code.trim().toLowerCase();
+  return clean.length < 2 || RESERVED_ROUTING_KEYWORDS.has(clean);
+};
+
 const normalizeRefCode = (code: string): string => {
   let clean = (code || '').trim().toLowerCase();
   if (clean === 'mafiasakti' || clean === 'kangsakti') {
@@ -129,15 +154,12 @@ const normalizeRefCode = (code: string): string => {
 };
 
 function AffiliatePortalContent() {
-  const searchParams = useSearchParams();
   const router = useRouter();
 
-  // URL parameters or defaults
-  const initialTenant = searchParams.get('tenant') || 'shop';
-  const initialRef = normalizeRefCode(searchParams.get('code') || searchParams.get('ref') || searchParams.get('affiliate') || '');
-
-  const [tenantSlug, setTenantSlug] = useState(initialTenant);
-  const [affiliateCode, setAffiliateCode] = useState(initialRef);
+  const [tenantSlug, setTenantSlug] = useState('shop');
+  const [affiliateCode, setAffiliateCode] = useState('');
+  const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated' | 'forbidden'>('checking');
+  const [forbiddenMsg, setForbiddenMsg] = useState('');
   const [data, setData] = useState<PortalResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -157,16 +179,14 @@ function AffiliatePortalContent() {
     bank_account_holder?: string;
   } | null>(null);
 
-  // Resolusi activeCode secara dinamis:
-  // 1. Data affiliate terverifikasi dari backend/database
-  // 2. authSession.referral_code
-  // 3. affiliateCode (dari parameter URL ?code= / ?ref= atau cookie/localStorage)
-  const activeCode = (
+  // Resolusi activeCode secara murni dari data terautentikasi (/api/v1/affiliate/me)
+  const candidateActive = (
     data?.affiliate?.referral_code ||
     authSession?.referral_code ||
     affiliateCode ||
     ''
   ).trim().toLowerCase();
+  const activeCode = isReservedKeyword(candidateActive) ? '' : candidateActive;
 
   // HANYA bernilai true jika kode referral aktif BENAR-BENAR 'buzzerukm'
   const isBuzzerUkm = Boolean(activeCode === 'buzzerukm');
@@ -219,172 +239,108 @@ function AffiliatePortalContent() {
   const [withdrawSuccessMsg, setWithdrawSuccessMsg] = useState('');
   const [withdrawErrorMsg, setWithdrawErrorMsg] = useState('');
 
-  // Helper resolusi kode referral otomatis dari auth session / cookie / subdomain / URL query
-  const resolveCandidateCode = useCallback((): string => {
-    if (typeof window === 'undefined') return '';
-    // 1. URL search params (?code=, ?ref=, ?affiliate=, ?upline=)
-    const qCode = searchParams.get('code') || searchParams.get('ref') || searchParams.get('affiliate') || searchParams.get('upline');
-    if (qCode) return normalizeRefCode(qCode);
+  // ── P0: DECOUPLED AUTH DASHBOARD FETCH FLOW (/api/v1/affiliate/me) ──
+  const loadDashboardMe = useCallback(async () => {
+    if (typeof window === 'undefined') return;
 
-    // 2. Subdomain check (e.g. ob.boontrack.com -> ob)
-    const host = window.location.hostname;
-    const parts = host.split('.');
-    if (parts.length >= 3 && !['www', 'shop', 'api', 'admin', 'app', 'localhost'].includes(parts[0])) {
-      return normalizeRefCode(parts[0]);
-    }
+    setLoading(true);
+    setErrorMsg('');
 
-    // 3. Cookies
-    const cookieCode = getCookieValue('affiliate_code') || getCookieValue('boontrack_affiliate_code') || getCookieValue('ref');
-    if (cookieCode) return normalizeRefCode(cookieCode);
-
-    // 4. localStorage
-    const lsCode = localStorage.getItem('boontrack_affiliate_code') || localStorage.getItem('affiliate_code');
-    if (lsCode) return normalizeRefCode(lsCode);
-
-    const storedUser = localStorage.getItem('affiliate_data') || localStorage.getItem('boontrack_affiliate_user');
-    if (storedUser) {
-      try {
-        const parsed = JSON.parse(storedUser);
-        if (parsed.referral_code) return normalizeRefCode(parsed.referral_code);
-        if (parsed.phone) return parsed.phone.trim();
-        if (parsed.id) return parsed.id.trim();
-      } catch (_) {}
-    }
-
-    return '';
-  }, [searchParams]);
-
-  // Case-Insensitive Fetch of Affiliate Portal Data
-  const fetchAffiliateData = useCallback(async (tSlug: string, aCode: string) => {
-    const normalizedCode = normalizeRefCode(aCode);
-    if (!normalizedCode || normalizedCode.length < 2) {
+    const token = localStorage.getItem('affiliate_token') || getCookieValue('affiliate_token');
+    if (!token) {
+      setAuthState('unauthenticated');
+      setData(null);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setErrorMsg('');
     try {
-      // 1. Primary Source: Internal Next.js Gateway connected directly to Supabase
-      const res = await fetch(
-        `/api/v1/affiliate/portal?code=${encodeURIComponent(normalizedCode)}&tenant=${encodeURIComponent(tSlug.trim().toLowerCase())}`,
-        { cache: 'no-store' }
-      );
-      const json = await res.json().catch(() => ({}));
+      const res = await fetch('/api/v1/affiliate/me', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        cache: 'no-store',
+      });
 
+      if (res.status === 401) {
+        setAuthState('unauthenticated');
+        setData(null);
+        setLoading(false);
+        return;
+      }
+
+      if (res.status === 403) {
+        const errJson = await res.json().catch(() => ({}));
+        setAuthState('forbidden');
+        setForbiddenMsg(errJson.detail || 'Akses ditolak: Akun Anda bukan mitra affiliate resmi.');
+        setData(null);
+        setLoading(false);
+        return;
+      }
+
+      const json = await res.json().catch(() => ({}));
       if (res.ok && json.success && json.data) {
+        setAuthState('authenticated');
         setData(json.data);
         const aff = json.data.affiliate;
         if (aff) {
-          const canonicalCode = (aff.referral_code || normalizedCode).toLowerCase();
+          const canonicalCode = (aff.referral_code || '').toLowerCase();
           setAffiliateCode(canonicalCode);
-          setCustomSlugInput(canonicalCode);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('boontrack_affiliate_code', canonicalCode);
-            localStorage.setItem('affiliate_code', canonicalCode);
-            document.cookie = `affiliate_code=${encodeURIComponent(canonicalCode)}; path=/; max-age=604800; SameSite=Lax; Secure`;
-            try {
-              const url = new URL(window.location.href);
-              if (!url.searchParams.get('code') && !url.searchParams.get('ref')) {
-                url.searchParams.set('code', canonicalCode);
-                window.history.replaceState(null, '', url.toString());
-              }
-            } catch (_) {}
-          }
+          setCustomSlugInput(canonicalCode.toUpperCase());
           if (aff.is_ref_customized !== undefined) {
             setIsRefCustomized(Boolean(aff.is_ref_customized));
           }
           if (aff.bank_name) setBankName(aff.bank_name);
           if (aff.bank_account_number) setAccountNumber(aff.bank_account_number);
           if (aff.bank_account_holder) setAccountHolder(aff.bank_account_holder);
+
+          setAuthSession({
+            phone: aff.phone_number,
+            name: aff.name,
+            referral_code: canonicalCode,
+            is_ref_customized: aff.is_ref_customized,
+            bank_name: aff.bank_name,
+            bank_account_number: aff.bank_account_number,
+            bank_account_holder: aff.bank_account_holder,
+          });
+
+          // Sync valid verified code to storage
+          localStorage.setItem('affiliate_code', canonicalCode);
+          localStorage.setItem('boontrack_affiliate_code', canonicalCode);
+          document.cookie = `affiliate_code=${encodeURIComponent(canonicalCode)}; path=/; max-age=604800; SameSite=Lax; Secure`;
         }
-        return;
+      } else {
+        throw new Error(json.detail || 'Gagal memuat profil dashboard mitra.');
       }
-
-      // 2. Secondary Fallback to Core Backend if needed
-      const extRes = await fetch(
-        `https://api.boontrack.com/api/v1/growth/portal/${tSlug.trim().toLowerCase()}/${normalizedCode}`,
-        { cache: 'no-store' }
-      );
-      const extJson = await extRes.json().catch(() => ({}));
-      if (extRes.ok && extJson.success && extJson.data) {
-        setData({
-          ...extJson.data,
-          leads: extJson.data.leads || [],
-          payouts: extJson.data.payouts || [],
-        });
-        return;
-      }
-
-      throw new Error(json.detail || extJson.detail || `Mitra dengan kode referal '${aCode}' tidak ditemukan.`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal memuat data affiliate.';
+      const msg = err instanceof Error ? err.message : 'Gagal menghubungi server kemitraan.';
       setErrorMsg(msg);
-      setData(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Alur autentikasi langsung: baca sesi/cookie/URL dan auto-fetch data tanpa jeda
+  // P1: Inisialisasi, pembersihan legacy keys yang terkontaminasi, dan fetch data murni
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      try {
-        const detectedCode = resolveCandidateCode();
-
-        const stored = localStorage.getItem('affiliate_data') || localStorage.getItem('boontrack_affiliate_user');
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            setAuthSession(parsed);
-            if (parsed.tenant_slug && !searchParams.get('tenant')) {
-              setTenantSlug(parsed.tenant_slug);
-            }
-            if (parsed.is_ref_customized !== undefined) {
-              setIsRefCustomized(Boolean(parsed.is_ref_customized));
-            }
-            if (parsed.bank_name) setBankName(parsed.bank_name);
-            if (parsed.bank_account_number) setAccountNumber(parsed.bank_account_number);
-            if (parsed.bank_account_holder) setAccountHolder(parsed.bank_account_holder);
-          } catch (_) {}
+      // 1. Bersihkan sisa legacy keys yang bernilai 'affiliate' atau reserved routing keywords
+      const legacyKeys = ['affiliate_code', 'boontrack_affiliate_code'];
+      for (const k of legacyKeys) {
+        const val = localStorage.getItem(k);
+        if (val && (val.toLowerCase() === 'affiliate' || isReservedKeyword(val))) {
+          localStorage.removeItem(k);
         }
-
-        if (detectedCode) {
-          setAffiliateCode(detectedCode);
-          setCustomSlugInput(detectedCode.toUpperCase());
-
-          // Sinkronisasi cookie & localStorage
-          localStorage.setItem('boontrack_affiliate_code', detectedCode);
-          localStorage.setItem('affiliate_code', detectedCode);
-          document.cookie = `affiliate_code=${encodeURIComponent(detectedCode)}; path=/; max-age=604800; SameSite=Lax; Secure`;
-
-          // Langsung panggil fetch data secara instan
-          fetchAffiliateData(searchParams.get('tenant') || 'shop', detectedCode);
-        } else {
-          // Tidak ada sesi dan tidak ada kode di URL query
-          setLoading(false);
-        }
-      } catch (e) {
-        console.warn('Error reading affiliate session:', e);
-        setLoading(false);
       }
-    }
-  }, [searchParams, resolveCandidateCode, fetchAffiliateData]);
-
-  // Sinkronisasi state jika query URL berubah
-  useEffect(() => {
-    const qTenant = searchParams.get('tenant');
-    const qRef = searchParams.get('code') || searchParams.get('ref') || searchParams.get('affiliate');
-    if (qTenant) setTenantSlug(qTenant);
-    if (qRef) {
-      const normalized = normalizeRefCode(qRef);
-      if (normalized && normalized !== affiliateCode) {
-        setAffiliateCode(normalized);
-        setCustomSlugInput(normalized.toUpperCase());
-        fetchAffiliateData(qTenant || tenantSlug, normalized);
+      const cookieVal = getCookieValue('affiliate_code');
+      if (cookieVal && (cookieVal.toLowerCase() === 'affiliate' || isReservedKeyword(cookieVal))) {
+        document.cookie = 'affiliate_code=; path=/; max-age=0; SameSite=Lax; Secure';
       }
+
+      // 2. Fetch profil kemitraan aktif via /api/v1/affiliate/me
+      loadDashboardMe();
     }
-  }, [searchParams, affiliateCode, tenantSlug, fetchAffiliateData]);
+  }, [loadDashboardMe]);
 
   // Debounced 300ms Referral Slug Checker
   useEffect(() => {
@@ -514,8 +470,8 @@ function AffiliatePortalContent() {
         });
       }
 
-      // Sync URL parameter
-      router.replace(`/affiliate/dashboard?code=${encodeURIComponent(clean)}`);
+      // Sync URL parameter cleanly
+      router.replace('/affiliate/dashboard');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Terjadi kesalahan sistem.';
       alert(msg);
@@ -722,6 +678,7 @@ function AffiliatePortalContent() {
       setAuthSession(null);
       setData(null);
       setAffiliateCode('');
+      setAuthState('unauthenticated');
       window.location.href = '/affiliate/login';
     }
   };
@@ -861,7 +818,7 @@ function AffiliatePortalContent() {
 
           <div className="flex items-center gap-2.5 flex-wrap self-stretch sm:self-auto justify-end">
             <button
-              onClick={() => fetchAffiliateData(tenantSlug, activeCode || affiliateCode)}
+              onClick={() => loadDashboardMe()}
               className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer border border-slate-700"
               title="Refresh Data"
             >
@@ -1758,19 +1715,48 @@ function AffiliatePortalContent() {
           </>
         )}
 
-        {!data && !loading && (
+        {!data && !loading && authState === 'forbidden' && (
+          <div className="bg-slate-900/80 border border-rose-900/40 rounded-3xl p-8 sm:p-12 text-center space-y-4 max-w-lg mx-auto shadow-2xl">
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-7 h-7" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-base sm:text-lg font-black text-white">
+                Akses Ditolak: Bukan Mitra Affiliate Resmi
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
+                {forbiddenMsg || 'Akun Anda tidak terdaftar sebagai mitra affiliate resmi. Silakan hubungi Account Manager (AM) atau daftar melalui program kemitraan.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <Link
+                href="/affiliate/login"
+                className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-2"
+              >
+                <Smartphone className="w-4 h-4" />
+                <span>Ganti Akun WhatsApp</span>
+              </Link>
+              <Link
+                href="/affiliate/register"
+                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center gap-2"
+              >
+                <span>Daftar Mitra Baru</span>
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {!data && !loading && authState !== 'forbidden' && (
           <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 sm:p-12 text-center space-y-4 max-w-lg mx-auto shadow-2xl">
             <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
               <Lock className="w-7 h-7" />
             </div>
             <div className="space-y-1.5">
               <h3 className="text-base sm:text-lg font-black text-white">
-                {errorMsg || 'Sesi Kemitraan Belum Terdeteksi'}
+                Login Mitra WhatsApp Diperlukan
               </h3>
               <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
-                {errorMsg
-                  ? 'Gagal memuat profil kemitraan. Silakan login kembali dengan nomor WhatsApp Anda.'
-                  : 'Silakan login menggunakan nomor WhatsApp atau akses melalui tautan referral unik Anda untuk membuka dashboard kemitraan.'}
+                Sesi autentikasi mitra belum terdeteksi. Silakan masuk menggunakan nomor WhatsApp terdaftar Anda untuk membuka dashboard kemitraan.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">

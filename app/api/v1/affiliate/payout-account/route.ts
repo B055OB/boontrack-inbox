@@ -49,7 +49,9 @@ async function handleUpdatePayoutAccount(req: NextRequest) {
     }
 
     const targetId = affiliate_id || partner_id || id;
-    const targetCode = (referral_code || affiliate_code || code || '').trim();
+    const rawTargetCode = (referral_code || affiliate_code || code || '').trim().toLowerCase();
+    const RESERVED_ROUTING = new Set(['affiliate', 'dashboard', 'portal', 'login', 'register', 'admin', 'api']);
+    const targetCode = (!rawTargetCode || RESERVED_ROUTING.has(rawTargetCode)) ? '' : rawTargetCode;
     const targetPhone = phone || phone_number ? cleanPhone(phone || phone_number) : null;
 
     let updatedAffiliate = null;

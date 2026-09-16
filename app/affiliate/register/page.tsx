@@ -328,7 +328,7 @@ function AffiliateRegisterContent() {
       // Success
       setIsSuccess(true);
       setTimeout(() => {
-        router.push(refCode ? `/affiliate/dashboard?code=${encodeURIComponent(refCode)}` : '/affiliate/dashboard');
+        router.push('/affiliate/dashboard');
       }, 2000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal menghubungi server pendaftaran.';

@@ -151,7 +151,7 @@ export default function AffiliateLoginPage() {
       document.cookie = `affiliate_code=${encodeURIComponent(affiliateData.referral_code)}; path=/; max-age=604800; SameSite=Lax; Secure`;
       setSuccessMessage('Verifikasi berhasil! Mengalihkan ke Dashboard Affiliate...');
       setTimeout(() => {
-        window.location.href = `/affiliate/dashboard?code=${encodeURIComponent(affiliateData.referral_code)}`;
+        window.location.href = '/affiliate/dashboard';
       }, 600);
       return;
     }
@@ -226,8 +226,8 @@ export default function AffiliateLoginPage() {
 
       setSuccessMessage('Verifikasi berhasil! Mengalihkan ke Dashboard Affiliate...');
 
-      // Redirect to Affiliate Dashboard with code query parameter
-      const targetUrl = `/affiliate/dashboard?code=${encodeURIComponent(resolvedCode)}`;
+      // Redirect to Affiliate Dashboard cleanly (auth-only session)
+      const targetUrl = '/affiliate/dashboard';
       setTimeout(() => {
         router.push(targetUrl);
         // Fallback redirection

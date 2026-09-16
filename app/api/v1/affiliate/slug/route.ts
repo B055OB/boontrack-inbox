@@ -41,7 +41,8 @@ async function handleUpdateSlug(req: NextRequest) {
 
     const RESERVED = new Set([
       'login', 'register', 'daftar', 'api', 'dashboard', 'auth', 'admin',
-      'affiliate', 'manager', 'shop', 'creator', 'www', 'app', 'career', 'static', 'chat'
+      'affiliate', 'manager', 'shop', 'creator', 'www', 'app', 'career', 'static', 'chat',
+      'portal'
     ]);
     if (RESERVED.has(cleanSlug)) {
       return NextResponse.json(

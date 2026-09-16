@@ -340,6 +340,8 @@ export default function TenantDashboardPage() {
               storeDisplayName={storeDisplayName}
               storeLogoUrl={storeLogoUrl}
               storeCategory={storeCategory || businessType}
+              businessType={businessType || storeCategory}
+              capabilities={capabilities}
               activeTab={activeTab}
               setActiveTab={(tab) => {
                 setActiveTab(tab);
@@ -374,6 +376,8 @@ export default function TenantDashboardPage() {
         storeDisplayName={storeDisplayName}
         storeLogoUrl={storeLogoUrl}
         storeCategory={storeCategory || businessType}
+        businessType={businessType || storeCategory}
+        capabilities={capabilities}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isTeamScale={isTeamScale}

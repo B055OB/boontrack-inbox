@@ -1,5 +1,6 @@
-// BoonTrack Service Worker for PWA & Web Push Notifications
-const CACHE_NAME = 'boontrack-pwa-v1';
+// BoonTrack Service Worker for PWA, Web Push & Affiliate Dashboard Caching
+const CACHE_NAME = 'boontrack-affiliate-v2';
+const CURRENT_CACHES = [CACHE_NAME];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -7,14 +8,64 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
-      );
-    }).then(() => self.clients.claim())
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => !CURRENT_CACHES.includes(key))
+          .map((key) => caches.delete(key))
+      )
+    ).then(() => self.clients.claim())
   );
+});
+
+// Cache Boundary: Network Only for dynamic auth & dashboard routes
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  const pathname = url.pathname;
+
+  // Only intercept GET requests
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  // 1. P0.5: Network Only strategy for dashboard, affiliate APIs, and auth routes
+  const isNetworkOnly =
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/affiliate/dashboard') ||
+    pathname === '/affiliate' ||
+    pathname.startsWith('/api/v1/affiliate') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/api/v1/auth');
+
+  if (isNetworkOnly) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // 2. Cache-First / Stale-While-Revalidate for public static assets
+  const isStaticAsset =
+    pathname.startsWith('/_next/static/') ||
+    pathname.startsWith('/app-brand/') ||
+    pathname.match(/\.(js|css|png|jpg|jpeg|svg|webp|ico|woff2?)$/i);
+
+  if (isStaticAsset) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cachedResponse = await cache.match(event.request);
+        const fetchPromise = fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+              cache.put(event.request, networkResponse.clone());
+            }
+            return networkResponse;
+          })
+          .catch(() => cachedResponse);
+
+        return cachedResponse || fetchPromise;
+      })
+    );
+    return;
+  }
 });
 
 // Handle Push Notifications from Web Push Server

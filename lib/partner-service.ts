@@ -53,7 +53,8 @@ export const BANK_OPTIONS = [
 
 const RESERVED_SLUGS = new Set([
   'ADMIN', 'SHOP', 'API', 'LOGIN', 'MANAGER', 'BOONTRACK', 'REGISTER', 'DAFTAR',
-  'CHECKOUT', 'TERMS', 'PRIVACY', 'APP', 'ROOT', 'HELP', 'SUPPORT'
+  'CHECKOUT', 'TERMS', 'PRIVACY', 'APP', 'ROOT', 'HELP', 'SUPPORT',
+  'AFFILIATE', 'DASHBOARD', 'PORTAL'
 ]);
 
 export function isValidSlugFormat(slug: string): { valid: boolean; reason?: string } {

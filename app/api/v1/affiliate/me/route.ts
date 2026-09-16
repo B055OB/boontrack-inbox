@@ -4,63 +4,43 @@ import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 
 export const dynamic = 'force-dynamic';
 
-export const RESERVED_AFFILIATE_KEYWORDS = new Set([
-  'affiliate',
-  'dashboard',
-  'portal',
-  'login',
-  'register',
-  'daftar',
-  'admin',
-  'api',
-  'auth',
-  'shop',
-  'creator',
-  'manager',
-  'www',
-  'app',
-  'static',
-  'chat',
-]);
-
-export function isReservedAffiliateCode(code: string | null | undefined): boolean {
-  if (!code) return true;
-  const clean = code.trim().toLowerCase();
-  return clean.length < 2 || RESERVED_AFFILIATE_KEYWORDS.has(clean);
+function parseJwt(token: string): { sub?: string; phone?: string; affiliate_code?: string; exp?: number } | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonStr = Buffer.from(base64, 'base64').toString('utf-8');
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    
-    // Evaluate candidates in order and ignore any reserved routing keywords
-    const candidates = [
-      searchParams.get('code'),
-      searchParams.get('ref'),
-      searchParams.get('affiliate_id'),
-      searchParams.get('id'),
-      req.cookies.get('affiliate_code')?.value,
-      req.cookies.get('boontrack_affiliate_code')?.value,
-    ];
+    // 1. Extract authentication token from Authorization header or Cookie
+    const authHeader = req.headers.get('authorization') || '';
+    let token = '';
 
-    let validCode: string | null = null;
-    for (const cand of candidates) {
-      if (cand && !isReservedAffiliateCode(cand)) {
-        validCode = cand.trim();
-        break;
-      }
+    if (authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7).trim();
+    } else if (authHeader) {
+      token = authHeader.trim();
     }
 
-    if (!validCode) {
+    if (!token) {
+      token = req.headers.get('x-affiliate-token') || req.cookies.get('affiliate_token')?.value || '';
+    }
+
+    if (!token) {
       return NextResponse.json(
-        { success: false, detail: 'Kode referral tidak terdeteksi pada sesi atau URL (reserved routing keyword diabaikan). Silakan login kembali.' },
-        { status: 400 }
+        {
+          success: false,
+          detail: 'Sesi autentikasi tidak ditemukan. Silakan login menggunakan WhatsApp terlebih dahulu.',
+        },
+        { status: 401 }
       );
-    }
-
-    let cleanCode = validCode.toLowerCase();
-    if (cleanCode === 'mafiasakti' || cleanCode === 'kangsakti') {
-      cleanCode = 'buzzerukm';
     }
 
     const supabase = getSupabaseAdmin() || getSupabase();
@@ -71,53 +51,105 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 1. Search on affiliates table (by referral_code, id UUID, or phone number)
-    let affiliate = null;
+    let affiliate: any = null;
 
-    // A. By referral_code (case-insensitive)
-    const { data: affByCode } = await supabase
-      .from('affiliates')
-      .select('*')
-      .ilike('referral_code', cleanCode)
-      .maybeSingle();
-
-    affiliate = affByCode;
-
-    // B. By id (UUID format check)
-    if (!affiliate && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanCode)) {
-      const { data: affById } = await supabase
+    // 2. Resolve Affiliate Identity
+    // Case A: Dev bypass token
+    if (token.startsWith('bt_aff_dev_') || token === 'aff_dev_sakti') {
+      const { data: devAff } = await supabase
         .from('affiliates')
         .select('*')
-        .eq('id', cleanCode)
+        .or('referral_code.eq.buzzerukm,phone.eq.087822706930,phone_number.eq.087822706930')
         .maybeSingle();
-      affiliate = affById;
+
+      affiliate = devAff;
+    } else {
+      // Case B: Parse JWT
+      const jwtPayload = parseJwt(token);
+
+      if (jwtPayload) {
+        if (jwtPayload.exp && Date.now() >= jwtPayload.exp * 1000) {
+          return NextResponse.json(
+            {
+              success: false,
+              detail: 'Sesi login Anda telah kedaluwarsa. Silakan login kembali.',
+            },
+            { status: 401 }
+          );
+        }
+
+        // Search by UUID sub
+        if (jwtPayload.sub) {
+          const { data: affBySub } = await supabase
+            .from('affiliates')
+            .select('*')
+            .eq('id', jwtPayload.sub)
+            .maybeSingle();
+          affiliate = affBySub;
+        }
+
+        // Fallback search by phone
+        if (!affiliate && jwtPayload.phone) {
+          const cleanPhone = jwtPayload.phone.replace(/\D/g, '');
+          const altPhone = cleanPhone.startsWith('62') ? '0' + cleanPhone.slice(2) : '62' + cleanPhone.replace(/^0/, '');
+          const { data: affByPhone } = await supabase
+            .from('affiliates')
+            .select('*')
+            .or(`phone.eq.${cleanPhone},phone.eq.${altPhone},phone_number.eq.${cleanPhone},phone_number.eq.${altPhone}`)
+            .maybeSingle();
+          affiliate = affByPhone;
+        }
+
+        // Fallback search by referral_code
+        if (!affiliate && jwtPayload.affiliate_code) {
+          const { data: affByCode } = await supabase
+            .from('affiliates')
+            .select('*')
+            .ilike('referral_code', jwtPayload.affiliate_code.trim())
+            .maybeSingle();
+          affiliate = affByCode;
+        }
+      }
+
+      // Case C: Direct ID / UUID match or clean token fallback
+      if (!affiliate && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) {
+        const { data: affById } = await supabase
+          .from('affiliates')
+          .select('*')
+          .eq('id', token)
+          .maybeSingle();
+        affiliate = affById;
+      }
     }
 
-    // C. Fallback: by phone number
-    if (!affiliate) {
-      const { data: affByPhone } = await supabase
-        .from('affiliates')
-        .select('*')
-        .or(`phone.eq.${cleanCode},phone_number.eq.${cleanCode}`)
-        .maybeSingle();
-      affiliate = affByPhone;
-    }
-
+    // Guard: Affiliate not found
     if (!affiliate) {
       return NextResponse.json(
         {
           success: false,
-          detail: `Mitra affiliate dengan kode '${validCode}' tidak ditemukan di database.`,
+          detail: 'Akses ditolak: Akun Anda bukan mitra affiliate terdaftar.',
         },
-        { status: 404 }
+        { status: 403 }
       );
     }
 
-    const affRefCode = (affiliate.referral_code || cleanCode).toLowerCase();
+    // Guard: Status check
+    const affStatus = (affiliate.status || 'ACTIVE').toUpperCase();
+    if (affStatus === 'SUSPENDED' || affStatus === 'BANNED' || affStatus === 'INACTIVE') {
+      return NextResponse.json(
+        {
+          success: false,
+          detail: 'Akses ditolak: Akun mitra affiliate ini sedang dinonaktifkan.',
+        },
+        { status: 403 }
+      );
+    }
+
+    const affRefCode = (affiliate.referral_code || '').toLowerCase();
     const rawRate = Number(affiliate.commission_rate) || 0.3;
     const commissionPercent = rawRate <= 1 ? Math.round(rawRate * 100) : Math.round(rawRate);
 
-    // 2. Fetch Attributions (Clicks, Sessions, & Tenant relations)
+    // 3. Fetch Attributions
     const { data: attributions } = await supabase
       .from('attributions')
       .select('id, session_id, tenant_id, utm_source, utm_medium, utm_campaign, created_at')
@@ -127,7 +159,7 @@ export async function GET(req: NextRequest) {
       (attributions || []).map((a: any) => a.tenant_id).filter(Boolean)
     );
 
-    // 3. Fetch Tenants / Merchants registered with this referral code or affiliate_id
+    // 4. Fetch Associated Tenants
     const { data: allTenants } = await supabase
       .from('tenants')
       .select('id, name, slug, tier, status, is_active, created_at, trial_ends_at, monthly_fee, due_date, metadata')
@@ -138,14 +170,14 @@ export async function GET(req: NextRequest) {
       const ref = (m.referral_code || m.ref || m.affiliate_code || '').toString().trim().toLowerCase();
       const metaAffId = (m.affiliate_id || m.referrer_id || '').toString().trim();
 
-      const isRefMatch = ref === affRefCode || ref === cleanCode;
+      const isRefMatch = Boolean(affRefCode && ref === affRefCode);
       const isIdMatch = Boolean(metaAffId && metaAffId === affiliate.id);
       const isAttributionMatch = attributedTenantIds.has(t.id);
 
       return isRefMatch || isIdMatch || isAttributionMatch;
     });
 
-    // 4. Fetch Payout History
+    // 5. Fetch Payout History
     let payoutList: any[] = [];
     try {
       const { data: prData, error: prErr } = await supabase
@@ -169,23 +201,21 @@ export async function GET(req: NextRequest) {
         }));
       }
     } catch {
-      // Table may not exist yet, fallback to JSON storage
+      // Ignore if table unavailable
     }
 
-    // Secondary fallback for payouts stored in affiliate.payout_bank_details?.history
     const embeddedHistory = affiliate.payout_bank_details?.history || affiliate.metadata?.payout_history;
     if (payoutList.length === 0 && Array.isArray(embeddedHistory) && embeddedHistory.length > 0) {
       payoutList = embeddedHistory;
     }
 
-    // 5. Transform Leads Data & Accurate Status Calculation
+    // 6. Transform Leads
     const leads = matchedTenants.map((t: any) => {
       const meta = t.metadata || {};
       const tierUpper = (t.tier || meta.tier || meta.plan_tier || '').toUpperCase();
       const isTrialTier = tierUpper.includes('TRIAL') || tierUpper === 'SOLO_TRIAL';
       const rawStatus = (t.status || '').toLowerCase();
 
-      // Resolve fee dynamically based on canonical 3 tiers if monthly_fee not explicitly set
       const fee = Number(t.monthly_fee) || (
         tierUpper === 'ENTERPRISE' || tierUpper.includes('TEAM')
           ? 499000
@@ -222,7 +252,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // 6. Metrics Summary Calculation
+    // 7. Calculate Metrics
     const totalLeads = matchedTenants.length;
     const activeTrialStores = leads.filter((l) => l.status === 'Trial').length;
     const activeSubscribedStores = leads.filter((l) => l.status === 'Berlangganan').length;
@@ -237,7 +267,7 @@ export async function GET(req: NextRequest) {
           id: affiliate.id,
           name: affiliate.name || 'Mitra BoonTrack',
           phone_number: affiliate.phone || affiliate.phone_number || '-',
-          referral_code: affiliate.referral_code || cleanCode,
+          referral_code: affiliate.referral_code || affRefCode,
           commission_rate: commissionPercent,
           status: affiliate.status || 'ACTIVE',
           is_ref_customized: Boolean(affiliate.is_ref_customized),
@@ -245,7 +275,7 @@ export async function GET(req: NextRequest) {
           bank_account_number: affiliate.bank_account_number || affiliate.metadata?.bank_account_number || '',
           bank_account_holder: affiliate.bank_account_holder || affiliate.metadata?.bank_account_holder || '',
         },
-        referral_url: `https://${(affiliate.referral_code || cleanCode).toLowerCase()}.boontrack.com/`,
+        referral_url: `https://${affRefCode}.boontrack.com/`,
         metrics: {
           total_clicks: attributions?.length || 0,
           total_leads: totalLeads,
@@ -260,7 +290,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Terjadi kesalahan sistem saat memuat data portal affiliate.';
+    const msg = err instanceof Error ? err.message : 'Terjadi kesalahan sistem saat memuat data profil kemitraan.';
     return NextResponse.json({ success: false, detail: msg }, { status: 500 });
   }
 }
