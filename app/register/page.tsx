@@ -196,10 +196,12 @@ export function resolveCanonicalCategory(raw?: string | null): CanonicalBusiness
   return "PHYSICAL";
 }
 
-export type OfficialPlan = "starter" | "solo" | "ads_performance" | "team_scale";
+export type OfficialPlan = "starter" | "pro_scale" | "enterprise" | "solo" | "ads_performance" | "team_scale";
 
 export const PLAN_PRICING: Record<OfficialPlan, number> = {
   starter: 0,
+  pro_scale: 299000,
+  enterprise: 499000,
   solo: 0,
   ads_performance: 299000,
   team_scale: 499000,
@@ -367,7 +369,9 @@ function QrisPaymentModal({
               <div className="p-3.5 bg-slate-800/80 rounded-2xl border border-slate-700/80 text-left text-xs space-y-1.5 shadow-inner">
                 <div className="flex justify-between text-slate-400">
                   <span>Paket Langganan:</span>
-                  <span className="text-white font-bold">Ads Performance (1 Bulan)</span>
+                  <span className="text-white font-bold">
+                    {data.amount >= 400000 ? "Team Scale (1 Bulan)" : "Ads Performance (1 Bulan)"}
+                  </span>
                 </div>
                 <div className="flex justify-between text-slate-400">
                   <span>Total Tagihan:</span>
@@ -656,15 +660,16 @@ export default function RegisterShopPage() {
       if (initialPlan === "solo" || initialPlan === "starter" || initialPlan === "growth") {
         setSelectedPlan("starter");
       } else if (
+        initialPlan === "pro_scale" ||
         initialPlan === "ads_performance" ||
         initialPlan === "growth_tracking"
       ) {
-        setSelectedPlan("ads_performance");
+        setSelectedPlan("pro_scale");
       } else if (
-        initialPlan === "team_scale" ||
-        initialPlan === "pro_scale"
+        initialPlan === "enterprise" ||
+        initialPlan === "team_scale"
       ) {
-        setSelectedPlan("team_scale");
+        setSelectedPlan("enterprise");
       }
 
       if (initialStore) {
@@ -747,14 +752,10 @@ export default function RegisterShopPage() {
     const planAmount = isTrial ? 0 : (PLAN_PRICING[selectedPlan] ?? 299000);
     const dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = isTrial
       ? 'STARTER'
-      : selectedPlan === 'team_scale'
+      : selectedPlan === 'enterprise' || selectedPlan === 'team_scale'
       ? 'ENTERPRISE'
       : 'PRO_SCALE';
-    const targetPlanTier: 'STARTER' | 'ADS_PERFORMANCE' | 'TEAM_SCALE' = isTrial
-      ? 'STARTER'
-      : selectedPlan === 'team_scale'
-      ? 'TEAM_SCALE'
-      : 'ADS_PERFORMANCE';
+    const targetPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = dbTier;
 
     // Standarisasi nomor telepon WhatsApp (format 62...)
     let formattedPhone = merchantData.phone.replace(/[^0-9]/g, '');
@@ -1030,8 +1031,11 @@ export default function RegisterShopPage() {
   };
 
   const planLabel = {
+    starter: "Gratis Rp 0 (Trial 7 Hari)",
     solo: "Gratis Rp 0 (Trial 7 Hari)",
+    pro_scale: "Rp 299 ribu",
     ads_performance: "Rp 299 ribu",
+    enterprise: "Rp 499 ribu",
     team_scale: "Rp 499 ribu",
   };
 
@@ -1417,11 +1421,11 @@ export default function RegisterShopPage() {
                     </p>
                   </div>
 
-                  {/* 2. Ads Performance */}
+                  {/* 2. Ads Performance (PRO_SCALE) */}
                   <div
-                    onClick={() => setSelectedPlan("ads_performance")}
+                    onClick={() => setSelectedPlan("pro_scale")}
                     className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between relative ${
-                      selectedPlan === "ads_performance"
+                      selectedPlan === "pro_scale" || selectedPlan === "ads_performance"
                         ? "border-blue-600 bg-blue-50/60 shadow-md ring-2 ring-blue-500"
                         : "border-blue-200 hover:border-blue-300 bg-white"
                     }`}
@@ -1456,11 +1460,11 @@ export default function RegisterShopPage() {
                     </p>
                   </div>
 
-                  {/* 3. Team Scale */}
+                  {/* 3. Team Scale (ENTERPRISE) */}
                   <div
-                    onClick={() => setSelectedPlan("team_scale")}
+                    onClick={() => setSelectedPlan("enterprise")}
                     className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                      selectedPlan === "team_scale"
+                      selectedPlan === "enterprise" || selectedPlan === "team_scale"
                         ? "border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-500"
                         : "border-slate-200 hover:border-slate-300 bg-white"
                     }`}
@@ -1523,7 +1527,7 @@ export default function RegisterShopPage() {
                       : "Menyiapkan Invoice QRIS..."
                     : isTrialPlan
                     ? "Mulai Coba Gratis 7 Hari (Rp 0) ->"
-                    : selectedPlan === "team_scale"
+                    : (selectedPlan === "enterprise" || selectedPlan === "team_scale")
                     ? "Aktivasi & Bayar (Rp 499k)"
                     : "Aktivasi & Bayar (Rp 299k)"}
                 </span>

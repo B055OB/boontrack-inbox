@@ -62,6 +62,14 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
 
 > **Contract Rule**: Setiap domain baru yang ditambahkan ke ekosistem BoonTrack **WAJIB** didaftarkan di tabel ini beserta edge infra, funnel intent, dan Meta event trigger-nya sebelum dipublikasikan ke produksi.
 
+### 2.2 Auth-Only Affiliate Dashboard Standard
+1. **Direct Auth Session**:
+   - Halaman portal afiliasi (`/affiliate/dashboard` dan `/affiliate`) beroperasi secara *auth-only*.
+   - Data mitra, kode referral unik, metrik konversi (klik, leads, toko trial, saldo komisi), dan link promosi WAJIB dimuat secara otomatis dari sesi autentikasi (OTP WhatsApp / cookie sesi `authSession`).
+2. **Eliminasi Manual Search**:
+   - DILARANG KERAS menampilkan kotak input manual "KODE REFERRAL MITRA" atau tombol "Cari Mitra" di header dashboard.
+   - Mitra terverifikasi tidak boleh diwajibkan mencari dirinya sendiri. Jika sesi belum aktif, pengguna dialihkan ke alur login OTP WhatsApp (`/affiliate/login`).
+
 ---
 
 ## 3. Entitlement Engine & Security Guard
@@ -83,6 +91,21 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
 
 ## 5. Monetization & Entitlement Lifecycle (Flexible Policy)
 - **Status Lifecycle Engine**: Mendukung transisi status dinamis: `TRIAL`, `ACTIVE`, `EXPIRED`, `CANCELLED`. Durasi aktif dan kuota pemakaian dibaca dari database (`valid_until`, `usage_limit`), bukan di-hardcode.
+
+### 5.1 Three Official Subscription Tiers (Canonical Standard)
+Ekosistem BoonTrack (frontend registrasi, gateway onboarding, billing Xendit, dan database PostgreSQL) distandarisasi mutlak pada 3 tier resmi:
+1. **Solo / Starter** (`tier = 'STARTER'`)
+   - Harga: Rp 0 (Reverse Trial 7 Hari), normal Rp 199.000 / bulan.
+   - Hak Akses: Storefront mandiri, katalog produk, kalkulasi ongkir, QRIS dinamis 0% MDR, bot auto-reply dasar.
+2. **Ads Performance** (`tier = 'PRO_SCALE'`)
+   - Harga: Rp 299.000 / bulan.
+   - Hak Akses: Semua fitur Solo/Starter + Meta & TikTok CAPI Server-Side, God Button konversi, 2 Seats CS Inbox.
+3. **Team Scale** (`tier = 'ENTERPRISE'`)
+   - Harga: Rp 499.000 / bulan.
+   - Hak Akses: Semua fitur Ads Performance + Full Skala Tim, CS Inbox Unlimited / Multi-seat, Integrasi WhatsApp WABA & AI Bot Omnichannel.
+
+> **Database & Schema Invariant**: Kolom `tenants.tier` di database PostgreSQL Supabase dan SQLAlchemy Core WAJIB menggunakan nilai enum kanonikal: `'STARTER'`, `'PRO_SCALE'`, atau `'ENTERPRISE'`.
+
 - **Cost-Guarding Enforcement**:
   - Membedakan fitur berbiaya marjinal rendah (Storefront, Katalog, Input Pesanan) dengan fitur berbiaya variabel pihak ketiga (AI Bot Token, Sesi WhatsApp).
   - Ketika akun berada di status tanpa entitlement bot (misal: mode dasar atau promo habis), backend worker wajib menonaktifkan panggilan ke AI/WhatsApp secara otomatis tanpa merusak data katalog dan riwayat pesanan.

@@ -145,24 +145,26 @@ export async function GET(req: NextRequest) {
     // 5. Transform Leads Data & Accurate Status Calculation
     const leads = matchedTenants.map((t: any) => {
       const meta = t.metadata || {};
-      const fee = Number(t.monthly_fee) || 199000;
+      const tierUpper = (t.tier || meta.tier || meta.plan_tier || '').toUpperCase();
+      const isTrialTier = tierUpper.includes('TRIAL') || tierUpper === 'SOLO_TRIAL';
+      const rawStatus = (t.status || '').toLowerCase();
+
+      // Resolve fee dynamically based on canonical 3 tiers if monthly_fee not explicitly set
+      const fee = Number(t.monthly_fee) || (
+        tierUpper === 'ENTERPRISE' || tierUpper.includes('TEAM')
+          ? 499000
+          : tierUpper === 'PRO_SCALE' || tierUpper.includes('ADS')
+          ? 299000
+          : 199000
+      );
       const potentialComm = Math.round(fee * (commissionPercent / 100));
 
       let storeStatus: 'Trial' | 'Berlangganan' | 'Expired' = 'Trial';
-      const rawStatus = (t.status || '').toLowerCase();
-      const tierUpper = (t.tier || '').toUpperCase();
-      const isTrialTier = tierUpper.includes('TRIAL') || tierUpper === 'SOLO_TRIAL';
-
       if (rawStatus === 'expired' || rawStatus === 'inactive' || t.is_active === false) {
         storeStatus = 'Expired';
-      } else if (isTrialTier || rawStatus === 'trial' || meta.created_via === 'register_solo_trial') {
+      } else if (rawStatus === 'trial' || isTrialTier || meta.created_via === 'register_solo_trial') {
         storeStatus = 'Trial';
-      } else if (
-        (rawStatus === 'active' || rawStatus === 'paid' || rawStatus === 'subscribed') &&
-        t.tier &&
-        t.tier !== 'STARTER' &&
-        t.tier !== 'FREE'
-      ) {
+      } else if (rawStatus === 'active' || rawStatus === 'paid' || rawStatus === 'subscribed') {
         storeStatus = 'Berlangganan';
       } else {
         storeStatus = 'Trial';
@@ -178,7 +180,7 @@ export async function GET(req: NextRequest) {
         utm_medium: meta.utm_medium || meta.medium || '-',
         utm_campaign: meta.utm_campaign || meta.campaign || '-',
         status: storeStatus,
-        tier: t.tier || 'SOLO_TRIAL',
+        tier: t.tier || meta.tier || meta.plan_tier || 'STARTER',
         monthly_fee: fee,
         potential_commission: potentialComm,
       };

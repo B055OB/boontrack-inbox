@@ -4,11 +4,13 @@ import { useState } from 'react';
 export const PLAN_PRICING = {
   starter: 199000,
   solo: 199000,
+  pro_scale: 299000,
   ads_performance: 299000,
+  enterprise: 499000,
   team_scale: 499000,
 } as const;
 
-export type ShopClaimPlan = 'starter' | 'ads_performance' | 'team_scale';
+export type ShopClaimPlan = 'starter' | 'pro_scale' | 'enterprise' | 'ads_performance' | 'team_scale';
 
 export default function ShopClaimSection() {
   const [storeName, setStoreName] = useState('');
@@ -44,12 +46,19 @@ export default function ShopClaimSection() {
     const planAmount = PLAN_PRICING[selectedPlan] ?? 299000;
 
     try {
+      const canonicalPlanTier =
+        selectedPlan === 'enterprise' || selectedPlan === 'team_scale'
+          ? 'ENTERPRISE'
+          : selectedPlan === 'pro_scale' || selectedPlan === 'ads_performance'
+          ? 'PRO_SCALE'
+          : 'STARTER';
+
       const res = await fetch('https://api.boontrack.com/api/v1/shop/subscriptions/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tenant_slug: slug,
-          plan_tier: selectedPlan,
+          plan_tier: canonicalPlanTier,
           amount: planAmount,
           merchant_name: merchantData.name,
           merchant_phone: merchantData.phone,
