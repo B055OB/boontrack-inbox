@@ -11,6 +11,8 @@ import {
   ShoppingBag,
   Menu,
   X,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import LockedFeatureCard from './components/LockedFeatureCard';
 import { getSupabase } from '@/lib/supabaseClient';
@@ -265,12 +267,51 @@ export default function TenantDashboardPage() {
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState(false);
   const storeHeaderName = storeDisplayName || displayName || tenantSlug;
 
+  // Theme Toggle (Light & Dark Mode)
+  const [themeMode, setThemeMode] = React.useState<'light' | 'dark'>('light');
+
+  React.useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem('boontrack_theme') as 'light' | 'dark' | null;
+      if (savedTheme === 'dark' || savedTheme === 'light') {
+        setThemeMode(savedTheme);
+        if (savedTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } else {
+        // Default to light mode
+        document.documentElement.classList.remove('dark');
+      }
+    } catch (_) {}
+  }, []);
+
+  const toggleTheme = React.useCallback(() => {
+    setThemeMode((prev) => {
+      const nextTheme = prev === 'dark' ? 'light' : 'dark';
+      try {
+        localStorage.setItem('boontrack_theme', nextTheme);
+      } catch (_) {}
+      if (nextTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      return nextTheme;
+    });
+  }, []);
+
   const isPreviewEnabledTab =
     activeTab === 'themes' ||
     activeTab === 'storefront';
 
   return (
-    <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col lg:flex-row antialiased">
+    <main className={`min-h-[100dvh] font-sans flex flex-col lg:flex-row antialiased dashboard-theme-container ${
+      themeMode === 'dark'
+        ? 'bg-[#0B0F19] text-slate-100 selection:bg-emerald-500 selection:text-slate-950'
+        : 'bg-[#F8FAFC] text-slate-900 selection:bg-blue-100 selection:text-blue-900'
+    }`}>
       {/* MOBILE SLIDE-OVER DRAWER / SHEET (< lg) */}
       {isMobileDrawerOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
@@ -384,8 +425,23 @@ export default function TenantDashboardPage() {
             </span>
           </div>
 
-          {/* Sisi Kanan: Avatar Toko / Status Aktif */}
+          {/* Sisi Kanan: Theme Toggle & Status Aktif */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* Theme Switcher Mobile */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-emerald-400 hover:text-emerald-600 transition active:scale-95 cursor-pointer theme-toggle-btn"
+              title={themeMode === 'dark' ? 'Ganti ke Mode Terang (Light Mode)' : 'Ganti ke Mode Gelap (Dark Mode)'}
+              aria-label="Toggle Theme"
+            >
+              {themeMode === 'dark' ? (
+                <Sun className="w-4 h-4 text-amber-400 animate-spin-slow" />
+              ) : (
+                <Moon className="w-4 h-4 text-slate-600" />
+              )}
+            </button>
+
             <button
               type="button"
               onClick={() => setActiveTab('orders')}
@@ -407,7 +463,7 @@ export default function TenantDashboardPage() {
         </header>
 
         {/* TOP BAR RINGKAS DESKTOP (Header Canvas - hidden on mobile, flex on desktop) */}
-        <header className="hidden lg:flex sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-6 xl:px-8 py-2.5 items-center justify-between gap-4 shadow-2xs">
+        <header className="hidden lg:flex sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-6 xl:px-8 py-2.5 items-center justify-between gap-4 shadow-2xs">
           <div className="flex items-center gap-3 min-w-0">
             {/* Shortcut Pesanan */}
             <button
@@ -444,6 +500,26 @@ export default function TenantDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0">
+            {/* Theme Toggle Desktop (Matahari / Bulan) */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 font-bold flex items-center gap-2 text-xs transition active:scale-95 cursor-pointer shadow-2xs theme-toggle-btn"
+              title={themeMode === 'dark' ? 'Beralih ke Mode Terang (Light Mode)' : 'Beralih ke Mode Gelap (Dark Mode)'}
+            >
+              {themeMode === 'dark' ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[11px] font-semibold text-slate-200">Light Mode</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-slate-600" />
+                  <span className="text-[11px] font-semibold text-slate-700">Dark Mode</span>
+                </>
+              )}
+            </button>
+
             <span className="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1.5 text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>Storefront Online</span>
