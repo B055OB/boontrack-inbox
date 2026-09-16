@@ -7,7 +7,12 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const rawCode = searchParams.get('code') || searchParams.get('ref') || '';
+    const rawCode =
+      searchParams.get('code') ||
+      searchParams.get('ref') ||
+      searchParams.get('affiliate_id') ||
+      searchParams.get('id') ||
+      '';
     const cleanCode = rawCode.trim().toLowerCase();
 
     if (!cleanCode) {
@@ -25,16 +30,29 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 1. Case-insensitive search on affiliates table
-    const { data: affByCode, error: affErr } = await supabase
+    // 1. Search on affiliates table (by referral_code, id UUID, or phone number)
+    let affiliate = null;
+
+    // A. By referral_code (case-insensitive)
+    const { data: affByCode } = await supabase
       .from('affiliates')
       .select('*')
       .ilike('referral_code', cleanCode)
       .maybeSingle();
 
-    let affiliate = affByCode;
+    affiliate = affByCode;
 
-    // Fallback: search by phone number if code query was a phone
+    // B. By id (UUID format check)
+    if (!affiliate && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanCode)) {
+      const { data: affById } = await supabase
+        .from('affiliates')
+        .select('*')
+        .eq('id', cleanCode)
+        .maybeSingle();
+      affiliate = affById;
+    }
+
+    // C. Fallback: by phone number
     if (!affiliate) {
       const { data: affByPhone } = await supabase
         .from('affiliates')
@@ -58,23 +76,33 @@ export async function GET(req: NextRequest) {
     const rawRate = Number(affiliate.commission_rate) || 0.3;
     const commissionPercent = rawRate <= 1 ? Math.round(rawRate * 100) : Math.round(rawRate);
 
-    // 2. Fetch Tenants / Merchants registered with this referral code
+    // 2. Fetch Attributions (Clicks, Sessions, & Tenant relations)
+    const { data: attributions } = await supabase
+      .from('attributions')
+      .select('id, session_id, tenant_id, utm_source, utm_medium, utm_campaign, created_at')
+      .eq('affiliate_id', affiliate.id);
+
+    const attributedTenantIds = new Set(
+      (attributions || []).map((a: any) => a.tenant_id).filter(Boolean)
+    );
+
+    // 3. Fetch Tenants / Merchants registered with this referral code or affiliate_id
     const { data: allTenants } = await supabase
       .from('tenants')
-      .select('id, name, slug, tier, status, is_active, created_at, monthly_fee, due_date, metadata')
+      .select('id, name, slug, tier, status, is_active, created_at, trial_ends_at, monthly_fee, due_date, metadata')
       .order('created_at', { ascending: false });
 
     const matchedTenants = (allTenants || []).filter((t: any) => {
       const m = t.metadata || {};
       const ref = (m.referral_code || m.ref || m.affiliate_code || '').toString().trim().toLowerCase();
-      return ref === affRefCode || ref === cleanCode;
-    });
+      const metaAffId = (m.affiliate_id || m.referrer_id || '').toString().trim();
 
-    // 3. Fetch Attributions (Clicks / Sessions)
-    const { data: attributions } = await supabase
-      .from('attributions')
-      .select('id, session_id, utm_source, utm_medium, utm_campaign, created_at')
-      .eq('affiliate_id', affiliate.id);
+      const isRefMatch = ref === affRefCode || ref === cleanCode;
+      const isIdMatch = Boolean(metaAffId && metaAffId === affiliate.id);
+      const isAttributionMatch = attributedTenantIds.has(t.id);
+
+      return isRefMatch || isIdMatch || isAttributionMatch;
+    });
 
     // 4. Fetch Payout History
     let payoutList: any[] = [];
@@ -109,7 +137,7 @@ export async function GET(req: NextRequest) {
       payoutList = embeddedHistory;
     }
 
-    // 5. Transform Leads Data
+    // 5. Transform Leads Data & Accurate Status Calculation
     const leads = matchedTenants.map((t: any) => {
       const meta = t.metadata || {};
       const fee = Number(t.monthly_fee) || 199000;
@@ -117,10 +145,15 @@ export async function GET(req: NextRequest) {
 
       let storeStatus: 'Trial' | 'Berlangganan' | 'Expired' = 'Trial';
       const rawStatus = (t.status || '').toLowerCase();
+      const tierUpper = (t.tier || '').toUpperCase();
+      const isTrialTier = tierUpper.includes('TRIAL') || tierUpper === 'SOLO_TRIAL';
+
       if (rawStatus === 'expired' || rawStatus === 'inactive' || t.is_active === false) {
         storeStatus = 'Expired';
+      } else if (isTrialTier || rawStatus === 'trial' || meta.created_via === 'register_solo_trial') {
+        storeStatus = 'Trial';
       } else if (
-        (rawStatus === 'active' || rawStatus === 'paid') &&
+        (rawStatus === 'active' || rawStatus === 'paid' || rawStatus === 'subscribed') &&
         t.tier &&
         t.tier !== 'STARTER' &&
         t.tier !== 'FREE'
@@ -135,12 +168,12 @@ export async function GET(req: NextRequest) {
         date: t.created_at || meta.onboarded_at || new Date().toISOString(),
         store_name: t.name || t.slug || 'Toko Mitra',
         store_slug: t.slug,
-        phone: meta.wa_number || meta.phone || affiliate.phone || '-',
+        phone: meta.wa_number || meta.whatsapp_number || meta.phone || affiliate.phone || '-',
         utm_source: meta.utm_source || meta.source || 'organik',
         utm_medium: meta.utm_medium || meta.medium || '-',
         utm_campaign: meta.utm_campaign || meta.campaign || '-',
         status: storeStatus,
-        tier: t.tier || 'STARTER',
+        tier: t.tier || 'SOLO_TRIAL',
         monthly_fee: fee,
         potential_commission: potentialComm,
       };

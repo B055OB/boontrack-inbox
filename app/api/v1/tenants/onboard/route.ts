@@ -93,6 +93,26 @@ export async function POST(req: NextRequest) {
     try {
       const supabase = getSupabase();
       const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
+      const rawRef = referralCode || body.referral_code || body.ref || body.affiliate_code;
+      const cleanRef = rawRef ? String(rawRef).trim().toLowerCase() : null;
+      let matchedAffiliateId: string | null = body.affiliate_id || body.referrer_id || null;
+      let matchedAffiliateName: string | null = null;
+
+      if (cleanRef && !matchedAffiliateId) {
+        try {
+          const { data: affData } = await supabase
+            .from('affiliates')
+            .select('id, name, referral_code')
+            .ilike('referral_code', cleanRef)
+            .maybeSingle();
+          if (affData) {
+            matchedAffiliateId = affData.id;
+            matchedAffiliateName = affData.name;
+          }
+        } catch (lookupErr) {
+          console.warn('Lookup affiliate in onboard route error:', lookupErr);
+        }
+      }
 
       const utmObj = {
         source: utm_source || utms?.source || utms?.utm_source || null,
@@ -102,12 +122,15 @@ export async function POST(req: NextRequest) {
         term: utm_term || utms?.term || utms?.utm_term || null,
       };
 
-      await supabase.from('tenants').upsert(
+      const { data: upsertedTenant } = await supabase.from('tenants').upsert(
         {
           slug: generatedSlug,
           name: storeName,
           category: resolvedBusinessType,
-          tier: 'SOLO_TRIAL',
+          business_type: resolvedBusinessType,
+          tier: 'STARTER',
+          status: 'trial',
+          is_active: true,
           trial_ends_at: trialEndsAt,
           subscription_ends_at: trialEndsAt,
           metadata: {
@@ -121,8 +144,20 @@ export async function POST(req: NextRequest) {
             trial_ends_at: trialEndsAt,
             subscription_ends_at: trialEndsAt,
             wa_number: formattedWa,
-            referral_code: referralCode || null,
+            whatsapp_number: formattedWa,
+            phone: formattedWa,
+            referral_code: cleanRef,
+            affiliate_code: cleanRef,
+            ref: cleanRef,
+            affiliate_id: matchedAffiliateId,
+            referrer_id: matchedAffiliateId,
+            referrer_name: matchedAffiliateName,
             utm_params: utmObj,
+            utm_source: utmObj.source,
+            utm_medium: utmObj.medium,
+            utm_campaign: utmObj.campaign,
+            utm_content: utmObj.content,
+            utm_term: utmObj.term,
             capabilities: {
               inbox: true,
               ai_bot: true,
@@ -147,17 +182,21 @@ export async function POST(req: NextRequest) {
           },
         },
         { onConflict: 'slug' }
-      );
+      ).select('id, slug').maybeSingle();
 
-      if (referralCode) {
+      const effectiveTenantId = upsertedTenant?.id;
+      if (effectiveTenantId && (matchedAffiliateId || cleanRef)) {
         try {
           await supabase.from('attributions').insert({
-            tenant_slug: generatedSlug,
-            merchant_slug: generatedSlug,
-            referral_code: String(referralCode).toLowerCase().trim(),
-            utm_source: utmObj.source,
+            tenant_id: effectiveTenantId,
+            session_id: `reg_${generatedSlug}_${Date.now()}`,
+            affiliate_id: matchedAffiliateId || null,
+            utm_source: utmObj.source || 'organik',
             utm_medium: utmObj.medium,
             utm_campaign: utmObj.campaign,
+            utm_content: utmObj.content,
+            utm_term: utmObj.term,
+            ip_hash: 'merchant_reg',
             created_at: new Date().toISOString(),
           });
         } catch (attrErr) {

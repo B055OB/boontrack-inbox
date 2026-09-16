@@ -680,21 +680,46 @@ export default function RegisterShopPage() {
       const isServiceStore = resolvedBusinessType === 'FIELD_SERVICE' || resolvedBusinessType === 'PROFESSIONAL_SERVICE';
 
       const cleanRef = referralCode.trim().toLowerCase() || null;
+      let matchedAffiliateId: string | null = null;
+      let matchedAffiliateName: string | null = null;
 
       try {
         const supabase = getSupabase();
         if (supabase) {
-          await supabase.from('tenants').upsert(
+          // Lookup mitra affiliate pemilik referral_code di database
+          if (cleanRef) {
+            try {
+              const { data: affData } = await supabase
+                .from('affiliates')
+                .select('id, name, referral_code')
+                .ilike('referral_code', cleanRef)
+                .maybeSingle();
+
+              if (affData) {
+                matchedAffiliateId = affData.id;
+                matchedAffiliateName = affData.name;
+              }
+            } catch (lookupErr) {
+              console.warn('Lookup affiliate by referral code error:', lookupErr);
+            }
+          }
+
+          const { data: upsertedTenant } = await supabase.from('tenants').upsert(
             {
               slug,
               name: storeName,
               category: resolvedBusinessType,
-              tier: isTrial ? 'SOLO_TRIAL' : (selectedPlan === 'team_scale' ? 'TEAM_SCALE' : 'ADS_PERFORMANCE'),
+              business_type: resolvedBusinessType,
+              tier: isTrial ? 'STARTER' : (selectedPlan === 'team_scale' ? 'ENTERPRISE' : 'PRO_SCALE'),
+              status: isTrial ? 'trial' : 'active',
+              is_active: true,
               trial_ends_at: isTrial ? trialEndsAt : null,
               subscription_ends_at: isTrial ? trialEndsAt : new Date(Date.now() + 30 * 86400000).toISOString(),
               metadata: {
                 merchant_name: merchantData.name,
                 whatsapp_number: formattedPhone,
+                wa_number: formattedPhone,
+                phone: formattedPhone,
                 email: merchantData.email,
                 access_pin: cleanPin,
                 pin_hash: cleanPin,
@@ -704,6 +729,9 @@ export default function RegisterShopPage() {
                 referral_code: cleanRef,
                 affiliate_code: cleanRef,
                 ref: cleanRef,
+                affiliate_id: matchedAffiliateId,
+                referrer_id: matchedAffiliateId,
+                referrer_name: matchedAffiliateName,
                 business_category: resolvedBusinessType,
                 business_type: resolvedBusinessType,
                 vertical_type: resolvedBusinessType,
@@ -726,24 +754,27 @@ export default function RegisterShopPage() {
               },
             },
             { onConflict: 'slug' }
-          );
+          ).select('id, slug').maybeSingle();
 
           // Simpan record atribusi jika terdaftar via referral affiliate
-          if (cleanRef) {
+          const effectiveTenantId = upsertedTenant?.id;
+          if (effectiveTenantId && (matchedAffiliateId || cleanRef)) {
             try {
               await supabase.from('attributions').insert({
+                tenant_id: effectiveTenantId,
                 session_id: `reg_${slug}_${Date.now()}`,
+                affiliate_id: matchedAffiliateId || null,
                 utm_source: utmParams.utm_source || 'organik',
                 utm_medium: utmParams.utm_medium || null,
                 utm_campaign: utmParams.utm_campaign || null,
-                metadata: {
-                  tenant_slug: slug,
-                  referral_code: cleanRef,
-                  action: 'merchant_registration',
-                },
+                utm_content: utmParams.utm_content || null,
+                utm_term: utmParams.utm_term || null,
+                ip_hash: 'merchant_reg',
                 created_at: new Date().toISOString(),
               });
-            } catch (_) {}
+            } catch (attrErr) {
+              console.warn('Attribution insert note:', attrErr);
+            }
           }
         }
       } catch (dbErr) {
@@ -773,6 +804,8 @@ export default function RegisterShopPage() {
             referral_code: cleanRef || undefined,
             affiliate_code: cleanRef || undefined,
             ref: cleanRef || undefined,
+            affiliate_id: matchedAffiliateId || undefined,
+            referrer_id: matchedAffiliateId || undefined,
             utm_source: utmParams.utm_source || undefined,
             utm_medium: utmParams.utm_medium || undefined,
             utm_campaign: utmParams.utm_campaign || undefined,
@@ -781,6 +814,33 @@ export default function RegisterShopPage() {
           }),
         }
       ).catch(() => null);
+
+      // Sinkronisasi background ke internal Next.js onboarding gateway
+      fetch("/api/v1/tenants/onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rawSlug: slug,
+          storeName,
+          waNumber: formattedPhone,
+          category: resolvedBusinessType,
+          business_type: resolvedBusinessType,
+          referralCode: cleanRef,
+          referral_code: cleanRef,
+          affiliate_id: matchedAffiliateId,
+          referrer_id: matchedAffiliateId,
+          productName: storeName,
+          productPrice: 0,
+          bankName: 'BCA',
+          bankAccountNumber: '-',
+          bankAccountHolder: merchantData.name,
+          utm_source: utmParams.utm_source,
+          utm_medium: utmParams.utm_medium,
+          utm_campaign: utmParams.utm_campaign,
+          utm_content: utmParams.utm_content,
+          utm_term: utmParams.utm_term,
+        }),
+      }).catch(() => null);
 
       const data = res && res.ok ? await res.json().catch(() => ({})) : {};
 
