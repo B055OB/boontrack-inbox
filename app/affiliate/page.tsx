@@ -120,12 +120,10 @@ function AffiliatePortalContent() {
 
   // URL parameters or defaults
   const initialTenant = searchParams.get('tenant') || 'shop';
-  const initialRef = (searchParams.get('ref') || searchParams.get('code') || '').trim();
+  const initialRef = (searchParams.get('code') || searchParams.get('ref') || '').trim();
 
   const [tenantSlug, setTenantSlug] = useState(initialTenant);
   const [affiliateCode, setAffiliateCode] = useState(initialRef);
-  const activeCode = (affiliateCode || 'buzzerukm').toLowerCase();
-  const isBuzzerUkm = activeCode === 'buzzerukm';
   const [data, setData] = useState<PortalResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -144,6 +142,21 @@ function AffiliatePortalContent() {
     bank_account_number?: string;
     bank_account_holder?: string;
   } | null>(null);
+
+  // Resolusi activeCode secara dinamis:
+  // 1. Data affiliate terverifikasi dari backend/database
+  // 2. authSession.referral_code
+  // 3. affiliateCode (dari parameter URL ?code= / ?ref= atau localStorage)
+  // 4. Kosong / string kosong (jika belum login/belum dicari)
+  const activeCode = (
+    data?.affiliate?.referral_code ||
+    authSession?.referral_code ||
+    affiliateCode ||
+    ''
+  ).trim().toLowerCase();
+
+  // HANYA bernilai true jika kode referral aktif BENAR-BENAR 'buzzerukm'
+  const isBuzzerUkm = Boolean(activeCode === 'buzzerukm');
 
   // 1. Slug Customization States
   const [customSlugInput, setCustomSlugInput] = useState('');
@@ -251,7 +264,7 @@ function AffiliatePortalContent() {
   // Case-Insensitive Fetch of Affiliate Portal Data
   const fetchAffiliateData = useCallback(async (tSlug: string, aCode: string) => {
     const normalizedCode = (aCode || '').trim().toLowerCase();
-    if (!normalizedCode) {
+    if (!normalizedCode || normalizedCode.length < 2) {
       setLoading(false);
       return;
     }
@@ -270,6 +283,9 @@ function AffiliatePortalContent() {
         setData(json.data);
         const aff = json.data.affiliate;
         if (aff) {
+          if (aff.referral_code) {
+            setCustomSlugInput(aff.referral_code.toLowerCase());
+          }
           if (aff.is_ref_customized !== undefined) {
             setIsRefCustomized(Boolean(aff.is_ref_customized));
           }
@@ -305,10 +321,23 @@ function AffiliatePortalContent() {
     }
   }, []);
 
+  // Debounced 500ms auto-fetch saat affiliateCode berubah (hanya jika >= 2 karakter)
   useEffect(() => {
-    if (affiliateCode) {
-      fetchAffiliateData(tenantSlug, affiliateCode);
+    const code = affiliateCode.trim();
+    if (!code || code.length < 2) {
+      setErrorMsg('');
+      if (!code) {
+        setData(null);
+        setLoading(false);
+      }
+      return;
     }
+
+    const timer = setTimeout(() => {
+      fetchAffiliateData(tenantSlug, code);
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [fetchAffiliateData, tenantSlug, affiliateCode]);
 
   // Debounced 300ms Referral Slug Checker
@@ -637,7 +666,12 @@ function AffiliatePortalContent() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    fetchAffiliateData(tenantSlug, affiliateCode);
+    const code = affiliateCode.trim();
+    if (!code || code.length < 2) {
+      setErrorMsg('Masukkan minimal 2 karakter kode referral mitra.');
+      return;
+    }
+    fetchAffiliateData(tenantSlug, code);
   };
 
   const handleLogout = () => {
@@ -652,6 +686,8 @@ function AffiliatePortalContent() {
 
   // ── DYNAMIC HYBRID UTM LINK BUILDER ──
   const generatedCustomUrl = useMemo(() => {
+    if (!activeCode) return '';
+
     let baseUrl = '';
     if (isBuzzerUkm) {
       if (targetUrlType === 'register') {
@@ -695,15 +731,20 @@ function AffiliatePortalContent() {
     }
   }, [targetUrlType, customTargetUrl, activeCode, isBuzzerUkm, utmSource, utmMedium, utmCampaign]);
 
-  const defaultReferralLink = isBuzzerUkm
-    ? 'https://buzzerukm.boontrack.com/'
-    : `https://shop.boontrack.com/?ref=${activeCode}`;
+  const defaultReferralLink = !activeCode
+    ? ''
+    : isBuzzerUkm
+      ? 'https://buzzerukm.boontrack.com/'
+      : `https://shop.boontrack.com/?ref=${activeCode}`;
 
-  const recruitReferralLink = isBuzzerUkm
-    ? 'https://buzzerukm.boontrack.com/affiliate/register'
-    : `https://shop.boontrack.com/affiliate/register?ref=${activeCode}`;
+  const recruitReferralLink = !activeCode
+    ? ''
+    : isBuzzerUkm
+      ? 'https://buzzerukm.boontrack.com/affiliate/register'
+      : `https://shop.boontrack.com/affiliate/register?ref=${activeCode}`;
 
   const copyToClipboard = (text: string, type: 'base' | 'customUtm' | 'recruit') => {
+    if (!text) return;
     if (typeof navigator !== 'undefined') {
       navigator.clipboard.writeText(text);
       if (type === 'base') {
@@ -805,8 +846,8 @@ function AffiliatePortalContent() {
             )}
 
             <div className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-emerald-400 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Kode: <strong>{activeCode}</strong></span>
+              <span className={`w-2 h-2 rounded-full ${activeCode ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+              <span>Kode: <strong>{activeCode || 'Belum dipilih'}</strong></span>
             </div>
           </div>
         </div>
@@ -825,16 +866,16 @@ function AffiliatePortalContent() {
           </div>
 
           <div className="w-full sm:w-1/3">
-            <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Kode Referral Mitra (Case-Insensitive)</label>
+            <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Kode Referral Mitra (Min. 2 Karakter)</label>
             <input
               type="text"
               value={affiliateCode}
               onChange={(e) => {
-                const val = e.target.value;
+                const val = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
                 setAffiliateCode(val);
-                if (!isRefCustomized) setCustomSlugInput(val.toUpperCase());
+                if (!isRefCustomized) setCustomSlugInput(val);
               }}
-              placeholder="Contoh: buzzerukm atau KANGSAKTI"
+              placeholder="Contoh: ob atau buzzerukm"
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
             />
           </div>
@@ -1665,6 +1706,41 @@ function AffiliatePortalContent() {
 
             </div>
           </>
+        )}
+
+        {!data && !loading && (
+          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 sm:p-12 text-center space-y-4 max-w-xl mx-auto shadow-xl">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+              <Users className="w-7 h-7" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-base sm:text-lg font-bold text-white">
+                {activeCode
+                  ? `Data Mitra "${activeCode}" Belum Dimuat`
+                  : 'Silakan Masukkan Kode Referral atau Login'}
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
+                {activeCode
+                  ? 'Klik tombol "Cari Mitra" di atas untuk memuat data komisi, leads toko, dan link promosi personal Anda.'
+                  : 'Masukkan kode referral unik Anda pada formulir pencarian di atas, atau login dengan nomor WhatsApp terdaftar untuk mengakses dashboard kemitraan.'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <Link
+                href="/affiliate/login"
+                className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center gap-2"
+              >
+                <Smartphone className="w-4 h-4" />
+                <span>Login Mitra WhatsApp</span>
+              </Link>
+              <Link
+                href="/affiliate/register"
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center gap-2"
+              >
+                <span>Daftar Mitra Baru</span>
+              </Link>
+            </div>
+          </div>
         )}
 
       </div>
