@@ -62,13 +62,14 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
 
 > **Contract Rule**: Setiap domain baru yang ditambahkan ke ekosistem BoonTrack **WAJIB** didaftarkan di tabel ini beserta edge infra, funnel intent, dan Meta event trigger-nya sebelum dipublikasikan ke produksi.
 
-### 2.2 Auth-Only Affiliate Dashboard Standard
-1. **Direct Auth Session**:
-   - Halaman portal afiliasi (`/affiliate/dashboard` dan `/affiliate`) beroperasi secara *auth-only*.
-   - Data mitra, kode referral unik, metrik konversi (klik, leads, toko trial, saldo komisi), dan link promosi WAJIB dimuat secara otomatis dari sesi autentikasi (OTP WhatsApp / cookie sesi `authSession`).
-2. **Eliminasi Manual Search**:
-   - DILARANG KERAS menampilkan kotak input manual "KODE REFERRAL MITRA" atau tombol "Cari Mitra" di header dashboard.
-   - Mitra terverifikasi tidak boleh diwajibkan mencari dirinya sendiri. Jika sesi belum aktif, pengguna dialihkan ke alur login OTP WhatsApp (`/affiliate/login`).
+### 2.2 Auth-Only Affiliate Dashboard Standard (Production Contract)
+1. **Automated Session Authentication (Cookie / JWT Based)**:
+   - Halaman portal afiliasi (`/affiliate/dashboard` dan `/affiliate`) WAJIB beroperasi secara murni *auth-only* berbasis sesi terotentikasi (JWT Bearer / HTTP-only Secure Cookie `authSession` / `affiliate_code`).
+   - Data profil mitra, kode referral unik personal, metrik performa (klik, lead masuk, toko trial aktif, toko berbayar, komisi tercatat), serta link promosi WAJIB dimuat secara otomatis dari sesi aktif tanpa intervensi manual.
+2. **Larangan Mutlak Manual Search di Level Produksi**:
+   - DILARANG KERAS menampilkan kotak input pencarian manual ("KODE REFERRAL MITRA") atau tombol pencarian ("Cari Mitra") di level produksi.
+   - Mitra tidak boleh dibebani untuk mencari data dirinya sendiri.
+   - Jika sesi autentikasi belum terdeteksi / expired, antarmuka wajib mengarahkan mitra secara elegan ke alur login OTP WhatsApp resmi (`/affiliate/login`).
 
 ---
 
@@ -78,6 +79,18 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
   - *Feature* = kapabilitas teknis sistem internal (contoh: `AI_BOT`, `META_CAPI`).
   - *Add-on* = paket komersial yang dibeli user.
 - **FastAPI Enforcement**: Setiap endpoint privat wajib memvalidasi entitlement via guard/dependency decorator. Kembalikan error `403 FEATURE_NOT_ENTITLED` jika hak akses tidak aktif.
+
+### 3.1 Entitlement & Commercial Subscription Tiers (Contract ADR)
+Ekosistem BoonTrack meresmikan standarisasi 3 Tier Komersial baku yang mengikat seluruh lapisan (Frontend UI, Onboarding Gateway, Billing Invoicing, dan PostgreSQL Database):
+
+| Nama Komersial (UI) | Tier PostgreSQL Enum | Durasi & Skema Harga | Hak Akses Fitur Utama |
+| :--- | :--- | :--- | :--- |
+| **Solo / Starter** | `STARTER` | Rp 0 (Trial 7 Hari Penuh) / Rp 199.000/bln | Storefront mandiri, katalog tanpa batas, cek ongkir multi-ekspedisi, QRIS dinamis, Bot WhatsApp auto-reply dasar. |
+| **Ads Performance** | `PRO_SCALE` | Rp 299.000 / bulan | Semua fitur STARTER + Meta & TikTok CAPI Server-Side, God Button konversi, 2 Seats CS Inbox, Advanced Analytics. |
+| **Team Scale** | `ENTERPRISE` | Rp 499.000 / bulan | Semua fitur PRO_SCALE + Unlimited Multi-Seat CS, Official Meta Cloud API (WABA), Broadcast WA, Custom Domain + SSL. |
+
+> **ADR Database Invariant**:
+> Kolom `tenants.tier` dan `shop_subscriptions.plan_tier` di PostgreSQL Supabase serta enum SQLAlchemy/Pydantic di Core ENGINE WAJIB hanya menampung nilai resmi: `'STARTER'`, `'PRO_SCALE'`, dan `'ENTERPRISE'` (serta `'FREE'` untuk internal testing). Seluruh string legacy (seperti `GROWTH`, `growth_tracking`, `proscale`, `team_scale`, `solo`) wajib ditransformasikan melalui adapter/migrasi database ke 3 enum resmi di atas.
 
 ---
 
