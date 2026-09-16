@@ -221,6 +221,60 @@ export async function middleware(req: NextRequest) {
   const subdomain = extractSubdomain(host);
 
   // ===========================================================================
+  // KHUSUS SUBDOMAIN BUZZERUKM (buzzerukm.boontrack.com)
+  // JANGAN PERNAH MENGGUNAKAN REDIRECT. SELALU GUNAKAN REWRITE INTERNAL.
+  // ===========================================================================
+  if (hostClean === 'buzzerukm.boontrack.com' || subdomain === 'buzzerukm') {
+    // 1. Path /affiliate/register -> Rewrite internal ke /affiliate/register?ref=buzzerukm
+    if (pathname === '/affiliate/register' || pathname.startsWith('/affiliate/register/')) {
+      const rewriteUrl = new URL('/affiliate/register?ref=buzzerukm', req.url);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'ref') rewriteUrl.searchParams.set(key, val);
+      });
+      return NextResponse.rewrite(rewriteUrl);
+    }
+
+    // 2. Path /affiliate/dashboard -> Rewrite internal ke /affiliate/dashboard?code=buzzerukm
+    if (pathname === '/affiliate/dashboard' || pathname.startsWith('/affiliate/dashboard/')) {
+      const rewriteUrl = new URL('/affiliate/dashboard?code=buzzerukm', req.url);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'code') rewriteUrl.searchParams.set(key, val);
+      });
+      return NextResponse.rewrite(rewriteUrl);
+    }
+
+    // 3. Path /affiliate root -> Rewrite internal ke /affiliate?code=buzzerukm
+    if (pathname === '/affiliate' || pathname === '/affiliate/') {
+      const rewriteUrl = new URL('/affiliate?code=buzzerukm', req.url);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'code') rewriteUrl.searchParams.set(key, val);
+      });
+      return NextResponse.rewrite(rewriteUrl);
+    }
+
+    // 4. Path /register -> Rewrite internal ke /register?ref=buzzerukm
+    if (pathname === '/register' || pathname.startsWith('/register/')) {
+      const rewriteUrl = new URL('/register?ref=buzzerukm', req.url);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'ref') rewriteUrl.searchParams.set(key, val);
+      });
+      return NextResponse.rewrite(rewriteUrl);
+    }
+
+    // 5. Root path / -> Rewrite internal ke /register?ref=buzzerukm (Funnel pendaftaran mitra)
+    if (pathname === '/' || pathname === '') {
+      const rewriteUrl = new URL('/register?ref=buzzerukm', req.url);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'ref') rewriteUrl.searchParams.set(key, val);
+      });
+      return NextResponse.rewrite(rewriteUrl);
+    }
+
+    // 6. Path lainnya di buzzerukm.boontrack.com -> Next/pass-through tanpa redirect
+    return NextResponse.next();
+  }
+
+  // ===========================================================================
   // SUBDOMAIN: affiliate.boontrack.com
   // ===========================================================================
   if (subdomain === 'affiliate') {
