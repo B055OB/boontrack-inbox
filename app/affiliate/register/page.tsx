@@ -162,8 +162,8 @@ function AffiliateRegisterContent() {
       return false;
     }
     const cleaned = cleanPhone(phone);
-    if (!cleaned || cleaned.length < 10) {
-      setErrorMessage('Nomor WhatsApp tidak valid (minimal 10 digit).');
+    if (phone.trim() && (!cleaned || cleaned.length < 10)) {
+      setErrorMessage('Nomor WhatsApp tidak valid jika diisi (minimal 10 digit).');
       return false;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -478,8 +478,8 @@ function AffiliateRegisterContent() {
                     <span className="font-bold text-white">{fullName}</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-800 pb-2">
-                    <span className="text-slate-400">WhatsApp Terdaftar:</span>
-                    <span className="font-mono font-semibold text-emerald-400">{cleanPhone(phone)}</span>
+                    <span className="text-slate-400">Email Akun Login:</span>
+                    <span className="font-mono font-semibold text-emerald-400">{email}</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-800 pb-2">
                     <span className="text-slate-400">Rekening Payout:</span>
@@ -505,7 +505,7 @@ function AffiliateRegisterContent() {
                     </div>
                     <div className="flex items-start gap-3">
                       <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-[11px]">2</div>
-                      <span>Notifikasi persetujuan akun & link aktivasi akan dikirimkan langsung ke WhatsApp Anda.</span>
+                      <span>Notifikasi aktivasi akun dan kredensial kemitraan langsung terhubung dengan email Anda.</span>
                     </div>
                     <div className="flex items-start gap-3">
                       <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0 text-[11px]">3</div>
@@ -595,7 +595,7 @@ function AffiliateRegisterContent() {
                           <span className={`text-xs block leading-tight ${currentStep === 1 ? 'font-black text-emerald-400' : 'font-semibold text-slate-300'}`}>
                             Langkah 1: Data Diri
                           </span>
-                          <span className="text-[10px] text-slate-500 leading-none">Identitas &amp; Kontak WhatsApp</span>
+                          <span className="text-[10px] text-slate-500 leading-none">Identitas &amp; Akun Login</span>
                         </div>
                       </div>
                     </div>
@@ -736,11 +736,11 @@ function AffiliateRegisterContent() {
                         </div>
                       </div>
 
-                      {/* WhatsApp Phone */}
+                      {/* WhatsApp Phone (Optional) */}
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                          <span>Nomor WhatsApp Aktif</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Untuk verifikasi & OTP</span>
+                          <span>Nomor WhatsApp (Opsional)</span>
+                          <span className="text-[10px] text-slate-400 font-normal">Kontak profil mitra & info pencairan</span>
                         </label>
                         <div className="relative">
                           <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-bold text-slate-400 border-r border-slate-800 pr-2.5">
@@ -753,16 +753,15 @@ function AffiliateRegisterContent() {
                             onChange={(e) => setPhone(e.target.value)}
                             placeholder="81234567890"
                             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-20 pr-4 py-3 text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-                            required
                           />
                         </div>
                       </div>
 
-                      {/* Email Address */}
+                      {/* Email Address (Primary Credential) */}
                       <div className="space-y-1.5">
                         <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                          <span>Alamat Email</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Notifikasi status kurasi</span>
+                          <span>Alamat Email (Kredensial Login Utama)</span>
+                          <span className="text-[10px] text-emerald-400 font-normal">Wajib untuk login dashboard</span>
                         </label>
                         <div className="relative">
                           <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
