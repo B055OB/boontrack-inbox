@@ -591,6 +591,7 @@ export default function PersonalAuthorityTemplate({
           tenantSlug={tenantSlug}
           storeName={storeName}
           displayName={displayName}
+          category={tenant?.category || tenantMetadata?.category}
           dynamicQuickReplies={dynamicQuickReplies}
           onInitiateCheckout={onInitiateCheckout}
         />

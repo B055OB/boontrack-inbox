@@ -62,11 +62,35 @@ export function normalizeIndustryCategory(rawCategory?: string): CanonicalIndust
   if (cat === 'DIGITAL' || cat.includes('COURSE') || cat.includes('ECOURSE') || cat.includes('EBOOK') || cat.includes('SOFTWARE') || cat.includes('LISENSI')) {
     return 'DIGITAL';
   }
-  if (cat === 'FIELD_SERVICE' || cat.includes('SERVICE') || cat.includes('SERVIS') || cat.includes('BENGKEL') || cat.includes('CLEANING') || cat.includes('TEKNISI') || cat.includes('REPAIR')) {
-    return 'FIELD_SERVICE';
-  }
-  if (cat === 'PROFESSIONAL_SERVICE' || cat.includes('CONSULT') || cat.includes('AGENCY') || cat.includes('LEGAL') || cat.includes('TRAVEL') || cat.includes('UMROH') || cat.includes('PRO')) {
+  // Check PROFESSIONAL_SERVICE before FIELD_SERVICE to prevent collision on 'SERVICE' substring
+  if (
+    cat === 'PROFESSIONAL_SERVICE' ||
+    cat === 'PRO_SERVICE' ||
+    cat === 'PROFESSIONAL' ||
+    cat === 'CONSULT' ||
+    cat.includes('PROFESSIONAL') ||
+    cat.includes('CONSULT') ||
+    cat.includes('AGENCY_PRO') ||
+    cat.includes('LEGAL') ||
+    cat.includes('TRAVEL') ||
+    cat.includes('UMROH') ||
+    cat.includes('KLINIK') ||
+    cat.includes('PRO')
+  ) {
     return 'PROFESSIONAL_SERVICE';
+  }
+  if (
+    cat === 'FIELD_SERVICE' ||
+    cat === 'SERVICE' ||
+    cat.includes('FIELD') ||
+    cat.includes('SERVIS') ||
+    cat.includes('BENGKEL') ||
+    cat.includes('CLEANING') ||
+    cat.includes('TEKNISI') ||
+    cat.includes('REPAIR') ||
+    cat.includes('TOREN')
+  ) {
+    return 'FIELD_SERVICE';
   }
   if (
     cat === 'CREATOR' ||
@@ -339,18 +363,18 @@ export function buildDefaultIndustryMenu(
         trigger: `Layanan Konsultasi ${storeName}`,
         title: `Solusi Bisnis ${storeName}`,
         header_text: `Layanan Profesional ${storeName}`,
-        description: `Selamat datang di ${storeName}. Kami siap mendampingi kebutuhan bisnis Anda:`,
+        description: `Selamat datang di ${storeName}. Kami siap mendampingi kebutuhan konsultasi & audit profesional Anda:`,
         options: [
           {
             id: 'opt_catalog',
-            title: '1. Solusi & Layanan',
-            description: 'Rincian paket penanganan profesional',
+            title: '1. Paket & Tarif Layanan',
+            description: 'Rincian paket penanganan profesional & tarif resmi',
             responseText: 'CATALOG',
           },
           {
             id: 'opt_proposal_flow',
-            title: '2. Alur Kerjasama/Proposal',
-            description: 'Tahapan onboarding & pengajuan proposal',
+            title: '2. Jadwalkan Konsultasi',
+            description: 'Jadwalkan sesi konsultasi atau audit profesional',
             responseText: 'HOW_TO_ORDER',
           },
           {
@@ -367,8 +391,8 @@ export function buildDefaultIndustryMenu(
           },
           {
             id: 'opt_portfolio',
-            title: '5. Portofolio',
-            description: 'Studi kasus hasil kerja klien sebelumnya',
+            title: '5. Portofolio / Brief',
+            description: 'Studi kasus hasil kerja klien & kirim brief proyek',
             responseText: 'PORTFOLIO',
           },
           {
@@ -379,8 +403,8 @@ export function buildDefaultIndustryMenu(
           },
           {
             id: 'opt_human_cs',
-            title: '7. Diskusi Konsultan',
-            description: 'Jadwalkan sesi meeting / panggilan bisnis',
+            title: '7. Hubungi Konsultan',
+            description: 'Jadwalkan sesi meeting / diskusi dengan konsultan',
             responseText: 'HUMAN_CS',
           },
         ],
@@ -476,7 +500,7 @@ export async function processZeroAiMessage(
   // 1. Fetch Tenant Record
   const { data: tenant, error: tErr } = await supabase
     .from('tenants')
-    .select('id, slug, name, category, business_type, tier, custom_domain, metadata')
+    .select('id, slug, name, category, business_type, tier, metadata')
     .eq('slug', slug)
     .maybeSingle();
 
@@ -551,24 +575,45 @@ export async function processZeroAiMessage(
     if (numMatch) {
       selectedOptionIndex = parseInt(numMatch[1], 10);
     } else {
-      // Cek pencocokan judul opsi
+      // Cek pencocokan judul opsi (tahan terhadap emoji dan awalan angka)
+      const sanitizeForMatch = (str: string) =>
+        str
+          .toLowerCase()
+          .replace(/^[0-9]+[.)]\s*/, '')
+          .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const normalizedInput = sanitizeForMatch(cleanMsg);
       const foundIdx = activeMenu.options.findIndex((opt) => {
-        const t = opt.title.toLowerCase();
-        return cleanMsg.includes(t) || t.includes(cleanMsg);
+        const normOpt = sanitizeForMatch(opt.title);
+        return (
+          (normOpt.length >= 3 && normalizedInput.includes(normOpt)) ||
+          (normalizedInput.length >= 3 && normOpt.includes(normalizedInput))
+        );
       });
       if (foundIdx !== -1) selectedOptionIndex = foundIdx + 1;
     }
   }
 
   const checkoutUrl = getTenantCheckoutUrl(
-    { slug: tenant.slug, custom_domain: tenant.custom_domain },
+    { slug: tenant.slug, custom_domain: tenant.metadata?.custom_domain || null },
     {}
   );
 
   // 5. INTENT DISPATCHER (ZERO-TOKEN DETERMINISTIC LOGIC)
 
-  // ── [INTENT 1]: LIHAT PRODUK / KATALOG / MENU / RATE CARD ──
-  if (selectedOptionIndex === 1 || cleanMsg === 'katalog' || cleanMsg === 'produk' || cleanMsg === 'menu') {
+  // ── [INTENT 1]: LIHAT PRODUK / KATALOG / MENU / RATE CARD / TARIF ──
+  if (
+    selectedOptionIndex === 1 ||
+    cleanMsg.includes('katalog') ||
+    cleanMsg.includes('produk') ||
+    cleanMsg.includes('menu') ||
+    cleanMsg.includes('tarif') ||
+    cleanMsg.includes('paket') ||
+    cleanMsg.includes('layanan') ||
+    cleanMsg.includes('solusi')
+  ) {
     let productLines: string[] = [];
 
     // Query tabel products resmi
@@ -621,8 +666,19 @@ export async function processZeroAiMessage(
     };
   }
 
-  // ── [INTENT 2]: CARA BELANJA / CARA BELI / BOOKING / PROPOSAL FLOW ──
-  if (selectedOptionIndex === 2 || cleanMsg.includes('cara belanja') || cleanMsg.includes('cara beli') || cleanMsg.includes('cara pesan')) {
+  // ── [INTENT 2]: CARA BELANJA / CARA BELI / BOOKING / PROPOSAL FLOW / JADWAL ──
+  if (
+    selectedOptionIndex === 2 ||
+    cleanMsg.includes('cara belanja') ||
+    cleanMsg.includes('cara beli') ||
+    cleanMsg.includes('cara pesan') ||
+    cleanMsg.includes('jadwalkan') ||
+    cleanMsg.includes('booking') ||
+    cleanMsg.includes('jadwal') ||
+    cleanMsg.includes('konsultasi') ||
+    cleanMsg.includes('janji temu') ||
+    cleanMsg.includes('audit')
+  ) {
     const customHowTo = meta.policies?.how_to_order || meta.how_to_order;
     const category = normalizeIndustryCategory(tenant.category || tenant.business_type);
 
@@ -646,6 +702,12 @@ export async function processZeroAiMessage(
           `2. Kirimkan alamat lengkap & jadwal kunjungan teknisi.\n` +
           `3. Teknisi kami akan datang tepat waktu sesuai konfirmasi.\n` +
           `4. Pembayaran dilakukan setelah pengerjaan selesai & teruji.`;
+      } else if (category === 'PROFESSIONAL_SERVICE') {
+        guideText =
+          `1. Pilih paket konsultasi atau audit profesional yang Anda butuhkan di: ${checkoutUrl}\n` +
+          `2. Tentukan jadwal sesi konsultasi atau kirimkan ringkasan kebutuhan / brief proyek Anda.\n` +
+          `3. Konsultan kami akan mengonfirmasi jadwal & proposal kerja sama.\n` +
+          `4. Pembayaran komitmen / invoice diterbitkan resmi sesuai kesepakatan.`;
       } else {
         guideText =
           `1. Pilih produk unggulan di etalase resmi kami: ${checkoutUrl}\n` +
@@ -655,10 +717,14 @@ export async function processZeroAiMessage(
       }
     }
 
+    const isPro = category === 'PROFESSIONAL_SERVICE';
+    const titleHeader = isPro ? 'PANDUAN KONSULTASI & JADWAL' : 'PANDUAN PEMESANAN';
+    const ctaHeader = isPro ? 'Jadwalkan Konsultasi Anda' : 'Mulai Pesanan Anda';
+
     const replyText =
-      `📋 *PANDUAN PEMESANAN ${storeName.toUpperCase()}*\n\n` +
+      `📋 *${titleHeader} ${storeName.toUpperCase()}*\n\n` +
       `${guideText}\n\n` +
-      `👉 *Mulai Pesanan Anda:* ${checkoutUrl}\n\n` +
+      `👉 *${ctaHeader}:* ${checkoutUrl}\n\n` +
       `_Ketik *menu* untuk kembali ke pilihan utama._`;
 
     return {
@@ -842,8 +908,18 @@ export async function processZeroAiMessage(
     };
   }
 
-  // ── [INTENT 7]: HUBUNGI CS / HUMAN TAKEOVER / CHAT KASIR / CHAT TEKNISI / CHAT MANAGER ──
-  if (selectedOptionIndex === 7 || cleanMsg.includes('hubungi cs') || cleanMsg.includes('admin') || cleanMsg.includes('chat kasir') || cleanMsg.includes('chat teknisi') || cleanMsg.includes('chat manager') || cleanMsg.includes('bantuan')) {
+  // ── [INTENT 7]: HUBUNGI CS / HUMAN TAKEOVER / CHAT KASIR / CHAT TEKNISI / CHAT MANAGER / KONSULTAN ──
+  if (
+    selectedOptionIndex === 7 ||
+    cleanMsg.includes('hubungi cs') ||
+    cleanMsg.includes('admin') ||
+    cleanMsg.includes('chat kasir') ||
+    cleanMsg.includes('chat teknisi') ||
+    cleanMsg.includes('chat manager') ||
+    cleanMsg.includes('konsultan') ||
+    cleanMsg.includes('diskusi') ||
+    cleanMsg.includes('bantuan')
+  ) {
     // 1. Set bot_status = 'HUMAN_TAKEOVER'
     const nowIso = new Date().toISOString();
     const pausedUntilIso = new Date(Date.now() + 2 * 3600 * 1000).toISOString(); // 2 jam
@@ -881,9 +957,19 @@ export async function processZeroAiMessage(
       console.warn('[ZeroAi] Error inserting takeover notification into messages:', msgErr);
     }
 
+    const category = normalizeIndustryCategory(tenant.category || tenant.business_type);
+    const roleLabel =
+      category === 'PROFESSIONAL_SERVICE'
+        ? 'KONSULTAN'
+        : category === 'FIELD_SERVICE'
+        ? 'TIM TEKNISI'
+        : category === 'FOOD'
+        ? 'KASIR'
+        : 'TIM CUSTOMER CARE';
+
     const replyText =
-      `👋 *MENGHUBUNGKAN KE TIM CUSTOMER CARE ${storeName.toUpperCase()}*\n\n` +
-      `Pesan Anda telah diteruskan ke petugas kami. Asisten otomatis telah dijeda agar Anda dapat berkomunikasi langsung secara personal.\n\n` +
+      `👋 *MENGHUBUNGKAN KE ${roleLabel} ${storeName.toUpperCase()}*\n\n` +
+      `Pesan Anda telah diteruskan ke ${category === 'PROFESSIONAL_SERVICE' ? 'konsultan' : 'petugas'} kami. Asisten otomatis telah dijeda agar Anda dapat berkomunikasi langsung secara personal.\n\n` +
       `Silakan sampaikan pertanyaan atau kendala Anda di sini, tim kami akan membalas segera.\n\n` +
       `_(Ketik *menu* kapan saja untuk mengaktifkan kembali bot asisten)_`;
 

@@ -358,9 +358,10 @@ export default function AiKnowledgeTab({
         { trigger: 'lokasi toko', title: '📍 Lokasi & Jam Buka', description: 'Temukan alamat dan jam operasional kami.' },
       ],
       PROFESSIONAL_SERVICE: [
-        { trigger: 'janji temu', title: '📝 Janji Temu / Konsultasi', description: 'Buat jadwal konsultasi dengan tim profesional kami.' },
-        { trigger: 'portofolio', title: '📋 Portofolio & Syarat', description: 'Lihat hasil kerja dan persyaratan layanan kami.' },
-        { trigger: 'hubungi cs', title: '💬 Konsultasi CS', description: 'Tanya langsung ke tim konsultan kami.' },
+        { trigger: 'jadwal konsultasi', title: '📅 Jadwalkan Konsultasi', description: 'Buat jadwal konsultasi atau audit profesional dengan tim kami.' },
+        { trigger: 'paket tarif', title: '💼 Paket & Tarif Layanan', description: 'Rincian paket layanan profesional dan tarif resmi kami.' },
+        { trigger: 'portofolio brief', title: '📋 Portofolio / Brief', description: 'Lihat studi kasus hasil kerja klien dan kirimkan brief proyek.' },
+        { trigger: 'hubungi konsultan', title: '💬 Hubungi Konsultan', description: 'Terhubung langsung dengan tim konsultan kami.' },
       ],
       DIGITAL: [
         { trigger: 'beli produk', title: '🔑 Beli & Unduh Produk', description: 'Akses produk digital Anda setelah pembayaran.' },

@@ -12,12 +12,13 @@ import {
   User,
   ChevronDown,
 } from 'lucide-react';
-import type { StoreChatMessage, Product } from '@/app/[tenant]/page';
+import { StoreChatMessage, Product, getStoreChatGreeting } from '@/app/[tenant]/page';
 
 interface FloatingWebchatProps {
   tenantSlug: string;
   storeName: string;
   displayName: string;
+  category?: string;
   dynamicQuickReplies: string[];
   onInitiateCheckout: (product: { id: string; title: string; price: number }) => void;
   onAddToCart?: (product: Product) => void;
@@ -27,6 +28,7 @@ export default function FloatingWebchat({
   tenantSlug,
   storeName,
   displayName,
+  category,
   dynamicQuickReplies,
   onInitiateCheckout,
   onAddToCart,
@@ -41,17 +43,18 @@ export default function FloatingWebchat({
 
   // Inisialisasi pesan pertama
   useEffect(() => {
+    const greetingText = getStoreChatGreeting(category || '', activeName);
     setMessages([
       {
         id: 'init-floating-1',
         sender: 'bot',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: `Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar produk atau layanan kami hari ini?`,
+        text: greetingText,
         type: 'TEXT',
         quick_actions: dynamicQuickReplies,
       },
     ]);
-  }, [activeName, dynamicQuickReplies]);
+  }, [activeName, category, dynamicQuickReplies]);
 
   useEffect(() => {
     if (isOpen) {

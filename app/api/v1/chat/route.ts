@@ -43,8 +43,7 @@ export async function POST(req: NextRequest) {
     const storeName = context?.storeName || slug.replace(/[-_]/g, ' ').toUpperCase();
     const product: ProductContext = product_context || context?.product || {};
     const packages = context?.packages || [];
-    const category = context?.category || 'retail';
-
+    let category = context?.category || 'retail';
     let tenantDomainInfo = { slug, custom_domain: null as string | null };
     let tenantMetadata: any = {};
 
@@ -53,15 +52,18 @@ export async function POST(req: NextRequest) {
       if (supabase) {
         const { data: t } = await supabase
           .from('tenants')
-          .select('slug, custom_domain, metadata')
+          .select('id, slug, category, business_type, metadata')
           .eq('slug', slug)
           .maybeSingle();
         if (t) {
           tenantDomainInfo = {
             slug: t.slug || slug,
-            custom_domain: t.custom_domain || null,
+            custom_domain: t.metadata?.custom_domain || null,
           };
           tenantMetadata = t.metadata || {};
+          if (t.category || t.business_type) {
+            category = t.category || t.business_type;
+          }
         }
       }
     } catch {}
@@ -228,13 +230,31 @@ export async function POST(req: NextRequest) {
     // 2. If GEMINI_API_KEY is configured, call Gemini API
     if (!reply && process.env.GEMINI_API_KEY) {
       try {
-        // Build full product catalog from tenant metadata
+        // Build full product catalog from tenant metadata or Supabase products
         const tenantProducts: any[] = Array.isArray(tenantMetadata.products) ? tenantMetadata.products : [];
-        const productCatalogText = tenantProducts.length > 0
-          ? tenantProducts
-              .map((p: any) => `• ${p.name || p.title || 'Paket'}: Rp ${Number(p.promo_price || p.price || 0).toLocaleString('id-ID')}${p.description ? ' — ' + p.description : ''}`)
-              .join('\n')
-          : `• Kuras Toren 520 Liter: Rp 160.000\n• Kuras Toren 650 Liter: Rp 170.000\n• Kuras Toren 800 Liter: Rp 180.000\n• Kuras Toren 1000 Liter: Rp 200.000`;
+        let productCatalogText = '';
+        if (tenantProducts.length > 0) {
+          productCatalogText = tenantProducts
+            .map((p: any) => `• ${p.name || p.title || 'Paket'}: Rp ${Number(p.promo_price || p.price || 0).toLocaleString('id-ID')}${p.description ? ' — ' + p.description : ''}`)
+            .join('\n');
+        } else {
+          try {
+            const supabase = getSupabase();
+            if (supabase) {
+              const { data: dbProds } = await supabase
+                .from('products')
+                .select('title, name, price, promo_price, description')
+                .eq('tenant_id', slug)
+                .eq('is_available', true)
+                .limit(10);
+              if (dbProds && dbProds.length > 0) {
+                productCatalogText = dbProds
+                  .map((p: any) => `• ${p.title || p.name || 'Paket'}: Rp ${Number(p.promo_price || p.price || 0).toLocaleString('id-ID')}${p.description ? ' — ' + p.description : ''}`)
+                  .join('\n');
+              }
+            }
+          } catch {}
+        }
 
         const menuSummary = formatInteractiveMenusSummary(interactiveMenus);
         const systemPrompt = `Anda adalah asisten AI customer service resmi untuk toko "${storeName}" (Kategori: ${category}).

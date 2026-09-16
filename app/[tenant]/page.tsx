@@ -142,6 +142,66 @@ export function formatCategoryBadge(category?: string, productType?: string, cus
   return "Fisik";
 }
 
+// Helper to generate dynamic, category-aware bot greeting for storefront chat widget
+export function getStoreChatGreeting(category: string, activeName: string): string {
+  const cat = (category || "").toUpperCase().trim();
+  if (
+    cat === "PROFESSIONAL_SERVICE" ||
+    cat === "PRO_SERVICE" ||
+    cat === "PROFESSIONAL" ||
+    cat.includes("PROFESSIONAL") ||
+    cat.includes("CONSULT") ||
+    cat.includes("AGENCY_PRO") ||
+    cat.includes("LEGAL") ||
+    cat.includes("KLINIK") ||
+    cat.includes("PRO")
+  ) {
+    return `Halo! Selamat datang di ${activeName} 👋 Kami siap mendampingi kebutuhan konsultasi & audit profesional Anda. Ada yang bisa kami bantu seputar booking konsultasi, paket layanan, atau jadwal audit hari ini?`;
+  }
+  if (
+    cat === "FIELD_SERVICE" ||
+    cat === "SERVICE" ||
+    cat.includes("FIELD") ||
+    cat.includes("TEKNISI") ||
+    cat.includes("TOREN") ||
+    cat.includes("REPARASI") ||
+    cat.includes("SERVIS") ||
+    cat.includes("BENGKEL")
+  ) {
+    return `Halo! Selamat datang di layanan ${activeName} 👋 Ada yang bisa kami bantu seputar booking teknisi, estimasi pengerjaan, atau area layanan hari ini?`;
+  }
+  if (
+    cat === "FOOD" ||
+    cat.includes("FOOD") ||
+    cat.includes("FNB") ||
+    cat.includes("CULINARY") ||
+    cat.includes("RESTO") ||
+    cat.includes("KULINER")
+  ) {
+    return `Halo! Selamat datang di ${activeName} 👋 Mau pesan antar (delivery), ambil di resto (takeaway), atau cek menu favorit hari ini?`;
+  }
+  if (
+    cat === "DIGITAL" ||
+    cat.includes("DIGITAL") ||
+    cat.includes("COURSE") ||
+    cat.includes("SOFTWARE") ||
+    cat.includes("EBOOK") ||
+    cat.includes("KELAS")
+  ) {
+    return `Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar akses unduh materi, lisensi software, atau informasi produk digital kami?`;
+  }
+  if (
+    cat === "CREATOR_AGENCY" ||
+    cat.includes("CREATOR") ||
+    cat.includes("TALENT") ||
+    cat.includes("ENDORSE") ||
+    cat.includes("INFLUENCER")
+  ) {
+    return `Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar rate card endorse, jadwal live talent, atau pengiriman brief kerjasama?`;
+  }
+  return `Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar katalog produk, promo, atau informasi belanja hari ini?`;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProductItemToStoreProduct(p: any, idx: number): Product {
   if (!p || typeof p !== "object") {
@@ -228,28 +288,62 @@ export default function TenantStorefrontPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const mobileMessagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  const resolvedCategory = useMemo(() => {
+    return String(
+      tenant?.category ||
+      tenantCategory ||
+      tenantMetadata?.category ||
+      tenantMetadata?.business_category ||
+      tenantMetadata?.vertical ||
+      ""
+    ).trim();
+  }, [tenant?.category, tenantCategory, tenantMetadata?.category, tenantMetadata?.business_category, tenantMetadata?.vertical]);
+
   const dynamicQuickReplies = useMemo(() => {
     if (Array.isArray(tenantMetadata?.quick_replies) && tenantMetadata.quick_replies.length > 0) {
       return tenantMetadata.quick_replies;
     }
-    const raw = String(tenant?.category || tenantMetadata?.category || tenantMetadata?.vertical || "").toUpperCase();
+    const raw = resolvedCategory.toUpperCase();
     if (raw.includes("FOOD") || raw.includes("FNB") || raw.includes("CULINARY") || raw.includes("RESTO") || raw.includes("KULINER")) {
       return ["🛵 Pesan Antar (Delivery)", "🥡 Ambil di Resto (Takeaway)", "📍 Lokasi & Jam Dapur"];
     }
-    if (raw.includes("FIELD") || raw.includes("TEKNISI") || raw.includes("TOREN") || raw.includes("REPARASI") || raw.includes("SERVICE")) {
+    // 1. PROFESSIONAL_SERVICE (MUST BE EVALUATED BEFORE FIELD_SERVICE / GENERIC SERVICE)
+    if (
+      raw === "PROFESSIONAL_SERVICE" ||
+      raw === "PRO_SERVICE" ||
+      raw === "PROFESSIONAL" ||
+      raw.includes("PROFESSIONAL") ||
+      raw.includes("CONSULT") ||
+      raw.includes("AGENCY_PRO") ||
+      raw.includes("LEGAL") ||
+      raw.includes("KLINIK") ||
+      raw.includes("PRO")
+    ) {
+      return ["Jadwalkan Konsultasi", "Paket & Tarif Layanan", "Portofolio / Brief", "Hubungi Konsultan"];
+    }
+    // 2. FIELD_SERVICE
+    if (
+      raw === "FIELD_SERVICE" ||
+      raw.includes("FIELD") ||
+      raw.includes("TEKNISI") ||
+      raw.includes("TOREN") ||
+      raw.includes("REPARASI") ||
+      raw === "SERVICE" ||
+      raw.includes("SERVIS") ||
+      raw.includes("BENGKEL")
+    ) {
       return ["📅 Jadwalkan Servis/Teknisi", "💰 Tarif & Area Layanan", "🛠️ Konsultasi CS"];
     }
-    if (raw.includes("PRO") || raw.includes("CONSULT") || raw.includes("AGENCY_PRO") || raw.includes("LEGAL") || raw.includes("KLINIK")) {
-      return ["📝 Jadwal Konsultasi/Janji Temu", "📋 Portofolio & Brief", "🚗 Simulasi/Paket Layanan"];
-    }
+    // 3. DIGITAL
     if (raw.includes("DIGITAL") || raw.includes("COURSE") || raw.includes("SOFTWARE") || raw.includes("EBOOK") || raw.includes("KELAS")) {
       return ["⚡ Akses Download & Materi", "🔑 Kendala Akun & Lisensi", "📚 Kurikulum Produk"];
     }
+    // 4. CREATOR_AGENCY
     if (raw.includes("CREATOR") || raw.includes("TALENT") || raw.includes("ENDORSE") || raw.includes("INFLUENCER") || raw.includes("KOL")) {
       return ["📊 Rate Card & Paket Endorse", "📦 Kirim Brief/Sampel", "📅 Jadwal Live Talent"];
     }
     return ["📦 Cek Katalog & Promo", "🚚 Cek Ongkir & Resi", "💬 Hubungi Live CS"];
-  }, [tenant?.category, tenantMetadata?.category, tenantMetadata?.vertical, tenantMetadata?.quick_replies]);
+  }, [resolvedCategory, tenantMetadata?.quick_replies]);
 
   // Dynamic Header & Product CTA Button Labels (Zero Hardcoding via Tenant Metadata)
   const headerCtaText = useMemo(() => {
@@ -261,20 +355,23 @@ export default function TenantStorefrontPage() {
       tenantMetadata?.theme?.cta_button_text;
 
     // 2. Fallback cerdas jika belum diset di admin
-    const defaultCtaLabel =
-      tenant?.category === 'SERVICE' ||
-      tenant?.metadata?.business_type === 'SERVICE' ||
-      tenant?.metadata?.business_type === 'FIELD_SERVICE' ||
-      tenantMetadata?.business_type === 'SERVICE' ||
-      tenantMetadata?.business_type === 'FIELD_SERVICE' ||
-      tenantMetadata?.vertical_type === 'FIELD_SERVICE' ||
+    const raw = resolvedCategory.toUpperCase();
+    if (raw === 'PROFESSIONAL_SERVICE' || raw.includes('PRO') || raw.includes('CONSULT')) {
+      return customCtaLabel || 'Konsultasi Layanan';
+    }
+    const isService =
+      raw === 'FIELD_SERVICE' ||
+      raw.includes('FIELD') ||
+      raw.includes('TEKNISI') ||
+      raw.includes('TOREN') ||
+      raw.includes('REPARASI') ||
+      raw === 'SERVICE' ||
       tenantCategory.toLowerCase().includes('service') ||
-      tenantCategory.toLowerCase().includes('jasa')
-        ? 'Tanya Layanan'
-        : 'Pilihan Produk';
+      tenantCategory.toLowerCase().includes('jasa');
 
+    const defaultCtaLabel = isService ? 'Tanya Layanan' : 'Pilihan Produk';
     return customCtaLabel || defaultCtaLabel;
-  }, [tenant, tenantMetadata, tenantCategory]);
+  }, [tenant, tenantMetadata, resolvedCategory, tenantCategory]);
 
   const chatCtaLabel = useMemo(() => {
     const custom =
@@ -284,17 +381,23 @@ export default function TenantStorefrontPage() {
       tenantMetadata?.theme?.chat_cta_label;
     if (custom) return custom;
 
+    const raw = resolvedCategory.toUpperCase();
+    if (raw === 'PROFESSIONAL_SERVICE' || raw.includes('PRO') || raw.includes('CONSULT')) {
+      return 'Tanya Konsultan';
+    }
+
     const isService =
-      tenant?.category === 'SERVICE' ||
-      tenant?.metadata?.business_type === 'SERVICE' ||
-      tenant?.metadata?.business_type === 'FIELD_SERVICE' ||
-      tenantMetadata?.business_type === 'SERVICE' ||
-      tenantMetadata?.business_type === 'FIELD_SERVICE' ||
-      tenantCategory.toLowerCase().includes('service') ||
-      tenantCategory.toLowerCase().includes('jasa');
+      raw === 'FIELD_SERVICE' ||
+      raw.includes('FIELD') ||
+      raw.includes('TEKNISI') ||
+      raw.includes('TOREN') ||
+      raw.includes('REPARASI') ||
+      raw === 'SERVICE' ||
+      tenantCategory.toLowerCase().includes('field') ||
+      tenantCategory.toLowerCase().includes('teknisi');
 
     return isService ? 'Tanya Layanan' : 'Tanya Admin';
-  }, [tenant, tenantMetadata, tenantCategory]);
+  }, [tenant, tenantMetadata, resolvedCategory, tenantCategory]);
 
   const uniqueCategories = useMemo(() => {
     const set = new Set<string>();
@@ -495,17 +598,18 @@ export default function TenantStorefrontPage() {
   // 0d. INIT CHAT MESSAGES
   useEffect(() => {
     const activeName = storeName || displayName.toUpperCase();
+    const greetingText = getStoreChatGreeting(resolvedCategory, activeName);
     setMessages([
       {
         id: "init-1",
         sender: "bot",
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        text: `Halo! Selamat datang di layanan ${activeName} 👋 Ada yang bisa kami bantu seputar estimasi biaya, jadwal, atau pemesanan hari ini?`,
+        text: greetingText,
         type: "TEXT",
         quick_actions: dynamicQuickReplies
       }
     ]);
-  }, [storeName, displayName, dynamicQuickReplies]);
+  }, [storeName, displayName, resolvedCategory, dynamicQuickReplies]);
 
   // 0e. AUTO SCROLL MESSAGES
   useEffect(() => {
@@ -667,13 +771,17 @@ export default function TenantStorefrontPage() {
 
       setMessages((prev) => [...prev, botMsg]);
     } catch {
+      const rawCat = resolvedCategory.toUpperCase();
+      const isPro = rawCat.includes('PROFESSIONAL') || rawCat.includes('CONSULT');
+      const isField = rawCat.includes('FIELD') || rawCat.includes('TEKNISI') || rawCat === 'SERVICE';
+      const teamLabel = isPro ? 'konsultan kami' : isField ? 'tim teknisi kami' : 'tim kami';
       setMessages((prev) => [
         ...prev,
         {
           id: `bot-${Date.now()}`,
           sender: "bot",
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `Halo! Tim layanan ${storeName || displayName.toUpperCase()} siap membantu. Silakan pilih menu pertanyaan di bawah atau hubungi tim teknis kami.`,
+          text: `Halo! Tim ${storeName || displayName.toUpperCase()} siap membantu. Silakan pilih menu pertanyaan di bawah atau hubungi ${teamLabel}.`,
           type: 'TEXT',
           quick_actions: dynamicQuickReplies
         }
@@ -854,7 +962,7 @@ export default function TenantStorefrontPage() {
                   className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>{headerCtaText === 'Tanya Layanan' ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
+                  <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
                 </button>
               </div>
             </div>
@@ -1239,7 +1347,15 @@ export default function TenantStorefrontPage() {
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 disabled={isBotTyping}
-                placeholder={isBotTyping ? "Sedang menunggu respon..." : "Tulis pertanyaan atau informasi pesanan..."}
+                placeholder={
+                  isBotTyping
+                    ? "Sedang menunggu respon..."
+                    : resolvedCategory.toUpperCase().includes('PROFESSIONAL') || resolvedCategory.toUpperCase().includes('CONSULT')
+                    ? "Tulis pertanyaan, konsultasi, atau brief..."
+                    : resolvedCategory.toUpperCase().includes('FIELD') || resolvedCategory.toUpperCase().includes('TEKNISI')
+                    ? "Tulis pertanyaan atau jadwal servis..."
+                    : "Tulis pertanyaan atau informasi pesanan..."
+                }
                 className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-base md:text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
               />
               <button
@@ -1295,7 +1411,7 @@ export default function TenantStorefrontPage() {
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <ShoppingBag className="w-4 h-4" />
-                <span>{headerCtaText === 'Tanya Layanan' ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
+                <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
               </button>
             </div>
           </div>
@@ -1310,11 +1426,11 @@ export default function TenantStorefrontPage() {
               <X className="w-5 h-5" />
             </button>
             <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-blue-600" /> Ringkasan {headerCtaText === 'Tanya Layanan' ? 'Pesanan Layanan' : 'Pesanan Produk'}
+              <ShoppingBag className="w-5 h-5 text-blue-600" /> Ringkasan {headerCtaText.includes('Layanan') ? 'Pesanan Layanan' : 'Pesanan Produk'}
             </h2>
 
             {cart.length === 0 ? (
-              <p className="text-xs text-slate-400 text-center py-6">Belum ada {headerCtaText === 'Tanya Layanan' ? 'layanan' : 'produk'} yang dipilih.</p>
+              <p className="text-xs text-slate-400 text-center py-6">Belum ada {headerCtaText.includes('Layanan') ? 'layanan' : 'produk'} yang dipilih.</p>
             ) : (
               <div className="space-y-3 max-h-60 overflow-y-auto">
                 {cart.map((item) => (
@@ -1356,7 +1472,7 @@ export default function TenantStorefrontPage() {
                   onClick={() => setShowCartModal(false)}
                   className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-800 py-2.5 mt-1 transition-colors cursor-pointer"
                 >
-                  {headerCtaText === 'Tanya Layanan'
+                  {headerCtaText.includes('Layanan')
                     ? '+ Pilih Layanan Lain'
                     : '+ Pilih Produk Lain'}
                 </button>
@@ -1570,7 +1686,15 @@ export default function TenantStorefrontPage() {
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     disabled={isBotTyping}
-                    placeholder={isBotTyping ? "Menunggu respon..." : "Tulis pertanyaan atau jadwal..."}
+                    placeholder={
+                      isBotTyping
+                        ? "Menunggu respon..."
+                        : resolvedCategory.toUpperCase().includes('PROFESSIONAL') || resolvedCategory.toUpperCase().includes('CONSULT')
+                        ? "Tulis pertanyaan, konsultasi, atau brief..."
+                        : resolvedCategory.toUpperCase().includes('FIELD') || resolvedCategory.toUpperCase().includes('TEKNISI')
+                        ? "Tulis pertanyaan atau jadwal servis..."
+                        : "Tulis pertanyaan atau informasi pesanan..."
+                    }
                     className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
                   />
                   <button

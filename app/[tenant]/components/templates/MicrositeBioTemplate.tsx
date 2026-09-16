@@ -533,6 +533,7 @@ export default function MicrositeBioTemplate({
           tenantSlug={tenantSlug}
           storeName={storeName}
           displayName={displayName}
+          category={tenant?.category || tenantMetadata?.category}
           dynamicQuickReplies={dynamicQuickReplies}
           onInitiateCheckout={onInitiateCheckout}
         />
