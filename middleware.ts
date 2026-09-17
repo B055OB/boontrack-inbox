@@ -210,7 +210,7 @@ function setReferralCookies(res: NextResponse, refCode: string, hostClean?: stri
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
   };
-  if (hostClean && (hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com')) {
+  if (hostClean && (hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com' || hostClean.includes('boontrack.com'))) {
     cookieOptions.domain = '.boontrack.com';
   }
   res.cookies.set('ref', refCode, cookieOptions);
@@ -311,67 +311,58 @@ export async function middleware(req: NextRequest) {
   }
 
   // ===========================================================================
-  // SUBDOMAIN MITRA AFFILIATE (*.boontrack.com)
-  // Dynamic lookup via Supabase / in-memory cache
+  // KHUSUS SUBDOMAIN BUZZERUKM (buzzerukm.boontrack.com) - EKSKLUSIF KANG SAKTI
+  // Redirect 307 ke shop.boontrack.com dengan atribusi referral 30 hari.
+  // Affiliate umum/reguler menggunakan link kanonikal: https://shop.boontrack.com/?ref=[kode]
   // ===========================================================================
-  const RESERVED_CORE_SUBDOMAINS = new Set([
-    'login', 'register', 'daftar', 'api', 'dashboard', 'auth', 'admin',
-    'affiliate', 'manager', 'shop', 'creator', 'www', 'app', 'career', 'static', 'chat'
-  ]);
+  const isBuzzerUkmHost =
+    hostClean === 'buzzerukm.boontrack.com' ||
+    hostClean.startsWith('buzzerukm.') ||
+    subdomain === 'buzzerukm';
 
-  const isBuzzerUkmHost = hostClean === 'buzzerukm.boontrack.com' || hostClean.startsWith('buzzerukm.') || subdomain === 'buzzerukm';
-  const isCandidateAffiliateSubdomain = !!(subdomain && !RESERVED_CORE_SUBDOMAINS.has(subdomain) && !B2B_TENANT_SLUGS.has(subdomain) && !CAREER_KNOWN_SLUGS.has(subdomain));
-
-  let affiliateCode: string | null = null;
   if (isBuzzerUkmHost) {
-    affiliateCode = 'buzzerukm';
-  } else if (isCandidateAffiliateSubdomain) {
-    affiliateCode = await resolveAffiliateCode(subdomain!);
-  }
-
-  if (affiliateCode) {
     const isProductionBoonTrack = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
     const shopBaseUrl = isProductionBoonTrack
       ? 'https://shop.boontrack.com'
       : `${req.nextUrl.protocol}//${req.nextUrl.host.replace(/^[^.]+\./, '')}`;
 
-    // 1. Root frontpage (/) -> Redirect ke https://shop.boontrack.com/?ref=${affiliateCode} dengan atribusi 30 hari
+    // 1. Root frontpage (/) -> Redirect ke https://shop.boontrack.com/?ref=buzzerukm (Redirect 307)
     if (pathname === '/' || pathname === '') {
       const targetUrl = new URL(`${shopBaseUrl}/`);
-      targetUrl.searchParams.set('ref', affiliateCode);
+      targetUrl.searchParams.set('ref', 'buzzerukm');
       req.nextUrl.searchParams.forEach((val, key) => {
         if (key !== 'ref') targetUrl.searchParams.set(key, val);
       });
       const res = NextResponse.redirect(targetUrl, 307);
-      setReferralCookies(res, affiliateCode, hostClean);
+      setReferralCookies(res, 'buzzerukm', hostClean);
       return res;
     }
 
-    // 2. Akses eksplisit form registrasi (/register) -> Redirect ke https://shop.boontrack.com/register?ref=${affiliateCode}
+    // 2. Akses eksplisit form registrasi (/register) -> Redirect ke https://shop.boontrack.com/register?ref=buzzerukm
     if (pathname === '/register' || pathname.startsWith('/register/')) {
       const targetUrl = new URL(`${shopBaseUrl}/register`);
-      targetUrl.searchParams.set('ref', affiliateCode);
+      targetUrl.searchParams.set('ref', 'buzzerukm');
       req.nextUrl.searchParams.forEach((val, key) => {
         if (key !== 'ref') targetUrl.searchParams.set(key, val);
       });
       const res = NextResponse.redirect(targetUrl, 307);
-      setReferralCookies(res, affiliateCode, hostClean);
+      setReferralCookies(res, 'buzzerukm', hostClean);
       return res;
     }
 
-    // 3. /affiliate/register -> Redirect ke https://shop.boontrack.com/affiliate/register?ref=${affiliateCode}
+    // 3. /affiliate/register -> Redirect ke https://shop.boontrack.com/affiliate/register?ref=buzzerukm
     if (pathname === '/affiliate/register' || pathname.startsWith('/affiliate/register/')) {
       const targetUrl = new URL(`${shopBaseUrl}/affiliate/register`);
-      targetUrl.searchParams.set('ref', affiliateCode);
+      targetUrl.searchParams.set('ref', 'buzzerukm');
       req.nextUrl.searchParams.forEach((val, key) => {
         if (key !== 'ref') targetUrl.searchParams.set(key, val);
       });
       const res = NextResponse.redirect(targetUrl, 307);
-      setReferralCookies(res, affiliateCode, hostClean);
+      setReferralCookies(res, 'buzzerukm', hostClean);
       return res;
     }
 
-    // 4. /affiliate/dashboard -> Redirect ke https://shop.boontrack.com/affiliate/dashboard?code=${affiliateCode}
+    // 4. /affiliate/dashboard -> Redirect ke https://shop.boontrack.com/affiliate/dashboard?code=buzzerukm
     if (
       pathname === '/affiliate' ||
       pathname === '/affiliate/' ||
@@ -379,35 +370,35 @@ export async function middleware(req: NextRequest) {
       pathname.startsWith('/affiliate/dashboard/')
     ) {
       const targetUrl = new URL(`${shopBaseUrl}/affiliate/dashboard`);
-      targetUrl.searchParams.set('code', affiliateCode);
+      targetUrl.searchParams.set('code', 'buzzerukm');
       req.nextUrl.searchParams.forEach((val, key) => {
         if (key !== 'code') targetUrl.searchParams.set(key, val);
       });
       const res = NextResponse.redirect(targetUrl, 307);
-      setReferralCookies(res, affiliateCode, hostClean);
+      setReferralCookies(res, 'buzzerukm', hostClean);
       return res;
     }
 
-    // 5. /affiliate root -> Redirect ke https://shop.boontrack.com/affiliate?code=${affiliateCode}
+    // 5. /affiliate root -> Redirect ke https://shop.boontrack.com/affiliate?code=buzzerukm
     if (pathname === '/affiliate' || pathname === '/affiliate/') {
       const targetUrl = new URL(`${shopBaseUrl}/affiliate`);
-      targetUrl.searchParams.set('code', affiliateCode);
+      targetUrl.searchParams.set('code', 'buzzerukm');
       req.nextUrl.searchParams.forEach((val, key) => {
         if (key !== 'code') targetUrl.searchParams.set(key, val);
       });
       const res = NextResponse.redirect(targetUrl, 307);
-      setReferralCookies(res, affiliateCode, hostClean);
+      setReferralCookies(res, 'buzzerukm', hostClean);
       return res;
     }
 
-    // 6. Path umum lainnya pada subdomain mitra -> Redirect ke https://shop.boontrack.com${pathname}?ref=${affiliateCode}
+    // 6. Path umum lainnya pada subdomain buzzerukm -> Redirect ke https://shop.boontrack.com${pathname}?ref=buzzerukm
     const targetUrl = new URL(`${shopBaseUrl}${pathname}`);
-    targetUrl.searchParams.set('ref', affiliateCode);
+    targetUrl.searchParams.set('ref', 'buzzerukm');
     req.nextUrl.searchParams.forEach((val, key) => {
       if (key !== 'ref') targetUrl.searchParams.set(key, val);
     });
     const res = NextResponse.redirect(targetUrl, 307);
-    setReferralCookies(res, affiliateCode, hostClean);
+    setReferralCookies(res, 'buzzerukm', hostClean);
     return res;
   }
 

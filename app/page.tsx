@@ -807,7 +807,7 @@ export default function ShopLandingPage() {
       <div className="fixed bottom-0 inset-x-0 bg-white/95 border-t border-slate-200 backdrop-blur-md p-3 md:hidden z-30 shadow-lg">
         <div className="flex items-center gap-2 max-w-md mx-auto">
           <Link
-            href="/register"
+            href={getRegisterLink()}
             className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold text-center shadow-md shadow-blue-600/30 transition flex items-center justify-center gap-1.5"
           >
             <span>Buka Toko Sekarang</span>
