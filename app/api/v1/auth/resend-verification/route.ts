@@ -179,6 +179,7 @@ export async function POST(req: NextRequest) {
       role: 'merchant',
       verificationUrl,
       storeName: tenant.name || tenant.slug,
+      slug: tenant.slug,
       expiresInHours: 24,
     });
 

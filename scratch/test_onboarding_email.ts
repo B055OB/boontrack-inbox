@@ -2,16 +2,41 @@
  * Test Onboarding Verification Email Dispatch
  * Validates universal email delivery via Resend with dynamic parameters.
  */
-import { sendBoonPilotVerificationEmail } from '../lib/boonpilot-email';
+import fs from 'fs';
+import path from 'path';
 import crypto from 'crypto';
+
+// Auto-load .env.local if not already in process.env
+const envLocalPath = path.resolve(__dirname, '../.env.local');
+if (fs.existsSync(envLocalPath)) {
+  const content = fs.readFileSync(envLocalPath, 'utf8');
+  content.split('\n').forEach((line) => {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx !== -1) {
+        const k = trimmed.slice(0, eqIdx).trim();
+        let v = trimmed.slice(eqIdx + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.slice(1, -1);
+        }
+        if (!process.env[k]) {
+          process.env[k] = v;
+        }
+      }
+    }
+  });
+}
+
+import { sendBoonPilotVerificationEmail } from '../lib/boonpilot-email';
 
 async function runTest() {
   const dynamicTimestamp = Date.now();
-  const dynamicSlug = `merchant-test-${dynamicTimestamp.toString().slice(-6)}`;
+  const dynamicSlug = `buzzerukm-${dynamicTimestamp.toString().slice(-4)}`;
   const dynamicToken = crypto.randomBytes(32).toString('hex');
-  const targetEmail = process.env.TEST_EMAIL || 'jajananrayi@gmail.com';
-  const storeName = `Toko Uji Coba ${dynamicTimestamp.toString().slice(-4)}`;
-  const merchantName = 'Partner Merchant Test';
+  const targetEmail = process.env.TEST_EMAIL || 'buzzerukm@gmail.com';
+  const storeName = 'Buzzer UKM Store';
+  const merchantName = 'Kang Sakti (Buzzer UKM)';
 
   const verificationUrl = `https://shop.boontrack.com/auth/confirm?token=${dynamicToken}&type=merchant&slug=${dynamicSlug}`;
 
@@ -30,6 +55,7 @@ async function runTest() {
     role: 'merchant',
     verificationUrl,
     storeName,
+    slug: dynamicSlug,
     expiresInHours: 24,
   });
 

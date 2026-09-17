@@ -323,6 +323,7 @@ export async function POST(req: NextRequest) {
           role: 'merchant',
           verificationUrl,
           storeName,
+          slug: generatedSlug,
           expiresInHours: 24,
         });
 
