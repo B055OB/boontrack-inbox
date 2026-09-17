@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getResendApiKey } from '@/lib/boonpilot-email';
 
 export async function POST(req: NextRequest) {
   try {
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
     const redirectWaUrl = `https://wa.me/6281237450222?text=${waMessage}`;
 
     // Kirim email jika Resend aktif
-    const resendKey = process.env.RESEND_API_KEY;
+    const resendKey = getResendApiKey();
     if (resendKey && email) {
       try {
         await fetch('https://api.resend.com/emails', {
@@ -97,9 +98,10 @@ export async function POST(req: NextRequest) {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${resendKey}`,
+            'User-Agent': 'BoonTrack-Engine/1.0 (Next.js/Commerce)',
           },
           body: JSON.stringify({
-            from: 'BoonTrack <support@boontrack.com>',
+            from: 'Boon Pilot <support@boontrack.com>',
             to: [email],
             subject: `🔑 Pemulihan PIN & Akses Dashboard Toko ${matchedTenant.name || matchedTenant.slug}`,
             html: `

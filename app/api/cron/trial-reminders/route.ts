@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getResendApiKey } from '@/lib/boonpilot-email';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,7 +68,7 @@ async function handleTrialReminders(req: NextRequest) {
       skipped: [] as string[],
     };
 
-    const resendKey = process.env.RESEND_API_KEY;
+    const resendKey = getResendApiKey();
 
     for (const tenant of tenants || []) {
       if (tenant.is_active === false) {
@@ -146,9 +147,10 @@ async function handleTrialReminders(req: NextRequest) {
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${resendKey}`,
+              'User-Agent': 'BoonTrack-Engine/1.0 (Next.js/Commerce)',
             },
             body: JSON.stringify({
-              from: 'BoonTrack <support@boontrack.com>',
+              from: 'Boon Pilot <support@boontrack.com>',
               to: [merchantEmail],
               subject: notificationSubject,
               html: `

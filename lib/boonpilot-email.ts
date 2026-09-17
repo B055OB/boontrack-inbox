@@ -139,23 +139,37 @@ export function buildBoonPilotVerificationHtml(options: BoonPilotEmailOptions): 
 }
 
 /**
- * Send Boon Pilot verification email via Resend
+ * Universal Resend API Key resolver
+ * Checks RESEND_API_KEY, NEXT_PUBLIC_RESEND_API_KEY, RESEND_KEY, and verified fallback.
  */
-export async function sendBoonPilotVerificationEmail(
-  options: BoonPilotEmailOptions
-): Promise<SendEmailResult> {
+export function getResendApiKey(): string {
   const DEFAULT_KEY_B64 = 'cmVfWm9WNTc1SDJfS1hCSExZTGJ3bUg5eFlNSnBQUnNRdzlH';
   const fallbackKey = typeof Buffer !== 'undefined'
     ? Buffer.from(DEFAULT_KEY_B64, 'base64').toString('ascii')
     : '';
 
-  const resendApiKey =
-    (process.env.RESEND_API_KEY || '').trim().replace(/^["']|["']$/g, '') ||
-    fallbackKey;
+  const key =
+    (
+      process.env.RESEND_API_KEY ||
+      process.env.NEXT_PUBLIC_RESEND_API_KEY ||
+      process.env.RESEND_KEY ||
+      ''
+    ).trim().replace(/^["']|["']$/g, '') || fallbackKey;
+
+  return key;
+}
+
+/**
+ * Send Boon Pilot verification email via Resend
+ */
+export async function sendBoonPilotVerificationEmail(
+  options: BoonPilotEmailOptions
+): Promise<SendEmailResult> {
+  const resendApiKey = getResendApiKey();
 
   if (!resendApiKey) {
-    console.warn('[BoonPilotEmail] RESEND_API_KEY is not configured in environment.');
-    return { success: false, error: 'RESEND_API_KEY tidak terpasang.' };
+    console.error('[BoonPilotEmail] RESEND_API_KEY is not configured in environment or fallback.');
+    return { success: false, error: 'RESEND_API_KEY tidak terpasang di environment server.' };
   }
 
   // Senders MUST use verified @boontrack.com domain to prevent HTTP 403 Forbidden errors
