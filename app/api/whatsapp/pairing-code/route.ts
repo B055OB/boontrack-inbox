@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Jika pairingCode belum terbit atau instance 404, re-inisialisasi instance dengan number parameter
     if (!pairingCode) {
-      console.log(`[WhatsAppPairing] Inisialisasi pairing socket dengan nomor untuk instance: ${targetInstance}`);
+      console.log(`[WhatsAppPairing] Inisialisasi pairing koneksi dengan nomor untuk instance: ${targetInstance}`);
       const retryResult = await recreateInstanceForPairing(targetInstance, cleanPhone);
       pairingCode =
         retryResult.data?.pairingCode ||
@@ -162,18 +162,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Jika socket masih warming up
+    // Jika koneksi masih warming up
     return NextResponse.json(
       {
         success: false,
         retry: true,
         error:
-          "Evolution API sedang menyiapkan socket pairing WhatsApp. Silakan klik 'Dapatkan Kode' sekali lagi atau gunakan Scan QR Code di atas.",
+          "BoonTrack Engine sedang menyiapkan koneksi WhatsApp. Silakan tunggu beberapa detik lalu coba lagi atau gunakan Scan QR Code di atas.",
       },
       { status: 200 }
     );
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Gagal berkomunikasi dengan Evolution API";
+    let msg = err instanceof Error ? err.message : "Gagal berkomunikasi dengan BoonTrack Engine";
+    msg = msg.replace(/Evolution API/gi, "BoonTrack Engine").replace(/socket/gi, "koneksi");
     return NextResponse.json(
       {
         success: false,

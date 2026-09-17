@@ -168,7 +168,7 @@ async function runCertification() {
   // ============================================================================
   console.log('--- PILLAR 3: WHATSAPP E2E (tenant_onlineboost) ---');
 
-  // 3.1: Evolution API Connection state check
+  // 3.1: BoonTrack WhatsApp Engine Connection state check
   try {
     const evoUrl = 'https://evolution-api-production-abb7.up.railway.app/instance/connectionState/tenant_onlineboost';
     const evoRes = await fetch(evoUrl, {
@@ -179,14 +179,14 @@ async function runCertification() {
     const evoPass = evoStatus === 200;
 
     record(
-      'WhatsApp Evolution API: tenant_onlineboost instance status',
+      'WhatsApp BoonTrack Engine: tenant_onlineboost instance status',
       'HTTP 200 OK dengan status koneksi instance aktif',
       `HTTP ${evoStatus}, State: ${JSON.stringify(evoData?.instance?.state || evoData)}`,
       evoPass ? 'PASS' : 'FAIL',
       `Endpoint: ${evoUrl}`
     );
   } catch (err: any) {
-    record('WhatsApp Evolution API: tenant_onlineboost instance status', 'HTTP 200 OK', `Error: ${err.message}`, 'FAIL', err.stack || '');
+    record('WhatsApp BoonTrack Engine: tenant_onlineboost instance status', 'HTTP 200 OK', `Error: ${err.message}`, 'FAIL', err.stack || '');
   }
 
   // 3.2: Core Backend WhatsApp Webhook Routing

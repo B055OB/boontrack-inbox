@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 2. REGULAR FLOW: Cek status koneksi instance di Evolution API v2
+    // 2. REGULAR FLOW: Cek status koneksi instance di BoonTrack Engine
     const stateCheck = await checkConnectionState(tenantSlug);
 
     if (stateCheck.state === "open" || stateCheck.state === "CONNECTED") {
@@ -228,7 +228,7 @@ export async function POST(req: NextRequest) {
       data?.qrcode?.code ||
       null;
 
-    // Jika base64 belum terbit, coba restart instance agar Baileys socket menerbitkan token
+    // Jika base64 belum terbit, coba restart instance agar koneksi menerbitkan token
     if (!base64 && connectResult.status === 200) {
       const restartUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/restart/${encodeURIComponent(tenantSlug)}`;
       await fetch(restartUrl, {
@@ -260,7 +260,8 @@ export async function POST(req: NextRequest) {
       instance: tenantSlug,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Gagal berkomunikasi dengan Evolution API";
+    let msg = err instanceof Error ? err.message : "Gagal berkomunikasi dengan BoonTrack Engine";
+    msg = msg.replace(/Evolution API/gi, "BoonTrack Engine").replace(/socket/gi, "koneksi");
     return NextResponse.json(
       {
         success: false,

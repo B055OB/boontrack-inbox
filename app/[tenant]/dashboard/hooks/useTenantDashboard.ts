@@ -1421,7 +1421,7 @@ export function useTenantDashboard() {
         setWaErrorMessage(null);
       } else {
         setWaStatus('CONNECTING');
-        // Tangkap string gambar base64 murni dari respons Evolution API
+        // Tangkap string gambar base64 murni dari respons BoonTrack WhatsApp Engine
         const qr = data.base64 || data.qr_image || data.qrcode?.base64 || null;
         if (qr) {
           setQrCodeUrl(qr);
@@ -1462,7 +1462,9 @@ export function useTenantDashboard() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success || !data.pairing_code) {
-        alert(data.error || data.detail || 'Gagal mendapatkan kode pairing dari server WhatsApp.');
+        let errMsg = data.error || data.detail || 'Gagal mendapatkan kode pairing dari server WhatsApp.';
+        errMsg = errMsg.replace(/Evolution API/gi, 'BoonTrack Engine').replace(/socket/gi, 'koneksi');
+        alert(errMsg);
         setPairingCodeResult(null);
         return;
       }
