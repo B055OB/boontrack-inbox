@@ -202,7 +202,12 @@ export default function DashboardOverviewTab({
 
   // Onboarding checklist calculations (s.id style)
   const isProfileComplete = Boolean(storeLogoUrl || storeBio);
-  const isWaConnected = waStatus === 'CONNECTED' || Boolean(connectedPhone);
+  const isPlatformPhone = Boolean(connectedPhone && (
+    connectedPhone.includes('85179555449') ||
+    connectedPhone.includes('85139555449') ||
+    connectedPhone.includes('1268977686299719')
+  ));
+  const isWaConnected = (waStatus === 'CONNECTED' || Boolean(connectedPhone)) && !isPlatformPhone;
   const isProductAdded = products.length > 0;
   const isTemplateConfigured = Boolean(activeTemplate);
   const isStoreShared = hasCopiedUrl;

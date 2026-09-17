@@ -49,6 +49,21 @@ interface WhatsAppTabProps {
   setSaveFeedback: (msg: string | null) => void;
 }
 
+
+function isPlatformWaba(phoneOrId?: string | null): boolean {
+  if (!phoneOrId) return false;
+  const clean = String(phoneOrId).replace(/\D/g, '');
+  return (
+    clean === '6285179555449' ||
+    clean === '6285139555449' ||
+    clean === '085179555449' ||
+    clean === '085139555449' ||
+    clean === '1268977686299719' ||
+    clean.includes('85179555449') ||
+    clean.includes('1268977686299719')
+  );
+}
+
 export default function WhatsAppTab({
   tenantSlug,
   displayName,
@@ -75,6 +90,12 @@ export default function WhatsAppTab({
   renderLockedFeatureCard,
   setSaveFeedback,
 }: WhatsAppTabProps) {
+  // Pastikan nomor Platform WABA (+62 851-7955-5449 / ID 1268977686299719) TIDAK MUNCUL sebagai koneksi toko merchant
+  const isMerchantConnected =
+    waStatus === 'CONNECTED' &&
+    Boolean(connectedPhone) &&
+    !isPlatformWaba(connectedPhone) &&
+    waConnectionMode !== 'SHARED';
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -177,7 +198,7 @@ export default function WhatsAppTab({
             </div>
           )}
 
-          {waStatus !== 'CONNECTED' && (
+          {!isMerchantConnected && (
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
               <div className="md:col-span-6 space-y-4">
                 <div className="space-y-3">
@@ -245,7 +266,7 @@ export default function WhatsAppTab({
             </div>
           )}
 
-          {waStatus === 'CONNECTED' && (
+          {isMerchantConnected && (
             <div className="p-6 bg-emerald-50/90 border-2 border-emerald-300 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-5 shadow-xs">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
@@ -256,7 +277,7 @@ export default function WhatsAppTab({
                     <h4 className="text-sm font-black text-emerald-950">WhatsApp Terhubung Aktif</h4>
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      {waConnectionMode === 'SHARED' ? 'Shared Gateway Active' : 'Dedicated Gateway Active'}
+                      Dedicated Gateway Active
                     </span>
                     {waProvider && (
                       <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-white text-emerald-700 border border-emerald-200">
@@ -265,13 +286,11 @@ export default function WhatsAppTab({
                     )}
                   </div>
                   <p className="text-xs text-emerald-800 mt-1 font-medium">
-                    Nomor: <strong className="font-mono text-emerald-950">+{connectedPhone || '6281237450222'}</strong> • Mode: <strong className="text-emerald-900">{waConnectionMode === 'SHARED' ? 'Shared Gateway Active' : 'Dedicated Instance'}</strong>
+                    Nomor: <strong className="font-mono text-emerald-950">+{connectedPhone}</strong> • Mode: <strong className="text-emerald-900">Dedicated Store Instance</strong>
                   </p>
-                  {waConnectionMode === 'SHARED' && (
-                    <p className="text-[11px] text-emerald-700 mt-0.5">
-                      Toko Anda terhubung otomatis ke BoonTrack Shared WhatsApp Engine. Siap menerima pesan &amp; notifikasi order real-time.
-                    </p>
-                  )}
+                  <p className="text-[11px] text-emerald-700 mt-0.5">
+                    Toko Anda terhubung langsung ke WhatsApp milik toko sendiri. Siap menerima pesan &amp; notifikasi order real-time.
+                  </p>
                 </div>
               </div>
               <button

@@ -22,6 +22,16 @@ interface WhatsAppConnectionConfig {
   fromDb: boolean;
 }
 
+
+function sanitizeMerchantPhone(phone?: string | null): string | null {
+  if (!phone) return null;
+  const clean = String(phone).replace(/\D/g, "");
+  if (clean.includes("85179555449") || clean.includes("85139555449") || clean.includes("1268977686299719")) {
+    return null;
+  }
+  return clean;
+}
+
 function cleanPhoneJid(jid?: string | null): string | null {
   if (!jid || typeof jid !== "string") return null;
   const match = jid.match(/^(\d+)/);
@@ -225,14 +235,8 @@ export async function POST(req: NextRequest) {
     let activeInstanceName = targetInstance;
     let isConnected = stateCheck.state === "open" || stateCheck.state === "CONNECTED";
 
-    if (!isConnected && mode === "SHARED" && targetInstance !== EVOLUTION_GATEWAY_INSTANCE) {
-      const gwCheck = await checkConnectionState(EVOLUTION_GATEWAY_INSTANCE);
-      if (gwCheck.state === "open" || gwCheck.state === "CONNECTED") {
-        activeInstanceName = EVOLUTION_GATEWAY_INSTANCE;
-        stateCheck = gwCheck;
-        isConnected = true;
-      }
-    }
+    // KUNCI: Jangan pernah hijack toko tenant ke platform shared gateway!
+    // Merchant hanya boleh melihat status koneksi toko mereka sendiri.
 
     // ── 3. HANDLER RELOAD / RESET ───────────────────────────────────────────────
     if (isReload) {
@@ -242,9 +246,7 @@ export async function POST(req: NextRequest) {
       if (isConnected) {
         const info = await fetchInstanceInfo(activeInstanceName);
         const resolvedPhone =
-          registryConfig.phone_number ||
-          cleanPhoneJid(info?.ownerJid || stateCheck.data?.instance?.ownerJid) ||
-          "6281237450222";
+          sanitizeMerchantPhone(registryConfig.phone_number || cleanPhoneJid(info?.ownerJid || stateCheck.data?.instance?.ownerJid));
 
         return NextResponse.json({
           success: true,
@@ -329,9 +331,7 @@ export async function POST(req: NextRequest) {
     const instanceState = data?.instance?.state || data?.state || data?.status;
     if (instanceState === "open" || instanceState === "CONNECTED") {
       const resolvedPhone =
-        cleanPhoneJid(data?.instance?.ownerJid || data?.connected_phone) ||
-        registryConfig.phone_number ||
-        "6281237450222";
+        sanitizeMerchantPhone(cleanPhoneJid(data?.instance?.ownerJid || data?.connected_phone) || registryConfig.phone_number);
 
       return NextResponse.json({
         success: true,

@@ -37,15 +37,15 @@ export default function WhatsAppWabaConfig({
   onSaved,
 }: WhatsAppWabaConfigProps) {
   // WABA Credentials State
-  const [wabaId, setWabaId] = useState('109283746519203');
-  const [phoneNumberId, setPhoneNumberId] = useState('582910293847561');
-  const [accessToken, setAccessToken] = useState('EAABwz...');
+  const [wabaId, setWabaId] = useState('');
+  const [phoneNumberId, setPhoneNumberId] = useState('');
+  const [accessToken, setAccessToken] = useState('');
   const [showAccessToken, setShowAccessToken] = useState(false);
 
   // Read-only Webhook Configuration
   // Read-only Webhook Configuration for Meta Developer Console
   // PENGECUALIAN: Direct Railway origin dipertahankan khusus handshake hub.challenge Meta agar tidak terhadang Cloudflare
-  const webhookCallbackUrl = 'https://boontrack-core-production.up.railway.app/webhook/meta/whatsapp';
+  // Webhook handled at system platform level
   const webhookVerifyToken = 'boontrack_waba_webhook_verify_token';
 
   // Copy state
@@ -79,7 +79,13 @@ export default function WhatsAppWabaConfig({
           if (data?.waba_config) {
             const cfg = data.waba_config;
             if (cfg.waba_id) setWabaId(cfg.waba_id);
-            if (cfg.phone_number_id) setPhoneNumberId(cfg.phone_number_id);
+            // Kunci: Sembunyikan dan jangan pernah load ID/Nomor Platform WABA resmi ke akun merchant
+            const rawPhoneId = String(cfg.phone_number_id || '');
+            if (rawPhoneId && rawPhoneId !== '1268977686299719' && !rawPhoneId.includes('85179555449')) {
+              setPhoneNumberId(rawPhoneId);
+            } else {
+              setPhoneNumberId('');
+            }
             if (cfg.permanent_access_token) setAccessToken(cfg.permanent_access_token);
           }
         }
@@ -116,7 +122,6 @@ export default function WhatsAppWabaConfig({
       waba_id: wabaId.trim(),
       phone_number_id: phoneNumberId.trim(),
       permanent_access_token: accessToken.trim(),
-      webhook_callback_url: webhookCallbackUrl,
       webhook_verify_token: webhookVerifyToken,
       status: 'CONNECTED',
       updated_at: new Date().toISOString(),
@@ -187,7 +192,7 @@ export default function WhatsAppWabaConfig({
             status: 'SUCCESS',
             message: 'Koneksi Meta Cloud WABA Terhubung & Aktif.',
             verifiedName: displayName.toUpperCase(),
-            displayPhone: '+62 812-3745-0222',
+            displayPhone: json.display_phone_number || (phoneNumberId ? `ID: ${phoneNumberId}` : 'Terverifikasi'),
             qualityRating: 'GREEN (HIGH QUALITY)',
           });
         } else {
@@ -203,7 +208,7 @@ export default function WhatsAppWabaConfig({
         status: 'SUCCESS',
         message: 'Koneksi Meta Cloud WABA Terhubung & Aktif.',
         verifiedName: displayName.toUpperCase(),
-        displayPhone: '+62 812-3745-0222',
+        displayPhone: phoneNumberId ? `ID: ${phoneNumberId}` : 'Terverifikasi',
         qualityRating: 'GREEN (HIGH QUALITY)',
       });
     } finally {
@@ -323,56 +328,7 @@ export default function WhatsAppWabaConfig({
             </p>
           </div>
 
-          {/* ── READ-ONLY WEBHOOK CREDENTIALS (FOR META DEVELOPER CONSOLE) ── */}
-          <div className="bg-slate-900 text-slate-100 rounded-3xl p-5 shadow-lg space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <div className="flex items-center gap-2">
-                <Server className="w-4 h-4 text-cyan-400" />
-                <h4 className="font-bold text-xs text-white">Webhook Callback Configuration (Meta App Setup)</h4>
-              </div>
-              <span className="text-[10px] font-mono text-slate-400 uppercase">Read-Only</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              
-              {/* Webhook Callback URL */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold">
-                  <span>Webhook Callback URL:</span>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(webhookCallbackUrl, 'url')}
-                    className="text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 cursor-pointer font-bold"
-                  >
-                    {copiedUrl ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedUrl ? 'Tersalin!' : 'Salin URL'}</span>
-                  </button>
-                </div>
-                <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 font-mono text-[11px] text-cyan-300 break-all select-all">
-                  {webhookCallbackUrl}
-                </div>
-              </div>
-
-              {/* Webhook Verify Token */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold">
-                  <span>Webhook Verify Token:</span>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(webhookVerifyToken, 'token')}
-                    className="text-cyan-400 hover:text-cyan-300 inline-flex items-center gap-1 cursor-pointer font-bold"
-                  >
-                    {copiedToken ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedToken ? 'Tersalin!' : 'Salin Token'}</span>
-                  </button>
-                </div>
-                <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 font-mono text-[11px] text-emerald-400 select-all">
-                  {webhookVerifyToken}
-                </div>
-              </div>
-
-            </div>
-          </div>
+          
 
           {/* ── LIVE PING TEST RESULT CARD ── */}
           {pingResult && (
@@ -450,7 +406,7 @@ export default function WhatsAppWabaConfig({
           <div className="space-y-1">
             <p className="font-bold">Informasi Setup Partner & Operasional:</p>
             <p className="text-[11px] text-blue-800 leading-relaxed">
-              Kredensial WABA toko Anda disiapkan dan diverifikasi langsung oleh Tim Operasional BoonTrack. Merchant tidak perlu mendaftar ke Meta Developer secara mandiri.
+              Kredensial WABA toko Anda disiapkan dan diverifikasi langsung oleh Tim Operasional BoonTrack. Webhook terkonfigurasi otomatis secara aman di tingkat sistem tanpa perlu setup manual.
             </p>
           </div>
         </div>

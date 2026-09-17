@@ -885,9 +885,19 @@ export function useTenantDashboard() {
         const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`);
         if (res.ok) {
           const data = await res.json();
-          if (data.status === 'CONNECTED' && isMounted) {
+          const rawPhone = String(data.connected_phone || data.phone_number || '');
+          const isPlatform =
+            rawPhone.includes('85179555449') ||
+            rawPhone.includes('85139555449') ||
+            rawPhone.includes('1268977686299719') ||
+            data.mode === 'SHARED';
+
+          if (data.status === 'CONNECTED' && !isPlatform && rawPhone && isMounted) {
             setWaStatus('CONNECTED');
-            if (data.connected_phone) setConnectedPhone(data.connected_phone);
+            setConnectedPhone(rawPhone);
+          } else if (isMounted) {
+            setWaStatus('DISCONNECTED');
+            setConnectedPhone(null);
           }
         }
       } catch (err) {
@@ -1418,9 +1428,16 @@ export function useTenantDashboard() {
       if (data.provider) setWaProvider(data.provider);
       if (data.mode) setWaConnectionMode(data.mode);
 
-      if (data.status === 'CONNECTED' || data.connected) {
+      const rawPhone = String(data.phone_number || data.connected_phone || '');
+      const isPlatform =
+        rawPhone.includes('85179555449') ||
+        rawPhone.includes('85139555449') ||
+        rawPhone.includes('1268977686299719') ||
+        data.mode === 'SHARED';
+
+      if ((data.status === 'CONNECTED' || data.connected) && !isPlatform && rawPhone) {
         setWaStatus('CONNECTED');
-        setConnectedPhone(data.phone_number || data.connected_phone || null);
+        setConnectedPhone(rawPhone);
         setQrCodeUrl(null);
         setWaErrorMessage(null);
       } else {
