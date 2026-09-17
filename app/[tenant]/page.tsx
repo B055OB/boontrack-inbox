@@ -557,7 +557,13 @@ export default function TenantStorefrontPage() {
           const rawProds = tenantRow.metadata?.products;
           const prodsList = Array.isArray(rawProds)
             ? rawProds.filter((p: any) => p !== null && typeof p === "object")
-            : (tenantRow.metadata?.product && typeof tenantRow.metadata.product === "object" ? [tenantRow.metadata.product] : []);
+            : (tenantRow.metadata?.product &&
+               typeof tenantRow.metadata.product === "object" &&
+               tenantRow.metadata.product.name &&
+               tenantRow.metadata.product.name !== tenantRow.name &&
+               tenantRow.metadata.product.name !== tenantSlug
+                ? [tenantRow.metadata.product]
+                : []);
 
           setStoreProducts(prodsList.map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx)));
           setStoreStatus("active");
@@ -1193,11 +1199,18 @@ export default function TenantStorefrontPage() {
                 <PackageOpen className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-slate-800">Katalog Belum Memiliki Layanan</h3>
+                <h3 className="text-sm font-black text-slate-800">Belum Ada Produk atau Layanan</h3>
                 <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                  Layanan untuk <span className="font-semibold text-slate-600">{storeName || displayName}</span> belum ditambahkan.
+                  Etalase katalog untuk <span className="font-semibold text-slate-600">{storeName || displayName}</span> saat ini belum memiliki item aktif.
                 </p>
               </div>
+              <Link
+                href={`/${tenantSlug}/dashboard?tab=products`}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition shadow-xs mt-2"
+              >
+                <span>Kelola Katalog Toko</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

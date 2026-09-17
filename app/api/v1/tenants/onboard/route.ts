@@ -251,15 +251,16 @@ export async function POST(req: NextRequest) {
               booking: isServiceStore,
               digital_fulfillment: isDigital,
             },
-            product: {
+            products: [],
+            product: productName ? {
               type: isDigital ? 'digital' : isServiceStore ? 'service' : 'physical',
-              name: productName || storeName,
+              name: productName,
               price: Number(productPrice || 0),
               promo: promoBundle || null,
               variants: variants || null,
               download_url: downloadUrl || null,
               tone: aiTone || 'RAMAH',
-            },
+            } : null,
             bank: {
               name: bankName || 'BCA',
               account: bankAccountNumber || '-',

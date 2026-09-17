@@ -323,7 +323,7 @@ export async function GET(
 
       let products: any[] = Array.isArray(tenantRow?.metadata?.products)
         ? tenantRow.metadata.products
-        : tenantRow?.metadata?.product
+        : (tenantRow?.metadata?.product && tenantRow.metadata.product.name && tenantRow.metadata.product.name !== slug)
         ? [tenantRow.metadata.product]
         : [];
 

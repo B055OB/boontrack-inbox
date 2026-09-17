@@ -635,6 +635,11 @@ export function useTenantDashboard() {
             if (typeof window !== 'undefined') {
               localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(hydratedProducts));
             }
+          } else {
+            setProducts([]);
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem(`bt_products_${tenantSlug}`);
+            }
           }
 
           // Category
