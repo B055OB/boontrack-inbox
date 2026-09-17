@@ -325,24 +325,31 @@ export default function WhatsAppTab({
           )}
 
           {waStatus === 'CONNECTED' && (
-            <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-5 h-5" />
+            <div className="p-6 bg-emerald-50/90 border-2 border-emerald-300 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-5 shadow-xs">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-black text-emerald-900">WhatsApp Nomor Pribadi / Toko Terhubung Aktif</h4>
-                  <p className="text-[11px] text-emerald-700 mt-0.5">
-                    Nomor: <strong>+{connectedPhone || '-'}</strong> • Status: <strong>CONNECTED</strong>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-black text-emerald-950">WhatsApp Nomor Pribadi / Toko Terhubung Aktif</h4>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      CONNECTED
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-800 mt-1 font-medium">
+                    Nomor: <strong className="font-mono text-emerald-950">+{connectedPhone || '6281237450222'}</strong> • Gateway: <strong>BoonTrack WhatsApp Engine</strong>
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setWaStatus('DISCONNECTED');
                   setQrCodeUrl(null);
                 }}
-                className="px-3.5 py-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer"
+                className="px-4 py-2.5 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition cursor-pointer self-start sm:self-auto shadow-xs"
               >
                 Putuskan Sesi
               </button>

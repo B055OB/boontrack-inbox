@@ -1414,7 +1414,7 @@ export function useTenantDashboard() {
       });
       const data = await res.json().catch(() => ({}));
 
-      if (data.status === 'CONNECTED') {
+      if (data.status === 'CONNECTED' || data.connected) {
         setWaStatus('CONNECTED');
         setConnectedPhone(data.connected_phone || data.phone_number || null);
         setQrCodeUrl(null);
@@ -1460,6 +1460,16 @@ export function useTenantDashboard() {
         body: JSON.stringify({ tenant: tenantSlug, phone: cleanPhone }),
       });
       const data = await res.json().catch(() => ({}));
+
+      // Jika gateway sudah CONNECTED
+      if (data.status === 'CONNECTED' || data.connected) {
+        setWaStatus('CONNECTED');
+        if (data.connected_phone) setConnectedPhone(data.connected_phone);
+        setQrCodeUrl(null);
+        setPairingCodeResult(null);
+        alert(data.message || 'WhatsApp sudah terhubung aktif ke BoonTrack Engine.');
+        return;
+      }
 
       if (!res.ok || !data.success || !data.pairing_code) {
         let errMsg = data.error || data.detail || 'Gagal mendapatkan kode pairing dari server WhatsApp.';

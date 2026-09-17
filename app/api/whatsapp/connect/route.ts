@@ -9,26 +9,33 @@ const EVOLUTION_API_KEY =
   process.env.EVOLUTION_API_KEY ||
   "4398809d97f770b1a2b243ed0ee33bf3312d02dec42be8789ea3512f487f4c5e";
 
+// Instance fallback gateway Baileys utama BoonTrack
+const EVOLUTION_GATEWAY_INSTANCE =
+  process.env.EVOLUTION_GATEWAY_INSTANCE || "boontrack-gateway";
+
+function cleanPhoneJid(jid?: string | null): string | null {
+  if (!jid || typeof jid !== "string") return null;
+  const match = jid.match(/^(\d+)/);
+  return match ? match[1] : jid.replace(/\D/g, "") || null;
+}
+
 function cleanBase64(raw: unknown): string | null {
   if (!raw || typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
 
-  if (trimmed.startsWith("data:image/png;base64,")) {
-    return trimmed;
-  }
-
+  if (trimmed.startsWith("data:image/png;base64,")) return trimmed;
   if (trimmed.startsWith("data:")) {
     const commaIdx = trimmed.indexOf(",");
     if (commaIdx !== -1) {
       return `data:image/png;base64,${trimmed.slice(commaIdx + 1)}`;
     }
   }
-
   return `data:image/png;base64,${trimmed}`;
 }
 
-async function checkConnectionState(instanceName: string) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function checkConnectionState(instanceName: string): Promise<{ status: number; state: string | null; data: any }> {
   const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connectionState/${encodeURIComponent(instanceName)}`;
   const res = await fetch(url, {
     method: "GET",
@@ -36,10 +43,28 @@ async function checkConnectionState(instanceName: string) {
     cache: "no-store",
   }).catch(() => null);
 
-  if (!res) return { status: 500, state: null };
-  const data = await res.json().catch(() => ({}));
-  const state = data?.instance?.state || data?.state || null;
+  if (!res) return { status: 500, state: null, data: {} };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json().catch(() => ({}));
+  const state: string | null = data?.instance?.state || data?.state || null;
   return { status: res.status, state, data };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchInstanceInfo(instanceName: string): Promise<any | null> {
+  const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { apikey: EVOLUTION_API_KEY },
+    cache: "no-store",
+  }).catch(() => null);
+  if (!res || !res.ok) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const list: any = await res.json().catch(() => null);
+  if (Array.isArray(list) && list.length > 0) {
+    return list[0];
+  }
+  return null;
 }
 
 async function deleteInstance(instanceName: string) {
@@ -48,9 +73,9 @@ async function deleteInstance(instanceName: string) {
     method: "DELETE",
     headers: { apikey: EVOLUTION_API_KEY },
   }).catch(() => null);
-
   if (!res) return { ok: false };
-  const data = await res.json().catch(() => ({}));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json().catch(() => ({}));
   return { ok: res.ok, data };
 }
 
@@ -79,11 +104,13 @@ async function createInstance(instanceName: string) {
   }).catch(() => null);
 
   if (!res) return { ok: false, data: {} };
-  const data = await res.json().catch(() => ({}));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json().catch(() => ({}));
   return { ok: res.ok, data };
 }
 
-async function fetchConnect(instanceName: string) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchConnect(instanceName: string): Promise<{ status: number; data: any }> {
   const url = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/connect/${encodeURIComponent(instanceName)}`;
   const res = await fetch(url, {
     method: "GET",
@@ -92,8 +119,81 @@ async function fetchConnect(instanceName: string) {
   }).catch(() => null);
 
   if (!res) return { status: 500, data: {} };
-  const data = await res.json().catch(() => ({}));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json().catch(() => ({}));
   return { status: res.status, data };
+}
+
+/**
+ * Resolusi instance WhatsApp:
+ * 1. Cek instance per-tenant ({tenantSlug} atau tenant_{tenantSlug})
+ * 2. Jika tidak terhubung / belum ada, cek shared gateway (boontrack-gateway)
+ */
+async function resolveConnectedInstance(tenantSlug: string): Promise<{
+  instanceName: string;
+  state: string | null;
+  httpStatus: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any;
+  ownerJid: string | null;
+  isSharedGateway: boolean;
+}> {
+  // 1. Cek instance per-tenant ({tenantSlug})
+  const directCheck = await checkConnectionState(tenantSlug);
+  if (directCheck.state === "open" || directCheck.state === "CONNECTED") {
+    const info = await fetchInstanceInfo(tenantSlug);
+    return {
+      instanceName: tenantSlug,
+      state: directCheck.state,
+      httpStatus: directCheck.status,
+      data: directCheck.data,
+      ownerJid: cleanPhoneJid(info?.ownerJid || directCheck.data?.instance?.ownerJid),
+      isSharedGateway: false,
+    };
+  }
+
+  // 1b. Cek variasi prefix tenant_{tenantSlug} jika ada
+  if (!tenantSlug.startsWith("tenant_")) {
+    const prefixedSlug = `tenant_${tenantSlug}`;
+    const prefCheck = await checkConnectionState(prefixedSlug);
+    if (prefCheck.state === "open" || prefCheck.state === "CONNECTED") {
+      const info = await fetchInstanceInfo(prefixedSlug);
+      return {
+        instanceName: prefixedSlug,
+        state: prefCheck.state,
+        httpStatus: prefCheck.status,
+        data: prefCheck.data,
+        ownerJid: cleanPhoneJid(info?.ownerJid || prefCheck.data?.instance?.ownerJid),
+        isSharedGateway: false,
+      };
+    }
+  }
+
+  // 2. Cek shared gateway utama (boontrack-gateway)
+  if (EVOLUTION_GATEWAY_INSTANCE && EVOLUTION_GATEWAY_INSTANCE !== tenantSlug) {
+    const gatewayCheck = await checkConnectionState(EVOLUTION_GATEWAY_INSTANCE);
+    if (gatewayCheck.state === "open" || gatewayCheck.state === "CONNECTED") {
+      const info = await fetchInstanceInfo(EVOLUTION_GATEWAY_INSTANCE);
+      return {
+        instanceName: EVOLUTION_GATEWAY_INSTANCE,
+        state: gatewayCheck.state,
+        httpStatus: gatewayCheck.status,
+        data: gatewayCheck.data,
+        ownerJid: cleanPhoneJid(info?.ownerJid || gatewayCheck.data?.instance?.ownerJid),
+        isSharedGateway: true,
+      };
+    }
+  }
+
+  // 3. Fallback: tidak ada yang connected
+  return {
+    instanceName: tenantSlug,
+    state: directCheck.state,
+    httpStatus: directCheck.status,
+    data: directCheck.data,
+    ownerJid: null,
+    isSharedGateway: false,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -128,27 +228,44 @@ export async function POST(req: NextRequest) {
       body.action === "reload" ||
       body.action === "reset";
 
-    // 1. RELOAD / RESET FLOW: Bersihkan stale session storage Baileys untuk tenant aktif
+    // ── FLOW 1: RELOAD / RESET ────────────────────────────────────────────────
     if (isReload) {
-      console.log(`[WhatsAppConnect] Resetting instance session for tenant: ${tenantSlug}`);
-      await deleteInstance(tenantSlug);
-      // Jeda singkat untuk flush state
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      console.log(`[WhatsAppConnect] Reload requested for tenant: ${tenantSlug}`);
 
-      // Re-create instance fresh
-      await createInstance(tenantSlug);
+      // SAFETY CHECK: Periksa koneksi aktif sebelum mereset apapun.
+      // Jika instance (per-tenant atau shared boontrack-gateway) sudah CONNECTED ("open"),
+      // langsung kembalikan status CONNECTED tanpa mereset sesi.
+      const resolved = await resolveConnectedInstance(tenantSlug);
+      if (resolved.state === "open" || resolved.state === "CONNECTED") {
+        console.log(`[WhatsAppConnect] Instance "${resolved.instanceName}" already connected. Skipping reset.`);
+        return NextResponse.json({
+          success: true,
+          status: "CONNECTED",
+          tenant_slug: tenantSlug,
+          instance: resolved.instanceName,
+          connected_phone: resolved.ownerJid,
+          reloaded: false,
+          note: "Session already active.",
+        });
+      }
 
-      // Fetch fresh QR connect
+      // Jangan pernah menghapus shared gateway instance utama
+      const isSharedGateway = tenantSlug === EVOLUTION_GATEWAY_INSTANCE;
+      if (!isSharedGateway) {
+        console.log(`[WhatsAppConnect] Resetting per-tenant instance: ${tenantSlug}`);
+        await deleteInstance(tenantSlug);
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        await createInstance(tenantSlug);
+      }
+
+      // Fetch fresh QR connect untuk instance per-tenant
       const connectResult = await fetchConnect(tenantSlug);
       const rawBase64 =
         connectResult.data?.base64 ||
         connectResult.data?.qrcode?.base64 ||
         null;
       const base64 = cleanBase64(rawBase64);
-      const code =
-        connectResult.data?.code ||
-        connectResult.data?.qrcode?.code ||
-        null;
+      const code = connectResult.data?.code || connectResult.data?.qrcode?.code || null;
 
       return NextResponse.json({
         success: true,
@@ -161,34 +278,32 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 2. REGULAR FLOW: Cek status koneksi instance di BoonTrack Engine
-    const stateCheck = await checkConnectionState(tenantSlug);
+    // ── FLOW 2: REGULAR CHECK ─────────────────────────────────────────────────
+    // Cek status koneksi: prioritaskan per-tenant, fallback ke boontrack-gateway jika open
+    const resolved = await resolveConnectedInstance(tenantSlug);
 
-    if (stateCheck.state === "open" || stateCheck.state === "CONNECTED") {
+    if (resolved.state === "open" || resolved.state === "CONNECTED") {
       return NextResponse.json({
         success: true,
         tenant_slug: tenantSlug,
-        instance: tenantSlug,
+        instance: resolved.instanceName,
         status: "CONNECTED",
         base64: null,
         code: null,
-        connected_phone:
-          stateCheck.data?.instance?.ownerJid ||
-          stateCheck.data?.connected_phone ||
-          null,
+        connected_phone: resolved.ownerJid,
       });
     }
 
-    // Jika instance belum ada (404), buat instance baru
-    if (stateCheck.status === 404) {
+    // Instance per-tenant tidak ditemukan (404) — buat instance baru
+    if (resolved.httpStatus === 404) {
       console.log(`[WhatsAppConnect] Instance ${tenantSlug} not found (404), creating fresh instance...`);
       await createInstance(tenantSlug);
     }
 
-    // Ambil auth string / QR code connect
+    // Ambil QR code / connect token
     let connectResult = await fetchConnect(tenantSlug);
 
-    // Jika saat connect mengembalikan 404, create lalu connect ulang
+    // Coba create dan connect ulang jika connectResult 404
     if (connectResult.status === 404) {
       await createInstance(tenantSlug);
       connectResult = await fetchConnect(tenantSlug);
@@ -196,12 +311,8 @@ export async function POST(req: NextRequest) {
 
     const { data } = connectResult;
 
-    // Periksa apakah status instance sudah open
-    const instanceState =
-      data?.instance?.state ||
-      data?.state ||
-      data?.status;
-
+    // Cek apakah respons connect langsung open
+    const instanceState = data?.instance?.state || data?.state || data?.status;
     if (instanceState === "open" || instanceState === "CONNECTED") {
       return NextResponse.json({
         success: true,
@@ -210,7 +321,7 @@ export async function POST(req: NextRequest) {
         status: "CONNECTED",
         base64: null,
         code: null,
-        connected_phone: data?.instance?.ownerJid || data?.connected_phone || null,
+        connected_phone: cleanPhoneJid(data?.instance?.ownerJid || data?.connected_phone),
       });
     }
 
@@ -222,13 +333,9 @@ export async function POST(req: NextRequest) {
       null;
 
     const base64 = cleanBase64(rawBase64);
-    const code =
-      data?.code ||
-      data?.pairingCode ||
-      data?.qrcode?.code ||
-      null;
+    const code = data?.code || data?.pairingCode || data?.qrcode?.code || null;
 
-    // Jika base64 belum terbit, coba restart instance agar koneksi menerbitkan token
+    // Jika base64 belum terbit pada status 200, restart instance sekali agar token terbit
     if (!base64 && connectResult.status === 200) {
       const restartUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/restart/${encodeURIComponent(tenantSlug)}`;
       await fetch(restartUrl, {
@@ -238,7 +345,9 @@ export async function POST(req: NextRequest) {
 
       await new Promise((resolve) => setTimeout(resolve, 800));
       const retryConn = await fetchConnect(tenantSlug);
-      const retryBase64 = cleanBase64(retryConn.data?.base64 || retryConn.data?.qrcode?.base64);
+      const retryBase64 = cleanBase64(
+        retryConn.data?.base64 || retryConn.data?.qrcode?.base64
+      );
       if (retryBase64) {
         return NextResponse.json({
           success: true,
@@ -260,8 +369,11 @@ export async function POST(req: NextRequest) {
       instance: tenantSlug,
     });
   } catch (err: unknown) {
-    let msg = err instanceof Error ? err.message : "Gagal berkomunikasi dengan BoonTrack Engine";
-    msg = msg.replace(/Evolution API/gi, "BoonTrack Engine").replace(/socket/gi, "koneksi");
+    let msg =
+      err instanceof Error ? err.message : "Gagal berkomunikasi dengan BoonTrack Engine";
+    msg = msg
+      .replace(/Evolution API/gi, "BoonTrack Engine")
+      .replace(/socket/gi, "koneksi");
     return NextResponse.json(
       {
         success: false,
