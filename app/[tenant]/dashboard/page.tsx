@@ -466,6 +466,9 @@ export default function TenantDashboardPage() {
           </div>
         </header>
 
+        {/* SLIM MOBILE PWA INSTALL BANNER */}
+        <PwaInstallPrompt tenantSlug={tenantSlug} variant="banner" />
+
         {/* TOP BAR RINGKAS DESKTOP (Header Canvas - hidden on mobile, flex on desktop) */}
         <header className="hidden lg:flex sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-6 xl:px-8 py-2.5 items-center justify-between gap-4 shadow-2xs">
           <div className="flex items-center gap-3 min-w-0">
@@ -494,7 +497,7 @@ export default function TenantDashboardPage() {
             </button>
 
             <OrderNotificationBell tenantSlug={tenantSlug} />
-            <PwaInstallPrompt tenantSlug={tenantSlug} />
+            <PwaInstallPrompt tenantSlug={tenantSlug} variant="button" />
 
             {saveFeedback && (
               <span className="text-xs font-bold px-3 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 animate-fadeIn truncate">

@@ -35,6 +35,7 @@ import {
   Truck
 } from 'lucide-react';
 import Footer from './components/Footer';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 export default function ShopLandingPage() {
   const router = useRouter();
@@ -147,7 +148,8 @@ export default function ShopLandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-20 md:pb-0">
+    <ErrorBoundary name="ShopLandingPage">
+      <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans selection:bg-blue-600 selection:text-white pb-20 md:pb-0">
       
       {/* 1. TOP ANNOUNCEMENT BAR */}
       <div className="bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-700 px-4 py-2.5 text-center text-xs font-semibold text-white flex flex-wrap items-center justify-center gap-1.5 shadow-sm">
@@ -823,5 +825,6 @@ export default function ShopLandingPage() {
       </div>
 
     </div>
+    </ErrorBoundary>
   );
 }

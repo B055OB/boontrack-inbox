@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import "@/lib/polyfills";
 import PwaRegister from "@/components/PwaRegister";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -53,9 +55,17 @@ export default function RootLayout({
 }) {
   return (
     <html
-      lang="en"
+      lang="id"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {/* Early Safari / WebKit Compatibility Polyfill (before scripts execute) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){if(typeof window!=='undefined'){if(typeof window.structuredClone!=='function'){window.structuredClone=function(v){if(v===undefined)return undefined;if(v===null||typeof v!=='object')return v;try{return JSON.parse(JSON.stringify(v));}catch(e){if(Array.isArray(v))return v.slice();var o={};for(var k in v)if(Object.prototype.hasOwnProperty.call(v,k))o[k]=v[k];return o;}};}}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <PwaRegister />
         {/* ads-tracker.js — lazyOnload, skip /admin/* routes */}
@@ -66,7 +76,9 @@ export default function RootLayout({
             __html: `(function(){if(window.location.pathname.startsWith('/admin'))return;var s=document.createElement('script');s.src='/ads-tracker.js';s.async=true;document.head.appendChild(s);})();`,
           }}
         />
-        {children}
+        <ErrorBoundary name="RootLayout">
+          {children}
+        </ErrorBoundary>
       </body>
     </html>
   );

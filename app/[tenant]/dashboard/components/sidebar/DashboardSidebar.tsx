@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { resolveDomainVertical, DomainVerticalKey } from '@/app/[tenant]/dashboard/components/modules';
+import PwaInstallPrompt from '../PwaInstallPrompt';
 
 function getVerticalMenuConfig(storeCategory?: string) {
   const norm = (storeCategory || '').toUpperCase().trim();
@@ -444,6 +445,16 @@ export default function DashboardSidebar({
               <Globe className="w-3.5 h-3.5 text-slate-500" />
               <span>Pengaturan Domain</span>
             </button>
+
+            {/* Menu 4: Install App / PWA */}
+            <PwaInstallPrompt
+              tenantSlug={tenantSlug}
+              variant="menu-item"
+              onActionComplete={() => {
+                setIsPopoverOpen(false);
+                if (onCloseMobileDrawer) onCloseMobileDrawer();
+              }}
+            />
 
             <div className="h-[1px] bg-slate-100 my-1" />
 

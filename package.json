@@ -30,5 +30,13 @@
     "playwright": "^1.63.0",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "browserslist": [
+    "> 0.5%",
+    "last 2 versions",
+    "Firefox ESR",
+    "not dead",
+    "ios_saf >= 15",
+    "safari >= 15"
+  ]
 }
