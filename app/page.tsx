@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { 
@@ -41,6 +41,53 @@ export default function ShopLandingPage() {
   const [storeSlug, setStoreSlug] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+
+  useEffect(() => {
+    let code = '';
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      code = (params.get('ref') || params.get('r') || params.get('code') || '').trim().toLowerCase();
+
+      if (!code) {
+        const match = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code|boontrack_merchant_ref)=([^;]+)/);
+        if (match) code = decodeURIComponent(match[1]).trim().toLowerCase();
+      }
+
+      if (!code) {
+        try {
+          code = (
+            localStorage.getItem('boontrack_referral_code') ||
+            localStorage.getItem('boontrack_merchant_ref') ||
+            localStorage.getItem('boontrack_affiliate_code') ||
+            ''
+          ).trim().toLowerCase();
+        } catch (_) {}
+      }
+
+      if (code === 'mafiasakti' || code === 'kangsakti') code = 'buzzerukm';
+
+      if (code) {
+        setReferralCode(code);
+        try {
+          localStorage.setItem('boontrack_referral_code', code);
+          localStorage.setItem('boontrack_merchant_ref', code);
+          const isBoonTrackDomain = window.location.hostname.endsWith('.boontrack.com');
+          const domainStr = isBoonTrackDomain ? '; domain=.boontrack.com' : '';
+          document.cookie = `ref=${encodeURIComponent(code)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+          document.cookie = `boontrack_referral_code=${encodeURIComponent(code)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+        } catch (_) {}
+      }
+    }
+  }, []);
+
+  const getRegisterLink = (plan?: string) => {
+    const params = new URLSearchParams();
+    if (plan) params.set('plan', plan);
+    if (referralCode) params.set('ref', referralCode);
+    const qs = params.toString();
+    return qs ? `/register?${qs}` : '/register';
+  };
 
   const handleCreateStore = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +95,10 @@ export default function ShopLandingPage() {
     
     setIsLoading(true);
     const cleanSlug = storeSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
-    router.push(`/register?slug=${cleanSlug}`);
+    const params = new URLSearchParams();
+    params.set('slug', cleanSlug);
+    if (referralCode) params.set('ref', referralCode);
+    router.push(`/register?${params.toString()}`);
   };
 
   return (
@@ -60,7 +110,7 @@ export default function ShopLandingPage() {
           <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
           <span>Platform WhatsApp Commerce & Checkout Terintegrasi Sistem Pembayaran Otomatis & QRIS Nasional.</span>
         </span>
-        <Link href="/register" className="underline hover:text-blue-100 font-bold ml-1 inline-flex items-center gap-0.5">
+        <Link href={getRegisterLink()} className="underline hover:text-blue-100 font-bold ml-1 inline-flex items-center gap-0.5">
           Coba Sekarang &rarr;
         </Link>
       </div>
@@ -109,7 +159,7 @@ export default function ShopLandingPage() {
             Masuk
           </Link>
           <Link 
-            href="/register" 
+            href={getRegisterLink()} 
             className="text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl transition shadow-md shadow-blue-600/20 active:scale-95 flex items-center gap-1.5"
           >
             <span>Buka Toko</span>
@@ -369,7 +419,7 @@ export default function ShopLandingPage() {
 
               <div className="pt-6">
                 <Link
-                  href="/register?plan=solo"
+                  href={getRegisterLink('solo')}
                   className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center block transition shadow-md"
                 >
                   Pilih Paket Solo
@@ -438,7 +488,7 @@ export default function ShopLandingPage() {
 
               <div className="pt-6">
                 <Link
-                  href="/register?plan=ads_performance"
+                  href={getRegisterLink('ads_performance')}
                   className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold text-center block transition shadow-lg shadow-blue-600/30 active:scale-98"
                 >
                   Pilih Ads Performance
@@ -503,7 +553,7 @@ export default function ShopLandingPage() {
 
               <div className="pt-6">
                 <Link
-                  href="/register?plan=team_scale"
+                  href={getRegisterLink('team_scale')}
                   className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold text-center block transition shadow-md"
                 >
                   Pilih Team Scale

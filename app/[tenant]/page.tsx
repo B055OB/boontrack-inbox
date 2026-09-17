@@ -483,8 +483,14 @@ export default function TenantStorefrontPage() {
                 try {
                   localStorage.setItem("boontrack_affiliate_code", affCode);
                   localStorage.setItem("affiliate_code", affCode);
+                  localStorage.setItem("boontrack_referral_code", affCode);
+                  localStorage.setItem("boontrack_merchant_ref", affCode);
+                  const domainStr = window.location.hostname.endsWith(".boontrack.com") ? "; domain=.boontrack.com" : "";
+                  document.cookie = `ref=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+                  document.cookie = `boontrack_referral_code=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+                  document.cookie = `boontrack_merchant_ref=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
                 } catch (_) {}
-                router.replace(`/register?ref=${encodeURIComponent(affCode)}`);
+                router.replace(`/preview/new-lander-clean?ref=${encodeURIComponent(affCode)}`);
               }
               return;
             }

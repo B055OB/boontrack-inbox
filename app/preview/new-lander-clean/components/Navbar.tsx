@@ -19,7 +19,7 @@ export default function Navbar({ referralCode, onOpenDemo }: NavbarProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand Logo */}
         <div className="flex items-center gap-3">
-          <Link href="/preview/new-lander-clean" className="flex items-center gap-2.5 group">
+          <Link href="/" className="flex items-center gap-2.5 group">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 via-teal-600 to-indigo-600 p-[1.5px] shadow-sm group-hover:shadow-md transition">
               <div className="w-full h-full bg-white rounded-[10px] flex items-center justify-center">
                 <Zap className="w-4 h-4 text-emerald-600 fill-emerald-600" />

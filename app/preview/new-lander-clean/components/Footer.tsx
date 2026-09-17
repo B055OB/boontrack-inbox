@@ -4,7 +4,15 @@ import React from 'react';
 import Link from 'next/link';
 import { Zap, ShieldCheck } from 'lucide-react';
 
-export default function Footer() {
+interface FooterProps {
+  referralCode?: string;
+}
+
+export default function Footer({ referralCode }: FooterProps) {
+  const affiliateRegisterHref = referralCode
+    ? `/affiliate/register?ref=${encodeURIComponent(referralCode)}`
+    : '/affiliate/register';
+
   return (
     <footer className="border-t border-zinc-200 bg-white text-zinc-600 text-xs py-14">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
@@ -56,7 +64,7 @@ export default function Footer() {
               <li><Link href="/privacy" className="hover:text-zinc-900 transition">Kebijakan Privasi (UU PDP)</Link></li>
               <li><Link href="/refund" className="hover:text-zinc-900 transition">Kebijakan Pengembalian Dana</Link></li>
               <li><Link href="/contact" className="hover:text-zinc-900 transition">Hubungi Kami (Contact Us)</Link></li>
-              <li><Link href="/affiliate/register" className="text-emerald-700 hover:text-emerald-800 font-bold transition">Program Afiliasi Mitra (25%)</Link></li>
+              <li><Link href={affiliateRegisterHref} className="text-emerald-700 hover:text-emerald-800 font-bold transition">Program Afiliasi Mitra (25%)</Link></li>
             </ul>
           </div>
         </div>

@@ -144,6 +144,80 @@ async function lookupTenantByDomain(hostname: string): Promise<string | null> {
   return slug;
 }
 
+// In-Memory Cache untuk Affiliate Code Lookup (TTL 5 menit)
+interface AffiliateCacheEntry {
+  referralCode: string | null;
+  timestamp: number;
+}
+const affiliateSubdomainCache = new Map<string, AffiliateCacheEntry>();
+
+/**
+ * Lookup kode referral affiliate mitra berdasarkan subdomain:
+ * 1. Fast-path alias (buzzerukm, mafiasakti, kangsakti)
+ * 2. Cek memory cache (TTL 5 menit)
+ * 3. Query Supabase REST tabel affiliates
+ */
+async function resolveAffiliateCode(subdomain: string): Promise<string | null> {
+  const cleanSub = subdomain.toLowerCase().trim();
+  if (!cleanSub) return null;
+
+  if (cleanSub === 'buzzerukm' || cleanSub === 'mafiasakti' || cleanSub === 'kangsakti') {
+    return 'buzzerukm';
+  }
+
+  const cached = affiliateSubdomainCache.get(cleanSub);
+  const now = Date.now();
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.referralCode;
+  }
+
+  let referralCode: string | null = null;
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mpluzajlzpregmjwpjqr.supabase.co';
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (supabaseKey) {
+      const supaUrl = `${supabaseUrl}/rest/v1/affiliates?select=referral_code&referral_code=ilike.${encodeURIComponent(cleanSub)}&limit=1`;
+      const res = await fetch(supaUrl, {
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+        next: { revalidate: 300 },
+      });
+      if (res.ok) {
+        const rows = await res.json().catch(() => []);
+        if (Array.isArray(rows) && rows.length > 0 && rows[0]?.referral_code) {
+          referralCode = rows[0].referral_code.trim().toLowerCase();
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[middleware] Affiliate code lookup error:', err);
+  }
+
+  affiliateSubdomainCache.set(cleanSub, { referralCode, timestamp: now });
+  return referralCode;
+}
+
+/**
+ * Pasang cookie referral 30 hari pada response NextResponse
+ */
+function setReferralCookies(res: NextResponse, refCode: string, hostClean?: string) {
+  if (!refCode) return;
+  const cookieOptions: any = {
+    maxAge: 30 * 24 * 60 * 60, // 30 hari (2592000 detik)
+    path: '/',
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  };
+  if (hostClean && (hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com')) {
+    cookieOptions.domain = '.boontrack.com';
+  }
+  res.cookies.set('ref', refCode, cookieOptions);
+  res.cookies.set('boontrack_referral_code', refCode, cookieOptions);
+  res.cookies.set('boontrack_merchant_ref', refCode, cookieOptions);
+}
+
 /**
  * Extract subdomain from incoming request hostname for *.boontrack.com.
  */
@@ -221,57 +295,6 @@ export async function middleware(req: NextRequest) {
   const subdomain = extractSubdomain(host);
 
   // ===========================================================================
-  // KHUSUS SUBDOMAIN BUZZERUKM (buzzerukm.boontrack.com)
-  // Branded Gateway -> Clean 307 Redirect ke domain utama (shop.boontrack.com)
-  // dengan parameter ?ref=buzzerukm untuk atribusi sempurna
-  // ===========================================================================
-  if (hostClean === 'buzzerukm.boontrack.com' || hostClean.startsWith('buzzerukm.') || subdomain === 'buzzerukm') {
-    // 1. Path / atau /register -> Redirect (307) ke https://shop.boontrack.com/register?ref=buzzerukm
-    if (pathname === '/' || pathname === '' || pathname === '/register' || pathname.startsWith('/register/')) {
-      const targetUrl = new URL('https://shop.boontrack.com/register');
-      targetUrl.searchParams.set('ref', 'buzzerukm');
-      // Pertahankan query params lain (misal UTM tracking)
-      req.nextUrl.searchParams.forEach((val, key) => {
-        if (key !== 'ref') targetUrl.searchParams.set(key, val);
-      });
-      return NextResponse.redirect(targetUrl, 307);
-    }
-
-    // 2. Path /affiliate/register -> Redirect (307) ke https://shop.boontrack.com/affiliate/register?ref=buzzerukm
-    if (pathname === '/affiliate/register' || pathname.startsWith('/affiliate/register/')) {
-      const targetUrl = new URL('https://shop.boontrack.com/affiliate/register');
-      targetUrl.searchParams.set('ref', 'buzzerukm');
-      req.nextUrl.searchParams.forEach((val, key) => {
-        if (key !== 'ref') targetUrl.searchParams.set(key, val);
-      });
-      return NextResponse.redirect(targetUrl, 307);
-    }
-
-    // 3. Path /affiliate atau /affiliate/dashboard -> Redirect (307) ke https://shop.boontrack.com/affiliate/dashboard?code=buzzerukm
-    if (
-      pathname === '/affiliate' ||
-      pathname === '/affiliate/' ||
-      pathname === '/affiliate/dashboard' ||
-      pathname.startsWith('/affiliate/dashboard/')
-    ) {
-      const targetUrl = new URL('https://shop.boontrack.com/affiliate/dashboard');
-      targetUrl.searchParams.set('code', 'buzzerukm');
-      req.nextUrl.searchParams.forEach((val, key) => {
-        if (key !== 'code') targetUrl.searchParams.set(key, val);
-      });
-      return NextResponse.redirect(targetUrl, 307);
-    }
-
-    // 4. Untuk pathname lainnya -> Redirect (307) ke https://shop.boontrack.com${pathname}?ref=buzzerukm
-    const targetUrl = new URL(`https://shop.boontrack.com${pathname}`);
-    targetUrl.searchParams.set('ref', 'buzzerukm');
-    req.nextUrl.searchParams.forEach((val, key) => {
-      if (key !== 'ref') targetUrl.searchParams.set(key, val);
-    });
-    return NextResponse.redirect(targetUrl, 307);
-  }
-
-  // ===========================================================================
   // SUBDOMAIN: affiliate.boontrack.com
   // ===========================================================================
   if (subdomain === 'affiliate') {
@@ -289,53 +312,101 @@ export async function middleware(req: NextRequest) {
 
   // ===========================================================================
   // SUBDOMAIN MITRA AFFILIATE (*.boontrack.com)
-  // Contoh: buzzerukm.boontrack.com/affiliate/register
+  // Dynamic lookup via Supabase / in-memory cache
   // ===========================================================================
   const RESERVED_CORE_SUBDOMAINS = new Set([
     'login', 'register', 'daftar', 'api', 'dashboard', 'auth', 'admin',
     'affiliate', 'manager', 'shop', 'creator', 'www', 'app', 'career', 'static', 'chat'
   ]);
 
-  if (subdomain && !RESERVED_CORE_SUBDOMAINS.has(subdomain)) {
-    // 1. /affiliate/register -> Pertahankan path tujuannya, inject ?ref=${subdomain}
-    if (pathname === '/affiliate/register' || pathname.startsWith('/affiliate/register/')) {
+  const isBuzzerUkmHost = hostClean === 'buzzerukm.boontrack.com' || hostClean.startsWith('buzzerukm.') || subdomain === 'buzzerukm';
+  const isCandidateAffiliateSubdomain = !!(subdomain && !RESERVED_CORE_SUBDOMAINS.has(subdomain) && !B2B_TENANT_SLUGS.has(subdomain) && !CAREER_KNOWN_SLUGS.has(subdomain));
+
+  let affiliateCode: string | null = null;
+  if (isBuzzerUkmHost) {
+    affiliateCode = 'buzzerukm';
+  } else if (isCandidateAffiliateSubdomain) {
+    affiliateCode = await resolveAffiliateCode(subdomain!);
+  }
+
+  if (affiliateCode) {
+    // 1. Root frontpage (/) -> Render Landing Page utama (Clean Light edition) dengan atribusi referral 30 hari
+    if (pathname === '/' || pathname === '') {
       const url = req.nextUrl.clone();
-      url.pathname = '/affiliate/register';
-      if (!url.searchParams.has('ref') && !url.searchParams.has('am')) {
-        url.searchParams.set('ref', subdomain);
-      }
-      return NextResponse.rewrite(url);
+      url.pathname = '/preview/new-lander-clean';
+      url.searchParams.set('ref', affiliateCode);
+      const res = NextResponse.rewrite(url);
+      setReferralCookies(res, affiliateCode, hostClean);
+      return res;
     }
 
-    // 2. /affiliate/dashboard -> Pertahankan path tujuannya, inject ?code=${subdomain}
-    if (pathname === '/affiliate/dashboard' || pathname.startsWith('/affiliate/dashboard/')) {
-      const url = req.nextUrl.clone();
-      url.pathname = '/affiliate/dashboard';
-      if (!url.searchParams.has('code') && !url.searchParams.has('ref')) {
-        url.searchParams.set('code', subdomain);
-      }
-      return NextResponse.rewrite(url);
-    }
-
-    // 3. /affiliate root -> Pertahankan path, inject ?code=${subdomain}
-    if (pathname === '/affiliate' || pathname === '/affiliate/') {
-      const url = req.nextUrl.clone();
-      url.pathname = '/affiliate';
-      if (!url.searchParams.has('code') && !url.searchParams.has('ref')) {
-        url.searchParams.set('code', subdomain);
-      }
-      return NextResponse.rewrite(url);
-    }
-
-    // 4. /register -> Funnel registrasi UKM dari link promo subdomain mitra
+    // 2. Akses eksplisit form registrasi (/register)
     if (pathname === '/register' || pathname.startsWith('/register/')) {
       const url = req.nextUrl.clone();
       url.pathname = '/register';
       if (!url.searchParams.has('ref') && !url.searchParams.has('am')) {
-        url.searchParams.set('ref', subdomain);
+        url.searchParams.set('ref', affiliateCode);
       }
-      return NextResponse.rewrite(url);
+      const res = NextResponse.rewrite(url);
+      setReferralCookies(res, affiliateCode, hostClean);
+      return res;
     }
+
+    // 3. /affiliate/register -> Pertahankan path tujuannya, inject ?ref=${affiliateCode}
+    if (pathname === '/affiliate/register' || pathname.startsWith('/affiliate/register/')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/affiliate/register';
+      if (!url.searchParams.has('ref') && !url.searchParams.has('am')) {
+        url.searchParams.set('ref', affiliateCode);
+      }
+      const res = NextResponse.rewrite(url);
+      setReferralCookies(res, affiliateCode, hostClean);
+      return res;
+    }
+
+    // 4. /affiliate/dashboard -> Pertahankan path tujuannya, inject ?code=${affiliateCode}
+    if (pathname === '/affiliate/dashboard' || pathname.startsWith('/affiliate/dashboard/')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/affiliate/dashboard';
+      if (!url.searchParams.has('code') && !url.searchParams.has('ref')) {
+        url.searchParams.set('code', affiliateCode);
+      }
+      const res = NextResponse.rewrite(url);
+      setReferralCookies(res, affiliateCode, hostClean);
+      return res;
+    }
+
+    // 5. /affiliate root -> Pertahankan path, inject ?code=${affiliateCode}
+    if (pathname === '/affiliate' || pathname === '/affiliate/') {
+      const url = req.nextUrl.clone();
+      url.pathname = '/affiliate';
+      if (!url.searchParams.has('code') && !url.searchParams.has('ref')) {
+        url.searchParams.set('code', affiliateCode);
+      }
+      const res = NextResponse.rewrite(url);
+      setReferralCookies(res, affiliateCode, hostClean);
+      return res;
+    }
+
+    // 6. Direct preview landing clean path
+    if (pathname === '/preview/new-lander-clean') {
+      const url = req.nextUrl.clone();
+      if (!url.searchParams.has('ref')) {
+        url.searchParams.set('ref', affiliateCode);
+      }
+      const res = NextResponse.rewrite(url);
+      setReferralCookies(res, affiliateCode, hostClean);
+      return res;
+    }
+
+    // 7. Path umum lainnya pada subdomain mitra -> rewrite dengan query ref & simpan cookie 30 hari
+    const url = req.nextUrl.clone();
+    if (!url.searchParams.has('ref')) {
+      url.searchParams.set('ref', affiliateCode);
+    }
+    const res = NextResponse.rewrite(url);
+    setReferralCookies(res, affiliateCode, hostClean);
+    return res;
   }
 
   // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===
@@ -418,7 +489,12 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith('/hotel') ||
     pathname.startsWith('/clinic')
   ) {
-    return NextResponse.next();
+    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r');
+    const res = NextResponse.next();
+    if (refParam) {
+      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+    }
+    return res;
   }
 
   // ── 2b. /admin always resolves to Super Admin Panel ──
@@ -467,7 +543,12 @@ export async function middleware(req: NextRequest) {
 
   // ── 5. KHUSUS SHOP.BOONTRACK.COM (100% Pass-Through Alami) ──
   if (hostClean === 'shop.boontrack.com' || hostClean.startsWith('shop.')) {
-    return NextResponse.next();
+    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r');
+    const res = NextResponse.next();
+    if (refParam) {
+      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+    }
+    return res;
   }
 
   // ── 6. Root domain boontrack.com & www.boontrack.com pass-through ──
@@ -476,7 +557,12 @@ export async function middleware(req: NextRequest) {
     hostClean === 'boontrack.com' ||
     hostClean === 'www.boontrack.com'
   ) {
-    return NextResponse.next();
+    const refParam = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('r');
+    const res = NextResponse.next();
+    if (refParam) {
+      setReferralCookies(res, refParam.trim().toLowerCase(), hostClean);
+    }
+    return res;
   }
 
   // admin.boontrack.com → pass straight to /admin

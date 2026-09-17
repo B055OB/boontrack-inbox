@@ -610,10 +610,20 @@ export default function RegisterShopPage() {
           refCode = (
             localStorage.getItem("boontrack_merchant_ref") ||
             localStorage.getItem("boontrack_referral_code") ||
+            localStorage.getItem("boontrack_affiliate_code") ||
             localStorage.getItem("affiliate_code") ||
             ""
           ).trim().toLowerCase();
         } catch (_) {}
+      }
+
+      if (!refCode && typeof document !== "undefined") {
+        const match = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code|boontrack_merchant_ref)=([^;]+)/);
+        if (match) refCode = decodeURIComponent(match[1]).trim().toLowerCase();
+      }
+
+      if (refCode === "mafiasakti" || refCode === "kangsakti") {
+        refCode = "buzzerukm";
       }
 
       if (refCode) {
@@ -622,7 +632,11 @@ export default function RegisterShopPage() {
         try {
           localStorage.setItem("boontrack_merchant_ref", refCode);
           localStorage.setItem("boontrack_referral_code", refCode);
-          document.cookie = `boontrack_merchant_ref=${refCode}; path=/; max-age=2592000; SameSite=Lax`;
+          const isBoonTrackDomain = typeof window !== "undefined" && window.location.hostname.endsWith(".boontrack.com");
+          const domainStr = isBoonTrackDomain ? "; domain=.boontrack.com" : "";
+          document.cookie = `ref=${refCode}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+          document.cookie = `boontrack_referral_code=${refCode}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
+          document.cookie = `boontrack_merchant_ref=${refCode}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
         } catch (_) {}
       }
 
