@@ -26,8 +26,8 @@ const FAQS: FaqItem[] = [
     answer: 'Bisa. Kami menyediakan Dual-Engine WhatsApp: Anda bisa menghubungkan nomor WhatsApp yang sudah berjalan hanya dengan memasukkan 8-Digit Pairing Code (bebas biaya token percakapan Meta), atau meningkatkan ke Cloud API WABA resmi jika bisnis Anda membutuhkan skala broadcast ribuan pesan per menit.'
   },
   {
-    question: 'Bagaimana cara kerja produk affiliate / rekomendasi luar (Shopee, TikTok, Mayar)?',
-    answer: 'BoonTrack mendukung transaksi produk affiliate secara native. Ketika pembeli menekan tombol produk affiliate di etalase Anda, sistem langsung men-trigger event InitiateCheckout pada Meta Pixel/CAPI dan me-redirect pembeli ke tautan tujuan eksternal tanpa melalui keranjang belanja atau checkout ganda.'
+    question: 'Bagaimana cara kerja integrasi produk affiliate & link luar (Sejoli, Lynk.id, Scalev, Mayar, Shopee)?',
+    answer: 'BoonTrack mendukung tautan produk eksternal dan affiliate secara native. Saat calon pembeli menekan produk berjenis link luar di etalase Anda (seperti link checkout Sejoli, Lynk.id, Scalev, Mayar, maupun Shopee/TikTok), sistem otomatis memicu event InitiateCheckout ke Meta & TikTok CAPI Server-Side lalu langsung mengarahkan pembeli ke halaman tujuan tanpa melalui keranjang belanja ganda.'
   },
   {
     question: 'Apakah ada masa percobaan gratis sebelum berlangganan?',
