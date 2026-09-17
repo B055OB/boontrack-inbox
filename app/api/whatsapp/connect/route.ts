@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,14 @@ const EVOLUTION_API_KEY =
 // Instance fallback gateway Baileys utama BoonTrack
 const EVOLUTION_GATEWAY_INSTANCE =
   process.env.EVOLUTION_GATEWAY_INSTANCE || "boontrack-gateway";
+
+interface WhatsAppConnectionConfig {
+  provider: "EVOLUTION" | "WABA";
+  mode: "SHARED" | "DEDICATED";
+  instance_name: string;
+  phone_number: string | null;
+  fromDb: boolean;
+}
 
 function cleanPhoneJid(jid?: string | null): string | null {
   if (!jid || typeof jid !== "string") return null;
@@ -32,6 +41,48 @@ function cleanBase64(raw: unknown): string | null {
     }
   }
   return `data:image/png;base64,${trimmed}`;
+}
+
+/**
+ * 1. Query Supabase Registry (whatsapp_connections)
+ * Mengambil authority instance_name, provider, dan mode.
+ * Jika tidak ditemukan di database, default otomatis ke shared gateway "boontrack-gateway".
+ */
+async function getTenantConnectionRegistry(tenantSlug: string): Promise<WhatsAppConnectionConfig> {
+  const defaultFallback: WhatsAppConnectionConfig = {
+    provider: "EVOLUTION",
+    mode: "SHARED",
+    instance_name: EVOLUTION_GATEWAY_INSTANCE,
+    phone_number: null,
+    fromDb: false,
+  };
+
+  try {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return defaultFallback;
+
+    const { data, error } = await supabase
+      .from("whatsapp_connections")
+      .select("provider, mode, instance_name, phone_number, status")
+      .eq("tenant_id", tenantSlug)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data && data.instance_name) {
+      return {
+        provider: (data.provider as "EVOLUTION" | "WABA") || "EVOLUTION",
+        mode: (data.mode as "SHARED" | "DEDICATED") || "SHARED",
+        instance_name: String(data.instance_name).trim(),
+        phone_number: data.phone_number || null,
+        fromDb: true,
+      };
+    }
+  } catch (err) {
+    console.warn("[WhatsAppConnect] Registry lookup error, falling back to default:", err);
+  }
+
+  return defaultFallback;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -124,78 +175,6 @@ async function fetchConnect(instanceName: string): Promise<{ status: number; dat
   return { status: res.status, data };
 }
 
-/**
- * Resolusi instance WhatsApp:
- * 1. Cek instance per-tenant ({tenantSlug} atau tenant_{tenantSlug})
- * 2. Jika tidak terhubung / belum ada, cek shared gateway (boontrack-gateway)
- */
-async function resolveConnectedInstance(tenantSlug: string): Promise<{
-  instanceName: string;
-  state: string | null;
-  httpStatus: number;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any;
-  ownerJid: string | null;
-  isSharedGateway: boolean;
-}> {
-  // 1. Cek instance per-tenant ({tenantSlug})
-  const directCheck = await checkConnectionState(tenantSlug);
-  if (directCheck.state === "open" || directCheck.state === "CONNECTED") {
-    const info = await fetchInstanceInfo(tenantSlug);
-    return {
-      instanceName: tenantSlug,
-      state: directCheck.state,
-      httpStatus: directCheck.status,
-      data: directCheck.data,
-      ownerJid: cleanPhoneJid(info?.ownerJid || directCheck.data?.instance?.ownerJid),
-      isSharedGateway: false,
-    };
-  }
-
-  // 1b. Cek variasi prefix tenant_{tenantSlug} jika ada
-  if (!tenantSlug.startsWith("tenant_")) {
-    const prefixedSlug = `tenant_${tenantSlug}`;
-    const prefCheck = await checkConnectionState(prefixedSlug);
-    if (prefCheck.state === "open" || prefCheck.state === "CONNECTED") {
-      const info = await fetchInstanceInfo(prefixedSlug);
-      return {
-        instanceName: prefixedSlug,
-        state: prefCheck.state,
-        httpStatus: prefCheck.status,
-        data: prefCheck.data,
-        ownerJid: cleanPhoneJid(info?.ownerJid || prefCheck.data?.instance?.ownerJid),
-        isSharedGateway: false,
-      };
-    }
-  }
-
-  // 2. Cek shared gateway utama (boontrack-gateway)
-  if (EVOLUTION_GATEWAY_INSTANCE && EVOLUTION_GATEWAY_INSTANCE !== tenantSlug) {
-    const gatewayCheck = await checkConnectionState(EVOLUTION_GATEWAY_INSTANCE);
-    if (gatewayCheck.state === "open" || gatewayCheck.state === "CONNECTED") {
-      const info = await fetchInstanceInfo(EVOLUTION_GATEWAY_INSTANCE);
-      return {
-        instanceName: EVOLUTION_GATEWAY_INSTANCE,
-        state: gatewayCheck.state,
-        httpStatus: gatewayCheck.status,
-        data: gatewayCheck.data,
-        ownerJid: cleanPhoneJid(info?.ownerJid || gatewayCheck.data?.instance?.ownerJid),
-        isSharedGateway: true,
-      };
-    }
-  }
-
-  // 3. Fallback: tidak ada yang connected
-  return {
-    instanceName: tenantSlug,
-    state: directCheck.state,
-    httpStatus: directCheck.status,
-    data: directCheck.data,
-    ownerJid: null,
-    isSharedGateway: false,
-  };
-}
-
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -228,38 +207,69 @@ export async function POST(req: NextRequest) {
       body.action === "reload" ||
       body.action === "reset";
 
-    // ── FLOW 1: RELOAD / RESET ────────────────────────────────────────────────
+    // ── 1. AMBIL OTORITAS MAPPING DARI SUPABASE REGISTRY ─────────────────────────
+    const registryConfig = await getTenantConnectionRegistry(tenantSlug);
+    const targetInstance = registryConfig.instance_name;
+    const provider = registryConfig.provider;
+    const mode = registryConfig.mode;
+
+    console.log(
+      `[WhatsAppConnect] Tenant: ${tenantSlug} -> Instance: ${targetInstance} (Provider: ${provider}, Mode: ${mode})`
+    );
+
+    // ── 2. CEK STATUS KONEKSI AKTIF KE EVOLUTION API ─────────────────────────────
+    let stateCheck = await checkConnectionState(targetInstance);
+
+    // Fallback: Jika instance yang dimapping bukan boontrack-gateway dan belum open,
+    // periksa apakah shared gateway utama berstatus open.
+    let activeInstanceName = targetInstance;
+    let isConnected = stateCheck.state === "open" || stateCheck.state === "CONNECTED";
+
+    if (!isConnected && mode === "SHARED" && targetInstance !== EVOLUTION_GATEWAY_INSTANCE) {
+      const gwCheck = await checkConnectionState(EVOLUTION_GATEWAY_INSTANCE);
+      if (gwCheck.state === "open" || gwCheck.state === "CONNECTED") {
+        activeInstanceName = EVOLUTION_GATEWAY_INSTANCE;
+        stateCheck = gwCheck;
+        isConnected = true;
+      }
+    }
+
+    // ── 3. HANDLER RELOAD / RESET ───────────────────────────────────────────────
     if (isReload) {
       console.log(`[WhatsAppConnect] Reload requested for tenant: ${tenantSlug}`);
 
-      // SAFETY CHECK: Periksa koneksi aktif sebelum mereset apapun.
-      // Jika instance (per-tenant atau shared boontrack-gateway) sudah CONNECTED ("open"),
-      // langsung kembalikan status CONNECTED tanpa mereset sesi.
-      const resolved = await resolveConnectedInstance(tenantSlug);
-      if (resolved.state === "open" || resolved.state === "CONNECTED") {
-        console.log(`[WhatsAppConnect] Instance "${resolved.instanceName}" already connected. Skipping reset.`);
+      // Jika sesi sudah open/CONNECTED, JANGAN hapus instance — return CONNECTED langsung
+      if (isConnected) {
+        const info = await fetchInstanceInfo(activeInstanceName);
+        const resolvedPhone =
+          registryConfig.phone_number ||
+          cleanPhoneJid(info?.ownerJid || stateCheck.data?.instance?.ownerJid) ||
+          "6281237450222";
+
         return NextResponse.json({
           success: true,
           status: "CONNECTED",
+          provider,
+          mode,
+          instance_name: activeInstanceName,
+          phone_number: resolvedPhone,
           tenant_slug: tenantSlug,
-          instance: resolved.instanceName,
-          connected_phone: resolved.ownerJid,
+          connected_phone: resolvedPhone,
           reloaded: false,
           note: "Session already active.",
         });
       }
 
-      // Jangan pernah menghapus shared gateway instance utama
-      const isSharedGateway = tenantSlug === EVOLUTION_GATEWAY_INSTANCE;
-      if (!isSharedGateway) {
-        console.log(`[WhatsAppConnect] Resetting per-tenant instance: ${tenantSlug}`);
-        await deleteInstance(tenantSlug);
+      // Hanya izinkan reset jika instance bersifat DEDICATED (bukan shared gateway)
+      if (mode === "DEDICATED" && targetInstance !== EVOLUTION_GATEWAY_INSTANCE) {
+        console.log(`[WhatsAppConnect] Resetting dedicated instance: ${targetInstance}`);
+        await deleteInstance(targetInstance);
         await new Promise((resolve) => setTimeout(resolve, 600));
-        await createInstance(tenantSlug);
+        await createInstance(targetInstance);
       }
 
-      // Fetch fresh QR connect untuk instance per-tenant
-      const connectResult = await fetchConnect(tenantSlug);
+      // Fetch fresh QR connect
+      const connectResult = await fetchConnect(targetInstance);
       const rawBase64 =
         connectResult.data?.base64 ||
         connectResult.data?.qrcode?.base64 ||
@@ -270,58 +280,70 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         status: "CONNECTING",
+        provider,
+        mode,
+        instance_name: targetInstance,
+        phone_number: null,
         base64,
         code,
         tenant_slug: tenantSlug,
-        instance: tenantSlug,
         reloaded: true,
       });
     }
 
-    // ── FLOW 2: REGULAR CHECK ─────────────────────────────────────────────────
-    // Cek status koneksi: prioritaskan per-tenant, fallback ke boontrack-gateway jika open
-    const resolved = await resolveConnectedInstance(tenantSlug);
+    // ── 4. REGULAR FLOW: KONEKSI SUDAH OPEN ─────────────────────────────────────
+    if (isConnected) {
+      const info = await fetchInstanceInfo(activeInstanceName);
+      const resolvedPhone =
+        registryConfig.phone_number ||
+        cleanPhoneJid(info?.ownerJid || stateCheck.data?.instance?.ownerJid) ||
+        "6281237450222";
 
-    if (resolved.state === "open" || resolved.state === "CONNECTED") {
       return NextResponse.json({
         success: true,
-        tenant_slug: tenantSlug,
-        instance: resolved.instanceName,
         status: "CONNECTED",
+        provider,
+        mode,
+        instance_name: activeInstanceName,
+        phone_number: resolvedPhone,
+        tenant_slug: tenantSlug,
+        connected_phone: resolvedPhone,
         base64: null,
         code: null,
-        connected_phone: resolved.ownerJid,
       });
     }
 
-    // Instance per-tenant tidak ditemukan (404) — buat instance baru
-    if (resolved.httpStatus === 404) {
-      console.log(`[WhatsAppConnect] Instance ${tenantSlug} not found (404), creating fresh instance...`);
-      await createInstance(tenantSlug);
+    // ── 5. REGULAR FLOW: INSTANCE BELUM OPEN (AMBIL QR CODE / CONNECT TOKEN) ────
+    if (stateCheck.status === 404) {
+      console.log(`[WhatsAppConnect] Instance ${targetInstance} not found (404), creating fresh instance...`);
+      await createInstance(targetInstance);
     }
 
-    // Ambil QR code / connect token
-    let connectResult = await fetchConnect(tenantSlug);
-
-    // Coba create dan connect ulang jika connectResult 404
+    let connectResult = await fetchConnect(targetInstance);
     if (connectResult.status === 404) {
-      await createInstance(tenantSlug);
-      connectResult = await fetchConnect(tenantSlug);
+      await createInstance(targetInstance);
+      connectResult = await fetchConnect(targetInstance);
     }
 
     const { data } = connectResult;
-
-    // Cek apakah respons connect langsung open
     const instanceState = data?.instance?.state || data?.state || data?.status;
     if (instanceState === "open" || instanceState === "CONNECTED") {
+      const resolvedPhone =
+        cleanPhoneJid(data?.instance?.ownerJid || data?.connected_phone) ||
+        registryConfig.phone_number ||
+        "6281237450222";
+
       return NextResponse.json({
         success: true,
-        tenant_slug: tenantSlug,
-        instance: tenantSlug,
         status: "CONNECTED",
+        provider,
+        mode,
+        instance_name: targetInstance,
+        phone_number: resolvedPhone,
+        tenant_slug: tenantSlug,
+        connected_phone: resolvedPhone,
         base64: null,
         code: null,
-        connected_phone: cleanPhoneJid(data?.instance?.ownerJid || data?.connected_phone),
       });
     }
 
@@ -335,16 +357,15 @@ export async function POST(req: NextRequest) {
     const base64 = cleanBase64(rawBase64);
     const code = data?.code || data?.pairingCode || data?.qrcode?.code || null;
 
-    // Jika base64 belum terbit pada status 200, restart instance sekali agar token terbit
     if (!base64 && connectResult.status === 200) {
-      const restartUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/restart/${encodeURIComponent(tenantSlug)}`;
+      const restartUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/restart/${encodeURIComponent(targetInstance)}`;
       await fetch(restartUrl, {
         method: "POST",
         headers: { apikey: EVOLUTION_API_KEY },
       }).catch(() => null);
 
       await new Promise((resolve) => setTimeout(resolve, 800));
-      const retryConn = await fetchConnect(tenantSlug);
+      const retryConn = await fetchConnect(targetInstance);
       const retryBase64 = cleanBase64(
         retryConn.data?.base64 || retryConn.data?.qrcode?.base64
       );
@@ -352,10 +373,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           success: true,
           status: "CONNECTING",
+          provider,
+          mode,
+          instance_name: targetInstance,
+          phone_number: null,
           base64: retryBase64,
           code: retryConn.data?.code || null,
           tenant_slug: tenantSlug,
-          instance: tenantSlug,
         });
       }
     }
@@ -363,10 +387,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       status: "CONNECTING",
+      provider,
+      mode,
+      instance_name: targetInstance,
+      phone_number: null,
       base64,
       code,
       tenant_slug: tenantSlug,
-      instance: tenantSlug,
     });
   } catch (err: unknown) {
     let msg =

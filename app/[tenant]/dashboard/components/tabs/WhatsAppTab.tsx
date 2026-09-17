@@ -31,6 +31,8 @@ interface WhatsAppTabProps {
   waErrorMessage: string | null;
   connectedPhone: string | null;
   setConnectedPhone: (phone: string | null) => void;
+  waProvider?: 'EVOLUTION' | 'WABA';
+  waConnectionMode?: 'SHARED' | 'DEDICATED';
   pairingPhone?: string;
   setPairingPhone?: (phone: string) => void;
   pairingCodeResult?: string | null;
@@ -67,6 +69,8 @@ export default function WhatsAppTab({
   waErrorMessage,
   connectedPhone,
   setConnectedPhone,
+  waProvider,
+  waConnectionMode,
   pairingPhone,
   setPairingPhone,
   pairingCodeResult,
@@ -140,8 +144,14 @@ export default function WhatsAppTab({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-slate-900">BoonTrack Direct Connect</h3>
-                <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
-                  BoonTrack WhatsApp Engine
+                <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black border ${
+                  waStatus === 'CONNECTED'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-blue-50 text-blue-700 border-blue-200'
+                }`}>
+                  {waStatus === 'CONNECTED'
+                    ? (waConnectionMode === 'SHARED' ? '● Shared Gateway Active' : '● Dedicated Engine Connected')
+                    : 'BoonTrack WhatsApp Engine'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
@@ -331,16 +341,26 @@ export default function WhatsAppTab({
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-black text-emerald-950">WhatsApp Nomor Pribadi / Toko Terhubung Aktif</h4>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-sm font-black text-emerald-950">WhatsApp Terhubung Aktif</h4>
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      CONNECTED
+                      {waConnectionMode === 'SHARED' ? 'Shared Gateway Active' : 'Dedicated Gateway Active'}
                     </span>
+                    {waProvider && (
+                      <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-white text-emerald-700 border border-emerald-200">
+                        {waProvider}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-emerald-800 mt-1 font-medium">
-                    Nomor: <strong className="font-mono text-emerald-950">+{connectedPhone || '6281237450222'}</strong> • Gateway: <strong>BoonTrack WhatsApp Engine</strong>
+                    Nomor: <strong className="font-mono text-emerald-950">+{connectedPhone || '6281237450222'}</strong> • Mode: <strong className="text-emerald-900">{waConnectionMode === 'SHARED' ? 'Shared Gateway Active' : 'Dedicated Instance'}</strong>
                   </p>
+                  {waConnectionMode === 'SHARED' && (
+                    <p className="text-[11px] text-emerald-700 mt-0.5">
+                      Toko Anda terhubung otomatis ke BoonTrack Shared WhatsApp Engine. Siap menerima pesan &amp; notifikasi order real-time.
+                    </p>
+                  )}
                 </div>
               </div>
               <button

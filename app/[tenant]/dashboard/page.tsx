@@ -151,6 +151,8 @@ export default function TenantDashboardPage() {
     setWaMode,
     waStatus,
     setWaStatus,
+    waProvider,
+    waConnectionMode,
     qrCodeUrl,
     setQrCodeUrl,
     isQrLoading,
@@ -791,6 +793,8 @@ export default function TenantDashboardPage() {
               setWaMode={setWaMode}
               waStatus={waStatus}
               setWaStatus={setWaStatus}
+              waProvider={waProvider}
+              waConnectionMode={waConnectionMode}
               qrCodeUrl={qrCodeUrl}
               setQrCodeUrl={setQrCodeUrl}
               isQrLoading={isQrLoading}

@@ -209,6 +209,8 @@ export function useTenantDashboard() {
   const [waStatus, setWaStatus] = useState<'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'DEGRADED'>('DISCONNECTED');
   const [waErrorMessage, setWaErrorMessage] = useState<string | null>(null);
   const [connectedPhone, setConnectedPhone] = useState<string | null>(null);
+  const [waProvider, setWaProvider] = useState<'EVOLUTION' | 'WABA'>('EVOLUTION');
+  const [waConnectionMode, setWaConnectionMode] = useState<'SHARED' | 'DEDICATED'>('SHARED');
 
   // Pairing Code
   const [pairingPhone, setPairingPhone] = useState('');
@@ -1414,9 +1416,12 @@ export function useTenantDashboard() {
       });
       const data = await res.json().catch(() => ({}));
 
+      if (data.provider) setWaProvider(data.provider);
+      if (data.mode) setWaConnectionMode(data.mode);
+
       if (data.status === 'CONNECTED' || data.connected) {
         setWaStatus('CONNECTED');
-        setConnectedPhone(data.connected_phone || data.phone_number || null);
+        setConnectedPhone(data.phone_number || data.connected_phone || null);
         setQrCodeUrl(null);
         setWaErrorMessage(null);
       } else {
@@ -1628,6 +1633,10 @@ export function useTenantDashboard() {
     setWaMode,
     waStatus,
     setWaStatus,
+    waProvider,
+    setWaProvider,
+    waConnectionMode,
+    setWaConnectionMode,
     qrCodeUrl,
     setQrCodeUrl,
     isQrLoading,
