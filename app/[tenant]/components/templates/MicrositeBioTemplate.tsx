@@ -493,12 +493,18 @@ export default function MicrositeBioTemplate({
                   </div>
                 </div>
 
-                {Boolean((item as any).external_url || (item as any).metadata?.external_url) ? (
+                {Boolean(
+                  (item as any).checkout_type === 'external' ||
+                  (item as any).external_url ||
+                  (item as any).metadata?.external_url ||
+                  (item as any).metadata?.checkout_type === 'external'
+                ) && ((item as any).external_url || (item as any).metadata?.external_url) ? (
                   <a
                     href={(item as any).external_url || (item as any).metadata?.external_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
                         (window as any).fbq("track", "InitiateCheckout", {
                           content_name: (item as any).title || item.name,
@@ -508,12 +514,15 @@ export default function MicrositeBioTemplate({
                           currency: "IDR"
                         });
                       }
-                      onOutboundClick?.((item as any).external_url || (item as any).metadata?.external_url, (item as any).cta_label || 'Beli');
+                      onOutboundClick?.(
+                        (item as any).external_url || (item as any).metadata?.external_url,
+                        (item as any).cta_label || (item as any).metadata?.cta_label || (Number(item.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang')
+                      );
                     }}
                     className="rounded-full px-4 py-2 bg-purple-500/80 hover:bg-purple-600 backdrop-blur-md border border-purple-300 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
                   >
                     <ExternalLink className="w-3 h-3" />
-                    <span>{(item as any).cta_label || (item as any).metadata?.cta_label || 'Beli'}</span>
+                    <span>{(item as any).cta_label || (item as any).metadata?.cta_label || (Number(item.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang')}</span>
                   </a>
                 ) : (
                   <button

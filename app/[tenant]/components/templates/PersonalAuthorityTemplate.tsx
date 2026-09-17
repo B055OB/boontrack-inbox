@@ -413,12 +413,18 @@ export default function PersonalAuthorityTemplate({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {Boolean(mainProduct.external_url || (mainProduct as any).metadata?.external_url) ? (
+                    {Boolean(
+                      mainProduct.checkout_type === 'external' ||
+                      mainProduct.external_url ||
+                      (mainProduct as any).metadata?.external_url ||
+                      (mainProduct as any).metadata?.checkout_type === 'external'
+                    ) && (mainProduct.external_url || (mainProduct as any).metadata?.external_url) ? (
                       <a
                         href={mainProduct.external_url || (mainProduct as any).metadata?.external_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
                             (window as any).fbq("track", "InitiateCheckout", {
                               content_name: (mainProduct as any).title || mainProduct.name,
@@ -431,7 +437,7 @@ export default function PersonalAuthorityTemplate({
                         }}
                         className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
                       >
-                        <span>{mainProduct.cta_label || (mainProduct as any).metadata?.cta_label || 'Beli Sekarang'}</span>
+                        <span>{mainProduct.cta_label || (mainProduct as any).metadata?.cta_label || (Number(mainProduct.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang')}</span>
                         <ExternalLink className="w-4 h-4" />
                       </a>
                     ) : (
@@ -517,12 +523,18 @@ export default function PersonalAuthorityTemplate({
                           </span>
                         </div>
 
-                        {Boolean(item.external_url || (item as any).metadata?.external_url) ? (
+                        {Boolean(
+                          item.checkout_type === 'external' ||
+                          item.external_url ||
+                          (item as any).metadata?.external_url ||
+                          (item as any).metadata?.checkout_type === 'external'
+                        ) && (item.external_url || (item as any).metadata?.external_url) ? (
                           <a
                             href={item.external_url || (item as any).metadata?.external_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
                                 (window as any).fbq("track", "InitiateCheckout", {
                                   content_name: (item as any).title || item.name,
@@ -535,7 +547,7 @@ export default function PersonalAuthorityTemplate({
                             }}
                             className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
                           >
-                            <span>{item.cta_label || (item as any).metadata?.cta_label || 'Beli'}</span>
+                            <span>{item.cta_label || (item as any).metadata?.cta_label || (Number(item.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang')}</span>
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
                         ) : (
