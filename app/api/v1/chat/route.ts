@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
-import { getTenantCheckoutUrl } from '@/lib/checkout-link';
+import { getTenantCheckoutUrl, getTenantActionUrl } from '@/lib/checkout-link';
 import { processFunnelBookingMessage } from '@/lib/booking-extraction-service';
 import {
   InteractiveMenu,
@@ -68,10 +68,16 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
 
-    const checkoutUrl = getTenantCheckoutUrl(tenantDomainInfo, {
-      id: (product as any).id || (packages[0] as any)?.id,
-      slug: (product as any).slug || (packages[0] as any)?.slug,
-    });
+    const checkoutUrl = getTenantActionUrl(
+      {
+        ...tenantDomainInfo,
+        category,
+      },
+      {
+        id: (product as any).id || (packages[0] as any)?.id,
+        slug: (product as any).slug || (packages[0] as any)?.slug,
+      }
+    );
 
     const interactiveMenus: InteractiveMenu[] = Array.isArray(tenantMetadata.interactive_menus)
       ? tenantMetadata.interactive_menus

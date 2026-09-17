@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { getTenantCheckoutUrl } from '@/lib/checkout-link';
+import { getTenantCheckoutUrl, getTenantActionUrl } from '@/lib/checkout-link';
 import {
   InteractiveMenu,
   findMenuResponseAcrossMenus,
@@ -326,12 +326,17 @@ export class ConversationEngine {
 
         const { data: tenant } = await supabase
           .from('tenants')
-          .select('slug, metadata')
+          .select('slug, category, business_type, metadata')
           .eq('slug', tenant_id)
           .maybeSingle();
 
-        const checkoutUrl = getTenantCheckoutUrl(
-          { slug: tenant_id, custom_domain: tenant?.metadata?.custom_domain || null },
+        const checkoutUrl = getTenantActionUrl(
+          {
+            slug: tenant_id,
+            custom_domain: tenant?.metadata?.custom_domain || null,
+            category: tenant?.category || 'FIELD_SERVICE',
+            business_type: tenant?.business_type,
+          },
           { id: entities.capacity }
         );
         entities.checkout_url = checkoutUrl;

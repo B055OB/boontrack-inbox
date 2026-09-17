@@ -465,7 +465,7 @@ export default function DashboardSidebar({
         {/* Quick Action: Lihat Etalase Toko */}
         <div className="mt-2">
           <Link
-            href={`https://shop.boontrack.com/${tenantSlug}`}
+            href={`https://boontrack.com/${tenantSlug}`}
             target="_blank"
             className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50/70 border border-slate-200/80 text-slate-600 hover:text-indigo-600 text-[11px] font-bold transition group shadow-2xs"
           >

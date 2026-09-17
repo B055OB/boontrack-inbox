@@ -1,5 +1,5 @@
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
-import { getTenantCheckoutUrl } from '@/lib/checkout-link';
+import { getTenantCheckoutUrl, getTenantActionUrl, getTenantBaseUrl } from '@/lib/checkout-link';
 import {
   InteractiveMenu,
   InteractiveMenuOption,
@@ -672,10 +672,24 @@ export async function processZeroAiMessage(
     }
   }
 
-  const checkoutUrl = getTenantCheckoutUrl(
-    { slug: tenant.slug, custom_domain: tenant.metadata?.custom_domain || null },
-    {}
-  );
+  const category = normalizeIndustryCategory(tenant.category || tenant.business_type);
+
+  // Cari produk utama untuk direct deep-link jika ada
+  let primaryProduct: { id?: string | number; slug?: string } | undefined;
+  if (Array.isArray(meta.products) && meta.products.length > 0) {
+    primaryProduct = { id: meta.products[0].id, slug: meta.products[0].slug };
+  } else if (meta.product?.name) {
+    primaryProduct = { id: meta.product.id, slug: meta.product.slug };
+  }
+
+  const tenantDomainInfo = {
+    slug: tenant.slug,
+    custom_domain: tenant.metadata?.custom_domain || null,
+    category,
+    business_type: tenant.business_type,
+  };
+
+  let actionUrl = getTenantActionUrl(tenantDomainInfo, primaryProduct);
 
   // 5. INTENT DISPATCHER (ZERO-TOKEN DETERMINISTIC LOGIC)
 
@@ -702,6 +716,9 @@ export async function processZeroAiMessage(
       .limit(10);
 
     if (dbProducts && dbProducts.length > 0) {
+      primaryProduct = { id: dbProducts[0].id, slug: dbProducts[0].slug };
+      actionUrl = getTenantActionUrl(tenantDomainInfo, primaryProduct);
+
       productLines = dbProducts.map((p: any, idx: number) => {
         const priceNum = Number(p.promo_price || p.price || 0);
         const priceStr = `Rp ${priceNum.toLocaleString('id-ID')}`;
@@ -721,17 +738,88 @@ export async function processZeroAiMessage(
 
     let replyText = '';
     if (productLines.length > 0) {
-      replyText =
-        `🛍️ *DAFTAR KATALOG RESMI ${storeName.toUpperCase()}*\n\n` +
-        productLines.join('\n\n') +
-        `\n\n👉 *Pemesanan & Checkout Otomatis Langsung di:*\n${checkoutUrl}\n\n` +
-        `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      if (category === 'PROFESSIONAL_SERVICE') {
+        replyText =
+          `📋 *DAFTAR PAKET & TARIF LAYANAN ${storeName.toUpperCase()}*\n\n` +
+          productLines.join('\n\n') +
+          `\n\n👉 *Jadwalkan Konsultasi / Brief Layanan di:*\n${actionUrl}\n` +
+          `_Silakan pilih sesi jadwal konsultasi atau kirimkan ringkasan kebutuhan proyek Anda._\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else if (category === 'FIELD_SERVICE') {
+        replyText =
+          `🛠️ *DAFTAR LAYANAN & ESTIMASI BIAYA ${storeName.toUpperCase()}*\n\n` +
+          productLines.join('\n\n') +
+          `\n\n👉 *Booking Kunjungan Teknisi di:*\n${actionUrl}\n` +
+          `_Pilih slot waktu pengerjaan dan konfirmasi alamat lokasi servis Anda._\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else if (category === 'CREATOR_AGENCY') {
+        replyText =
+          `📊 *RATE CARD & PAKET KERJASAMA ${storeName.toUpperCase()}*\n\n` +
+          productLines.join('\n\n') +
+          `\n\n👉 *Lihat Paket & Ajukan Brief di:*\n${actionUrl}\n` +
+          `_Tersedia paket endorse, live streaming, dan kampanye konten._\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else if (category === 'FOOD') {
+        replyText =
+          `🍽️ *DAFTAR MENU KULINER ${storeName.toUpperCase()}*\n\n` +
+          productLines.join('\n\n') +
+          `\n\n👉 *Pesan Menu Antar / Takeaway di:*\n${actionUrl}\n` +
+          `_Pesanan diproses langsung oleh dapur kami._\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else if (category === 'DIGITAL') {
+        replyText =
+          `⚡ *KATALOG PRODUK DIGITAL & KURSUS ${storeName.toUpperCase()}*\n\n` +
+          productLines.join('\n\n') +
+          `\n\n👉 *Beli & Dapatkan Akses Instan di:*\n${actionUrl}\n` +
+          `_Akses download materi & lisensi terkirim otomatis tanpa ongkir._\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else {
+        replyText =
+          `🛍️ *DAFTAR KATALOG RESMI ${storeName.toUpperCase()}*\n\n` +
+          productLines.join('\n\n') +
+          `\n\n👉 *Pemesanan & Checkout Otomatis Langsung di:*\n${actionUrl}\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      }
     } else {
-      replyText =
-        `🛍️ *KATALOG ${storeName.toUpperCase()}*\n\n` +
-        `Katalog produk dan paket resmi kami dapat langsung diakses melalui tautan etalase:\n\n` +
-        `👉 ${checkoutUrl}\n\n` +
-        `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      if (category === 'PROFESSIONAL_SERVICE') {
+        replyText =
+          `📋 *LAYANAN & KONSULTASI ${storeName.toUpperCase()}*\n\n` +
+          `Katalog paket konsultasi dan solusi resmi kami dapat langsung diakses melalui tautan etalase:\n\n` +
+          `👉 ${actionUrl}\n\n` +
+          `_Silakan tentukan jadwal sesi atau sampaikan brief kebutuhan Anda._\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else if (category === 'FIELD_SERVICE') {
+        replyText =
+          `🛠️ *PUSAT LAYANAN SERVIS ${storeName.toUpperCase()}*\n\n` +
+          `Katalog paket pengerjaan dan booking teknisi dapat langsung diakses melalui:\n\n` +
+          `👉 ${actionUrl}\n\n` +
+          `_Tentukan slot waktu kunjungan dan alamat servis Anda._\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else if (category === 'CREATOR_AGENCY') {
+        replyText =
+          `📊 *RATE CARD & MEDIA KIT ${storeName.toUpperCase()}*\n\n` +
+          `Paket rate card dan portofolio talent dapat langsung diakses melalui tautan etalase:\n\n` +
+          `👉 ${actionUrl}\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else if (category === 'FOOD') {
+        replyText =
+          `🍽️ *MENU RESMI ${storeName.toUpperCase()}*\n\n` +
+          `Daftar menu sajian dan opsi pemesanan dapat langsung diakses melalui tautan etalase:\n\n` +
+          `👉 ${actionUrl}\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else if (category === 'DIGITAL') {
+        replyText =
+          `⚡ *KATALOG DIGITAL ${storeName.toUpperCase()}*\n\n` +
+          `Katalog lisensi dan produk digital kami dapat langsung diakses melalui tautan etalase:\n\n` +
+          `👉 ${actionUrl}\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      } else {
+        replyText =
+          `🛍️ *KATALOG ${storeName.toUpperCase()}*\n\n` +
+          `Katalog produk dan paket resmi kami dapat langsung diakses melalui tautan etalase:\n\n` +
+          `👉 ${actionUrl}\n\n` +
+          `_Ketik *menu* untuk kembali ke pilihan utama._`;
+      }
     }
 
     return sendResult({
@@ -756,51 +844,78 @@ export async function processZeroAiMessage(
     cleanMsg.includes('audit')
   ) {
     const customHowTo = meta.policies?.how_to_order || meta.how_to_order;
-    const category = normalizeIndustryCategory(tenant.category || tenant.business_type);
 
     let guideText = customHowTo;
     if (!guideText) {
-      if (category === 'DIGITAL') {
+      if (category === 'PROFESSIONAL_SERVICE') {
         guideText =
-          `1. Buka link produk: ${checkoutUrl}\n` +
-          `2. Masukkan nama & email aktif Anda.\n` +
-          `3. Selesaikan pembayaran instan melalui QRIS.\n` +
-          `4. Kredensial & link download langsung terkirim otomatis ke email & WhatsApp Anda.`;
-      } else if (category === 'FOOD') {
-        guideText =
-          `1. Pilih hidangan favorit pada menu kami.\n` +
-          `2. Konfirmasi pesanan antar atau takeaway ke kasir.\n` +
-          `3. Bayar praktis menggunakan QRIS atau Transfer Bank.\n` +
-          `4. Makanan diproses langsung oleh dapur kami dan siap diantar/diambil.`;
+          `1. Pilih paket konsultasi atau audit profesional di etalase resmi: ${actionUrl}\n` +
+          `2. Tentukan jadwal sesi konsultasi atau kirimkan ringkasan kebutuhan / brief proyek Anda.\n` +
+          `3. Konsultan kami akan mengonfirmasi jadwal pertemuan (1-on-1 meeting) & proposal kerja sama.\n` +
+          `4. Invoice komitmen / retainer diterbitkan resmi sesuai kesepakatan (tanpa add-to-cart retail).`;
       } else if (category === 'FIELD_SERVICE') {
         guideText =
-          `1. Tentukan jenis layanan servis yang Anda butuhkan.\n` +
-          `2. Kirimkan alamat lengkap & jadwal kunjungan teknisi.\n` +
-          `3. Teknisi kami akan datang tepat waktu sesuai konfirmasi.\n` +
-          `4. Pembayaran dilakukan setelah pengerjaan selesai & teruji.`;
-      } else if (category === 'PROFESSIONAL_SERVICE') {
+          `1. Tentukan jenis layanan servis yang Anda butuhkan di etalase: ${actionUrl}\n` +
+          `2. Tentukan jadwal slot waktu kunjungan dan kirimkan alamat lengkap lokasi servis.\n` +
+          `3. Teknisi kami akan datang tepat waktu sesuai konfirmasi jadwal.\n` +
+          `4. Pembayaran dilakukan setelah pengerjaan tuntas & teruji di tempat.`;
+      } else if (category === 'CREATOR_AGENCY') {
         guideText =
-          `1. Pilih paket konsultasi atau audit profesional yang Anda butuhkan di: ${checkoutUrl}\n` +
-          `2. Tentukan jadwal sesi konsultasi atau kirimkan ringkasan kebutuhan / brief proyek Anda.\n` +
-          `3. Konsultan kami akan mengonfirmasi jadwal & proposal kerja sama.\n` +
-          `4. Pembayaran komitmen / invoice diterbitkan resmi sesuai kesepakatan.`;
+          `1. Pilih paket kerjasama atau rate card di etalase: ${actionUrl}\n` +
+          `2. Kirimkan brief kreatif, durasi kampanye, atau sampel produk Anda.\n` +
+          `3. Manajer talent kami akan mereview kesesuaian dan mengonfirmasi jadwal penayangan/live.\n` +
+          `4. Pelunasan DP/termin dilakukan resmi sebelum produksi konten dimulai.`;
+      } else if (category === 'FOOD') {
+        guideText =
+          `1. Pilih hidangan favorit pada menu kami di etalase: ${actionUrl}\n` +
+          `2. Konfirmasi pesanan antar (delivery kurir instan) atau ambil di tempat (takeaway).\n` +
+          `3. Bayar praktis menggunakan QRIS atau Transfer Bank.\n` +
+          `4. Makanan diproses langsung oleh dapur kami dan siap diantar/diambil.`;
+      } else if (category === 'DIGITAL') {
+        guideText =
+          `1. Buka link produk: ${actionUrl}\n` +
+          `2. Masukkan nama & email aktif Anda.\n` +
+          `3. Selesaikan pembayaran instan melalui QRIS.\n` +
+          `4. Kredensial & link download langsung terkirim otomatis ke email & WhatsApp Anda (tanpa form ongkir).`;
       } else {
         guideText =
-          `1. Pilih produk unggulan di etalase resmi kami: ${checkoutUrl}\n` +
+          `1. Pilih produk unggulan di etalase resmi kami: ${actionUrl}\n` +
           `2. Klik *Beli Sekarang* dan isi data alamat pengiriman.\n` +
           `3. Bayar secara instan via QRIS (BCA, DANA, GoPay, OVO, ShopeePay).\n` +
           `4. Pesanan segera dikemas & nomor resi akan dikirim otomatis ke WhatsApp ini.`;
       }
     }
 
-    const isPro = category === 'PROFESSIONAL_SERVICE';
-    const titleHeader = isPro ? 'PANDUAN KONSULTASI & JADWAL' : 'PANDUAN PEMESANAN';
-    const ctaHeader = isPro ? 'Jadwalkan Konsultasi Anda' : 'Mulai Pesanan Anda';
+    const titleHeader =
+      category === 'PROFESSIONAL_SERVICE'
+        ? 'PANDUAN KONSULTASI & JADWAL'
+        : category === 'FIELD_SERVICE'
+        ? 'PANDUAN BOOKING TEKNISI'
+        : category === 'CREATOR_AGENCY'
+        ? 'ALUR KERJASAMA & BRIEF'
+        : category === 'FOOD'
+        ? 'PANDUAN PEMESANAN KULINER'
+        : category === 'DIGITAL'
+        ? 'PANDUAN PEMBELIAN DIGITAL'
+        : 'PANDUAN PEMESANAN';
+
+    const ctaHeader =
+      category === 'PROFESSIONAL_SERVICE'
+        ? 'Jadwalkan Sesi Konsultasi Anda'
+        : category === 'FIELD_SERVICE'
+        ? 'Booking Jadwal Servis Anda'
+        : category === 'CREATOR_AGENCY'
+        ? 'Ajukan Kerjasama / Brief'
+        : category === 'FOOD'
+        ? 'Pesan Menu Favorit'
+        : category === 'DIGITAL'
+        ? 'Dapatkan Akses Instan'
+        : 'Mulai Pesanan Anda';
 
     const replyText =
       `📋 *${titleHeader} ${storeName.toUpperCase()}*\n\n` +
       `${guideText}\n\n` +
-      `👉 *${ctaHeader}:* ${checkoutUrl}\n\n` +
+      `👉 *${ctaHeader}:* ${actionUrl}\n\n` +
       `_Ketik *menu* untuk kembali ke pilihan utama._`;
 
     return sendResult({
@@ -894,16 +1009,60 @@ export async function processZeroAiMessage(
     const accountNum = bankConfig.account || bankConfig.account_number || '-';
     const accountHolder = bankConfig.holder || bankConfig.account_holder || storeName;
 
+    let paymentMethodDescription = '';
+    let actionPaymentCta = '';
+
+    if (category === 'PROFESSIONAL_SERVICE') {
+      paymentMethodDescription =
+        `Kami mendukung sistem pembayaran termin / retainer kontrak kerja resmi:\n\n` +
+        `1️⃣ *Transfer Bank Resmi:*\n` +
+        `   • Bank: *${bankName}*\n` +
+        `   • No. Rekening: \`${accountNum}\`\n` +
+        `   • Atas Nama: *${accountHolder}*\n\n` +
+        `2️⃣ *QRIS Dinamis Per Milestone / Sesi:*\n` +
+        `   Diterbitkan langsung sesuai nilai invoice kesepakatan bersama.`;
+      actionPaymentCta =
+        `👉 *Konsultasikan Jadwal & Penawaran:*\n${actionUrl}\n` +
+        `_Invoice resmi diterbitkan setelah jadwal atau brief proyek disepakati bersama._`;
+    } else if (category === 'FIELD_SERVICE') {
+      paymentMethodDescription =
+        `Pembayaran jasa teknisi dilakukan setelah pengerjaan selesai di lokasi:\n\n` +
+        `1️⃣ *Bayar di Tempat (Tunai / QRIS Teknisi)*\n` +
+        `   Bayar setelah hasil pengerjaan dicek dan teruji tuntas.\n\n` +
+        `2️⃣ *Transfer Bank Rekening Resmi:*\n` +
+        `   • Bank: *${bankName}*\n` +
+        `   • No. Rekening: \`${accountNum}\`\n` +
+        `   • Atas Nama: *${accountHolder}*`;
+      actionPaymentCta =
+        `👉 *Booking Servis & Jadwal Teknisi:*\n${actionUrl}\n` +
+        `_Pilih jadwal kedatangan tanpa kewajiban bayar di muka._`;
+    } else if (category === 'CREATOR_AGENCY') {
+      paymentMethodDescription =
+        `Pembayaran paket endorsement dan kampanye konten:\n\n` +
+        `1️⃣ *Termin / DP Resmi:*\n` +
+        `   • Bank: *${bankName}*\n` +
+        `   • No. Rekening: \`${accountNum}\`\n` +
+        `   • Atas Nama: *${accountHolder}*\n\n` +
+        `2️⃣ *QRIS Dinamis Instan (Support BCA, DANA, GoPay, OVO, ShopeePay)*`;
+      actionPaymentCta =
+        `👉 *Pilih Paket & Kirimkan Brief:*\n${actionUrl}\n` +
+        `_Invoice DP diterbitkan resmi setelah brief materi disetujui._`;
+    } else {
+      paymentMethodDescription =
+        `Kami mendukung metode pembayaran otomatis & terverifikasi:\n\n` +
+        `1️⃣ *QRIS Dinamis 3 Detik (Rekomendasi)*\n` +
+        `   Mendukung: BCA, Mandiri, BRI, BNI, DANA, GoPay, OVO, ShopeePay.\n\n` +
+        `2️⃣ *Transfer Bank Manual:*\n` +
+        `   • Bank: *${bankName}*\n` +
+        `   • No. Rekening: \`${accountNum}\`\n` +
+        `   • Atas Nama: *${accountHolder}*`;
+      actionPaymentCta = `👉 *Checkout & Terbitkan QRIS Otomatis:* ${actionUrl}`;
+    }
+
     const replyText =
       `💳 *INFORMASI PEMBAYARAN RESMI ${storeName.toUpperCase()}*\n\n` +
-      `Kami mendukung metode pembayaran otomatis & terverifikasi:\n\n` +
-      `1️⃣ *QRIS Dinamis 3 Detik (Rekomendasi)*\n` +
-      `   Mendukung: BCA, Mandiri, BRI, BNI, DANA, GoPay, OVO, ShopeePay.\n\n` +
-      `2️⃣ *Transfer Bank Manual:*\n` +
-      `   • Bank: *${bankName}*\n` +
-      `   • No. Rekening: \`${accountNum}\`\n` +
-      `   • Atas Nama: *${accountHolder}*\n\n` +
-      `👉 *Checkout & Terbitkan QRIS Otomatis:* ${checkoutUrl}\n\n` +
+      `${paymentMethodDescription}\n\n` +
+      `${actionPaymentCta}\n\n` +
       `_Ketik *menu* untuk kembali ke pilihan utama._`;
 
     return sendResult({
@@ -1039,13 +1198,24 @@ export async function processZeroAiMessage(
         ? 'KONSULTAN'
         : category === 'FIELD_SERVICE'
         ? 'TIM TEKNISI'
+        : category === 'CREATOR_AGENCY'
+        ? 'MANAJER TALENT'
         : category === 'FOOD'
         ? 'KASIR'
         : 'TIM CUSTOMER CARE';
 
+    const rolePerson =
+      category === 'PROFESSIONAL_SERVICE'
+        ? 'konsultan'
+        : category === 'FIELD_SERVICE'
+        ? 'tim teknisi'
+        : category === 'CREATOR_AGENCY'
+        ? 'manajer talent'
+        : 'petugas';
+
     const replyText =
       `👋 *MENGHUBUNGKAN KE ${roleLabel} ${storeName.toUpperCase()}*\n\n` +
-      `Pesan Anda telah diteruskan ke ${category === 'PROFESSIONAL_SERVICE' ? 'konsultan' : 'petugas'} kami. Asisten otomatis telah dijeda agar Anda dapat berkomunikasi langsung secara personal.\n\n` +
+      `Pesan Anda telah diteruskan ke ${rolePerson} kami. Asisten otomatis telah dijeda agar Anda dapat berkomunikasi langsung secara personal.\n\n` +
       `Silakan sampaikan pertanyaan atau kendala Anda di sini, tim kami akan membalas segera.\n\n` +
       `_(Ketik *menu* kapan saja untuk mengaktifkan kembali bot asisten)_`;
 
