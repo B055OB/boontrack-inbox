@@ -39,15 +39,40 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { sanitizeImageUrl } from "@/lib/image-utils";
 import { getIndustryQuickReplies } from "@/lib/zero-ai-engine";
 
-function StoreProductImage({ src, alt, className }: { src?: string; alt: string; className?: string }) {
+function StoreProductImage({
+  src,
+  alt,
+  className
+}: {
+  src?: string;
+  alt: string;
+  className?: string;
+}) {
   const [error, setError] = useState(false);
   const safeSrc = sanitizeImageUrl(src);
+  const isFallback = !safeSrc || error || safeSrc === "/logo-shop.png" || safeSrc === "null" || safeSrc === "undefined";
 
-  if (!safeSrc || error) {
+  if (isFallback) {
+    const isSmall = Boolean(className?.includes("w-12") || className?.includes("w-14") || className?.includes("w-10") || className?.includes("w-8") || className?.includes("w-16"));
+    if (isSmall) {
+      return (
+        <div className={`${className || "w-14 h-14"} bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 flex items-center justify-center p-2 rounded-xl shrink-0`}>
+          <img
+            src="/logo.png"
+            alt="BoonTrack Shop"
+            className="object-contain max-h-7 w-auto drop-shadow-xs"
+          />
+        </div>
+      );
+    }
+
     return (
-      <div className={`${className || 'w-full h-full'} bg-slate-100 border border-slate-200 flex flex-col items-center justify-center text-slate-400 p-2`}>
-        <Package className="w-8 h-8 text-slate-400 mb-1" />
-        <span className="text-[10px] font-bold text-slate-400 text-center">BoonTrack Official</span>
+      <div className={`w-full ${className?.includes('h-56') ? 'h-56' : 'h-48'} bg-gradient-to-br from-slate-50 to-slate-100 border-b border-slate-100 flex items-center justify-center p-6`}>
+        <img
+          src="/logo.png"
+          alt="BoonTrack Shop"
+          className="object-contain max-h-16 w-auto drop-shadow-sm"
+        />
       </div>
     );
   }
@@ -57,7 +82,7 @@ function StoreProductImage({ src, alt, className }: { src?: string; alt: string;
       src={safeSrc}
       alt={alt}
       onError={() => setError(true)}
-      className={className || "w-full h-full object-cover"}
+      className={className || "w-full h-48 object-cover"}
     />
   );
 }
@@ -69,6 +94,7 @@ export interface Product {
   price: number;
   originalPrice?: number;
   image: string;
+  image_url?: string;
   description: string;
   badge?: string;
   promo?: string;
@@ -100,6 +126,7 @@ export interface StoreChatMessage {
     price: number;
     originalPrice?: number;
     image?: string;
+    image_url?: string;
     description?: string;
     badge?: string;
     modules?: string[];
@@ -222,7 +249,8 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
       category: "Fisik",
       type: "physical",
       price: 0,
-      image: "/logo-shop.png",
+      image: "",
+      image_url: "",
       description: "",
       stock: 999,
       sku: `SKU-${idx + 1}`
@@ -241,6 +269,11 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     typeof p.custom_badge === "string" ? p.custom_badge : undefined
   );
 
+  const rawImg = p.image_url || p.image || (Array.isArray(p.images) && p.images[0]) || "";
+  const sanitizedImg = (rawImg === "/logo-shop.png" || rawImg === "null" || rawImg === "undefined")
+    ? ""
+    : (sanitizeImageUrl(rawImg) || "");
+
   return {
     id: p.id !== undefined && p.id !== null ? p.id : `prod-${idx + 1}`,
     name: p.name || p.title || `Layanan ${idx + 1}`,
@@ -248,7 +281,8 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     type: p.type || (p.product_type === 'PHYSICAL' ? 'physical' : (p.product_type === 'SERVICE' || p.product_type === 'FIELD_SERVICE' ? 'service' : 'digital')),
     price,
     originalPrice,
-    image: sanitizeImageUrl(p.image || (Array.isArray(p.images) && p.images[0]) || "/logo-shop.png"),
+    image: sanitizedImg,
+    image_url: sanitizedImg,
     description: typeof p.description === "string" ? p.description : "",
     badge: categoryBadge,
     promo: typeof p.promo === "string" ? p.promo : "",
@@ -1181,8 +1215,12 @@ export default function TenantStorefrontPage() {
                   className="bg-white rounded-3xl border border-slate-200/90 p-4 shadow-sm hover:shadow-md hover:border-blue-300 transition-all flex flex-col justify-between cursor-pointer group"
                 >
                   <div>
-                    <div className="relative aspect-video rounded-2xl overflow-hidden mb-3 bg-slate-100">
-                      <StoreProductImage src={p?.image} alt={p?.name || "Layanan"} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <div className="relative rounded-2xl overflow-hidden mb-3 bg-slate-50 border border-slate-100">
+                      <StoreProductImage
+                        src={p?.image_url || p?.image}
+                        alt={p?.name || "Layanan"}
+                        className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
                       {p?.badge && (
                         <span className="absolute top-2.5 left-2.5 bg-white/95 backdrop-blur-xs text-blue-700 border border-slate-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xs">
                           {p.badge}
@@ -1293,7 +1331,7 @@ export default function TenantStorefrontPage() {
                         <div className="mt-3 bg-slate-50 border border-slate-200/90 rounded-2xl p-3 text-slate-900 space-y-2.5">
                           <div className="flex items-start gap-3">
                             <StoreProductImage
-                              src={msg.product.image || "/logo-shop.png"}
+                              src={msg.product.image_url || msg.product.image}
                               alt={msg.product.name}
                               className="w-14 h-14 object-cover rounded-xl shrink-0 border border-slate-200"
                             />
@@ -1390,7 +1428,7 @@ export default function TenantStorefrontPage() {
                                       category: msg.product.category || "service",
                                       price: msg.product.price,
                                       originalPrice: msg.product.originalPrice,
-                                      image: msg.product.image || "/logo-shop.png",
+                                      image: msg.product.image_url || msg.product.image || "",
                                       description: msg.product.description || "",
                                       badge: msg.product.badge
                                     });
@@ -1482,7 +1520,13 @@ export default function TenantStorefrontPage() {
             <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
               <X className="w-5 h-5" />
             </button>
-            <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full aspect-video object-cover rounded-2xl" />
+            <div className="rounded-2xl overflow-hidden border border-slate-100">
+              <StoreProductImage
+                src={selectedProduct.image_url || selectedProduct.image}
+                alt={selectedProduct.name}
+                className="w-full h-56 object-cover"
+              />
+            </div>
             <div>
               <h2 className="text-lg font-black text-slate-900">{selectedProduct.name}</h2>
               <div className="mt-1 flex items-baseline gap-2">
@@ -1689,7 +1733,7 @@ export default function TenantStorefrontPage() {
                             <div className="mt-2.5 bg-slate-50 border border-slate-200/90 rounded-2xl p-2.5 text-slate-900 space-y-2">
                               <div className="flex items-start gap-2.5">
                                 <StoreProductImage
-                                  src={msg.product.image || "/logo-shop.png"}
+                                  src={msg.product.image_url || msg.product.image}
                                   alt={msg.product.name}
                                   className="w-12 h-12 object-cover rounded-xl shrink-0 border border-slate-200"
                                 />
@@ -1779,7 +1823,7 @@ export default function TenantStorefrontPage() {
                                           category: msg.product.category || "service",
                                           price: msg.product.price,
                                           originalPrice: msg.product.originalPrice,
-                                          image: msg.product.image || "/logo-shop.png",
+                                          image: msg.product.image_url || msg.product.image || "",
                                           description: msg.product.description || "",
                                           badge: msg.product.badge
                                         });

@@ -32,6 +32,10 @@ const FAQS: FaqItem[] = [
   {
     question: 'Apakah ada masa percobaan gratis sebelum berlangganan?',
     answer: 'Tentu. Anda bisa mencoba seluruh fitur unggulan BoonTrack Shop secara gratis selama 7 hari tanpa komitmen kartu kredit. Anda dapat langsung menguji coba etalase instan, integrasi WhatsApp, pelacakan CAPI, dan otomasi pembayaran detik ini juga.'
+  },
+  {
+    question: 'Bagaimana jika saya memerlukan bantuan konfigurasi teknis CAPI, Reader APK, atau toko?',
+    answer: 'Tim teknis kami siap memandu Anda melalui sesi onboarding dan email resmi support@boontrack.com.'
   }
 ];
 

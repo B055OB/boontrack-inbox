@@ -701,7 +701,7 @@ export default function ShopLandingPage() {
             <div className="bg-white border border-slate-200 p-4 rounded-2xl">
               <h4 className="font-bold text-slate-900 text-sm mb-1">Bagaimana jika saya memerlukan bantuan konfigurasi teknis CAPI atau WABA?</h4>
               <p className="text-slate-600 leading-relaxed">
-                Tim teknis kami siap memandu Anda melalui WhatsApp Customer Care di <strong>+62 812-3745-0222</strong> atau email <strong>support@boontrack.com</strong>.
+                Tim teknis kami siap memandu Anda melalui sesi onboarding dan email resmi <strong>support@boontrack.com</strong>.
               </p>
             </div>
           </div>

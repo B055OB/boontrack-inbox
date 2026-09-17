@@ -29,12 +29,20 @@ export default function Navbar({ referralCode, onOpenDemo }: NavbarProps) {
       <header className="sticky top-[37px] z-40 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur-md transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
           {/* Logo Resmi BoonTrack Shop */}
-          <Link href="/" className="flex items-center gap-3 group cursor-pointer">
+          <Link href="/" className="flex items-center gap-2.5 group cursor-pointer">
             <img
-              src="/logo-shop.png"
-              alt="BoonTrack Shop Logo"
-              className="h-9 sm:h-10 w-auto object-contain group-hover:scale-105 transition-transform duration-200"
+              src="/logo.png"
+              alt="BoonTrack Shop"
+              className="w-9 h-9 rounded-xl object-contain shadow-sm group-hover:scale-105 transition-transform"
             />
+            <div>
+              <span className="font-black text-lg tracking-tight text-slate-900 block leading-tight">
+                BoonTrack <span className="text-blue-600 font-bold text-sm">Shop</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-semibold block uppercase tracking-wider">
+                Commerce Engine
+              </span>
+            </div>
           </Link>
 
           {/* Desktop Nav Links */}
