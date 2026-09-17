@@ -206,14 +206,17 @@ function SingleProductContent() {
               whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || tenantRow?.metadata?.whatsapp_number || getTenantWhatsApp(tenant),
             };
 
+            const rawPrice = match.price !== undefined && match.price !== null ? Number(match.price) : (ob.price !== undefined && ob.price !== null ? Number(ob.price) : 0);
+            const rawPromoPrice = match.promo_price !== undefined && match.promo_price !== null ? Number(match.promo_price) : (ob.promo_price !== undefined && ob.promo_price !== null ? Number(ob.promo_price) : rawPrice);
+
             const dynamicProduct: ProductItem = {
               id: match.id || Date.now(),
               name: dynamicConfig.headline || match.title || match.name || 'Produk Eksklusif',
               slug: match.slug || slug,
               category: match.category || (match.product_type === 'PHYSICAL' ? 'Fisik' : match.product_type === 'SERVICE' ? 'Jasa' : 'Digital'),
               product_type: match.product_type || (match.category?.toLowerCase() === 'fisik' || match.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (match.category?.toLowerCase() === 'jasa' || match.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
-              price: Number(match.price ?? ob.price ?? 1000),
-              promo_price: Number(match.promo_price ?? ob.promo_price ?? match.price ?? 1000),
+              price: rawPrice,
+              promo_price: rawPromoPrice,
               variants: match.variants || 'Format Digital • Akses Instan',
               promo: dynamicConfig.badge_text,
               description: dynamicConfig.subheadline,
@@ -225,6 +228,10 @@ function SingleProductContent() {
               weight_grams: match.weight_grams,
               fulfillment_metadata: match.fulfillment_metadata,
               single_page_config: dynamicConfig,
+              checkout_type: match.checkout_type || match.metadata?.checkout_type || (match.external_url || match.metadata?.external_url ? 'external' : 'internal'),
+              external_url: match.external_url || match.metadata?.external_url || match.metadata?.link_external || '',
+              cta_label: match.cta_label || match.metadata?.cta_label || '',
+              metadata: match.metadata,
             };
 
             setResolvedData({
@@ -243,6 +250,22 @@ function SingleProductContent() {
 
   const product = resolvedData.product;
   const config = resolvedData.config;
+
+  const isAffiliateProduct = Boolean(
+    product.checkout_type === 'external' ||
+    product.external_url ||
+    product.metadata?.external_url ||
+    (product as any)?.metadata?.link_external
+  );
+  const externalAffiliateUrl =
+    product.external_url ||
+    product.metadata?.external_url ||
+    (product as any)?.metadata?.link_external ||
+    '';
+  const affiliateCtaLabel =
+    product.cta_label ||
+    product.metadata?.cta_label ||
+    'Beli Sekarang';
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [buyerName, setBuyerName] = useState('');
@@ -389,13 +412,14 @@ function SingleProductContent() {
     return null;
   });
 
-  // Perhitungan Finansial Presisi
-  const basePrice = (product.promo_price && product.promo_price > 0)
+  // Perhitungan Finansial Presisi (Mendukung Harga Rp0 / Freebie)
+  const isFreebie = product.price === 0 || product.promo_price === 0;
+  const basePrice = (product.promo_price !== undefined && product.promo_price !== null && product.promo_price >= 0 && (product.price === undefined || product.promo_price < product.price))
     ? product.promo_price
-    : (product.price && product.price > 0 ? product.price : 1000);
+    : (product.price !== undefined && product.price !== null ? product.price : 0);
   const promoPrice = (product.price && product.price > basePrice)
     ? product.price
-    : (product.promo_price && product.promo_price > 0 ? Math.round(basePrice * 1.5) : (basePrice || 1000));
+    : (product.promo_price && product.promo_price > 0 ? Math.round(basePrice * 1.5) : basePrice);
 
   const handleApplyVoucher = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -580,6 +604,11 @@ function SingleProductContent() {
   const handleOpenCheckout = () => {
     triggerAddToCart();
     triggerInitiateCheckout();
+    if (isAffiliateProduct && externalAffiliateUrl) {
+      trackContactEvent('Affiliate Outbound Click');
+      window.open(externalAffiliateUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     const checkoutEl = document.getElementById('checkout-section');
     if (checkoutEl) {
       checkoutEl.scrollIntoView({ behavior: 'smooth' });
@@ -1186,13 +1215,15 @@ function SingleProductContent() {
           <div className="space-y-3 pt-1">
             <div className="flex items-center gap-2.5 flex-wrap">
               <span className="text-3xl sm:text-4xl font-black text-slate-900">
-                Rp {basePrice.toLocaleString('id-ID')}
+                {basePrice === 0 ? 'GRATIS' : `Rp ${basePrice.toLocaleString('id-ID')}`}
               </span>
-              <span className="text-sm line-through text-slate-400 font-semibold">
-                Rp {promoPrice.toLocaleString('id-ID')}
-              </span>
+              {promoPrice > basePrice && (
+                <span className="text-sm line-through text-slate-400 font-semibold">
+                  Rp {promoPrice.toLocaleString('id-ID')}
+                </span>
+              )}
               <span className="text-xs font-black text-rose-600 bg-rose-50 border border-rose-200/60 px-2.5 py-0.5 rounded-full">
-                Diskon Spesial Hari Ini
+                {basePrice === 0 ? 'Akses Gratis / Freebie' : 'Diskon Spesial Hari Ini'}
               </span>
             </div>
 
@@ -1205,14 +1236,27 @@ function SingleProductContent() {
 
             {/* Quick Action Scroll CTA */}
             <div className="pt-1">
-              <button
-                type="button"
-                onClick={handleOpenCheckout}
-                className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition cursor-pointer text-sm"
-              >
-                <span>Daftar & Ambil Penawaran Sekarang</span>
-                <ArrowDown className="w-4 h-4" />
-              </button>
+              {isAffiliateProduct ? (
+                <a
+                  href={externalAffiliateUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => trackContactEvent('Affiliate Outbound Click')}
+                  className="w-full py-3.5 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 transition cursor-pointer text-sm"
+                >
+                  <span>{affiliateCtaLabel}</span>
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOpenCheckout}
+                  className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition cursor-pointer text-sm"
+                >
+                  <span>{basePrice === 0 ? 'Klaim Akses Gratis Sekarang' : 'Daftar & Ambil Penawaran Sekarang'}</span>
+                  <ArrowDown className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -1448,7 +1492,11 @@ function SingleProductContent() {
           <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
             <div>
               <h2 className="text-base font-black text-slate-900">
-                {isPaid ? 'Status Pemesanan & Akses Layanan' : 'Form Pemesanan & Pembayaran'}
+                {isAffiliateProduct
+                  ? 'Beli Melalui Platform Partner / Web Resmi'
+                  : isPaid
+                  ? 'Status Pemesanan & Akses Layanan'
+                  : 'Form Pemesanan & Pembayaran'}
               </h2>
             </div>
             <div className="text-right">
@@ -1456,12 +1504,38 @@ function SingleProductContent() {
                 {isPaid ? 'Status Tagihan' : 'Total Tagihan'}
               </span>
               <span className="text-sm font-black text-emerald-600">
-                {isPaid ? 'LUNAS (PAID)' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
+                {isPaid ? 'LUNAS (PAID)' : totalAmount === 0 ? 'GRATIS (Rp 0)' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
               </span>
             </div>
           </div>
 
-          {isPaid && requiresDeliveryPayload ? (
+          {isAffiliateProduct ? (
+            <div className="text-center p-6 space-y-4 bg-gradient-to-b from-purple-50/50 via-slate-50 to-white border border-purple-200/70 rounded-2xl">
+              <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center mx-auto shadow-xs">
+                <ExternalLink className="w-6 h-6" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-base font-black text-slate-900">
+                  Produk Mitra Resmi (Bypass Checkout)
+                </h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                  Pesanan untuk produk ini diproses langsung melalui platform partner resmi kami (Shopee, TikTok Shop, Sejoli, atau website resmi). Klik tombol di bawah untuk diarahkan langsung ke halaman pemesanan:
+                </p>
+              </div>
+              <div className="pt-2">
+                <a
+                  href={externalAffiliateUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => trackContactEvent('Affiliate Outbound Click')}
+                  className="inline-flex items-center justify-center gap-2 py-3.5 px-8 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                >
+                  <span>{affiliateCtaLabel}</span>
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            </div>
+          ) : isPaid && requiresDeliveryPayload ? (
             <div className="space-y-3">
               {renderDeliveryPayloadCard()}
             </div>
@@ -1476,15 +1550,30 @@ function SingleProductContent() {
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
           <div>
             <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Investasi</span>
-            <span className="text-lg font-black text-slate-900">Rp {totalAmount.toLocaleString('id-ID')}</span>
+            <span className="text-lg font-black text-slate-900">
+              {totalAmount === 0 ? 'GRATIS' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
+            </span>
           </div>
-          <button
-            onClick={handleOpenCheckout}
-            className="flex-1 max-w-xs py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition cursor-pointer"
-          >
-            <span>Daftar & Bayar Instan</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          {isAffiliateProduct ? (
+            <a
+              href={externalAffiliateUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => trackContactEvent('Affiliate Outbound Click')}
+              className="flex-1 max-w-xs py-3.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer text-center"
+            >
+              <span>{affiliateCtaLabel}</span>
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          ) : (
+            <button
+              onClick={handleOpenCheckout}
+              className="flex-1 max-w-xs py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition cursor-pointer"
+            >
+              <span>{totalAmount === 0 ? 'Klaim Sekarang (Gratis)' : 'Daftar & Bayar Instan'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 

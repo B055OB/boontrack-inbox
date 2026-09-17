@@ -26,6 +26,8 @@ interface CheckoutModalProps {
     type?: string;
     product_type?: string;
     fulfillment_metadata?: any;
+    external_url?: string;
+    cta_label?: string;
   } | null;
 }
 
@@ -240,7 +242,34 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           </button>
         </div>
 
-        {paymentData ? (
+        {product.external_url ? (
+          <div className="text-center space-y-4 py-4 animate-in fade-in duration-200">
+            <div className="w-12 h-12 bg-purple-500/20 text-purple-400 rounded-2xl flex items-center justify-center mx-auto border border-purple-500/30">
+              <ExternalLink className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="inline-block px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold rounded-full mb-1">
+                Produk Mitra Resmi
+              </span>
+              <h4 className="font-bold text-white text-base mt-1">{product.title}</h4>
+              <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                Produk ini ditransaksikan langsung melalui link partner resmi kami (Shopee, TikTok, Sejoli, dll).
+              </p>
+            </div>
+            <div className="pt-2">
+              <a
+                href={product.external_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={onClose}
+                className="w-full py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-purple-600/30 cursor-pointer text-center"
+              >
+                <span>{product.cta_label || 'Beli di Platform Partner'}</span>
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </div>
+          </div>
+        ) : paymentData ? (
           orderStatus === 'PAID' ? (
             /* Tampilan Lunas / Akses Digital Siap */
             <div className="text-center space-y-4 py-4 animate-in fade-in duration-200">

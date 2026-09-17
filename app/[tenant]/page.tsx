@@ -15,7 +15,8 @@ import {
   Store, 
   PackageOpen, 
   Package,
-  Check 
+  Check,
+  ExternalLink 
 } from "lucide-react";
 import ShopClaimSection from "@/app/components/ShopClaimSection";
 import dynamic from 'next/dynamic';
@@ -31,6 +32,7 @@ import {
   initSellerTracking, 
   trackInitiateCheckout, 
   trackViewContent,
+  trackContactEvent,
   initPixelsFromMetadata
 } from "@/lib/tracking";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -78,6 +80,10 @@ export interface Product {
   stock?: number;
   sku?: string;
   type?: string;
+  external_url?: string;
+  cta_label?: string;
+  checkout_type?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface StoreChatMessage {
@@ -100,6 +106,10 @@ export interface StoreChatMessage {
     features?: string[];
     download_url?: string;
     type?: string;
+    external_url?: string;
+    cta_label?: string;
+    checkout_type?: string;
+    metadata?: Record<string, any>;
   };
   quick_actions?: string[];
 }
@@ -1225,50 +1235,85 @@ export default function TenantStorefrontPage() {
                             </p>
                           )}
 
-                          <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!msg.product) return;
-                                trackInitiateCheckout(msg.product.name, msg.product.price);
-                                setProductForCheckout({
-                                  id: String(msg.product.id),
-                                  title: msg.product.name,
-                                  price: msg.product.price,
-                                  download_url: msg.product.download_url,
-                                  type: msg.product.type,
-                                  category: msg.product.category,
-                                });
-                                setIsCheckoutOpen(true);
-                              }}
-                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
-                            >
-                              <QrCode className="w-3.5 h-3.5" />
-                              <span>Pesan Langsung</span>
-                            </button>
+                          {(() => {
+                            const isProdAffiliate = Boolean(
+                              msg.product.external_url ||
+                              (msg.product as any)?.metadata?.external_url ||
+                              msg.product.checkout_type === 'external'
+                            );
+                            const prodExternalUrl =
+                              msg.product.external_url ||
+                              (msg.product as any)?.metadata?.external_url ||
+                              '';
+                            const prodCtaText =
+                              msg.product.cta_label ||
+                              (msg.product as any)?.metadata?.cta_label ||
+                              'Beli Sekarang';
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!msg.product) return;
-                                addToCart({
-                                  id: msg.product.id,
-                                  name: msg.product.name,
-                                  category: msg.product.category || "service",
-                                  price: msg.product.price,
-                                  originalPrice: msg.product.originalPrice,
-                                  image: msg.product.image || "/logo-shop.png",
-                                  description: msg.product.description || "",
-                                  badge: msg.product.badge
-                                });
-                                setShowCartModal(true);
-                              }}
-                              className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-2 px-2.5 rounded-xl border border-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
-                              title="Tambah ke Pilihan"
-                            >
-                              <ShoppingBag className="w-3.5 h-3.5 text-slate-600" />
-                            </button>
-                          </div>
+                            if (isProdAffiliate && prodExternalUrl) {
+                              return (
+                                <div className="pt-1 border-t border-slate-200/70">
+                                  <a
+                                    href={prodExternalUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => trackContactEvent('Affiliate Outbound Click')}
+                                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer text-center"
+                                  >
+                                    <span>{prodCtaText}</span>
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!msg.product) return;
+                                    trackInitiateCheckout(msg.product.name, msg.product.price);
+                                    setProductForCheckout({
+                                      id: String(msg.product.id),
+                                      title: msg.product.name,
+                                      price: msg.product.price,
+                                      download_url: msg.product.download_url,
+                                      type: msg.product.type,
+                                      category: msg.product.category,
+                                    });
+                                    setIsCheckoutOpen(true);
+                                  }}
+                                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                                >
+                                  <QrCode className="w-3.5 h-3.5" />
+                                  <span>Pesan Langsung</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!msg.product) return;
+                                    addToCart({
+                                      id: msg.product.id,
+                                      name: msg.product.name,
+                                      category: msg.product.category || "service",
+                                      price: msg.product.price,
+                                      originalPrice: msg.product.originalPrice,
+                                      image: msg.product.image || "/logo-shop.png",
+                                      description: msg.product.description || "",
+                                      badge: msg.product.badge
+                                    });
+                                    setShowCartModal(true);
+                                  }}
+                                  className="bg-white hover:bg-slate-100 text-slate-700 font-bold text-[11px] py-2 px-2.5 rounded-xl border border-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
+                                  title="Tambah ke Pilihan"
+                                >
+                                  <ShoppingBag className="w-3.5 h-3.5 text-slate-600" />
+                                </button>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
 
@@ -1372,17 +1417,30 @@ export default function TenantStorefrontPage() {
             )}
 
             <div className="border-t border-slate-100 pt-3">
-              <button
-                onClick={() => {
-                  addToCart(selectedProduct);
-                  setSelectedProduct(null);
-                  setShowCartModal(true);
-                }}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <ShoppingBag className="w-4 h-4" />
-                <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
-              </button>
+              {selectedProduct.external_url || (selectedProduct as any)?.metadata?.external_url ? (
+                <a
+                  href={selectedProduct.external_url || (selectedProduct as any)?.metadata?.external_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => trackContactEvent('Affiliate Outbound Click')}
+                  className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
+                >
+                  <span>{selectedProduct.cta_label || (selectedProduct as any)?.metadata?.cta_label || 'Beli Sekarang'}</span>
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              ) : (
+                <button
+                  onClick={() => {
+                    addToCart(selectedProduct);
+                    setSelectedProduct(null);
+                    setShowCartModal(true);
+                  }}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

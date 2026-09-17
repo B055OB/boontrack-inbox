@@ -287,6 +287,9 @@ export function useTenantDashboard() {
     stock: 100,
     sku: 'SKU-001',
     is_unlimited: false,
+    checkout_type: 'internal',
+    external_url: '',
+    cta_label: '',
   });
 
   // AI & Persona State
@@ -920,6 +923,9 @@ export function useTenantDashboard() {
       sku: `SKU-${Date.now().toString().slice(-4)}`,
       is_unlimited: !reqs.requiresShipping,
       weight_grams: reqs.requiresWeight ? 1000 : undefined,
+      checkout_type: 'internal',
+      external_url: '',
+      cta_label: '',
     });
     setIsProductModalOpen(true);
   };
@@ -936,6 +942,9 @@ export function useTenantDashboard() {
       stock: prod.stock ?? 100,
       sku: prod.sku || `SKU-${prod.id}`,
       is_unlimited: prod.is_unlimited ?? false,
+      checkout_type: prod.checkout_type || (prod.external_url || prod.metadata?.external_url ? 'external' : 'internal'),
+      external_url: prod.external_url || prod.metadata?.external_url || '',
+      cta_label: prod.cta_label || prod.metadata?.cta_label || '',
     });
     setIsProductModalOpen(true);
   };
@@ -972,14 +981,28 @@ export function useTenantDashboard() {
     const finalSlug = (productForm.slug?.trim() || slugify(productForm.name)).toLowerCase();
     const cleanImage = sanitizeImageUrl(productForm.image);
     const isPhysicalStock = storeCategory === 'PHYSICAL' || storeCategory === 'RETAIL' || storeCategory === 'FOOD';
+    const isExternalCheckout = productForm.checkout_type === 'external' || Boolean(productForm.external_url?.trim());
+    const cleanExternalUrl = (productForm.external_url || '').trim();
+    const cleanCtaLabel = (productForm.cta_label || '').trim();
+
     const updatedProductItem: ProductItem = {
       ...productForm,
-      is_unlimited: !isPhysicalStock ? true : (productForm.is_unlimited ?? false),
-      stock: !isPhysicalStock ? 999999 : (productForm.stock ?? 100),
-      weight_grams: !isPhysicalStock ? 0 : (productForm.weight_grams ?? 0),
+      price: typeof productForm.price === 'number' ? productForm.price : (Number(productForm.price) || 0),
+      is_unlimited: isExternalCheckout ? true : (!isPhysicalStock ? true : (productForm.is_unlimited ?? false)),
+      stock: isExternalCheckout ? 999999 : (!isPhysicalStock ? 999999 : (productForm.stock ?? 100)),
+      weight_grams: isExternalCheckout ? 0 : (!isPhysicalStock ? 0 : (productForm.weight_grams ?? 0)),
       image: cleanImage,
       image_url: cleanImage,
       slug: finalSlug,
+      checkout_type: isExternalCheckout ? 'external' : 'internal',
+      external_url: isExternalCheckout ? cleanExternalUrl : undefined,
+      cta_label: cleanCtaLabel || undefined,
+      metadata: {
+        ...(productForm.metadata || {}),
+        checkout_type: isExternalCheckout ? 'external' : 'internal',
+        external_url: isExternalCheckout ? cleanExternalUrl : undefined,
+        cta_label: cleanCtaLabel || undefined,
+      },
       single_page_config: productForm.single_page_config
         ? {
           ...productForm.single_page_config,

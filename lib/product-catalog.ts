@@ -166,6 +166,10 @@ export interface ProductItem {
   weight_grams?: number;
   fulfillment_metadata?: FulfillmentMetadata;
   single_page_config?: SinglePageConfig;
+  external_url?: string;
+  cta_label?: string;
+  checkout_type?: 'internal' | 'external';
+  metadata?: Record<string, any>;
 }
 
 export interface TransactionItem {

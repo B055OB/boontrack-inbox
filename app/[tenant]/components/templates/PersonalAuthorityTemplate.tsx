@@ -407,26 +407,38 @@ export default function PersonalAuthorityTemplate({
                     ) : null}
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-2xl font-black text-purple-700">
-                        Rp {Number(mainProduct.price).toLocaleString('id-ID')}
+                        {Number(mainProduct.price) === 0 ? 'GRATIS' : `Rp ${Number(mainProduct.price).toLocaleString('id-ID')}`}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onInitiateCheckout({
-                          id: String(mainProduct.id),
-                          title: mainProduct.name,
-                          price: Number(mainProduct.price),
-                        })
-                      }
-                      className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <QrCode className="w-4 h-4" />
-                      <span>Pesan Sekarang (QRIS)</span>
-                    </button>
+                    {Boolean(mainProduct.external_url || (mainProduct as any).metadata?.external_url) ? (
+                      <a
+                        href={mainProduct.external_url || (mainProduct as any).metadata?.external_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
+                      >
+                        <span>{mainProduct.cta_label || (mainProduct as any).metadata?.cta_label || 'Beli Sekarang'}</span>
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onInitiateCheckout({
+                            id: String(mainProduct.id),
+                            title: mainProduct.name,
+                            price: Number(mainProduct.price),
+                          })
+                        }
+                        className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <QrCode className="w-4 h-4" />
+                        <span>{Number(mainProduct.price) === 0 ? 'Klaim Sekarang (Gratis)' : 'Pesan Sekarang (QRIS)'}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -490,24 +502,36 @@ export default function PersonalAuthorityTemplate({
                             </span>
                           ) : null}
                           <span className="text-sm font-black text-purple-700">
-                            Rp {Number(item.price).toLocaleString('id-ID')}
+                            {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
                           </span>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onInitiateCheckout({
-                              id: String(item.id),
-                              title: item.name,
-                              price: Number(item.price),
-                            })
-                          }
-                          className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          <span>Pesan</span>
-                        </button>
+                        {Boolean(item.external_url || (item as any).metadata?.external_url) ? (
+                          <a
+                            href={item.external_url || (item as any).metadata?.external_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <span>{item.cta_label || (item as any).metadata?.cta_label || 'Beli'}</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onInitiateCheckout({
+                                id: String(item.id),
+                                title: item.name,
+                                price: Number(item.price),
+                              })
+                            }
+                            className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>{Number(item.price) === 0 ? 'Klaim' : 'Pesan'}</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

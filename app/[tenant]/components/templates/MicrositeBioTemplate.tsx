@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ArrowUpRight, ShoppingBag, Sparkles, Download, QrCode } from 'lucide-react';
+import { ArrowUpRight, ShoppingBag, Sparkles, Download, QrCode, ExternalLink } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
 import { sanitizeImageUrl } from '@/lib/image-utils';
@@ -488,31 +488,44 @@ export default function MicrositeBioTemplate({
                       </span>
                     ) : null}
                     <span className="text-white font-bold text-sm">
-                      Rp {Number(item.price).toLocaleString('id-ID')}
+                      {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
                     </span>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
-                    onInitiateCheckout({
-                      id: String(item.id),
-                      title: item.name,
-                      price: Number(item.price),
-                      download_url: item.download_url,
-                      link_digital: (item as any).link_digital,
-                      type: item.type,
-                      category: item.category,
-                      fulfillment_metadata: (item as any).fulfillment_metadata,
-                    });
-                  }}
-                  className="rounded-full px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
-                >
-                  {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
-                  <span>{isDigitalCatalog ? 'Akses' : 'Pesan'}</span>
-                </button>
+                {Boolean((item as any).external_url || (item as any).metadata?.external_url) ? (
+                  <a
+                    href={(item as any).external_url || (item as any).metadata?.external_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => onOutboundClick?.((item as any).external_url || (item as any).metadata?.external_url, (item as any).cta_label || 'Beli')}
+                    className="rounded-full px-4 py-2 bg-purple-500/80 hover:bg-purple-600 backdrop-blur-md border border-purple-300 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    <span>{(item as any).cta_label || (item as any).metadata?.cta_label || 'Beli'}</span>
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
+                      onInitiateCheckout({
+                        id: String(item.id),
+                        title: item.name,
+                        price: Number(item.price),
+                        download_url: item.download_url,
+                        link_digital: (item as any).link_digital,
+                        type: item.type,
+                        category: item.category,
+                        fulfillment_metadata: (item as any).fulfillment_metadata,
+                      });
+                    }}
+                    className="rounded-full px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
+                    <span>{Number(item.price) === 0 ? 'Klaim' : isDigitalCatalog ? 'Akses' : 'Pesan'}</span>
+                  </button>
+                )}
               </div>
             ))}
           </div>
