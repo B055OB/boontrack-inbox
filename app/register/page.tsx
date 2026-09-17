@@ -25,6 +25,9 @@ import {
   RefreshCw,
   AlertCircle,
   Key,
+  MessageSquare,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
@@ -520,6 +523,209 @@ function QrisPaymentModal({
   );
 }
 
+// ── WHATSAPP VERIFICATION MODAL (USER-INITIATED) ────────────────────────────
+interface WhatsAppVerificationData {
+  token: string;
+  waUrl: string;
+  slug: string;
+  storeName: string;
+  phone: string;
+  officialNumber: string;
+}
+
+function WhatsAppVerificationModal({
+  data,
+  onClose,
+  onVerified,
+}: {
+  data: WhatsAppVerificationData;
+  onClose: () => void;
+  onVerified: (slug: string) => void;
+}) {
+  const [pollStatus, setPollStatus] = useState<"polling" | "verified">("polling");
+  const [copied, setCopied] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/auth/check-verification?token=${encodeURIComponent(data.token)}&slug=${encodeURIComponent(data.slug)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json?.verified === true) {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        setPollStatus("verified");
+        setTimeout(() => {
+          onVerified(data.slug);
+        }, 1800);
+      }
+    } catch {
+      // Retry via polling loop
+    }
+  }, [data.token, data.slug, onVerified]);
+
+  useEffect(() => {
+    // Polling setiap 2,5 detik
+    intervalRef.current = setInterval(checkStatus, 2500);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [checkStatus]);
+
+  const handleManualCheck = async () => {
+    setIsChecking(true);
+    await checkStatus();
+    setTimeout(() => setIsChecking(false), 500);
+  };
+
+  const copyToken = () => {
+    navigator.clipboard.writeText(`AKTIVASI ${data.token}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden text-white">
+        {/* Ambient glow */}
+        <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-72 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        {pollStatus !== "verified" && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+
+        <div className="relative p-6 sm:p-8 space-y-6">
+          {pollStatus === "verified" ? (
+            <div className="text-center space-y-4 py-6">
+              <div className="w-20 h-20 mx-auto rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/30 animate-bounce">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-2xl font-black text-white">
+                  WhatsApp Terverifikasi! 🎉
+                </h3>
+                <p className="text-sm font-semibold text-emerald-400">
+                  Akun Toko Anda Berhasil Diaktifkan
+                </p>
+                <p className="text-xs text-slate-300 max-w-xs mx-auto leading-relaxed pt-1">
+                  Selamat, Trial 7 Hari Ads Performance Anda telah aktif. Mengalihkan ke dashboard toko...
+                </p>
+              </div>
+              <div className="flex items-center justify-center gap-2 text-xs text-slate-400 pt-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                <span>Membuka dashboard toko Anda...</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Header */}
+              <div className="text-center space-y-2">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full text-xs font-bold">
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Verifikasi Registrasi WhatsApp</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  Kirim Pesan Aktivasi Toko
+                </h3>
+                <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
+                  Untuk mengaktifkan toko dan mengklaim <strong className="text-white">Trial 7 Hari Ads Performance</strong> gratis, kirim pesan verifikasi berikut dari nomor WhatsApp Anda:
+                </p>
+              </div>
+
+              {/* Token Box */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-center space-y-2 relative shadow-inner">
+                <p className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">
+                  Kode Verifikasi Unik Toko
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  <span className="font-mono text-3xl sm:text-4xl font-black tracking-wider text-emerald-400">
+                    {data.token}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={copyToken}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                    title="Salin teks aktivasi"
+                  >
+                    {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  Teks Pesan: <span className="text-white font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-800">AKTIVASI {data.token}</span>
+                </p>
+              </div>
+
+              {/* Big CTA Button */}
+              <div className="space-y-3">
+                <a
+                  href={data.waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-4 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                >
+                  <MessageSquare className="w-5 h-5 text-slate-950 fill-slate-950" />
+                  <span>[ 💬 Buka WhatsApp &amp; Kirim Pesan Verifikasi ]</span>
+                  <ExternalLink className="w-4 h-4 ml-1 opacity-70" />
+                </a>
+
+                {/* Polling Indicator */}
+                <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 pt-1">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                  <span>Mendeteksi pesan masuk otomatis setiap 2,5 detik...</span>
+                </div>
+              </div>
+
+              {/* Instructions / Footer info */}
+              <div className="p-3.5 bg-slate-800/50 rounded-2xl border border-slate-700/60 text-xs text-slate-300 space-y-2">
+                <div className="flex items-start gap-2">
+                  <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold mt-0.5 shrink-0">1</div>
+                  <p>Tekan tombol hijau di atas untuk membuka chat WhatsApp resmi BoonTrack.</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold mt-0.5 shrink-0">2</div>
+                  <p>Kirim pesan template yang sudah terisi otomatis.</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold mt-0.5 shrink-0">3</div>
+                  <p>Sistem kami akan memverifikasi nomor Anda secara instan dan membuka dashboard toko.</p>
+                </div>
+              </div>
+
+              {/* Manual Check Fallback */}
+              <div className="flex items-center justify-between text-xs pt-1">
+                <button
+                  type="button"
+                  onClick={handleManualCheck}
+                  disabled={isChecking}
+                  className="text-slate-400 hover:text-emerald-400 underline underline-offset-4 flex items-center gap-1 transition cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isChecking ? 'animate-spin text-emerald-400' : ''}`} />
+                  <span>{isChecking ? 'Memeriksa status...' : 'Sudah kirim pesan? Cek Ulang'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="text-slate-500 hover:text-slate-300 transition cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 export default function RegisterShopPage() {
   const router = useRouter();
@@ -552,6 +758,9 @@ export default function RegisterShopPage() {
 
   // Invoice modal state
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
+
+  // WhatsApp Verification state
+  const [waVerificationData, setWaVerificationData] = useState<WhatsAppVerificationData | null>(null);
 
   // Boon Pilot Email Verification state
   const [verificationData, setVerificationData] = useState<{
@@ -808,156 +1017,111 @@ export default function RegisterShopPage() {
     }
 
     try {
-      // 1. Simpan tenant langsung via Supabase Admin Gateway di /api/v1/tenants/onboard
       const resolvedBusinessType: CanonicalBusinessType = resolveCanonicalCategory(category);
       const cleanRef = referralCode.trim().toLowerCase() || null;
 
-      // Panggil Endpoint Backend API Onboard secara primer untuk INSERT ke tabel tenants & attributions di Supabase
-      const onboardPayload = {
-        slug,
-        rawSlug: slug,
-        tenant_slug: slug,
-        storeName,
-        waNumber: formattedPhone,
-        phone: formattedPhone,
-        merchantName: merchantData.name,
-        merchant_name: merchantData.name,
-        email: cleanEmail,
-        customer_email: cleanEmail,
-        pin: cleanPin,
-        password: cleanPin,
-        access_pin: cleanPin,
-        category: resolvedBusinessType,
-        business_type: resolvedBusinessType,
-        vertical_type: resolvedBusinessType,
-        business_category: resolvedBusinessType,
-        selectedPlan,
-        plan_tier: targetPlanTier,
-        amount: planAmount,
-        trial_days: isTrial ? 7 : 0,
-        referralCode: cleanRef,
-        referral_code: cleanRef,
-        ref: cleanRef,
-        affiliate_code: cleanRef,
-        utm_source: utmParams.utm_source,
-        utm_medium: utmParams.utm_medium,
-        utm_campaign: utmParams.utm_campaign,
-        utm_content: utmParams.utm_content,
-        utm_term: utmParams.utm_term,
-      };
-
-      const onboardRes = await fetch("/api/v1/tenants/onboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(onboardPayload),
-      });
-
-      const onboardData = await onboardRes.json().catch(() => ({}));
-      if (!onboardRes.ok || !onboardData.success || !onboardData.verification_sent) {
-        const errDetail =
-          onboardData.error ||
-          (onboardData.verification_sent === false
-            ? `Gagal mengirimkan email aktivasi ke ${cleanEmail}. Pastikan alamat email aktif dan coba beberapa saat lagi.`
-            : "Gagal mendaftarkan toko ke database server. Silakan coba beberapa saat lagi.");
-        throw new Error(errDetail);
-      }
-
-      // 2. Kirim payload registrasi ke Core Backend API untuk integrasi subscription/invoicing
-      const res = await fetch(
-        "https://api.boontrack.com/api/v1/shop/subscriptions/create",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tenant_slug: slug,
-            plan_tier: targetPlanTier,
-            amount: planAmount,
-            trial_days: isTrial ? 7 : 0,
-            business_category: resolvedBusinessType,
-            business_type: resolvedBusinessType,
-            vertical_type: resolvedBusinessType,
-            category: resolvedBusinessType,
-            merchant_name: merchantData.name,
-            merchant_phone: formattedPhone,
-            customer_email: cleanEmail,
-            pin: cleanPin,
-            password: cleanPin,
-            referral_code: cleanRef || undefined,
-            affiliate_code: cleanRef || undefined,
-            ref: cleanRef || undefined,
-            affiliate_id: onboardData.tenant?.affiliateId || undefined,
-            referrer_id: onboardData.tenant?.affiliateId || undefined,
-            utm_source: utmParams.utm_source || undefined,
-            utm_medium: utmParams.utm_medium || undefined,
-            utm_campaign: utmParams.utm_campaign || undefined,
-            utm_content: utmParams.utm_content || undefined,
-            utm_term: utmParams.utm_term || undefined,
-          }),
-        }
-      ).catch(() => null);
-
-      const data = res && res.ok ? await res.json().catch(() => ({})) : {};
-
-      // 3. Trigger pengiriman email welcome & kredensial akses
-      fetch("/api/v1/auth/notify-credentials", {
+      // 1. Inisiasi Token Verifikasi WhatsApp via Backend Register-Init
+      const initRes = await fetch("/api/auth/register-init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenant_slug: slug,
-          store_name: storeName,
-          merchant_name: merchantData.name,
-          email: cleanEmail,
+          shop_name: storeName,
+          storeName,
           phone: formattedPhone,
+          waNumber: formattedPhone,
+          email: cleanEmail,
+          password: cleanPin,
           pin: cleanPin,
+          category: resolvedBusinessType,
           plan_tier: targetPlanTier,
+          selectedPlan,
+          referral_code: cleanRef,
+          utm_params: utmParams,
+          slug,
         }),
-      }).catch((notifyErr) => console.warn('Credentials notification dispatch note:', notifyErr));
+      });
 
-      // 4. Wajib Konfirmasi Email (Boon Pilot Activation Guard)
-      // Tampilkan layar "Cek Email Anda" hanya jika email aktivasi benar-benar terkirim!
-      if (typeof window !== "undefined") {
-        localStorage.setItem("merchant_store", slug);
-        localStorage.setItem("merchant_pin", cleanPin);
-        document.cookie = `merchant_store=${slug}; path=/; max-age=2592000; SameSite=Lax`;
+      const initData = await initRes.json().catch(() => ({}));
+      if (!initRes.ok || !initData.success) {
+        const errDetail =
+          initData.error || "Gagal menyiapkan aktivasi WhatsApp toko. Pastikan data valid dan coba beberapa saat lagi.";
+        throw new Error(errDetail);
       }
 
-      setVerificationData({
-        email: cleanEmail,
-        name: merchantData.name,
-        slug,
+      // Sync ke Core Onboard API di background jika diperlukan
+      fetch("/api/v1/tenants/onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: initData.tenant_slug || slug,
+          rawSlug: initData.tenant_slug || slug,
+          tenant_slug: initData.tenant_slug || slug,
+          storeName,
+          waNumber: formattedPhone,
+          phone: formattedPhone,
+          merchantName: merchantData.name,
+          email: cleanEmail,
+          pin: cleanPin,
+          category: resolvedBusinessType,
+          selectedPlan,
+          plan_tier: targetPlanTier,
+          referralCode: cleanRef,
+          utm_source: utmParams.utm_source,
+          utm_medium: utmParams.utm_medium,
+          utm_campaign: utmParams.utm_campaign,
+        }),
+      }).catch((e) => console.warn("Background onboard sync note:", e));
+
+      // 2. Munculkan Modal Verifikasi WhatsApp User-Initiated
+      setWaVerificationData({
+        token: initData.token,
+        waUrl: initData.wa_url,
+        slug: initData.tenant_slug || slug,
         storeName,
+        phone: formattedPhone,
+        officialNumber: initData.official_number || "",
       });
+
       setLoadingPay(false);
       return;
-
-      // PAKET BERBAYAR LANGSUNG (Ads Performance / Team Scale): Tampilkan modal QRIS
-      const invoiceId: string =
-        data?.id ||
-        data?.invoice_id ||
-        data?.external_id ||
-        data?.subscription_id ||
-        slug;
-
-      const invoiceUrl: string = data?.invoice_url || "";
-
-      if (!invoiceUrl && !invoiceId) {
-        setPayError("Gagal menerbitkan invoice aktivasi toko. Coba lagi.");
-        return;
-      }
-
-      // Tampilkan modal QRIS Standar Bank Indonesia
-      setInvoiceData({
-        invoiceUrl,
-        invoiceId,
-        amount: planAmount,
-        tenantSlug: slug,
-      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Terjadi gangguan koneksi saat menyiapkan pendaftaran. Coba lagi.";
       setPayError(msg);
     } finally {
       setLoadingPay(false);
     }
+  };
+
+  // Dipanggil saat verifikasi WhatsApp berhasil terkonfirmasi via polling
+  const handleWaVerificationSuccess = (tenantSlug: string) => {
+    setWaVerificationData(null);
+    const cleanPin = merchantData.pin.trim();
+    if (typeof window !== "undefined") {
+      localStorage.setItem("merchant_store", tenantSlug);
+      if (cleanPin) localStorage.setItem("merchant_pin", cleanPin);
+      localStorage.setItem("merchant_login_at", new Date().toISOString());
+      document.cookie = `merchant_store=${tenantSlug}; path=/; max-age=2592000; SameSite=Lax`;
+      document.cookie = `merchant_session=${tenantSlug}; path=/; max-age=2592000; SameSite=Lax`;
+      document.cookie = `bt_tenant=${tenantSlug}; path=/; max-age=2592000; SameSite=Lax`;
+    }
+
+    // Trigger notifikasi kredensial email di background
+    fetch("/api/v1/auth/notify-credentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_slug: tenantSlug,
+        store_name: storeName,
+        merchant_name: merchantData.name,
+        email: merchantData.email,
+        phone: merchantData.phone,
+        pin: cleanPin,
+        plan_tier: "PRO_SCALE",
+      }),
+    }).catch(() => null);
+
+    // Redirect ke dashboard toko
+    router.push(`/${tenantSlug}/dashboard`);
   };
 
   // Dipanggil saat polling mendeteksi status PAID
@@ -993,6 +1157,15 @@ export default function RegisterShopPage() {
           data={invoiceData}
           onClose={() => setInvoiceData(null)}
           onPaid={handlePaymentSuccess}
+        />
+      )}
+
+      {/* ── WHATSAPP VERIFICATION MODAL (USER-INITIATED) ────────────────── */}
+      {waVerificationData && (
+        <WhatsAppVerificationModal
+          data={waVerificationData}
+          onClose={() => setWaVerificationData(null)}
+          onVerified={handleWaVerificationSuccess}
         />
       )}
 

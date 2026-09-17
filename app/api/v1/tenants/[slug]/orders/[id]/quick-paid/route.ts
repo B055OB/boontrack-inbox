@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
+import { sendOrderPaidNotification } from '@/lib/whatsapp';
 
 export async function POST(
   _req: NextRequest,
@@ -120,6 +121,18 @@ export async function POST(
         message_text: `Pembayaran pesanan #${orderId} (${order.product_title || 'Produk Digital'}) telah terverifikasi LUNAS (PAID). ${fulfillmentNotice}`,
       });
     } catch {}
+
+    // 4. Kirim notifikasi WhatsApp resmi via Meta Utility Template (order_notification_v1)
+    const customerPhone = order.customer_phone || order.phone || order.whatsapp_number;
+    if (customerPhone) {
+      sendOrderPaidNotification({
+        phone: customerPhone,
+        customerName: order.customer_name || order.buyer_name || 'Pelanggan Setia',
+        orderId: String(orderId),
+        itemsSummary: order.product_title || order.product_name || 'Produk Pesanan',
+        totalAmount: Number(order.gross_amount || order.total_amount || order.amount || 0),
+      }).catch((waErr) => console.warn('[WhatsApp WABA] Order notification dispatch note:', waErr));
+    }
 
     return NextResponse.json({
       success: true,
