@@ -1,1 +1,2 @@
-export { GET, POST, dynamic } from '@/app/api/whatsapp/connect/route';
+export const dynamic = 'force-dynamic';
+export { GET, POST } from '@/app/api/whatsapp/connect/route';
