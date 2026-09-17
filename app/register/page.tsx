@@ -737,7 +737,7 @@ export default function RegisterShopPage() {
   >("idle");
   const [category, setCategory] = useState<string>("PHYSICAL");
   const [selectedPlan, setSelectedPlan] = useState<OfficialPlan>("ads_performance");
-  const isTrialPlan = true;
+  const isTrialPlan = selectedPlan === "ads_performance" || selectedPlan === "pro_scale";
   const [merchantData, setMerchantData] = useState({
     name: "",
     phone: "",
@@ -985,12 +985,16 @@ export default function RegisterShopPage() {
       return;
     }
 
-    // Standarisasi 3 Tier Resmi (Semua Termasuk Trial 7 Hari):
-    // 1. "Solo / Starter" -> enum database: 'STARTER'
-    // 2. "Ads Performance" -> enum database: 'PRO_SCALE'
-    // 3. "Team Scale" -> enum database: 'ENTERPRISE'
-    const isTrial = true;
-    const planAmount = 0;
+    // Standarisasi 3 Tier Resmi:
+    // 1. "Solo / Starter" -> enum database: 'STARTER' (Bayar Langsung Rp 199.000)
+    // 2. "Ads Performance" -> enum database: 'PRO_SCALE' (HERO TIER: Free Trial 7 Hari Rp 0)
+    // 3. "Team Scale" -> enum database: 'ENTERPRISE' (Bayar Langsung Rp 499.000)
+    const isTrial = selectedPlan === "pro_scale" || selectedPlan === "ads_performance";
+    const planAmount = isTrial
+      ? 0
+      : PLAN_PRICING[selectedPlan] ||
+        (selectedPlan === "enterprise" || selectedPlan === "team_scale" ? 499000 : 199000);
+
     const dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' =
       selectedPlan === 'enterprise' || selectedPlan === 'team_scale'
         ? 'ENTERPRISE'
@@ -1020,70 +1024,130 @@ export default function RegisterShopPage() {
       const resolvedBusinessType: CanonicalBusinessType = resolveCanonicalCategory(category);
       const cleanRef = referralCode.trim().toLowerCase() || null;
 
-      // 1. Inisiasi Token Verifikasi WhatsApp via Backend Register-Init
-      const initRes = await fetch("/api/auth/register-init", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          shop_name: storeName,
-          storeName,
-          phone: formattedPhone,
-          waNumber: formattedPhone,
-          email: cleanEmail,
-          password: cleanPin,
-          pin: cleanPin,
-          category: resolvedBusinessType,
-          plan_tier: targetPlanTier,
-          selectedPlan,
-          referral_code: cleanRef,
-          utm_params: utmParams,
-          slug,
-        }),
-      });
+      if (isTrial) {
+        // ── ADS PERFORMANCE HERO TIER: VERIFIKASI WHATSAPP & TRIAL 7 HARI ──
+        const initRes = await fetch("/api/auth/register-init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            shop_name: storeName,
+            storeName,
+            phone: formattedPhone,
+            waNumber: formattedPhone,
+            email: cleanEmail,
+            password: cleanPin,
+            pin: cleanPin,
+            category: resolvedBusinessType,
+            plan_tier: targetPlanTier,
+            selectedPlan,
+            referral_code: cleanRef,
+            utm_params: utmParams,
+            slug,
+          }),
+        });
 
-      const initData = await initRes.json().catch(() => ({}));
-      if (!initRes.ok || !initData.success) {
-        const errDetail =
-          initData.error || "Gagal menyiapkan aktivasi WhatsApp toko. Pastikan data valid dan coba beberapa saat lagi.";
-        throw new Error(errDetail);
-      }
+        const initData = await initRes.json().catch(() => ({}));
+        if (!initRes.ok || !initData.success) {
+          const errDetail =
+            initData.error || "Gagal menyiapkan aktivasi WhatsApp toko. Pastikan data valid dan coba beberapa saat lagi.";
+          throw new Error(errDetail);
+        }
 
-      // Sync ke Core Onboard API di background jika diperlukan
-      fetch("/api/v1/tenants/onboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        // Sync ke Core Onboard API di background
+        fetch("/api/v1/tenants/onboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug: initData.tenant_slug || slug,
+            rawSlug: initData.tenant_slug || slug,
+            tenant_slug: initData.tenant_slug || slug,
+            storeName,
+            waNumber: formattedPhone,
+            phone: formattedPhone,
+            merchantName: merchantData.name,
+            email: cleanEmail,
+            pin: cleanPin,
+            category: resolvedBusinessType,
+            selectedPlan,
+            plan_tier: targetPlanTier,
+            trial_days: 7,
+            is_trial: true,
+            amount: 0,
+            referralCode: cleanRef,
+            utm_source: utmParams.utm_source,
+            utm_medium: utmParams.utm_medium,
+            utm_campaign: utmParams.utm_campaign,
+          }),
+        }).catch((e) => console.warn("Background onboard sync note:", e));
+
+        // Munculkan Modal Verifikasi WhatsApp User-Initiated
+        setWaVerificationData({
+          token: initData.token,
+          waUrl: initData.wa_url,
           slug: initData.tenant_slug || slug,
-          rawSlug: initData.tenant_slug || slug,
-          tenant_slug: initData.tenant_slug || slug,
           storeName,
-          waNumber: formattedPhone,
           phone: formattedPhone,
-          merchantName: merchantData.name,
-          email: cleanEmail,
-          pin: cleanPin,
-          category: resolvedBusinessType,
-          selectedPlan,
-          plan_tier: targetPlanTier,
-          referralCode: cleanRef,
-          utm_source: utmParams.utm_source,
-          utm_medium: utmParams.utm_medium,
-          utm_campaign: utmParams.utm_campaign,
-        }),
-      }).catch((e) => console.warn("Background onboard sync note:", e));
+          officialNumber: initData.official_number || "",
+        });
 
-      // 2. Munculkan Modal Verifikasi WhatsApp User-Initiated
-      setWaVerificationData({
-        token: initData.token,
-        waUrl: initData.wa_url,
-        slug: initData.tenant_slug || slug,
-        storeName,
-        phone: formattedPhone,
-        officialNumber: initData.official_number || "",
-      });
+        setLoadingPay(false);
+        return;
+      } else {
+        // ── PAKET BAYAR LANGSUNG (SOLO / TEAM SCALE): ONBOARD & MODAL QRIS ──
+        const onboardRes = await fetch("/api/v1/tenants/onboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slug,
+            rawSlug: slug,
+            tenant_slug: slug,
+            storeName,
+            waNumber: formattedPhone,
+            phone: formattedPhone,
+            merchantName: merchantData.name,
+            merchant_name: merchantData.name,
+            email: cleanEmail,
+            customer_email: cleanEmail,
+            pin: cleanPin,
+            password: cleanPin,
+            access_pin: cleanPin,
+            category: resolvedBusinessType,
+            business_type: resolvedBusinessType,
+            vertical_type: resolvedBusinessType,
+            business_category: resolvedBusinessType,
+            selectedPlan,
+            plan_tier: targetPlanTier,
+            amount: planAmount,
+            trial_days: 0,
+            is_trial: false,
+            referralCode: cleanRef,
+            referral_code: cleanRef,
+            ref: cleanRef,
+            affiliate_code: cleanRef,
+            utm_source: utmParams.utm_source,
+            utm_medium: utmParams.utm_medium,
+            utm_campaign: utmParams.utm_campaign,
+            utm_content: utmParams.utm_content,
+            utm_term: utmParams.utm_term,
+          }),
+        });
 
-      setLoadingPay(false);
-      return;
+        const onboardData = await onboardRes.json().catch(() => ({}));
+        if (!onboardRes.ok || !onboardData.success) {
+          throw new Error(onboardData.error || "Gagal menyiapkan pendaftaran toko. Silakan coba lagi.");
+        }
+
+        // Tampilkan Modal QRIS Pembayaran Langsung
+        setInvoiceData({
+          invoiceUrl: `https://payment.boontrack.com/invoice/${slug}-${planAmount}`,
+          invoiceId: `INV-${slug.toUpperCase()}-${Date.now().toString().slice(-6)}`,
+          amount: planAmount,
+          tenantSlug: slug,
+        });
+
+        setLoadingPay(false);
+        return;
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Terjadi gangguan koneksi saat menyiapkan pendaftaran. Coba lagi.";
       setPayError(msg);
@@ -1544,8 +1608,8 @@ export default function RegisterShopPage() {
                   <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
                     4. Pilih Paket Langganan:
                   </label>
-                  <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 inline-block w-fit">
-                    ⚡ Semua Paket Termasuk Coba Gratis 7 Hari
+                  <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200 inline-block w-fit">
+                    ⚡ Free Trial 7 Hari Eksklusif untuk Paket Ads Performance
                   </span>
                 </div>
 
@@ -1563,9 +1627,6 @@ export default function RegisterShopPage() {
                       <div className="flex justify-between items-start">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                           Starter Merchant
-                        </span>
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                          Trial 7 Hari
                         </span>
                       </div>
 
@@ -1587,8 +1648,8 @@ export default function RegisterShopPage() {
                             / bln
                           </span>
                         </div>
-                        <p className="text-[11px] font-bold text-emerald-600 mt-1">
-                          Coba Gratis 7 Hari (Rp 0 di Awal)
+                        <p className="text-[11px] font-bold text-slate-600 mt-1">
+                          Langganan Bulanan (Mulai Sekarang)
                         </p>
                       </div>
 
@@ -1635,8 +1696,8 @@ export default function RegisterShopPage() {
                         }`}
                       >
                         {selectedPlan === "starter" || selectedPlan === "solo"
-                          ? "✓ Dipilih: Paket Solo"
-                          : "Pilih Paket Solo (Mulai Trial 7 Hari)"}
+                          ? "[ ✓ Dipilih: Paket Solo ]"
+                          : "[ Pilih Paket Solo ]"}
                       </button>
                     </div>
                   </div>
@@ -1655,8 +1716,8 @@ export default function RegisterShopPage() {
                         <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs">
                           🔥 Paling Dipilih Pengiklan Meta &amp; TikTok
                         </span>
-                        <span className="text-[10px] font-black text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
-                          Hero Tier
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                          Trial 7 Hari
                         </span>
                       </div>
 
@@ -1722,8 +1783,8 @@ export default function RegisterShopPage() {
                         }`}
                       >
                         {selectedPlan === "pro_scale" || selectedPlan === "ads_performance"
-                          ? "✓ Dipilih: Ads Performance"
-                          : "Pilih Ads Performance (Mulai Trial 7 Hari)"}
+                          ? "[ ✓ Dipilih: Ads Performance (Trial 7 Hari) ]"
+                          : "[ Pilih Ads Performance (Trial 7 Hari) ]"}
                       </button>
                     </div>
                   </div>
@@ -1765,8 +1826,8 @@ export default function RegisterShopPage() {
                             / bln
                           </span>
                         </div>
-                        <p className="text-[11px] font-bold text-emerald-600 mt-1">
-                          Coba Gratis 7 Hari (Rp 0 di Awal)
+                        <p className="text-[11px] font-bold text-slate-600 mt-1">
+                          Langganan Bulanan (Akses Skala Penuh)
                         </p>
                       </div>
 
@@ -1813,8 +1874,8 @@ export default function RegisterShopPage() {
                         }`}
                       >
                         {selectedPlan === "enterprise" || selectedPlan === "team_scale"
-                          ? "✓ Dipilih: Team Scale"
-                          : "Pilih Team Scale (Mulai Trial 7 Hari)"}
+                          ? "[ ✓ Dipilih: Paket Team Scale ]"
+                          : "[ Pilih Paket Team Scale ]"}
                       </button>
                     </div>
                   </div>
@@ -1840,10 +1901,10 @@ export default function RegisterShopPage() {
                   {loadingPay
                     ? "Menyiapkan Akun & Toko..."
                     : selectedPlan === "starter" || selectedPlan === "solo"
-                    ? "Mulai Trial 7 Hari (Paket Solo - Rp 0) →"
+                    ? "Lanjut ke Pembayaran (Paket Solo - Rp 199.000) →"
                     : selectedPlan === "pro_scale" || selectedPlan === "ads_performance"
                     ? "Mulai Trial 7 Hari (Paket Ads Performance - Rp 0) →"
-                    : "Mulai Trial 7 Hari (Paket Team Scale - Rp 0) →"}
+                    : "Lanjut ke Pembayaran (Paket Team Scale - Rp 499.000) →"}
                 </span>
                 <ArrowRight className="w-4 h-4 ml-1" />
               </button>
