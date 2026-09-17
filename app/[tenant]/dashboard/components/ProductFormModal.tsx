@@ -418,7 +418,7 @@ export default function ProductFormModal({
                 <span>Tipe Transaksi / Alur Checkout</span>
               </label>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">
-                {productForm.checkout_type === 'external' ? 'Makelar / Affiliate' : 'BoonTrack Internal'}
+                {productForm.checkout_type === 'external' ? 'Mitra / Affiliate' : 'BoonTrack Internal'}
               </span>
             </div>
 
@@ -459,7 +459,7 @@ export default function ProductFormModal({
                   )}
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1 leading-tight">
-                  Bypass checkout, redirect ke Shopee, TikTok Shop, Sejoli, dll.
+                  Produk Affiliate / Mitra Luar (Shopee, TikTok, Mayar, Sejoli, dll).
                 </p>
               </button>
             </div>
@@ -480,7 +480,7 @@ export default function ProductFormModal({
                     className="w-full px-3.5 py-2 bg-white border border-purple-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600/30"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
-                    Pembeli yang menekan tombol beli di etalase akan langsung dialihkan ke URL ini.
+                    Produk Affiliate / Mitra Luar (Shopee, TikTok, Mayar, Sejoli, dll). Pembeli yang menekan tombol beli akan langsung dialihkan ke URL ini.
                   </p>
                 </div>
 
