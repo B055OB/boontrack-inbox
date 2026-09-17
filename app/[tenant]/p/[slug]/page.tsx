@@ -601,11 +601,24 @@ function SingleProductContent() {
     window.open(waConsultationUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const handleExternalProductClick = () => {
+    trackContactEvent('Affiliate Outbound Click');
+    if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+      (window as any).fbq("track", "InitiateCheckout", {
+        content_name: (product as any)?.title || product.name,
+        content_ids: [product.id || product.slug],
+        content_type: "product",
+        value: Number(product.price) || 0,
+        currency: "IDR"
+      });
+    }
+  };
+
   const handleOpenCheckout = () => {
     triggerAddToCart();
     triggerInitiateCheckout();
     if (isAffiliateProduct && externalAffiliateUrl) {
-      trackContactEvent('Affiliate Outbound Click');
+      handleExternalProductClick();
       window.open(externalAffiliateUrl, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -1241,7 +1254,7 @@ function SingleProductContent() {
                   href={externalAffiliateUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => trackContactEvent('Affiliate Outbound Click')}
+                  onClick={handleExternalProductClick}
                   className="w-full py-3.5 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 transition cursor-pointer text-sm"
                 >
                   <span>{affiliateCtaLabel}</span>
@@ -1527,7 +1540,7 @@ function SingleProductContent() {
                   href={externalAffiliateUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => trackContactEvent('Affiliate Outbound Click')}
+                  onClick={handleExternalProductClick}
                   className="inline-flex items-center justify-center gap-2 py-3.5 px-8 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                 >
                   <span>{affiliateCtaLabel}</span>
@@ -1559,7 +1572,7 @@ function SingleProductContent() {
               href={externalAffiliateUrl}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => trackContactEvent('Affiliate Outbound Click')}
+              onClick={handleExternalProductClick}
               className="flex-1 max-w-xs py-3.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer text-center"
             >
               <span>{affiliateCtaLabel}</span>

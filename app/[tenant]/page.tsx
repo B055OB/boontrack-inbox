@@ -624,6 +624,19 @@ export default function TenantStorefrontPage() {
     window.open(finalUrl, "_blank", "noopener,noreferrer");
   };
 
+  const trackExternalInitiateCheckout = (product: any) => {
+    trackContactEvent('Affiliate Outbound Click');
+    if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+      (window as any).fbq("track", "InitiateCheckout", {
+        content_name: product.title || product.name,
+        content_ids: [product.id || product.slug],
+        content_type: "product",
+        value: Number(product.price) || 0,
+        currency: "IDR"
+      });
+    }
+  };
+
   const filteredProducts = activeCategory === "all"
     ? (storeProducts || [])
     : (storeProducts || []).filter((p) => {
@@ -933,17 +946,30 @@ export default function TenantStorefrontPage() {
               )}
 
               <div className="border-t border-slate-100 pt-3">
-                <button
-                  onClick={() => {
-                    addToCart(selectedProduct);
-                    setSelectedProduct(null);
-                    setShowCartModal(true);
-                  }}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <ShoppingBag className="w-4 h-4" />
-                  <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
-                </button>
+                {selectedProduct.external_url || (selectedProduct as any)?.metadata?.external_url ? (
+                  <a
+                    href={selectedProduct.external_url || (selectedProduct as any)?.metadata?.external_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => trackExternalInitiateCheckout(selectedProduct)}
+                    className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
+                  >
+                    <span>{selectedProduct.cta_label || (selectedProduct as any)?.metadata?.cta_label || 'Beli Sekarang'}</span>
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => {
+                      addToCart(selectedProduct);
+                      setSelectedProduct(null);
+                      setShowCartModal(true);
+                    }}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1257,7 +1283,7 @@ export default function TenantStorefrontPage() {
                                     href={prodExternalUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    onClick={() => trackContactEvent('Affiliate Outbound Click')}
+                                    onClick={() => trackExternalInitiateCheckout(msg.product)}
                                     className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer text-center"
                                   >
                                     <span>{prodCtaText}</span>
@@ -1422,7 +1448,7 @@ export default function TenantStorefrontPage() {
                   href={selectedProduct.external_url || (selectedProduct as any)?.metadata?.external_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => trackContactEvent('Affiliate Outbound Click')}
+                  onClick={() => trackExternalInitiateCheckout(selectedProduct)}
                   className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
                 >
                   <span>{selectedProduct.cta_label || (selectedProduct as any)?.metadata?.cta_label || 'Beli Sekarang'}</span>

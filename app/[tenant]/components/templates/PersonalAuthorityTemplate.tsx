@@ -418,6 +418,17 @@ export default function PersonalAuthorityTemplate({
                         href={mainProduct.external_url || (mainProduct as any).metadata?.external_url}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => {
+                          if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                            (window as any).fbq("track", "InitiateCheckout", {
+                              content_name: (mainProduct as any).title || mainProduct.name,
+                              content_ids: [mainProduct.id || (mainProduct as any).slug],
+                              content_type: "product",
+                              value: Number(mainProduct.price) || 0,
+                              currency: "IDR"
+                            });
+                          }
+                        }}
                         className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
                       >
                         <span>{mainProduct.cta_label || (mainProduct as any).metadata?.cta_label || 'Beli Sekarang'}</span>
@@ -511,6 +522,17 @@ export default function PersonalAuthorityTemplate({
                             href={item.external_url || (item as any).metadata?.external_url}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={() => {
+                              if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                                (window as any).fbq("track", "InitiateCheckout", {
+                                  content_name: (item as any).title || item.name,
+                                  content_ids: [item.id || (item as any).slug],
+                                  content_type: "product",
+                                  value: Number(item.price) || 0,
+                                  currency: "IDR"
+                                });
+                              }
+                            }}
                             className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
                           >
                             <span>{item.cta_label || (item as any).metadata?.cta_label || 'Beli'}</span>

@@ -261,7 +261,18 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 href={product.external_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={onClose}
+                onClick={() => {
+                  if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                    (window as any).fbq("track", "InitiateCheckout", {
+                      content_name: product.title || (product as any).name,
+                      content_ids: [product.id || (product as any).slug],
+                      content_type: "product",
+                      value: Number(product.price) || 0,
+                      currency: "IDR"
+                    });
+                  }
+                  onClose();
+                }}
                 className="w-full py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-purple-600/30 cursor-pointer text-center"
               >
                 <span>{product.cta_label || 'Beli di Platform Partner'}</span>
