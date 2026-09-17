@@ -7,6 +7,7 @@ import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber } from "@/lib/tracking";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
+import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
 
 const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
 
@@ -54,6 +55,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [qrisError, setQrisError] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [tenantPhone, setTenantPhone] = useState<string>("");
+  const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
 
   const handleCopy = (text: string, field: string) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -83,11 +85,18 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           if (supabase) {
             const { data } = await supabase
               .from('tenants')
-              .select('metadata')
+              .select('*')
               .eq('slug', tenantSlug)
               .maybeSingle();
-            const phone = data?.metadata?.whatsapp_number || data?.metadata?.whatsapp || '';
-            if (phone) setTenantPhone(phone);
+            if (data) {
+              const phone = data?.metadata?.whatsapp_number || data?.metadata?.whatsapp || data?.phone || '';
+              if (phone) setTenantPhone(phone);
+              const accounts = extractTenantBankAccounts(data);
+              setBankAccounts(accounts);
+              if (accounts.length === 0) {
+                setPaymentMethod('qris');
+              }
+            }
           }
         } catch {}
       }
@@ -347,37 +356,32 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                       <span className="text-[10px] text-slate-400 font-mono">Bebas Biaya</span>
                     </div>
 
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between p-2 bg-slate-900 rounded-xl border border-slate-800/80">
-                        <div>
-                          <span className="text-[9px] font-bold text-blue-400 block">BANK BCA</span>
-                          <span className="font-mono font-bold text-white text-xs">847-019-2344</span>
-                          <span className="text-[9px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy('8470192344', 'bca')}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                        >
-                          {copiedField === 'bca' ? <><Check className="w-3 h-3 text-emerald-400" /> Tersalin</> : <><Copy className="w-3 h-3" /> Salin</>}
-                        </button>
+                    {bankAccounts.length > 0 ? (
+                      <div className="space-y-2">
+                        {bankAccounts.map((acc, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-2 bg-slate-900 rounded-xl border border-slate-800/80">
+                            <div>
+                              <span className="text-[9px] font-bold text-blue-400 block">{acc.bank_name}</span>
+                              <span className="font-mono font-bold text-white text-xs">{acc.account_number}</span>
+                              <span className="text-[9px] text-slate-400 block">a/n {acc.account_holder}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(acc.account_number, `bank_${idx}`)}
+                              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                            >
+                              {copiedField === `bank_${idx}` ? <><Check className="w-3 h-3 text-emerald-400" /> Tersalin</> : <><Copy className="w-3 h-3" /> Salin</>}
+                            </button>
+                          </div>
+                        ))}
                       </div>
-
-                      <div className="flex items-center justify-between p-2 bg-slate-900 rounded-xl border border-slate-800/80">
-                        <div>
-                          <span className="text-[9px] font-bold text-amber-400 block">BANK MANDIRI</span>
-                          <span className="font-mono font-bold text-white text-xs">131-00-1892834-1</span>
-                          <span className="text-[9px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy('1310018928341', 'mandiri')}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                        >
-                          {copiedField === 'mandiri' ? <><Check className="w-3 h-3 text-emerald-400" /> Tersalin</> : <><Copy className="w-3 h-3" /> Salin</>}
-                        </button>
+                    ) : (
+                      <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                        <p className="text-slate-400">
+                          Mengalami kendala pada QRIS? Anda dapat langsung menghubungi CS Toko via WhatsApp untuk bantuan pembayaran.
+                        </p>
                       </div>
-                    </div>
+                    )}
 
                     {/* Tombol Konfirmasi Instan WhatsApp */}
                     <a
@@ -501,33 +505,35 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 </div>
               </label>
 
-              <label
-                onClick={() => setPaymentMethod('manual_transfer')}
-                className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition ${
-                  paymentMethod === 'manual_transfer'
-                    ? 'border-blue-500 bg-blue-950/30'
-                    : 'border-slate-800 bg-slate-950/60 hover:bg-slate-950'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="modal_payment_method"
-                  checked={paymentMethod === 'manual_transfer'}
-                  onChange={() => setPaymentMethod('manual_transfer')}
-                  className="mt-1 text-blue-500"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-1 flex-wrap">
-                    <span className="font-bold text-white flex items-center gap-1">
-                      <Building2 className="w-3.5 h-3.5 text-blue-400" /> Transfer Manual
-                    </span>
-                    <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                      Bebas Biaya Admin + Kode Unik
-                    </span>
+              {bankAccounts.length > 0 && (
+                <label
+                  onClick={() => setPaymentMethod('manual_transfer')}
+                  className={`flex items-start gap-2.5 p-3 rounded-2xl border cursor-pointer transition ${
+                    paymentMethod === 'manual_transfer'
+                      ? 'border-blue-500 bg-blue-950/30'
+                      : 'border-slate-800 bg-slate-950/60 hover:bg-slate-950'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="modal_payment_method"
+                    checked={paymentMethod === 'manual_transfer'}
+                    onChange={() => setPaymentMethod('manual_transfer')}
+                    className="mt-1 text-blue-500"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <span className="font-bold text-white flex items-center gap-1">
+                        <Building2 className="w-3.5 h-3.5 text-blue-400" /> Transfer Manual
+                      </span>
+                      <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                        Bebas Biaya Admin + Kode Unik
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Transfer langsung ke rekening bank seller tanpa biaya admin dengan 3 digit kode verifikasi.</p>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Transfer langsung via BCA / Mandiri seller tanpa biaya admin dengan 3 digit kode verifikasi.</p>
-                </div>
-              </label>
+                </label>
+              )}
             </div>
 
             {/* Rincian Total */}

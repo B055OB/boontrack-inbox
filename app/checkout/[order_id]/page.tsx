@@ -26,6 +26,7 @@ import { trackClientPurchase, initMetaPixel, initTikTokPixel } from '@/lib/track
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 import { resolveFulfillmentRequirements } from '@/lib/product-catalog';
+import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 
 const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
 
@@ -41,6 +42,8 @@ export default function CheckoutPage({ params }: Props) {
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [tenant, setTenant] = useState<any>(null);
+  const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
 
   useEffect(() => {
     async function loadOrder() {
@@ -127,6 +130,39 @@ export default function CheckoutPage({ params }: Props) {
 
     return () => clearInterval(timer);
   }, [orderId]);
+
+  // Sinkronisasi data merchant & rekening transfer bank dinamis dari Supabase
+  useEffect(() => {
+    if (!order) return;
+    const tSlug = (order.tenant_slug || order.tenant_id || '').toLowerCase();
+
+    async function fetchTenantInfo() {
+      try {
+        const supabase = getSupabase();
+        if (supabase && tSlug) {
+          const { data } = await supabase
+            .from('tenants')
+            .select('*')
+            .or(`slug.eq.${tSlug},id.eq.${tSlug}`)
+            .maybeSingle();
+
+          if (data) {
+            setTenant(data);
+            const accounts = extractTenantBankAccounts(data);
+            setBankAccounts(accounts);
+            return;
+          }
+        }
+        // Fallback: periksa bila data order memuat informasi bank
+        setBankAccounts(extractTenantBankAccounts(order));
+      } catch (err) {
+        console.warn('[Checkout Page] Failed to fetch tenant details:', err);
+        setBankAccounts(extractTenantBankAccounts(order));
+      }
+    }
+
+    fetchTenantInfo();
+  }, [order?.tenant_slug, order?.tenant_id]);
 
   // Request dynamic QRIS jika belum ada qr_code_url
   useEffect(() => {
@@ -220,7 +256,17 @@ export default function CheckoutPage({ params }: Props) {
   const rawQrisValue = candidateQris.includes('010211')
     ? generateDynamicQRIS(candidateQris, grossAmount)
     : candidateQris;
-  const targetWaNumber = getTenantWhatsApp(tenantSlug) || getPlatformWhatsApp();
+  const targetWaNumber =
+    tenant?.metadata?.whatsapp_number ||
+    tenant?.metadata?.whatsapp ||
+    tenant?.whatsapp_number ||
+    tenant?.phone ||
+    getTenantWhatsApp(tenantSlug) ||
+    getPlatformWhatsApp();
+
+  const storeDisplayName =
+    tenant?.name ||
+    (tenantSlug ? tenantSlug.charAt(0).toUpperCase() + tenantSlug.slice(1) : 'Toko');
 
   const confirmationCallToAction =
     orderRequirements.strategy === 'SERVICE'
@@ -230,7 +276,7 @@ export default function CheckoutPage({ params }: Props) {
       : 'Mohon dicek dan aktivasi akses saya. Terima kasih!';
 
   const waConfirmUrl = `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(
-    `Halo Tim BoonTrack, saya sudah melakukan pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Pesanan'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n${confirmationCallToAction}`
+    `Halo ${storeDisplayName}, saya ingin konfirmasi pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Pesanan'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n${confirmationCallToAction}`
   )}`;
 
   return (
@@ -358,69 +404,95 @@ export default function CheckoutPage({ params }: Props) {
                   <span>Rekening Tujuan Pembayaran</span>
                 </div>
 
-                {/* Bank BCA */}
-                <div className="bg-slate-900 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-3">
-                  <div>
-                    <span className="text-[10px] font-bold text-blue-400 block">BANK BCA</span>
-                    <span className="text-sm font-mono font-bold text-white tracking-wider">847-019-2344</span>
-                    <span className="text-[10px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
+                {bankAccounts.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {bankAccounts.map((acc, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-slate-900 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-3"
+                      >
+                        <div>
+                          <span className="text-[10px] font-bold text-blue-400 block tracking-wide">
+                            {acc.bank_name}
+                          </span>
+                          <span className="text-sm font-mono font-bold text-white tracking-wider">
+                            {acc.account_number}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block">
+                            a/n {acc.account_holder}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(acc.account_number, `bank_${idx}`)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+                        >
+                          {copiedField === `bank_${idx}` ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-emerald-400">Tersalin</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Salin</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy('8470192344', 'bca')}
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
-                  >
-                    {copiedField === 'bca' ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-emerald-400">Tersalin</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Salin</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Bank Mandiri */}
-                <div className="bg-slate-900 border border-slate-800/90 rounded-xl p-3 flex items-center justify-between gap-3">
-                  <div>
-                    <span className="text-[10px] font-bold text-amber-400 block">BANK MANDIRI</span>
-                    <span className="text-sm font-mono font-bold text-white tracking-wider">131-00-1892834-1</span>
-                    <span className="text-[10px] text-slate-400 block">a/n PT BOONTRACK INOVASI DIGITAL</span>
+                ) : (
+                  /* Kondisi Jika Merchant Belum Mengisi Rekening Bank: JANGAN tampilkan rekening mock platform */
+                  <div className="p-4 bg-slate-900/90 border border-amber-500/30 rounded-xl space-y-3 text-center">
+                    <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/20">
+                      <MessageSquare className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-slate-200">
+                        Rekening Transfer Toko Sedang Disiapkan
+                      </h4>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Toko belum melampirkan rekening otomatis. Silakan konfirmasi pembayaran langsung via WhatsApp Toko atau gunakan QRIS Instan.
+                      </p>
+                    </div>
+                    <div className="pt-1 flex flex-col gap-2">
+                      <a
+                        href={waConfirmUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md shadow-emerald-600/20"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        <span>Konfirmasi Pembayaran via WhatsApp Toko</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOrder((prev: any) => ({ ...prev, payment_method: 'qris' }));
+                        }}
+                        className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Beralih ke QRIS Instan (Bebas Biaya Admin)</span>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy('1310018928341', 'mandiri')}
-                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
-                  >
-                    {copiedField === 'mandiri' ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-emerald-400">Tersalin</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Salin</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+                )}
               </div>
 
               {/* Peringatan Kode Unik */}
-              <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-amber-300">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  <span className="font-bold block">PENTING: Transfer Tepat Sesuai Nominal</span>
-                  <p className="text-[11px] text-amber-200/90 leading-relaxed">
-                    Harap transfer tepat hingga 3 digit terakhir (<strong>Rp {grossAmount.toLocaleString('id-ID')}</strong>) agar pesanan Anda dapat diverifikasi otomatis tanpa kendala.
-                  </p>
+              {bankAccounts.length > 0 && uniqueCode > 0 && (
+                <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-amber-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <span className="font-bold block">PENTING: Transfer Tepat Sesuai Nominal</span>
+                    <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                      Harap transfer tepat hingga 3 digit terakhir (<strong>Rp {grossAmount.toLocaleString('id-ID')}</strong>) agar pesanan Anda dapat diverifikasi otomatis tanpa kendala.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           ) : (
             /* QR Code Container (QRIS Standar Nasional) */
@@ -584,7 +656,7 @@ export default function CheckoutPage({ params }: Props) {
 
         <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500 pt-1">
           <ShieldCheck className="w-4 h-4 text-slate-400" />
-          <span>Diverifikasi otomatis & terenkripsi 256-bit PT BOONTRACK INOVASI DIGITAL</span>
+          <span>Diverifikasi otomatis & terenkripsi 256-bit SSL BoonTrack Secure</span>
         </div>
       </div>
     </div>

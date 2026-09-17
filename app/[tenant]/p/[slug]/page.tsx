@@ -65,6 +65,7 @@ import {
   FulfillmentMetadata
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
+import { hasTenantBankAccounts } from '@/lib/bank-accounts';
 
 function SingleProductContent() {
   const params = useParams();
@@ -200,7 +201,7 @@ function SingleProductContent() {
               discount_coupon: cfg.discount_coupon || cfg.voucher?.code || '',
               voucher: cfg.voucher || null,
               enable_qris: pm.enable_qris ?? cfg.enable_qris ?? true,
-              enable_manual_transfer: pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? false,
+              enable_manual_transfer: Boolean((pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? false) && hasTenantBankAccounts(tenantRow)),
               affiliate_commission_rate: cfg.affiliate_commission_rate || 0,
               whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || tenantRow?.metadata?.whatsapp_number || getTenantWhatsApp(tenant),
             };
@@ -847,7 +848,7 @@ function SingleProductContent() {
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Transfer langsung ke rekening BCA / Mandiri seller tanpa biaya admin. Dilengkapi 3 digit kode unik acak verifikasi.
+                Transfer langsung ke rekening bank seller tanpa biaya admin. Dilengkapi 3 digit kode unik acak verifikasi.
               </p>
             </div>
           </label>
