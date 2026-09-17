@@ -13,8 +13,6 @@ import {
   AlertTriangle,
   RefreshCw,
   ArrowRight,
-  Key,
-  Copy,
 } from 'lucide-react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 
@@ -33,12 +31,7 @@ interface WhatsAppTabProps {
   setConnectedPhone: (phone: string | null) => void;
   waProvider?: 'EVOLUTION' | 'WABA';
   waConnectionMode?: 'SHARED' | 'DEDICATED';
-  pairingPhone?: string;
-  setPairingPhone?: (phone: string) => void;
-  pairingCodeResult?: string | null;
-  isPairingLoading?: boolean;
   handleConnectGrowthSession: (isReload?: boolean) => Promise<void>;
-  handleRequestPairingCode?: (e: React.FormEvent) => Promise<void>;
   botStrategy?: 'trust_builder' | 'balanced' | 'hard_selling';
   setBotStrategy?: (strategy: 'trust_builder' | 'balanced' | 'hard_selling') => void;
   handleSaveBotStrategy?: (strategyOverride?: 'trust_builder' | 'balanced' | 'hard_selling') => Promise<void>;
@@ -71,12 +64,7 @@ export default function WhatsAppTab({
   setConnectedPhone,
   waProvider,
   waConnectionMode,
-  pairingPhone,
-  setPairingPhone,
-  pairingCodeResult,
-  isPairingLoading,
   handleConnectGrowthSession,
-  handleRequestPairingCode,
   botStrategy,
   setBotStrategy,
   handleSaveBotStrategy,
@@ -251,83 +239,6 @@ export default function WhatsAppTab({
                     <p className="text-xs font-bold text-slate-400">
                       Disediakan WhatsApp
                     </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Secondary Option: 8-Digit Phone Pairing Code (Section 9.2 Contract) */}
-              <div className="md:col-span-12 pt-6 border-t border-slate-100 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-200">
-                  <div className="space-y-1 max-w-md">
-                    <h4 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                      <Key className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Atau Tautkan Menggunakan Nomor WhatsApp (Pairing Code 8 Digit)</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Tidak bisa scan QR? Masukkan nomor WhatsApp toko Anda untuk menerima kode pairing 8 digit resmi langsung di ponsel.
-                    </p>
-                  </div>
-
-                  {handleRequestPairingCode && (
-                    <form
-                      onSubmit={handleRequestPairingCode}
-                      className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto shrink-0"
-                    >
-                      <input
-                        type="tel"
-                        value={pairingPhone || ''}
-                        onChange={(e) => setPairingPhone && setPairingPhone(e.target.value)}
-                        placeholder="08xxxxxxxxxx"
-                        className="w-full sm:w-44 px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                      />
-                      <button
-                        type="submit"
-                        disabled={isPairingLoading || !pairingPhone?.trim()}
-                        className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0"
-                      >
-                        {isPairingLoading ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Meminta Kode...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Smartphone className="w-3.5 h-3.5" />
-                            <span>Dapatkan Kode</span>
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  )}
-                </div>
-
-                {pairingCodeResult && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-black text-blue-900 block">
-                        KODE PAIRING WHATSAPP RESMI (8 DIGIT):
-                      </span>
-                      <p className="text-[11px] text-blue-700">
-                        Buka WhatsApp di HP &gt; <strong>Perangkat Tertaut</strong> &gt; <strong>Tautkan dengan nomor telepon saja</strong>, lalu masukkan kode:
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="px-5 py-2.5 bg-white border-2 border-blue-600 text-blue-900 rounded-xl font-mono text-lg font-black tracking-widest shadow-xs">
-                        {pairingCodeResult}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(pairingCodeResult);
-                          alert('Kode pairing berhasil disalin!');
-                        }}
-                        className="p-2.5 bg-white hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-bold text-blue-700 flex items-center gap-1 transition cursor-pointer"
-                        title="Salin Kode"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Salin</span>
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>

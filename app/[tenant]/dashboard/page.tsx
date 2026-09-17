@@ -159,12 +159,7 @@ export default function TenantDashboardPage() {
     waErrorMessage,
     connectedPhone,
     setConnectedPhone,
-    pairingPhone,
-    setPairingPhone,
-    pairingCodeResult,
-    isPairingLoading,
     handleConnectGrowthSession,
-    handleRequestPairingCode,
 
     conversations,
     activeConversationId,
@@ -801,12 +796,7 @@ export default function TenantDashboardPage() {
               waErrorMessage={waErrorMessage}
               connectedPhone={connectedPhone}
               setConnectedPhone={setConnectedPhone}
-              pairingPhone={pairingPhone}
-              setPairingPhone={setPairingPhone}
-              pairingCodeResult={pairingCodeResult}
-              isPairingLoading={isPairingLoading}
               handleConnectGrowthSession={handleConnectGrowthSession}
-              handleRequestPairingCode={handleRequestPairingCode}
               botStrategy={botStrategy}
               setBotStrategy={setBotStrategy}
               handleSaveBotStrategy={handleSaveBotStrategy}

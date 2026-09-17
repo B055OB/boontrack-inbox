@@ -212,11 +212,6 @@ export function useTenantDashboard() {
   const [waProvider, setWaProvider] = useState<'EVOLUTION' | 'WABA'>('EVOLUTION');
   const [waConnectionMode, setWaConnectionMode] = useState<'SHARED' | 'DEDICATED'>('SHARED');
 
-  // Pairing Code
-  const [pairingPhone, setPairingPhone] = useState('');
-  const [pairingCodeResult, setPairingCodeResult] = useState<string | null>(null);
-  const [isPairingLoading, setIsPairingLoading] = useState(false);
-
   // Conversations State
   const [conversations, setConversations] = useState<ChatConversation[]>(() => {
     if (typeof window !== 'undefined' && tenantSlug) {
@@ -1406,7 +1401,6 @@ export function useTenantDashboard() {
     if (!tenantSlug) return;
     setIsQrLoading(true);
     setWaErrorMessage(null);
-    setPairingCodeResult(null);
 
     try {
       const url = `/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}${isReload ? '&action=reload' : ''}`;
@@ -1431,9 +1425,6 @@ export function useTenantDashboard() {
         if (qr) {
           setQrCodeUrl(qr);
         }
-        if (data.code && !pairingCodeResult && !data.code.includes('@') && !data.code.includes('=') && data.code.length <= 12) {
-          setPairingCodeResult(data.code);
-        }
         setWaErrorMessage(null);
       }
     } catch (err) {
@@ -1441,78 +1432,6 @@ export function useTenantDashboard() {
       setWaErrorMessage(null);
     } finally {
       setIsQrLoading(false);
-    }
-  };
-
-  const handleRequestPairingCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tenantSlug) return;
-    if (!pairingPhone.trim()) return alert('Masukkan nomor WhatsApp terlebih dahulu!');
-
-    setIsPairingLoading(true);
-    setPairingCodeResult(null);
-    try {
-      let cleanPhone = pairingPhone.replace(/[^0-9]/g, '');
-      if (cleanPhone.startsWith('0')) {
-        cleanPhone = '62' + cleanPhone.slice(1);
-      } else if (!cleanPhone.startsWith('62')) {
-        cleanPhone = '62' + cleanPhone;
-      }
-
-      const res = await fetch(`/api/whatsapp/pairing-code?tenant=${encodeURIComponent(tenantSlug)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant: tenantSlug, phone: cleanPhone }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      // Jika gateway sudah CONNECTED
-      if (data.status === 'CONNECTED' || data.connected) {
-        setWaStatus('CONNECTED');
-        if (data.connected_phone) setConnectedPhone(data.connected_phone);
-        setQrCodeUrl(null);
-        setPairingCodeResult(null);
-        alert(data.message || 'WhatsApp sudah terhubung aktif ke BoonTrack Engine.');
-        return;
-      }
-
-      if (!res.ok || !data.success || !data.pairing_code) {
-        let errMsg = data.error || data.detail || 'Gagal mendapatkan kode pairing dari server WhatsApp.';
-        errMsg = errMsg.replace(/Evolution API/gi, 'BoonTrack Engine').replace(/socket/gi, 'koneksi');
-        alert(errMsg);
-        setPairingCodeResult(null);
-        return;
-      }
-
-      const rawCode = String(data.pairing_code).trim();
-
-      // Cegah Simpan String QR ke State UI:
-      // Jika rawCode mengandung @, =, atau panjangnya lebih dari 12 karakter:
-      if (rawCode.includes('@') || rawCode.includes('=') || rawCode.length > 12) {
-        alert('Respons server berupa string QR mentah, bukan kode pairing. Silakan klik Dapatkan Kode sekali lagi atau scan barcode QR di sebelah.');
-        setPairingCodeResult(null);
-        return;
-      }
-
-      // Filter Kode Valid:
-      // Hanya panggil setPairingCodeResult(rawCode) jika kode benar-benar berupa 8 digit alfanumerik (misal format XXXX-XXXX atau panjang 8-9 karakter)
-      const isValidFormat =
-        /^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$/.test(rawCode) ||
-        /^[A-Za-z0-9]{8}$/.test(rawCode) ||
-        (rawCode.length >= 8 && rawCode.length <= 9 && !/[^A-Za-z0-9-]/.test(rawCode));
-
-      if (isValidFormat) {
-        setPairingCodeResult(rawCode);
-      } else {
-        alert('Format kode pairing tidak valid dari server. Silakan klik Dapatkan Kode sekali lagi.');
-        setPairingCodeResult(null);
-        return;
-      }
-    } catch (err) {
-      alert('Tidak dapat menghubungi gateway WhatsApp.');
-      setPairingCodeResult(null);
-    } finally {
-      setIsPairingLoading(false);
     }
   };
 
@@ -1643,12 +1562,7 @@ export function useTenantDashboard() {
     waErrorMessage,
     connectedPhone,
     setConnectedPhone,
-    pairingPhone,
-    setPairingPhone,
-    pairingCodeResult,
-    isPairingLoading,
     handleConnectGrowthSession,
-    handleRequestPairingCode,
 
     // Live Chat Conversations
     conversations,
