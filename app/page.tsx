@@ -41,7 +41,19 @@ export default function ShopLandingPage() {
   const [storeSlug, setStoreSlug] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
-  const [referralCode, setReferralCode] = useState('');
+  const [referralCode, setReferralCode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      let r = (sp.get('ref') || sp.get('r') || sp.get('code') || '').trim().toLowerCase();
+      if (!r) {
+        const match = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code|boontrack_merchant_ref)=([^;]+)/);
+        if (match) r = decodeURIComponent(match[1]).trim().toLowerCase();
+      }
+      if (r === 'mafiasakti' || r === 'kangsakti') r = 'buzzerukm';
+      return r;
+    }
+    return '';
+  });
 
   useEffect(() => {
     let code = '';
@@ -82,9 +94,25 @@ export default function ShopLandingPage() {
   }, []);
 
   const getRegisterLink = (plan?: string) => {
+    let activeRef = referralCode;
+    if (!activeRef && typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      activeRef = (sp.get('ref') || sp.get('r') || sp.get('code') || '').trim().toLowerCase();
+      if (!activeRef) {
+        const match = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code|boontrack_merchant_ref)=([^;]+)/);
+        if (match) activeRef = decodeURIComponent(match[1]).trim().toLowerCase();
+      }
+      if (!activeRef) {
+        try {
+          activeRef = (localStorage.getItem('boontrack_referral_code') || localStorage.getItem('boontrack_merchant_ref') || '').trim().toLowerCase();
+        } catch (_) {}
+      }
+    }
+    if (activeRef === 'mafiasakti' || activeRef === 'kangsakti') activeRef = 'buzzerukm';
+
     const params = new URLSearchParams();
     if (plan) params.set('plan', plan);
-    if (referralCode) params.set('ref', referralCode);
+    if (activeRef) params.set('ref', activeRef);
     const qs = params.toString();
     return qs ? `/register?${qs}` : '/register';
   };
@@ -95,9 +123,26 @@ export default function ShopLandingPage() {
     
     setIsLoading(true);
     const cleanSlug = storeSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+
+    let activeRef = referralCode;
+    if (!activeRef && typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      activeRef = (sp.get('ref') || sp.get('r') || sp.get('code') || '').trim().toLowerCase();
+      if (!activeRef) {
+        const match = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code|boontrack_merchant_ref)=([^;]+)/);
+        if (match) activeRef = decodeURIComponent(match[1]).trim().toLowerCase();
+      }
+      if (!activeRef) {
+        try {
+          activeRef = (localStorage.getItem('boontrack_referral_code') || localStorage.getItem('boontrack_merchant_ref') || '').trim().toLowerCase();
+        } catch (_) {}
+      }
+    }
+    if (activeRef === 'mafiasakti' || activeRef === 'kangsakti') activeRef = 'buzzerukm';
+
     const params = new URLSearchParams();
     params.set('slug', cleanSlug);
-    if (referralCode) params.set('ref', referralCode);
+    if (activeRef) params.set('ref', activeRef);
     router.push(`/register?${params.toString()}`);
   };
 

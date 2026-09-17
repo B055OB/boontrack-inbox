@@ -490,7 +490,7 @@ export default function TenantStorefrontPage() {
                   document.cookie = `boontrack_referral_code=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
                   document.cookie = `boontrack_merchant_ref=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
                 } catch (_) {}
-                router.replace(`/preview/new-lander-clean?ref=${encodeURIComponent(affCode)}`);
+                router.replace(`https://shop.boontrack.com/?ref=${encodeURIComponent(affCode)}`);
               }
               return;
             }

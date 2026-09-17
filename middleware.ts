@@ -330,81 +330,83 @@ export async function middleware(req: NextRequest) {
   }
 
   if (affiliateCode) {
-    // 1. Root frontpage (/) -> Render Landing Page utama (Clean Light edition) dengan atribusi referral 30 hari
+    const isProductionBoonTrack = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
+    const shopBaseUrl = isProductionBoonTrack
+      ? 'https://shop.boontrack.com'
+      : `${req.nextUrl.protocol}//${req.nextUrl.host.replace(/^[^.]+\./, '')}`;
+
+    // 1. Root frontpage (/) -> Redirect ke https://shop.boontrack.com/?ref=${affiliateCode} dengan atribusi 30 hari
     if (pathname === '/' || pathname === '') {
-      const url = req.nextUrl.clone();
-      url.pathname = '/preview/new-lander-clean';
-      url.searchParams.set('ref', affiliateCode);
-      const res = NextResponse.rewrite(url);
+      const targetUrl = new URL(`${shopBaseUrl}/`);
+      targetUrl.searchParams.set('ref', affiliateCode);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'ref') targetUrl.searchParams.set(key, val);
+      });
+      const res = NextResponse.redirect(targetUrl, 307);
       setReferralCookies(res, affiliateCode, hostClean);
       return res;
     }
 
-    // 2. Akses eksplisit form registrasi (/register)
+    // 2. Akses eksplisit form registrasi (/register) -> Redirect ke https://shop.boontrack.com/register?ref=${affiliateCode}
     if (pathname === '/register' || pathname.startsWith('/register/')) {
-      const url = req.nextUrl.clone();
-      url.pathname = '/register';
-      if (!url.searchParams.has('ref') && !url.searchParams.has('am')) {
-        url.searchParams.set('ref', affiliateCode);
-      }
-      const res = NextResponse.rewrite(url);
+      const targetUrl = new URL(`${shopBaseUrl}/register`);
+      targetUrl.searchParams.set('ref', affiliateCode);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'ref') targetUrl.searchParams.set(key, val);
+      });
+      const res = NextResponse.redirect(targetUrl, 307);
       setReferralCookies(res, affiliateCode, hostClean);
       return res;
     }
 
-    // 3. /affiliate/register -> Pertahankan path tujuannya, inject ?ref=${affiliateCode}
+    // 3. /affiliate/register -> Redirect ke https://shop.boontrack.com/affiliate/register?ref=${affiliateCode}
     if (pathname === '/affiliate/register' || pathname.startsWith('/affiliate/register/')) {
-      const url = req.nextUrl.clone();
-      url.pathname = '/affiliate/register';
-      if (!url.searchParams.has('ref') && !url.searchParams.has('am')) {
-        url.searchParams.set('ref', affiliateCode);
-      }
-      const res = NextResponse.rewrite(url);
+      const targetUrl = new URL(`${shopBaseUrl}/affiliate/register`);
+      targetUrl.searchParams.set('ref', affiliateCode);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'ref') targetUrl.searchParams.set(key, val);
+      });
+      const res = NextResponse.redirect(targetUrl, 307);
       setReferralCookies(res, affiliateCode, hostClean);
       return res;
     }
 
-    // 4. /affiliate/dashboard -> Pertahankan path tujuannya, inject ?code=${affiliateCode}
-    if (pathname === '/affiliate/dashboard' || pathname.startsWith('/affiliate/dashboard/')) {
-      const url = req.nextUrl.clone();
-      url.pathname = '/affiliate/dashboard';
-      if (!url.searchParams.has('code') && !url.searchParams.has('ref')) {
-        url.searchParams.set('code', affiliateCode);
-      }
-      const res = NextResponse.rewrite(url);
+    // 4. /affiliate/dashboard -> Redirect ke https://shop.boontrack.com/affiliate/dashboard?code=${affiliateCode}
+    if (
+      pathname === '/affiliate' ||
+      pathname === '/affiliate/' ||
+      pathname === '/affiliate/dashboard' ||
+      pathname.startsWith('/affiliate/dashboard/')
+    ) {
+      const targetUrl = new URL(`${shopBaseUrl}/affiliate/dashboard`);
+      targetUrl.searchParams.set('code', affiliateCode);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'code') targetUrl.searchParams.set(key, val);
+      });
+      const res = NextResponse.redirect(targetUrl, 307);
       setReferralCookies(res, affiliateCode, hostClean);
       return res;
     }
 
-    // 5. /affiliate root -> Pertahankan path, inject ?code=${affiliateCode}
+    // 5. /affiliate root -> Redirect ke https://shop.boontrack.com/affiliate?code=${affiliateCode}
     if (pathname === '/affiliate' || pathname === '/affiliate/') {
-      const url = req.nextUrl.clone();
-      url.pathname = '/affiliate';
-      if (!url.searchParams.has('code') && !url.searchParams.has('ref')) {
-        url.searchParams.set('code', affiliateCode);
-      }
-      const res = NextResponse.rewrite(url);
+      const targetUrl = new URL(`${shopBaseUrl}/affiliate`);
+      targetUrl.searchParams.set('code', affiliateCode);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        if (key !== 'code') targetUrl.searchParams.set(key, val);
+      });
+      const res = NextResponse.redirect(targetUrl, 307);
       setReferralCookies(res, affiliateCode, hostClean);
       return res;
     }
 
-    // 6. Direct preview landing clean path
-    if (pathname === '/preview/new-lander-clean') {
-      const url = req.nextUrl.clone();
-      if (!url.searchParams.has('ref')) {
-        url.searchParams.set('ref', affiliateCode);
-      }
-      const res = NextResponse.rewrite(url);
-      setReferralCookies(res, affiliateCode, hostClean);
-      return res;
-    }
-
-    // 7. Path umum lainnya pada subdomain mitra -> rewrite dengan query ref & simpan cookie 30 hari
-    const url = req.nextUrl.clone();
-    if (!url.searchParams.has('ref')) {
-      url.searchParams.set('ref', affiliateCode);
-    }
-    const res = NextResponse.rewrite(url);
+    // 6. Path umum lainnya pada subdomain mitra -> Redirect ke https://shop.boontrack.com${pathname}?ref=${affiliateCode}
+    const targetUrl = new URL(`${shopBaseUrl}${pathname}`);
+    targetUrl.searchParams.set('ref', affiliateCode);
+    req.nextUrl.searchParams.forEach((val, key) => {
+      if (key !== 'ref') targetUrl.searchParams.set(key, val);
+    });
+    const res = NextResponse.redirect(targetUrl, 307);
     setReferralCookies(res, affiliateCode, hostClean);
     return res;
   }
