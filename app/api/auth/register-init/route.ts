@@ -43,6 +43,34 @@ export async function POST(req: NextRequest) {
     const email = String(rawEmail).trim().toLowerCase();
     const password = String(rawPassword).trim();
 
+    // ── STRICT BACKEND TRIAL GUARD: HANYA ADS PERFORMANCE (PRO_SCALE) ──
+    // Hanya pendaftar dengan paket 'PRO_SCALE' / Ads Performance yang diizinkan memproses inisiasi verifikasi trial WhatsApp (Rp 0).
+    // Jika request datang dengan paket Solo ('SOLO') atau Team Scale ('TEAM_SCALE'), tolak pembuatan token aktivasi gratis
+    // dan kembalikan response instruksi redirect ke pembayaran/invoice QRIS.
+    const planTierUpper = String(body.plan_tier || '').trim().toUpperCase();
+    const selectedPlanLower = String(body.selectedPlan || '').trim().toLowerCase();
+
+    const isAdsPerformance =
+      planTierUpper === 'PRO_SCALE' ||
+      planTierUpper === 'ADS_PERFORMANCE' ||
+      selectedPlanLower === 'ads_performance' ||
+      selectedPlanLower === 'pro_scale';
+
+    if (!isAdsPerformance) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Trial gratis 7 hari (Rp 0) hanya tersedia untuk paket Ads Performance. Paket Solo dan Team Scale memerlukan pembayaran langganan langsung.',
+          requires_payment: true,
+          plan: planTierUpper || selectedPlanLower || 'SOLO',
+          action: 'REDIRECT_TO_PAYMENT',
+          instruction: 'Silakan lanjutkan pembayaran paket langganan Anda melalui invoice QRIS.',
+        },
+        { status: 403 }
+      );
+    }
+
     if (!shopName) {
       return NextResponse.json(
         { success: false, error: 'Nama toko wajib diisi.' },

@@ -41,9 +41,9 @@ export function getOfficialWhatsAppNumber(): string {
     process.env.WHATSAPP_OFFICIAL_NUMBER ||
     process.env.WHATSAPP_PHONE_NUMBER ||
     process.env.NEXT_PUBLIC_META_BOT_NUMBER ||
-    '15556769563';
+    '6285139555449';
 
-  return normalizeWhatsAppNumber(envNumber) || '15556769563';
+  return normalizeWhatsAppNumber(envNumber) || '6285139555449';
 }
 
 /**
@@ -70,8 +70,7 @@ export async function sendWhatsAppSessionMessage(
   const phoneNumberId =
     process.env.WHATSAPP_PHONE_NUMBER_ID ||
     process.env.META_PHONE_NUMBER_ID ||
-    process.env.NEXT_PUBLIC_META_BOT_NUMBER ||
-    '';
+    '1268977686299719';
 
   const accessToken =
     process.env.WHATSAPP_API_TOKEN ||
@@ -151,7 +150,7 @@ export async function sendOrderPaidNotification({
   const phoneNumberId =
     process.env.WHATSAPP_PHONE_NUMBER_ID ||
     process.env.META_PHONE_NUMBER_ID ||
-    '';
+    '1268977686299719';
 
   const accessToken =
     process.env.WHATSAPP_API_TOKEN ||
