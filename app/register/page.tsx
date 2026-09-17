@@ -753,6 +753,14 @@ export default function RegisterShopPage() {
       return;
     }
 
+    const cleanEmail = (merchantData.email || '').trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      setPayError("Alamat email aktif wajib diisi dengan benar untuk menerima tautan aktivasi toko.");
+      setLoadingPay(false);
+      return;
+    }
+
     // Standarisasi 3 Tier Resmi:
     // 1. "Solo / Starter" -> enum database: 'STARTER'
     // 2. "Ads Performance" -> enum database: 'PRO_SCALE'
@@ -777,21 +785,12 @@ export default function RegisterShopPage() {
       return;
     }
 
-    const trialEndsAt = new Date(Date.now() + 7 * 86400000).toISOString();
-
     try {
-      // 1. Simpan tenant langsung ke Supabase tenants table agar data toko & PIN benar-benar tersimpan
+      // 1. Simpan tenant langsung via Supabase Admin Gateway di /api/v1/tenants/onboard
       const resolvedBusinessType: CanonicalBusinessType = resolveCanonicalCategory(category);
-
-      const isPhysicalStore = (resolvedBusinessType as string) === 'PHYSICAL' || (resolvedBusinessType as string) === 'RETAIL' || (resolvedBusinessType as string) === 'FOOD';
-      const isServiceStore = resolvedBusinessType === 'FIELD_SERVICE' || resolvedBusinessType === 'PROFESSIONAL_SERVICE';
-      const isDigitalStore = resolvedBusinessType === 'DIGITAL';
-
       const cleanRef = referralCode.trim().toLowerCase() || null;
-      let matchedAffiliateId: string | null = null;
-      let matchedAffiliateName: string | null = null;
 
-      // 1. Panggil Endpoint Backend API Onboard secara primer untuk INSERT ke tabel tenants & attributions di Supabase
+      // Panggil Endpoint Backend API Onboard secara primer untuk INSERT ke tabel tenants & attributions di Supabase
       const onboardPayload = {
         slug,
         rawSlug: slug,
@@ -801,8 +800,8 @@ export default function RegisterShopPage() {
         phone: formattedPhone,
         merchantName: merchantData.name,
         merchant_name: merchantData.name,
-        email: merchantData.email,
-        customer_email: merchantData.email,
+        email: cleanEmail,
+        customer_email: cleanEmail,
         pin: cleanPin,
         password: cleanPin,
         access_pin: cleanPin,
@@ -832,103 +831,16 @@ export default function RegisterShopPage() {
       });
 
       const onboardData = await onboardRes.json().catch(() => ({}));
-      if (!onboardRes.ok || !onboardData.success) {
-        throw new Error(onboardData.error || "Gagal mendaftarkan toko ke database server. Silakan coba beberapa saat lagi.");
+      if (!onboardRes.ok || !onboardData.success || !onboardData.verification_sent) {
+        const errDetail =
+          onboardData.error ||
+          (onboardData.verification_sent === false
+            ? `Gagal mengirimkan email aktivasi ke ${cleanEmail}. Pastikan alamat email aktif dan coba beberapa saat lagi.`
+            : "Gagal mendaftarkan toko ke database server. Silakan coba beberapa saat lagi.");
+        throw new Error(errDetail);
       }
 
-      // 2. Redundansi Client-Side Direct Sync ke Supabase (jika tersedia)
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          if (cleanRef) {
-            try {
-              const { data: affData } = await supabase
-                .from('affiliates')
-                .select('id, name, referral_code')
-                .ilike('referral_code', cleanRef)
-                .maybeSingle();
-
-              if (affData) {
-                matchedAffiliateId = affData.id;
-                matchedAffiliateName = affData.name;
-              }
-            } catch (_) {}
-          }
-
-          const { data: directTenant } = await supabase.from('tenants').upsert(
-            {
-              slug,
-              name: storeName,
-              category: resolvedBusinessType,
-              business_type: resolvedBusinessType,
-              tier: dbTier,
-              status: isTrial ? 'trial' : 'active',
-              is_active: true,
-              trial_ends_at: isTrial ? trialEndsAt : null,
-              subscription_ends_at: isTrial ? trialEndsAt : new Date(Date.now() + 30 * 86400000).toISOString(),
-              access_username: slug,
-              access_password: cleanPin,
-              metadata: {
-                merchant_name: merchantData.name,
-                whatsapp_number: formattedPhone,
-                wa_number: formattedPhone,
-                phone: formattedPhone,
-                email: merchantData.email,
-                access_pin: cleanPin,
-                pin_hash: cleanPin,
-                trial_ends_at: isTrial ? trialEndsAt : null,
-                plan_tier: targetPlanTier,
-                tier: dbTier,
-                created_via: isTrial ? 'register_solo_trial' : 'register_paid',
-                referral_code: cleanRef,
-                affiliate_code: cleanRef,
-                ref: cleanRef,
-                affiliate_id: matchedAffiliateId,
-                referrer_id: matchedAffiliateId,
-                referrer_name: matchedAffiliateName,
-                business_category: resolvedBusinessType,
-                business_type: resolvedBusinessType,
-                vertical_type: resolvedBusinessType,
-                category: resolvedBusinessType,
-                utm_source: utmParams.utm_source || 'organik',
-                utm_medium: utmParams.utm_medium || undefined,
-                utm_campaign: utmParams.utm_campaign || undefined,
-                utm_content: utmParams.utm_content || undefined,
-                utm_term: utmParams.utm_term || undefined,
-                capabilities: {
-                  inbox: dbTier === 'ENTERPRISE',
-                  ai_bot: true,
-                  shipping: isPhysicalStore,
-                  booking: isServiceStore,
-                },
-                onboarded_at: new Date().toISOString(),
-              },
-            },
-            { onConflict: 'slug' }
-          ).select('id, slug').maybeSingle();
-
-          if (directTenant?.id && (matchedAffiliateId || cleanRef)) {
-            try {
-              await supabase.from('attributions').insert({
-                tenant_id: directTenant.id,
-                session_id: `reg_${slug}_${Date.now()}`,
-                affiliate_id: matchedAffiliateId || null,
-                utm_source: utmParams.utm_source || 'organik',
-                utm_medium: utmParams.utm_medium || null,
-                utm_campaign: utmParams.utm_campaign || null,
-                utm_content: utmParams.utm_content || null,
-                utm_term: utmParams.utm_term || null,
-                ip_hash: 'merchant_reg',
-                created_at: new Date().toISOString(),
-              });
-            } catch (_) {}
-          }
-        }
-      } catch (dbErr) {
-        console.warn('Supabase client-side direct upsert note:', dbErr);
-      }
-
-      // 3. Kirim payload registrasi ke Core Backend API untuk integrasi subscription/invoicing
+      // 2. Kirim payload registrasi ke Core Backend API untuk integrasi subscription/invoicing
       const res = await fetch(
         "https://api.boontrack.com/api/v1/shop/subscriptions/create",
         {
@@ -945,14 +857,14 @@ export default function RegisterShopPage() {
             category: resolvedBusinessType,
             merchant_name: merchantData.name,
             merchant_phone: formattedPhone,
-            customer_email: merchantData.email,
+            customer_email: cleanEmail,
             pin: cleanPin,
             password: cleanPin,
             referral_code: cleanRef || undefined,
             affiliate_code: cleanRef || undefined,
             ref: cleanRef || undefined,
-            affiliate_id: matchedAffiliateId || undefined,
-            referrer_id: matchedAffiliateId || undefined,
+            affiliate_id: onboardData.tenant?.affiliateId || undefined,
+            referrer_id: onboardData.tenant?.affiliateId || undefined,
             utm_source: utmParams.utm_source || undefined,
             utm_medium: utmParams.utm_medium || undefined,
             utm_campaign: utmParams.utm_campaign || undefined,
@@ -972,7 +884,7 @@ export default function RegisterShopPage() {
           tenant_slug: slug,
           store_name: storeName,
           merchant_name: merchantData.name,
-          email: merchantData.email,
+          email: cleanEmail,
           phone: formattedPhone,
           pin: cleanPin,
           plan_tier: targetPlanTier,
@@ -980,7 +892,7 @@ export default function RegisterShopPage() {
       }).catch((notifyErr) => console.warn('Credentials notification dispatch note:', notifyErr));
 
       // 4. Wajib Konfirmasi Email (Boon Pilot Activation Guard)
-      // Tampilkan layar "Cek Email Anda" meminta pengguna membuka inbox untuk aktivasi akun
+      // Tampilkan layar "Cek Email Anda" hanya jika email aktivasi benar-benar terkirim!
       if (typeof window !== "undefined") {
         localStorage.setItem("merchant_store", slug);
         localStorage.setItem("merchant_pin", cleanPin);
@@ -988,7 +900,7 @@ export default function RegisterShopPage() {
       }
 
       setVerificationData({
-        email: merchantData.email,
+        email: cleanEmail,
         name: merchantData.name,
         slug,
         storeName,
@@ -1018,8 +930,9 @@ export default function RegisterShopPage() {
         amount: planAmount,
         tenantSlug: slug,
       });
-    } catch {
-      setPayError("Terjadi gangguan koneksi saat menyiapkan pendaftaran. Coba lagi.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Terjadi gangguan koneksi saat menyiapkan pendaftaran. Coba lagi.";
+      setPayError(msg);
     } finally {
       setLoadingPay(false);
     }

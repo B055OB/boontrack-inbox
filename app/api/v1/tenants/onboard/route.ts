@@ -310,10 +310,12 @@ export async function POST(req: NextRequest) {
 
     // 3. Kirim Email Aktivasi Resmi dari Boon Pilot via Resend
     let verificationSent = false;
+    let verificationError: string | null = null;
+
     if (customerEmail) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
-        const verificationUrl = `${baseUrl}/auth/verify?token=${verificationToken}&type=merchant&slug=${generatedSlug}&id=${effectiveTenantId || ''}`;
+        const verificationUrl = `${baseUrl}/auth/confirm?token=${verificationToken}&type=merchant&slug=${generatedSlug}&id=${effectiveTenantId || ''}`;
 
         const emailResult = await sendBoonPilotVerificationEmail({
           to: customerEmail,
@@ -325,8 +327,13 @@ export async function POST(req: NextRequest) {
         });
 
         verificationSent = Boolean(emailResult.success);
+        if (!verificationSent) {
+          verificationError = emailResult.error || 'Resend API menolak pengiriman email aktivasi.';
+          console.error('[Onboard] Boon Pilot verification email failed:', verificationError);
+        }
       } catch (mailErr) {
-        console.warn('[Onboard] Error sending Boon Pilot verification email:', mailErr);
+        verificationError = mailErr instanceof Error ? mailErr.message : 'Gagal memanggil service email Resend.';
+        console.error('[Onboard] Exception sending Boon Pilot verification email:', mailErr);
       }
     }
 
@@ -342,11 +349,32 @@ export async function POST(req: NextRequest) {
       console.warn('Railway backend onboard sync note:', railwayErr);
     }
 
+    // STRICT CHECK: Jika merchant menyertakan email namun email verifikasi gagal terkirim,
+    // jangan kembalikan status 200 palsu agar UI tidak menampilkan false-success modal.
+    if (customerEmail && !verificationSent) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Gagal mengirim email aktivasi ke ${customerEmail}: ${verificationError || 'Layanan email tidak dapat dihubungi'}. Akun toko berhasil disiapkan, namun belum aktif. Silakan coba kembali atau periksa alamat email Anda.`,
+          needs_verification: true,
+          verification_sent: false,
+          verification_error: verificationError,
+          tenant: {
+            id: effectiveTenantId,
+            slug: generatedSlug,
+            storeName,
+            email: customerEmail,
+          },
+        },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Toko berhasil didaftarkan. Silakan konfirmasi email Anda untuk aktivasi.',
       needs_verification: true,
-      verification_sent: verificationSent,
+      verification_sent: true,
       email: customerEmail,
       tenant: {
         id: effectiveTenantId,
