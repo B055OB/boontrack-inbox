@@ -26,16 +26,17 @@ export async function POST(req: NextRequest) {
     // 3. "Team Scale" -> enum database: 'ENTERPRISE'
     let dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = 'STARTER';
     let canonicalPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = 'STARTER';
+    const requestedTrial = body.is_trial !== undefined ? Boolean(body.is_trial) : (Boolean(body.trial_days) || true);
     let isTrial = false;
 
     if (rawPlan.includes('team') || rawPlan.includes('enterprise') || rawPlan.includes('scale')) {
       dbTier = 'ENTERPRISE';
       canonicalPlanTier = 'ENTERPRISE';
-      isTrial = false;
+      isTrial = requestedTrial;
     } else if (rawPlan.includes('ads') || rawPlan.includes('performance') || rawPlan.includes('pro')) {
       dbTier = 'PRO_SCALE';
       canonicalPlanTier = 'PRO_SCALE';
-      isTrial = false;
+      isTrial = requestedTrial;
     } else {
       // Solo / Starter (Default)
       dbTier = 'STARTER';

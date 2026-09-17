@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  Check,
   CheckCircle2,
   Store,
   ArrowRight,
@@ -200,10 +201,10 @@ export function resolveCanonicalCategory(raw?: string | null): CanonicalBusiness
 export type OfficialPlan = "starter" | "pro_scale" | "enterprise" | "solo" | "ads_performance" | "team_scale";
 
 export const PLAN_PRICING: Record<OfficialPlan, number> = {
-  starter: 0,
+  starter: 199000,
   pro_scale: 299000,
   enterprise: 499000,
-  solo: 0,
+  solo: 199000,
   ads_performance: 299000,
   team_scale: 499000,
 };
@@ -529,8 +530,8 @@ export default function RegisterShopPage() {
     "idle" | "checking" | "available" | "taken"
   >("idle");
   const [category, setCategory] = useState<string>("PHYSICAL");
-  const [selectedPlan, setSelectedPlan] = useState<OfficialPlan>("starter");
-  const isTrialPlan = selectedPlan === "starter" || selectedPlan === "solo";
+  const [selectedPlan, setSelectedPlan] = useState<OfficialPlan>("ads_performance");
+  const isTrialPlan = true;
   const [merchantData, setMerchantData] = useState({
     name: "",
     phone: "",
@@ -681,18 +682,18 @@ export default function RegisterShopPage() {
       }
 
       if (initialPlan === "solo" || initialPlan === "starter" || initialPlan === "growth") {
-        setSelectedPlan("starter");
+        setSelectedPlan("solo");
       } else if (
         initialPlan === "pro_scale" ||
         initialPlan === "ads_performance" ||
         initialPlan === "growth_tracking"
       ) {
-        setSelectedPlan("pro_scale");
+        setSelectedPlan("ads_performance");
       } else if (
         initialPlan === "enterprise" ||
         initialPlan === "team_scale"
       ) {
-        setSelectedPlan("enterprise");
+        setSelectedPlan("team_scale");
       }
 
       if (initialStore) {
@@ -718,7 +719,7 @@ export default function RegisterShopPage() {
           pin: "123456",
         });
         setInvoiceData({
-          invoiceUrl: "https://checkout.xendit.co/web/6aa4090d539f6883d50c2042",
+          invoiceUrl: "https://payment.boontrack.com/invoice/demo-299000",
           invoiceId: "INV-DEMO-299000",
           amount: 299000,
           tenantSlug: mockSlug,
@@ -775,17 +776,18 @@ export default function RegisterShopPage() {
       return;
     }
 
-    // Standarisasi 3 Tier Resmi:
+    // Standarisasi 3 Tier Resmi (Semua Termasuk Trial 7 Hari):
     // 1. "Solo / Starter" -> enum database: 'STARTER'
     // 2. "Ads Performance" -> enum database: 'PRO_SCALE'
     // 3. "Team Scale" -> enum database: 'ENTERPRISE'
-    const isTrial = selectedPlan === 'starter' || selectedPlan === 'solo';
-    const planAmount = isTrial ? 0 : (PLAN_PRICING[selectedPlan] ?? 299000);
-    const dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = isTrial
-      ? 'STARTER'
-      : selectedPlan === 'enterprise' || selectedPlan === 'team_scale'
-      ? 'ENTERPRISE'
-      : 'PRO_SCALE';
+    const isTrial = true;
+    const planAmount = 0;
+    const dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' =
+      selectedPlan === 'enterprise' || selectedPlan === 'team_scale'
+        ? 'ENTERPRISE'
+        : selectedPlan === 'pro_scale' || selectedPlan === 'ads_performance'
+        ? 'PRO_SCALE'
+        : 'STARTER';
     const targetPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = dbTier;
 
     // Standarisasi nomor telepon WhatsApp (format 62...)
@@ -937,7 +939,7 @@ export default function RegisterShopPage() {
         return;
       }
 
-      // Tampilkan modal QRIS — TIDAK redirect ke Xendit
+      // Tampilkan modal QRIS Standar Bank Indonesia
       setInvoiceData({
         invoiceUrl,
         invoiceId,
@@ -1003,19 +1005,42 @@ export default function RegisterShopPage() {
       )}
 
       <main className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans py-10 px-4 sm:px-6 flex flex-col justify-center items-center">
-        <div className="w-full max-w-2xl flex flex-col items-center">
-          {/* Header */}
-          <div className="text-center max-w-lg mb-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-bold mb-3">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              <span>BoonTrack Shop Onboarding</span>
+        <div className="w-full max-w-4xl flex flex-col items-center">
+          {/* Logo Resmi BoonTrack Shop */}
+          <Link href="/" className="flex items-center gap-3 mb-6 group cursor-pointer">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-0.5 shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform duration-200 flex items-center justify-center">
+              <div className="w-full h-full bg-white rounded-[14px] flex items-center justify-center">
+                <span className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 tracking-tighter">
+                  B
+                </span>
+              </div>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-black text-xl tracking-tight text-slate-950 leading-tight">
+                  BoonTrack
+                </span>
+                <span className="font-extrabold text-lg text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 leading-tight">
+                  Shop
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                Commerce Engine
+              </span>
+            </div>
+          </Link>
+
+          {/* Header */}
+          <div className="text-center max-w-xl mb-8">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-bold mb-3">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <span>BoonTrack Shop Onboarding &bull; Coba Gratis 7 Hari</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 tracking-tight">
               Klaim &amp; Buka Toko Online Anda
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-2 leading-relaxed">
-              Otomatisasi etalase produk, verifikasi bayar QRIS 3 detik, dan
-              integrasi WhatsApp bot resmi.
+              Infrastruktur etalase instan, pembayaran QRIS otomatis berlisensi Bank Indonesia, dan integrasi Meta &amp; TikTok CAPI.
             </p>
           </div>
 
@@ -1328,127 +1353,281 @@ export default function RegisterShopPage() {
                 </div>
               </div>
 
-              {/* PILIH PAKET */}
-              <div className="space-y-2">
-                <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
-                  4. Pilih Paket Langganan:
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* 1. Solo / Starter */}
+              {/* PILIH PAKET LANGGANAN */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
+                    4. Pilih Paket Langganan:
+                  </label>
+                  <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 inline-block w-fit">
+                    ⚡ Semua Paket Termasuk Coba Gratis 7 Hari
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* 1. Paket Solo */}
                   <div
-                    onClick={() => setSelectedPlan("starter")}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                    onClick={() => setSelectedPlan("solo")}
+                    className={`p-5 rounded-3xl border-2 cursor-pointer transition-all duration-200 flex flex-col justify-between ${
                       selectedPlan === "starter" || selectedPlan === "solo"
-                        ? "border-blue-600 bg-blue-50/50 shadow-xs ring-1 ring-blue-500"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
+                        ? "border-blue-600 bg-blue-50/40 shadow-lg shadow-blue-500/10 ring-2 ring-blue-500/20 scale-[1.01]"
+                        : "border-slate-200 hover:border-slate-300 bg-white shadow-xs hover:shadow-md"
                     }`}
                   >
-                    <div>
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="font-black text-slate-900 text-xs">
-                          Solo / Starter
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                          Starter Merchant
                         </span>
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
                           Trial 7 Hari
                         </span>
                       </div>
-                      <p className="text-[10px] text-emerald-600 font-semibold mb-1.5">
-                        Starter Mandiri (Coba Gratis)
-                      </p>
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className="text-xs text-slate-400 line-through">
-                          Rp 199k
-                        </span>
-                        <span className="text-sm font-black text-emerald-600">
-                          Rp 0
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          /7 hari trial
-                        </span>
+
+                      <div>
+                        <h3 className="font-black text-slate-900 text-base">
+                          Paket Solo
+                        </h3>
+                        <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                          Mulai Digitalisasi Katalog &amp; Chat WA
+                        </p>
                       </div>
+
+                      <div className="pt-1 pb-2 border-b border-slate-100">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-xl font-black text-slate-900">
+                            Rp 199.000
+                          </span>
+                          <span className="text-xs text-slate-400 font-medium">
+                            / bln
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-bold text-emerald-600 mt-1">
+                          Coba Gratis 7 Hari (Rp 0 di Awal)
+                        </p>
+                      </div>
+
+                      {/* Checklist */}
+                      <ul className="space-y-2 text-xs">
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Etalase Katalog Toko Instan (Subdomain Toko)</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Integrasi WhatsApp Checkout</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Dynamic QRIS Standar Bank Indonesia</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Rekap Keuangan &amp; Laporan Penjualan</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
+                          <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <span>Verifikasi Pembayaran Manual (Wajib cek m-Banking satu per satu)</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
+                          <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <span>Tanpa Server-Side CAPI (Iklan berjalan &apos;buta&apos;, berisiko data loss)</span>
+                        </li>
+                      </ul>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-2 leading-tight">
-                      Katalog Tanpa Batas, Cek Ongkir Otomatis Multi-Ekspedisi,
-                      Akses Gratis 7 Hari Tanpa Biaya Awal
-                    </p>
+
+                    <div className="pt-4 mt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPlan("solo");
+                        }}
+                        className={`w-full py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                          selectedPlan === "starter" || selectedPlan === "solo"
+                            ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {selectedPlan === "starter" || selectedPlan === "solo"
+                          ? "✓ Dipilih: Paket Solo"
+                          : "Pilih Paket Solo (Mulai Trial 7 Hari)"}
+                      </button>
+                    </div>
                   </div>
 
-                  {/* 2. Ads Performance (PRO_SCALE) */}
+                  {/* 2. Paket Ads Performance (HERO TIER) */}
                   <div
-                    onClick={() => setSelectedPlan("pro_scale")}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between relative ${
+                    onClick={() => setSelectedPlan("ads_performance")}
+                    className={`p-5 rounded-3xl border-2 cursor-pointer transition-all duration-200 flex flex-col justify-between relative ${
                       selectedPlan === "pro_scale" || selectedPlan === "ads_performance"
-                        ? "border-blue-600 bg-blue-50/60 shadow-md ring-2 ring-blue-500"
-                        : "border-blue-200 hover:border-blue-300 bg-white"
+                        ? "border-indigo-600 bg-indigo-50/50 shadow-xl shadow-indigo-500/15 ring-2 ring-indigo-500/30 scale-[1.02]"
+                        : "border-indigo-400 bg-white shadow-lg shadow-indigo-500/10 hover:border-indigo-600"
                     }`}
                   >
-                    <div>
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="font-black text-blue-900 text-xs">
-                          Ads Performance
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs">
+                          🔥 Paling Dipilih Pengiklan Meta &amp; TikTok
                         </span>
-                        <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
-                          Paling Populer
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-blue-600 font-semibold mb-1.5">
-                        Scale-Up Ads &amp; CS
-                      </p>
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className="text-xs text-slate-400 line-through">
-                          Rp 599k
-                        </span>
-                        <span className="text-sm font-black text-blue-600">
-                          Rp 299k
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          /bln
+                        <span className="text-[10px] font-black text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
+                          Hero Tier
                         </span>
                       </div>
+
+                      <div>
+                        <h3 className="font-black text-indigo-950 text-base">
+                          Paket Ads Performance
+                        </h3>
+                        <p className="text-xs font-semibold text-indigo-900/80 mt-0.5">
+                          Optimasi Iklan Maksimal &amp; Pembayaran Otomatis
+                        </p>
+                      </div>
+
+                      <div className="pt-1 pb-2 border-b border-indigo-100">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-xl font-black text-indigo-950">
+                            Rp 299.000
+                          </span>
+                          <span className="text-xs text-slate-400 font-medium">
+                            / bln
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-bold text-emerald-600 mt-1">
+                          Coba Gratis 7 Hari (Rp 0 di Awal)
+                        </p>
+                      </div>
+
+                      {/* Checklist */}
+                      <ul className="space-y-2 text-xs">
+                        <li className="flex items-start gap-2 text-slate-800 font-bold">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Semua fitur di Paket Solo</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>BoonTrack Reader APK: Deteksi pembayaran &amp; mutasi otomatis dalam 3 detik</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Meta &amp; TikTok Server-Side CAPI: Data konversi akurat, optimasi algoritma iklan tajam</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Tombol Manual Override Purchase: Kirim event Purchase ke ads kapan saja dengan 1 klik</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Prioritas Data Sync: Tanpa delay pencatatan omzet harian</span>
+                        </li>
+                      </ul>
                     </div>
-                    <p className="text-[11px] text-slate-600 mt-2 leading-tight font-medium">
-                      Semua Fitur Solo / Starter + Meta &amp; TikTok CAPI Server-Side,
-                      God Button &amp; 2 Seats CS Inbox
-                    </p>
+
+                    <div className="pt-4 mt-3 border-t border-indigo-100">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPlan("ads_performance");
+                        }}
+                        className={`w-full py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                          selectedPlan === "pro_scale" || selectedPlan === "ads_performance"
+                            ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/25"
+                            : "bg-indigo-100 hover:bg-indigo-200 text-indigo-800"
+                        }`}
+                      >
+                        {selectedPlan === "pro_scale" || selectedPlan === "ads_performance"
+                          ? "✓ Dipilih: Ads Performance"
+                          : "Pilih Ads Performance (Mulai Trial 7 Hari)"}
+                      </button>
+                    </div>
                   </div>
 
-                  {/* 3. Team Scale (ENTERPRISE) */}
+                  {/* 3. Paket Team Scale */}
                   <div
-                    onClick={() => setSelectedPlan("enterprise")}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                    onClick={() => setSelectedPlan("team_scale")}
+                    className={`p-5 rounded-3xl border-2 cursor-pointer transition-all duration-200 flex flex-col justify-between ${
                       selectedPlan === "enterprise" || selectedPlan === "team_scale"
-                        ? "border-emerald-600 bg-emerald-50/50 shadow-xs ring-1 ring-emerald-500"
-                        : "border-slate-200 hover:border-slate-300 bg-white"
+                        ? "border-purple-600 bg-purple-50/40 shadow-lg shadow-purple-500/10 ring-2 ring-purple-500/20 scale-[1.01]"
+                        : "border-slate-200 hover:border-slate-300 bg-white shadow-xs hover:shadow-md"
                     }`}
                   >
-                    <div>
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="font-black text-slate-900 text-xs">
-                          Team Scale
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                          Untuk Bisnis &amp; Tim Besar
                         </span>
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                          Official Meta
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-emerald-700 font-semibold mb-1.5">
-                        Full Skala Tim &amp; WABA
-                      </p>
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className="text-xs text-slate-400 line-through">
-                          Rp 899k
-                        </span>
-                        <span className="text-sm font-black text-emerald-700">
-                          Rp 499k
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          /bln
+                        <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                          Scale Up
                         </span>
                       </div>
+
+                      <div>
+                        <h3 className="font-black text-slate-900 text-base">
+                          Paket Team Scale
+                        </h3>
+                        <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                          Multi-CS &amp; Otomasi Skala Skalabilitas Tinggi
+                        </p>
+                      </div>
+
+                      <div className="pt-1 pb-2 border-b border-slate-100">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-xl font-black text-slate-900">
+                            Rp 499.000
+                          </span>
+                          <span className="text-xs text-slate-400 font-medium">
+                            / bln
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-bold text-emerald-600 mt-1">
+                          Coba Gratis 7 Hari (Rp 0 di Awal)
+                        </p>
+                      </div>
+
+                      {/* Checklist */}
+                      <ul className="space-y-2 text-xs">
+                        <li className="flex items-start gap-2 text-slate-800 font-bold">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Semua fitur di Paket Ads Performance</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                          <span>Multi-Seat CS Management (Bagi percakapan ke beberapa CS)</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                          <span>Akses Knowledge Base &amp; AI Assistant Bot</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                          <span>Kuota Broadcast Notifikasi Skala Bisnis</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                          <span>Dukungan Khusus Prioritas Teknis</span>
+                        </li>
+                      </ul>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-2 leading-tight">
-                      Multi-Seat CS Tanpa Batas, Custom Domain + SSL, WABA
-                      Cloud Resmi &amp; Broadcast
-                    </p>
+
+                    <div className="pt-4 mt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPlan("team_scale");
+                        }}
+                        className={`w-full py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                          selectedPlan === "enterprise" || selectedPlan === "team_scale"
+                            ? "bg-purple-600 text-white shadow-md shadow-purple-500/20"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {selectedPlan === "enterprise" || selectedPlan === "team_scale"
+                          ? "✓ Dipilih: Team Scale"
+                          : "Pilih Team Scale (Mulai Trial 7 Hari)"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1465,25 +1644,19 @@ export default function RegisterShopPage() {
               <button
                 type="submit"
                 disabled={loadingPay || !slug}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:opacity-95 disabled:opacity-50 text-white font-black text-sm rounded-xl shadow-lg shadow-indigo-600/25 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                {isTrialPlan ? (
-                  <Sparkles className="w-4 h-4 text-yellow-300" />
-                ) : (
-                  <CreditCard className="w-4 h-4" />
-                )}
+                <Sparkles className="w-4 h-4 text-yellow-300" />
                 <span>
                   {loadingPay
-                    ? isTrialPlan
-                      ? "Mengaktifkan Toko Gratis..."
-                      : "Menyiapkan Invoice QRIS..."
-                    : isTrialPlan
-                    ? "Mulai Coba Gratis 7 Hari (Rp 0) ->"
-                    : (selectedPlan === "enterprise" || selectedPlan === "team_scale")
-                    ? "Aktivasi & Bayar (Rp 499k)"
-                    : "Aktivasi & Bayar (Rp 299k)"}
+                    ? "Menyiapkan Akun & Toko..."
+                    : selectedPlan === "starter" || selectedPlan === "solo"
+                    ? "Mulai Trial 7 Hari (Paket Solo - Rp 0) →"
+                    : selectedPlan === "pro_scale" || selectedPlan === "ads_performance"
+                    ? "Mulai Trial 7 Hari (Paket Ads Performance - Rp 0) →"
+                    : "Mulai Trial 7 Hari (Paket Team Scale - Rp 0) →"}
                 </span>
-                {!isTrialPlan && <ArrowRight className="w-4 h-4 ml-1" />}
+                <ArrowRight className="w-4 h-4 ml-1" />
               </button>
 
               <p className="text-[11px] text-center text-slate-500 leading-relaxed pt-1">
