@@ -214,9 +214,25 @@ export default function AiKnowledgeTab({
           localStorage.getItem(`bt_interactive_menus_${currentSlug}`) ||
           localStorage.getItem(`bt_interactive_menus_${tenantSlug}`) ||
           (currentSlug === 'sandbox' ? localStorage.getItem('bt_interactive_menus_sandbox') : null);
+        const savedCat = localStorage.getItem(`bt_interactive_menus_category_${currentSlug}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            // Jika storeCategory terdeteksi dan berbeda dari kategori yang tersimpan di cache, buang cache lama
+            if (storeCategory && savedCat && savedCat.toUpperCase() !== storeCategory.toUpperCase()) {
+              localStorage.removeItem(`bt_interactive_menus_${currentSlug}`);
+              return [];
+            }
+            // Sanitize: Jika storeCategory adalah PROFESSIONAL_SERVICE namun tersimpan teks servis/teknisi, buang cache
+            if (storeCategory && storeCategory.toUpperCase() === 'PROFESSIONAL_SERVICE') {
+              const hasService = parsed.some((m: any) => /servis|teknisi|toren|bengkel/i.test(m.title || ''));
+              if (hasService) {
+                localStorage.removeItem(`bt_interactive_menus_${currentSlug}`);
+                return [];
+              }
+            }
+            return parsed;
+          }
         }
       } catch {}
     }
@@ -335,9 +351,8 @@ export default function AiKnowledgeTab({
     }
   }, [currentInteractiveMenus, tenantSlug]);
 
-  // Auto-populate 3 default quick menus based on storeCategory if list is empty
+  // Auto-populate & sinkronkan default quick menus berdasarkan storeCategory terkini
   useEffect(() => {
-    if (currentInteractiveMenus.length > 0) return;
     if (!storeCategory) return;
 
     type QuickMenuItem = { trigger: string; title: string; description: string };
@@ -379,17 +394,38 @@ export default function AiKnowledgeTab({
     const defaultMenus = VERTICAL_QUICK_MENUS[cat];
     if (!defaultMenus) return;
 
-    const menus: InteractiveMenu[] = defaultMenus.map((item, idx) => ({
-      id: `menu_default_${cat.toLowerCase()}_${idx}`,
-      trigger: item.trigger,
-      title: item.title,
-      description: item.description,
-      options: [],
-    }));
+    // Deteksi apakah list menu saat ini tidak sesuai dengan category aktif
+    const isCategoryMismatched = currentInteractiveMenus.some((m) => {
+      const title = (m.title || '').toLowerCase();
+      if (cat === 'PROFESSIONAL_SERVICE') {
+        return title.includes('servis') || title.includes('teknisi') || title.includes('toren') || title.includes('bengkel');
+      }
+      if (cat === 'FIELD_SERVICE') {
+        return title.includes('konsultan') || title.includes('brief') || title.includes('portofolio');
+      }
+      return false;
+    });
 
-    updateInteractiveMenus(menus);
+    if (currentInteractiveMenus.length === 0 || isCategoryMismatched) {
+      const menus: InteractiveMenu[] = defaultMenus.map((item, idx) => ({
+        id: `menu_default_${cat.toLowerCase()}_${idx}`,
+        trigger: item.trigger,
+        title: item.title,
+        description: item.description,
+        options: [],
+      }));
+
+      updateInteractiveMenus(menus);
+      if (typeof window !== 'undefined') {
+        try {
+          const currentSlug = (tenantSlug || '').trim().toLowerCase();
+          localStorage.setItem(`bt_interactive_menus_${currentSlug}`, JSON.stringify(menus));
+          localStorage.setItem(`bt_interactive_menus_category_${currentSlug}`, cat);
+        } catch {}
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeCategory]);
+  }, [storeCategory, currentInteractiveMenus.length]);
 
   // Seller Conversation Playbook State
   const [internalPlaybook, setInternalPlaybook] = useState<SellerConversationPlaybook>(() => {
@@ -531,12 +567,13 @@ export default function AiKnowledgeTab({
 
           // Fallback cerdas membaca list menu interaktif dari metadata tenant
           const menuItems =
+            tenant?.metadata?.interactive_menus ||
             tenant?.metadata?.interactive_menu?.items ||
             tenant?.metadata?.interactive_menu ||
             tenant?.metadata?.bot_config?.quick_actions ||
+            s.interactive_menus ||
             s.interactive_menu?.items ||
             s.interactive_menu ||
-            s.interactive_menus ||
             [];
 
           const menuMode =

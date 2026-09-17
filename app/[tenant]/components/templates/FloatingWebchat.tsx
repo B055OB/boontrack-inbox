@@ -13,6 +13,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { StoreChatMessage, Product, getStoreChatGreeting } from '@/app/[tenant]/page';
+import { getIndustryQuickReplies } from '@/lib/zero-ai-engine';
 
 interface FloatingWebchatProps {
   tenantSlug: string;
@@ -40,21 +41,30 @@ export default function FloatingWebchat({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const activeName = storeName || displayName.toUpperCase();
+  const effectiveQuickReplies =
+    Array.isArray(dynamicQuickReplies) && dynamicQuickReplies.length > 0
+      ? dynamicQuickReplies
+      : getIndustryQuickReplies(category);
 
-  // Inisialisasi pesan pertama
+  // Inisialisasi pesan pertama & sinkronisasi saat category terhidrasi
   useEffect(() => {
     const greetingText = getStoreChatGreeting(category || '', activeName);
-    setMessages([
-      {
-        id: 'init-floating-1',
-        sender: 'bot',
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: greetingText,
-        type: 'TEXT',
-        quick_actions: dynamicQuickReplies,
-      },
-    ]);
-  }, [activeName, category, dynamicQuickReplies]);
+    setMessages((prev) => {
+      if (prev.length === 0 || (prev.length === 1 && String(prev[0].id).startsWith('init-floating-'))) {
+        return [
+          {
+            id: 'init-floating-1',
+            sender: 'bot',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: greetingText,
+            type: 'TEXT',
+            quick_actions: effectiveQuickReplies,
+          },
+        ];
+      }
+      return prev;
+    });
+  }, [activeName, category, effectiveQuickReplies]);
 
   useEffect(() => {
     if (isOpen) {
@@ -97,7 +107,7 @@ export default function FloatingWebchat({
         action: data.action,
         type: data.type || 'TEXT',
         product: data.product,
-        quick_actions: data.quick_actions || dynamicQuickReplies,
+        quick_actions: data.quick_actions || effectiveQuickReplies,
       };
       setMessages((prev) => [...prev, botMsg]);
     } catch {
@@ -109,7 +119,7 @@ export default function FloatingWebchat({
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           text: `Halo! Layanan ${activeName} siap membantu. Silakan pilih opsi pertanyaan di bawah atau hubungi admin langsung.`,
           type: 'TEXT',
-          quick_actions: dynamicQuickReplies,
+          quick_actions: effectiveQuickReplies,
         },
       ]);
     } finally {

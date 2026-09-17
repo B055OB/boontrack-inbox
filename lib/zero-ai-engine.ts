@@ -49,6 +49,69 @@ export interface ZeroAiResult {
   interactive_payload?: WabaInteractivePayload;
   metadata_updated?: Record<string, any>;
   data?: any;
+  quick_actions?: string[];
+}
+
+/**
+ * Resolves synchronized quick reply chips for Webchat and Bot WhatsApp.
+ * Sources from:
+ * 1. tenants.metadata.quick_replies
+ * 2. tenants.metadata.interactive_menus (extracting title)
+ * 3. Default industry quick replies (with strict category sanitization)
+ */
+export function getIndustryQuickReplies(
+  rawCategory?: string,
+  meta?: Record<string, any>
+): string[] {
+  const category = normalizeIndustryCategory(rawCategory || meta?.category || meta?.business_category);
+
+  // 1. Cek apakah ada quick_replies eksplisit di metadata
+  const storedQuickReplies = meta?.quick_replies;
+  if (Array.isArray(storedQuickReplies) && storedQuickReplies.length > 0) {
+    const list = storedQuickReplies
+      .map((r: any) => (typeof r === 'string' ? r : r.title || r.name))
+      .filter((t: any): t is string => typeof t === 'string' && Boolean(t.trim()));
+
+    // Sanitize: Jika kategori PROFESSIONAL_SERVICE, cegah teks FIELD_SERVICE bocor
+    if (category === 'PROFESSIONAL_SERVICE') {
+      const sanitized = list.filter((t) => !/servis|teknisi|toren|bengkel/i.test(t));
+      if (sanitized.length > 0) return sanitized;
+    } else {
+      if (list.length > 0) return list;
+    }
+  }
+
+  // 2. Cek apakah ada interactive_menus di metadata
+  const storedMenus = meta?.interactive_menus;
+  if (Array.isArray(storedMenus) && storedMenus.length > 0) {
+    const list = storedMenus
+      .map((m: any) => (typeof m === 'string' ? m : m.title || m.name))
+      .filter((t: any): t is string => typeof t === 'string' && Boolean(t.trim()));
+
+    if (category === 'PROFESSIONAL_SERVICE') {
+      const sanitized = list.filter((t) => !/servis|teknisi|toren|bengkel/i.test(t));
+      if (sanitized.length > 0) return sanitized;
+    } else {
+      if (list.length > 0) return list;
+    }
+  }
+
+  // 3. Fallback default 100% konsisten berdasarkan 6 Kategori Industri Resmi
+  switch (category) {
+    case 'PROFESSIONAL_SERVICE':
+      return ["Jadwalkan Konsultasi", "Paket & Tarif Layanan", "Portofolio / Brief", "Hubungi Konsultan"];
+    case 'FIELD_SERVICE':
+      return ["📅 Jadwalkan Servis/Teknisi", "💰 Tarif & Area Layanan", "🛠️ Konsultasi CS"];
+    case 'FOOD':
+      return ["🛵 Pesan Antar (Delivery)", "🥡 Ambil di Resto (Takeaway)", "📍 Lokasi & Jam Dapur"];
+    case 'DIGITAL':
+      return ["⚡ Akses Download & Materi", "🔑 Kendala Akun & Lisensi", "📚 Kurikulum Produk"];
+    case 'CREATOR_AGENCY':
+      return ["📊 Rate Card & Paket Endorse", "📦 Kirim Brief/Sampel", "📅 Jadwal Live Talent"];
+    case 'PHYSICAL':
+    default:
+      return ["📦 Cek Katalog & Promo", "🚚 Cek Ongkir & Resi", "💬 Hubungi Live CS"];
+  }
 }
 
 /**
@@ -550,13 +613,26 @@ export async function processZeroAiMessage(
   }
 
   // 3. Resolve Navigation Menu
-  // Gunakan interactive_menus jika sudah dikustomisasi oleh tenant, atau default 7-item menu resmi
+  // Gunakan interactive_menus jika sudah dikustomisasi oleh tenant dengan opsi lengkap, atau default 7-item menu resmi
   let activeMenu: InteractiveMenu;
-  if (Array.isArray(meta.interactive_menus) && meta.interactive_menus.length > 0) {
+  if (
+    Array.isArray(meta.interactive_menus) &&
+    meta.interactive_menus.length > 0 &&
+    Array.isArray(meta.interactive_menus[0]?.options) &&
+    meta.interactive_menus[0].options.length >= 2
+  ) {
     activeMenu = meta.interactive_menus[0];
   } else {
     activeMenu = buildDefaultIndustryMenu(tenant.category || tenant.business_type, tenant);
   }
+
+  // Quick Action Buttons tersinkronisasi untuk Webchat & Bot WhatsApp
+  const quickActions = getIndustryQuickReplies(tenant.category || tenant.business_type, meta);
+
+  const sendResult = (res: Omit<ZeroAiResult, 'quick_actions'>): ZeroAiResult => ({
+    ...res,
+    quick_actions: quickActions,
+  });
 
   // 4. Deteksi Pemilihan Opsi (1-7 atau kata kunci)
   const interactiveInput = payload.interactive_reply?.id || payload.interactive_reply?.title;
@@ -658,12 +734,12 @@ export async function processZeroAiMessage(
         `_Ketik *menu* untuk kembali ke pilihan utama._`;
     }
 
-    return {
+    return sendResult({
       handled: true,
       reply: replyText,
       type: 'CATALOG',
       intent_key: 'CATALOG',
-    };
+    });
   }
 
   // ── [INTENT 2]: CARA BELANJA / CARA BELI / BOOKING / PROPOSAL FLOW / JADWAL ──
@@ -727,12 +803,12 @@ export async function processZeroAiMessage(
       `👉 *${ctaHeader}:* ${checkoutUrl}\n\n` +
       `_Ketik *menu* untuk kembali ke pilihan utama._`;
 
-    return {
+    return sendResult({
       handled: true,
       reply: replyText,
       type: 'TEXT',
       intent_key: 'HOW_TO_ORDER',
-    };
+    });
   }
 
   // ── [INTENT 3]: CEK STATUS PESANAN / RESI / PROGRES / JADWAL ──
@@ -787,13 +863,13 @@ export async function processZeroAiMessage(
         `Jika membutuhkan bantuan detail pengiriman, silakan pilih *[7] Hubungi CS*.\n\n` +
         `_Ketik *menu* untuk kembali ke pilihan utama._`;
 
-      return {
+      return sendResult({
         handled: true,
         reply: replyText,
         type: 'ORDER_STATUS',
         intent_key: 'ORDER_STATUS',
         data: matchedOrders,
-      };
+      });
     } else {
       const replyText =
         `🔍 *LACAK STATUS PESANAN / RESI*\n\n` +
@@ -802,12 +878,12 @@ export async function processZeroAiMessage(
         `*RESI [ID-PESANAN]* (contoh: *RESI ORD-12345*)\n\n` +
         `Atau hubungi admin kami dengan mengetik *7* untuk pengecekan manual.`;
 
-      return {
+      return sendResult({
         handled: true,
         reply: replyText,
         type: 'ORDER_STATUS',
         intent_key: 'ORDER_STATUS',
-      };
+      });
     }
   }
 
@@ -830,12 +906,12 @@ export async function processZeroAiMessage(
       `👉 *Checkout & Terbitkan QRIS Otomatis:* ${checkoutUrl}\n\n` +
       `_Ketik *menu* untuk kembali ke pilihan utama._`;
 
-    return {
+    return sendResult({
       handled: true,
       reply: replyText,
       type: 'TEXT',
       intent_key: 'PAYMENT_INFO',
-    };
+    });
   }
 
   // ── [INTENT 5]: INFO PENGIRIMAN / JANGKAUAN WILAYAH / PORTOFOLIO / MEDIA KIT ──
@@ -865,12 +941,12 @@ export async function processZeroAiMessage(
       `${infoText}\n\n` +
       `_Ketik *menu* untuk kembali ke pilihan utama._`;
 
-    return {
+    return sendResult({
       handled: true,
       reply: replyText,
       type: 'TEXT',
       intent_key: 'SHIPPING_INFO',
-    };
+    });
   }
 
   // ── [INTENT 6]: GARANSI & RETUR / KEBIJAKAN LISENSI / JAM BUKA / SLA / SYARAT KERJASAMA ──
@@ -900,12 +976,12 @@ export async function processZeroAiMessage(
       `${policyText}\n\n` +
       `_Ketik *menu* untuk kembali ke pilihan utama._`;
 
-    return {
+    return sendResult({
       handled: true,
       reply: replyText,
       type: 'TEXT',
       intent_key: 'RETURN_POLICY',
-    };
+    });
   }
 
   // ── [INTENT 7]: HUBUNGI CS / HUMAN TAKEOVER / CHAT KASIR / CHAT TEKNISI / CHAT MANAGER / KONSULTAN ──
@@ -973,23 +1049,23 @@ export async function processZeroAiMessage(
       `Silakan sampaikan pertanyaan atau kendala Anda di sini, tim kami akan membalas segera.\n\n` +
       `_(Ketik *menu* kapan saja untuk mengaktifkan kembali bot asisten)_`;
 
-    return {
+    return sendResult({
       handled: true,
       reply: replyText,
       type: 'HUMAN_TAKEOVER',
       intent_key: 'HUMAN_CS',
       metadata_updated: updatedMetadata,
-    };
+    });
   }
 
   // ── [FALLBACK / MENU TRIGGER]: Tampilkan Dual-Mode Navigation Menu (WABA List & WAHA Numbers) ──
   const wabaPayload = formatWabaInteractive(activeMenu);
   const wahaText = formatWahaInteractive(activeMenu);
 
-  return {
+  return sendResult({
     handled: true,
     reply: wahaText,
     type: channelType === 'WABA' ? 'INTERACTIVE' : 'TEXT',
     interactive_payload: channelType === 'WABA' ? wabaPayload : undefined,
-  };
+  });
 }

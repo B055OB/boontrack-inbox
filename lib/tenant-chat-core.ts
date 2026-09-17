@@ -43,10 +43,10 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
 
   const supabase = getSupabaseAdmin();
 
-  // 1. Ambil data tenant termasuk custom_domain dan metadata
+  // 1. Ambil data tenant termasuk metadata
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("id, slug, name, category, metadata, custom_domain")
+    .select("id, slug, name, category, metadata")
     .eq("slug", cleanSlug)
     .maybeSingle();
 
@@ -55,7 +55,7 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
 
   const tenantDomainInfo = {
     slug: tenant?.slug || cleanSlug,
-    custom_domain: tenant?.custom_domain || null,
+    custom_domain: tenant?.metadata?.custom_domain || null,
   };
 
   const metadata = tenant?.metadata || {};

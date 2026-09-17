@@ -39,6 +39,7 @@ export interface EngineResult {
   entities: Record<string, any>;
   is_booking_ready: boolean;
   interactive_payload?: any;
+  quick_actions?: string[];
 }
 
 interface ServiceConfigItem {
@@ -57,7 +58,7 @@ export class ConversationEngine {
     // 0. Ambil Data Tenant & Konfigurasi Interactive Menu / Bot Mode
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('id, slug, name, category, metadata, custom_domain')
+      .select('id, slug, name, category, metadata')
       .eq('slug', tenant_id)
       .maybeSingle();
 
@@ -111,6 +112,7 @@ export class ConversationEngine {
           entities: {},
           is_booking_ready: false,
           interactive_payload: zeroAiRes.interactive_payload,
+          quick_actions: zeroAiRes.quick_actions,
         };
       }
     }
@@ -324,12 +326,12 @@ export class ConversationEngine {
 
         const { data: tenant } = await supabase
           .from('tenants')
-          .select('slug, custom_domain')
+          .select('slug, metadata')
           .eq('slug', tenant_id)
           .maybeSingle();
 
         const checkoutUrl = getTenantCheckoutUrl(
-          { slug: tenant_id, custom_domain: tenant?.custom_domain },
+          { slug: tenant_id, custom_domain: tenant?.metadata?.custom_domain || null },
           { id: entities.capacity }
         );
         entities.checkout_url = checkoutUrl;

@@ -35,6 +35,7 @@ import {
 } from "@/lib/tracking";
 import { getSupabase } from "@/lib/supabaseClient";
 import { sanitizeImageUrl } from "@/lib/image-utils";
+import { getIndustryQuickReplies } from "@/lib/zero-ai-engine";
 
 function StoreProductImage({ src, alt, className }: { src?: string; alt: string; className?: string }) {
   const [error, setError] = useState(false);
@@ -300,50 +301,8 @@ export default function TenantStorefrontPage() {
   }, [tenant?.category, tenantCategory, tenantMetadata?.category, tenantMetadata?.business_category, tenantMetadata?.vertical]);
 
   const dynamicQuickReplies = useMemo(() => {
-    if (Array.isArray(tenantMetadata?.quick_replies) && tenantMetadata.quick_replies.length > 0) {
-      return tenantMetadata.quick_replies;
-    }
-    const raw = resolvedCategory.toUpperCase();
-    if (raw.includes("FOOD") || raw.includes("FNB") || raw.includes("CULINARY") || raw.includes("RESTO") || raw.includes("KULINER")) {
-      return ["🛵 Pesan Antar (Delivery)", "🥡 Ambil di Resto (Takeaway)", "📍 Lokasi & Jam Dapur"];
-    }
-    // 1. PROFESSIONAL_SERVICE (MUST BE EVALUATED BEFORE FIELD_SERVICE / GENERIC SERVICE)
-    if (
-      raw === "PROFESSIONAL_SERVICE" ||
-      raw === "PRO_SERVICE" ||
-      raw === "PROFESSIONAL" ||
-      raw.includes("PROFESSIONAL") ||
-      raw.includes("CONSULT") ||
-      raw.includes("AGENCY_PRO") ||
-      raw.includes("LEGAL") ||
-      raw.includes("KLINIK") ||
-      raw.includes("PRO")
-    ) {
-      return ["Jadwalkan Konsultasi", "Paket & Tarif Layanan", "Portofolio / Brief", "Hubungi Konsultan"];
-    }
-    // 2. FIELD_SERVICE
-    if (
-      raw === "FIELD_SERVICE" ||
-      raw.includes("FIELD") ||
-      raw.includes("TEKNISI") ||
-      raw.includes("TOREN") ||
-      raw.includes("REPARASI") ||
-      raw === "SERVICE" ||
-      raw.includes("SERVIS") ||
-      raw.includes("BENGKEL")
-    ) {
-      return ["📅 Jadwalkan Servis/Teknisi", "💰 Tarif & Area Layanan", "🛠️ Konsultasi CS"];
-    }
-    // 3. DIGITAL
-    if (raw.includes("DIGITAL") || raw.includes("COURSE") || raw.includes("SOFTWARE") || raw.includes("EBOOK") || raw.includes("KELAS")) {
-      return ["⚡ Akses Download & Materi", "🔑 Kendala Akun & Lisensi", "📚 Kurikulum Produk"];
-    }
-    // 4. CREATOR_AGENCY
-    if (raw.includes("CREATOR") || raw.includes("TALENT") || raw.includes("ENDORSE") || raw.includes("INFLUENCER") || raw.includes("KOL")) {
-      return ["📊 Rate Card & Paket Endorse", "📦 Kirim Brief/Sampel", "📅 Jadwal Live Talent"];
-    }
-    return ["📦 Cek Katalog & Promo", "🚚 Cek Ongkir & Resi", "💬 Hubungi Live CS"];
-  }, [resolvedCategory, tenantMetadata?.quick_replies]);
+    return getIndustryQuickReplies(resolvedCategory, tenantMetadata);
+  }, [resolvedCategory, tenantMetadata]);
 
   // Dynamic Header & Product CTA Button Labels (Zero Hardcoding via Tenant Metadata)
   const headerCtaText = useMemo(() => {
@@ -599,16 +558,21 @@ export default function TenantStorefrontPage() {
   useEffect(() => {
     const activeName = storeName || displayName.toUpperCase();
     const greetingText = getStoreChatGreeting(resolvedCategory, activeName);
-    setMessages([
-      {
-        id: "init-1",
-        sender: "bot",
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        text: greetingText,
-        type: "TEXT",
-        quick_actions: dynamicQuickReplies
+    setMessages((prev) => {
+      if (prev.length === 0 || (prev.length === 1 && String(prev[0].id).startsWith("init-"))) {
+        return [
+          {
+            id: "init-1",
+            sender: "bot",
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            text: greetingText,
+            type: "TEXT",
+            quick_actions: dynamicQuickReplies,
+          },
+        ];
       }
-    ]);
+      return prev;
+    });
   }, [storeName, displayName, resolvedCategory, dynamicQuickReplies]);
 
   // 0e. AUTO SCROLL MESSAGES

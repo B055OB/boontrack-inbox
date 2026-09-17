@@ -11,7 +11,7 @@ import {
   formatInteractiveMenu,
   formatInteractiveMenusSummary,
 } from '@/lib/whatsappFormatter';
-import { processZeroAiMessage } from '@/lib/zero-ai-engine';
+import { processZeroAiMessage, getIndustryQuickReplies } from '@/lib/zero-ai-engine';
 
 interface ProductContext {
   name?: string;
@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
       : [];
     const botMode: 'STATIC' | 'HYBRID' | 'AI' = String(tenantMetadata.bot_mode || 'HYBRID').toUpperCase() as any;
     const channel = body.channel || 'WAHA';
+    const defaultQuickActions = getIndustryQuickReplies(category, tenantMetadata);
 
     // --- CLOSING-SIGNAL FUNNEL INTERCEPTOR & BOOKING AUTO-EXTRACTION ---
     const senderPhone = body.sender_phone || body.phone_number || body.from || body.user_identifier || '';
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
         checkout_url: checkoutUrl,
         type: funnelRes.isBookingCreated ? 'BOOKING_CONFIRMED' : 'TEXT',
         booking: funnelRes.bookingData,
+        quick_actions: defaultQuickActions,
       });
     }
 
@@ -132,6 +134,7 @@ export async function POST(req: NextRequest) {
           type: zeroAiRes.type,
           intent_key: zeroAiRes.intent_key,
           interactive_payload: zeroAiRes.interactive_payload,
+          quick_actions: zeroAiRes.quick_actions || defaultQuickActions,
         });
       }
     }
@@ -148,6 +151,7 @@ export async function POST(req: NextRequest) {
         checkout_url: checkoutUrl,
         type: 'MENU_OPTION_REPLY',
         interactive_payload: channel === 'WABA' ? formatInteractiveMenu(menuMatch.menu, 'WABA') : undefined,
+        quick_actions: defaultQuickActions,
       });
     }
 
@@ -164,6 +168,7 @@ export async function POST(req: NextRequest) {
         checkout_url: checkoutUrl,
         type: channel === 'WABA' ? 'INTERACTIVE' : 'TEXT',
         interactive_payload: channel === 'WABA' ? wabaPayload : undefined,
+        quick_actions: defaultQuickActions,
       });
     }
 
@@ -183,6 +188,7 @@ export async function POST(req: NextRequest) {
         checkout_url: checkoutUrl,
         type: primaryMenu && channel === 'WABA' ? 'INTERACTIVE' : 'TEXT',
         interactive_payload: primaryMenu && channel === 'WABA' ? formatInteractiveMenu(primaryMenu, 'WABA') : undefined,
+        quick_actions: defaultQuickActions,
       });
     }
 
@@ -430,6 +436,7 @@ Instruksi:
       tenant_id: slug,
       tenant_slug: slug,
       checkout_url: checkoutUrl,
+      quick_actions: defaultQuickActions,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Chat error';
