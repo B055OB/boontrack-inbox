@@ -7,6 +7,7 @@ import HeroSection from './components/HeroSection';
 import VerticalSegmentSelector from './components/VerticalSegmentSelector';
 import ComparisonMatrix from './components/ComparisonMatrix';
 import CorePillars from './components/CorePillars';
+import LegalTrustSection from './components/LegalTrustSection';
 import FaqSection from './components/FaqSection';
 import TrustBar from './components/TrustBar';
 import FinalCtaSection from './components/FinalCtaSection';
@@ -115,7 +116,10 @@ function NewLanderCleanUxContent() {
         {/* 5. Core Pillars Showcase (Z-Pattern Deep Dive) */}
         <CorePillars />
 
-        {/* 6. FAQ Section */}
+        {/* 6. Legal Trust & Compliance Anchor (Dark Section) */}
+        <LegalTrustSection />
+
+        {/* 7. FAQ Section */}
         <FaqSection />
 
         {/* 7. Trust & Banking Compliance Bar */}

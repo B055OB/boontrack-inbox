@@ -56,6 +56,9 @@ export default function Navbar({ referralCode, onOpenDemo }: NavbarProps) {
             <a href="#pilar" className="hover:text-blue-600 transition-colors">
               Teknologi CAPI &amp; Reader
             </a>
+            <a href="#kepatuhan" className="hover:text-blue-600 transition-colors">
+              Kepatuhan
+            </a>
             <a href="#faq" className="hover:text-blue-600 transition-colors">
               FAQ
             </a>
@@ -121,6 +124,13 @@ export default function Navbar({ referralCode, onOpenDemo }: NavbarProps) {
                 className="py-1 hover:text-blue-600 transition-colors"
               >
                 Teknologi CAPI &amp; Reader APK
+              </a>
+              <a
+                href="#kepatuhan"
+                onClick={() => setMobileMenuOpen(false)}
+                className="py-1 hover:text-blue-600 transition-colors"
+              >
+                Kepatuhan &amp; Regulasi
               </a>
               <a
                 href="#faq"
