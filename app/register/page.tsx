@@ -573,7 +573,7 @@ export default function RegisterShopPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const initialStore = params.get("store") || params.get("claim") || "";
+      const initialStore = params.get("shop") || params.get("store") || params.get("claim") || "";
       const initialPlan = params.get("plan");
 
       // ── DETEKSI KODE REFERRAL (QUERY PARAM, SUBDOMAIN, LOCALSTORAGE) ──
@@ -790,10 +790,16 @@ export default function RegisterShopPage() {
         : 'STARTER';
     const targetPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = dbTier;
 
-    // Standarisasi nomor telepon WhatsApp (format 62...)
+    // Standarisasi nomor telepon WhatsApp (format 628...)
     let formattedPhone = merchantData.phone.replace(/[^0-9]/g, '');
     if (formattedPhone.startsWith('0')) formattedPhone = '62' + formattedPhone.slice(1);
     else if (formattedPhone.startsWith('8')) formattedPhone = '62' + formattedPhone;
+
+    if (!formattedPhone || formattedPhone.length < 10 || !formattedPhone.startsWith('628')) {
+      setPayError("Nomor WhatsApp aktif wajib diisi dengan format valid (contoh: 0812xxx atau 628xxx).");
+      setLoadingPay(false);
+      return;
+    }
 
     if (category === "fnb" || VERTICAL_MAP[category] === "FOOD") {
       setPayError("Kategori Kuliner & F&B saat ini berstatus Coming Soon (dalam tahap pengembangan). Silakan pilih kategori bisnis lainnya.");
@@ -1230,13 +1236,16 @@ export default function RegisterShopPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      WhatsApp Aktif
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>WhatsApp Aktif</span>
+                      <span className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-wider">
+                        Wajib
+                      </span>
                     </label>
                     <input
                       type="tel"
                       required
-                      placeholder="08123456789"
+                      placeholder="08123456789 atau 628123456789"
                       value={merchantData.phone}
                       onChange={(e) =>
                         setMerchantData({
@@ -1246,6 +1255,9 @@ export default function RegisterShopPage() {
                       }
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none font-mono"
                     />
+                    <p className="text-[10px] text-slate-500 mt-1 leading-snug">
+                      Nomor WhatsApp aktif digunakan untuk notifikasi pesanan &amp; kredensial toko (1 Nomor = 1 Hak Trial 7 Hari).
+                    </p>
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
@@ -1506,7 +1518,7 @@ export default function RegisterShopPage() {
                         </li>
                         <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>BoonTrack Reader APK: Deteksi pembayaran &amp; mutasi otomatis dalam 3 detik</span>
+                          <span>BoonTrack Reader APK: Deteksi pembayaran &amp; mutasi otomatis dalam hitungan detik</span>
                         </li>
                         <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -1606,6 +1618,10 @@ export default function RegisterShopPage() {
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
                           <span>Dukungan Khusus Prioritas Teknis</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-purple-900 font-medium bg-purple-50/70 p-1.5 rounded-lg border border-purple-100">
+                          <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+                          <span>Fair-Use Policy berlaku untuk kuota broadcast WA &amp; token AI.</span>
                         </li>
                       </ul>
                     </div>

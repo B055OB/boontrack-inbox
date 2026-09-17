@@ -68,7 +68,7 @@ export default function FloatingWaDemoModal({
       let isQris = false;
 
       if (text.toLowerCase().includes('qris')) {
-        botResponse = 'Tentu! Sistem langsung menerbitkan Dynamic QRIS standar Bank Indonesia. Pembeli tinggal scan via BCA, Mandiri, BRI, GoPay, OVO, atau DANA. Pembayaran terverifikasi otomatis dalam 3 detik oleh Reader APK tanpa potongan komisi marketplace.';
+        botResponse = 'Tentu! Sistem langsung menerbitkan Dynamic QRIS standar Bank Indonesia. Pembeli tinggal scan via BCA, Mandiri, BRI, GoPay, OVO, atau DANA. Pembayaran terverifikasi otomatis dalam hitungan detik oleh Reader APK tanpa potongan komisi marketplace.';
         isQris = true;
       } else if (text.toLowerCase().includes('ongkir')) {
         botResponse = 'BoonTrack terintegrasi dengan ekspedisi reguler (J&T, SiCepat, JNE) dan kurir instan (radius km). Saat pembeli memasukkan alamat, ongkir otomatis terhitung dan masuk ke total invoice.';
@@ -153,7 +153,7 @@ export default function FloatingWaDemoModal({
                       <div className="mt-2 p-2.5 bg-white rounded-xl border border-emerald-300 font-mono text-[10px] space-y-1">
                         <div className="font-bold text-slate-900">Dynamic QRIS Terbit:</div>
                         <div className="text-emerald-700 font-black text-xs">Rp 299.000 (ID: ORD-9921)</div>
-                        <div className="text-slate-400">Verifikasi 3 detik via Reader APK</div>
+                        <div className="text-slate-400">Verifikasi hitungan detik via Reader APK</div>
                       </div>
                     )}
                     <div className="text-[9px] text-slate-400 text-right mt-1 font-mono">

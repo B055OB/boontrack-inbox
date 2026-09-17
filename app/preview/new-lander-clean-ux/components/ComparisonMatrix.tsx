@@ -58,7 +58,7 @@ export default function ComparisonMatrix({ referralCode }: ComparisonMatrixProps
     },
     {
       title: 'Asisten Bot 24 Jam Urus Order & Invoice',
-      desc: 'Balas pesan pembeli kurang dari 3 detik, hitung ongkir otomatis, dan terbitkan invoice QRIS pembayaran seketika.',
+      desc: 'Balas pesan pembeli dalam hitungan detik, hitung ongkir otomatis, dan terbitkan invoice QRIS pembayaran seketika.',
       badge: 'Auto-Close 24/7',
       icon: Clock
     },
@@ -75,7 +75,7 @@ export default function ComparisonMatrix({ referralCode }: ComparisonMatrixProps
       icon: Activity
     },
     {
-      title: 'Reader APK: Deteksi Mutasi 3 Detik',
+      title: 'Reader APK: Deteksi Mutasi dalam Hitungan Detik',
       desc: 'Aplikasi reader otomatis membaca mutasi QRIS dan bank. Order otomatis ditandai lunas tanpa upload struk manual.',
       badge: 'Anti-Struk Palsu',
       icon: ShieldCheck

@@ -182,7 +182,7 @@ export default function HeroSection({ referralCode }: HeroSectionProps) {
                   <Smartphone className="w-3 h-3 text-blue-600" />
                   BoonTrack Reader APK
                 </span>
-                <span className="text-[10px] text-emerald-600 font-black font-mono">3 Detik</span>
+                <span className="text-[10px] text-emerald-600 font-black font-mono">Hitungan Detik</span>
               </div>
               <h4 className="text-xs font-bold text-slate-900 leading-snug">
                 ✓ Reader APK: Pembayaran Rp 160.000 Terdeteksi Otomatis
@@ -400,14 +400,14 @@ export default function HeroSection({ referralCode }: HeroSectionProps) {
                         <span>{isProcessing ? 'Reader APK Mendeteksi...' : 'Simulasi Bayar QRIS Instan'}</span>
                       </button>
                       <p className="text-[9px] text-slate-500 text-center mt-1.5 font-mono">
-                        (Klik tombol di atas untuk melihat verifikasi otomatis 3 detik)
+                        (Klik tombol di atas untuk melihat verifikasi otomatis dalam hitungan detik)
                       </p>
                     </div>
                   ) : (
                     <div className="p-2.5 bg-white border border-emerald-300 rounded-xl space-y-1 animate-in zoom-in-95 duration-200">
                       <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Pembayaran Rp 185.000 Terverifikasi! (3 Detik)</span>
+                        <span>Pembayaran Rp 185.000 Terverifikasi! (Hitungan Detik)</span>
                       </div>
                       <p className="text-[10px] text-slate-600">
                         Mutasi bank terdeteksi oleh Reader APK. Resi &amp; event Meta CAPI Purchase otomatis terkirim.

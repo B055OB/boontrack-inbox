@@ -61,7 +61,7 @@ const VERTICALS: VerticalConfig[] = [
     badge: 'E-Course & Template',
     icon: Download,
     tagline: 'Pengiriman Akses Instan Tanpa Biaya Cloud Hosting',
-    description: 'Solusi tepat untuk creator e-book, video tutorial, preset, spreadsheet, dan software. Setelah bayar terverifikasi 3 detik, link unduh / akses otomatis terkirim.',
+    description: 'Solusi tepat untuk creator e-book, video tutorial, preset, spreadsheet, dan software. Setelah bayar terverifikasi dalam hitungan detik, link unduh / akses otomatis terkirim.',
     features: [
       'Proteksi link unduh berbatas waktu (Time-limited download)',
       'Auto-generate kredensial akses member area tanpa input manual',
@@ -71,9 +71,9 @@ const VERTICALS: VerticalConfig[] = [
     botTitle: 'Bot E-Course & Digital Assets',
     initialChat: {
       user: 'Mau beli E-Course Meta CAPI Mastery kak, bisa langsung akses?',
-      bot: 'Bisa banget kak! Akses langsung aktif otomatis 3 detik setelah pembayaran terverifikasi oleh Reader APK.',
+      bot: 'Bisa banget kak! Akses langsung aktif otomatis dalam hitungan detik setelah pembayaran terverifikasi oleh Reader APK.',
       quickReplies: ['Bayar via QRIS', 'Lihat Kurikulum Modul', 'Tanya Mentor'],
-      actionDetail: 'Alur: Verifikasi QRIS 3 detik -> Kirim kredensial & link drive via WA -> Event Purchase terkirim ke Ads CAPI.'
+      actionDetail: 'Alur: Verifikasi QRIS dalam hitungan detik -> Kirim kredensial & link drive via WA -> Event Purchase terkirim ke Ads CAPI.'
     }
   },
   {

@@ -57,7 +57,7 @@ export default function FinalCtaSection({ referralCode }: FinalCtaSectionProps) 
             </span>
           </h2>
           <p className="text-slate-600 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
-            Tinggalkan cara manual yang melelahkan. Dapatkan etalase instan, integrasi WhatsApp bot otomatis, verifikasi Reader APK 3 detik, dan Meta CAPI server-side dalam satu dashboard.
+            Tinggalkan cara manual yang melelahkan. Dapatkan etalase instan, integrasi WhatsApp bot otomatis, verifikasi Reader APK dalam hitungan detik, dan Meta CAPI server-side dalam satu dashboard.
           </p>
         </div>
 

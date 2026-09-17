@@ -250,14 +250,14 @@ export default function CorePillars() {
             </h3>
 
             <p className="text-slate-600 text-xs sm:text-sm leading-relaxed">
-              Verifikasi mutasi rekening instan dalam 3 detik tanpa repot cek m-Banking manual, ditambah fitur bagi percakapan otomatis ke banyak Customer Service tanpa bentrok.
+              Verifikasi mutasi rekening instan dalam hitungan detik tanpa repot cek m-Banking manual, ditambah fitur bagi percakapan otomatis ke banyak Customer Service tanpa bentrok.
             </p>
 
             <div className="space-y-3 text-xs text-slate-700">
               <div className="flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Reader APK 3-Detik:</strong> Menangkap push notification bank dan QRIS secara lokal di smartphone merchant. Anti bukti transfer editan Photoshop.
+                  <strong>Reader APK Hitungan Detik:</strong> Menangkap push notification bank dan QRIS secara lokal di smartphone merchant. Anti bukti transfer editan Photoshop.
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
@@ -293,7 +293,7 @@ export default function CorePillars() {
                   </div>
                 </div>
                 <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded">
-                  3 Detik
+                  Hitungan Detik
                 </span>
               </div>
 

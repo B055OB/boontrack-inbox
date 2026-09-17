@@ -14,8 +14,8 @@ const FAQS: FaqItem[] = [
     answer: 'Ya, benar sekali. Berbeda dengan marketplace yang memotong 15% hingga 25% dari total omzet Anda, BoonTrack Shop tidak mengenakan potongan komisi per pesanan. Pembayaran QRIS diproses sesuai standar Bank Indonesia dengan biaya 0% MDR untuk usaha mikro, dan dana langsung masuk ke rekening bank Anda.'
   },
   {
-    question: 'Bagaimana cara kerja BoonTrack Reader APK dalam memverifikasi mutasi 3 detik?',
-    answer: 'BoonTrack Reader APK adalah aplikasi Android pendamping ringan yang Anda pasang di HP tempat rekening m-Banking atau aplikasi QRIS Anda aktif. Saat pembeli membayar, Reader APK menangkap notifikasi mutasi secara lokal, mencocokkan nominalnya dengan ID pesanan di server cloud, dan langsung menandai order Lunas dalam waktu 3 detik tanpa butuh unggah bukti transfer manual.'
+    question: 'Bagaimana cara kerja BoonTrack Reader APK dalam memverifikasi mutasi dalam hitungan detik?',
+    answer: 'BoonTrack Reader APK adalah aplikasi Android pendamping ringan yang Anda pasang di HP tempat rekening m-Banking atau aplikasi QRIS Anda aktif. Saat pembeli membayar, Reader APK menangkap notifikasi mutasi secara lokal, mencocokkan nominalnya dengan ID pesanan di server cloud, dan langsung menandai order Lunas dalam hitungan detik tanpa butuh unggah bukti transfer manual.'
   },
   {
     question: 'Mengapa Meta & TikTok CAPI Server-Side lebih unggul dibanding Pixel browser?',
