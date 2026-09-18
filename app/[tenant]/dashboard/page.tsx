@@ -1010,13 +1010,14 @@ export default function TenantDashboardPage() {
         onUpgrade={() => handleUpgradeTier('ads_performance')}
       />
 
-      {/* MODAL PEMBAYARAN UPGRADE LANGSUNG (QRIS) */}
+      {/* MODAL PEMBAYARAN UPGRADE LANGSUNG & PILIHAN PAKET (XENDIT & QRIS) */}
       <UpgradePaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         tenantSlug={tenantSlug}
         displayName={displayName}
         targetTier={targetUpgradeTier}
+        currentTier={tenantFeatureFlags?.tier || (isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'PRO_SCALE' : 'ENTERPRISE')}
       />
     </main>
   );
