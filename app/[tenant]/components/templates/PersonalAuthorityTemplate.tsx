@@ -22,6 +22,7 @@ import {
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
 import { sanitizeImageUrl } from '@/lib/image-utils';
+import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
 
 interface PersonalAuthorityTemplateProps {
   tenantSlug: string;
@@ -413,49 +414,57 @@ export default function PersonalAuthorityTemplate({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {Boolean(
-                      mainProduct.checkout_type === 'external' ||
-                      mainProduct.external_url ||
-                      (mainProduct as any).metadata?.external_url ||
-                      (mainProduct as any).metadata?.checkout_type === 'external'
-                    ) && (mainProduct.external_url || (mainProduct as any).metadata?.external_url) ? (
-                      <a
-                        href={mainProduct.external_url || (mainProduct as any).metadata?.external_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
-                            (window as any).fbq("track", "InitiateCheckout", {
-                              content_name: (mainProduct as any).title || mainProduct.name,
-                              content_ids: [mainProduct.id || (mainProduct as any).slug],
-                              content_type: "product",
-                              value: Number(mainProduct.price) || 0,
-                              currency: "IDR"
-                            });
+                    {(() => {
+                      const extUrl = resolveProductExternalUrl(mainProduct);
+                      const isExternal = Boolean(extUrl);
+                      const ctaLabel = resolveProductCtaLabel(mainProduct, isExternal);
+
+                      if (isExternal && extUrl) {
+                        return (
+                          <a
+                            href={extUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                                try {
+                                  (window as any).fbq("track", "InitiateCheckout", {
+                                    content_name: (mainProduct as any).title || mainProduct.name,
+                                    content_ids: [mainProduct.id || (mainProduct as any).slug],
+                                    content_type: "product",
+                                    value: Number(mainProduct.price) || 0,
+                                    currency: "IDR"
+                                  });
+                                } catch (_) {}
+                              }
+                              onOutboundClick?.(extUrl, ctaLabel);
+                            }}
+                            className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
+                          >
+                            <span>{ctaLabel}</span>
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
+                        );
+                      }
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onInitiateCheckout({
+                              id: String(mainProduct.id),
+                              title: mainProduct.name,
+                              price: Number(mainProduct.price),
+                            })
                           }
-                        }}
-                        className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
-                      >
-                        <span>{mainProduct.cta_label || (mainProduct as any).metadata?.cta_label || (Number(mainProduct.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang')}</span>
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onInitiateCheckout({
-                            id: String(mainProduct.id),
-                            title: mainProduct.name,
-                            price: Number(mainProduct.price),
-                          })
-                        }
-                        className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <QrCode className="w-4 h-4" />
-                        <span>{Number(mainProduct.price) === 0 ? 'Klaim Sekarang (Gratis)' : 'Pesan Sekarang (QRIS)'}</span>
-                      </button>
-                    )}
+                          className="flex-1 sm:flex-none px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <QrCode className="w-4 h-4" />
+                          <span>{Number(mainProduct.price) === 0 ? 'Klaim Sekarang (Gratis)' : 'Pesan Sekarang (QRIS)'}</span>
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -523,49 +532,57 @@ export default function PersonalAuthorityTemplate({
                           </span>
                         </div>
 
-                        {Boolean(
-                          item.checkout_type === 'external' ||
-                          item.external_url ||
-                          (item as any).metadata?.external_url ||
-                          (item as any).metadata?.checkout_type === 'external'
-                        ) && (item.external_url || (item as any).metadata?.external_url) ? (
-                          <a
-                            href={item.external_url || (item as any).metadata?.external_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
-                                (window as any).fbq("track", "InitiateCheckout", {
-                                  content_name: (item as any).title || item.name,
-                                  content_ids: [item.id || (item as any).slug],
-                                  content_type: "product",
-                                  value: Number(item.price) || 0,
-                                  currency: "IDR"
-                                });
+                        {(() => {
+                          const extUrl = resolveProductExternalUrl(item);
+                          const isExternal = Boolean(extUrl);
+                          const ctaLabel = resolveProductCtaLabel(item, isExternal);
+
+                          if (isExternal && extUrl) {
+                            return (
+                              <a
+                                href={extUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                                    try {
+                                      (window as any).fbq("track", "InitiateCheckout", {
+                                        content_name: (item as any).title || item.name,
+                                        content_ids: [item.id || (item as any).slug],
+                                        content_type: "product",
+                                        value: Number(item.price) || 0,
+                                        currency: "IDR"
+                                      });
+                                    } catch (_) {}
+                                  }
+                                  onOutboundClick?.(extUrl, ctaLabel);
+                                }}
+                                className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <span>{ctaLabel}</span>
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            );
+                          }
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onInitiateCheckout({
+                                  id: String(item.id),
+                                  title: item.name,
+                                  price: Number(item.price),
+                                })
                               }
-                            }}
-                            className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <span>{item.cta_label || (item as any).metadata?.cta_label || (Number(item.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang')}</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onInitiateCheckout({
-                                id: String(item.id),
-                                title: item.name,
-                                price: Number(item.price),
-                              })
-                            }
-                            className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <QrCode className="w-3.5 h-3.5" />
-                            <span>{Number(item.price) === 0 ? 'Klaim' : 'Pesan'}</span>
-                          </button>
-                        )}
+                              className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                              <span>{Number(item.price) === 0 ? 'Klaim' : 'Pesan'}</span>
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}

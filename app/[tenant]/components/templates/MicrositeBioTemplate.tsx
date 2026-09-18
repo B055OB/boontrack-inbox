@@ -12,6 +12,7 @@ import {
   formatIndonesianWhatsAppNumber,
 } from '@/lib/tracking';
 import { getSupabase } from '@/lib/supabaseClient';
+import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
 
 // ─── Product image with graceful fallback ────────────────────────────────────
 function MicrositeItemImage({ src, alt }: { src?: string; alt: string }) {
@@ -272,12 +273,12 @@ export default function MicrositeBioTemplate({
 
   // ── Product catalog visibility ────────────────────────────────────────────
   // Checks (in order): microsite_settings.show_products → microsite.show_products → microsite_show_products (legacy)
-  const showProducts = Boolean(
+  // Default to true jika storeProducts ada isinya agar katalog merchant tidak hilang secara diam-diam
+  const showProducts =
     tenantMetadata?.microsite_settings?.show_products ??
     tenantMetadata?.microsite?.show_products ??
     tenantMetadata?.microsite_show_products ??
-    false
-  );
+    true;
 
   const featuredIds: string[] = React.useMemo(() => {
     const raw = tenantMetadata?.microsite_featured_product_ids || tenantMetadata?.microsite?.featured_product_ids;
@@ -294,8 +295,8 @@ export default function MicrositeBioTemplate({
     if (productMode === 'manual' && featuredIds.length > 0) {
       return storeProducts.filter((p) => featuredIds.includes(String(p.id)));
     }
-    // Default mode 'all': maks 6 produk
-    return storeProducts.slice(0, 6);
+    // Default mode 'all': tampilkan seluruh produk katalog aktif (maks 20 produk)
+    return storeProducts.slice(0, 20);
   }, [showProducts, storeProducts, productMode, featuredIds]);
 
   const isDigitalCatalog = ['DIGITAL', 'COURSE', 'SOFTWARE', 'CREATOR', 'AGENCY'].some((k) =>
@@ -472,82 +473,113 @@ export default function MicrositeBioTemplate({
             </div>
 
             {/* Product cards */}
-            {visibleProducts.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white/15 backdrop-blur-md border border-white/20 rounded-2xl p-4 text-white flex items-center gap-3"
-              >
-                <MicrositeItemImage src={item.image} alt={item.name} />
+            {visibleProducts.map((item) => {
+              const rawExternal =
+                item.external_url ||
+                (item as any).affiliate_url ||
+                (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
+                (typeof item.download_url === 'string' && (item.download_url.startsWith('http://') || item.download_url.startsWith('https://')) ? item.download_url : null) ||
+                resolveProductExternalUrl(item);
+              const externalUrl = rawExternal ? String(rawExternal).trim() : null;
+              const isExternal = Boolean(externalUrl);
+              const ctaLabel = resolveProductCtaLabel(item, isExternal);
 
-                <div className="flex-1 min-w-0 space-y-1">
-                  <h4 className="text-xs sm:text-sm font-semibold text-white truncate">{item.name}</h4>
-                  <div className="flex items-baseline gap-1 flex-wrap">
-                    {item.originalPrice && item.originalPrice > item.price ? (
-                      <span className="line-through text-white/50 text-xs mr-1">
-                        Rp {Number(item.originalPrice).toLocaleString('id-ID')}
+              const handleExternalClick = (e: React.MouseEvent) => {
+                e.stopPropagation();
+                if (!externalUrl) return;
+
+                // 1. Trigger Facebook Pixel InitiateCheckout
+                if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
+                  try {
+                    (window as any).fbq("track", "InitiateCheckout", {
+                      content_name: (item as any).title || item.name,
+                      content_ids: [String(item.id || (item as any).slug)],
+                      content_type: "product",
+                      value: Number(item.price) || 0,
+                      currency: "IDR"
+                    });
+                  } catch (_) {}
+                }
+
+                // 2. Trigger platform InitiateCheckout tracking
+                try {
+                  trackInitiateCheckout((item as any).title || item.name, Number(item.price) || 0);
+                } catch (_) {}
+
+                // 3. Trigger telemetry event
+                try {
+                  trackContactEvent(`Affiliate Outbound: ${item.name}`);
+                } catch (_) {}
+
+                try {
+                  onOutboundClick?.(externalUrl, ctaLabel);
+                } catch (_) {}
+
+                // 4. Langsung buka link affiliate / external URL di tab baru tanpa masuk keranjang belanja
+                window.open(externalUrl, "_blank", "noopener,noreferrer");
+              };
+
+              return (
+                <div
+                  key={item.id}
+                  onClick={isExternal ? handleExternalClick : undefined}
+                  className={`bg-white/15 backdrop-blur-md border border-white/20 rounded-2xl p-4 text-white flex items-center gap-3 transition-all ${
+                    isExternal ? 'hover:bg-white/25 cursor-pointer active:scale-[0.99]' : ''
+                  }`}
+                >
+                  <MicrositeItemImage src={item.image} alt={item.name} />
+
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <h4 className="text-xs sm:text-sm font-semibold text-white truncate">{item.name}</h4>
+                    <div className="flex items-baseline gap-1 flex-wrap">
+                      {item.originalPrice && item.originalPrice > item.price ? (
+                        <span className="line-through text-white/50 text-xs mr-1">
+                          Rp {Number(item.originalPrice).toLocaleString('id-ID')}
+                        </span>
+                      ) : null}
+                      <span className="text-white font-bold text-sm">
+                        {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
                       </span>
-                    ) : null}
-                    <span className="text-white font-bold text-sm">
-                      {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
-                    </span>
+                    </div>
                   </div>
-                </div>
 
-                {Boolean(
-                  (item as any).checkout_type === 'external' ||
-                  (item as any).external_url ||
-                  (item as any).metadata?.external_url ||
-                  (item as any).metadata?.checkout_type === 'external'
-                ) && ((item as any).external_url || (item as any).metadata?.external_url) ? (
-                  <a
-                    href={(item as any).external_url || (item as any).metadata?.external_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
-                        (window as any).fbq("track", "InitiateCheckout", {
-                          content_name: (item as any).title || item.name,
-                          content_ids: [item.id || (item as any).slug],
-                          content_type: "product",
-                          value: Number(item.price) || 0,
-                          currency: "IDR"
+                  {isExternal ? (
+                    <a
+                      href={externalUrl!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={handleExternalClick}
+                      className="rounded-full px-4 py-2 bg-purple-500/80 hover:bg-purple-600 backdrop-blur-md border border-purple-300 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>{ctaLabel}</span>
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
+                        onInitiateCheckout({
+                          id: String(item.id),
+                          title: item.name,
+                          price: Number(item.price),
+                          download_url: item.download_url,
+                          link_digital: (item as any).link_digital,
+                          type: item.type,
+                          category: item.category,
+                          fulfillment_metadata: (item as any).fulfillment_metadata,
                         });
-                      }
-                      onOutboundClick?.(
-                        (item as any).external_url || (item as any).metadata?.external_url,
-                        (item as any).cta_label || (item as any).metadata?.cta_label || (Number(item.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang')
-                      );
-                    }}
-                    className="rounded-full px-4 py-2 bg-purple-500/80 hover:bg-purple-600 backdrop-blur-md border border-purple-300 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    <span>{(item as any).cta_label || (item as any).metadata?.cta_label || (Number(item.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang')}</span>
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
-                      onInitiateCheckout({
-                        id: String(item.id),
-                        title: item.name,
-                        price: Number(item.price),
-                        download_url: item.download_url,
-                        link_digital: (item as any).link_digital,
-                        type: item.type,
-                        category: item.category,
-                        fulfillment_metadata: (item as any).fulfillment_metadata,
-                      });
-                    }}
-                    className="rounded-full px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
-                    <span>{Number(item.price) === 0 ? 'Klaim' : isDigitalCatalog ? 'Akses' : 'Pesan'}</span>
-                  </button>
-                )}
-              </div>
-            ))}
+                      }}
+                      className="rounded-full px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
+                      <span>{Number(item.price) === 0 ? 'Klaim' : isDigitalCatalog ? 'Akses' : 'Pesan'}</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

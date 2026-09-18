@@ -637,3 +637,65 @@ export function resolveSinglePageProduct(
     },
   };
 }
+
+/**
+ * Resolves external / affiliate URL from a product object.
+ * Checks external_url, affiliate_url, metadata.external_url, metadata.affiliate_url,
+ * fulfillment_metadata.access_url, and download_url (if http/https).
+ */
+export function resolveProductExternalUrl(item: any): string | null {
+  if (!item || typeof item !== 'object') return null;
+
+  const candidate =
+    item.external_url ||
+    item.affiliate_url ||
+    item.metadata?.external_url ||
+    item.metadata?.affiliate_url ||
+    item.fulfillment_metadata?.access_url ||
+    (typeof item.download_url === 'string' &&
+    (item.download_url.startsWith('http://') || item.download_url.startsWith('https://'))
+      ? item.download_url
+      : null) ||
+    (typeof item.link_digital === 'string' &&
+    (item.link_digital.startsWith('http://') || item.link_digital.startsWith('https://'))
+      ? item.link_digital
+      : null);
+
+  if (candidate && typeof candidate === 'string') {
+    const trimmed = candidate.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resolves CTA button label for a product.
+ * If external, checks cta_label or provides contextual labels:
+ * "Ikut Kelas" for courses, "Akses Sekarang" for free items, "Beli Sekarang" for paid items.
+ */
+export function resolveProductCtaLabel(item: any, isExternal: boolean): string {
+  if (item?.cta_label && typeof item.cta_label === 'string' && item.cta_label.trim()) {
+    return item.cta_label.trim();
+  }
+  if (item?.metadata?.cta_label && typeof item.metadata.cta_label === 'string' && item.metadata.cta_label.trim()) {
+    return item.metadata.cta_label.trim();
+  }
+  if (isExternal) {
+    const nameLower = String(item?.name || item?.title || '').toLowerCase();
+    const catLower = String(item?.category || '').toLowerCase();
+    if (
+      catLower.includes('kelas') ||
+      catLower.includes('course') ||
+      catLower.includes('ecourse') ||
+      nameLower.includes('kelas') ||
+      nameLower.includes('belajar')
+    ) {
+      return 'Ikut Belajar';
+    }
+    return Number(item?.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang';
+  }
+  return 'Tambah Keranjang';
+}

@@ -38,6 +38,7 @@ import {
 import { getSupabase } from "@/lib/supabaseClient";
 import { sanitizeImageUrl } from "@/lib/image-utils";
 import { getIndustryQuickReplies } from "@/lib/zero-ai-engine";
+import { resolveProductExternalUrl, resolveProductCtaLabel } from "@/lib/product-catalog";
 
 function StoreProductImage({
   src,
@@ -107,6 +108,7 @@ export interface Product {
   sku?: string;
   type?: string;
   external_url?: string;
+  affiliate_url?: string;
   cta_label?: string;
   checkout_type?: string;
   metadata?: Record<string, any>;
@@ -274,6 +276,10 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     ? ""
     : (sanitizeImageUrl(rawImg) || "");
 
+  const externalUrl = resolveProductExternalUrl(p);
+  const isExternal = Boolean(externalUrl);
+  const ctaLabel = resolveProductCtaLabel(p, isExternal);
+
   return {
     id: p.id !== undefined && p.id !== null ? p.id : `prod-${idx + 1}`,
     name: p.name || p.title || `Layanan ${idx + 1}`,
@@ -292,7 +298,11 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     promo_price: rawPromoPrice,
     download_url: p.download_url || p.delivery_url || p.link_digital || p.asset_reference || p.fulfillment_metadata?.access_url || "",
     stock: p.stock !== undefined && p.stock !== null ? Number(p.stock) : 999,
-    sku: p.sku || `SKU-${idx + 1}`
+    sku: p.sku || `SKU-${idx + 1}`,
+    external_url: externalUrl || undefined,
+    cta_label: ctaLabel,
+    checkout_type: isExternal ? 'external' : (p.checkout_type || 'standard'),
+    metadata: p.metadata || {},
   };
 }
 
@@ -665,15 +675,19 @@ export default function TenantStorefrontPage() {
   };
 
   const trackExternalInitiateCheckout = (product: any) => {
-    trackContactEvent('Affiliate Outbound Click');
+    try {
+      trackContactEvent(`Affiliate Outbound: ${product?.name || product?.title || 'Product'}`);
+    } catch (_) {}
     if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
-      (window as any).fbq("track", "InitiateCheckout", {
-        content_name: product.title || product.name,
-        content_ids: [product.id || product.slug],
-        content_type: "product",
-        value: Number(product.price) || 0,
-        currency: "IDR"
-      });
+      try {
+        (window as any).fbq("track", "InitiateCheckout", {
+          content_name: product?.title || product?.name,
+          content_ids: [String(product?.id || product?.slug)],
+          content_type: "product",
+          value: Number(product?.price) || 0,
+          currency: "IDR"
+        });
+      } catch (_) {}
     }
   };
 
@@ -690,24 +704,9 @@ export default function TenantStorefrontPage() {
 
   const addToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const isExternal = Boolean(
-      product.checkout_type === 'external' ||
-      product.external_url ||
-      (product as any)?.metadata?.external_url ||
-      (product as any)?.metadata?.checkout_type === 'external'
-    );
-    const extUrl = product.external_url || (product as any)?.metadata?.external_url;
-    if (isExternal && extUrl) {
-      if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
-        (window as any).fbq("track", "InitiateCheckout", {
-          content_name: (product as any)?.title || product.name,
-          content_ids: [product.id || (product as any)?.slug],
-          content_type: "product",
-          value: Number(product.price) || 0,
-          currency: "IDR"
-        });
-      }
-      trackContactEvent('Affiliate Outbound Click');
+    const extUrl = resolveProductExternalUrl(product);
+    if (extUrl) {
+      trackExternalInitiateCheckout(product);
       window.open(extUrl, "_blank", "noopener,noreferrer");
       return;
     }
@@ -1007,30 +1006,40 @@ export default function TenantStorefrontPage() {
               )}
 
               <div className="border-t border-slate-100 pt-3">
-                {selectedProduct.external_url || (selectedProduct as any)?.metadata?.external_url ? (
-                  <a
-                    href={selectedProduct.external_url || (selectedProduct as any)?.metadata?.external_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => trackExternalInitiateCheckout(selectedProduct)}
-                    className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
-                  >
-                    <span>{selectedProduct.cta_label || (selectedProduct as any)?.metadata?.cta_label || 'Beli Sekarang'}</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                ) : (
-                  <button
-                    onClick={() => {
-                      addToCart(selectedProduct);
-                      setSelectedProduct(null);
-                      setShowCartModal(true);
-                    }}
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <ShoppingBag className="w-4 h-4" />
-                    <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
-                  </button>
-                )}
+                {(() => {
+                  const extUrl = resolveProductExternalUrl(selectedProduct);
+                  const isExternal = Boolean(extUrl);
+                  const ctaLabel = resolveProductCtaLabel(selectedProduct, isExternal);
+
+                  if (isExternal && extUrl) {
+                    return (
+                      <a
+                        href={extUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => trackExternalInitiateCheckout(selectedProduct)}
+                        className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
+                      >
+                        <span>{ctaLabel}</span>
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    );
+                  }
+
+                  return (
+                    <button
+                      onClick={() => {
+                        addToCart(selectedProduct);
+                        setSelectedProduct(null);
+                        setShowCartModal(true);
+                      }}
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <ShoppingBag className="w-4 h-4" />
+                      <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -1257,41 +1266,26 @@ export default function TenantStorefrontPage() {
                       <span className="text-sm font-black text-blue-600">{Number(p?.price) === 0 ? 'GRATIS' : `Rp ${Number(p?.price ?? 0).toLocaleString("id-ID")}`}</span>
                     </div>
                     {(() => {
-                      const isExternal = Boolean(
-                        p?.checkout_type === 'external' ||
-                        p?.external_url ||
-                        (p as any)?.metadata?.external_url ||
-                        (p as any)?.metadata?.checkout_type === 'external'
-                      );
-                      const extUrl = p?.external_url || (p as any)?.metadata?.external_url || '';
-                      const ctaLabel =
-                        p?.cta_label ||
-                        (p as any)?.metadata?.cta_label ||
-                        (Number(p?.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang');
+                      const extUrl = resolveProductExternalUrl(p);
+                      const isExternal = Boolean(extUrl);
+                      const ctaLabel = resolveProductCtaLabel(p, isExternal);
 
                       if (isExternal && extUrl) {
                         return (
-                          <button
-                            type="button"
+                          <a
+                            href={extUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
-                                (window as any).fbq("track", "InitiateCheckout", {
-                                  content_name: (p as any).title || p.name,
-                                  content_ids: [p.id || (p as any).slug],
-                                  content_type: "product",
-                                  value: Number(p.price) || 0,
-                                  currency: "IDR"
-                                });
-                              }
-                              trackContactEvent('Affiliate Outbound Click');
+                              trackExternalInitiateCheckout(p);
                               window.open(extUrl, "_blank", "noopener,noreferrer");
                             }}
                             className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
                           >
                             <span>{ctaLabel}</span>
                             <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
+                          </a>
                         );
                       }
 
@@ -1564,30 +1558,40 @@ export default function TenantStorefrontPage() {
             )}
 
             <div className="border-t border-slate-100 pt-3">
-              {selectedProduct.external_url || (selectedProduct as any)?.metadata?.external_url ? (
-                <a
-                  href={selectedProduct.external_url || (selectedProduct as any)?.metadata?.external_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => trackExternalInitiateCheckout(selectedProduct)}
-                  className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
-                >
-                  <span>{selectedProduct.cta_label || (selectedProduct as any)?.metadata?.cta_label || 'Beli Sekarang'}</span>
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-              ) : (
-                <button
-                  onClick={() => {
-                    addToCart(selectedProduct);
-                    setSelectedProduct(null);
-                    setShowCartModal(true);
-                  }}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <ShoppingBag className="w-4 h-4" />
-                  <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
-                </button>
-              )}
+              {(() => {
+                const extUrl = resolveProductExternalUrl(selectedProduct);
+                const isExternal = Boolean(extUrl);
+                const ctaLabel = resolveProductCtaLabel(selectedProduct, isExternal);
+
+                if (isExternal && extUrl) {
+                  return (
+                    <a
+                      href={extUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => trackExternalInitiateCheckout(selectedProduct)}
+                      className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black text-xs rounded-xl shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer text-center"
+                    >
+                      <span>{ctaLabel}</span>
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  );
+                }
+
+                return (
+                  <button
+                    onClick={() => {
+                      addToCart(selectedProduct);
+                      setSelectedProduct(null);
+                      setShowCartModal(true);
+                    }}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>{headerCtaText.includes('Layanan') ? 'Pilih Layanan Ini' : 'Pilih Produk Ini'}</span>
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
