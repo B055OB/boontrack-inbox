@@ -327,6 +327,7 @@ export function useTenantDashboard() {
     holder: '',
   });
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState<number>(0);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
@@ -833,27 +834,32 @@ export function useTenantDashboard() {
     }
   }, []);
 
-  // 4. Fetch Transactions
+  // 4. Fetch Transactions & Orders
   useEffect(() => {
     if (!tenantSlug) return;
     const fetchTransactions = async () => {
       try {
         const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}&limit=3500`).catch(() => null);
         if (res && res.ok) {
-          const json = await res.json();
-          const list = json.orders || json.data || [];
-          if (Array.isArray(list) && list.length > 0) {
-            const mapped = list.map((order: any) => {
-              const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS'].includes(
+          const result = await res.json();
+          const ordersList = Array.isArray(result) ? result : (result.orders || result.data || []);
+          setOrders(ordersList);
+
+          if (Array.isArray(ordersList) && ordersList.length > 0) {
+            const mapped = ordersList.map((order: any) => {
+              const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes(
                 (order.payment_status || order.status || '').toUpperCase()
               );
               return {
-                id: order.id || order.invoice_no,
-                date: new Date(order.created_at || Date.now()).toLocaleDateString('id-ID'),
-                description: `Pesanan ${order.invoice_no || ''} - ${order.customer_name || 'Customer'}`,
+                id: String(order.id || order.invoice_no),
+                invoice_no: order.invoice_no || String(order.id || '').slice(0, 10),
+                customer_name: order.customer_name || 'Pelanggan Toko',
+                customer_phone: order.customer_phone || '',
+                product_name: order.product_name || order.items_summary || (Array.isArray(order.items) && order.items[0]?.name) || 'Produk Toko',
                 amount: Number(order.gross_amount || order.total_amount || order.total_price || 0),
+                payment_method: order.payment_method || 'QRIS / TRANSFER',
                 status: isPaid ? 'PAID' : 'PENDING',
-                type: 'INCOME',
+                created_at: new Date(order.created_at || Date.now()).toLocaleDateString('id-ID'),
               };
             });
             setTransactions(mapped as any);
@@ -866,10 +872,10 @@ export function useTenantDashboard() {
     fetchTransactions();
   }, [tenantSlug]);
 
-  const computedOmzet = transactions
-    .filter((t: any) => t.status === 'PAID')
-    .reduce((acc: number, curr: any) => acc + curr.amount, 0);
-  const totalOmzet = tenantMetaOmzet > 0 ? tenantMetaOmzet : computedOmzet;
+  const calculatedOmzet = orders
+    .filter((o: any) => ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes((o.payment_status || o.status || '').toUpperCase()))
+    .reduce((sum: number, o: any) => sum + Number(o.gross_amount || o.total_amount || o.total_price || 0), 0);
+  const totalOmzet = calculatedOmzet > 0 ? calculatedOmzet : (tenantMetaOmzet > 0 ? tenantMetaOmzet : 0);
   const readyBalance = totalOmzet;
 
   // 5. Products Handlers
@@ -1655,6 +1661,8 @@ export function useTenantDashboard() {
     bankForm,
     setBankForm,
     transactions,
+    orders,
+    setOrders,
     totalOmzet,
     readyBalance,
     isWithdrawModalOpen,

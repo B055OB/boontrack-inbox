@@ -58,18 +58,43 @@ export async function GET(
       }
     }
 
-    let query = supabase.from('orders').select('*');
+    let queryFilter = '';
     if (tenantId && slug) {
-      query = query.or(`tenant_slug.eq.${slug},tenant_id.eq.${tenantId}`);
+      queryFilter = `tenant_slug.eq.${slug},tenant_id.eq.${tenantId},tenant_id.eq.${slug}`;
     } else if (slug) {
-      query = query.eq('tenant_slug', slug);
+      queryFilter = `tenant_slug.eq.${slug},tenant_id.eq.${slug}`;
     }
 
-    const { data: orders, error } = await query
-      .order('created_at', { ascending: false })
-      .limit(100);
+    const { searchParams } = new URL(_req.url);
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 100, 5000) : 3500;
 
-    if (error) {
+    let orders: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    let fetchError: any = null;
+
+    while (orders.length < limit) {
+      const fetchSize = Math.min(batchSize, limit - orders.length);
+      let query = supabase.from('orders').select('*');
+      if (queryFilter) {
+        query = query.or(queryFilter);
+      }
+      const { data: chunk, error } = await query
+        .order('created_at', { ascending: false })
+        .range(from, from + fetchSize - 1);
+
+      if (error) {
+        fetchError = error;
+        break;
+      }
+      if (!chunk || chunk.length === 0) break;
+      orders = orders.concat(chunk);
+      if (chunk.length < fetchSize) break;
+      from += fetchSize;
+    }
+
+    if (fetchError && orders.length === 0) {
       // Fallback ke tabel product_orders
       const { data: productOrders } = await supabase
         .from('product_orders')

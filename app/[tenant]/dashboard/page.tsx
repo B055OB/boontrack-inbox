@@ -175,6 +175,7 @@ export default function TenantDashboardPage() {
     bankForm,
     setBankForm,
     transactions,
+    orders,
     totalOmzet,
     readyBalance,
     isWithdrawModalOpen,

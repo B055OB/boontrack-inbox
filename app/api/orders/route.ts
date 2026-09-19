@@ -6,8 +6,13 @@ import { normalizeTenantSlug } from '@/lib/tenant-config';
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const rawTenant = searchParams.get('tenant') || searchParams.get('tenant_slug') || searchParams.get('slug') || '';
-    const tenantSlug = normalizeTenantSlug(rawTenant);
+    const tenantParam =
+      searchParams.get('tenant') ||
+      searchParams.get('tenant_id') ||
+      searchParams.get('tenant_slug') ||
+      searchParams.get('slug') ||
+      '';
+    const tenantSlug = normalizeTenantSlug(tenantParam);
 
     const coreBackendUrl = (
       process.env.CORE_BACKEND_URL ||
@@ -44,18 +49,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, orders: [] });
     }
 
-    let tenantId = '';
-    if (tenantSlug) {
-      const { data: tenantRow } = await supabase
-        .from('tenants')
-        .select('id, slug')
-        .eq('slug', tenantSlug)
-        .maybeSingle();
-      if (tenantRow) {
-        tenantId = tenantRow.id;
-      }
-    }
-
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 100, 5000) : 3500;
 
@@ -67,9 +60,15 @@ export async function GET(req: NextRequest) {
     while (orders.length < limit) {
       const fetchSize = Math.min(batchSize, limit - orders.length);
       let query = supabase.from('orders').select('*');
-      if (tenantSlug) {
-        query = query.eq('tenant_slug', tenantSlug);
+
+      if (tenantParam) {
+        if (tenantSlug && tenantSlug !== tenantParam) {
+          query = query.or(`tenant_slug.eq.${tenantParam},tenant_id.eq.${tenantParam},tenant_slug.eq.${tenantSlug}`);
+        } else {
+          query = query.or(`tenant_slug.eq.${tenantParam},tenant_id.eq.${tenantParam}`);
+        }
       }
+
       const { data: chunk, error } = await query
         .order('created_at', { ascending: false })
         .range(from, from + fetchSize - 1);
