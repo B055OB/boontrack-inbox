@@ -249,13 +249,16 @@ export default function CheckoutPage({ params }: Props) {
   const orderRequirements = resolveFulfillmentRequirements(rawOrderType);
   const isPaidOrder = order?.status === 'PAID' || order?.status === 'COMPLETED' || order?.status === 'SUCCESS' || order?.status === 'SETTLED';
 
-  const fallbackQrisString = STATIC_QRIS;
+  const fallbackQrisString =
+    tenant?.metadata?.payment_config?.raw_qris_string ||
+    tenant?.metadata?.payment_config?.static_qris_payload ||
+    tenant?.metadata?.raw_qris_string ||
+    tenant?.metadata?.static_qris_payload ||
+    STATIC_QRIS;
   const tenantSlug = (order?.tenant_slug || order?.tenant_id || '').toLowerCase();
-  // Dynamic QRIS: jika QRIS merupakan format statis (010211), ubah jadi dinamis dengan tag amount
+  // Dynamic QRIS: pastikan selalu dinamis dengan format 010212, Tag 54 nominal presisi, dan CRC16 terhitung ulang
   const candidateQris = order?.qr_string || fallbackQrisString;
-  const rawQrisValue = candidateQris.includes('010211')
-    ? generateDynamicQRIS(candidateQris, grossAmount)
-    : candidateQris;
+  const rawQrisValue = generateDynamicQRIS(candidateQris, grossAmount);
   const targetWaNumber =
     tenant?.metadata?.whatsapp_number ||
     tenant?.metadata?.whatsapp ||

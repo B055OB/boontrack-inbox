@@ -347,9 +347,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
 
             {paymentData.paymentMethod === 'qris' && (() => {
               const candidateQris = paymentData.qr_string || paymentData.qrString || STATIC_QRIS;
-              const qrisValue = candidateQris.includes('010211')
-                ? generateDynamicQRIS(candidateQris, totalAmount)
-                : candidateQris;
+              const qrisValue = generateDynamicQRIS(candidateQris, totalAmount);
 
               const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222');
               const waConfirmUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(
@@ -360,21 +358,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 <div className="space-y-3">
                   <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
                     <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
-                      {paymentData.qrCodeUrl && !qrisError ? (
-                        <img
-                          src={paymentData.qrCodeUrl}
-                          alt="QRIS Pembayaran"
-                          onError={() => setQrisError(true)}
-                          className="w-56 h-56 object-contain rounded-xl"
-                        />
-                      ) : (
-                        <QRCodeSVG
-                          value={qrisValue}
-                          size={220}
-                          level="M"
-                          includeMargin={true}
-                        />
-                      )}
+                      <QRCodeSVG
+                        value={qrisValue}
+                        size={220}
+                        level="M"
+                        includeMargin={true}
+                      />
                     </div>
                     <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
                       QRIS STANDAR PEMBAYARAN NASIONAL

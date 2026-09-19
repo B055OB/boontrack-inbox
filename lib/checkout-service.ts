@@ -1,5 +1,6 @@
 import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
+import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 
 export interface CreateOrderPayload {
   tenantSlug: string;
@@ -211,7 +212,36 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
 
     if (!qrString && !qrCodeUrl) {
-      qrString = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
+      // Coba ambil konfigurasi QRIS merchant langsung dari Supabase
+      let tenantStaticQris = "";
+      try {
+        const { data: tenantData } = await supabase
+          .from("tenants")
+          .select("metadata")
+          .or(`slug.eq.${payload.tenantSlug},id.eq.${payload.tenantSlug}`)
+          .maybeSingle();
+
+        const pcfg = tenantData?.metadata?.payment_config;
+        tenantStaticQris =
+          pcfg?.raw_qris_string ||
+          pcfg?.static_qris_payload ||
+          tenantData?.metadata?.raw_qris_string ||
+          tenantData?.metadata?.static_qris_payload ||
+          "";
+      } catch (tErr) {
+        console.warn("[Checkout Service] Failed to fetch tenant QRIS:", tErr);
+      }
+
+      const baseQris =
+        tenantStaticQris ||
+        process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
+        "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
+
+      qrString = generateDynamicQRIS(baseQris, grossAmount);
+      qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+    } else if (qrString) {
+      // Pastikan string selalu dinamis (010212) dan nominal terkunci dengan CRC16 valid
+      qrString = generateDynamicQRIS(qrString, grossAmount);
       qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
     }
 

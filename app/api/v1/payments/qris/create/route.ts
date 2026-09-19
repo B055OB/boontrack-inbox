@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getBackendApiUrl } from '@/lib/api-config';
+import { getSupabase } from '@/lib/supabaseClient';
+import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 
 /**
  * CRC16-CCITT calculation for EMVCo standard QRIS payload
@@ -109,8 +111,40 @@ export async function POST(req: NextRequest) {
       console.warn('[Payments API] Core backend QRIS forwarding note:', coreErr);
     }
 
-    // 2. Dynamic EMVCo QRIS Payload Generator (Real Dynamic Payload)
-    const qrString = generateDynamicQrisPayload(orderId, numAmount, tenantName);
+    // 2. Dynamic EMVCo QRIS Payload Generator dari Merchant Supabase
+    let qrString = '';
+    try {
+      const supabase = getSupabase();
+      if (supabase && tenant_slug) {
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .or(`slug.eq.${tenant_slug},id.eq.${tenant_slug}`)
+          .maybeSingle();
+
+        const pcfg = tenantData?.metadata?.payment_config;
+        const tenantStaticQris =
+          pcfg?.raw_qris_string ||
+          pcfg?.static_qris_payload ||
+          tenantData?.metadata?.raw_qris_string ||
+          tenantData?.metadata?.static_qris_payload ||
+          '';
+
+        if (tenantStaticQris) {
+          qrString = generateDynamicQRIS(tenantStaticQris, numAmount);
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[Payments API] Supabase tenant QRIS resolution note:', dbErr);
+    }
+
+    if (!qrString) {
+      const fallbackStatic =
+        process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
+        '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
+      qrString = generateDynamicQRIS(fallbackStatic, numAmount);
+    }
+
     const qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
 
     return NextResponse.json({
