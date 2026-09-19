@@ -72,15 +72,15 @@ export default function OrdersTab({
   const orders: OrderItem[] = React.useMemo(() => {
     const raw = hasPropOrders ? propOrders : internalOrders;
     return raw.map((o: any) => ({
-      id: String(o.id || o.invoice_no),
-      invoice_no: o.invoice_no || o.invoice_number || String(o.id || ''),
+      id: String(o.order_id || o.id || o.invoice_no || ''),
+      invoice_no: String(o.order_id || o.invoice_no || o.invoice_number || o.id || ''),
       customer_name: o.customer_name || 'Pelanggan Toko',
       customer_phone: o.customer_phone || '',
       customer_email: o.customer_email || '',
-      items_summary: o.items_summary || o.product_title || o.product_name || '',
-      total_amount: Number(o.total_amount ?? o.gross_amount ?? o.total_price ?? 0),
+      items_summary: o.items_summary || o.product_name || o.product_title || 'Pesanan Produk',
+      total_amount: Number(o.gross_amount ?? o.total_amount ?? o.total_price ?? 0),
       payment_method: o.payment_method || 'QRIS Dinamis',
-      payment_status: (o.payment_status || o.status || 'PENDING').toUpperCase(),
+      payment_status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
       status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
       shipping_status: o.shipping_status,
       product_type: o.product_type,
@@ -109,20 +109,20 @@ export default function OrdersTab({
     }
     setInternalLoading(true);
     try {
-      const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}&limit=3500`);
+      const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}`);
       if (res.ok) {
         const data = await res.json();
         const rawList = Array.isArray(data) ? data : (data.orders || data.data || []);
         const mappedList: OrderItem[] = rawList.map((o: any) => ({
-          id: String(o.id || o.invoice_no),
-          invoice_no: o.invoice_no || o.invoice_number || String(o.id || ''),
+          id: String(o.order_id || o.id || o.invoice_no || ''),
+          invoice_no: String(o.order_id || o.invoice_no || o.invoice_number || o.id || ''),
           customer_name: o.customer_name || 'Pelanggan Toko',
           customer_phone: o.customer_phone || '',
           customer_email: o.customer_email || '',
-          items_summary: o.items_summary || o.product_title || o.product_name || '',
-          total_amount: Number(o.total_amount ?? o.gross_amount ?? o.total_price ?? 0),
+          items_summary: o.items_summary || o.product_name || o.product_title || 'Pesanan Produk',
+          total_amount: Number(o.gross_amount ?? o.total_amount ?? o.total_price ?? 0),
           payment_method: o.payment_method || 'QRIS Dinamis',
-          payment_status: (o.payment_status || o.status || 'PENDING').toUpperCase(),
+          payment_status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
           status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
           shipping_status: o.shipping_status,
           product_type: o.product_type,

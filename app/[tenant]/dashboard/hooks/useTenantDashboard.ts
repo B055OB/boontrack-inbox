@@ -845,7 +845,7 @@ export function useTenantDashboard() {
     if (!tenantSlug) return;
     const fetchTransactions = async () => {
       try {
-        const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}&limit=3500`).catch(() => null);
+        const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}`).catch(() => null);
         if (res && res.ok) {
           const result = await res.json();
           const ordersList = Array.isArray(result) ? result : (result.orders || result.data || []);
