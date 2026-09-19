@@ -5,12 +5,12 @@ import { handlePaymentWebhook, getRecentWebhookLogs } from '@/lib/payment-webhoo
 export const dynamic = 'force-dynamic';
 
 /**
- * Webhook Pembayaran QRIS / Mutasi Bank / Gateway / BoonTrack Reader
- * Menerima callback saat transaksi berhasil lunas (PAID / SETTLED) maupun
- * payload notifikasi mutasi otomatis dari BoonTrack Reader APK Android.
+ * Webhook Handler untuk BoonTrack Reader (Android Notification Listener)
+ * Menerima payload POST notifikasi transaksi perbankan / e-wallet (DANA Bisnis, BCA, GoPay, dll)
+ * dan mencocokkan nominal mutasi ke pesanan yang menunggu pembayaran.
  */
 export async function POST(req: NextRequest) {
-  return handlePaymentWebhook(req, '/api/webhook/payment');
+  return handlePaymentWebhook(req, '/api/v1/payments/qris/webhook');
 }
 
 export async function GET(req: NextRequest) {
@@ -19,9 +19,10 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     status: 'ONLINE',
-    service: 'BoonTrack Payment & QRIS Mutation Webhook',
-    endpoint: '/api/webhook/payment',
+    service: 'BoonTrack Reader QRIS Webhook Endpoint',
+    endpoint: '/api/v1/payments/qris/webhook',
     timestamp: new Date().toISOString(),
     logs: showLogs ? getRecentWebhookLogs() : undefined,
+    supported_providers: ['DANA Bisnis', 'BCA Mobile', 'myBCA', 'GoPay Usaha', 'Livin Mandiri', 'BRImo'],
   });
 }

@@ -116,11 +116,11 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     utm_term: payload.tracking?.utm_term || null,
     fbclid: payload.tracking?.fbclid || null,
     ttclid: payload.tracking?.ttclid || null,
-    status: "PENDING_PAYMENT",
+    status: "WAITING_PAYMENT",
     created_at: new Date().toISOString()
   };
 
-  // Simpan ke localStorage untuk akses cepat di browser client
+  // Simpan ke localStorage untuk akses cepat di browser client (menyimpan data lengkap)
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem(`bt_order_${orderId}`, JSON.stringify(orderData));
@@ -129,10 +129,33 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
   }
 
-  // 1. Simpan order ke database Supabase
+  // 1. Simpan order ke database Supabase dengan kolom yang valid di schema tabel orders
+  const dbOrderData = {
+    id: orderId,
+    tenant_slug: payload.tenantSlug,
+    product_id: payload.productId,
+    product_title: payload.productTitle,
+    gross_amount: grossAmount,
+    customer_name: payload.customerName,
+    customer_phone: payload.customerPhone,
+    customer_email: payload.customerEmail || "",
+    affiliate_code: payload.affiliateCode || null,
+    manager_id: payload.managerId || null,
+    utm_source: payload.tracking?.utm_source || null,
+    utm_medium: payload.tracking?.utm_medium || null,
+    utm_campaign: payload.tracking?.utm_campaign || null,
+    utm_content: payload.tracking?.utm_content || null,
+    utm_term: payload.tracking?.utm_term || null,
+    fbclid: payload.tracking?.fbclid || null,
+    ttclid: payload.tracking?.ttclid || null,
+    status: "WAITING_PAYMENT",
+    created_at: orderData.created_at,
+    updated_at: orderData.created_at,
+  };
+
   const { error: orderError } = await supabase
     .from("orders")
-    .insert(orderData);
+    .insert(dbOrderData);
 
   if (orderError) {
     console.error("[Checkout Service] Supabase Order Insert Error:", orderError);
