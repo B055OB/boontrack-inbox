@@ -241,6 +241,7 @@ interface DashboardSidebarProps {
   productCount?: number;
   activeProductCount?: number;
   orderCount?: number;
+  inboxCount?: number;
   storeCategory?: string;
   businessType?: string;
   capabilities?: {
@@ -268,8 +269,9 @@ export default function DashboardSidebar({
   isSoloOrTrial = false,
   isCheckoutLite = false,
   productCount = 0,
-  activeProductCount,
+  activeProductCount = 0,
   orderCount = 0,
+  inboxCount = 0,
   storeCategory,
   businessType,
   capabilities,
@@ -845,18 +847,24 @@ export default function DashboardSidebar({
                     </div>
                     <span className="truncate">BoonTrack Inbox</span>
                   </div>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                      isTeamScale
-                        ? 'bg-purple-50 text-purple-700 border-purple-200'
-                        : isAdsPerformance
-                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                        : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
-                    }`}
-                  >
-                    {!isTeamScale && !isAdsPerformance && <Lock className="w-2.5 h-2.5" />}
-                    {isTeamScale ? 'PRO' : isAdsPerformance ? '2 SEATS' : '199k'}
-                  </span>
+                  {inboxCount && inboxCount > 0 ? (
+                    <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-blue-100 text-blue-800 border border-blue-200 ml-auto">
+                      {inboxCount.toLocaleString('id-ID')}
+                    </span>
+                  ) : (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                        isTeamScale
+                          ? 'bg-purple-50 text-purple-700 border-purple-200'
+                          : isAdsPerformance
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
+                      }`}
+                    >
+                      {!isTeamScale && !isAdsPerformance && <Lock className="w-2.5 h-2.5" />}
+                      {isTeamScale ? 'PRO' : isAdsPerformance ? '2 SEATS' : '199k'}
+                    </span>
+                  )}
                 </button>
 
                 {/* Ads Tracking Pro */}

@@ -87,145 +87,10 @@ export interface TeamChatTabProps {
   trialEndsAt?: string | null;
 }
 
-// ── DEFAULT MOCK DATA UNTUK PURE PRESENTATION LAYER ──────────────────────────
-const INITIAL_MOCK_CONVERSATIONS: ChatConversation[] = [
-  {
-    id: 'conv-101',
-    customerPhone: '081298765432',
-    customerName: 'Budi Pratama',
-    avatarInitials: 'BP',
-    lastMessage: 'Bisa minta tolong buatkan tagihan QRIS untuk paketnya?',
-    time: '10:45 WIB',
-    status: 'online',
-    assignedTo: 'my_chat',
-    assignedAgentName: 'Anda (CS Aktif)',
-    isBotActive: false,
-    tag: 'Hot Lead',
-    unreadCount: 1,
-    crm: {
-      totalOrders: 3,
-      lifetimeValue: 450000,
-      city: 'Bandung, Jawa Barat',
-      notes: 'Customer langganan, biasanya transfer cepat via QRIS.',
-    },
-    messages: [
-      {
-        id: 'msg-1',
-        sender: 'customer',
-        text: 'Halo admin, selamat pagi! Mau tanya paket bundling promo apakah masih ready stok?',
-        time: '10:38',
-      },
-      {
-        id: 'msg-2',
-        sender: 'bot',
-        senderName: 'BoonPilot AI',
-        text: 'Halo Kak Budi Pratama! Selamat pagi. Ya, paket bundling promo masih tersedia dengan kuota terbatas. Ada diskon 15% jika order hari ini kak!',
-        time: '10:39',
-      },
-      {
-        id: 'msg-3',
-        sender: 'customer',
-        text: 'Oke mantap, saya mau ambil 1 paket. Bisa minta tolong buatkan tagihan QRIS untuk paketnya?',
-        time: '10:44',
-      },
-      {
-        id: 'msg-4',
-        sender: 'system',
-        text: 'Sesi percakapan diambil alih oleh Anda. Bot AI otomatis dijeda.',
-        time: '10:45',
-      },
-      {
-        id: 'msg-5',
-        sender: 'agent',
-        senderName: 'Anda (CS)',
-        text: 'Halo Kak Budi, ini saya ambil alih langsung ya. Siap, segera saya kirimkan tagihan QRIS kilatnya.',
-        time: '10:45',
-      },
-    ],
-  },
-  {
-    id: 'conv-102',
-    customerPhone: '085711223344',
-    customerName: 'Siti Rahmawati',
-    avatarInitials: 'SR',
-    lastMessage: 'Apakah pengiriman bisa instant hari ini sampai?',
-    time: '10:30 WIB',
-    status: 'online',
-    assignedTo: 'unassigned',
-    assignedAgentName: 'Unassigned / AI Bot',
-    isBotActive: true,
-    tag: 'Tanya Produk',
-    unreadCount: 2,
-    crm: {
-      totalOrders: 0,
-      lifetimeValue: 0,
-      city: 'Jakarta Selatan',
-      notes: 'Prospek baru dari iklan Meta Ads.',
-    },
-    messages: [
-      {
-        id: 'msg-201',
-        sender: 'customer',
-        text: 'Halo kak, apakah produk ini bisa dikirim ke Jakarta Selatan hari ini juga?',
-        time: '10:28',
-      },
-      {
-        id: 'msg-202',
-        sender: 'bot',
-        senderName: 'BoonPilot AI',
-        text: 'Halo Kak Siti! Pengiriman ke area Jakarta Selatan bisa menggunakan kurir Same-Day / Instant (GrabExpress & GoSend) jika konfirmasi sebelum pukul 14:00 WIB.',
-        time: '10:29',
-      },
-      {
-        id: 'msg-203',
-        sender: 'customer',
-        text: 'Apakah pengiriman bisa instant hari ini sampai?',
-        time: '10:30',
-      },
-    ],
-  },
-  {
-    id: 'conv-103',
-    customerPhone: '081377889900',
-    customerName: 'Hendro Wijaya',
-    avatarInitials: 'HW',
-    lastMessage: 'Sudah saya bayar ya mbak, tolong diproses.',
-    time: '09:15 WIB',
-    status: 'offline',
-    assignedTo: 'Rina Pratiwi (CS 1)',
-    assignedAgentName: 'Rina Pratiwi (CS 1)',
-    isBotActive: false,
-    tag: 'Konfirmasi Bayar',
-    unreadCount: 0,
-    crm: {
-      totalOrders: 6,
-      lifetimeValue: 1850000,
-      city: 'Surabaya, Jawa Timur',
-      notes: 'VIP Customer. Suka packing bubble wrap tebal.',
-    },
-    messages: [
-      {
-        id: 'msg-301',
-        sender: 'customer',
-        text: 'Mbak Rina, sudah saya bayar ya tagihan order yang tadi.',
-        time: '09:12',
-      },
-      {
-        id: 'msg-302',
-        sender: 'agent',
-        senderName: 'Rina Pratiwi',
-        text: 'Baik Pak Hendro, pembayarannya sudah kami cek dan terverifikasi otomatis. Paket segera diserahkan ke kurir siang ini ya Pak!',
-        time: '09:14',
-      },
-      {
-        id: 'msg-303',
-        sender: 'customer',
-        text: 'Sudah saya bayar ya mbak, tolong diproses.',
-        time: '09:15',
-      },
-    ],
-  },
-];
+import { BUZZERUKM_INBOX_CONVERSATIONS } from './mockInboxConversations';
+
+// ── DEFAULT MOCK DATA UNTUK PURE PRESENTATION LAYER (28 SESI REALISTIS) ─────────
+const INITIAL_MOCK_CONVERSATIONS: ChatConversation[] = BUZZERUKM_INBOX_CONVERSATIONS;
 
 export default function TeamChatTab({
   tenantSlug,
@@ -272,6 +137,18 @@ export default function TeamChatTab({
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'mine' | 'unassigned'>('all');
   const [localReplyText, setLocalReplyText] = useState('');
+  const [displayLimit, setDisplayLimit] = useState(60);
+
+  // Sinkronisasi state lokal jika externalConversations dari parent terisi
+  useEffect(() => {
+    if (externalConversations && externalConversations.length > 0) {
+      setConversationsList(externalConversations);
+    }
+  }, [externalConversations]);
+
+  useEffect(() => {
+    setDisplayLimit(60);
+  }, [searchKeyword, filterTab]);
 
   // Quick POS QRIS Modal / Form state
   const [qrisItemName, setQrisItemName] = useState('Paket Bundle Hemat');
@@ -323,6 +200,10 @@ export default function TeamChatTab({
       return true;
     });
   }, [conversationsList, filterTab, searchKeyword]);
+
+  const visibleConversations = useMemo(() => {
+    return filteredConversations.slice(0, displayLimit);
+  }, [filteredConversations, displayLimit]);
 
   // Counts for filter pills
   const counts = useMemo(() => {
@@ -775,7 +656,17 @@ export default function TeamChatTab({
           </div>
 
           {/* Conversation List Scrollable */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1.5 divide-y-0">
+          <div
+            onScroll={(e) => {
+              const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+              if (scrollHeight - scrollTop - clientHeight < 300) {
+                if (displayLimit < filteredConversations.length) {
+                  setDisplayLimit((prev) => Math.min(prev + 60, filteredConversations.length));
+                }
+              }
+            }}
+            className="flex-1 overflow-y-auto p-2 space-y-1.5 divide-y-0"
+          >
             {filteredConversations.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
                 <MessageSquare className="w-6 h-6 text-slate-300" />
@@ -783,7 +674,8 @@ export default function TeamChatTab({
                 <p className="text-[11px] text-slate-400">Ubah filter atau kata kunci pencarian.</p>
               </div>
             ) : (
-              filteredConversations.map((c) => {
+              <>
+                {visibleConversations.map((c) => {
                 const isSelected = currentConversation?.id === c.id;
                 const isMine = c.assignedTo === 'my_chat';
                 const isUnassigned = c.assignedTo === 'unassigned';
@@ -863,9 +755,21 @@ export default function TeamChatTab({
                     </div>
                   </div>
                 );
-              })
-            )}
-          </div>
+              })}
+              {filteredConversations.length > visibleConversations.length && (
+                <div className="py-2.5 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setDisplayLimit((prev) => Math.min(prev + 100, filteredConversations.length))}
+                    className="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition cursor-pointer"
+                  >
+                    Muat lebih banyak ({visibleConversations.length} dari {filteredConversations.length.toLocaleString('id-ID')})
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
         </div>
 
         {/* =================================================================== */}

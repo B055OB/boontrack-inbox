@@ -19,6 +19,10 @@ import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm } from '@/lib/boonpilotMapper';
 import { sanitizeImageUrl, uploadImageFile } from '@/lib/image-utils';
 import type { InteractiveMenu } from '@/lib/whatsappFormatter';
+import {
+  BUZZERUKM_INBOX_CONVERSATIONS,
+  generateConversationsFromOrders,
+} from '../components/tabs/mockInboxConversations';
 
 export type DashboardTab =
   | 'dashboard'
@@ -239,7 +243,7 @@ export function useTenantDashboard() {
         console.warn('Gagal memuat percakapan dari storage:', err);
       }
     }
-    return [];
+    return BUZZERUKM_INBOX_CONVERSATIONS;
   });
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -845,36 +849,11 @@ export function useTenantDashboard() {
           const ordersList = Array.isArray(result) ? result : (result.orders || result.data || []);
           console.log('[DEBUG Dashboard] Fetched orders:', ordersList.length);
           setOrders(ordersList);
+          setTransactions(ordersList);
 
           if (Array.isArray(ordersList) && ordersList.length > 0) {
-            const mapped = ordersList.map((order: any) => {
-              const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes(
-                (order.payment_status || order.status || '').toUpperCase()
-              );
-              const prodTitle =
-                order.product_title ||
-                order.product_name ||
-                order.items_summary ||
-                (Array.isArray(order.items) && order.items[0]?.name) ||
-                'Produk Digital';
-              return {
-                id: String(order.id || order.invoice_no),
-                invoice_no: order.invoice_no || String(order.id || '').slice(0, 10),
-                customer_name: order.customer_name || 'Pelanggan',
-                customerName: order.customer_name || 'Pelanggan',
-                customer_phone: order.customer_phone || '',
-                customerPhone: order.customer_phone || '',
-                product_name: prodTitle,
-                productTitle: prodTitle,
-                amount: Number(order.gross_amount || order.total_amount || order.total_price || 0),
-                payment_method: order.payment_method || 'QRIS Dinamis',
-                paymentMethod: order.payment_method || 'QRIS Dinamis',
-                status: isPaid ? 'PAID' : (order.status || 'PENDING'),
-                created_at: new Date(order.created_at || Date.now()).toLocaleDateString('id-ID'),
-                date: order.created_at || new Date().toISOString(),
-              };
-            });
-            setTransactions(mapped as any);
+            const scaledChats = generateConversationsFromOrders(ordersList);
+            setConversations(scaledChats);
           }
         }
       } catch (err) {

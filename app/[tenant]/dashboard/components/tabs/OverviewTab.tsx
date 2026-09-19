@@ -174,45 +174,61 @@ export default function OverviewTab({
                   </td>
                 </tr>
               ) : (
-                transactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50/80 transition">
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-slate-900 font-mono">{t.invoice_no || t.id}</div>
-                      <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                        <Clock className="w-3 h-3" /> {t.created_at || t.date}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-slate-800">{t.customer_name || t.customerName || 'Pelanggan'}</div>
-                      <div className="text-[11px] text-slate-400 font-mono">{t.customer_phone || t.customerPhone ? `+${t.customer_phone || t.customerPhone}` : '-'}</div>
-                    </td>
-                    <td className="px-5 py-4 max-w-[220px]">
-                      <div className="truncate font-semibold text-slate-900">{t.product_name || t.productTitle || 'Produk Digital'}</div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">
-                        {t.payment_method || t.paymentMethod || 'QRIS Dinamis'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
-                      Rp {t.amount.toLocaleString('id-ID')}
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <span className="px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {t.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <button
-                        type="button"
-                        onClick={() => alert(`Membuka lembar Invoice Resmi untuk ${t.invoice_no}`)}
-                        className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
-                      >
-                        Invoice
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                transactions.map((t: any) => {
+                  const invoiceNo = t.invoice_no || t.id;
+                  const dateVal = t.date || t.created_at;
+                  const customerName = t.customer_name || t.customerName || 'Pelanggan';
+                  const customerPhone = t.customer_phone || t.customerPhone;
+                  const productTitle = t.product_title || t.product_name || t.productTitle || t.items_summary || 'Produk Digital';
+                  const grossAmount = Number(t.gross_amount ?? t.amount ?? t.total_amount ?? 0);
+                  const status = t.status || t.payment_status || 'PENDING';
+                  const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes(String(status).toUpperCase());
+                  const paymentMethod = t.payment_method || t.paymentMethod || 'QRIS Dinamis';
+
+                  return (
+                    <tr key={t.id || invoiceNo} className="hover:bg-slate-50/80 transition">
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-slate-900 font-mono">{invoiceNo}</div>
+                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3" /> {typeof dateVal === 'string' && dateVal.includes('T') ? new Date(dateVal).toLocaleDateString('id-ID') : (dateVal || '-')}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-slate-800">{customerName}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">{customerPhone ? (String(customerPhone).startsWith('+') ? customerPhone : `+${customerPhone}`) : '-'}</div>
+                      </td>
+                      <td className="px-5 py-4 max-w-[220px]">
+                        <div className="truncate font-semibold text-slate-900" title={productTitle}>{productTitle}</div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">
+                          {paymentMethod}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
+                        Rp {grossAmount.toLocaleString('id-ID')}
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
+                          isPaid
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => alert(`Membuka lembar Invoice Resmi untuk ${invoiceNo}`)}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                        >
+                          Invoice
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

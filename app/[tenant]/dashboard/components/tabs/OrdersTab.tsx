@@ -63,13 +63,14 @@ export default function OrdersTab({
   loading: propLoading,
   onRefresh: propOnRefresh,
 }: OrdersTabProps) {
+  const hasPropOrders = Array.isArray(propOrders) && propOrders.length > 0;
   const [internalOrders, setInternalOrders] = useState<OrderItem[]>([]);
-  const [internalLoading, setInternalLoading] = useState(true);
+  const [internalLoading, setInternalLoading] = useState(!hasPropOrders);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   const orders: OrderItem[] = React.useMemo(() => {
-    const raw = (propOrders && propOrders.length > 0) ? propOrders : internalOrders;
+    const raw = hasPropOrders ? propOrders : internalOrders;
     return raw.map((o: any) => ({
       id: String(o.id || o.invoice_no),
       invoice_no: o.invoice_no || String(o.id || '').slice(0, 10),
@@ -78,7 +79,7 @@ export default function OrdersTab({
       customer_email: o.customer_email || '',
       items_summary: o.items_summary || o.product_title || o.product_name || '',
       total_amount: Number(o.total_amount ?? o.gross_amount ?? o.total_price ?? 0),
-      payment_method: o.payment_method || 'QRIS / TRANSFER',
+      payment_method: o.payment_method || 'QRIS Dinamis',
       payment_status: (o.payment_status || o.status || 'PENDING').toUpperCase(),
       status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
       shipping_status: o.shipping_status,
@@ -90,9 +91,9 @@ export default function OrdersTab({
       fulfillment_metadata: o.fulfillment_metadata,
       created_at: o.created_at || new Date().toISOString(),
     }));
-  }, [propOrders, internalOrders]);
+  }, [propOrders, internalOrders, hasPropOrders]);
 
-  const loading = (propOrders && propOrders.length > 0) ? false : (propLoading ?? internalLoading);
+  const loading = hasPropOrders ? false : (propLoading ?? internalLoading);
 
   // State untuk dialog konfirmasi pembayaran manual
   const [orderToConfirm, setOrderToConfirm] = useState<OrderItem | null>(null);
@@ -120,7 +121,7 @@ export default function OrdersTab({
           customer_email: o.customer_email || '',
           items_summary: o.items_summary || o.product_title || o.product_name || '',
           total_amount: Number(o.total_amount ?? o.gross_amount ?? o.total_price ?? 0),
-          payment_method: o.payment_method || 'QRIS / TRANSFER',
+          payment_method: o.payment_method || 'QRIS Dinamis',
           payment_status: (o.payment_status || o.status || 'PENDING').toUpperCase(),
           status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
           shipping_status: o.shipping_status,
@@ -142,10 +143,10 @@ export default function OrdersTab({
   }, [tenantSlug, propOnRefresh]);
 
   useEffect(() => {
-    if (!propOrders || propOrders.length === 0) {
+    if (!hasPropOrders) {
       fetchOrders();
     }
-  }, [fetchOrders, propOrders]);
+  }, [fetchOrders, hasPropOrders]);
 
   const handleOrderUpdated = (updatedOrder: OrderItem) => {
     setInternalOrders((prev) =>
@@ -325,7 +326,7 @@ export default function OrdersTab({
         <div>
           <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-blue-600" />
-            <span>Daftar Pesanan Toko ({orders.length})</span>
+            <span>Daftar Pesanan Toko ({filteredOrders.length})</span>
           </h2>
           <p className="text-xs text-slate-500 mt-1">
             Pantau seluruh transaksi checkout masuk, verifikasi konfirmasi pembayaran manual, dan pemenuhan pesanan instan.

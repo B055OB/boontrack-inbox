@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="cartBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#4338CA" />
+    </linearGradient>
+    <linearGradient id="cartBadge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Squircle -->
+  <rect x="24" y="24" width="464" height="464" rx="116" fill="url(#cartBg)" />
+  <rect x="24" y="24" width="464" height="464" rx="116" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="7" />
+
+  <!-- Wheels -->
+  <circle cx="210" cy="385" r="28" fill="#FFFFFF" />
+  <circle cx="210" cy="385" r="10" fill="#4338CA" />
+
+  <circle cx="360" cy="385" r="28" fill="#FFFFFF" />
+  <circle cx="360" cy="385" r="10" fill="#4338CA" />
+
+  <!-- Main Basket Body -->
+  <polygon points="165,175 405,175 370,305 205,305" fill="#FFFFFF" />
+
+  <!-- Cutout Slots inside Basket -->
+  <rect x="215" y="195" width="38" height="85" rx="12" fill="#4F46E5" />
+  <rect x="275" y="195" width="38" height="85" rx="12" fill="#4F46E5" />
+  <rect x="335" y="195" width="38" height="85" rx="12" fill="#4F46E5" />
+
+  <!-- Handle and Chassis -->
+  <path d="M115,140 L165,140 L210,315" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M195,325 L380,325" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" />
+
+  <!-- Top-Right Emerald Checkout Badge -->
+  <circle cx="400" cy="115" r="46" fill="url(#cartBadge)" stroke="#FFFFFF" stroke-width="7" />
+  <path d="M400,89 L404,108 L423,115 L404,122 L400,141 L396,122 L377,115 L396,108 Z" fill="#FFFFFF" />
+</svg>

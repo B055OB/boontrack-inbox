@@ -183,19 +183,26 @@ export interface ProductItem {
 
 export interface TransactionItem {
   id: string;
-  invoice_no: string;
-  customer_name: string;
+  invoice_no?: string;
+  customer_name?: string;
   customerName?: string;
-  customer_phone: string;
+  customer_phone?: string;
   customerPhone?: string;
-  product_name: string;
+  customer_email?: string;
+  product_name?: string;
   productTitle?: string;
-  amount: number;
-  payment_method: string;
+  product_title?: string;
+  items_summary?: string;
+  amount?: number;
+  gross_amount?: number;
+  total_amount?: number;
+  payment_method?: string;
   paymentMethod?: string;
-  status: string;
-  created_at: string;
+  status?: string;
+  payment_status?: string;
+  created_at?: string;
   date?: string;
+  [key: string]: any;
 }
 
 export function slugify(text: string): string {

@@ -67,6 +67,7 @@ interface NavTabsProps {
   permissions?: NavTabsPermissions;
   productCount?: number;
   orderCount?: number;
+  inboxCount?: number;
   storeCategory?: string;
   businessType?: string;
   capabilities?: NavTabsCapabilities | null;
@@ -89,6 +90,7 @@ export default function NavTabs({
   },
   productCount = 0,
   orderCount = 0,
+  inboxCount = 0,
   storeCategory = 'PHYSICAL',
   businessType,
   capabilities,
@@ -421,6 +423,11 @@ export default function NavTabs({
           >
             <MessageSquare className="w-4 h-4 text-blue-600 shrink-0" />
             <span>BoonTrack Inbox (Live CS)</span>
+            {inboxCount > 0 && (
+              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded-full text-[10px] font-black font-mono">
+                {inboxCount.toLocaleString('id-ID')}
+              </span>
+            )}
             {!permissions.hasInbox ? (
               <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-extrabold flex items-center gap-1">
                 <Lock className="w-2.5 h-2.5 text-amber-500" /> 199k

@@ -129,15 +129,20 @@ export async function generateMetadata({
       firstProductImage ||
       BOONTRACK_OFFICIAL_LOGO;
 
-    // Favicon dinamis per-tenant sesuai logo toko
-    const resolvedFavicon = logoUrl || '/favicon.ico';
-    const resolvedAppleIcon = logoUrl || '/apple-touch-icon.png';
+    // Favicon dinamis per-tenant sesuai logo toko atau default shopping cart khas storefront
+    const resolvedFavicon = logoUrl || '/shopping-cart.svg';
+    const resolvedAppleIcon = logoUrl || '/shopping-cart.png';
 
     return {
       title: `${storeName} | Toko Resmi`,
       description,
       icons: {
-        icon: resolvedFavicon,
+        icon: [
+          { url: resolvedFavicon, type: resolvedFavicon.endsWith('.svg') ? 'image/svg+xml' : 'image/png' },
+          { url: '/shopping-cart.png', sizes: '512x512', type: 'image/png' },
+          { url: '/cart-icon.png', sizes: '192x192', type: 'image/png' },
+          { url: '/favicon.ico' },
+        ],
         shortcut: resolvedFavicon,
         apple: resolvedAppleIcon,
       },

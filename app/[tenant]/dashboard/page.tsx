@@ -45,16 +45,13 @@ import BulkImportModal from './components/modals/BulkImportModal';
 import UpsellModal from './components/modals/UpsellModal';
 import UpgradePaymentModal from './components/modals/UpgradePaymentModal';
 import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
+import OrdersTab from './components/tabs/OrdersTab';
 import {
   ModularVerticalTabDispatcher,
   ModularAiKnowledgeDispatcher,
   resolveDomainVertical,
 } from './components/modules';
 import { useTenantDashboard } from './hooks/useTenantDashboard';
-
-const OrdersTab = dynamic(() => import('./components/tabs/OrdersTab'), {
-  loading: () => <div className="p-8 text-center text-xs text-slate-400">Memuat Pesanan...</div>,
-});
 
 export default function TenantDashboardPage() {
   const {
@@ -356,6 +353,7 @@ export default function TenantDashboardPage() {
               productCount={products.length}
               activeProductCount={activeProductsCount}
               orderCount={transactions.length}
+              inboxCount={conversations.length}
               onOpenStoreSettings={() => {
                 setNameError(null);
                 setIsStoreSettingsOpen(true);
@@ -391,6 +389,7 @@ export default function TenantDashboardPage() {
         productCount={products.length}
         activeProductCount={activeProductsCount}
         orderCount={transactions.length}
+        inboxCount={conversations.length}
         onOpenStoreSettings={() => {
           setNameError(null);
           setIsStoreSettingsOpen(true);
@@ -569,6 +568,7 @@ export default function TenantDashboardPage() {
           isAdsPerformance={isAdsPerformance}
           isSoloOrTrial={isSoloOrTrial}
           storeCategory={storeCategory || businessType}
+          chatConversationsCount={conversations.length}
           onOpenStoreSettings={() => {
             setNameError(null);
             setIsStoreSettingsOpen(true);
@@ -711,7 +711,7 @@ export default function TenantDashboardPage() {
             bankForm={bankForm}
             setBankForm={setBankForm}
             displayName={displayName}
-            transactions={transactions}
+            transactions={transactions && transactions.length > 0 ? transactions : orders}
             isWithdrawModalOpen={isWithdrawModalOpen}
             setIsWithdrawModalOpen={setIsWithdrawModalOpen}
             withdrawAmount={withdrawAmount}
