@@ -1401,10 +1401,10 @@ function SingleProductContent() {
         )}
 
         {/* 3. Solution Section (Fitur Unggulan) */}
-        {config.solution_points && config.solution_points.length > 0 ? (
+        {config.solution_points && config.solution_points.length > 0 && (
           <section className="bg-emerald-50/60 border border-emerald-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
             <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-              {config.solution_title || 'Solusi Tepat yang Didesain Khusus Untuk Anda'}
+              {config.solution_title || 'Materi & Fasilitas Utama'}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {config.solution_points.map((point, idx) => (
@@ -1414,25 +1414,6 @@ function SingleProductContent() {
                 </div>
               ))}
             </div>
-          </section>
-        ) : (
-          /* Safe Fallback jika belum mengisi solution points */
-          <section className="bg-slate-50 border border-slate-200/80 rounded-3xl p-5 sm:p-6 space-y-3 shadow-xs">
-            <h3 className="text-base font-black text-slate-900 leading-snug">Materi &amp; Fasilitas Utama</h3>
-            <ul className="space-y-2.5 text-xs sm:text-sm text-slate-700">
-              <li className="flex items-start gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Full Video Tutorial & Panduan Eksekusi Praktis 2026</span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Struktur materi teruji dengan studi kasus nyata</span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Dukungan update berkelanjutan via portal akses resmi</span>
-              </li>
-            </ul>
           </section>
         )}
 

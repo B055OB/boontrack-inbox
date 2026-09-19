@@ -128,6 +128,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 1b. Perbarui Heartbeat Status HP Reader di tenant metadata
+    try {
+      const { data: tenantForHeartbeat } = await supabase
+        .from('tenants')
+        .select('id, metadata')
+        .eq('slug', tenantSlug)
+        .maybeSingle();
+
+      if (tenantForHeartbeat?.id) {
+        const existingDevice = tenantForHeartbeat.metadata?.reader_device || {};
+        const deviceName = body.device_name || body.device || existingDevice.device_name || 'BoonTrack Reader Android';
+        const updatedMeta = {
+          ...(tenantForHeartbeat.metadata || {}),
+          reader_device: {
+            ...existingDevice,
+            is_connected: true,
+            status: 'CONNECTED',
+            device_name: deviceName,
+            last_active_at: new Date().toISOString(),
+          },
+        };
+        await supabase
+          .from('tenants')
+          .update({ metadata: updatedMeta })
+          .eq('id', tenantForHeartbeat.id);
+      }
+    } catch (heartbeatErr) {
+      console.debug('[BoonTrack Reader Webhook] Heartbeat note:', heartbeatErr);
+    }
+
     // 2. Cari baris di tabel orders Supabase
     // Kriteria: tenant_slug = tenantSlug, gross_amount = parsedAmount, status IN ('PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT')
     const { data: pendingOrders, error: fetchErr } = await supabase
