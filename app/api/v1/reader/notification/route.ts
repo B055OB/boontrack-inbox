@@ -18,10 +18,13 @@ function extractAmountFromText(rawText: string): number | null {
   if (!rawText || typeof rawText !== 'string') return null;
 
   // 1. Regex Rp / IDR dengan pemisah ribuan titik atau koma
+  // e.g. "Pembayaran Masuk - Rp1.281 diterima DANA Bisnis." -> 1281
   const rpRegex = /(?:rp\.?|idr)\s*([\d.,]+)/i;
   const matchRp = rawText.match(rpRegex);
   if (matchRp && matchRp[1]) {
     let numStr = matchRp[1].trim();
+    // Hilangkan tanda baca penutup jika ada di akhir (misal: "Rp1.281.")
+    numStr = numStr.replace(/[.,]+$/, '');
     // Hilangkan akhiran format sen seperti ,- atau .- atau ,00 atau .00
     numStr = numStr.replace(/[,.]-$/, '');
     numStr = numStr.replace(/[,.]00$/, '');
@@ -35,6 +38,7 @@ function extractAmountFromText(rawText: string): number | null {
   const matchKeyword = rawText.match(keywordRegex);
   if (matchKeyword && matchKeyword[1]) {
     let numStr = matchKeyword[1].trim();
+    numStr = numStr.replace(/[.,]+$/, '');
     numStr = numStr.replace(/[,.]-$/, '');
     numStr = numStr.replace(/[,.]00$/, '');
     const cleanDigits = numStr.replace(/\D/g, '');
@@ -71,16 +75,17 @@ export async function POST(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
 
-    // Resolusi Tenant Slug
-    const tenantSlug = String(
-      body.tenant_id ||
-      body.tenant ||
+    // Resolusi Tenant Slug (tanpa hardcode fallback agar tidak mengunci ke tenant tertentu)
+    const rawTenantInput = String(
       body.tenant_slug ||
-      req.headers.get('x-tenant-id') ||
+      body.tenant ||
+      body.tenant_id ||
       req.headers.get('x-tenant-slug') ||
+      req.headers.get('x-tenant-id') ||
+      searchParams.get('tenant_slug') ||
       searchParams.get('tenant') ||
       searchParams.get('tenant_id') ||
-      'buzzerukm'
+      ''
     ).trim();
 
     // Gabungkan text notifikasi dari semua kemungkinan field
@@ -108,7 +113,7 @@ export async function POST(req: NextRequest) {
 
     const parsedAmount = explicitAmount > 0 ? explicitAmount : extractAmountFromText(combinedText);
 
-    console.log(`[BoonTrack Reader Webhook] Extracted: tenant='${tenantSlug}', amount=${parsedAmount}, text='${combinedText.slice(0, 100)}'`);
+    console.log(`[BoonTrack Reader Webhook] Extracted: rawTenant='${rawTenantInput}', amount=${parsedAmount}, text='${combinedText.slice(0, 100)}'`);
 
     if (!parsedAmount || parsedAmount <= 0) {
       console.warn('[BoonTrack Reader Webhook] Gagal mengekstrak nominal uang valid.');
@@ -128,78 +133,109 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1b. Perbarui Heartbeat Status HP Reader di tenant metadata
-    try {
-      const { data: tenantForHeartbeat } = await supabase
-        .from('tenants')
-        .select('id, metadata')
-        .eq('slug', tenantSlug)
-        .maybeSingle();
-
-      if (tenantForHeartbeat?.id) {
-        const existingDevice = tenantForHeartbeat.metadata?.reader_device || {};
-        const deviceName = body.device_name || body.device || existingDevice.device_name || 'BoonTrack Reader Android';
-        const updatedMeta = {
-          ...(tenantForHeartbeat.metadata || {}),
-          reader_device: {
-            ...existingDevice,
-            is_connected: true,
-            status: 'CONNECTED',
-            device_name: deviceName,
-            last_active_at: new Date().toISOString(),
-          },
-        };
-        await supabase
+    // Resolusi UUID ke slug jika tenant_id dikirim dalam format UUID
+    let resolvedTenantSlug = rawTenantInput;
+    if (resolvedTenantSlug && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedTenantSlug)) {
+      try {
+        const { data: tRow } = await supabase
           .from('tenants')
-          .update({ metadata: updatedMeta })
-          .eq('id', tenantForHeartbeat.id);
+          .select('slug')
+          .eq('id', resolvedTenantSlug)
+          .maybeSingle();
+        if (tRow?.slug) {
+          resolvedTenantSlug = tRow.slug;
+        }
+      } catch (tResolveErr) {
+        console.debug('[BoonTrack Reader Webhook] Tenant resolve note:', tResolveErr);
       }
-    } catch (heartbeatErr) {
-      console.debug('[BoonTrack Reader Webhook] Heartbeat note:', heartbeatErr);
     }
 
     // 2. Cari baris di tabel orders Supabase
-    // Kriteria: tenant_slug = tenantSlug, gross_amount = parsedAmount, status IN ('PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT')
-    const { data: pendingOrders, error: fetchErr } = await supabase
-      .from('orders')
-      .select('id, tenant_slug, gross_amount, status, payment_status, customer_name, customer_phone')
-      .eq('tenant_slug', tenantSlug)
-      .eq('gross_amount', parsedAmount)
-      .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
-      .order('created_at', { ascending: false })
-      .limit(10);
+    // JALUR 1: Jika tenant slug tersedia, cari spesifik tenant tersebut
+    let pendingOrders: any[] = [];
+    let matchStrategy = 'none';
 
-    if (fetchErr) {
-      console.error('[BoonTrack Reader Webhook] Query error:', fetchErr);
-      return NextResponse.json(
-        { success: false, error: fetchErr.message },
-        { status: 500 }
-      );
+    if (resolvedTenantSlug) {
+      const { data: tenantOrders, error: tErr } = await supabase
+        .from('orders')
+        .select('*')
+        .or(`tenant_slug.eq.${resolvedTenantSlug},tenant_id.eq.${resolvedTenantSlug}`)
+        .eq('gross_amount', parsedAmount)
+        .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (!tErr && tenantOrders && tenantOrders.length > 0) {
+        pendingOrders = tenantOrders;
+        matchStrategy = 'tenant_exact_gross_amount';
+      }
+    }
+
+    // JALUR 2 (GLOBAL FALLBACK): Jika belum cocok, cari order pending di seluruh tenant dengan exact gross_amount
+    // (Kode unik 3 digit downward 1-999 membuat nominal transaksi unik di antara pesanan aktif)
+    if (pendingOrders.length === 0) {
+      console.log(`[BoonTrack Reader Webhook] Fallback: Mencari order pending gross_amount = ${parsedAmount} secara global...`);
+      const { data: globalOrders, error: gErr } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('gross_amount', parsedAmount)
+        .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (!gErr && globalOrders && globalOrders.length > 0) {
+        pendingOrders = globalOrders;
+        matchStrategy = 'global_exact_gross_amount';
+      }
+    }
+
+    // JALUR 3 (TOLERANSI KODE UNIK 1-999): Jika gross_amount di database tersimpan sebelum potongan kode unik
+    if (pendingOrders.length === 0) {
+      const { data: allPending } = await supabase
+        .from('orders')
+        .select('*')
+        .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      if (allPending && allPending.length > 0) {
+        const tolMatch = allPending.find((o) => {
+          const diff = Math.abs(Number(o.gross_amount) - parsedAmount);
+          return diff >= 1 && diff <= 999;
+        });
+        if (tolMatch) {
+          pendingOrders = [tolMatch];
+          matchStrategy = 'unique_code_tolerance';
+        }
+      }
     }
 
     if (!pendingOrders || pendingOrders.length === 0) {
-      console.log(`[BoonTrack Reader Webhook] Tidak ada pesanan pending dengan nominal Rp ${parsedAmount.toLocaleString('id-ID')} untuk tenant '${tenantSlug}'.`);
+      console.log(`[BoonTrack Reader Webhook] Tidak ada pesanan pending dengan nominal Rp ${parsedAmount.toLocaleString('id-ID')}.`);
       return NextResponse.json({
         success: true,
         matched: false,
-        message: `Tidak ditemukan pesanan menunggu pembayaran dengan nominal Rp ${parsedAmount.toLocaleString('id-ID')} untuk tenant '${tenantSlug}'.`,
+        message: `Tidak ditemukan pesanan menunggu pembayaran dengan nominal Rp ${parsedAmount.toLocaleString('id-ID')}.`,
         parsed_amount: parsedAmount,
-        tenant_slug: tenantSlug,
+        tenant_slug: resolvedTenantSlug || null,
       });
     }
 
     // Pilih order paling relevan
     const matchedOrder = pendingOrders[0];
     const paidAt = new Date().toISOString();
+    const effectiveTenantSlug = matchedOrder.tenant_slug || resolvedTenantSlug || 'default';
 
-    console.log(`[BoonTrack Reader Webhook] MATCH FOUND: Order #${matchedOrder.id} (${matchedOrder.customer_name || 'Customer'}) Rp ${matchedOrder.gross_amount}. Mengupdate ke PAID...`);
+    console.log(`[BoonTrack Reader Webhook] MATCH FOUND: Order #${matchedOrder.id} (${matchedOrder.customer_name || 'Customer'}) Rp ${matchedOrder.gross_amount} via ${matchStrategy}. Mengupdate ke PAID...`);
 
-    // 3. Update kolom status = 'PAID', payment_status = 'PAID', updated_at
+    // 3. Update kolom status = 'PAID', payment_status = 'PAID', order_status = 'PAID', paid_at
     const { error: updateErr } = await supabase
       .from('orders')
       .update({
         status: 'PAID',
         payment_status: 'PAID',
+        order_status: 'PAID',
+        paid_at: paidAt,
         updated_at: paidAt,
       })
       .eq('id', matchedOrder.id);
@@ -212,6 +248,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 1b. Perbarui Heartbeat Status HP Reader di tenant metadata
+    try {
+      const { data: tenantForHeartbeat } = await supabase
+        .from('tenants')
+        .select('id, metadata')
+        .eq('slug', effectiveTenantSlug)
+        .maybeSingle();
+
+      if (tenantForHeartbeat?.id) {
+        const existingDevice = tenantForHeartbeat.metadata?.reader_device || {};
+        const deviceName = body.device_name || body.device || existingDevice.device_name || 'BoonTrack Reader Android';
+        const updatedMeta = {
+          ...(tenantForHeartbeat.metadata || {}),
+          reader_device: {
+            ...existingDevice,
+            is_connected: true,
+            status: 'CONNECTED',
+            device_name: deviceName,
+            last_active_at: paidAt,
+          },
+        };
+        await supabase
+          .from('tenants')
+          .update({ metadata: updatedMeta })
+          .eq('id', tenantForHeartbeat.id);
+      }
+    } catch (heartbeatErr) {
+      console.debug('[BoonTrack Reader Webhook] Heartbeat note:', heartbeatErr);
+    }
+
     console.log(`[BoonTrack Reader Webhook] SUCCESS: Order #${matchedOrder.id} status berhasil diubah ke PAID!`);
 
     return NextResponse.json({
@@ -219,8 +285,9 @@ export async function POST(req: NextRequest) {
       matched: true,
       order_id: matchedOrder.id,
       gross_amount: matchedOrder.gross_amount,
-      tenant_slug: tenantSlug,
+      tenant_slug: effectiveTenantSlug,
       paid_at: paidAt,
+      match_strategy: matchStrategy,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';

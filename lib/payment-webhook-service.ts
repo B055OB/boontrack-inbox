@@ -307,6 +307,23 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
         }
       }
     }
+
+    // 2.C: Fallback global jika tenantSlug mismatch atau tidak menemukan match
+    if (!matchedOrder) {
+      console.log(`[Webhook Reader ${logId}] Global fallback: Mencari order pending gross_amount = ${parsedAmount}...`);
+      const { data: globalOrders } = await supabase
+        .from('orders')
+        .select('*')
+        .or('status.eq.WAITING_PAYMENT,status.eq.PENDING_PAYMENT,status.eq.PENDING,status.eq.UNPAID')
+        .eq('gross_amount', parsedAmount)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (globalOrders && globalOrders.length > 0) {
+        matchedOrder = globalOrders[0];
+        matchStrategy = 'global_exact_gross_amount';
+      }
+    }
   }
 
   // Jika tidak ada order yang cocok
@@ -380,6 +397,9 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     .from('orders')
     .update({
       status: 'PAID',
+      payment_status: 'PAID',
+      order_status: 'PAID',
+      paid_at: paidAt,
       updated_at: paidAt,
     })
     .eq('id', orderId);

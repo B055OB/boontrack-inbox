@@ -46,12 +46,48 @@ export default function CheckoutPage({ params }: Props) {
   const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
   const [countdown, setCountdown] = useState(3);
   const [hasAutoRedirected, setHasAutoRedirected] = useState(false);
+  const hasTrackedPixelRef = React.useRef(false);
+
+  const triggerPurchasePixels = React.useCallback((orderData: any) => {
+    if (hasTrackedPixelRef.current || !orderData) return;
+    hasTrackedPixelRef.current = true;
+
+    try {
+      const grossVal = Number(orderData.gross_amount || orderData.total_amount || orderData.amount || 0);
+      const prodName = orderData.product_title || 'Produk';
+      const prodId = String(orderData.product_id || orderData.id || '');
+
+      if (typeof window !== 'undefined') {
+        const win = window as any;
+        if (typeof win.fbq === 'function') {
+          win.fbq('track', 'Purchase', {
+            content_name: prodName,
+            content_ids: [prodId],
+            content_type: 'product',
+            value: grossVal,
+            currency: 'IDR',
+          });
+        }
+        if (typeof win.ttq === 'object' && typeof win.ttq.track === 'function') {
+          win.ttq.track('CompletePayment', {
+            content_name: prodName,
+            content_id: prodId,
+            content_type: 'product',
+            value: grossVal,
+            currency: 'IDR',
+          });
+        }
+      }
+    } catch (pixelErr) {
+      console.warn('[Checkout Page] Pixel trigger note:', pixelErr);
+    }
+  }, []);
 
   useEffect(() => {
     async function loadOrder() {
       setLoading(true);
       try {
-        // 1. Coba baca dari backup lokal
+        // 1. Coba baca dari backup lokal untuk instant render awal
         if (typeof window !== 'undefined') {
           const localOrderStr = localStorage.getItem(`bt_order_${orderId}`);
           if (localOrderStr) {
@@ -59,8 +95,6 @@ export default function CheckoutPage({ params }: Props) {
               const parsed = JSON.parse(localOrderStr);
               if (parsed?.id) {
                 setOrder(parsed);
-                setLoading(false);
-                return;
               }
             } catch {}
           }
@@ -68,7 +102,7 @@ export default function CheckoutPage({ params }: Props) {
 
         const supabase = getSupabase();
         if (supabase) {
-          // 2. Coba baca dari tabel orders
+          // 2. Query data aktual dari tabel orders (Single Source of Truth)
           const { data: dbOrder } = await supabase
             .from('orders')
             .select('*')
@@ -98,6 +132,17 @@ export default function CheckoutPage({ params }: Props) {
             }
             setOrder(enriched);
             setLoading(false);
+
+            if (
+              dbOrder.status === 'PAID' ||
+              dbOrder.status === 'COMPLETED' ||
+              dbOrder.status === 'SUCCESS' ||
+              dbOrder.status === 'SETTLED' ||
+              dbOrder.payment_status === 'PAID' ||
+              dbOrder.order_status === 'PAID'
+            ) {
+              triggerPurchasePixels(enriched);
+            }
             return;
           }
         }
@@ -107,6 +152,9 @@ export default function CheckoutPage({ params }: Props) {
         if (res.ok) {
           const data = await res.json();
           setOrder(data);
+          if (data?.status === 'PAID' || data?.payment_status === 'PAID') {
+            triggerPurchasePixels(data);
+          }
         }
       } catch (err) {
         console.warn('[Checkout Page] Failed to fetch order:', err);
@@ -122,12 +170,24 @@ export default function CheckoutPage({ params }: Props) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [orderId]);
+  }, [orderId, triggerPurchasePixels]);
 
-  // Polling realtime status pembayaran setiap 3 detik hingga status PAID
+  // Polling realtime status pembayaran setiap 2 detik hingga status PAID
   useEffect(() => {
-    const isPaid = order?.status === 'PAID' || order?.status === 'COMPLETED' || order?.status === 'SUCCESS' || order?.status === 'SETTLED';
-    if (!orderId || isPaid) return;
+    const isPaid =
+      order?.status === 'PAID' ||
+      order?.status === 'COMPLETED' ||
+      order?.status === 'SUCCESS' ||
+      order?.status === 'SETTLED' ||
+      order?.payment_status === 'PAID' ||
+      order?.order_status === 'PAID';
+
+    if (!orderId || isPaid) {
+      if (isPaid && order) {
+        triggerPurchasePixels(order);
+      }
+      return;
+    }
 
     const pollInterval = setInterval(async () => {
       try {
@@ -139,7 +199,18 @@ export default function CheckoutPage({ params }: Props) {
             .eq('id', orderId)
             .maybeSingle();
 
-          if (dbOrder && (dbOrder.status === 'PAID' || dbOrder.status === 'COMPLETED' || dbOrder.status === 'SUCCESS' || dbOrder.status === 'SETTLED')) {
+          const isOrderPaid = Boolean(
+            dbOrder && (
+              dbOrder.status === 'PAID' ||
+              dbOrder.status === 'COMPLETED' ||
+              dbOrder.status === 'SUCCESS' ||
+              dbOrder.status === 'SETTLED' ||
+              dbOrder.payment_status === 'PAID' ||
+              dbOrder.order_status === 'PAID'
+            )
+          );
+
+          if (isOrderPaid) {
             let enriched = { ...dbOrder };
             if (!enriched.fulfillment_metadata || !enriched.link_digital) {
               const pSlug = enriched.product_id || enriched.slug;
@@ -163,8 +234,10 @@ export default function CheckoutPage({ params }: Props) {
             setOrder((prev: any) => ({
               ...prev,
               ...enriched,
-              status: dbOrder.status
+              status: 'PAID',
+              payment_status: 'PAID',
             }));
+            triggerPurchasePixels(enriched);
             clearInterval(pollInterval);
             return;
           }
@@ -172,10 +245,10 @@ export default function CheckoutPage({ params }: Props) {
       } catch (err) {
         console.warn('[Checkout Polling] Check error:', err);
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(pollInterval);
-  }, [orderId, order?.status]);
+  }, [orderId, order?.status, order?.payment_status, triggerPurchasePixels]);
 
   // Sinkronisasi data merchant & rekening transfer bank dinamis dari Supabase
   useEffect(() => {
@@ -332,7 +405,13 @@ export default function CheckoutPage({ params }: Props) {
       ? 'FIELD_SERVICE'
       : 'DIGITAL');
   const orderRequirements = resolveFulfillmentRequirements(rawOrderType);
-  const isPaidOrder = order?.status === 'PAID' || order?.status === 'COMPLETED' || order?.status === 'SUCCESS' || order?.status === 'SETTLED';
+  const isPaidOrder =
+    order?.status === 'PAID' ||
+    order?.status === 'COMPLETED' ||
+    order?.status === 'SUCCESS' ||
+    order?.status === 'SETTLED' ||
+    order?.payment_status === 'PAID' ||
+    order?.order_status === 'PAID';
 
   const fallbackQrisString =
     tenant?.qris_content ||
