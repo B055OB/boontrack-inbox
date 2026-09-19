@@ -15,7 +15,7 @@ export async function GET(
 
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
-      return NextResponse.json({ success: true, orders: [] });
+      return NextResponse.json({ success: true, orders: [], count: 0 });
     }
 
     let targetSlug = slug;
@@ -35,77 +35,41 @@ export async function GET(
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 50, 500) : 100;
 
-    // 1. QUERY UTAMA: Tabel `product_orders` (transaksi riil checkout)
-    let rawProductOrders: any[] = [];
-    try {
-      const { data: poByTenantId, error: errId } = await supabase
-        .from('product_orders')
-        .select('*')
-        .eq('tenant_id', targetSlug)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+    // QUERY LANGSUNG KE TABEL orders (SINGLE SOURCE OF TRUTH)
+    const { data: ordersData, error: ordersErr } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('tenant_slug', targetSlug)
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-      if (!errId && poByTenantId && poByTenantId.length > 0) {
-        rawProductOrders = poByTenantId;
-      } else {
-        const { data: poByTenantSlug, error: errSlug } = await supabase
-          .from('product_orders')
-          .select('*')
-          .eq('tenant_slug', targetSlug)
-          .order('created_at', { ascending: false })
-          .limit(limit);
-
-        if (!errSlug && poByTenantSlug && poByTenantSlug.length > 0) {
-          rawProductOrders = poByTenantSlug;
-        } else {
-          const { data: poAll, error: errAll } = await supabase
-            .from('product_orders')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(limit);
-
-          if (!errAll && poAll && poAll.length > 0) {
-            rawProductOrders = poAll;
-          }
-        }
-      }
-    } catch (poErr) {
-      console.warn('[Tenant Orders API] product_orders error:', poErr);
+    if (ordersErr) {
+      console.error('[Tenant Orders API] Database query error:', ordersErr);
+      return NextResponse.json({ success: false, error: ordersErr.message, orders: [], count: 0 }, { status: 500 });
     }
 
-    // 2. FALLBACK DATABASE RIIL: Tabel `orders`
-    if (rawProductOrders.length === 0 && targetSlug) {
-      const { data: ordersData, error: ordersErr } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('tenant_slug', targetSlug)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+    const rawOrders = ordersData || [];
 
-      if (!ordersErr && ordersData) {
-        rawProductOrders = ordersData;
-      }
-    }
-
-    // 3. NORMALISASI KOLOM UI RIIL
-    const normalizedOrders = rawProductOrders.map((o: any) => {
-      const orderId = String(o.order_id || o.id || o.invoice_no || '');
+    // Normalisasi kolom UI riil
+    const normalizedOrders = rawOrders.map((o: any) => {
+      const orderId = String(o.id || o.order_id || o.invoice_no || '');
       const rawStatus = String(o.status || o.payment_status || 'PENDING').toUpperCase();
       const grossAmount = Number(o.gross_amount ?? o.total_amount ?? o.amount ?? o.total_price ?? 0);
-      const totalAmount = Number(o.total_amount ?? o.gross_amount ?? o.amount ?? o.total_price ?? 0);
 
       return {
         id: orderId,
         order_id: orderId,
         invoice_no: orderId,
+        tenant_slug: o.tenant_slug || targetSlug,
+        product_id: o.product_id || '',
+        product_name: o.product_title || o.product_name || 'Pesanan Produk',
+        product_title: o.product_title || o.product_name || 'Pesanan Produk',
+        items_summary: o.product_title || o.product_name || 'Pesanan Produk',
         customer_name: o.customer_name || 'Pelanggan Toko',
         customer_phone: o.customer_phone || '',
         customer_email: o.customer_email || '',
-        product_name: o.product_name || o.product_title || 'Pesanan Produk',
-        product_title: o.product_title || o.product_name || 'Pesanan Produk',
-        items_summary: o.product_name || o.product_title || 'Pesanan Produk',
         gross_amount: grossAmount,
-        total_amount: totalAmount,
+        total_amount: grossAmount,
         status: rawStatus,
         payment_status: rawStatus,
         payment_method: o.payment_method || 'QRIS Dinamis',
@@ -117,12 +81,6 @@ export async function GET(
       };
     });
 
-    normalizedOrders.sort((a, b) => {
-      const timeA = new Date(a.created_at).getTime() || 0;
-      const timeB = new Date(b.created_at).getTime() || 0;
-      return timeB - timeA;
-    });
-
     return NextResponse.json({
       success: true,
       orders: normalizedOrders,
@@ -130,6 +88,6 @@ export async function GET(
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error fetching orders';
-    return NextResponse.json({ success: false, error: msg, orders: [] }, { status: 500 });
+    return NextResponse.json({ success: false, error: msg, orders: [], count: 0 }, { status: 500 });
   }
 }

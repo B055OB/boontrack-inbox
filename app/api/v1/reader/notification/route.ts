@@ -182,17 +182,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update product_orders jika ada
-    try {
-      await supabase
-        .from('product_orders')
-        .update({
-          status: 'PAID',
-          updated_at: paidAt,
-        })
-        .eq('order_id', matchedOrder.id);
-    } catch {}
-
     console.log(`[BoonTrack Reader Webhook] SUCCESS: Order #${matchedOrder.id} status berhasil diubah ke PAID!`);
 
     return NextResponse.json({

@@ -129,11 +129,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
   }
 
-  // 1. Simpan order ke database Supabase dengan kolom yang valid di schema tabel orders
+  // 1. Simpan order ke database Supabase tabel orders (Single Source of Truth)
+  const resolvedProductId = String(payload.productId || '').trim() || `prod_${Date.now()}`;
+
   const dbOrderData = {
     id: orderId,
     tenant_slug: payload.tenantSlug,
-    product_id: payload.productId,
+    product_id: resolvedProductId, // Wajib NOT NULL di skema PostgreSQL
     product_title: payload.productTitle,
     gross_amount: grossAmount,
     customer_name: payload.customerName,
@@ -148,7 +150,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     utm_term: payload.tracking?.utm_term || null,
     fbclid: payload.tracking?.fbclid || null,
     ttclid: payload.tracking?.ttclid || null,
-    status: "WAITING_PAYMENT",
+    status: "PENDING",
     created_at: orderData.created_at,
     updated_at: orderData.created_at,
   };
@@ -159,34 +161,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   if (orderError) {
     console.error("[Checkout Service] Supabase Order Insert Error:", orderError);
-    try {
-      await supabase.from("product_orders").insert({
-        tenant_id: payload.tenantSlug,
-        order_id: orderId,
-        customer_name: payload.customerName,
-        customer_phone: payload.customerPhone,
-        customer_email: payload.customerEmail || "",
-        product_name: payload.productTitle,
-        gross_amount: grossAmount,
-        base_price: basePrice,
-        product_discount: productDiscount,
-        net_product_price: netProductPrice,
-        shipping_cost: shippingCost,
-        shipping_subsidy: shippingSubsidy,
-        net_shipping_cost: netShippingCost,
-        voucher_code: payload.voucherCode || null,
-        shipping_address: payload.shippingAddress || null,
-        admin_fee: adminFee,
-        unique_code: uniqueCode,
-        payment_method: paymentMethod,
-        affiliate_commission: affiliateCommission,
-        status: "PENDING",
-        affiliate_code: payload.affiliateCode || null,
-        created_at: new Date().toISOString()
-      });
-    } catch (fallbackErr) {
-      console.warn("[Checkout Service] Fallback table insert error:", fallbackErr);
-    }
   }
 
   // 2. Request pembuatan QRIS / Invoice ke Backend API (jika QRIS)

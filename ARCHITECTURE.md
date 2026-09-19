@@ -100,6 +100,38 @@ Ekosistem BoonTrack meresmikan standarisasi 3 Tier Komersial baku yang mengikat 
   - `PHYSICAL`: Mengaktifkan kalkulasi ongkir dan form logistik pengiriman lengkap.
 - **Dynamic Links**: Link checkout WhatsApp wajib menggunakan resolver dinamis (`shop.boontrack.com/{tenant_slug}` atau custom domain), dilarang hardcode domain tertentu.
 
+### 4.1 Single Source of Truth Transaksi Toko (Standarisasi Skema `orders`)
+Ekosistem multi-tenant toko BoonTrack menetapkan tabel **`orders`** sebagai **Single Source of Truth** untuk seluruh siklus hidup transaksi (Checkout, Dashboard Merchant, Webhook Reader, dan Auto-Fulfillment).
+
+> **⚠️ DEPRECATION NOTICE**: Tabel lawas `product_orders` resmi **DIDEPRESIASI (DEPRECATED)** secara permanen dan dilarang digunakan di seluruh rute baru maupun rute migrasi.
+
+#### Skema Riil Tabel `orders` (PostgreSQL Supabase):
+| Kolom | Tipe Data | Constraint | Keterangan |
+| :--- | :--- | :--- | :--- |
+| `id` | `text` | `PRIMARY KEY` | Format baku Invoice / Order ID: `ORD-...` |
+| `tenant_slug` | `text` | Indexed | Identifikasi tenant toko (contoh: `'buzzerukm'`) |
+| `product_id` | `text` | `NOT NULL` | ID referensi produk yang dipesan (wajib terisi saat checkout) |
+| `product_title` | `text` | Nullable | Judul / nama produk pada saat transaksi dibuat |
+| `customer_name` | `text` | Nullable | Nama lengkap pembeli |
+| `customer_phone`| `text` | Nullable | Nomor WhatsApp/telepon pembeli |
+| `gross_amount`  | `numeric`| Not Null | Total pembayaran akhir (termasuk kode unik / ongkir) |
+| `status`        | `text` | Default `'PENDING'` | Status pesanan: `'PENDING'`, `'PAID'`, `'COMPLETED'`, dll. |
+| `created_at`    | `timestamptz` | Default `now()` | Waktu pesanan dibuat |
+
+#### Kontrak Operasional Transaksi:
+1. **API List Pesanan (`/api/orders`, `/api/v1/tenants/[slug]/orders`)**:
+   - Query langsung ke tabel `orders` dengan filter `.eq('tenant_slug', targetSlug)`.
+   - Diurutkan berdasarkan `.order('created_at', { ascending: false })`.
+   - Menggunakan paginasi/limit bersih (`limit(100)`).
+   - **Zero Fake Fallback Policy**: Jika query menghasilkan array kosong (`[]`), return `[]` apa adanya. DILARANG membuat while-loop 3.500 atau menyuntikkan data tiruan/mock statis.
+2. **Mutasi Checkout (`lib/checkout-service.ts`)**:
+   - Wajib menyertakan `product_id` (tidak boleh `null`) untuk mematuhi database integrity constraint.
+   - Status awal pesanan baru adalah `'PENDING'`.
+3. **Webhook Reader & Payment Matching (`/api/v1/reader/notification`)**:
+   - Membaca notifikasi mutasi masuk dari aplikasi BoonTrack Reader APK.
+   - Melakukan matching terhadap tabel `orders` berdasarkan kecocokan nominal `gross_amount` dan status `PENDING` (atau status belum lunas lainnya).
+   - Mengupdate status pesanan di tabel `orders` menjadi `'PAID'` secara atomik dan idempotent.
+
 ---
 
 ## 5. Monetization & Entitlement Lifecycle (Flexible Policy)

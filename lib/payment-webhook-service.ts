@@ -260,17 +260,6 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     if (orderById) {
       matchedOrder = orderById;
       matchStrategy = 'direct_order_id';
-    } else {
-      // Cek fallback product_orders
-      const { data: pOrder } = await supabase
-        .from('product_orders')
-        .select('*')
-        .eq('order_id', directOrderId)
-        .maybeSingle();
-      if (pOrder) {
-        matchedOrder = pOrder;
-        matchStrategy = 'direct_product_order_id';
-      }
     }
   }
 
@@ -386,25 +375,14 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
 
   const paidAt = new Date().toISOString();
 
-  // UPDATE STATUS ORDER KE 'PAID'
-  const isProductOrdersTable = Boolean(matchedOrder.order_id && !matchedOrder.id);
-  if (isProductOrdersTable) {
-    await supabase
-      .from('product_orders')
-      .update({
-        status: 'PAID',
-        updated_at: paidAt,
-      })
-      .eq('order_id', orderId);
-  } else {
-    await supabase
-      .from('orders')
-      .update({
-        status: 'PAID',
-        updated_at: paidAt,
-      })
-      .eq('id', orderId);
-  }
+  // UPDATE STATUS ORDER KE 'PAID' (Single Source of Truth: orders)
+  await supabase
+    .from('orders')
+    .update({
+      status: 'PAID',
+      updated_at: paidAt,
+    })
+    .eq('id', orderId);
 
   console.log(`[Webhook Reader ${logId}] SUCCESS: Order #${orderId} diupdate menjadi PAID (Strategy: ${matchStrategy}).`);
 

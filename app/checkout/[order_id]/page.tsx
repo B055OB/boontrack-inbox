@@ -100,35 +100,6 @@ export default function CheckoutPage({ params }: Props) {
             setLoading(false);
             return;
           }
-
-          // 2. Coba baca dari tabel product_orders
-          const { data: pOrder } = await supabase
-            .from('product_orders')
-            .select('*')
-            .eq('order_id', orderId)
-            .maybeSingle();
-
-          if (pOrder) {
-            setOrder({
-              id: pOrder.order_id,
-              product_title: pOrder.product_name,
-              gross_amount: pOrder.gross_amount,
-              base_price: pOrder.base_price,
-              admin_fee: pOrder.admin_fee,
-              unique_code: pOrder.unique_code,
-              payment_method: pOrder.payment_method,
-              customer_name: pOrder.customer_name,
-              customer_phone: pOrder.customer_phone,
-              customer_email: pOrder.customer_email,
-              status: pOrder.status,
-              shipping_cost: pOrder.shipping_cost,
-              shipping_subsidy: pOrder.shipping_subsidy,
-              shipping_courier: pOrder.shipping_courier,
-              shipping_address: pOrder.shipping_address
-            });
-            setLoading(false);
-            return;
-          }
         }
 
         // 3. Fallback fetch dari API backend
@@ -193,21 +164,6 @@ export default function CheckoutPage({ params }: Props) {
               ...prev,
               ...enriched,
               status: dbOrder.status
-            }));
-            clearInterval(pollInterval);
-            return;
-          }
-
-          const { data: pOrder } = await supabase
-            .from('product_orders')
-            .select('*')
-            .eq('order_id', orderId)
-            .maybeSingle();
-
-          if (pOrder && (pOrder.status === 'PAID' || pOrder.status === 'COMPLETED' || pOrder.status === 'SUCCESS' || pOrder.status === 'SETTLED')) {
-            setOrder((prev: any) => ({
-              ...prev,
-              status: pOrder.status
             }));
             clearInterval(pollInterval);
             return;

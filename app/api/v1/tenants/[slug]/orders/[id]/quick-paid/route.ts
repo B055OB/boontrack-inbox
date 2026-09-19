@@ -94,17 +94,6 @@ export async function POST(
       );
     }
 
-    // Also update product_orders if table exists
-    try {
-      await supabase
-        .from('product_orders')
-        .update({
-          status: 'PAID',
-          updated_at: paidAt,
-        })
-        .eq('order_id', orderId);
-    } catch {}
-
     // 3. Post auto-fulfillment notification to messages table
     const accessUrl = fulfillmentMeta.access_url || updatedOrder.download_url;
     const fulfillmentNotice = accessUrl
