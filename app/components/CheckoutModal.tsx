@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink } from "lucide-react";
+import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
-import { getActiveAffiliateCode, getTrackingData, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber } from "@/lib/tracking";
+import { getActiveAffiliateCode, getTrackingData, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
@@ -28,6 +28,8 @@ interface CheckoutModalProps {
     fulfillment_metadata?: any;
     external_url?: string;
     cta_label?: string;
+    meta_pixel_id_override?: string;
+    tiktok_pixel_id_override?: string;
   } | null;
 }
 
@@ -35,6 +37,14 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [shippingCity, setShippingCity] = useState("");
+  const [shippingCost, setShippingCost] = useState(0);
+  const [shippingCourier, setShippingCourier] = useState("Kurir Reguler (J&T / SiCepat)");
+  const [isLoadingShipping, setIsLoadingShipping] = useState(false);
+  const [tenantMetaPixel, setTenantMetaPixel] = useState<string>("");
+  const [tenantTTPixel, setTenantTTPixel] = useState<string>("");
+
   const [paymentMethod, setPaymentMethod] = useState<'qris' | 'manual_transfer'>('qris');
   const [uniqueCode] = useState(() => Math.floor(100 + Math.random() * 900));
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
@@ -59,6 +69,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [tenantPhone, setTenantPhone] = useState<string>("");
   const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
 
+  // Resolver Context Fulfillment Digital vs Fisik
+  const rawProductType = (product?.product_type || product?.type || (product?.category === 'fisik' || product?.category === 'physical' ? 'physical' : 'digital')).toLowerCase();
+  const isPhysical = rawProductType === 'physical' || rawProductType === 'fisik';
+  const isDigital = !isPhysical;
+
   const handleCopy = (text: string, field: string) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(text);
@@ -71,9 +86,64 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
   const adminFee = 0;
   const currentUniqueCode = paymentMethod === 'manual_transfer' ? uniqueCode : 0;
-  const totalAmount = basePrice + adminFee + currentUniqueCode;
+  const currentShippingCost = isPhysical ? shippingCost : 0;
+  const totalAmount = basePrice + adminFee + currentUniqueCode + currentShippingCost;
   const affiliateCommission = 0; // Fitur affiliate produk ritel dinonaktifkan sementara (murni direct store)
 
+  // LAZY SHIPPING: DILARANG dipicu saat modal pertama kali dimuat.
+  // Hanya dipanggil saat pembeli selesai mengisi kecamatan/kota tujuan (debounce 400ms).
+  useEffect(() => {
+    if (!isOpen || !isPhysical) {
+      setShippingCost(0);
+      return;
+    }
+
+    const trimmedDest = shippingCity.trim();
+    if (trimmedDest.length < 3) {
+      setShippingCost(0);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsLoadingShipping(true);
+      try {
+        const res = await fetch('/api/v1/shipping/rates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            destination_city: trimmedDest,
+            tenant_slug: tenantSlug,
+            weight_grams: 1000,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.rates) && data.rates.length > 0) {
+            const basic = data.rates[0];
+            setShippingCost(basic.price || 15000);
+            setShippingCourier(basic.courier_name || 'Kurir Reguler (J&T / SiCepat)');
+          } else {
+            setShippingCost(15000);
+            setShippingCourier('Kurir Reguler (J&T / SiCepat)');
+          }
+        } else {
+          setShippingCost(15000);
+          setShippingCourier('Kurir Reguler (J&T / SiCepat)');
+        }
+      } catch (err) {
+        console.warn('[CheckoutModal] Lazy shipping rate note:', err);
+        setShippingCost(15000);
+        setShippingCourier('Kurir Reguler (J&T / SiCepat)');
+      } finally {
+        setIsLoadingShipping(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, isPhysical, shippingCity, tenantSlug]);
+
+  // Load tenant metadata, bank accounts, and default pixel IDs
   useEffect(() => {
     const activeRef = getActiveAffiliateCode();
     if (activeRef) {
@@ -93,6 +163,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
             if (data) {
               const phone = data?.metadata?.whatsapp_number || data?.metadata?.whatsapp || data?.phone || '';
               if (phone) setTenantPhone(phone);
+              const metaId = data?.metadata?.pixel_config?.meta_pixel_id || data?.metadata?.meta_pixel_id || '';
+              if (metaId) setTenantMetaPixel(metaId);
+              const ttId = data?.metadata?.pixel_config?.tiktok_pixel_id || data?.metadata?.tiktok_pixel_id || '';
+              if (ttId) setTenantTTPixel(ttId);
+
               const accounts = extractTenantBankAccounts(data);
               setBankAccounts(accounts);
               if (accounts.length === 0) {
@@ -106,7 +181,21 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     }
   }, [isOpen, tenantSlug]);
 
-  // Real-time polling to detect when order is paid
+  // Inisialisasi Browser Pixel: prioritaskan meta_pixel_id_override di produk, fallback ke tenant pixel
+  useEffect(() => {
+    if (isOpen && product) {
+      const activeMetaId = product.meta_pixel_id_override || tenantMetaPixel;
+      if (activeMetaId) {
+        initMetaPixel(activeMetaId);
+      }
+      const activeTTId = product.tiktok_pixel_id_override || tenantTTPixel;
+      if (activeTTId) {
+        initTikTokPixel(activeTTId);
+      }
+    }
+  }, [isOpen, product, tenantMetaPixel, tenantTTPixel]);
+
+  // Real-time polling to detect when order is paid & fire browser purchase events
   useEffect(() => {
     if (!paymentData?.orderId) return;
 
@@ -136,6 +225,25 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 access_url: resolvedAccess,
                 instructions: ord.fulfillment_metadata?.instructions,
               });
+
+              // Fire standard browser pixel events on paid verification
+              if (typeof window !== "undefined") {
+                const win = window as any;
+                if (typeof win.fbq === "function") {
+                  win.fbq("track", "Purchase", {
+                    content_name: product?.title || 'Order Checkout',
+                    value: totalAmount,
+                    currency: "IDR",
+                  });
+                }
+                if (typeof win.ttq === "object" && typeof win.ttq.track === "function") {
+                  win.ttq.track("CompletePayment", {
+                    content_name: product?.title || 'Order Checkout',
+                    value: totalAmount,
+                    currency: "IDR",
+                  });
+                }
+              }
             }
           }
         }
@@ -149,7 +257,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
       active = false;
       clearInterval(interval);
     };
-  }, [paymentData?.orderId, product]);
+  }, [paymentData?.orderId, product, totalAmount]);
 
   if (!isOpen || !product) return null;
 
@@ -159,10 +267,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     setErrorMessage("");
 
     const trackingParams = getTrackingData();
-    const resolvedProductType =
-      product.type ||
-      product.product_type ||
-      (product.category === 'digital' ? 'DIGITAL' : 'DIGITAL');
+    const resolvedProductType = isPhysical ? 'PHYSICAL' : 'DIGITAL';
 
     const resolvedAccessUrl =
       product.download_url ||
@@ -184,7 +289,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         affiliateCommission: 0,
         customerName,
         customerPhone,
-        customerEmail: customerEmail || undefined,
+        customerEmail: isDigital ? (customerEmail || undefined) : undefined,
+        shippingAddress: isPhysical ? shippingAddress : undefined,
+        shippingCourier: isPhysical ? shippingCourier : undefined,
+        shippingCost: isPhysical ? shippingCost : 0,
+        netShippingCost: isPhysical ? shippingCost : 0,
         affiliateCode: undefined, // Murni direct store ke toko merchant
         tracking: trackingParams,
         productType: resolvedProductType,
@@ -195,11 +304,28 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         } : undefined),
       });
 
-      // Trigger Client-side Purchase Event dengan Deduplikasi Key
+      // Trigger Client-side Purchase Event & Browser Pixel
       if (result?.orderId) {
-        trackClientPurchase(result.orderId, totalAmount);
-        // Lead / SubmitForm event: form submission berhasil
+        trackClientPurchase(result.orderId, totalAmount, product.title);
         trackLeadFormSubmission(totalAmount);
+
+        if (typeof window !== "undefined") {
+          const win = window as any;
+          if (typeof win.fbq === "function") {
+            win.fbq("track", "Purchase", {
+              content_name: product.title,
+              value: totalAmount,
+              currency: "IDR",
+            });
+          }
+          if (typeof win.ttq === "object" && typeof win.ttq.track === "function") {
+            win.ttq.track("CompletePayment", {
+              content_name: product.title,
+              value: totalAmount,
+              currency: "IDR",
+            });
+          }
+        }
       }
 
       setPaymentData({
@@ -465,6 +591,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               </div>
             )}
 
+            {/* Input Data Pembeli: Dynamic Context Fulfillment (Digital vs Fisik) */}
             <div className="space-y-3">
               <div className="space-y-1">
                 <label className="text-slate-400 font-medium">Nama Lengkap *</label>
@@ -490,16 +617,81 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-slate-400 font-medium">Alamat Email (Opsional untuk backup link)</label>
-                <input
-                  type="email"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  placeholder="nama@email.com"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
-                />
-              </div>
+              {/* JIKA DIGITAL: Tampilkan Email, Sembunyikan Seluruh Bagian Pengiriman */}
+              {isDigital && (
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-medium">Alamat Email * (Untuk Pengiriman Akses)</label>
+                  <input
+                    type="email"
+                    required
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="nama@email.com"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
+                  />
+                </div>
+              )}
+
+              {/* JIKA FISIK: Tampilkan Alamat Pengiriman, Kota/Kecamatan, dan Opsi Ongkir (Single Basic Courier) */}
+              {isPhysical && (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-slate-400 font-medium">Alamat Lengkap Pengiriman *</label>
+                    <textarea
+                      rows={2}
+                      required
+                      value={shippingAddress}
+                      onChange={(e) => setShippingAddress(e.target.value)}
+                      placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-400 font-medium">Kecamatan / Kota Tujuan *</label>
+                    <input
+                      type="text"
+                      required
+                      value={shippingCity}
+                      onChange={(e) => setShippingCity(e.target.value)}
+                      placeholder="Contoh: Sukasari, Kota Bandung"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
+                    />
+                    <span className="text-[10px] text-slate-500 block">
+                      💡 Masukkan kecamatan/kota untuk kalkulasi otomatis ongkos kirim standar.
+                    </span>
+                  </div>
+
+                  {/* Opsi Ongkir: Single Basic Courier */}
+                  <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                        <Truck className="w-4 h-4 text-emerald-400" />
+                        <span>{shippingCourier}</span>
+                      </div>
+                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                        Reguler (2-3 hari)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900">
+                      <span>Tarif Pengiriman:</span>
+                      <span className="font-bold text-white">
+                        {isLoadingShipping ? (
+                          <span className="text-blue-400 flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Menghitung ongkir...
+                          </span>
+                        ) : shippingCost > 0 ? (
+                          `Rp ${shippingCost.toLocaleString("id-ID")}`
+                        ) : shippingCity.trim().length >= 3 ? (
+                          "Rp 15.000"
+                        ) : (
+                          "Masukkan kota tujuan"
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Opsi Metode Pembayaran */}
@@ -571,6 +763,20 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 <span>Harga Produk (Net)</span>
                 <span>Rp {basePrice.toLocaleString("id-ID")}</span>
               </div>
+              {isPhysical && (
+                <div className="flex justify-between">
+                  <span>Ongkos Kirim (Single Basic Courier)</span>
+                  <span className={shippingCost > 0 ? "text-slate-200 font-semibold" : "text-slate-500"}>
+                    {isLoadingShipping
+                      ? "Menghitung..."
+                      : shippingCost > 0
+                      ? `Rp ${shippingCost.toLocaleString("id-ID")}`
+                      : shippingCity.trim().length >= 3
+                      ? "Rp 15.000"
+                      : "Menunggu kota tujuan"}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>Biaya Layanan & Admin</span>
                 <span className="text-emerald-400 font-semibold">

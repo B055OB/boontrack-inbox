@@ -54,6 +54,8 @@ export interface ProductsTabProps {
   openSinglePageBuilder: (p: ProductItem) => void;
   onOpenBulkImport: () => void;
   storeCategory?: string;
+  isCheckoutLite?: boolean;
+  activeProductsCount?: number;
 }
 
 export default function ProductsTab({
@@ -66,10 +68,37 @@ export default function ProductsTab({
   openSinglePageBuilder,
   onOpenBulkImport,
   storeCategory,
+  isCheckoutLite = false,
+  activeProductsCount,
 }: ProductsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [copiedSlugId, setCopiedSlugId] = useState<number | string | null>(null);
+
+  const currentActiveCount =
+    activeProductsCount !== undefined
+      ? activeProductsCount
+      : products.filter((p) => p.is_active !== false).length;
+
+  const handleAddProductClick = () => {
+    if (isCheckoutLite && currentActiveCount >= 3) {
+      alert(
+        'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.'
+      );
+      return;
+    }
+    openNewProductModal();
+  };
+
+  const handleBulkImportClick = () => {
+    if (isCheckoutLite && currentActiveCount >= 3) {
+      alert(
+        'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.'
+      );
+      return;
+    }
+    onOpenBulkImport();
+  };
 
   const categories = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
 
@@ -131,10 +160,17 @@ export default function ProductsTab({
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
-          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-            <Package className="w-5 h-5 text-blue-600" />
-            <span>{headerTitle}</span>
-          </h2>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Package className="w-5 h-5 text-blue-600" />
+              <span>{headerTitle}</span>
+            </h2>
+            {isCheckoutLite && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-300 shadow-xs">
+                {currentActiveCount}/3 Produk Aktif (Batas Tier Checkout Lite)
+              </span>
+            )}
+          </div>
           <p className="text-xs text-slate-500 mt-1">
             {headerDesc}
           </p>
@@ -144,7 +180,7 @@ export default function ProductsTab({
           {isPhysicalCategory && (
             <button
               type="button"
-              onClick={onOpenBulkImport}
+              onClick={handleBulkImportClick}
               className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
@@ -154,7 +190,7 @@ export default function ProductsTab({
 
           <button
             type="button"
-            onClick={openNewProductModal}
+            onClick={handleAddProductClick}
             className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -190,7 +226,7 @@ export default function ProductsTab({
               <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full md:w-auto shrink-0">
                 <button
                   type="button"
-                  onClick={onOpenBulkImport}
+                  onClick={handleBulkImportClick}
                   className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-indigo-700 font-black px-5 py-3 rounded-2xl text-xs shadow-lg shadow-black/10 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
@@ -198,7 +234,7 @@ export default function ProductsTab({
                 </button>
                 <button
                   type="button"
-                  onClick={openNewProductModal}
+                  onClick={handleAddProductClick}
                   className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-indigo-950/60 hover:bg-indigo-950 text-white font-black px-5 py-3 rounded-2xl text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />

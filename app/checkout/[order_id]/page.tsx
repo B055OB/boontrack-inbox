@@ -209,14 +209,32 @@ export default function CheckoutPage({ params }: Props) {
       const gross = Number(order.gross_amount || order.total_amount || order.amount || 0);
       const title = order.product_title || order.product_name || 'Checkout Order';
 
-      // Pastikan Pixel Terinisialisasi
-      initMetaPixel('123456789012345');
-      initTikTokPixel('C1234567890ABCDE');
+      // Baca pixel ID: Gunakan meta_pixel_id_override (jika diisi di produk) atau fallback ke default tenant Meta Pixel
+      const resolvedMetaPixelId =
+        order.meta_pixel_id_override ||
+        order.metadata?.meta_pixel_id_override ||
+        tenant?.metadata?.pixel_config?.meta_pixel_id ||
+        tenant?.metadata?.meta_pixel_id ||
+        null;
+
+      const resolvedTTPixelId =
+        order.tiktok_pixel_id_override ||
+        order.metadata?.tiktok_pixel_id_override ||
+        tenant?.metadata?.pixel_config?.tiktok_pixel_id ||
+        tenant?.metadata?.tiktok_pixel_id ||
+        null;
+
+      if (resolvedMetaPixelId) {
+        initMetaPixel(resolvedMetaPixelId);
+      }
+      if (resolvedTTPixelId) {
+        initTikTokPixel(resolvedTTPixelId);
+      }
 
       trackClientPurchase(orderId, gross, title);
       setHasTrackedPurchase(true);
     }
-  }, [order, orderId, hasTrackedPurchase]);
+  }, [order, tenant, orderId, hasTrackedPurchase]);
 
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);

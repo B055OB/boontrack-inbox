@@ -128,13 +128,20 @@ export function useTenantDashboard() {
     return 'growth';
   });
 
+  const isCheckoutLite =
+    String(tenantFeatureFlags.tier || '').toUpperCase() === 'CHECKOUT_LITE' ||
+    (typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('tier')?.toUpperCase() === 'CHECKOUT_LITE');
+
   const isTeamScale =
-    planTier === 'team_scale' ||
-    tenantFeatureFlags.tier === 'TEAM_SCALE' ||
-    tenantFeatureFlags.tier === 'PRO_SCALE' ||
-    tenantFeatureFlags.tier === 'ENTERPRISE';
+    !isCheckoutLite &&
+    (planTier === 'team_scale' ||
+      tenantFeatureFlags.tier === 'TEAM_SCALE' ||
+      tenantFeatureFlags.tier === 'PRO_SCALE' ||
+      tenantFeatureFlags.tier === 'ENTERPRISE');
 
   const isAdsPerformance =
+    !isCheckoutLite &&
     (planTier === 'ads_performance' ||
       tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
       tenantFeatureFlags.tier === 'GROWTH_PLUS') &&
@@ -142,16 +149,17 @@ export function useTenantDashboard() {
 
   const isProScale = isTeamScale;
   const isGrowthPlus = isAdsPerformance;
-  const isGrowth = planTier === 'growth' && !isAdsPerformance && !isTeamScale;
+  const isGrowth = !isCheckoutLite && planTier === 'growth' && !isAdsPerformance && !isTeamScale;
 
   const isSoloOrTrial = Boolean(
+    isCheckoutLite ||
     tenantFeatureFlags.tier === 'SOLO_TRIAL' ||
     tenantFeatureFlags.tier === 'SOLO' ||
     (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial')) ||
     isGrowth
   );
 
-  const isAdsTrackingUnlocked = !isSoloOrTrial && Boolean(
+  const isAdsTrackingUnlocked = !isCheckoutLite && !isSoloOrTrial && Boolean(
     isAdsPerformance ||
     isTeamScale ||
     tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
@@ -159,9 +167,9 @@ export function useTenantDashboard() {
     tenantFeatureFlags.tier === 'TEAM_SCALE'
   );
 
-  const isBroadcastUnlocked = isTeamScale;
+  const isBroadcastUnlocked = !isCheckoutLite && isTeamScale;
 
-  const isAiBotAllowed = Boolean(
+  const isAiBotAllowed = !isCheckoutLite && Boolean(
     isAdsPerformance ||
     isTeamScale ||
     (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial'))
@@ -199,6 +207,10 @@ export function useTenantDashboard() {
 
   const handleSelectTab = (tab: DashboardTab) => {
     hasUserSelectedTabRef.current = true;
+    if (isCheckoutLite && !['dashboard', 'overview', 'catalog', 'products', 'orders', 'settings', 'shipping'].includes(tab)) {
+      setActiveTab('dashboard');
+      return;
+    }
     setActiveTab(tab);
   };
 
@@ -913,6 +925,16 @@ export function useTenantDashboard() {
   }, [tenantSlug]);
 
   const openNewProductModal = () => {
+    const activeCount = products.filter(p => p.is_active !== false).length;
+    if (isCheckoutLite && activeCount >= 3) {
+      const quotaMsg = 'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.';
+      setSaveFeedback(quotaMsg);
+      if (typeof window !== 'undefined') {
+        alert(quotaMsg);
+      }
+      return;
+    }
+
     setEditingProductId(null);
     const defaultProductType = mapBusinessCategoryToProductType(storeCategory);
     const reqs = resolveFulfillmentRequirements(defaultProductType);
@@ -989,6 +1011,24 @@ export function useTenantDashboard() {
   const handleSaveProductForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!productForm.name || !tenantSlug) return;
+
+    const isTargetActive = productForm.is_active !== false;
+    if (isCheckoutLite && isTargetActive) {
+      const isEditing = editingProductId !== null && editingProductId !== undefined;
+      const otherActiveCount = products.filter(p => {
+        if (isEditing && String(p.id) === String(editingProductId)) return false;
+        return p.is_active !== false;
+      }).length;
+
+      if (otherActiveCount >= 3) {
+        const quotaMsg = 'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.';
+        setSaveFeedback(quotaMsg);
+        if (typeof window !== 'undefined') {
+          alert(quotaMsg);
+        }
+        return;
+      }
+    }
 
     const finalSlug = (productForm.slug?.trim() || slugify(productForm.name)).toLowerCase();
     const cleanImage = sanitizeImageUrl(productForm.image);
@@ -1473,6 +1513,8 @@ export function useTenantDashboard() {
     planTier,
     setPlanTier,
     tenantFeatureFlags,
+    isCheckoutLite,
+    activeProductsCount: products.filter(p => p.is_active !== false).length,
     isTeamScale,
     isAdsPerformance,
     isProScale,

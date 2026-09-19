@@ -237,7 +237,9 @@ interface DashboardSidebarProps {
   isAdsPerformance?: boolean;
   isAdsTrackingUnlocked?: boolean;
   isSoloOrTrial?: boolean;
+  isCheckoutLite?: boolean;
   productCount?: number;
+  activeProductCount?: number;
   orderCount?: number;
   storeCategory?: string;
   businessType?: string;
@@ -264,7 +266,9 @@ export default function DashboardSidebar({
   isAdsPerformance = false,
   isAdsTrackingUnlocked = false,
   isSoloOrTrial = false,
+  isCheckoutLite = false,
   productCount = 0,
+  activeProductCount,
   orderCount = 0,
   storeCategory,
   businessType,
@@ -373,14 +377,22 @@ export default function DashboardSidebar({
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span
                   className={`inline-block text-[9px] font-bold px-1.5 py-0.2 rounded-full border leading-tight ${
-                    isTeamScale
+                    isCheckoutLite
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : isTeamScale
                       ? 'bg-purple-50 text-purple-700 border-purple-200'
                       : isAdsPerformance
                       ? 'bg-blue-50 text-blue-700 border-blue-200'
                       : 'bg-slate-100 text-slate-600 border-slate-200'
                   }`}
                 >
-                  {isTeamScale ? 'Team Scale' : isAdsPerformance ? 'Ads Performance' : 'Solo Starter'}
+                  {isCheckoutLite
+                    ? 'Checkout Lite'
+                    : isTeamScale
+                    ? 'Team Scale'
+                    : isAdsPerformance
+                    ? 'Ads Performance'
+                    : 'Solo Starter'}
                 </span>
               </div>
             </div>
@@ -433,18 +445,20 @@ export default function DashboardSidebar({
               </span>
             </button>
 
-            {/* Menu 3: Pengaturan Domain */}
-            <button
-              type="button"
-              onClick={() => {
-                setIsPopoverOpen(false);
-                handleSelectTab('themes');
-              }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition text-left cursor-pointer"
-            >
-              <Globe className="w-3.5 h-3.5 text-slate-500" />
-              <span>Pengaturan Domain</span>
-            </button>
+            {/* Menu 3: Pengaturan Domain (Hidden on Checkout Lite) */}
+            {!isCheckoutLite && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPopoverOpen(false);
+                  handleSelectTab('themes');
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition text-left cursor-pointer"
+              >
+                <Globe className="w-3.5 h-3.5 text-slate-500" />
+                <span>Pengaturan Domain</span>
+              </button>
+            )}
 
             {/* Menu 4: Install App / PWA */}
             <PwaInstallPrompt
@@ -493,311 +507,444 @@ export default function DashboardSidebar({
       {/* 2. MIDDLE SECTION: NAVIGATION DENGAN MODERN SAAS MAKEOVER */}
       {/* ======================================================== */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 no-scrollbar">
-        {/* KATEGORI 1: STORE ENGINE */}
-        <div>
-          <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-1 pb-2 block">
-            STORE ENGINE
-          </span>
+        {isCheckoutLite ? (
+          <div>
+            <div className="flex items-center justify-between px-3 pt-1 pb-2">
+              <span className="text-[10px] font-bold tracking-widest text-amber-700 uppercase">
+                CHECKOUT LITE MENU
+              </span>
+              <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                4 MENU
+              </span>
+            </div>
 
-          <div className="space-y-1">
-            {/* 1. Dashboard / Beranda */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('dashboard')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isMainTabActive('dashboard')
-                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isMainTabActive('dashboard') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
-                  <LayoutDashboard className="w-4 h-4" />
+            <div className="space-y-1">
+              {/* 1. Dashboard: Metrik ringkas (omzet, volume order, status pesanan) */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('dashboard')}
+                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                  activeTab === 'dashboard' || activeTab === 'overview'
+                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                }`}
+              >
+                {(activeTab === 'dashboard' || activeTab === 'overview') && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
+                    <LayoutDashboard className="w-4 h-4" />
+                  </div>
+                  <span className="truncate">Dashboard</span>
                 </div>
-                <span className="truncate">Dashboard</span>
-              </div>
-            </button>
+                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-600">
+                  Ringkas
+                </span>
+              </button>
 
-            {/* 2. Katalog / Layanan Dinamis Sesuai 6 Kategori Bisnis */}
-            {(() => {
-              const verticalConfig = getVerticalMenuConfig(storeCategory);
-              const VerticalIcon = verticalConfig.icon;
-              return (
+              {/* 2. Products / Katalog Produk: Daftar produk dengan visual indikator kuota (X/3 Produk Aktif) */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('catalog')}
+                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                  activeTab === 'catalog' || activeTab === 'products'
+                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                }`}
+              >
+                {(activeTab === 'catalog' || activeTab === 'products') && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <span className="truncate">Katalog Produk</span>
+                </div>
+                <span className="rounded-full px-2 py-0.5 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                  {activeProductCount !== undefined ? activeProductCount : productCount}/3 Aktif
+                </span>
+              </button>
+
+              {/* 3. Orders / Pesanan: Tabel pemantauan pesanan masuk */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('orders')}
+                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                  activeTab === 'orders'
+                    ? 'bg-emerald-50/80 text-emerald-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                }`}
+              >
+                {activeTab === 'orders' && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-600 rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
+                    <ShoppingBag className="w-4 h-4" />
+                  </div>
+                  <span className="truncate">Pesanan Masuk</span>
+                </div>
+                {orderCount > 0 ? (
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-600 text-white">
+                    {orderCount}
+                  </span>
+                ) : null}
+              </button>
+
+              {/* 4. Store Settings: Batasi khusus 4 sub-menu saja */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('settings')}
+                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                  activeTab === 'settings'
+                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                }`}
+              >
+                {activeTab === 'settings' && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-purple-50 text-purple-600">
+                    <Store className="w-4 h-4" />
+                  </div>
+                  <span className="truncate">Pengaturan Toko</span>
+                </div>
+                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-600">
+                  4 Sub-menu
+                </span>
+              </button>
+            </div>
+
+            {/* Banner Upgrade Tier Callout */}
+            <div className="mt-6 p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-purple-500/5 to-indigo-500/10 border border-amber-200/70 text-slate-700 space-y-2">
+              <div className="flex items-center gap-1.5 font-black text-xs text-amber-900">
+                <Crown className="w-3.5 h-3.5 text-amber-600" />
+                <span>Paket Checkout Lite</span>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Broadcast, CAPI Tracking, Multi-User CS, dan custom domain dinonaktifkan di tier Lite.
+              </p>
+              <button
+                type="button"
+                onClick={onOpenUpgradeModal}
+                className="w-full py-2 px-3 bg-gradient-to-r from-amber-600 to-indigo-600 text-white font-bold rounded-xl text-xs hover:opacity-95 transition active:scale-98 shadow-xs cursor-pointer text-center"
+              >
+                Upgrade ke Pro / Enterprise
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* KATEGORI 1: STORE ENGINE */}
+            <div>
+              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-1 pb-2 block">
+                STORE ENGINE
+              </span>
+
+              <div className="space-y-1">
+                {/* 1. Dashboard / Beranda */}
                 <button
                   type="button"
-                  onClick={() => handleSelectTab('catalog')}
+                  onClick={() => handleSelectTab('dashboard')}
                   className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isMainTabActive('catalog')
+                    isMainTabActive('dashboard')
                       ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
                   }`}
                 >
-                  {isMainTabActive('catalog') && (
+                  {isMainTabActive('dashboard') && (
                     <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
                   )}
                   <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
-                      <VerticalIcon className="w-4 h-4" />
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
+                      <LayoutDashboard className="w-4 h-4" />
                     </div>
-                    <span className="truncate">{verticalConfig.label}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
-                      {verticalConfig.badge}
-                    </span>
-                    {productCount > 0 ? (
-                      <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                        {productCount}
-                      </span>
-                    ) : null}
+                    <span className="truncate">Dashboard</span>
                   </div>
                 </button>
-              );
-            })()}
 
-            {/* 3. Menu Operasional Khusus Dinamis Sesuai 6 Kategori Bisnis */}
-            {(() => {
-              const opConfig = getVerticalOperationalMenuConfig(storeCategory, capabilities);
-              if (opConfig.targetTab === 'shipping' && opConfig.hideShipping) {
-                return null;
-              }
+                {/* 2. Katalog / Layanan Dinamis Sesuai 6 Kategori Bisnis */}
+                {(() => {
+                  const verticalConfig = getVerticalMenuConfig(storeCategory);
+                  const VerticalIcon = verticalConfig.icon;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectTab('catalog')}
+                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                        isMainTabActive('catalog')
+                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                      }`}
+                    >
+                      {isMainTabActive('catalog') && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                      )}
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
+                          <VerticalIcon className="w-4 h-4" />
+                        </div>
+                        <span className="truncate">{verticalConfig.label}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
+                          {verticalConfig.badge}
+                        </span>
+                        {productCount > 0 ? (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                            {productCount}
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })()}
 
-              const OpIcon = opConfig.icon;
-              const isOpActive =
-                activeTab === opConfig.targetTab ||
-                (opConfig.targetTab === 'shipping' && activeTab === 'biteship');
+                {/* 3. Menu Operasional Khusus Dinamis Sesuai 6 Kategori Bisnis */}
+                {(() => {
+                  const opConfig = getVerticalOperationalMenuConfig(storeCategory, capabilities);
+                  if (opConfig.targetTab === 'shipping' && opConfig.hideShipping) {
+                    return null;
+                  }
 
-              return (
+                  const OpIcon = opConfig.icon;
+                  const isOpActive =
+                    activeTab === opConfig.targetTab ||
+                    (opConfig.targetTab === 'shipping' && activeTab === 'biteship');
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectTab(opConfig.targetTab)}
+                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                        isOpActive
+                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                      }`}
+                    >
+                      {isOpActive && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                      )}
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${opConfig.colorClass}`}>
+                          <OpIcon className="w-4 h-4" />
+                        </div>
+                        <span className="truncate">{opConfig.label}</span>
+                      </div>
+                      <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                        {opConfig.badge}
+                      </span>
+                    </button>
+                  );
+                })()}
+
+                {/* Tampilan (Design & Themes) */}
                 <button
                   type="button"
-                  onClick={() => handleSelectTab(opConfig.targetTab)}
+                  onClick={() => handleSelectTab('themes')}
                   className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isOpActive
+                    isMainTabActive('themes')
                       ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
                   }`}
                 >
-                  {isOpActive && (
+                  {isMainTabActive('themes') && (
                     <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
                   )}
                   <div className="flex items-center gap-2.5 truncate">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${opConfig.colorClass}`}>
-                      <OpIcon className="w-4 h-4" />
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-purple-50 text-purple-600">
+                      <Palette className="w-4 h-4" />
                     </div>
-                    <span className="truncate">{opConfig.label}</span>
+                    <span className="truncate">Tampilan &amp; Tema</span>
                   </div>
-                  <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
-                    {opConfig.badge}
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">
+                    5 TEMA
                   </span>
                 </button>
-              );
-            })()}
 
-            {/* Tampilan (Design & Themes) */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('themes')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isMainTabActive('themes')
-                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isMainTabActive('themes') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-purple-50 text-purple-600">
-                  <Palette className="w-4 h-4" />
-                </div>
-                <span className="truncate">Tampilan &amp; Tema</span>
+                {/* AI Knowledge & Bot */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('ai_knowledge')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isMainTabActive('ai_knowledge')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isMainTabActive('ai_knowledge') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
+                      <Brain className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">AI Knowledge &amp; Bot</span>
+                  </div>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+                    AI
+                  </span>
+                </button>
               </div>
-              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">
-                5 TEMA
+            </div>
+
+            {/* KATEGORI 2: GROWTH & CONVERSIONS */}
+            <div className="pt-2 border-t border-slate-100">
+              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
+                GROWTH &amp; CONVERSIONS
               </span>
-            </button>
 
-            {/* AI Knowledge & Bot */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('ai_knowledge')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isMainTabActive('ai_knowledge')
-                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isMainTabActive('ai_knowledge') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
-                  <Brain className="w-4 h-4" />
-                </div>
-                <span className="truncate">AI Knowledge &amp; Bot</span>
+              <div className="space-y-1">
+                {/* WhatsApp & Broadcast */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('whatsapp')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isPowerTabActive('whatsapp')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isPowerTabActive('whatsapp') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
+                      <Radio className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">WhatsApp &amp; Broadcast</span>
+                  </div>
+                  {isTeamScale ? (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      WABA
+                    </span>
+                  ) : (
+                    <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  )}
+                </button>
+
+                {/* BoonTrack Inbox (Live CS) */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('inbox')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isPowerTabActive('inbox')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isPowerTabActive('inbox') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
+                      <MessageSquare className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">BoonTrack Inbox</span>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                      isTeamScale
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                        : isAdsPerformance
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
+                    }`}
+                  >
+                    {!isTeamScale && !isAdsPerformance && <Lock className="w-2.5 h-2.5" />}
+                    {isTeamScale ? 'PRO' : isAdsPerformance ? '2 SEATS' : '199k'}
+                  </span>
+                </button>
+
+                {/* Ads Tracking Pro */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('ads_tracking')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isPowerTabActive('ads_tracking')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isPowerTabActive('ads_tracking') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-amber-50 text-amber-600">
+                      <Target className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">Ads Tracking Pro</span>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                      isAdsTrackingUnlocked
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
+                    }`}
+                  >
+                    {!isAdsTrackingUnlocked && <Lock className="w-2.5 h-2.5" />}
+                    {isAdsTrackingUnlocked ? 'CAPI' : '299k'}
+                  </span>
+                </button>
+
+                {/* Laporan Keuangan */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('finance')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isPowerTabActive('finance')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isPowerTabActive('finance') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-slate-100 text-slate-700">
+                      <CreditCard className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">Laporan Keuangan</span>
+                  </div>
+                  {isSoloOrTrial ? (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-0.5">
+                      <Lock className="w-2.5 h-2.5" /> PRO
+                    </span>
+                  ) : null}
+                </button>
+
+                {/* Pesanan & Order */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('orders')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isPowerTabActive('orders')
+                      ? 'bg-emerald-50/80 text-emerald-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isPowerTabActive('orders') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
+                      <ShoppingBag className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">Pesanan &amp; Order</span>
+                  </div>
+                  {orderCount > 0 ? (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-600 text-white">
+                      {orderCount}
+                    </span>
+                  ) : null}
+                </button>
               </div>
-              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
-                AI
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* KATEGORI 2: GROWTH & CONVERSIONS */}
-        <div className="pt-2 border-t border-slate-100">
-          <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
-            GROWTH &amp; CONVERSIONS
-          </span>
-
-          <div className="space-y-1">
-            {/* WhatsApp & Broadcast */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('whatsapp')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isPowerTabActive('whatsapp')
-                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isPowerTabActive('whatsapp') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                  <Radio className="w-4 h-4" />
-                </div>
-                <span className="truncate">WhatsApp &amp; Broadcast</span>
-              </div>
-              {isTeamScale ? (
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  WABA
-                </span>
-              ) : (
-                <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              )}
-            </button>
-
-            {/* BoonTrack Inbox (Live CS) */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('inbox')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isPowerTabActive('inbox')
-                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isPowerTabActive('inbox') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
-                  <MessageSquare className="w-4 h-4" />
-                </div>
-                <span className="truncate">BoonTrack Inbox</span>
-              </div>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                  isTeamScale
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : isAdsPerformance
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
-                }`}
-              >
-                {!isTeamScale && !isAdsPerformance && <Lock className="w-2.5 h-2.5" />}
-                {isTeamScale ? 'PRO' : isAdsPerformance ? '2 SEATS' : '199k'}
-              </span>
-            </button>
-
-            {/* Ads Tracking Pro */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('ads_tracking')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isPowerTabActive('ads_tracking')
-                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isPowerTabActive('ads_tracking') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-amber-50 text-amber-600">
-                  <Target className="w-4 h-4" />
-                </div>
-                <span className="truncate">Ads Tracking Pro</span>
-              </div>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                  isAdsTrackingUnlocked
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
-                }`}
-              >
-                {!isAdsTrackingUnlocked && <Lock className="w-2.5 h-2.5" />}
-                {isAdsTrackingUnlocked ? 'CAPI' : '299k'}
-              </span>
-            </button>
-
-            {/* Laporan Keuangan */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('finance')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isPowerTabActive('finance')
-                  ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isPowerTabActive('finance') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-slate-100 text-slate-700">
-                  <CreditCard className="w-4 h-4" />
-                </div>
-                <span className="truncate">Laporan Keuangan</span>
-              </div>
-              {isSoloOrTrial ? (
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-0.5">
-                  <Lock className="w-2.5 h-2.5" /> PRO
-                </span>
-              ) : null}
-            </button>
-
-            {/* Pesanan & Order */}
-            <button
-              type="button"
-              onClick={() => handleSelectTab('orders')}
-              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                isPowerTabActive('orders')
-                  ? 'bg-emerald-50/80 text-emerald-900 font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-              }`}
-            >
-              {isPowerTabActive('orders') && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-600 rounded-r" />
-              )}
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                  <ShoppingBag className="w-4 h-4" />
-                </div>
-                <span className="truncate">Pesanan &amp; Order</span>
-              </div>
-              {orderCount > 0 ? (
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-600 text-white">
-                  {orderCount}
-                </span>
-              ) : null}
-            </button>
-          </div>
-        </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ======================================================== */}

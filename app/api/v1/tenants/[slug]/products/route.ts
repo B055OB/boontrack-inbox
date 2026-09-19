@@ -120,6 +120,28 @@ export async function POST(
 
       const existingIndex = existingProducts.findIndex((p: any) => String(p.id) === String(productId));
 
+      // VALIDASI KUOTA CHECKOUT_LITE: MAKSIMAL 3 PRODUK AKTIF
+      const tenantTier = String(existing?.tier || existing?.metadata?.tier || '').toUpperCase();
+      if (tenantTier === 'CHECKOUT_LITE') {
+        const isTargetActive = body.is_active !== false;
+        if (isTargetActive) {
+          const otherActiveCount = existingProducts.filter(
+            (p: any) => String(p.id) !== String(productId) && p.is_active !== false
+          ).length;
+
+          if (otherActiveCount >= 3) {
+            return NextResponse.json(
+              {
+                success: false,
+                code: 'LIMIT_EXCEEDED',
+                error: 'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.',
+              },
+              { status: 403 }
+            );
+          }
+        }
+      }
+
       if (existingIndex >= 0) {
         updatedProducts = [...existingProducts];
         updatedProducts[existingIndex] = {

@@ -148,6 +148,7 @@ export interface ProductItem {
   id: number | string;
   name: string;
   slug?: string;
+  is_active?: boolean;
   category: 'terlaris' | 'digital' | 'fisik' | string;
   type?: 'physical' | 'digital' | 'fnb' | 'service' | string;
   product_type?: ProductType;
@@ -169,6 +170,8 @@ export interface ProductItem {
   external_url?: string;
   cta_label?: string;
   checkout_type?: 'internal' | 'external';
+  meta_pixel_id_override?: string;
+  tiktok_pixel_id_override?: string;
   metadata?: Record<string, any>;
 }
 

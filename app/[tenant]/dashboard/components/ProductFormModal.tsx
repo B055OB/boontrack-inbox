@@ -137,6 +137,8 @@ export interface ProductFormModalProps {
   editingProductId: number | string | null;
   storeCategory?: string;
   tenantSlug?: string;
+  isCheckoutLite?: boolean;
+  activeProductsCount?: number;
 }
 
 export default function ProductFormModal({
@@ -148,6 +150,8 @@ export default function ProductFormModal({
   editingProductId,
   storeCategory,
   tenantSlug,
+  isCheckoutLite = false,
+  activeProductsCount = 0,
 }: ProductFormModalProps) {
   // Sync vertical option when modal opens
   useEffect(() => {
@@ -239,6 +243,12 @@ export default function ProductFormModal({
         weight_grams: 0,
       }));
     }
+
+    if (isCheckoutLite && !editingProductId && activeProductsCount >= 3) {
+      alert('Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.');
+      return;
+    }
+
     onSave(e);
   };
 
@@ -260,6 +270,19 @@ export default function ProductFormModal({
         </div>
 
         <form onSubmit={handleFormSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
+          {/* Quota Limit Warning Banner for Checkout Lite */}
+          {isCheckoutLite && !editingProductId && activeProductsCount >= 3 && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 font-medium space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-950">
+                <span>⚠️</span>
+                <span>Batas Kuota Tercapai</span>
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.
+              </p>
+            </div>
+          )}
+
           {/* 1. Nama Produk */}
           <div>
             <label className="text-xs font-bold text-slate-700 block mb-1.5">

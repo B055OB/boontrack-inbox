@@ -20,16 +20,21 @@ export async function POST(req: NextRequest) {
     const pin = String(body.pin || body.password || body.access_pin || '123456').trim();
     const rawPlan = String(body.selectedPlan || body.plan_tier || body.tier || body.plan || 'starter').toLowerCase();
 
-    // Standarisasi 3 Tier Resmi & Pemetaan ke Enum PostgreSQL (tenant_tier_enum):
+    // Standarisasi 4 Tier Resmi & Pemetaan ke Enum PostgreSQL (tenant_tier_enum):
+    // 0. "Checkout Lite" -> enum database: 'CHECKOUT_LITE'
     // 1. "Solo / Starter" -> enum database: 'STARTER'
     // 2. "Ads Performance" -> enum database: 'PRO_SCALE'
     // 3. "Team Scale" -> enum database: 'ENTERPRISE'
-    let dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = 'STARTER';
-    let canonicalPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = 'STARTER';
+    let dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' = 'STARTER';
+    let canonicalPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' = 'STARTER';
     const requestedTrial = body.is_trial !== undefined ? Boolean(body.is_trial) : (Boolean(body.trial_days) || true);
     let isTrial = false;
 
-    if (rawPlan.includes('team') || rawPlan.includes('enterprise') || rawPlan.includes('scale')) {
+    if (rawPlan.includes('checkout') || rawPlan.includes('lite')) {
+      dbTier = 'CHECKOUT_LITE';
+      canonicalPlanTier = 'CHECKOUT_LITE';
+      isTrial = false;
+    } else if (rawPlan.includes('team') || rawPlan.includes('enterprise') || rawPlan.includes('scale')) {
       dbTier = 'ENTERPRISE';
       canonicalPlanTier = 'ENTERPRISE';
       isTrial = requestedTrial;

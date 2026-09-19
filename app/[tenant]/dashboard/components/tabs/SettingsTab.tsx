@@ -1,7 +1,24 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Store, Image as ImageIcon, Save, X, Package, QrCode, CheckCircle2, Smartphone, Zap, Download } from 'lucide-react';
+import {
+  Store,
+  Image as ImageIcon,
+  Save,
+  X,
+  Package,
+  QrCode,
+  CheckCircle2,
+  Smartphone,
+  Zap,
+  Download,
+  Phone,
+  ShieldCheck,
+  Lock,
+  Truck,
+  MapPin,
+  AlertCircle,
+} from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
 export interface SettingsTabProps {
@@ -21,6 +38,7 @@ export interface SettingsTabProps {
   nameError: string | null;
   setNameError: (err: string | null) => void;
   isTeamScale?: boolean;
+  isCheckoutLite?: boolean;
   isModal?: boolean;
   isOpen?: boolean;
   onClose?: () => void;
@@ -44,13 +62,51 @@ export default function SettingsTab({
   nameError,
   setNameError,
   isTeamScale = false,
+  isCheckoutLite = false,
   isModal = false,
   isOpen = true,
   onClose,
   onSavedSuccess,
 }: SettingsTabProps) {
-  const [isCheckingName, setIsCheckingName] = useState(false);
+  const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping'>('profile');
   const [isSavingStore, setIsSavingStore] = useState(false);
+
+  // Basic Shipping state
+  const [originCity, setOriginCity] = useState('Kota Bandung');
+  const [originAddress, setOriginAddress] = useState('');
+  const [selectedCourier, setSelectedCourier] = useState('jne');
+
+  // Load basic shipping info from metadata if available
+  useEffect(() => {
+    let isMounted = true;
+    async function loadShippingInfo() {
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data } = await supabase
+            .from('tenants')
+            .select('metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+
+          if (isMounted && data?.metadata?.basic_shipping) {
+            const bs = data.metadata.basic_shipping;
+            if (bs.origin_city) setOriginCity(bs.origin_city);
+            if (bs.origin_address) setOriginAddress(bs.origin_address);
+            if (bs.selected_courier) setSelectedCourier(bs.selected_courier);
+          }
+        }
+      } catch (err) {
+        console.debug('Error loading shipping info:', err);
+      }
+    }
+    if (tenantSlug) {
+      loadShippingInfo();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug]);
 
   // Reset pesan error saat modal baru pertama kali terbuka atau berganti mode
   useEffect(() => {
@@ -85,6 +141,11 @@ export default function SettingsTab({
               bio: storeBio,
               whatsapp_number: storeWhatsapp,
               whatsapp: storeWhatsapp,
+              basic_shipping: {
+                origin_city: originCity,
+                origin_address: originAddress,
+                selected_courier: selectedCourier,
+              },
               ...(storeLogoUrl ? { logo_url: storeLogoUrl, avatar_url: storeLogoUrl, store_logo_url: storeLogoUrl } : {}),
               ...(storeQrisUrl ? { qris_image_url: storeQrisUrl, qris_url: storeQrisUrl } : {}),
             };
@@ -118,6 +179,11 @@ export default function SettingsTab({
           whatsapp_number: storeWhatsapp,
           qris_image_url: storeQrisUrl || undefined,
           logo_url: storeLogoUrl || undefined,
+          basic_shipping: {
+            origin_city: originCity,
+            origin_address: originAddress,
+            selected_courier: selectedCourier,
+          },
         }),
       });
 
@@ -126,42 +192,18 @@ export default function SettingsTab({
         throw new Error(errData.error || errData.message || 'Gagal menyimpan profil ke database.');
       }
 
-      // 3. Simpan juga ke Supabase tenant_settings jika ada tabelnya
-      try {
-        await fetch(
-          `https://mpluzajlzpregmjwpjqr.supabase.co/rest/v1/tenant_settings?tenant_slug=eq.${tenantSlug}`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-              Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''}`,
-              Prefer: 'return=minimal',
-            },
-            body: JSON.stringify({
-              store_name: trimmed,
-              bio: storeBio,
-              whatsapp: storeWhatsapp,
-              updated_at: new Date().toISOString(),
-            }),
-          }
-        );
-      } catch (err) {
-        console.warn('Gagal PATCH tenant_settings note:', err);
-      }
-
       if (onClose) onClose();
       if (onSavedSuccess) onSavedSuccess();
     } catch (err: any) {
       console.error('Error saving store profile:', err);
-      setNameError(err.message || 'Terjadi kesalahan saat menyimpan profil toko.');
+      setNameError(err.message || 'Terjadi kesalahan saat menyimpan pengaturan toko.');
     } finally {
-      setIsCheckingName(false);
       setIsSavingStore(false);
     }
   };
 
-  const profileFormFields = (
+  // 1. SUB-MENU: PROFIL TOKO
+  const profileSubMenu = (
     <div className="space-y-4 text-xs font-medium text-slate-600">
       {/* Logo Toko */}
       <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
@@ -254,25 +296,121 @@ export default function SettingsTab({
       </div>
 
       <div>
-        <label className="block mb-1 font-semibold text-slate-700">Nomor WhatsApp CS</label>
-        <input
-          type="text"
-          value={storeWhatsapp}
-          onChange={(e) => setStoreWhatsapp(e.target.value)}
-          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-blue-600"
-          placeholder="Contoh: 6281234567890"
-        />
-      </div>
-
-      <div>
-        <label className="block mb-1 font-semibold text-slate-700">Bio / Deskripsi Singkat</label>
+        <label className="block mb-1 font-semibold text-slate-700">Bio / Deskripsi Singkat Toko</label>
         <textarea
           rows={3}
           value={storeBio}
           onChange={(e) => setStoreBio(e.target.value)}
           className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-blue-600"
-          placeholder="Jelaskan secara singkat mengenai toko atau layanan Anda..."
+          placeholder="Jelaskan secara singkat mengenai toko atau produk Anda..."
         />
+      </div>
+
+      {/* QR Meja Toko Fisik */}
+      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+        <div className="flex items-center gap-2 font-bold text-slate-800">
+          <QrCode className="w-4 h-4 text-indigo-600" />
+          <span>QR Meja &amp; Etalase Toko</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://boontrack.com/${tenantSlug}`}
+            alt="QR Toko"
+            className="w-16 h-16 rounded-xl border border-slate-200 bg-white p-1 shrink-0"
+          />
+          <div className="space-y-1 min-w-0">
+            <p className="text-[11px] text-slate-500 truncate">
+              URL Toko: <span className="font-semibold text-indigo-600">boontrack.com/{tenantSlug}</span>
+            </p>
+            <a
+              href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://boontrack.com/${tenantSlug}`}
+              download={`qr-${tenantSlug}.png`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 hover:bg-slate-50 transition"
+            >
+              <Download className="w-3 h-3 text-slate-500" />
+              Download QR Cetak (.PNG)
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // 2. SUB-MENU: WHATSAPP
+  const whatsappSubMenu = (
+    <div className="space-y-4 text-xs font-medium text-slate-600">
+      <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl space-y-2">
+        <div className="flex items-center gap-2 text-emerald-900 font-bold">
+          <Phone className="w-4 h-4 text-emerald-600" />
+          <span>Nomor WhatsApp Customer Service</span>
+        </div>
+        <p className="text-[11px] text-emerald-800 leading-relaxed">
+          Nomor ini digunakan pelanggan untuk konfirmasi pesanan, menanyakan info produk, dan menerima rincian checkout.
+        </p>
+      </div>
+
+      <div>
+        <label className="block mb-1 font-semibold text-slate-700">Nomor WhatsApp CS</label>
+        <div className="relative">
+          <input
+            type="text"
+            value={storeWhatsapp}
+            onChange={(e) => setStoreWhatsapp(e.target.value)}
+            className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-emerald-600"
+            placeholder="Contoh: 6281234567890"
+          />
+        </div>
+        <p className="text-[10px] text-slate-400 mt-1">
+          Gunakan kode negara (misal <strong>628xxx</strong> bukan 08xxx) agar tautan chat langsung dapat dibuka di HP pelanggan.
+        </p>
+      </div>
+    </div>
+  );
+
+  // 3. SUB-MENU: PAYMENT / QRIS & KREDENSIAL SENSITIF
+  const paymentSubMenu = (
+    <div className="space-y-4 text-xs font-medium text-slate-600">
+      {/* KREDENSIAL SENSITIF PAYMENT GATEWAY (BACKEND-CONTROLLED) */}
+      <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3 shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-bold text-slate-100">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Kredensial Payment Gateway</span>
+          </div>
+          <span className="inline-flex items-center gap-1 text-[9px] font-black tracking-wide text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800">
+            <Lock className="w-2.5 h-2.5" />
+            BACKEND-CONTROLLED
+          </span>
+        </div>
+
+        <p className="text-[11px] text-slate-300 leading-relaxed">
+          Kredensial sensitif payment gateway (Xendit / Midtrans / ASPI QRIS) dikelola dan diamankan sepenuhnya di level server BoonTrack Core. Kunci rahasia tidak terekspos di browser merchant demi keamanan transaksi.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-400">
+              <span>Server API Key</span>
+              <span className="text-[9px] text-emerald-400 font-bold">TERKUNCI AMAN</span>
+            </div>
+            <div className="font-mono text-xs text-slate-300 tracking-widest select-none">
+              ••••••••••••••••••••••••
+            </div>
+          </div>
+
+          <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-400">
+              <span>Webhook Signing Secret</span>
+              <span className="text-[9px] text-emerald-400 font-bold">TERKUNCI AMAN</span>
+            </div>
+            <div className="font-mono text-xs text-slate-300 tracking-widest select-none">
+              ••••••••••••••••••••••••
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* QRIS Toko Resmi */}
@@ -280,7 +418,7 @@ export default function SettingsTab({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 font-bold text-slate-800">
             <QrCode className="w-4 h-4 text-emerald-600" />
-            <span>QRIS Toko Resmi</span>
+            <span>QRIS Toko Resmi (0% MDR)</span>
           </div>
           {storeQrisUrl ? (
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
@@ -294,7 +432,7 @@ export default function SettingsTab({
           )}
         </div>
         <p className="text-[11px] text-slate-500">
-          Upload gambar QRIS statis dari Bank atau e-Wallet toko Anda. Pembayaran pelanggan akan langsung masuk ke rekening Anda tanpa potongan MDR.
+          Upload gambar QRIS statis dari Bank atau e-Wallet toko Anda. Pembayaran pelanggan langsung masuk ke rekening Anda tanpa potongan biaya transaksi.
         </p>
 
         {storeQrisUrl && (
@@ -312,7 +450,7 @@ export default function SettingsTab({
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold text-slate-800 truncate">QRIS Aktif</p>
-              <p className="text-[10px] text-slate-400">Pilih file baru di bawah untuk memperbarui QRIS.</p>
+              <p className="text-[10px] text-slate-400">Pilih file baru di bawah untuk mengganti QRIS.</p>
             </div>
           </div>
         )}
@@ -341,10 +479,10 @@ export default function SettingsTab({
             </div>
             <div>
               <h4 className="text-xs font-black text-emerald-950">
-                Panduan Verifikasi Otomatis QRIS Statis
+                Otomasi Verifikasi Pembayaran (BoonTrack Reader)
               </h4>
               <p className="text-[10px] text-emerald-700">
-                Verifikasi pembayaran instan 0% potongan MDR tanpa payment gateway perantara
+                0% potongan MDR tanpa perantara payment gateway
               </p>
             </div>
           </div>
@@ -353,28 +491,24 @@ export default function SettingsTab({
             <div className="flex items-start gap-2">
               <Smartphone className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
               <div>
-                <span className="font-bold text-slate-900">Syarat Utama: </span>
-                Gunakan perangkat smartphone <strong className="text-emerald-800">Android aktif 24 jam</strong> di kasir/toko dan pasang aplikasi <strong className="text-emerald-800">BoonTrack Reader (APK)</strong> agar notifikasi mutasi dapat dibaca otomatis.
+                <span className="font-bold text-slate-900">Perangkat: </span>
+                Gunakan perangkat smartphone <strong className="text-emerald-800">Android</strong> aktif di toko dan pasang <strong className="text-emerald-800">BoonTrack Reader (APK)</strong>.
               </div>
             </div>
 
             <div className="flex items-start gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
               <div>
-                <span className="font-bold text-slate-900">QRIS yang Didukung: </span>
-                <span className="inline-flex flex-wrap gap-1.5 mt-0.5">
-                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 font-bold text-[10px] rounded-md border border-blue-100">Merchant BCA</span>
-                  <span className="px-2 py-0.5 bg-cyan-50 text-cyan-700 font-bold text-[10px] rounded-md border border-cyan-100">DANA Bisnis</span>
-                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold text-[10px] rounded-md border border-emerald-100">GoPay Usaha</span>
-                </span>
+                <span className="font-bold text-slate-900">QRIS Didukung: </span>
+                BCA Mobile / myBCA, DANA Bisnis, GoPay Usaha.
               </div>
             </div>
 
             <div className="flex items-start gap-2">
               <Zap className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
               <div>
-                <span className="font-bold text-slate-900">Cara Kerja: </span>
-                HP Android menerima notifikasi mutasi &rarr; BoonTrack Reader membaca otomatis &rarr; status pesanan langsung diverifikasi lunas seketika tanpa potongan biaya transaksi (0% MDR).
+                <span className="font-bold text-slate-900">Alur: </span>
+                Notifikasi mutasi masuk &rarr; BoonTrack Reader verifikasi otomatis &rarr; pesanan langsung lunas.
               </div>
             </div>
           </div>
@@ -392,38 +526,146 @@ export default function SettingsTab({
           </div>
         </div>
       </div>
+    </div>
+  );
 
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-          >
-            Batal
-          </button>
-        )}
-        <button
-          type="button"
-          disabled={isSavingStore || isCheckingName}
-          onClick={handleSave}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
-        >
-          <Save className="w-3.5 h-3.5" />
-          <span>{isSavingStore || isCheckingName ? 'Memvalidasi...' : 'Simpan Profil'}</span>
-        </button>
+  // 4. SUB-MENU: BASIC SHIPPING
+  const shippingSubMenu = (
+    <div className="space-y-4 text-xs font-medium text-slate-600">
+      <div className="p-4 bg-sky-50/70 border border-sky-200/80 rounded-2xl space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sky-900 font-bold">
+            <Truck className="w-4 h-4 text-sky-600" />
+            <span>Basic Shipping &amp; Pengiriman Dasar</span>
+          </div>
+          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200">
+            1/1 Provider Aktif (Checkout Lite)
+          </span>
+        </div>
+        <p className="text-[11px] text-sky-800 leading-relaxed">
+          Tentukan lokasi gudang/toko asal dan 1 provider ekspedisi dasar untuk kalkulasi pengiriman pesanan fisik.
+        </p>
       </div>
+
+      <div>
+        <label className="block mb-1 font-semibold text-slate-700 flex items-center gap-1">
+          <MapPin className="w-3.5 h-3.5 text-slate-500" />
+          <span>Kota / Kecamatan Asal Pengiriman</span>
+        </label>
+        <input
+          type="text"
+          value={originCity}
+          onChange={(e) => setOriginCity(e.target.value)}
+          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-sky-600"
+          placeholder="Contoh: Kota Bandung / Rancasari"
+        />
+      </div>
+
+      <div>
+        <label className="block mb-1 font-semibold text-slate-700">Alamat Lengkap Toko / Gudang</label>
+        <textarea
+          rows={2}
+          value={originAddress}
+          onChange={(e) => setOriginAddress(e.target.value)}
+          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-sky-600"
+          placeholder="Jl. Soekarno Hatta No. 123..."
+        />
+      </div>
+
+      <div>
+        <label className="block mb-1.5 font-semibold text-slate-700">Pilih Ekspedisi Dasar</label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {[
+            { id: 'jne', name: 'JNE Express (Reguler & YES)', desc: 'Ekspedisi reguler antar-kota seluruh Indonesia' },
+            { id: 'sicepat', name: 'SiCepat Ekspres', desc: 'Layanan pick-up kilat dan COD' },
+            { id: 'gosend', name: 'GoSend Instant', desc: 'Pengiriman instan roda dua radius 40km' },
+          ].map((c) => (
+            <label
+              key={c.id}
+              className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition ${
+                selectedCourier === c.id
+                  ? 'border-sky-500 bg-sky-50/50 text-slate-900 ring-1 ring-sky-500/30'
+                  : 'border-slate-200 hover:bg-slate-50 text-slate-600'
+              }`}
+            >
+              <input
+                type="radio"
+                name="basic_courier"
+                value={c.id}
+                checked={selectedCourier === c.id}
+                onChange={() => setSelectedCourier(c.id)}
+                className="mt-0.5 text-sky-600"
+              />
+              <div className="min-w-0">
+                <div className="font-bold text-xs">{c.name}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">{c.desc}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Active Sub-Menu Content Switcher
+  const renderActiveSubMenuContent = () => {
+    switch (activeSubMenu) {
+      case 'profile':
+        return profileSubMenu;
+      case 'whatsapp':
+        return whatsappSubMenu;
+      case 'payment':
+        return paymentSubMenu;
+      case 'shipping':
+        return shippingSubMenu;
+      default:
+        return profileSubMenu;
+    }
+  };
+
+  const subMenuTabs = [
+    { id: 'profile', label: '1. Profil Toko', icon: Store },
+    { id: 'whatsapp', label: '2. WhatsApp', icon: Phone },
+    { id: 'payment', label: '3. Payment / QRIS', icon: QrCode },
+    { id: 'shipping', label: '4. Basic Shipping', icon: Truck },
+  ] as const;
+
+  const subMenuNavigation = (
+    <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar mb-4">
+      {subMenuTabs.map((tab) => {
+        const Icon = tab.icon;
+        const isActive = activeSubMenu === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveSubMenu(tab.id)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+              isActive
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
+            <span>{tab.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 
   if (isModal) {
     return (
       <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
-        <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 my-auto">
+        <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 my-auto">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="font-bold text-base text-slate-900">Profil &amp; Identitas Toko</h3>
-              <p className="text-[11px] text-slate-500">Sesuaikan nama toko dan informasi CS Anda.</p>
+              <h3 className="font-bold text-base text-slate-900">Pengaturan Toko</h3>
+              <p className="text-[11px] text-slate-500">
+                {isCheckoutLite
+                  ? 'Khusus 4 sub-menu akses tier Checkout Lite'
+                  : 'Kelola identitas, WhatsApp, pembayaran, dan logistik toko'}
+              </p>
             </div>
             {onClose && (
               <button
@@ -435,7 +677,32 @@ export default function SettingsTab({
               </button>
             )}
           </div>
-          <div className="pt-4">{profileFormFields}</div>
+
+          <div className="pt-4">
+            {subMenuNavigation}
+            {renderActiveSubMenuContent()}
+
+            <div className="flex items-center justify-end gap-2 pt-4 mt-4 border-t border-slate-100">
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Tutup
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={isSavingStore}
+                onClick={handleSave}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{isSavingStore ? 'Menyimpan...' : 'Simpan Pengaturan'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -444,114 +711,36 @@ export default function SettingsTab({
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-4xl mx-auto w-full space-y-6">
       <div className="border-b border-slate-200 pb-4">
-        <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-          <Store className="w-5 h-5 text-blue-600" />
-          <span>Pengaturan Profil &amp; Domain Toko</span>
-        </h2>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+            <Store className="w-5 h-5 text-blue-600" />
+            <span>Pengaturan Toko</span>
+          </h2>
+          {isCheckoutLite && (
+            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+              Tier: Checkout Lite (4 Sub-menu)
+            </span>
+          )}
+        </div>
         <p className="text-xs text-slate-500 mt-1">
-          Kelola profil identitas toko, nomor WhatsApp CS, QRIS resmi, dan custom domain.
+          Kelola profil toko, nomor WhatsApp CS, Payment &amp; QRIS resmi, dan Basic Shipping.
         </p>
       </div>
 
-      <div className="space-y-6">
-        {/* Profil & Identitas Toko */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-            <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
-              <Store className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-slate-900">Profil &amp; Identitas Toko</h3>
-              <p className="text-[11px] text-slate-500">Sesuaikan nama toko dan informasi CS Anda.</p>
-            </div>
-          </div>
-          {profileFormFields}
-        </div>
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+        {subMenuNavigation}
+        {renderActiveSubMenuContent()}
 
-        {/* QR Meja Toko Fisik */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-            <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
-              <ImageIcon className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-slate-900">QR Meja Toko Fisik</h3>
-              <p className="text-[11px] text-slate-500">
-                Cetak QR code toko Anda untuk dipajang di kasir atau meja.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 flex-wrap">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://shop.boontrack.com/${tenantSlug}`}
-              alt="QR Toko"
-              className="w-24 h-24 rounded-xl object-contain border border-slate-200 bg-slate-50 p-1"
-            />
-            <div className="space-y-2">
-              <p className="text-[11px] text-slate-500">
-                URL Toko:{' '}
-                <span className="font-semibold text-indigo-600">
-                  shop.boontrack.com/{tenantSlug}
-                </span>
-              </p>
-              <a
-                href={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://shop.boontrack.com/${tenantSlug}`}
-                download={`qr-toko-${tenantSlug}.png`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700 transition-all active:scale-95"
-              >
-                <ImageIcon className="w-3.5 h-3.5" />
-                Download QR Toko (.PNG)
-              </a>
-            </div>
-          </div>
-        </div>
-
-        {/* Otomasi Pembayaran QRIS - BoonTrack Reader */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
-          <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
-            <div className="p-2 rounded-xl bg-green-50 text-green-600">
-              <Package className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-slate-900">
-                Otomasi Pembayaran QRIS (BoonTrack Reader)
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                Ubah QRIS statis toko menjadi QRIS Dinamis otomatis tanpa potongan MDR.
-              </p>
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-600 mb-1.5">
-                Kompatibel dengan parser:
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <span className="px-2.5 py-1 text-[11px] font-semibold bg-blue-50 text-blue-700 rounded-lg border border-blue-100">
-                  BCA Mobile / myBCA
-                </span>
-                <span className="px-2.5 py-1 text-[11px] font-semibold bg-cyan-50 text-cyan-700 rounded-lg border border-cyan-100">
-                  DANA Bisnis
-                </span>
-                <span className="px-2.5 py-1 text-[11px] font-semibold bg-green-50 text-green-700 rounded-lg border border-green-100">
-                  GoPay Usaha
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">
-                * Bank / e-wallet lain belum didukung.
-              </p>
-            </div>
-            <a
-              href="https://api.boontrack.com/dl-reader-x9k2m/BoonTrackReader.apk"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl text-xs font-bold hover:bg-green-700 transition-all active:scale-95 shadow-sm shadow-green-500/20"
-            >
-              <Package className="w-4 h-4" />
-              Download APK BoonTrack Reader
-            </a>
-          </div>
+        <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+          <button
+            type="button"
+            disabled={isSavingStore}
+            onClick={handleSave}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>{isSavingStore ? 'Menyimpan...' : 'Simpan Semua Pengaturan'}</span>
+          </button>
         </div>
       </div>
     </div>

@@ -223,3 +223,101 @@ export async function sendOrderPaidNotification({
     return { success: false, error: msg };
   }
 }
+
+export interface OrderFulfillmentParams {
+  phone: string;
+  customerName: string;
+  orderId: string;
+  itemsSummary: string;
+  totalAmount: number;
+  productType?: 'DIGITAL' | 'PHYSICAL' | string;
+  accessUrl?: string;
+  downloadUrl?: string;
+  instructions?: string;
+  storeName?: string;
+}
+
+/**
+ * WhatsApp Auto-Fulfillment Isolation (Digital vs Fisik)
+ * 1. Produk Digital: Kirim ringkasan pembelian + link unduh/akses materi instan.
+ * 2. Produk Fisik: Kirim konfirmasi pembayaran + status pesanan sedang disiapkan/dikemas.
+ * Catatan: Kegagalan pengiriman WhatsApp (timeout / no token) tidak boleh menggugurkan status transaksi lunas (Payment Atomicity).
+ */
+export async function sendOrderFulfillmentNotification({
+  phone,
+  customerName,
+  orderId,
+  itemsSummary,
+  totalAmount,
+  productType = 'DIGITAL',
+  accessUrl,
+  downloadUrl,
+  instructions,
+  storeName = 'BoonTrack Shop',
+}: OrderFulfillmentParams): Promise<WhatsAppSendResult> {
+  const normalizedTo = normalizeWhatsAppNumber(phone);
+  if (!normalizedTo) {
+    return { success: false, error: 'Nomor WhatsApp penerima kosong / tidak valid' };
+  }
+
+  const formattedAmount = `Rp ${Number(totalAmount || 0).toLocaleString('id-ID')}`;
+  const safeName = (customerName || 'Pelanggan').trim().slice(0, 50);
+  const safeOrderId = String(orderId || '-').trim();
+  const safeItems = String(itemsSummary || 'Produk Pesanan').trim();
+  const normType = String(productType || 'DIGITAL').toUpperCase().trim();
+  const isPhysical = normType === 'PHYSICAL' || normType === 'FISIK';
+
+  const resolvedLink = accessUrl || downloadUrl || '';
+
+  let messageText = '';
+  if (isPhysical) {
+    // Pesan Khusus Produk Fisik: Konfirmasi Lunas & Pengemasan
+    messageText = 
+`Halo ${safeName}! 📦
+
+Kabar baik! Pembayaran untuk pesanan #${safeOrderId} sebesar ${formattedAmount} telah KAMI TERIMA (LUNAS).
+
+🛍️ Rincian Pesanan:
+• Produk: ${safeItems}
+• Total Bayar: ${formattedAmount}
+• Status: Sedang disiapkan & dikemas oleh tim ${storeName}.
+
+Kami akan segera mengabarkan nomor resi pengiriman setelah paket diserahkan ke kurir ekspedisi. Terima kasih telah berbelanja!`;
+  } else {
+    // Pesan Khusus Produk Digital: Ringkasan & Link Akses Instan
+    const linkSection = resolvedLink
+      ? `\n📥 Akses / Unduh Materi Digital:\n${resolvedLink}\n`
+      : `\n📥 Akses produk digital Anda telah otomatis aktif di akun Anda.\n`;
+    const noteSection = instructions ? `\n💡 Catatan: ${instructions}\n` : '';
+
+    messageText =
+`Halo ${safeName}! 🎉
+
+Terima kasih! Pembayaran untuk pesanan #${safeOrderId} sebesar ${formattedAmount} telah BERHASIL diverifikasi LUNAS.
+
+📦 Rincian Produk:
+• Produk: ${safeItems}
+• Total Bayar: ${formattedAmount}
+${linkSection}${noteSection}
+Semoga materi/produk digital ini bermanfaat! Jika Anda butuh bantuan, balas langsung pesan ini.`;
+  }
+
+  // Coba kirim via session message atau fallback ke template resmi jika window kadaluarsa
+  try {
+    const sessionRes = await sendWhatsAppSessionMessage(normalizedTo, messageText);
+    if (!sessionRes.success) {
+      return await sendOrderPaidNotification({
+        phone: normalizedTo,
+        customerName: safeName,
+        orderId: safeOrderId,
+        itemsSummary: safeItems,
+        totalAmount,
+      });
+    }
+    return sessionRes;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error sending fulfillment notification';
+    console.warn('[WhatsApp Auto-Fulfillment Warning]:', msg);
+    return { success: false, error: msg };
+  }
+}

@@ -231,6 +231,8 @@ function SingleProductContent() {
               checkout_type: match.checkout_type || match.metadata?.checkout_type || (match.external_url || match.metadata?.external_url ? 'external' : 'internal'),
               external_url: match.external_url || match.metadata?.external_url || match.metadata?.link_external || '',
               cta_label: match.cta_label || match.metadata?.cta_label || '',
+              meta_pixel_id_override: match.meta_pixel_id_override || match.metadata?.meta_pixel_id_override || (sqlProd as any)?.meta_pixel_id_override || '',
+              tiktok_pixel_id_override: match.tiktok_pixel_id_override || match.metadata?.tiktok_pixel_id_override || (sqlProd as any)?.tiktok_pixel_id_override || '',
               metadata: match.metadata,
             };
 
@@ -285,6 +287,16 @@ function SingleProductContent() {
       setPaymentMethod('qris');
     }
   }, [allowQris, allowManual]);
+
+  // Inisialisasi Meta & TikTok Pixel: prioritaskan pixel ID override produk
+  useEffect(() => {
+    if (product?.meta_pixel_id_override) {
+      initMetaPixel(product.meta_pixel_id_override);
+    }
+    if (product?.tiktok_pixel_id_override) {
+      initTikTokPixel(product.tiktok_pixel_id_override);
+    }
+  }, [product?.meta_pixel_id_override, product?.tiktok_pixel_id_override]);
 
   const [uniqueCode] = useState(() => Math.floor(100 + Math.random() * 900));
   const [loading, setLoading] = useState(false);
@@ -674,8 +686,25 @@ function SingleProductContent() {
       });
 
       if (result?.orderId) {
-        trackClientPurchase(result.orderId, totalAmount);
+        trackClientPurchase(result.orderId, totalAmount, product.name);
         trackLeadFormSubmission(totalAmount);
+        if (typeof window !== "undefined") {
+          const win = window as any;
+          if (typeof win.fbq === "function") {
+            win.fbq("track", "Purchase", {
+              content_name: product.name,
+              value: totalAmount,
+              currency: "IDR",
+            });
+          }
+          if (typeof win.ttq === "object" && typeof win.ttq.track === "function") {
+            win.ttq.track("CompletePayment", {
+              content_name: product.name,
+              value: totalAmount,
+              currency: "IDR",
+            });
+          }
+        }
       }
 
       // Redirect langsung ke rincian invoice presisi

@@ -59,6 +59,8 @@ export default function TenantDashboardPage() {
   const {
     tenantSlug,
     displayName,
+    isCheckoutLite,
+    activeProductsCount,
     isTeamScale,
     isAdsPerformance,
     isProScale,
@@ -348,7 +350,9 @@ export default function TenantDashboardPage() {
               isAdsPerformance={isAdsPerformance}
               isAdsTrackingUnlocked={isAdsTrackingUnlocked}
               isSoloOrTrial={isSoloOrTrial}
+              isCheckoutLite={isCheckoutLite}
               productCount={products.length}
+              activeProductCount={activeProductsCount}
               orderCount={transactions.length}
               onOpenStoreSettings={() => {
                 setNameError(null);
@@ -381,7 +385,9 @@ export default function TenantDashboardPage() {
         isAdsPerformance={isAdsPerformance}
         isAdsTrackingUnlocked={isAdsTrackingUnlocked}
         isSoloOrTrial={isSoloOrTrial}
+        isCheckoutLite={isCheckoutLite}
         productCount={products.length}
+        activeProductCount={activeProductsCount}
         orderCount={transactions.length}
         onOpenStoreSettings={() => {
           setNameError(null);
@@ -612,6 +618,8 @@ export default function TenantDashboardPage() {
           openSinglePageBuilder={openSinglePageBuilder}
           onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
           storeCategory={storeCategory}
+          isCheckoutLite={isCheckoutLite}
+          activeProductsCount={activeProductsCount}
         />
       )}
 
@@ -727,6 +735,7 @@ export default function TenantDashboardPage() {
           nameError={nameError}
           setNameError={setNameError}
           isTeamScale={isTeamScale}
+          isCheckoutLite={isCheckoutLite}
           isModal={false}
           onSavedSuccess={() => {
             setSaveFeedback('Profil toko berhasil disimpan.');
@@ -961,6 +970,8 @@ export default function TenantDashboardPage() {
         editingProductId={editingProductId}
         storeCategory={storeCategory}
         tenantSlug={tenantSlug}
+        isCheckoutLite={isCheckoutLite}
+        activeProductsCount={activeProductsCount}
       />
 
       {/* MODAL BUILDER SINGLE PAGE CHECKOUT */}
@@ -993,6 +1004,7 @@ export default function TenantDashboardPage() {
           nameError={nameError}
           setNameError={setNameError}
           isTeamScale={isTeamScale}
+          isCheckoutLite={isCheckoutLite}
           isModal={true}
           isOpen={isStoreSettingsOpen}
           onClose={() => setIsStoreSettingsOpen(false)}

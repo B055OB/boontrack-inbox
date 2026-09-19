@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
-import { sendOrderPaidNotification } from '@/lib/whatsapp';
+import { sendOrderPaidNotification, sendOrderFulfillmentNotification } from '@/lib/whatsapp';
+import { dispatchMetaCAPI } from '@/lib/capi.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // P0.5 IDEMPOTENCY CHECK: Cek apakah pesanan sudah pernah diverifikasi LUNAS (PAID) sebelumnya
+    // Mencegah double callback / replay mutation / duplicate messaging
+    const currentStatus = String(matchedOrder.payment_status || matchedOrder.status || '').toUpperCase();
+    if (currentStatus === 'PAID' || currentStatus === 'SETTLED' || currentStatus === 'COMPLETED') {
+      console.log(`[Payment Webhook] Idempotency: Pesanan #${orderId} sudah berstatus LUNAS. Skipping double-processing.`);
+      return NextResponse.json({
+        success: true,
+        message: `Pesanan #${orderId} sudah berstatus LUNAS (PAID) sebelumnya. Idempotent skip update.`,
+        order_id: orderId,
+        already_paid: true,
+        paid_at: matchedOrder.paid_at || matchedOrder.updated_at,
+      });
+    }
+
     const paidAt = new Date().toISOString();
 
     // 2. Update status ke PAID
@@ -114,7 +129,7 @@ export async function POST(req: NextRequest) {
         .eq('id', orderId);
     }
 
-    // 3. Kirim notifikasi WhatsApp resmi via Meta Utility Template (order_notification_v1)
+    // 3. Dispatch WhatsApp Auto-Fulfillment (Isolasi Digital vs Fisik)
     const customerPhone =
       matchedOrder.customer_phone ||
       matchedOrder.phone ||
@@ -141,15 +156,66 @@ export async function POST(req: NextRequest) {
       0
     );
 
+    const resolvedProductType =
+      matchedOrder.product_type ||
+      (matchedOrder.shipping_address ? 'PHYSICAL' : 'DIGITAL');
+
+    const resolvedAccessUrl =
+      matchedOrder.fulfillment_metadata?.access_url ||
+      matchedOrder.download_url ||
+      matchedOrder.delivery_url ||
+      '';
+
+    const resolvedInstructions =
+      matchedOrder.fulfillment_metadata?.instructions || '';
+
     if (customerPhone) {
-      console.log(`[Payment Webhook] Mengirim notifikasi WABA ke ${customerPhone} untuk Order #${orderId}`);
-      sendOrderPaidNotification({
+      console.log(`[Payment Webhook] Mengirim WhatsApp auto-fulfillment (${resolvedProductType}) ke ${customerPhone} untuk Order #${orderId}`);
+      // PAYMENT ATOMICITY: Kegagalan pengiriman WhatsApp (timeout / no token) TIDAK membatalkan transaksi keuangan
+      sendOrderFulfillmentNotification({
         phone: customerPhone,
         customerName,
         orderId: String(orderId),
         itemsSummary,
         totalAmount,
-      }).catch((waErr) => console.warn('[Payment Webhook] Error dispatching WhatsApp notification:', waErr));
+        productType: resolvedProductType,
+        accessUrl: resolvedAccessUrl,
+        instructions: resolvedInstructions,
+      }).catch((waErr) => {
+        console.warn('[Payment Webhook] Error dispatching WhatsApp fulfillment (non-fatal):', waErr);
+      });
+    }
+
+    // 4. CAPI Server-Side Dispatch Guard:
+    // Pastikan payload backend webhook lunas TIDAK menembakkan request CAPI ke Meta/TikTok jika tenant bertier CHECKOUT_LITE
+    const tenantIdentifier = matchedOrder.tenant_slug || matchedOrder.tenant_id;
+    if (tenantIdentifier) {
+      try {
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('id, slug, tier, plan, metadata')
+          .or(`slug.eq.${tenantIdentifier},id.eq.${tenantIdentifier}`)
+          .maybeSingle();
+
+        const tenantTier = (tenantData?.tier || tenantData?.plan || '').toUpperCase();
+        if (tenantTier === 'CHECKOUT_LITE' || tenantTier === 'SOLO' || tenantTier === 'STARTER') {
+          console.log(`[Payment Webhook] Tier ${tenantTier} terdeteksi untuk Order #${orderId}. Server-Side CAPI dibypass (Murni Browser Pixel Tracking, Tanpa Server CAPI).`);
+        } else if (tenantTier === 'PRO_SCALE' || tenantTier === 'ADS_PERFORMANCE' || tenantTier === 'ENTERPRISE' || tenantTier === 'TEAM_SCALE') {
+          const metaPixelId = tenantData?.metadata?.pixel_config?.meta_pixel_id || tenantData?.metadata?.meta_pixel_id;
+          const metaAccessToken = tenantData?.metadata?.pixel_config?.meta_access_token || tenantData?.metadata?.meta_access_token;
+          if (metaPixelId && metaAccessToken) {
+            dispatchMetaCAPI(metaPixelId, metaAccessToken, {
+              orderId: String(orderId),
+              tenantId: tenantData.id || tenantData.slug,
+              grossAmount: totalAmount,
+              customerPhone,
+              customerName,
+            }).catch((capiErr) => console.warn('[Payment Webhook] Error dispatching Meta CAPI:', capiErr));
+          }
+        }
+      } catch (tenantErr) {
+        console.warn('[Payment Webhook] Error resolving tenant CAPI guard:', tenantErr);
+      }
     }
 
     return NextResponse.json({

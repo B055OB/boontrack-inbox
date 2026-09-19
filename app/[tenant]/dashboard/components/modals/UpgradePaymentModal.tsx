@@ -12,16 +12,14 @@ import {
   RefreshCw,
   MessageSquare,
   Zap,
-  Bot,
-  Users,
   Radio,
-  Globe,
   TrendingUp,
   CreditCard,
-  ChevronRight,
   AlertCircle,
   Check,
   Loader2,
+  Calculator,
+  Info,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
@@ -32,6 +30,20 @@ const STATIC_QRIS =
   '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
 
 const UPGRADE_EXPIRE_SECONDS = 30 * 60; // 30 menit
+
+export interface UpgradePreviewData {
+  current_tier: string;
+  target_tier: string;
+  is_trial: boolean;
+  days_remaining: number;
+  total_cycle_days: number;
+  old_tier_price: number;
+  new_tier_price: number;
+  credit_amount: number;
+  final_upgrade_amount: number;
+  renewal_date?: string;
+  summary_message?: string;
+}
 
 export interface UpgradePaymentModalProps {
   isOpen: boolean;
@@ -52,14 +64,7 @@ export default function UpgradePaymentModal({
   targetTier = 'ads_performance',
   onSuccess,
 }: UpgradePaymentModalProps) {
-  const normCurrentTier = String(currentTier || 'STARTER').toUpperCase();
-  const isCurrentlyStarter =
-    normCurrentTier.includes('STARTER') ||
-    normCurrentTier.includes('SOLO') ||
-    normCurrentTier.includes('TRIAL') ||
-    normCurrentTier === 'FREE';
-
-  // Selected plan state for payment view: 'pro_scale' (Rp 299.000) or 'team_scale' (Rp 499.000)
+  // Selected plan state for payment view: 'ads_performance' (PRO_SCALE) vs 'team_scale' (ENTERPRISE)
   const [selectedTier, setSelectedTier] = useState<'ads_performance' | 'team_scale'>(
     targetTier || 'ads_performance'
   );
@@ -69,28 +74,61 @@ export default function UpgradePaymentModal({
   const [loadingCheckoutTier, setLoadingCheckoutTier] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
+  // State Preview Prorata dari Backend
+  const [previewData, setPreviewData] = useState<UpgradePreviewData | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+
   const isTeam = selectedTier === 'team_scale';
-  const amount = isTeam ? 499000 : 299000;
   const tierName = isTeam ? 'Team Scale' : 'Ads Performance';
+
+  // Nominal final tagihan: prioritaskan kalkulasi prorata dari backend
+  const activeAmount = previewData?.final_upgrade_amount ?? (isTeam ? 499000 : 299000);
 
   const [timeLeft, setTimeLeft] = useState(UPGRADE_EXPIRE_SECONDS);
   const [pollStatus, setPollStatus] = useState<'polling' | 'paid' | 'expired'>('polling');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const qrisValue = generateDynamicQRIS(STATIC_QRIS, amount);
+  const qrisValue = generateDynamicQRIS(STATIC_QRIS, activeAmount);
 
   const stopAll = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
   }, []);
 
-  // Sync targetTier jika berubah dari luar
+  // Sync targetTier jika berubah dari props luar
   useEffect(() => {
     if (targetTier) {
       setSelectedTier(targetTier);
     }
   }, [targetTier]);
+
+  // Fetch Preview Prorata saat modal dibuka atau saat kartu paket dipilih
+  const fetchPreviewUpgrade = useCallback(async (tier: 'ads_performance' | 'team_scale') => {
+    if (!tenantSlug) return;
+    setIsLoadingPreview(true);
+    try {
+      const canonicalTarget = tier === 'team_scale' ? 'ENTERPRISE' : 'PRO_SCALE';
+      const res = await fetch(
+        `/api/v1/subscription/preview-upgrade?target_tier=${encodeURIComponent(canonicalTarget)}&slug=${encodeURIComponent(tenantSlug)}`,
+        { cache: 'no-store' }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewData(data);
+      }
+    } catch (err) {
+      console.warn('[Upgrade Modal] Error fetching upgrade preview:', err);
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  }, [tenantSlug]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchPreviewUpgrade(selectedTier);
+    }
+  }, [isOpen, selectedTier, fetchPreviewUpgrade]);
 
   // Countdown timer saat modal dibuka
   useEffect(() => {
@@ -170,39 +208,42 @@ export default function UpgradePaymentModal({
   const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
   const waConfirmText = encodeURIComponent(
-    `Halo Tim BoonTrack, saya ingin konfirmasi pembayaran upgrade toko "${displayName}" (${tenantSlug}) ke paket ${tierName} (Rp ${amount.toLocaleString('id-ID')}). Mohon aktivasi fiturnya.`
+    `Halo Tim BoonTrack, saya ingin konfirmasi pembayaran upgrade toko "${displayName}" (${tenantSlug}) ke paket ${tierName} (Rp ${activeAmount.toLocaleString('id-ID')}). Mohon aktivasi fiturnya.`
   );
 
-  // Handler checkout subscription Xendit
+  // Handler checkout subscription Xendit dengan nominal prorata dari backend
   const handleCheckoutXendit = async (tier: 'ads_performance' | 'team_scale') => {
     setSelectedTier(tier);
     setLoadingCheckoutTier(tier);
     setCheckoutError(null);
 
     const canonicalPlanTier = tier === 'team_scale' ? 'ENTERPRISE' : 'PRO_SCALE';
-    const planAmount = tier === 'team_scale' ? 499000 : 299000;
+    // Gunakan nominal prorata jika tier yang dicheckout cocok dengan previewData
+    const finalAmount =
+      (previewData?.target_tier === canonicalPlanTier && previewData?.final_upgrade_amount)
+        ? previewData.final_upgrade_amount
+        : tier === 'team_scale'
+        ? 499000
+        : 299000;
 
     try {
-      // Panggil endpoint pembuatan subscription Xendit platform
       const res = await fetch('/api/v1/subscription/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tenant_slug: tenantSlug,
           plan_tier: canonicalPlanTier,
-          amount: planAmount,
+          amount: finalAmount,
           merchant_name: displayName,
         }),
       });
 
       const data = await res.json();
       if (data.invoice_url) {
-        // Redirect ke link invoice resmi Xendit
         window.location.href = data.invoice_url;
         return;
       }
 
-      // Fallback jika tidak ada direct invoice_url: arahkan ke tampilan QRIS in-modal
       setViewMode('qris_direct');
     } catch (err: unknown) {
       console.warn('[Upgrade Checkout Error]:', err);
@@ -212,6 +253,8 @@ export default function UpgradePaymentModal({
       setLoadingCheckoutTier(null);
     }
   };
+
+  const hasProrataCredit = Boolean(previewData && previewData.credit_amount > 0);
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
@@ -246,7 +289,7 @@ export default function UpgradePaymentModal({
           </div>
         ) : viewMode === 'cards' ? (
           /* ======================================================== */
-          /* TAMPILAN 2 KARTU PILIHAN UPGRADE SEKALIGUS (STARTER/SOLO) */
+          /* TAMPILAN 2 KARTU PILIHAN UPGRADE SEKALIGUS (KOMPARATIF)  */
           /* ======================================================== */
           <div className="space-y-6">
             {/* Header Modal */}
@@ -274,7 +317,10 @@ export default function UpgradePaymentModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 pt-1">
               {/* KARTU 1: ADS PERFORMANCE (PRO_SCALE) */}
               <div
-                className={`relative flex flex-col justify-between rounded-2xl p-5 sm:p-6 border transition-all duration-200 ${
+                onClick={() => {
+                  setSelectedTier('ads_performance');
+                }}
+                className={`relative flex flex-col justify-between rounded-2xl p-5 sm:p-6 border transition-all duration-200 cursor-pointer ${
                   selectedTier === 'ads_performance'
                     ? 'bg-gradient-to-b from-blue-950/40 via-slate-900 to-slate-900 border-blue-500/50 shadow-xl shadow-blue-500/10 ring-1 ring-blue-500/30'
                     : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
@@ -295,16 +341,36 @@ export default function UpgradePaymentModal({
                       <span>Ads Performance</span>
                     </h3>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Spesialisasi optimasi Facebook/TikTok Ads & konversi tinggi.
+                      Spesialisasi optimasi Facebook/TikTok Ads &amp; konversi tinggi.
                     </p>
                   </div>
 
-                  {/* Nominal Harga */}
-                  <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex items-baseline gap-1.5">
-                    <span className="text-xl sm:text-2xl font-black text-white font-mono">
-                      Rp 299.000
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium">/ bulan</span>
+                  {/* Nominal Harga & Label Prorata */}
+                  <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 space-y-1">
+                    <div className="flex items-baseline justify-between">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-xl sm:text-2xl font-black text-white font-mono">
+                          {selectedTier === 'ads_performance' && previewData?.final_upgrade_amount !== undefined
+                            ? `Rp ${previewData.final_upgrade_amount.toLocaleString('id-ID')}`
+                            : 'Rp 299.000'}
+                        </span>
+                        <span className="text-xs text-slate-400 font-medium">
+                          {selectedTier === 'ads_performance' && hasProrataCredit ? '(Tagihan Prorata)' : '/ bulan'}
+                        </span>
+                      </div>
+                      {selectedTier === 'ads_performance' && hasProrataCredit && (
+                        <span className="text-[10px] text-slate-500 line-through font-mono">
+                          Rp 299.000
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedTier === 'ads_performance' && isLoadingPreview && (
+                      <div className="text-[10px] text-blue-400 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Menghitung kalkulasi prorata...</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Kelebihan Resmi */}
@@ -346,7 +412,10 @@ export default function UpgradePaymentModal({
                   <button
                     type="button"
                     disabled={loadingCheckoutTier !== null}
-                    onClick={() => handleCheckoutXendit('ads_performance')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCheckoutXendit('ads_performance');
+                    }}
                     className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-blue-600/20 transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {loadingCheckoutTier === 'ads_performance' ? (
@@ -357,7 +426,7 @@ export default function UpgradePaymentModal({
                     ) : (
                       <>
                         <Zap className="w-4 h-4 text-yellow-300" />
-                        <span>Upgrade ke Ads Performance</span>
+                        <span>Upgrade Sekarang (Ads Performance)</span>
                         <ArrowRight className="w-4 h-4 opacity-70" />
                       </>
                     )}
@@ -367,7 +436,10 @@ export default function UpgradePaymentModal({
 
               {/* KARTU 2: TEAM SCALE (ENTERPRISE) */}
               <div
-                className={`relative flex flex-col justify-between rounded-2xl p-5 sm:p-6 border transition-all duration-200 ${
+                onClick={() => {
+                  setSelectedTier('team_scale');
+                }}
+                className={`relative flex flex-col justify-between rounded-2xl p-5 sm:p-6 border transition-all duration-200 cursor-pointer ${
                   selectedTier === 'team_scale'
                     ? 'bg-gradient-to-b from-purple-950/40 via-slate-900 to-slate-900 border-purple-500/50 shadow-xl shadow-purple-500/10 ring-1 ring-purple-500/30'
                     : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
@@ -392,12 +464,32 @@ export default function UpgradePaymentModal({
                     </p>
                   </div>
 
-                  {/* Nominal Harga */}
-                  <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex items-baseline gap-1.5">
-                    <span className="text-xl sm:text-2xl font-black text-white font-mono">
-                      Rp 499.000
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium">/ bulan</span>
+                  {/* Nominal Harga & Label Prorata */}
+                  <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 space-y-1">
+                    <div className="flex items-baseline justify-between">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-xl sm:text-2xl font-black text-white font-mono">
+                          {selectedTier === 'team_scale' && previewData?.final_upgrade_amount !== undefined
+                            ? `Rp ${previewData.final_upgrade_amount.toLocaleString('id-ID')}`
+                            : 'Rp 499.000'}
+                        </span>
+                        <span className="text-xs text-slate-400 font-medium">
+                          {selectedTier === 'team_scale' && hasProrataCredit ? '(Tagihan Prorata)' : '/ bulan'}
+                        </span>
+                      </div>
+                      {selectedTier === 'team_scale' && hasProrataCredit && (
+                        <span className="text-[10px] text-slate-500 line-through font-mono">
+                          Rp 499.000
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedTier === 'team_scale' && isLoadingPreview && (
+                      <div className="text-[10px] text-purple-400 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Menghitung kalkulasi prorata...</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Kelebihan Resmi */}
@@ -439,7 +531,10 @@ export default function UpgradePaymentModal({
                   <button
                     type="button"
                     disabled={loadingCheckoutTier !== null}
-                    onClick={() => handleCheckoutXendit('team_scale')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCheckoutXendit('team_scale');
+                    }}
                     className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-purple-600/20 transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {loadingCheckoutTier === 'team_scale' ? (
@@ -450,7 +545,7 @@ export default function UpgradePaymentModal({
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4 text-yellow-300" />
-                        <span>Upgrade ke Team Scale</span>
+                        <span>Upgrade Sekarang (Team Scale)</span>
                         <ArrowRight className="w-4 h-4 opacity-70" />
                       </>
                     )}
@@ -459,8 +554,80 @@ export default function UpgradePaymentModal({
               </div>
             </div>
 
+            {/* ======================================================== */}
+            {/* BOX RINCIAN KALKULASI TRANSPARAN (PRORATA ATAU TRIAL)   */}
+            {/* ======================================================== */}
+            {previewData && (
+              <div className="rounded-2xl border p-4 transition-all duration-200 bg-slate-950/70 border-slate-800">
+                {hasProrataCredit ? (
+                  /* Case 1: Upgrade Prorata (credit_amount > 0) */
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-wider">
+                        <Calculator className="w-4 h-4 text-indigo-400" />
+                        <span>Rincian Tagihan Prorata Transparan</span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                        Paket: {previewData.target_tier}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs text-slate-300">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400">• Sisa Periode Aktif:</span>
+                        <span className="font-mono font-bold text-white">
+                          {previewData.days_remaining} Hari
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400">• Kredit Paket Lama:</span>
+                        <span className="font-mono font-bold text-emerald-400">
+                          -Rp {previewData.credit_amount.toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-t border-slate-800/80 pt-2 text-sm font-black">
+                        <span className="text-white">• Total Biaya Upgrade:</span>
+                        <span className="font-mono text-emerald-400 text-base">
+                          Rp {previewData.final_upgrade_amount.toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] text-slate-500 pt-1 leading-relaxed">
+                      *Formula: <code>(sisa_hari / 30) × (harga_baru - harga_lama)</code>. Tanggal perpanjangan siklus Anda tetap berlaku pada {previewData.renewal_date ? new Date(previewData.renewal_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}.
+                    </p>
+                  </div>
+                ) : (
+                  /* Case 2: Masih Masa Trial / Harga Normal 30 Hari */
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/20">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <span className="text-slate-200 font-bold block">
+                          Periode Langganan Penuh 30 Hari
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          {previewData.is_trial
+                            ? 'Masa Trial aktif. Mengupgrade sekarang akan mengaktifkan paket penuh 30 hari resmi.'
+                            : `Harga normal 30 hari untuk paket ${previewData.target_tier}.`}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-base font-black text-emerald-400 font-mono">
+                        Rp {previewData.final_upgrade_amount.toLocaleString('id-ID')}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">/ 30 hari</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Alternatif Pembayaran: Bayar Langsung via QRIS / WhatsApp */}
-            <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+            <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
               <button
                 type="button"
                 onClick={() => setViewMode('qris_direct')}
@@ -506,7 +673,7 @@ export default function UpgradePaymentModal({
                       : 'bg-slate-800 text-slate-400 border-slate-700'
                   }`}
                 >
-                  Ads (299k)
+                  Ads ({previewData?.target_tier === 'PRO_SCALE' && hasProrataCredit ? `Rp ${activeAmount.toLocaleString('id-ID')}` : '299k'})
                 </button>
                 <button
                   type="button"
@@ -517,7 +684,7 @@ export default function UpgradePaymentModal({
                       : 'bg-slate-800 text-slate-400 border-slate-700'
                   }`}
                 >
-                  Team (499k)
+                  Team ({previewData?.target_tier === 'ENTERPRISE' && hasProrataCredit ? `Rp ${activeAmount.toLocaleString('id-ID')}` : '499k'})
                 </button>
               </div>
             </div>
@@ -531,11 +698,18 @@ export default function UpgradePaymentModal({
               </p>
             </div>
 
-            {/* Nominal Box */}
+            {/* Nominal Box (Menggunakan Kalkulasi Prorata) */}
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
-              <span className="text-xs text-slate-400 font-medium">Total Tagihan:</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-400 font-medium">Total Tagihan:</span>
+                {hasProrataCredit && (
+                  <span className="text-[10px] text-indigo-400 font-bold bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
+                    Prorata
+                  </span>
+                )}
+              </div>
               <span className="text-base font-black text-emerald-400 font-mono">
-                Rp {amount.toLocaleString('id-ID')}
+                Rp {activeAmount.toLocaleString('id-ID')}
               </span>
             </div>
 

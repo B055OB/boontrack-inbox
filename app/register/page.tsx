@@ -201,9 +201,10 @@ export function resolveCanonicalCategory(raw?: string | null): CanonicalBusiness
   return "PHYSICAL";
 }
 
-export type OfficialPlan = "starter" | "pro_scale" | "enterprise" | "solo" | "ads_performance" | "team_scale";
+export type OfficialPlan = "checkout_lite" | "starter" | "pro_scale" | "enterprise" | "solo" | "ads_performance" | "team_scale";
 
 export const PLAN_PRICING: Record<OfficialPlan, number> = {
+  checkout_lite: 59000,
   starter: 199000,
   pro_scale: 299000,
   enterprise: 499000,
@@ -985,7 +986,8 @@ export default function RegisterShopPage() {
       return;
     }
 
-    // Standarisasi 3 Tier Resmi:
+    // Standarisasi 4 Tier Resmi:
+    // 0. "Checkout Lite" -> enum database: 'CHECKOUT_LITE' (Bayar Langsung Rp 59.000)
     // 1. "Solo / Starter" -> enum database: 'STARTER' (Bayar Langsung Rp 199.000)
     // 2. "Ads Performance" -> enum database: 'PRO_SCALE' (HERO TIER: Free Trial 7 Hari Rp 0)
     // 3. "Team Scale" -> enum database: 'ENTERPRISE' (Bayar Langsung Rp 499.000)
@@ -993,15 +995,17 @@ export default function RegisterShopPage() {
     const planAmount = isTrial
       ? 0
       : PLAN_PRICING[selectedPlan] ||
-        (selectedPlan === "enterprise" || selectedPlan === "team_scale" ? 499000 : 199000);
+        (selectedPlan === "checkout_lite" ? 59000 : selectedPlan === "enterprise" || selectedPlan === "team_scale" ? 499000 : 199000);
 
-    const dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' =
-      selectedPlan === 'enterprise' || selectedPlan === 'team_scale'
+    const dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' =
+      selectedPlan === 'checkout_lite'
+        ? 'CHECKOUT_LITE'
+        : selectedPlan === 'enterprise' || selectedPlan === 'team_scale'
         ? 'ENTERPRISE'
         : selectedPlan === 'pro_scale' || selectedPlan === 'ads_performance'
         ? 'PRO_SCALE'
         : 'STARTER';
-    const targetPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = dbTier;
+    const targetPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' = dbTier;
 
     // Standarisasi nomor telepon WhatsApp (format 628...)
     let formattedPhone = merchantData.phone.replace(/[^0-9]/g, '');
@@ -1613,7 +1617,107 @@ export default function RegisterShopPage() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* 0. Paket Checkout Lite (ENTRY / CHECKOUT ENGINE) */}
+                  <div
+                    onClick={() => setSelectedPlan("checkout_lite")}
+                    className={`p-5 rounded-3xl border-2 cursor-pointer transition-all duration-200 flex flex-col justify-between ${
+                      selectedPlan === "checkout_lite"
+                        ? "border-emerald-600 bg-emerald-50/40 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-500/20 scale-[1.01]"
+                        : "border-slate-200 hover:border-slate-300 bg-white shadow-xs hover:shadow-md"
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          ENTRY / CHECKOUT ENGINE
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="font-black text-slate-900 text-base">
+                          Paket Checkout Lite
+                        </h3>
+                        <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                          Single Page Checkout Siap Jual
+                        </p>
+                      </div>
+
+                      <div className="pt-1 pb-2 border-b border-slate-100">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-xl font-black text-slate-900">
+                            Rp 59.000
+                          </span>
+                          <span className="text-xs text-slate-400 font-medium">
+                            / bln
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-bold text-slate-600 mt-1">
+                          Langganan Bulanan (Mulai Sekarang)
+                        </p>
+                      </div>
+
+                      {/* Checklist */}
+                      <ul className="space-y-2 text-xs">
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Single Product Page Checkout</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Maksimal 3 Produk Aktif</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Dynamic QRIS Standar Bank Indonesia</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Integrasi WhatsApp Checkout</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Order Management Ringkas</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Basic Pixel Tracking (Meta &amp; TikTok Browser)</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Produk Digital &amp; Fisik (Lazy Shipping)</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
+                          <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <span>Tanpa Server-Side CAPI (Iklan dapat &apos;buta&apos;, berisiko data loss)</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
+                          <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <span>Tanpa Multi-Courier &amp; Auto-AWB</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-4 mt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPlan("checkout_lite");
+                        }}
+                        className={`w-full py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                          selectedPlan === "checkout_lite"
+                            ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {selectedPlan === "checkout_lite"
+                          ? "[ ✓ Dipilih: Paket Checkout Lite ]"
+                          : "[ Pilih Paket Checkout Lite ]"}
+                      </button>
+                    </div>
+                  </div>
+
                   {/* 1. Paket Solo */}
                   <div
                     onClick={() => setSelectedPlan("solo")}
@@ -1900,6 +2004,8 @@ export default function RegisterShopPage() {
                 <span>
                   {loadingPay
                     ? "Menyiapkan Akun & Toko..."
+                    : selectedPlan === "checkout_lite"
+                    ? "Lanjut ke Pembayaran (Paket Checkout Lite - Rp 59.000) →"
                     : selectedPlan === "starter" || selectedPlan === "solo"
                     ? "Lanjut ke Pembayaran (Paket Solo - Rp 199.000) →"
                     : selectedPlan === "pro_scale" || selectedPlan === "ads_performance"
