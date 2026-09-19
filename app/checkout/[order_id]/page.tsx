@@ -44,6 +44,8 @@ export default function CheckoutPage({ params }: Props) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [tenant, setTenant] = useState<any>(null);
   const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
+  const [countdown, setCountdown] = useState(3);
+  const [hasAutoRedirected, setHasAutoRedirected] = useState(false);
 
   useEffect(() => {
     async function loadOrder() {
@@ -74,7 +76,27 @@ export default function CheckoutPage({ params }: Props) {
             .maybeSingle();
 
           if (dbOrder) {
-            setOrder(dbOrder);
+            let enriched = { ...dbOrder };
+            if (!enriched.fulfillment_metadata || !enriched.link_digital) {
+              const pSlug = enriched.product_id || enriched.slug;
+              if (pSlug) {
+                const { data: pData } = await supabase
+                  .from('products')
+                  .select('*')
+                  .eq('slug', pSlug)
+                  .maybeSingle();
+                if (pData) {
+                  enriched = {
+                    ...enriched,
+                    link_digital: pData.link_digital || enriched.link_digital,
+                    asset_reference: pData.asset_reference || enriched.asset_reference,
+                    button_text: pData.fulfillment_metadata?.button_text || pData.button_text,
+                    fulfillment_metadata: pData.fulfillment_metadata || enriched.fulfillment_metadata
+                  };
+                }
+              }
+            }
+            setOrder(enriched);
             setLoading(false);
             return;
           }
@@ -130,6 +152,74 @@ export default function CheckoutPage({ params }: Props) {
 
     return () => clearInterval(timer);
   }, [orderId]);
+
+  // Polling realtime status pembayaran setiap 3 detik hingga status PAID
+  useEffect(() => {
+    const isPaid = order?.status === 'PAID' || order?.status === 'COMPLETED' || order?.status === 'SUCCESS' || order?.status === 'SETTLED';
+    if (!orderId || isPaid) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: dbOrder } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('id', orderId)
+            .maybeSingle();
+
+          if (dbOrder && (dbOrder.status === 'PAID' || dbOrder.status === 'COMPLETED' || dbOrder.status === 'SUCCESS' || dbOrder.status === 'SETTLED')) {
+            let enriched = { ...dbOrder };
+            if (!enriched.fulfillment_metadata || !enriched.link_digital) {
+              const pSlug = enriched.product_id || enriched.slug;
+              if (pSlug) {
+                const { data: pData } = await supabase
+                  .from('products')
+                  .select('*')
+                  .eq('slug', pSlug)
+                  .maybeSingle();
+                if (pData) {
+                  enriched = {
+                    ...enriched,
+                    link_digital: pData.link_digital || enriched.link_digital,
+                    asset_reference: pData.asset_reference || enriched.asset_reference,
+                    button_text: pData.fulfillment_metadata?.button_text || pData.button_text,
+                    fulfillment_metadata: pData.fulfillment_metadata || enriched.fulfillment_metadata
+                  };
+                }
+              }
+            }
+            setOrder((prev: any) => ({
+              ...prev,
+              ...enriched,
+              status: dbOrder.status
+            }));
+            clearInterval(pollInterval);
+            return;
+          }
+
+          const { data: pOrder } = await supabase
+            .from('product_orders')
+            .select('*')
+            .eq('order_id', orderId)
+            .maybeSingle();
+
+          if (pOrder && (pOrder.status === 'PAID' || pOrder.status === 'COMPLETED' || pOrder.status === 'SUCCESS' || pOrder.status === 'SETTLED')) {
+            setOrder((prev: any) => ({
+              ...prev,
+              status: pOrder.status
+            }));
+            clearInterval(pollInterval);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[Checkout Polling] Check error:', err);
+      }
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [orderId, order?.status]);
 
   // Sinkronisasi data merchant & rekening transfer bank dinamis dari Supabase
   useEffect(() => {
@@ -296,6 +386,48 @@ export default function CheckoutPage({ params }: Props) {
       ? 'Mohon dicek dan proses pengiriman pesanan saya. Terima kasih!'
       : 'Mohon dicek dan aktivasi akses saya. Terima kasih!';
 
+  const accessUrlCandidate =
+    order?.fulfillment_metadata?.access_url ||
+    order?.link_digital ||
+    order?.asset_reference ||
+    order?.download_url ||
+    order?.delivery_url ||
+    (order?.product_id === 'ctwa-mastery-7day' || (order?.product_title || '').toLowerCase().includes('ctwa')
+      ? 'https://t.me/+zhWxgGbzZxhmMjU1'
+      : null);
+
+  const isTelegram =
+    order?.fulfillment_metadata?.delivery_type === 'TELEGRAM_GROUP' ||
+    (typeof accessUrlCandidate === 'string' && accessUrlCandidate.includes('t.me'));
+
+  const ctaButtonText =
+    order?.fulfillment_metadata?.button_text ||
+    order?.button_text ||
+    (isTelegram ? '🚀 Gabung Grup Telegram Kelas Sekarang' : 'Buka Akses / Unduh Materi Sekarang');
+
+  // Auto-redirect ke Telegram/link akses pasca status bayar PAID (countdown 3 detik)
+  useEffect(() => {
+    if (!isPaidOrder || !accessUrlCandidate || hasAutoRedirected) return;
+
+    const redirectTimer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(redirectTimer);
+          setHasAutoRedirected(true);
+          try {
+            window.open(accessUrlCandidate, '_blank', 'noopener,noreferrer');
+          } catch (e) {
+            console.warn('[Auto redirect error]:', e);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(redirectTimer);
+  }, [isPaidOrder, accessUrlCandidate, hasAutoRedirected]);
+
   const waConfirmUrl = `https://wa.me/${targetWaNumber}?text=${encodeURIComponent(
     `Halo ${storeDisplayName}, saya ingin konfirmasi pembayaran untuk:\n\nOrder ID: ${orderId}\nProduk: ${order?.product_title || 'Pesanan'}\nNama: ${order?.customer_name || '-'}\nTotal Nominal: Rp ${grossAmount.toLocaleString('id-ID')}\nMetode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n${confirmationCallToAction}`
   )}`;
@@ -336,28 +468,66 @@ export default function CheckoutPage({ params }: Props) {
           </div>
         )}
 
-        {/* Kartu Akses Delivery Payload Jika Status Lunas (PAID) */}
-        {isPaidOrder && (orderRequirements.requiresDeliveryPayload || order?.fulfillment_metadata) && (
-          <div className="bg-emerald-950/50 border-2 border-emerald-500/60 rounded-2xl p-5 space-y-4 shadow-xl text-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center shrink-0 font-bold">
-                <CheckCircle2 className="w-5 h-5 text-slate-950" />
+        {/* Kartu Akses Delivery Payload / Grup Telegram Jika Status Lunas (PAID) */}
+        {isPaidOrder && (
+          <div className="bg-gradient-to-b from-emerald-950/80 via-slate-900 to-slate-900 border-2 border-emerald-500/80 rounded-3xl p-5 space-y-4 shadow-2xl shadow-emerald-950/50 text-xs animate-in fade-in zoom-in-95 duration-500">
+            {/* Header Ucapan Selamat */}
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/30">
+                <CheckCircle2 className="w-7 h-7 text-slate-950 stroke-[2.5]" />
               </div>
-              <div>
-                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2.5 py-0.5 rounded-full uppercase border border-emerald-800/60">
-                  Akses Produk Aktif
+              <div className="space-y-1">
+                <span className="text-[10px] font-black text-emerald-400 bg-emerald-950/90 px-3 py-1 rounded-full uppercase tracking-wider border border-emerald-700/60 inline-block">
+                  Pembayaran Terverifikasi (LUNAS)
                 </span>
-                <h3 className="text-sm font-bold text-white mt-0.5">
-                  Pengiriman &amp; Akses Layanan Anda
-                </h3>
+                <h2 className="text-lg font-black text-white">
+                  Selamat! Pembayaran Anda Berhasil 🎉
+                </h2>
+                <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
+                  {isTelegram
+                    ? 'Akses ke Grup Telegram Kelas Eksklusif sudah aktif. Anda dapat langsung bergabung sekarang tanpa wajib menunggu chat WhatsApp!'
+                    : 'Akses produk dan layanan Anda sudah aktif dan siap digunakan.'}
+                </p>
               </div>
             </div>
 
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+            {/* Tombol Utama Akses Telegram / Link Digital */}
+            {accessUrlCandidate ? (
+              <div className="space-y-2.5 pt-1">
+                <a
+                  href={accessUrlCandidate}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setHasAutoRedirected(true)}
+                  className="w-full py-4 px-5 bg-gradient-to-r from-blue-600 via-emerald-600 to-teal-500 hover:from-blue-500 hover:via-emerald-500 hover:to-teal-400 text-white font-black text-sm sm:text-base rounded-2xl flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/50 transform hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer border border-emerald-400/40 group"
+                >
+                  <Sparkles className="w-5 h-5 text-emerald-200 animate-pulse" />
+                  <span>{ctaButtonText}</span>
+                  <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </a>
+
+                {/* Auto redirect notification */}
+                {countdown > 0 && !hasAutoRedirected ? (
+                  <p className="text-[11px] text-center text-slate-400 flex items-center justify-center gap-1.5 font-medium">
+                    <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                    <span>Otomatis dialihkan ke grup Telegram dalam <strong className="text-amber-300 font-mono font-bold text-xs">{countdown}</strong> detik...</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-center text-slate-400">
+                    💡 <em>Klik tombol di atas jika link grup Telegram belum terbuka otomatis di tab baru.</em>
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            {/* Rincian Petunjuk / Lisensi */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-slate-400 font-medium">Metode Akses:</span>
                 <span className="font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-md border border-emerald-800/60 text-[11px]">
-                  {order?.fulfillment_metadata?.delivery_type === 'DOWNLOAD_LINK'
+                  {isTelegram
+                    ? '🚀 Grup Telegram Eksklusif'
+                    : order?.fulfillment_metadata?.delivery_type === 'DOWNLOAD_LINK'
                     ? '📥 Link Download Instan'
                     : order?.fulfillment_metadata?.delivery_type === 'LICENSE_KEY'
                     ? '🔑 Lisensi / Kode Akses'
@@ -366,47 +536,26 @@ export default function CheckoutPage({ params }: Props) {
               </div>
 
               {order?.fulfillment_metadata?.license_key && (
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                   <span className="text-[11px] font-bold text-slate-400 block flex items-center gap-1">
                     <Key className="w-3.5 h-3.5 text-blue-400" />
                     <span>Kunci Lisensi / Akses:</span>
                   </span>
-                  <div className="font-mono text-sm font-bold text-blue-400 select-all bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
+                  <div className="font-mono text-sm font-bold text-blue-400 select-all bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
                     {order.fulfillment_metadata.license_key}
                   </div>
                 </div>
               )}
 
-              {order?.fulfillment_metadata?.instructions && (
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+              {(order?.fulfillment_metadata?.instructions || isTelegram) && (
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                   <span className="text-[11px] font-bold text-slate-400 block flex items-center gap-1">
                     <FileText className="w-3.5 h-3.5 text-slate-400" />
                     <span>Petunjuk Penggunaan:</span>
                   </span>
                   <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
-                    {order.fulfillment_metadata.instructions}
-                  </p>
-                </div>
-              )}
-
-              {(order?.fulfillment_metadata?.access_url || order?.download_url || order?.link_digital || order?.delivery_url) ? (
-                <a
-                  href={order?.fulfillment_metadata?.access_url || order?.download_url || order?.link_digital || order?.delivery_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Buka Akses / Unduh Materi Sekarang</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              ) : (
-                <div className="p-3.5 bg-slate-900/80 border border-amber-500/30 rounded-xl text-center space-y-1">
-                  <p className="text-xs text-amber-300 font-semibold">
-                    Akses produk digital Anda sedang disiapkan oleh admin toko.
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    Detail link dan lisensi akan dikirimkan otomatis melalui WhatsApp/Email Anda segera setelah diverifikasi.
+                    {order?.fulfillment_metadata?.instructions ||
+                      'Pastikan aplikasi Telegram Anda sudah terpasang di HP atau Laptop. Klik tombol di atas untuk langsung bergabung ke grup kelas dan pantau materi sprint 7 hari.'}
                   </p>
                 </div>
               )}
@@ -668,10 +817,14 @@ export default function CheckoutPage({ params }: Props) {
             href={waConfirmUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+            className="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md"
           >
-            <MessageSquare className="w-4 h-4" />
-            <span>Konfirmasi Pembayaran ke WhatsApp Resmi CS</span>
+            <MessageSquare className="w-4 h-4 text-emerald-400" />
+            <span>
+              {isPaidOrder
+                ? 'Chat Admin CS via WhatsApp (Bantuan / Pertanyaan)'
+                : 'Konfirmasi Pembayaran ke WhatsApp Resmi CS'}
+            </span>
           </a>
         </div>
 

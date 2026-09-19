@@ -184,6 +184,22 @@ function SingleProductContent() {
             const ob = match.offer_bonus || builder.offer_bonus || {};
             const pm = match.payment_methods || builder.payment_methods || {};
 
+            const rawSolutionPoints =
+              ps.solution_points ||
+              cfg.solution_points ||
+              match.facilities ||
+              match.features ||
+              match.metadata?.facilities ||
+              match.metadata?.features ||
+              match.metadata?.solution_points ||
+              [];
+
+            const resolvedSolutionPoints: string[] = Array.isArray(rawSolutionPoints)
+              ? rawSolutionPoints.map((s: any) => (typeof s === 'string' ? s.trim() : String(s))).filter(Boolean)
+              : typeof rawSolutionPoints === 'string'
+              ? rawSolutionPoints.split(/\r?\n/).map((s: string) => s.trim()).filter(Boolean)
+              : [];
+
             const dynamicConfig: SinglePageConfig = {
               slug: match.slug || slug,
               headline: hero.headline || cfg.headline || match.title || match.name || 'Produk Eksklusif',
@@ -192,8 +208,8 @@ function SingleProductContent() {
               badge_text: hero.badge || cfg.badge_text || match.promo || 'Penawaran Spesial',
               problem_title: ps.title || cfg.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
               pain_points: ps.pain_points || cfg.pain_points || [],
-              solution_title: ps.solution_title || cfg.solution_title || 'Solusi Tepat untuk Melejitkan Konversi',
-              solution_points: ps.solution_points || cfg.solution_points || [],
+              solution_title: ps.solution_title || cfg.solution_title || 'Materi & Fasilitas Utama',
+              solution_points: resolvedSolutionPoints,
               comparison_rows: match.us_vs_them || builder.us_vs_them || cfg.comparison_rows || [],
               testimonials: match.testimonials || builder.testimonials || cfg.testimonials || [],
               testimonial_images: cfg.testimonial_images || [],
@@ -204,6 +220,7 @@ function SingleProductContent() {
               enable_manual_transfer: Boolean((pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? false) && hasTenantBankAccounts(tenantRow)),
               affiliate_commission_rate: cfg.affiliate_commission_rate || 0,
               whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || tenantRow?.metadata?.whatsapp_number || getTenantWhatsApp(tenant),
+              cta_label: hero.cta_label || cfg.cta_label || match.cta_label || undefined,
             };
 
             const rawPrice = match.price !== undefined && match.price !== null ? Number(match.price) : (ob.price !== undefined && ob.price !== null ? Number(ob.price) : 0);
@@ -749,7 +766,9 @@ function SingleProductContent() {
               <span>Metode Akses:</span>
             </span>
             <span className="font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 text-[11px]">
-              {meta.delivery_type === 'DOWNLOAD_LINK'
+              {meta.delivery_type === 'TELEGRAM_GROUP' || accessUrl?.includes('t.me')
+                ? '🚀 Grup Telegram Kelas Eksklusif'
+                : meta.delivery_type === 'DOWNLOAD_LINK'
                 ? '📥 Link Download Instan'
                 : meta.delivery_type === 'LICENSE_KEY'
                 ? '🔑 Kunci Lisensi / Akses'
@@ -786,11 +805,19 @@ function SingleProductContent() {
               href={accessUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-md shadow-emerald-600/25 transition cursor-pointer"
+              className={`w-full py-3.5 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg transition cursor-pointer text-sm ${
+                meta.delivery_type === 'TELEGRAM_GROUP' || accessUrl?.includes('t.me')
+                  ? 'bg-gradient-to-r from-blue-600 via-emerald-600 to-emerald-500 hover:from-blue-700 hover:to-emerald-600 shadow-emerald-600/30'
+                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/25'
+              }`}
             >
-              <Download className="w-4 h-4" />
-              <span>Buka Akses / Unduh Materi Sekarang</span>
-              <ExternalLink className="w-3.5 h-3.5" />
+              <Sparkles className="w-4 h-4 text-emerald-200 animate-pulse" />
+              <span>
+                {meta.delivery_type === 'TELEGRAM_GROUP' || accessUrl?.includes('t.me')
+                  ? (product.button_text || meta.button_text || '🚀 Gabung Grup Telegram Kelas Sekarang')
+                  : (product.button_text || meta.button_text || 'Buka Akses / Unduh Materi Sekarang')}
+              </span>
+              <ExternalLink className="w-4 h-4" />
             </a>
           )}
         </div>
@@ -1255,6 +1282,13 @@ function SingleProductContent() {
 
           {/* Pricing & Value Proposition */}
           <div className="space-y-3 pt-1">
+            {config.badge_text && (
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black bg-rose-50 text-rose-700 border border-rose-200 tracking-wide uppercase shadow-2xs">
+                <Flame className="w-3.5 h-3.5 text-rose-600 animate-pulse" />
+                <span>{config.badge_text}</span>
+              </div>
+            )}
+
             <div className="flex items-center gap-2.5 flex-wrap">
               <span className="text-3xl sm:text-4xl font-black text-slate-900">
                 {basePrice === 0 ? 'GRATIS' : `Rp ${basePrice.toLocaleString('id-ID')}`}
@@ -1276,6 +1310,31 @@ function SingleProductContent() {
               {config.subheadline || product.description}
             </p>
 
+            {/* Visual Indikator Kuota Peserta (Khusus Batch / Kuota Terbatas) */}
+            {(!product.is_unlimited && product.stock > 0 && product.stock <= 100) && (
+              <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl space-y-2 my-2">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                    <Flame className="w-4 h-4 text-amber-600 animate-bounce" />
+                    <span>BATCH INTENSIF: KUOTA HANYA {product.stock} SEAT</span>
+                  </div>
+                  <span className="font-extrabold text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-full border border-amber-300 text-[11px]">
+                    Sisa {product.stock} Kursi
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200/80 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-amber-500 to-rose-500 h-2.5 rounded-full transition-all duration-700"
+                    style={{ width: `${Math.min(100, Math.max(15, (product.stock / 50) * 100))}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-amber-800 font-medium flex items-center justify-between">
+                  <span>⚡ Pendaftaran otomatis ditutup setelah kuota {product.stock} seat terpenuhi.</span>
+                  <span className="font-bold text-rose-600">Sisa Sedikit</span>
+                </p>
+              </div>
+            )}
+
             {/* Quick Action Scroll CTA */}
             <div className="pt-1">
               {isAffiliateProduct ? (
@@ -1295,7 +1354,11 @@ function SingleProductContent() {
                   onClick={handleOpenCheckout}
                   className="w-full py-3.5 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition cursor-pointer text-sm"
                 >
-                  <span>{basePrice === 0 ? 'Klaim Akses Gratis Sekarang' : 'Daftar & Ambil Penawaran Sekarang'}</span>
+                  <span>
+                    {basePrice === 0
+                      ? 'Klaim Akses Gratis Sekarang'
+                      : (config.cta_label || product.cta_label || `Daftar Kelas Sekarang - Rp ${basePrice.toLocaleString('id-ID')}`)}
+                  </span>
                   <ArrowDown className="w-4 h-4" />
                 </button>
               )}

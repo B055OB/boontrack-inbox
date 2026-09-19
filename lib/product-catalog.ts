@@ -64,6 +64,7 @@ export interface SinglePageConfig {
   enable_manual_transfer: boolean;
   affiliate_commission_rate: number;
   whatsapp_number?: string;
+  cta_label?: string;
 }
 
 export type ProductType =
@@ -170,6 +171,11 @@ export interface ProductItem {
   external_url?: string;
   cta_label?: string;
   checkout_type?: 'internal' | 'external';
+  features?: string[] | string;
+  facilities?: string[] | string;
+  link_digital?: string;
+  asset_reference?: string;
+  button_text?: string;
   meta_pixel_id_override?: string;
   tiktok_pixel_id_override?: string;
   metadata?: Record<string, any>;
@@ -519,6 +525,122 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
           description: "Formula balasan chat terbukti mengurangi cancel rate calon pembeli."
         }
       ]
+    }
+  },
+  {
+    id: 8,
+    name: "7-Day Sprint CTWA Mastery (Closing Otomatis Tanpa Admin Ribet)",
+    slug: "ctwa-mastery-7day",
+    category: "digital",
+    type: "digital",
+    product_type: "DIGITAL",
+    price: 500000,
+    promo_price: 99000,
+    stock: 50,
+    is_unlimited: false,
+    variants: "Batch Intensif • 50 Seat Kuota Terbatas",
+    promo: "BATCH INTENSIF: HANYA 50 SEAT",
+    description: "Pelajari metode baru 7-Day Sprint CTWA Mastery bersama Kang Sakti: Bongkar rahasia alur iklan Click-to-WhatsApp langsung closing otomatis via Dynamic QRIS & auto-ongkir tanpa admin repot.",
+    download_url: "https://t.me/+zhWxgGbzZxhmMjU1",
+    link_digital: "https://t.me/+zhWxgGbzZxhmMjU1",
+    asset_reference: "https://t.me/+zhWxgGbzZxhmMjU1",
+    button_text: "Gabung Grup Telegram Kelas",
+    image: "https://assets.boontrack.com/products/ctwa_mastery_banner.jpg",
+    image_url: "https://assets.boontrack.com/products/ctwa_mastery_banner.jpg",
+    sku: "CTWA-7DAY-001",
+    cta_label: "Daftar Kelas Sekarang - Rp 99.000",
+    checkout_type: "internal",
+    fulfillment_metadata: {
+      delivery_type: "TELEGRAM_GROUP",
+      access_url: "https://t.me/+zhWxgGbzZxhmMjU1",
+      button_text: "Gabung Grup Telegram Kelas",
+      instructions: "Selamat pembayaran pesanan Anda berhasil terverifikasi! Silakan klik tombol di bawah untuk langsung bergabung ke Grup Telegram Kelas Eksklusif bersama Kang Sakti."
+    },
+    facilities: [
+      "Hari 1: Fondasi Toko & Infrastruktur Otomasi (Setup BoonTrack & Dynamic QRIS)",
+      "Hari 2: Kurasi Produk & Upload Katalog Cepat (Margin sehat & auto-ongkir real-time)",
+      "Hari 3: Meta Ads Setup (Performance Goal: \"Maximise number of purchases through messaging\")",
+      "Hari 4: Hook, Angle & Format Kreatif Iklan (Greeting message auto-redirect)",
+      "Hari 5: Integrasi Tracking & Server CAPI Anti-Bocor",
+      "Hari 6: Launching & Pembacaan Data Metrik Awal (Evaluasi checkout rate)",
+      "Hari 7: Scale-Up & Optimasi Margin Bersih (Database repeat order gratis)"
+    ],
+    features: [
+      "Hari 1: Fondasi Toko & Infrastruktur Otomasi (Setup BoonTrack & Dynamic QRIS)",
+      "Hari 2: Kurasi Produk & Upload Katalog Cepat (Margin sehat & auto-ongkir real-time)",
+      "Hari 3: Meta Ads Setup (Performance Goal: \"Maximise number of purchases through messaging\")",
+      "Hari 4: Hook, Angle & Format Kreatif Iklan (Greeting message auto-redirect)",
+      "Hari 5: Integrasi Tracking & Server CAPI Anti-Bocor",
+      "Hari 6: Launching & Pembacaan Data Metrik Awal (Evaluasi checkout rate)",
+      "Hari 7: Scale-Up & Optimasi Margin Bersih (Database repeat order gratis)"
+    ],
+    single_page_config: {
+      slug: "ctwa-mastery-7day",
+      badge_text: "BATCH INTENSIF: HANYA 50 SEAT",
+      headline: "Capek Pasang Iklan CTWA Tapi Ujung-ujungnya Boncos & Admin Kewalahan?",
+      subheadline: "Pelajari metode baru 7-Day Sprint CTWA Mastery bersama Kang Sakti: Bongkar rahasia alur iklan Click-to-WhatsApp langsung closing otomatis via Dynamic QRIS & auto-ongkir tanpa admin repot.",
+      banner_url: "https://assets.boontrack.com/products/ctwa_mastery_banner.jpg",
+      cta_label: "Daftar Kelas Sekarang - Rp 99.000",
+      problem_title: "Kenapa Iklan WA Sering Boncos?",
+      pain_points: [
+        "❌ Chat menumpuk hanya tanya \"ongkir ke kota X berapa?\".",
+        "❌ Calon pembeli kabur saat diminta transfer manual via rekening bank.",
+        "❌ Algoritma iklan cuma mendatangkan penanya iseng tanpa niat beli."
+      ],
+      solution_title: "Solusi & 7-Day Sprint Syllabus",
+      solution_points: [
+        "Hari 1: Fondasi Toko & Infrastruktur Otomasi (Setup BoonTrack & Dynamic QRIS)",
+        "Hari 2: Kurasi Produk & Upload Katalog Cepat (Margin sehat & auto-ongkir real-time)",
+        "Hari 3: Meta Ads Setup (Performance Goal: \"Maximise number of purchases through messaging\")",
+        "Hari 4: Hook, Angle & Format Kreatif Iklan (Greeting message auto-redirect)",
+        "Hari 5: Integrasi Tracking & Server CAPI Anti-Bocor",
+        "Hari 6: Launching & Pembacaan Data Metrik Awal (Evaluasi checkout rate)",
+        "Hari 7: Scale-Up & Optimasi Margin Bersih (Database repeat order gratis)"
+      ],
+      comparison_rows: [
+        {
+          id: "c1",
+          feature: "Alur Closing Pembeli",
+          others: "Admin harus balas chat manual satu per satu, cek mutasi bank & hitung ongkir manual.",
+          us: "Otomasi penuh via Dynamic QRIS & auto-ongkir real-time, closing lunas dalam hitungan detik."
+        },
+        {
+          id: "c2",
+          feature: "Kualitas Lead Iklan",
+          others: "Banyak penanya iseng 'P' atau ghosting saat diminta transfer ke rekening.",
+          us: "Algoritma Meta Ads teroptimasi untuk calon pembeli serius berdaya beli tinggi."
+        },
+        {
+          id: "c3",
+          feature: "Akurasi Tracking CAPI",
+          others: "Pixel buta & data konversi hilang akibat update privasi browser / iOS.",
+          us: "100% Server-side CAPI terintegrasi anti-bocor dengan deduplikasi resmi."
+        }
+      ],
+      bonus_items: [
+        {
+          id: "b1",
+          title: "🎁 GRATIS Akses Akun SaaS BoonTrack Paket Ads Performance",
+          value: 299000,
+          description: "Akses penuh fitur CAPI server-side, multi-rotator CS, dan Dynamic QRIS 0% MDR."
+        },
+        {
+          id: "b2",
+          title: "🎁 Akses Grup Diskusi & Pendampingan Praktik bersama Kang Sakti",
+          value: 350000,
+          description: "Tanya jawab langsung, bedah campaign iklan, dan sesi troubleshooting teknis intensif."
+        },
+        {
+          id: "b3",
+          title: "🎁 Rekaman Sesi Praktik & Template Copywriting Siap Pakai",
+          value: 150000,
+          description: "Template angle copywriting, hook iklan gambar/video, dan SOP skrip balasan WhatsApp."
+        }
+      ],
+      enable_qris: true,
+      enable_manual_transfer: false,
+      discount_coupon: "",
+      affiliate_commission_rate: 0
     }
   }
 ];
