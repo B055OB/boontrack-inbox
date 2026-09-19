@@ -74,6 +74,7 @@ function SingleProductContent() {
   const tenant = (params?.tenant as string) || '';
   const slug = (params?.slug as string) || '';
   const [tenantCategory, setTenantCategory] = useState<string>('');
+  const [tenantData, setTenantData] = useState<any>(null);
 
   // Resolusi Produk & Konfigurasi Dinamis dari Dasbor & Supabase
   const [resolvedData, setResolvedData] = useState<{ product: ProductItem; config: SinglePageConfig }>(() => 
@@ -96,7 +97,7 @@ function SingleProductContent() {
         const [tenantRes, sqlProdRes, settingsRes] = await Promise.all([
           supabase
             .from("tenants")
-            .select("id, metadata, category")
+            .select("*")
             .eq("slug", tenant)
             .maybeSingle(),
           supabase
@@ -114,6 +115,10 @@ function SingleProductContent() {
         const tenantRow = tenantRes.data;
         const sqlProd = sqlProdRes.data;
         const adsTrackingCfg = settingsRes.data?.ads_tracking_config;
+
+        if (tenantRow && isMounted) {
+          setTenantData(tenantRow);
+        }
 
         if (tenantRow?.category) {
           setTenantCategory(tenantRow.category);
@@ -291,8 +296,28 @@ function SingleProductContent() {
   const [buyerPhone, setBuyerPhone] = useState('');
   const [buyerEmail, setBuyerEmail] = useState('');
 
+  // Deteksi ketersediaan QRIS toko secara fleksibel (URL gambar QRIS, payload EMVCo, atau status aktif)
+  const hasQris = Boolean(
+    (tenantData as any)?.qris_image_url ||
+    (tenantData as any)?.qris_url ||
+    (tenantData as any)?.qris_image ||
+    (tenantData as any)?.qris_content ||
+    tenantData?.metadata?.qris_image_url ||
+    tenantData?.metadata?.qris_url ||
+    tenantData?.metadata?.qris_image ||
+    tenantData?.metadata?.qris?.static_qr ||
+    tenantData?.metadata?.qris_content ||
+    tenantData?.metadata?.raw_qris_string ||
+    tenantData?.metadata?.payment_config?.raw_qris_string ||
+    tenantData?.metadata?.payment_config?.qris_image_url ||
+    tenantData?.metadata?.payment_settings?.qris ||
+    (tenantData?.is_qris_active && ((tenantData as any)?.qris_image_url || tenantData?.metadata?.qris_image_url)) ||
+    (tenantData?.metadata?.is_qris_active && ((tenantData as any)?.qris_image_url || tenantData?.metadata?.qris_image_url)) ||
+    config.enable_qris
+  );
+
   // Default metode pembayaran: QRIS Instan aktif utama
-  const allowQris = config.enable_qris ?? true;
+  const allowQris = (config.enable_qris ?? true) && (tenantData ? hasQris : true);
   const allowManual = config.enable_manual_transfer ?? false;
 
   const [paymentMethod, setPaymentMethod] = useState<'qris' | 'manual_transfer'>('qris');

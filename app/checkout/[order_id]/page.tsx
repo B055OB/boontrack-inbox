@@ -348,9 +348,25 @@ export default function CheckoutPage({ params }: Props) {
     tenant?.metadata?.raw_qris_string ||
     tenant?.metadata?.static_qris_payload ||
     '';
+
+  const fallbackQrisImage =
+    tenant?.qris_image_url ||
+    tenant?.qris_url ||
+    tenant?.qris_image ||
+    tenant?.metadata?.qris_image_url ||
+    tenant?.metadata?.qris_url ||
+    tenant?.metadata?.qris_image ||
+    tenant?.metadata?.payment_settings?.qris ||
+    tenant?.metadata?.payment_config?.qris_image_url ||
+    tenant?.metadata?.payment_config?.manual_config?.qris_image_url ||
+    '';
+
   const tenantSlug = (order?.tenant_slug || order?.tenant_id || '').toLowerCase();
-  // Dynamic QRIS: pastikan selalu dinamis dengan format 010212, Tag 54 nominal presisi, dan CRC16 terhitung ulang
-  const candidateQris = order?.qr_string || fallbackQrisString;
+  const orderQrImage = order?.qr_code_url || (order?.qr_string && (order.qr_string.startsWith('http://') || order.qr_string.startsWith('https://')) ? order.qr_string : '');
+  const candidateQrImageUrl = orderQrImage || fallbackQrisImage;
+
+  // Dynamic QRIS: pastikan selalu dinamis jika ada payload string EMVCo (000201...)
+  const candidateQris = (order?.qr_string && order.qr_string.startsWith('000201')) ? order.qr_string : fallbackQrisString;
   const rawQrisValue = candidateQris ? generateDynamicQRIS(candidateQris, grossAmount) : '';
   const targetWaNumber =
     tenant?.metadata?.whatsapp_number ||
@@ -649,17 +665,8 @@ export default function CheckoutPage({ params }: Props) {
                 </div>
               )}
             </div>
-          ) : !rawQrisValue ? (
-            /* Error banner jika QRIS toko belum dikonfigurasi */
-            <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-5 text-center space-y-2">
-              <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
-              <h3 className="font-bold text-amber-200 text-sm">Metode Pembayaran Belum Siap</h3>
-              <p className="text-xs text-amber-300/80 leading-relaxed">
-                Metode pembayaran QRIS toko belum dikonfigurasi. Silakan hubungi pemilik toko.
-              </p>
-            </div>
-          ) : (
-            /* QR Code Container (QRIS Standar Nasional) */
+          ) : rawQrisValue ? (
+            /* QR Code Container (QRIS Standar Nasional SVG Dinamis) */
             <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center shadow-inner">
               <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
                 <QRCodeSVG
@@ -673,6 +680,31 @@ export default function CheckoutPage({ params }: Props) {
                 QRIS STANDAR PEMBAYARAN NASIONAL
               </div>
               <p className="text-[10px] text-slate-500 text-center">BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay</p>
+            </div>
+          ) : candidateQrImageUrl ? (
+            /* Gambar QRIS Toko Resmi (Fallback dari Upload Dashboard) */
+            <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center shadow-inner">
+              <div className="p-2.5 bg-white rounded-xl flex items-center justify-center max-w-[260px]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={candidateQrImageUrl}
+                  alt="QRIS Toko Resmi"
+                  className="w-full h-auto max-h-[280px] object-contain rounded-lg"
+                />
+              </div>
+              <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
+                QRIS TOKO RESMI
+              </div>
+              <p className="text-[10px] text-slate-500 text-center">Scan via BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay</p>
+            </div>
+          ) : (
+            /* Error banner jika QRIS toko belum dikonfigurasi */
+            <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-5 text-center space-y-2">
+              <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+              <h3 className="font-bold text-amber-200 text-sm">Metode Pembayaran Belum Siap</h3>
+              <p className="text-xs text-amber-300/80 leading-relaxed">
+                Metode pembayaran QRIS toko belum dikonfigurasi. Silakan hubungi pemilik toko.
+              </p>
             </div>
           )
         )}

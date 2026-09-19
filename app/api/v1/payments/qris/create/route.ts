@@ -144,6 +144,21 @@ export async function POST(req: NextRequest) {
 
         if (tenantStaticQris) {
           qrString = generateDynamicQRIS(tenantStaticQris, numAmount);
+        } else {
+          const tenantQrisImageUrl =
+            (tenantData as any)?.qris_image_url ||
+            (tenantData as any)?.qris_url ||
+            (tenantData as any)?.qris_image ||
+            tenantData?.metadata?.qris_image_url ||
+            tenantData?.metadata?.qris_url ||
+            tenantData?.metadata?.qris_image ||
+            tenantData?.metadata?.payment_settings?.qris ||
+            pcfg?.qris_image_url ||
+            pcfg?.manual_config?.qris_image_url ||
+            '';
+          if (tenantQrisImageUrl) {
+            qrString = tenantQrisImageUrl;
+          }
         }
       }
     } catch (dbErr) {
@@ -160,7 +175,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+    const qrCodeUrl = qrString.startsWith('000201')
+      ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`
+      : qrString;
 
     return NextResponse.json({
       success: true,

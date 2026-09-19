@@ -225,6 +225,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     if (!qrString && !qrCodeUrl) {
       // Coba ambil konfigurasi QRIS merchant langsung dari Supabase
       let tenantStaticQris = "";
+      let tenantQrisImageUrl = "";
       try {
         const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
         const tIdentifier = (payload.tenantSlug || "").trim();
@@ -251,20 +252,39 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
           tenantData?.metadata?.raw_qris_string ||
           tenantData?.metadata?.static_qris_payload ||
           "";
+        tenantQrisImageUrl =
+          (tenantData as any)?.qris_image_url ||
+          (tenantData as any)?.qris_url ||
+          (tenantData as any)?.qris_image ||
+          tenantData?.metadata?.qris_image_url ||
+          tenantData?.metadata?.qris_url ||
+          tenantData?.metadata?.qris_image ||
+          tenantData?.metadata?.payment_settings?.qris ||
+          pcfg?.qris_image_url ||
+          pcfg?.manual_config?.qris_image_url ||
+          "";
       } catch (tErr) {
         console.warn("[Checkout Service] Failed to fetch tenant QRIS:", tErr);
       }
 
-      if (!tenantStaticQris) {
+      if (tenantStaticQris) {
+        qrString = generateDynamicQRIS(tenantStaticQris, grossAmount);
+        qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+      } else if (tenantQrisImageUrl) {
+        // Fallback otomatis: jika tenant mengunggah gambar QRIS statis toko (0% MDR)
+        qrString = tenantQrisImageUrl;
+        qrCodeUrl = tenantQrisImageUrl;
+      } else {
         throw new Error("Metode pembayaran QRIS toko belum dikonfigurasi. Silakan hubungi pemilik toko.");
       }
-
-      qrString = generateDynamicQRIS(tenantStaticQris, grossAmount);
-      qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
     } else if (qrString) {
-      // Pastikan string selalu dinamis (010212) dan nominal terkunci dengan CRC16 valid
-      qrString = generateDynamicQRIS(qrString, grossAmount);
-      qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+      if (qrString.startsWith("000201")) {
+        // Pastikan string selalu dinamis (010212) dan nominal terkunci dengan CRC16 valid
+        qrString = generateDynamicQRIS(qrString, grossAmount);
+        qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
+      } else if (!qrCodeUrl) {
+        qrCodeUrl = qrString;
+      }
     }
 
     // Persist QR payload to local storage and DB

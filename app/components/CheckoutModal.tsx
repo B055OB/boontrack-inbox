@@ -55,6 +55,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     qr_string?: string;
     qrString?: string;
     qrCodeUrl?: string;
+    qr_code_url?: string;
     paymentMethod?: 'qris' | 'manual_transfer';
   } | null>(null);
   const qrData = paymentData;
@@ -69,6 +70,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [tenantPhone, setTenantPhone] = useState<string>("");
   const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
   const [tenantStaticQris, setTenantStaticQris] = useState<string>("");
+  const [tenantQrisImageUrl, setTenantQrisImageUrl] = useState<string>("");
 
   // Resolver Context Fulfillment Digital vs Fisik
   const rawProductType = (product?.product_type || product?.type || (product?.category === 'fisik' || product?.category === 'physical' ? 'physical' : 'digital')).toLowerCase();
@@ -194,6 +196,21 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 '';
               if (staticQris) {
                 setTenantStaticQris(staticQris);
+              }
+
+              const qrisImg =
+                (data as any)?.qris_image_url ||
+                (data as any)?.qris_url ||
+                (data as any)?.qris_image ||
+                data?.metadata?.qris_image_url ||
+                data?.metadata?.qris_url ||
+                data?.metadata?.qris_image ||
+                data?.metadata?.payment_settings?.qris ||
+                data?.metadata?.payment_config?.qris_image_url ||
+                data?.metadata?.payment_config?.manual_config?.qris_image_url ||
+                '';
+              if (qrisImg) {
+                setTenantQrisImageUrl(qrisImg);
               }
             }
           }
@@ -494,8 +511,17 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
             </div>
 
             {paymentData.paymentMethod === 'qris' && (() => {
-              const candidateQris = paymentData.qr_string || paymentData.qrString || tenantStaticQris || "";
-              if (!candidateQris) {
+              const candidateQris = (paymentData.qr_string?.startsWith('000201') || paymentData.qrString?.startsWith('000201'))
+                ? (paymentData.qr_string || paymentData.qrString)
+                : tenantStaticQris;
+              const candidateQrImage =
+                paymentData.qrCodeUrl ||
+                paymentData.qr_code_url ||
+                (paymentData.qr_string && (paymentData.qr_string.startsWith('http://') || paymentData.qr_string.startsWith('https://')) ? paymentData.qr_string : '') ||
+                tenantQrisImageUrl ||
+                '';
+
+              if (!candidateQris && !candidateQrImage) {
                 return (
                   <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-4 text-center space-y-2 my-3">
                     <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
@@ -505,34 +531,57 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                   </div>
                 );
               }
-              const qrisValue = generateDynamicQRIS(candidateQris, totalAmount);
 
               const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222');
               const waConfirmUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(
                 `Halo Admin, saya ingin konfirmasi pembayaran untuk Order ID: ${paymentData.orderId}\nProduk: ${product.title}\nNominal: Rp ${totalAmount.toLocaleString('id-ID')}`
               )}`;
 
+              const qrContainer = candidateQris ? (
+                <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
+                  <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
+                    <QRCodeSVG
+                      value={generateDynamicQRIS(candidateQris, totalAmount)}
+                      size={220}
+                      level="M"
+                      includeMargin={true}
+                    />
+                  </div>
+                  <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
+                    QRIS STANDAR PEMBAYARAN NASIONAL
+                  </div>
+                  <p className="text-[10px] text-slate-500 text-center">
+                    BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
+                  </p>
+                  <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
+                    Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
+                  <div className="p-2.5 bg-white rounded-xl flex items-center justify-center max-w-[240px]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={candidateQrImage}
+                      alt="QRIS Toko Resmi"
+                      className="w-full h-auto max-h-[260px] object-contain rounded-lg"
+                    />
+                  </div>
+                  <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
+                    QRIS TOKO RESMI
+                  </div>
+                  <p className="text-[10px] text-slate-500 text-center">
+                    Scan via BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
+                  </p>
+                  <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
+                    Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
+                  </p>
+                </div>
+              );
+
               return (
                 <div className="space-y-3">
-                  <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
-                    <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
-                      <QRCodeSVG
-                        value={qrisValue}
-                        size={220}
-                        level="M"
-                        includeMargin={true}
-                      />
-                    </div>
-                    <div className="text-slate-800 font-bold text-center pt-2 text-xs tracking-wide">
-                      QRIS STANDAR PEMBAYARAN NASIONAL
-                    </div>
-                    <p className="text-[10px] text-slate-500 text-center">
-                      BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
-                    </p>
-                    <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
-                      Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
-                    </p>
-                  </div>
+                  {qrContainer}
 
                   {/* Fallback Rekening & Bantuan Transfer Manual jika QRIS berkendala */}
                   <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 text-left text-xs">

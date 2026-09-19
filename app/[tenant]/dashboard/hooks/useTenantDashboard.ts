@@ -387,6 +387,19 @@ export function useTenantDashboard() {
               ...(tenantRow.metadata || {}),
               qris_image_url: publicUrl,
               qris_url: publicUrl,
+              qris_image: publicUrl,
+              is_qris_active: true,
+              qris_enabled: true,
+              payment_settings: {
+                ...(tenantRow.metadata?.payment_settings || {}),
+                qris: publicUrl,
+                is_qris_active: true,
+              },
+              payment_config: {
+                ...(tenantRow.metadata?.payment_config || {}),
+                enable_qris: true,
+                qris_image_url: publicUrl,
+              },
             };
             await supabase
               .from('tenants')
@@ -403,7 +416,13 @@ export function useTenantDashboard() {
         await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ qris_image_url: publicUrl }),
+          body: JSON.stringify({
+            qris_image_url: publicUrl,
+            qris_url: publicUrl,
+            qris_image: publicUrl,
+            is_qris_active: true,
+            qris_enabled: true,
+          }),
         });
       } catch (settingsErr) {
         console.warn('Gagal sync qris_image_url via settings route:', settingsErr);

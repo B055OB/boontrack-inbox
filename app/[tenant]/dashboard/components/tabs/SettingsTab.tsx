@@ -148,7 +148,23 @@ export default function SettingsTab({
                 selected_courier: selectedCourier,
               },
               ...(storeLogoUrl ? { logo_url: storeLogoUrl, avatar_url: storeLogoUrl, store_logo_url: storeLogoUrl } : {}),
-              ...(storeQrisUrl ? { qris_image_url: storeQrisUrl, qris_url: storeQrisUrl } : {}),
+              ...(storeQrisUrl ? {
+                qris_image_url: storeQrisUrl,
+                qris_url: storeQrisUrl,
+                qris_image: storeQrisUrl,
+                is_qris_active: true,
+                qris_enabled: true,
+                payment_settings: {
+                  ...(tenantRow.metadata?.payment_settings || {}),
+                  qris: storeQrisUrl,
+                  is_qris_active: true,
+                },
+                payment_config: {
+                  ...(tenantRow.metadata?.payment_config || {}),
+                  enable_qris: true,
+                  qris_image_url: storeQrisUrl,
+                },
+              } : {}),
             };
 
             const { error: sbUpdateErr } = await supabase
@@ -179,6 +195,10 @@ export default function SettingsTab({
           whatsapp: storeWhatsapp,
           whatsapp_number: storeWhatsapp,
           qris_image_url: storeQrisUrl || undefined,
+          qris_url: storeQrisUrl || undefined,
+          qris_image: storeQrisUrl || undefined,
+          is_qris_active: storeQrisUrl ? true : undefined,
+          qris_enabled: storeQrisUrl ? true : undefined,
           logo_url: storeLogoUrl || undefined,
           basic_shipping: {
             origin_city: originCity,
