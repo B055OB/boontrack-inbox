@@ -103,6 +103,7 @@ export function useTenantDashboard() {
   // Reverse Trial Days Left & End Date
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
+  const [tenantMetaOmzet, setTenantMetaOmzet] = useState<number>(0);
 
   // Upsell Modal State for Locked Features
   const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false);
@@ -762,6 +763,9 @@ export function useTenantDashboard() {
           if (s.qris_image_url) setStoreQrisUrl(s.qris_image_url);
           if (s.logo_url) setStoreLogoUrl(s.logo_url);
           if (s.bio) setStoreBio(s.bio);
+          if (s.metadata?.total_omzet || s.total_omzet) {
+            setTenantMetaOmzet(Number(s.metadata?.total_omzet || s.total_omzet || 0));
+          }
           const aiK = s.ai_knowledge || s.persona || {};
           const loadedStrategy = s.bot_strategy || aiK.bot_strategy || 'trust_builder';
           if (isMounted) {
@@ -834,7 +838,7 @@ export function useTenantDashboard() {
     if (!tenantSlug) return;
     const fetchTransactions = async () => {
       try {
-        const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}`).catch(() => null);
+        const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}&limit=3500`).catch(() => null);
         if (res && res.ok) {
           const json = await res.json();
           const list = json.orders || json.data || [];
@@ -847,7 +851,7 @@ export function useTenantDashboard() {
                 id: order.id || order.invoice_no,
                 date: new Date(order.created_at || Date.now()).toLocaleDateString('id-ID'),
                 description: `Pesanan ${order.invoice_no || ''} - ${order.customer_name || 'Customer'}`,
-                amount: Number(order.total_amount || order.total_price || 0),
+                amount: Number(order.gross_amount || order.total_amount || order.total_price || 0),
                 status: isPaid ? 'PAID' : 'PENDING',
                 type: 'INCOME',
               };
@@ -862,9 +866,10 @@ export function useTenantDashboard() {
     fetchTransactions();
   }, [tenantSlug]);
 
-  const totalOmzet = transactions
+  const computedOmzet = transactions
     .filter((t: any) => t.status === 'PAID')
     .reduce((acc: number, curr: any) => acc + curr.amount, 0);
+  const totalOmzet = tenantMetaOmzet > 0 ? tenantMetaOmzet : computedOmzet;
   const readyBalance = totalOmzet;
 
   // 5. Products Handlers

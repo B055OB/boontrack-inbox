@@ -56,16 +56,35 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    let query = supabase.from('orders').select('*');
-    if (tenantSlug) {
-      query = query.eq('tenant_slug', tenantSlug);
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 100, 5000) : 3500;
+
+    let orders: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    let fetchError: any = null;
+
+    while (orders.length < limit) {
+      const fetchSize = Math.min(batchSize, limit - orders.length);
+      let query = supabase.from('orders').select('*');
+      if (tenantSlug) {
+        query = query.eq('tenant_slug', tenantSlug);
+      }
+      const { data: chunk, error } = await query
+        .order('created_at', { ascending: false })
+        .range(from, from + fetchSize - 1);
+
+      if (error) {
+        fetchError = error;
+        break;
+      }
+      if (!chunk || chunk.length === 0) break;
+      orders = orders.concat(chunk);
+      if (chunk.length < fetchSize) break;
+      from += fetchSize;
     }
 
-    const { data: orders, error } = await query
-      .order('created_at', { ascending: false })
-      .limit(100);
-
-    if (error) {
+    if (fetchError && orders.length === 0) {
       // Coba fallback ke tabel product_orders jika tabel orders berbeda skema
       const { data: productOrders } = await supabase
         .from('product_orders')

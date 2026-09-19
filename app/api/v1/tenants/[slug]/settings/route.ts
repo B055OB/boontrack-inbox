@@ -154,6 +154,7 @@ export async function GET(
         theme: metadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
         microsite: metadata.microsite || { buttons: [] },
         rotator: metadata.rotator || null,
+        total_omzet: metadata.total_omzet || null,
       },
     });
   } catch (err: unknown) {
