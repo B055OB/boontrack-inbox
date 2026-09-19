@@ -23,6 +23,20 @@ export async function GET(req: NextRequest) {
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 100, 5000) : 3500;
 
+    let targetSlug = tenantSlug || tenantParam.trim();
+    // Jika tenantParam berbentuk UUID, selesaikan ke tenant_slug dari tabel tenants
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantParam);
+    if (isUuid) {
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('slug')
+        .eq('id', tenantParam)
+        .maybeSingle();
+      if (tenantRow?.slug) {
+        targetSlug = tenantRow.slug;
+      }
+    }
+
     let orders: any[] = [];
     let from = 0;
     const batchSize = 1000;
@@ -32,12 +46,8 @@ export async function GET(req: NextRequest) {
       const fetchSize = Math.min(batchSize, limit - orders.length);
       let query = supabase.from('orders').select('*');
 
-      if (tenantParam) {
-        if (tenantSlug && tenantSlug !== tenantParam) {
-          query = query.or(`tenant_slug.eq.${tenantParam},tenant_id.eq.${tenantParam},tenant_slug.eq.${tenantSlug}`);
-        } else {
-          query = query.or(`tenant_slug.eq.${tenantParam},tenant_id.eq.${tenantParam}`);
-        }
+      if (targetSlug) {
+        query = query.eq('tenant_slug', targetSlug);
       }
 
       const { data: chunk, error } = await query

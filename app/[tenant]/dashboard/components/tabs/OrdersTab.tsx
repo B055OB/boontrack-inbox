@@ -73,7 +73,7 @@ export default function OrdersTab({
     const raw = hasPropOrders ? propOrders : internalOrders;
     return raw.map((o: any) => ({
       id: String(o.id || o.invoice_no),
-      invoice_no: o.invoice_no || String(o.id || '').slice(0, 10),
+      invoice_no: o.invoice_no || o.invoice_number || String(o.id || ''),
       customer_name: o.customer_name || 'Pelanggan Toko',
       customer_phone: o.customer_phone || '',
       customer_email: o.customer_email || '',
@@ -115,7 +115,7 @@ export default function OrdersTab({
         const rawList = Array.isArray(data) ? data : (data.orders || data.data || []);
         const mappedList: OrderItem[] = rawList.map((o: any) => ({
           id: String(o.id || o.invoice_no),
-          invoice_no: o.invoice_no || String(o.id || '').slice(0, 10),
+          invoice_no: o.invoice_no || o.invoice_number || String(o.id || ''),
           customer_name: o.customer_name || 'Pelanggan Toko',
           customer_phone: o.customer_phone || '',
           customer_email: o.customer_email || '',

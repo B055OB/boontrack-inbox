@@ -17,23 +17,18 @@ export async function GET(
       return NextResponse.json({ success: true, orders: [] });
     }
 
-    let tenantId = '';
-    if (slug) {
+    let targetSlug = slug;
+    // Jika slug berbentuk UUID, selesaikan ke tenant_slug dari tabel tenants
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
+    if (isUuid) {
       const { data: tenantRow } = await supabase
         .from('tenants')
-        .select('id, slug')
-        .eq('slug', slug)
+        .select('slug')
+        .eq('id', slug)
         .maybeSingle();
-      if (tenantRow) {
-        tenantId = tenantRow.id;
+      if (tenantRow?.slug) {
+        targetSlug = tenantRow.slug;
       }
-    }
-
-    let queryFilter = '';
-    if (tenantId && slug) {
-      queryFilter = `tenant_slug.eq.${slug},tenant_id.eq.${tenantId},tenant_id.eq.${slug}`;
-    } else if (slug) {
-      queryFilter = `tenant_slug.eq.${slug},tenant_id.eq.${slug}`;
     }
 
     const { searchParams } = new URL(_req.url);
@@ -48,8 +43,8 @@ export async function GET(
     while (orders.length < limit) {
       const fetchSize = Math.min(batchSize, limit - orders.length);
       let query = supabase.from('orders').select('*');
-      if (queryFilter) {
-        query = query.or(queryFilter);
+      if (targetSlug) {
+        query = query.eq('tenant_slug', targetSlug);
       }
       const { data: chunk, error } = await query
         .order('created_at', { ascending: false })
