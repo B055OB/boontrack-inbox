@@ -1,5 +1,7 @@
 'use client';
 
+// Hook: useTenantDashboard - Dynamic synchronization for orders, transactions, and WhatsApp inbox sessions
+
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getBackendApiUrl } from '@/lib/api-config';

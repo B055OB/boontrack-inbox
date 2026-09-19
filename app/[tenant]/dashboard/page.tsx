@@ -1,5 +1,8 @@
 'use client';
 
+// Dashboard Page: Dynamic binding for orders, inbox conversations, and financial reports
+// Synchronized for multi-tenant architecture (100% dynamic, zero hardcode)
+
 import React from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
