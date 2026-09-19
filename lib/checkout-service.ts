@@ -229,15 +229,26 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       // Coba ambil konfigurasi QRIS merchant langsung dari Supabase
       let tenantStaticQris = "";
       try {
-        const { data: tenantData } = await supabase
-          .from("tenants")
-          .select("metadata")
-          .or(`slug.eq.${payload.tenantSlug},id.eq.${payload.tenantSlug}`)
-          .maybeSingle();
+        const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+        const tIdentifier = (payload.tenantSlug || "").trim();
+        let tQuery = supabase.from("tenants").select("*");
+        if (isUuid(tIdentifier)) {
+          tQuery = tQuery.or(`slug.eq.${tIdentifier},id.eq.${tIdentifier}`);
+        } else {
+          tQuery = tQuery.eq("slug", tIdentifier);
+        }
+        const { data: tenantData } = await tQuery.maybeSingle();
 
         const pcfg = tenantData?.metadata?.payment_config;
         tenantStaticQris =
+          (tenantData as any)?.qris_content ||
+          (tenantData as any)?.qris_payload ||
+          (tenantData as any)?.qris_static_string ||
+          tenantData?.metadata?.qris_content ||
+          tenantData?.metadata?.qris_payload ||
+          tenantData?.metadata?.qris_static_string ||
           tenantData?.metadata?.qris?.static_qr ||
+          pcfg?.qris_content ||
           pcfg?.raw_qris_string ||
           pcfg?.static_qris_payload ||
           tenantData?.metadata?.raw_qris_string ||

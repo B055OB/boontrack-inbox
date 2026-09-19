@@ -22,7 +22,7 @@ async function updateBuzzerUkmAndCtwa() {
     process.exit(1);
   }
 
-  // Update QRIS config in metadata
+  // Update QRIS config in metadata across all known schemas and keys
   const metadata = tenant.metadata || {};
   metadata.qris = {
     static_qr: BUZZER_UKM_STATIC_QR,
@@ -30,11 +30,17 @@ async function updateBuzzerUkmAndCtwa() {
     merchant_name: BUZZER_UKM_NAME,
     status: 'active'
   };
+  metadata.qris_content = BUZZER_UKM_STATIC_QR;
+  metadata.qris_payload = BUZZER_UKM_STATIC_QR;
+  metadata.qris_static_string = BUZZER_UKM_STATIC_QR;
   metadata.raw_qris_string = BUZZER_UKM_STATIC_QR;
   metadata.static_qris_payload = BUZZER_UKM_STATIC_QR;
   if (!metadata.payment_config) {
     metadata.payment_config = {};
   }
+  metadata.payment_config.qris_content = BUZZER_UKM_STATIC_QR;
+  metadata.payment_config.qris_payload = BUZZER_UKM_STATIC_QR;
+  metadata.payment_config.qris_static_string = BUZZER_UKM_STATIC_QR;
   metadata.payment_config.raw_qris_string = BUZZER_UKM_STATIC_QR;
   metadata.payment_config.static_qris_payload = BUZZER_UKM_STATIC_QR;
   metadata.payment_config.enable_qris = true;

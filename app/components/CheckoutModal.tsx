@@ -68,6 +68,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [tenantPhone, setTenantPhone] = useState<string>("");
   const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
+  const [tenantStaticQris, setTenantStaticQris] = useState<string>("");
 
   // Resolver Context Fulfillment Digital vs Fisik
   const rawProductType = (product?.product_type || product?.type || (product?.category === 'fisik' || product?.category === 'physical' ? 'physical' : 'digital')).toLowerCase();
@@ -175,6 +176,24 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               setBankAccounts(accounts);
               if (accounts.length === 0) {
                 setPaymentMethod('qris');
+              }
+
+              const staticQris =
+                (data as any)?.qris_content ||
+                (data as any)?.qris_payload ||
+                (data as any)?.qris_static_string ||
+                data?.metadata?.qris_content ||
+                data?.metadata?.qris_payload ||
+                data?.metadata?.qris_static_string ||
+                data?.metadata?.qris?.static_qr ||
+                data?.metadata?.payment_config?.qris_content ||
+                data?.metadata?.payment_config?.raw_qris_string ||
+                data?.metadata?.payment_config?.static_qris_payload ||
+                data?.metadata?.raw_qris_string ||
+                data?.metadata?.static_qris_payload ||
+                '';
+              if (staticQris) {
+                setTenantStaticQris(staticQris);
               }
             }
           }
@@ -475,7 +494,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
             </div>
 
             {paymentData.paymentMethod === 'qris' && (() => {
-              const candidateQris = paymentData.qr_string || paymentData.qrString || "";
+              const candidateQris = paymentData.qr_string || paymentData.qrString || tenantStaticQris || "";
               if (!candidateQris) {
                 return (
                   <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-4 text-center space-y-2 my-3">

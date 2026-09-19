@@ -228,13 +228,16 @@ export default function CheckoutPage({ params }: Props) {
 
     async function fetchTenantInfo() {
       try {
+        const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
         const supabase = getSupabase();
         if (supabase && tSlug) {
-          const { data } = await supabase
-            .from('tenants')
-            .select('*')
-            .or(`slug.eq.${tSlug},id.eq.${tSlug}`)
-            .maybeSingle();
+          let tQuery = supabase.from('tenants').select('*');
+          if (isUuid(tSlug)) {
+            tQuery = tQuery.or(`slug.eq.${tSlug},id.eq.${tSlug}`);
+          } else {
+            tQuery = tQuery.eq('slug', tSlug);
+          }
+          const { data } = await tQuery.maybeSingle();
 
           if (data) {
             setTenant(data);
@@ -376,7 +379,14 @@ export default function CheckoutPage({ params }: Props) {
   const isPaidOrder = order?.status === 'PAID' || order?.status === 'COMPLETED' || order?.status === 'SUCCESS' || order?.status === 'SETTLED';
 
   const fallbackQrisString =
+    tenant?.qris_content ||
+    tenant?.qris_payload ||
+    tenant?.qris_static_string ||
+    tenant?.metadata?.qris_content ||
+    tenant?.metadata?.qris_payload ||
+    tenant?.metadata?.qris_static_string ||
     tenant?.metadata?.qris?.static_qr ||
+    tenant?.metadata?.payment_config?.qris_content ||
     tenant?.metadata?.payment_config?.raw_qris_string ||
     tenant?.metadata?.payment_config?.static_qris_payload ||
     tenant?.metadata?.raw_qris_string ||
