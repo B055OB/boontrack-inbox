@@ -315,7 +315,7 @@ function SingleProductContent() {
     }
   }, [product?.meta_pixel_id_override, product?.tiktok_pixel_id_override]);
 
-  const [uniqueCode] = useState(() => Math.floor(100 + Math.random() * 900));
+  const [uniqueCode] = useState(() => Math.floor(1 + Math.random() * 999));
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
@@ -540,10 +540,13 @@ function SingleProductContent() {
 
   // 3. Biaya Admin = Rp 0 & Kode Unik Verifikasi
   const adminFee = 0;
-  const currentUniqueCode = paymentMethod === 'manual_transfer' ? uniqueCode : 0;
+  const isQris = paymentMethod === 'qris';
+  const currentUniqueCode = uniqueCode;
 
-  // 4. Total Bayar Presisi
-  const totalAmount = netProductPrice + netShippingCost + currentUniqueCode;
+  // 4. Total Bayar Presisi (QRIS: Potongan acak 3 digit 1-999; Manual: Tambahan kode unik)
+  const totalAmount = isQris
+    ? Math.max(1000, netProductPrice + netShippingCost - currentUniqueCode)
+    : netProductPrice + netShippingCost + currentUniqueCode;
 
   // 5. Komisi Affiliate (Fitur affiliate produk retail toko dinonaktifkan sementara: murni direct store ke merchant)
   const commissionRate = 0;
@@ -1185,12 +1188,17 @@ function SingleProductContent() {
           </span>
         </div>
 
-        {paymentMethod === 'manual_transfer' && (
+        {paymentMethod === 'qris' && currentUniqueCode > 0 ? (
+          <div className="flex justify-between text-emerald-600 font-medium">
+            <span>Potongan Kode Unik</span>
+            <span className="font-mono font-semibold text-emerald-600">-Rp {currentUniqueCode.toLocaleString('id-ID')}</span>
+          </div>
+        ) : paymentMethod === 'manual_transfer' ? (
           <div className="flex justify-between text-slate-600">
             <span>Kode Unik Verifikasi</span>
             <span className="font-mono font-semibold text-blue-600">+{currentUniqueCode}</span>
           </div>
-        )}
+        ) : null}
 
         <div className="border-t border-slate-200 pt-2 flex justify-between items-baseline font-bold">
           <span className="text-slate-900">Total Pembayaran</span>

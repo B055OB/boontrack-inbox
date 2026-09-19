@@ -63,8 +63,22 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   // Biaya admin Rp0 untuk QRIS maupun Transfer Bank Manual (dana langsung masuk ke seller)
   const adminFee = 0;
-  const uniqueCode = payload.uniqueCode ?? 0;
-  const grossAmount = payload.amount || (netProductPrice + netShippingCost + uniqueCode);
+  // Logika Dynamic QRIS: Potong nominal acak 3 digit ke bawah (1 - 999)
+  // Transfer manual: Tambah nominal unik verifikasi (1 - 999)
+  const uniqueCode = payload.uniqueCode !== undefined && payload.uniqueCode !== null
+    ? payload.uniqueCode
+    : Math.floor(1 + Math.random() * 999);
+
+  let grossAmount = payload.amount;
+  if (!grossAmount) {
+    if (paymentMethod === 'qris') {
+      grossAmount = Math.max(1000, (netProductPrice + netShippingCost) - uniqueCode);
+    } else {
+      grossAmount = netProductPrice + netShippingCost + uniqueCode;
+    }
+  } else if (paymentMethod === 'qris' && payload.amount === (netProductPrice + netShippingCost) && uniqueCode > 0) {
+    grossAmount = Math.max(1000, payload.amount - uniqueCode);
+  }
 
   // Komisi affiliate produk ritel toko dinonaktifkan sementara (transaksi berjalan direct store 100% ke seller)
   const affiliateCommission = payload.affiliateCommission ?? 0;
@@ -223,6 +237,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
         const pcfg = tenantData?.metadata?.payment_config;
         tenantStaticQris =
+          tenantData?.metadata?.qris?.static_qr ||
           pcfg?.raw_qris_string ||
           pcfg?.static_qris_payload ||
           tenantData?.metadata?.raw_qris_string ||
@@ -232,12 +247,11 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         console.warn("[Checkout Service] Failed to fetch tenant QRIS:", tErr);
       }
 
-      const baseQris =
-        tenantStaticQris ||
-        process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
-        "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
+      if (!tenantStaticQris) {
+        throw new Error("Metode pembayaran QRIS toko belum dikonfigurasi. Silakan hubungi pemilik toko.");
+      }
 
-      qrString = generateDynamicQRIS(baseQris, grossAmount);
+      qrString = generateDynamicQRIS(tenantStaticQris, grossAmount);
       qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
     } else if (qrString) {
       // Pastikan string selalu dinamis (010212) dan nominal terkunci dengan CRC16 valid

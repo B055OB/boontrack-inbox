@@ -28,7 +28,7 @@ import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 import { resolveFulfillmentRequirements } from '@/lib/product-catalog';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 
-const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
+
 
 interface Props {
   params: Promise<{ order_id: string }>;
@@ -336,16 +336,34 @@ export default function CheckoutPage({ params }: Props) {
   const seconds = timeLeft % 60;
 
   const isManual = order?.payment_method === 'manual_transfer' || order?.payment_method === 'manual';
-  const grossAmount = Number(order?.gross_amount || order?.total_amount || order?.amount || 99000);
-  const uniqueCode = Number(order?.unique_code || 0);
+  const grossAmount = Number(order?.gross_amount || order?.total_amount || order?.amount || 100000);
+  const rawUniqueCode = Number(order?.unique_code || 0);
   const adminFee = 0;
   const productDiscount = Number(order?.product_discount || order?.discount_amount || 0);
   const voucherCode = order?.voucher_code || order?.coupon_code || '';
-  const basePrice = Number(order?.base_price || (order?.net_product_price ? (order.net_product_price + productDiscount) : grossAmount - uniqueCode));
-  const netProductPrice = Number(order?.net_product_price || Math.max(0, basePrice - productDiscount));
   const shippingCost = Number(order?.shipping_cost || 0);
   const shippingSubsidy = Number(order?.shipping_subsidy || 0);
   const netShippingCost = Number(order?.net_shipping_cost || Math.max(0, shippingCost - shippingSubsidy));
+
+  let basePrice = Number(order?.base_price || 0);
+  if (!basePrice) {
+    if (order?.net_product_price) {
+      basePrice = Number(order.net_product_price) + productDiscount;
+    } else if (isManual) {
+      basePrice = Math.max(0, grossAmount - netShippingCost - rawUniqueCode + productDiscount);
+    } else {
+      basePrice = Math.max(0, grossAmount - netShippingCost + rawUniqueCode + productDiscount);
+    }
+  }
+  if (!basePrice) basePrice = 100000;
+
+  const netProductPrice = Number(order?.net_product_price || Math.max(0, basePrice - productDiscount));
+
+  const uniqueCode = rawUniqueCode > 0
+    ? rawUniqueCode
+    : (!isManual && (basePrice - productDiscount + netShippingCost) > grossAmount
+        ? (basePrice - productDiscount + netShippingCost) - grossAmount
+        : 0);
 
   const rawOrderType =
     order?.product_type ||
@@ -358,15 +376,16 @@ export default function CheckoutPage({ params }: Props) {
   const isPaidOrder = order?.status === 'PAID' || order?.status === 'COMPLETED' || order?.status === 'SUCCESS' || order?.status === 'SETTLED';
 
   const fallbackQrisString =
+    tenant?.metadata?.qris?.static_qr ||
     tenant?.metadata?.payment_config?.raw_qris_string ||
     tenant?.metadata?.payment_config?.static_qris_payload ||
     tenant?.metadata?.raw_qris_string ||
     tenant?.metadata?.static_qris_payload ||
-    STATIC_QRIS;
+    '';
   const tenantSlug = (order?.tenant_slug || order?.tenant_id || '').toLowerCase();
   // Dynamic QRIS: pastikan selalu dinamis dengan format 010212, Tag 54 nominal presisi, dan CRC16 terhitung ulang
   const candidateQris = order?.qr_string || fallbackQrisString;
-  const rawQrisValue = generateDynamicQRIS(candidateQris, grossAmount);
+  const rawQrisValue = candidateQris ? generateDynamicQRIS(candidateQris, grossAmount) : '';
   const targetWaNumber =
     tenant?.metadata?.whatsapp_number ||
     tenant?.metadata?.whatsapp ||
@@ -664,6 +683,15 @@ export default function CheckoutPage({ params }: Props) {
                 </div>
               )}
             </div>
+          ) : !rawQrisValue ? (
+            /* Error banner jika QRIS toko belum dikonfigurasi */
+            <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-5 text-center space-y-2">
+              <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+              <h3 className="font-bold text-amber-200 text-sm">Metode Pembayaran Belum Siap</h3>
+              <p className="text-xs text-amber-300/80 leading-relaxed">
+                Metode pembayaran QRIS toko belum dikonfigurasi. Silakan hubungi pemilik toko.
+              </p>
+            </div>
           ) : (
             /* QR Code Container (QRIS Standar Nasional) */
             <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center shadow-inner">
@@ -723,7 +751,7 @@ export default function CheckoutPage({ params }: Props) {
         {/* Breakdown Rincian Invoice Presisi */}
         <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 space-y-2 text-xs">
           <div className="flex justify-between text-slate-400">
-            <span>Harga Dasar Produk</span>
+            <span>Harga Produk</span>
             <span className="text-slate-200">Rp {basePrice.toLocaleString('id-ID')}</span>
           </div>
 
@@ -768,6 +796,13 @@ export default function CheckoutPage({ params }: Props) {
               Rp 0 (Bebas Biaya Admin)
             </span>
           </div>
+
+          {!isManual && uniqueCode > 0 && (
+            <div className="flex justify-between text-emerald-400 font-medium">
+              <span>Potongan Kode Unik</span>
+              <span className="font-mono font-bold">-Rp {uniqueCode.toLocaleString('id-ID')}</span>
+            </div>
+          )}
 
           {isManual && uniqueCode > 0 && (
             <div className="flex justify-between text-slate-400">

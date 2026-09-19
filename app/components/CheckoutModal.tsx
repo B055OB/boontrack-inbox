@@ -9,7 +9,7 @@ import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
 
-const STATIC_QRIS = process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS || "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
+
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -46,7 +46,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [tenantTTPixel, setTenantTTPixel] = useState<string>("");
 
   const [paymentMethod, setPaymentMethod] = useState<'qris' | 'manual_transfer'>('qris');
-  const [uniqueCode] = useState(() => Math.floor(100 + Math.random() * 900));
+  const [uniqueCode] = useState(() => Math.floor(1 + Math.random() * 999));
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<{
@@ -85,9 +85,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const basePrice = product?.price || 0;
   // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
   const adminFee = 0;
-  const currentUniqueCode = paymentMethod === 'manual_transfer' ? uniqueCode : 0;
+  const isQris = paymentMethod === 'qris';
+  const currentUniqueCode = uniqueCode;
   const currentShippingCost = isPhysical ? shippingCost : 0;
-  const totalAmount = basePrice + adminFee + currentUniqueCode + currentShippingCost;
+  const totalAmount = isQris
+    ? Math.max(1000, basePrice + adminFee + currentShippingCost - currentUniqueCode)
+    : basePrice + adminFee + currentUniqueCode + currentShippingCost;
   const affiliateCommission = 0; // Fitur affiliate produk ritel dinonaktifkan sementara (murni direct store)
 
   // LAZY SHIPPING: DILARANG dipicu saat modal pertama kali dimuat.
@@ -472,7 +475,17 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
             </div>
 
             {paymentData.paymentMethod === 'qris' && (() => {
-              const candidateQris = paymentData.qr_string || paymentData.qrString || STATIC_QRIS;
+              const candidateQris = paymentData.qr_string || paymentData.qrString || "";
+              if (!candidateQris) {
+                return (
+                  <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-4 text-center space-y-2 my-3">
+                    <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
+                    <p className="text-xs text-amber-300 font-medium">
+                      Metode pembayaran QRIS toko belum dikonfigurasi. Silakan hubungi pemilik toko.
+                    </p>
+                  </div>
+                );
+              }
               const qrisValue = generateDynamicQRIS(candidateQris, totalAmount);
 
               const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222');
@@ -783,12 +796,17 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                   Rp 0 (Bebas Biaya Admin)
                 </span>
               </div>
-              {paymentMethod === 'manual_transfer' && (
+              {paymentMethod === 'qris' && currentUniqueCode > 0 ? (
+                <div className="flex justify-between text-emerald-400 font-medium">
+                  <span>Potongan Kode Unik</span>
+                  <span className="font-mono text-emerald-400 font-bold">-Rp {currentUniqueCode.toLocaleString("id-ID")}</span>
+                </div>
+              ) : paymentMethod === 'manual_transfer' ? (
                 <div className="flex justify-between">
                   <span>Kode Unik Verifikasi</span>
                   <span className="font-mono text-blue-400">+{currentUniqueCode}</span>
                 </div>
-              )}
+              ) : null}
               <div className="border-t border-slate-800 pt-1.5 flex justify-between font-bold text-white">
                 <span>Total Pembayaran</span>
                 <span className="text-emerald-400 text-sm">Rp {totalAmount.toLocaleString("id-ID")}</span>

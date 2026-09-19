@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
 
         const pcfg = tenantData?.metadata?.payment_config;
         const tenantStaticQris =
+          tenantData?.metadata?.qris?.static_qr ||
           pcfg?.raw_qris_string ||
           pcfg?.static_qris_payload ||
           tenantData?.metadata?.raw_qris_string ||
@@ -139,10 +140,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (!qrString) {
-      const fallbackStatic =
-        process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
-        '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
-      qrString = generateDynamicQRIS(fallbackStatic, numAmount);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Metode pembayaran QRIS toko belum dikonfigurasi. Silakan hubungi pemilik toko.'
+        },
+        { status: 400 }
+      );
     }
 
     const qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
@@ -151,7 +155,7 @@ export async function POST(req: NextRequest) {
       success: true,
       external_id: orderId,
       amount: numAmount,
-      tenant_slug: tenant_slug || 'onlineboost',
+      tenant_slug: tenant_slug || '',
       qr_string: qrString,
       qr_code_url: qrCodeUrl,
       invoice_url: `/checkout/${orderId}`,

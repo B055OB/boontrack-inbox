@@ -535,7 +535,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
     type: "digital",
     product_type: "DIGITAL",
     price: 500000,
-    promo_price: 99000,
+    promo_price: 100000,
     stock: 50,
     is_unlimited: false,
     variants: "Batch Intensif • 50 Seat Kuota Terbatas",
@@ -548,7 +548,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
     image: "https://assets.boontrack.com/products/ctwa_mastery_banner.jpg",
     image_url: "https://assets.boontrack.com/products/ctwa_mastery_banner.jpg",
     sku: "CTWA-7DAY-001",
-    cta_label: "Daftar Kelas Sekarang - Rp 99.000",
+    cta_label: "Daftar Kelas Sekarang - Rp 100.000",
     checkout_type: "internal",
     fulfillment_metadata: {
       delivery_type: "TELEGRAM_GROUP",
@@ -580,7 +580,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
       headline: "Capek Pasang Iklan CTWA Tapi Ujung-ujungnya Boncos & Admin Kewalahan?",
       subheadline: "Pelajari metode baru 7-Day Sprint CTWA Mastery bersama Kang Sakti: Bongkar rahasia alur iklan Click-to-WhatsApp langsung closing otomatis via Dynamic QRIS & auto-ongkir tanpa admin repot.",
       banner_url: "https://assets.boontrack.com/products/ctwa_mastery_banner.jpg",
-      cta_label: "Daftar Kelas Sekarang - Rp 99.000",
+      cta_label: "Daftar Kelas Sekarang - Rp 100.000",
       problem_title: "Kenapa Iklan WA Sering Boncos?",
       pain_points: [
         "❌ Chat menumpuk hanya tanya \"ongkir ke kota X berapa?\".",
