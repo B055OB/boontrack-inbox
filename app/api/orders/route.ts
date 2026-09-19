@@ -18,85 +18,82 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
-      return NextResponse.json({ success: true, orders: [] });
+      return NextResponse.json({ success: true, orders: [], count: 0 });
     }
 
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 50, 500) : 100;
 
     let targetSlug = tenantSlug || tenantParam.trim();
-    // Jika tenantParam berbentuk UUID, selesaikan ke tenant_slug dari tabel tenants
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantParam);
+    let tenantUUID: string | null = null;
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetSlug);
+
     if (isUuid) {
+      tenantUUID = targetSlug;
       const { data: tenantRow } = await supabase
         .from('tenants')
         .select('slug')
-        .eq('id', tenantParam)
+        .eq('id', tenantUUID)
         .maybeSingle();
-      if (tenantRow?.slug) {
-        targetSlug = tenantRow.slug;
-      }
+      if (tenantRow?.slug) targetSlug = tenantRow.slug;
+    } else if (targetSlug) {
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('slug', targetSlug)
+        .maybeSingle();
+      if (tenantRow?.id) tenantUUID = tenantRow.id;
     }
 
-    // 1. QUERY UTAMA: Tabel `product_orders` (transaksi riil checkout)
+    // 1. QUERY UTAMA: product_orders (transaksi riil checkout)
     let rawProductOrders: any[] = [];
     try {
-      // Cek variasi filter tenant_id
-      const { data: poByTenantId, error: errId } = await supabase
-        .from('product_orders')
-        .select('*')
-        .eq('tenant_id', targetSlug)
+      let poQuery = supabase.from('product_orders').select('*');
+
+      if (tenantUUID) {
+        poQuery = poQuery.eq('tenant_id', tenantUUID);
+      } else if (targetSlug) {
+        poQuery = poQuery.eq('tenant_slug', targetSlug);
+      }
+
+      const { data: poData, error: poErr } = await poQuery
         .order('created_at', { ascending: false })
         .limit(limit);
 
-      if (!errId && poByTenantId && poByTenantId.length > 0) {
-        rawProductOrders = poByTenantId;
-      } else {
-        // Cek variasi filter tenant_slug
-        const { data: poByTenantSlug, error: errSlug } = await supabase
-          .from('product_orders')
-          .select('*')
-          .eq('tenant_slug', targetSlug)
-          .order('created_at', { ascending: false })
-          .limit(limit);
-
-        if (!errSlug && poByTenantSlug && poByTenantSlug.length > 0) {
-          rawProductOrders = poByTenantSlug;
-        } else {
-          // Jika kolom tenant tidak ada di skema product_orders, ambil data order riil
-          const { data: poAll, error: errAll } = await supabase
-            .from('product_orders')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(limit);
-
-          if (!errAll && poAll && poAll.length > 0) {
-            rawProductOrders = poAll;
-          }
-        }
+      if (!poErr && poData && poData.length > 0) {
+        rawProductOrders = poData;
       }
     } catch (poErr) {
       console.warn('[Orders API] Warning querying product_orders:', poErr);
     }
 
-    // 2. FALLBACK DATABASE RIIL: Tabel `orders` (jika product_orders kosong)
-    if (rawProductOrders.length === 0 && targetSlug) {
-      const { data: ordersData, error: ordersErr } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('tenant_slug', targetSlug)
-        .order('created_at', { ascending: false })
-        .limit(limit);
+    // 2. QUERY CADANGAN: orders riil (hanya jika product_orders kosong dan terfilter tenant)
+    if (rawProductOrders.length === 0) {
+      try {
+        let ordQuery = supabase.from('orders').select('*');
+        if (tenantUUID) {
+          ordQuery = ordQuery.eq('tenant_id', tenantUUID);
+        } else if (targetSlug) {
+          ordQuery = ordQuery.eq('tenant_slug', targetSlug);
+        }
 
-      if (!ordersErr && ordersData) {
-        rawProductOrders = ordersData;
+        const { data: ordersData, error: ordersErr } = await ordQuery
+          .order('created_at', { ascending: false })
+          .limit(limit);
+
+        if (!ordersErr && ordersData && ordersData.length > 0) {
+          // Filter seeder dummy agar tidak menyusup
+          rawProductOrders = ordersData.filter(
+            (o: any) => !String(o.id || o.order_id || '').includes('1789861911189-646')
+          );
+        }
+      } catch (ordErr) {
+        console.warn('[Orders API] Warning querying orders:', ordErr);
       }
     }
 
-    // 3. NORMALISASI KOLOM UI RIIL
-    // Invoice -> order_id
-    // Nominal -> gross_amount / total_amount
-    // Status -> status (PAID / PENDING)
+    // 3. NORMALISASI DATA UNTUK UI
     const normalizedOrders = rawProductOrders.map((o: any) => {
       const orderId = String(o.order_id || o.id || o.invoice_no || '');
       const rawStatus = String(o.status || o.payment_status || 'PENDING').toUpperCase();
@@ -126,7 +123,6 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Urutkan descending berdasarkan created_at / order_id
     normalizedOrders.sort((a, b) => {
       const timeA = new Date(a.created_at).getTime() || 0;
       const timeB = new Date(b.created_at).getTime() || 0;
