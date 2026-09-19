@@ -87,11 +87,6 @@ export interface TeamChatTabProps {
   trialEndsAt?: string | null;
 }
 
-import { BUZZERUKM_INBOX_CONVERSATIONS } from './mockInboxConversations';
-
-// ── DEFAULT MOCK DATA UNTUK PURE PRESENTATION LAYER (28 SESI REALISTIS) ─────────
-const INITIAL_MOCK_CONVERSATIONS: ChatConversation[] = BUZZERUKM_INBOX_CONVERSATIONS;
-
 export default function TeamChatTab({
   tenantSlug,
   conversations: externalConversations,
@@ -122,16 +117,13 @@ export default function TeamChatTab({
 
   const isTrialExpired = effectiveDaysLeft !== null && effectiveDaysLeft <= 0;
 
-  // Local state for presentation layer
+  // Local state for presentation layer (isolated per tenant)
   const [conversationsList, setConversationsList] = useState<ChatConversation[]>(() => {
-    if (externalConversations && externalConversations.length > 0) {
-      return externalConversations;
-    }
-    return INITIAL_MOCK_CONVERSATIONS;
+    return Array.isArray(externalConversations) ? externalConversations : [];
   });
 
   const [selectedConvId, setSelectedConvId] = useState<string>(
-    externalActiveConversationId || externalConversations?.[0]?.id || INITIAL_MOCK_CONVERSATIONS[0].id
+    externalActiveConversationId || externalConversations?.[0]?.id || ''
   );
 
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -139,10 +131,16 @@ export default function TeamChatTab({
   const [localReplyText, setLocalReplyText] = useState('');
   const [displayLimit, setDisplayLimit] = useState(60);
 
-  // Sinkronisasi state lokal jika externalConversations dari parent terisi
+  // Sinkronisasi state lokal jika externalConversations dari parent terisi atau berubah
   useEffect(() => {
-    if (externalConversations && externalConversations.length > 0) {
-      setConversationsList(externalConversations);
+    const list = Array.isArray(externalConversations) ? externalConversations : [];
+    setConversationsList(list);
+    if (list.length > 0) {
+      if (!list.some((c) => c.id === selectedConvId)) {
+        setSelectedConvId(list[0].id);
+      }
+    } else {
+      setSelectedConvId('');
     }
   }, [externalConversations]);
 
@@ -155,7 +153,7 @@ export default function TeamChatTab({
   const [qrisAmount, setQrisAmount] = useState('150000');
   const [isGeneratingQris, setIsGeneratingQris] = useState(false);
   const [markingPaidOrderId, setMarkingPaidOrderId] = useState<string | null>(null);
-  const resolvedTenant = tenantSlug || (typeof window !== 'undefined' ? window.location.pathname.split('/')[1] : 'onlineboost');
+  const resolvedTenant = tenantSlug || (typeof window !== 'undefined' ? window.location.pathname.split('/')[1] : '');
   const [qrisFeedback, setQrisFeedback] = useState<string | null>(null);
 
   // Transfer CS state

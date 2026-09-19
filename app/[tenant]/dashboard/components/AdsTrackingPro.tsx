@@ -79,64 +79,6 @@ const DAILY_TREND_DATA = [
   { day: 'Minggu', clicks: 2750, leads: 385, orders: 139, revenue: 6950000, roas: 7.6 },
 ];
 
-const SAMPLE_RECENT_LEADS: LeadScoreItem[] = [
-  {
-    id: 'lead-1',
-    buyerName: 'Rian Hidayat',
-    phone: '08129844211',
-    utmCampaign: 'fb_scale_winner_produk_v2',
-    platform: 'Meta Ads',
-    score: 95,
-    quality: 'HOT',
-    intentAction: 'Klik Checkout QRIS + Request Diskon WA',
-    timestamp: '2 Menit Lalu',
-  },
-  {
-    id: 'lead-2',
-    buyerName: 'Citra Lestari',
-    phone: '08571290334',
-    utmCampaign: 'ig_retargeting_abandoned_cart',
-    platform: 'Instagram Ads',
-    score: 92,
-    quality: 'HOT',
-    intentAction: 'Menanyakan Ketersediaan Varian & Ongkir',
-    timestamp: '14 Menit Lalu',
-  },
-  {
-    id: 'lead-3',
-    buyerName: 'Fahri Ramadhan',
-    phone: '08139981204',
-    utmCampaign: 'tt_traffic_masterclass_viral',
-    platform: 'TikTok Ads',
-    score: 78,
-    quality: 'WARM',
-    intentAction: 'Melihat Katalog & Tanya Metode Transfer',
-    timestamp: '28 Menit Lalu',
-  },
-  {
-    id: 'lead-4',
-    buyerName: 'Dewi Anggraini',
-    phone: '08781209381',
-    utmCampaign: 'google_search_high_intent',
-    platform: 'Google Ads',
-    score: 72,
-    quality: 'WARM',
-    intentAction: 'Klik CTA Konsultasi Customer Service',
-    timestamp: '1 Jam Lalu',
-  },
-  {
-    id: 'lead-5',
-    buyerName: 'Bambang Santoso',
-    phone: '08219904128',
-    utmCampaign: 'fb_scale_winner_produk_v2',
-    platform: 'Meta Ads',
-    score: 45,
-    quality: 'COLD',
-    intentAction: 'Membuka Halaman Landing Toko (Bounce)',
-    timestamp: '2 Jam Lalu',
-  },
-];
-
 export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: AdsTrackingProProps) {
   const [isEnabled, setIsEnabled] = useState(true);
   const [metaPixelId, setMetaPixelId] = useState('');
@@ -295,9 +237,12 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
                 };
               });
               setRecentLeads(mappedLeads);
+            } else {
+              setRecentLeads([]);
             }
           } catch (leadErr) {
             console.warn('[Ads Tracking Pro] Lead query note:', leadErr);
+            setRecentLeads([]);
           }
         }
       } catch (err) {

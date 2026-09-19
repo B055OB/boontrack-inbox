@@ -22,7 +22,6 @@ import { mapProposalToAiForm } from '@/lib/boonpilotMapper';
 import { sanitizeImageUrl, uploadImageFile } from '@/lib/image-utils';
 import type { InteractiveMenu } from '@/lib/whatsappFormatter';
 import {
-  BUZZERUKM_INBOX_CONVERSATIONS,
   generateConversationsFromOrders,
 } from '../components/tabs/mockInboxConversations';
 
@@ -232,20 +231,20 @@ export function useTenantDashboard() {
   const [waProvider, setWaProvider] = useState<'EVOLUTION' | 'WABA'>('EVOLUTION');
   const [waConnectionMode, setWaConnectionMode] = useState<'SHARED' | 'DEDICATED'>('SHARED');
 
-  // Conversations State
+  // Conversations State (Isolated strictly by tenantSlug)
   const [conversations, setConversations] = useState<ChatConversation[]>(() => {
     if (typeof window !== 'undefined' && tenantSlug) {
       try {
         const saved = localStorage.getItem(`bt_conversations_${tenantSlug}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         }
       } catch (err) {
         console.warn('Gagal memuat percakapan dari storage:', err);
       }
     }
-    return BUZZERUKM_INBOX_CONVERSATIONS;
+    return [];
   });
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -840,7 +839,7 @@ export function useTenantDashboard() {
     }
   }, []);
 
-  // 4. Fetch Transactions & Orders
+  // 4. Fetch Transactions & Orders (Isolated per tenant)
   useEffect(() => {
     if (!tenantSlug) return;
     const fetchTransactions = async () => {
@@ -853,13 +852,18 @@ export function useTenantDashboard() {
           setOrders(ordersList);
           setTransactions(ordersList);
 
-          if (Array.isArray(ordersList) && ordersList.length > 0) {
-            const scaledChats = generateConversationsFromOrders(ordersList);
-            setConversations(scaledChats);
-          }
+          const scaledChats = generateConversationsFromOrders(ordersList);
+          setConversations(scaledChats);
+        } else {
+          setOrders([]);
+          setTransactions([]);
+          setConversations([]);
         }
       } catch (err) {
         console.error('Error fetching transactions:', err);
+        setOrders([]);
+        setTransactions([]);
+        setConversations([]);
       }
     };
     fetchTransactions();

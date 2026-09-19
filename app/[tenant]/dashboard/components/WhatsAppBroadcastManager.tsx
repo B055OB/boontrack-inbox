@@ -70,119 +70,6 @@ export interface BroadcastHistoryItem {
   status: 'COMPLETED' | 'SENDING' | 'SCHEDULED';
 }
 
-const INITIAL_CONTACTS: ContactItem[] = [
-  {
-    id: 'cnt-1',
-    name: 'Rian Hidayat',
-    phone: '08129844211',
-    tags: ['Meta Ads', 'Hot Lead', 'Gamis V2'],
-    productInterest: 'Gamis Premium Silk',
-    leadScore: 95,
-    quality: 'HOT',
-    utmSource: 'fb_scale_winner_produk_v2',
-    totalOrders: 0,
-    totalSpend: 0,
-    createdAt: '03 Sep 2026',
-    lastContacted: '2 Jam Lalu',
-  },
-  {
-    id: 'cnt-2',
-    name: 'Citra Lestari',
-    phone: '08571290334',
-    tags: ['Instagram Ads', 'Abandoned Cart', 'Promo Diskon'],
-    productInterest: 'Masterclass Ads Pro 2026',
-    leadScore: 92,
-    quality: 'HOT',
-    utmSource: 'ig_retargeting_abandoned_cart',
-    totalOrders: 0,
-    totalSpend: 0,
-    createdAt: '03 Sep 2026',
-    lastContacted: 'Kemarin',
-  },
-  {
-    id: 'cnt-3',
-    name: 'Fahri Ramadhan',
-    phone: '08139981204',
-    tags: ['TikTok Ads', 'Warm Lead'],
-    productInterest: 'Step by Step Dollar Paid Traffic',
-    leadScore: 78,
-    quality: 'WARM',
-    utmSource: 'tt_traffic_masterclass_viral',
-    totalOrders: 0,
-    totalSpend: 0,
-    createdAt: '02 Sep 2026',
-  },
-  {
-    id: 'cnt-4',
-    name: 'Dewi Anggraini',
-    phone: '08781209381',
-    tags: ['Google Ads', 'Customer VIP'],
-    productInterest: 'Paket Bundling Ecommerce Pro',
-    leadScore: 100,
-    quality: 'CUSTOMER',
-    utmSource: 'google_search_high_intent',
-    totalOrders: 2,
-    totalSpend: 748000,
-    createdAt: '01 Sep 2026',
-    lastContacted: '3 Hari Lalu',
-  },
-  {
-    id: 'cnt-5',
-    name: 'Bambang Santoso',
-    phone: '08219904128',
-    tags: ['WA Broadcast', 'Cold Lead'],
-    productInterest: 'Katalog Umum',
-    leadScore: 45,
-    quality: 'COLD',
-    utmSource: 'wa_broadcast_vip_member_promo',
-    totalOrders: 0,
-    totalSpend: 0,
-    createdAt: '30 Aug 2026',
-  },
-  {
-    id: 'cnt-6',
-    name: 'Siti Nurhaliza',
-    phone: '08190338192',
-    tags: ['Affiliate Ref', 'Customer'],
-    productInterest: 'Masterclass Ads Pro 2026',
-    leadScore: 100,
-    quality: 'CUSTOMER',
-    utmSource: 'affiliate_andi_top_creator',
-    totalOrders: 1,
-    totalSpend: 249000,
-    createdAt: '28 Aug 2026',
-  },
-];
-
-const INITIAL_HISTORY: BroadcastHistoryItem[] = [
-  {
-    id: 'bcast-1',
-    campaignName: 'Flash Sale Gajian Weekend Diskon 50%',
-    targetSegment: 'Semua Lead Ads + Abandoned Cart',
-    sentCount: 1420,
-    totalTarget: 1420,
-    deliveredRate: 98.6,
-    clickRate: 34.2,
-    closings: 88,
-    revenue: 14200000,
-    sentAt: '02 Sep 2026, 19:30',
-    status: 'COMPLETED',
-  },
-  {
-    id: 'bcast-2',
-    campaignName: 'Follow-up Khusus HOT Leads Meta Ads',
-    targetSegment: 'HOT Leads (Score >= 85%)',
-    sentCount: 380,
-    totalTarget: 380,
-    deliveredRate: 99.2,
-    clickRate: 48.5,
-    closings: 64,
-    revenue: 9600000,
-    sentAt: '31 Aug 2026, 14:00',
-    status: 'COMPLETED',
-  },
-];
-
 export default function WhatsAppBroadcastManager({
   tenantSlug,
   displayName,
@@ -204,8 +91,8 @@ export default function WhatsAppBroadcastManager({
   const [isSendingMeta, setIsSendingMeta] = useState(false);
   const [metaResponseLog, setMetaResponseLog] = useState<string | null>(null);
 
-  // Contacts State
-  const [contacts, setContacts] = useState<ContactItem[]>(INITIAL_CONTACTS);
+  // Contacts State (Isolated strictly by tenantSlug)
+  const [contacts, setContacts] = useState<ContactItem[]>([]);
   const [searchContact, setSearchContact] = useState('');
   const [selectedTagFilter, setSelectedTagFilter] = useState('all');
   const [selectedSegmentFilter, setSelectedSegmentFilter] = useState('all');
@@ -228,7 +115,7 @@ export default function WhatsAppBroadcastManager({
   const [broadcastLogs, setBroadcastLogs] = useState<string[]>([]);
 
   // History State
-  const [historyList, setHistoryList] = useState<BroadcastHistoryItem[]>(INITIAL_HISTORY);
+  const [historyList, setHistoryList] = useState<BroadcastHistoryItem[]>([]);
 
   // New Contact Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -237,9 +124,13 @@ export default function WhatsAppBroadcastManager({
   const [newContactTag, setNewContactTag] = useState('Lead Baru');
   const [newContactProduct, setNewContactProduct] = useState('Katalog Toko');
 
-  // Load real orders into contacts from Supabase on mount
+  // Load real orders into contacts from Supabase on mount (isolated per tenant_slug)
   const syncAudienceFromDatabase = async () => {
     try {
+      if (!tenantSlug) {
+        setContacts([]);
+        return;
+      }
       const supabase = getSupabase();
       if (!supabase) return;
 
@@ -280,17 +171,14 @@ export default function WhatsAppBroadcastManager({
           };
         });
 
-        // Merge with existing avoiding duplicates
-        setContacts((prev) => {
-          const existingPhones = new Set(prev.map((c) => c.phone));
-          const uniqueNew = syncedContacts.filter((c) => !existingPhones.has(c.phone));
-          return [...uniqueNew, ...prev];
-        });
-
+        setContacts(syncedContacts);
         if (onSaved) onSaved(`✅ Berhasil menyinkronkan ${syncedContacts.length} data audiens dari transaksi live!`);
+      } else {
+        setContacts([]);
       }
     } catch (err) {
-      console.warn('[Broadcast Sync] Using current memory contacts:', err);
+      console.warn('[Broadcast Sync] Error fetching contacts:', err);
+      setContacts([]);
     }
   };
 
