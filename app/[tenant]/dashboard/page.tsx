@@ -606,7 +606,7 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: PESANAN / ORDERS */}
-      {activeTab === 'orders' && <OrdersTab tenantSlug={tenantSlug} />}
+      {activeTab === 'orders' && <OrdersTab tenantSlug={tenantSlug} orders={orders} />}
 
       {/* TAB 2: KATALOG MULTI-PRODUK */}
       {(activeTab === 'catalog' || activeTab === 'products') && (

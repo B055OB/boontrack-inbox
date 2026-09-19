@@ -843,6 +843,7 @@ export function useTenantDashboard() {
         if (res && res.ok) {
           const result = await res.json();
           const ordersList = Array.isArray(result) ? result : (result.orders || result.data || []);
+          console.log('[DEBUG Dashboard] Fetched orders:', ordersList.length);
           setOrders(ordersList);
 
           if (Array.isArray(ordersList) && ordersList.length > 0) {
@@ -850,16 +851,27 @@ export function useTenantDashboard() {
               const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes(
                 (order.payment_status || order.status || '').toUpperCase()
               );
+              const prodTitle =
+                order.product_title ||
+                order.product_name ||
+                order.items_summary ||
+                (Array.isArray(order.items) && order.items[0]?.name) ||
+                'Produk Digital';
               return {
                 id: String(order.id || order.invoice_no),
                 invoice_no: order.invoice_no || String(order.id || '').slice(0, 10),
-                customer_name: order.customer_name || 'Pelanggan Toko',
+                customer_name: order.customer_name || 'Pelanggan',
+                customerName: order.customer_name || 'Pelanggan',
                 customer_phone: order.customer_phone || '',
-                product_name: order.product_name || order.items_summary || (Array.isArray(order.items) && order.items[0]?.name) || 'Produk Toko',
+                customerPhone: order.customer_phone || '',
+                product_name: prodTitle,
+                productTitle: prodTitle,
                 amount: Number(order.gross_amount || order.total_amount || order.total_price || 0),
-                payment_method: order.payment_method || 'QRIS / TRANSFER',
-                status: isPaid ? 'PAID' : 'PENDING',
+                payment_method: order.payment_method || 'QRIS Dinamis',
+                paymentMethod: order.payment_method || 'QRIS Dinamis',
+                status: isPaid ? 'PAID' : (order.status || 'PENDING'),
                 created_at: new Date(order.created_at || Date.now()).toLocaleDateString('id-ID'),
+                date: order.created_at || new Date().toISOString(),
               };
             });
             setTransactions(mapped as any);

@@ -68,8 +68,31 @@ export default function OrdersTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  const orders = propOrders ?? internalOrders;
-  const loading = propLoading ?? internalLoading;
+  const orders: OrderItem[] = React.useMemo(() => {
+    const raw = (propOrders && propOrders.length > 0) ? propOrders : internalOrders;
+    return raw.map((o: any) => ({
+      id: String(o.id || o.invoice_no),
+      invoice_no: o.invoice_no || String(o.id || '').slice(0, 10),
+      customer_name: o.customer_name || 'Pelanggan Toko',
+      customer_phone: o.customer_phone || '',
+      customer_email: o.customer_email || '',
+      items_summary: o.items_summary || o.product_title || o.product_name || '',
+      total_amount: Number(o.total_amount ?? o.gross_amount ?? o.total_price ?? 0),
+      payment_method: o.payment_method || 'QRIS / TRANSFER',
+      payment_status: (o.payment_status || o.status || 'PENDING').toUpperCase(),
+      status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
+      shipping_status: o.shipping_status,
+      product_type: o.product_type,
+      shipping_address: o.shipping_address,
+      shipping_courier: o.shipping_courier,
+      tracking_number: o.tracking_number,
+      waybill: o.waybill,
+      fulfillment_metadata: o.fulfillment_metadata,
+      created_at: o.created_at || new Date().toISOString(),
+    }));
+  }, [propOrders, internalOrders]);
+
+  const loading = (propOrders && propOrders.length > 0) ? false : (propLoading ?? internalLoading);
 
   // State untuk dialog konfirmasi pembayaran manual
   const [orderToConfirm, setOrderToConfirm] = useState<OrderItem | null>(null);
@@ -95,7 +118,7 @@ export default function OrdersTab({
           customer_name: o.customer_name || 'Pelanggan Toko',
           customer_phone: o.customer_phone || '',
           customer_email: o.customer_email || '',
-          items_summary: o.items_summary || o.product_name || '',
+          items_summary: o.items_summary || o.product_title || o.product_name || '',
           total_amount: Number(o.total_amount ?? o.gross_amount ?? o.total_price ?? 0),
           payment_method: o.payment_method || 'QRIS / TRANSFER',
           payment_status: (o.payment_status || o.status || 'PENDING').toUpperCase(),
@@ -119,7 +142,7 @@ export default function OrdersTab({
   }, [tenantSlug, propOnRefresh]);
 
   useEffect(() => {
-    if (!propOrders) {
+    if (!propOrders || propOrders.length === 0) {
       fetchOrders();
     }
   }, [fetchOrders, propOrders]);

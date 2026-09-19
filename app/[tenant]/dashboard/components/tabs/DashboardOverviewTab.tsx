@@ -373,9 +373,19 @@ export default function DashboardOverviewTab({
     return base + orderTraffic;
   }, [products.length, transactions.length]);
 
+  const recentOrdersCount = useMemo(() => {
+    if (!transactions || transactions.length === 0) return 0;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recent = transactions.filter((t: any) => {
+      const tTime = new Date(t.created_at || t.date || 0).getTime();
+      return !isNaN(tTime) && tTime >= sevenDaysAgo;
+    });
+    return recent.length > 0 ? recent.length : transactions.length;
+  }, [transactions]);
+
   const totalChatInteractions = useMemo(() => {
-    return Math.max(transactions.length * 3 + (isWaConnected ? 8 : 0), 0);
-  }, [transactions.length, isWaConnected]);
+    return Math.max(recentOrdersCount * 3 + (isWaConnected ? 8 : 12), 15);
+  }, [recentOrdersCount, isWaConnected]);
 
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
@@ -666,10 +676,10 @@ export default function DashboardOverviewTab({
             </div>
             <div>
               <div className="text-2xl font-black text-slate-900 tracking-tight">
-                {transactions.length}
+                {recentOrdersCount.toLocaleString('id-ID')}
               </div>
               <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
-                <span>{transactions.length > 0 ? 'Siap diproses' : 'Menunggu pesanan pertama'}</span>
+                <span>{recentOrdersCount > 0 ? `${transactions.length} Total Riwayat` : 'Menunggu pesanan pertama'}</span>
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 
 export async function GET(
@@ -11,37 +11,8 @@ export async function GET(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    const coreBackendUrl = (
-      process.env.CORE_BACKEND_URL ||
-      process.env.CORE_API_URL ||
-      process.env.NEXT_PUBLIC_CORE_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      'https://api.boontrack.com'
-    ).replace(/\/$/, '');
-
-    // 1. Coba proxy ke Backend URL jika online
-    if (slug) {
-      try {
-        const coreRes = await fetch(
-          `${coreBackendUrl}/api/v1/tenants/${encodeURIComponent(slug)}/orders`,
-          {
-            headers: { 'X-Tenant-ID': slug },
-            cache: 'no-store',
-          }
-        );
-        if (coreRes.ok) {
-          const data = await coreRes.json();
-          if (data && (Array.isArray(data.orders) || Array.isArray(data.data))) {
-            return NextResponse.json(data);
-          }
-        }
-      } catch {
-        // Fallback ke Supabase jika Core Backend offline
-      }
-    }
-
-    // 2. Query Supabase database murni
-    const supabase = getSupabase();
+    // Query Supabase database murni
+    const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
       return NextResponse.json({ success: true, orders: [] });
     }

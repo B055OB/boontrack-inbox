@@ -185,12 +185,17 @@ export interface TransactionItem {
   id: string;
   invoice_no: string;
   customer_name: string;
+  customerName?: string;
   customer_phone: string;
+  customerPhone?: string;
   product_name: string;
+  productTitle?: string;
   amount: number;
   payment_method: string;
+  paymentMethod?: string;
   status: string;
   created_at: string;
+  date?: string;
 }
 
 export function slugify(text: string): string {
