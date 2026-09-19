@@ -186,8 +186,6 @@ export default function ProductFormModal({
     }
   }, [isOpen, storeCategory, editingProductId, setProductForm]);
 
-  if (!isOpen) return null;
-
   const currentVerticalKey = resolveBoonVertical(productForm, storeCategory);
   const activeVerticalMeta = BOON_VERTICAL_OPTIONS.find((o) => o.key === currentVerticalKey) || BOON_VERTICAL_OPTIONS[0];
 
@@ -294,6 +292,8 @@ export default function ProductFormModal({
 
     onSave(e);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">

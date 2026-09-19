@@ -368,10 +368,21 @@ function SingleProductContent() {
   const [selectedShippingId, setSelectedShippingId] = useState<string>('reg');
   const [shippingAddress, setShippingAddress] = useState<string>('');
   const [shippingCity, setShippingCity] = useState<string>('');
+  const [voucherInput, setVoucherInput] = useState<string>('');
+  const [appliedVoucher, setAppliedVoucher] = useState<VoucherConfig | null>(null);
+  const [voucherMsg, setVoucherMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [hasTrackedAddToCart, setHasTrackedAddToCart] = useState(false);
+  const [hasTrackedInitiateCheckout, setHasTrackedInitiateCheckout] = useState(false);
+  const [hasTrackedPaymentInfo, setHasTrackedPaymentInfo] = useState(false);
 
   const availableShippingOptions = useMemo(() => {
     return [...BASE_SHIPPING_OPTIONS, ...instantCouriers];
   }, [instantCouriers]);
+
+  const totalBonusValue = useMemo(() => {
+    if (!config.bonus_items || config.bonus_items.length === 0) return 0;
+    return config.bonus_items.reduce((acc, item) => acc + (item.value || 0), 0);
+  }, [config.bonus_items]);
 
   // Efek pemanggilan tarif instan Biteship saat pembeli memasukkan kota Bandung atau kode pos 40xxx (khusus bila requiresShipping)
   useEffect(() => {
@@ -426,20 +437,17 @@ function SingleProductContent() {
     return () => clearTimeout(timer);
   }, [requiresShipping, shippingCity, shippingAddress]);
 
-  // Modul Voucher Diskon Fleksibel (Hanya aktif jika voucher valid diberikan secara eksplisit)
-  const initialVoucher: VoucherConfig | null = config.voucher && config.voucher.discount_value > 0 ? config.voucher : null;
-
-  const [voucherInput, setVoucherInput] = useState(initialVoucher?.code || '');
-  const [appliedVoucher, setAppliedVoucher] = useState<VoucherConfig | null>(initialVoucher);
-  const [voucherMsg, setVoucherMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(() => {
-    if (initialVoucher) {
-      return {
+  // Sinkronisasi voucher otomatis jika disediakan di config
+  useEffect(() => {
+    if (config.voucher && config.voucher.discount_value > 0 && !appliedVoucher) {
+      setVoucherInput(config.voucher.code || '');
+      setAppliedVoucher(config.voucher);
+      setVoucherMsg({
         type: 'success',
-        text: `Voucher ${initialVoucher.code} berhasil diterapkan otomatis!`
-      };
+        text: `Voucher ${config.voucher.code} berhasil diterapkan otomatis!`
+      });
     }
-    return null;
-  });
+  }, [config.voucher, appliedVoucher]);
 
   // Perhitungan Finansial Presisi (Mendukung Harga Rp0 / Freebie)
   const isFreebie = product.price === 0 || product.promo_price === 0;
@@ -552,11 +560,7 @@ function SingleProductContent() {
   const commissionRate = 0;
   const affiliateCommission = 0;
 
-  // 6. Total Nilai Bonus Eksklusif
-  const totalBonusValue = useMemo(() => {
-    if (!config.bonus_items || config.bonus_items.length === 0) return 0;
-    return config.bonus_items.reduce((acc, item) => acc + (item.value || 0), 0);
-  }, [config.bonus_items]);
+  // 6. Total Nilai Bonus Eksklusif (dideklarasikan di bagian atas komponen)
 
   useEffect(() => {
     // 1. Rekam jejak atribusi referral & parameter UTM/Click ID
@@ -581,10 +585,6 @@ function SingleProductContent() {
   }, [tenant, searchParams, slug, product.name, basePrice]);
 
   // ── TRACKING 2 JALUR: DIRECT CHECKOUT (FULL FUNNEL) & WHATSAPP CONSULTATION ──
-  const [hasTrackedAddToCart, setHasTrackedAddToCart] = useState(false);
-  const [hasTrackedInitiateCheckout, setHasTrackedInitiateCheckout] = useState(false);
-  const [hasTrackedPaymentInfo, setHasTrackedPaymentInfo] = useState(false);
-
   const triggerAddToCart = () => {
     if (!hasTrackedAddToCart) {
       trackAddToCart({

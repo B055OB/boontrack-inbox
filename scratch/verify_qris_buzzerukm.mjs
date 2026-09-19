@@ -1,5 +1,57 @@
 import { createClient } from '@supabase/supabase-js';
-import { generateDynamicQRIS, crc16ccitt } from '../lib/qris-dynamic.js';
+function crc16ccitt(input) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < input.length; i++) {
+    crc ^= input.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      if ((crc & 0x8000) !== 0) {
+        crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+      } else {
+        crc = (crc << 1) & 0xFFFF;
+      }
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+function generateDynamicQRIS(staticQris, amount) {
+  if (!staticQris) return '';
+  let raw = staticQris.trim();
+  if (raw.startsWith('000201010211')) {
+    raw = '000201010212' + raw.substring(12);
+  } else if (raw.includes('010211')) {
+    raw = raw.replace('010211', '010212');
+  }
+  const checksumTagIdx = raw.lastIndexOf('6304');
+  if (checksumTagIdx !== -1) {
+    raw = raw.substring(0, checksumTagIdx);
+  }
+  let tag58Idx = raw.indexOf('5802ID');
+  if (tag58Idx === -1) {
+    tag58Idx = raw.indexOf('5802');
+  }
+  if (tag58Idx !== -1) {
+    let before58 = raw.substring(0, tag58Idx);
+    const after58 = raw.substring(tag58Idx);
+    before58 = before58.replace(/54\d{2}[0-9]+/, '');
+    raw = before58 + after58;
+  }
+  const amountStr = String(Math.round(amount));
+  const tag54 = '54' + String(amountStr.length).padStart(2, '0') + amountStr;
+  tag58Idx = raw.indexOf('5802ID');
+  if (tag58Idx === -1) {
+    tag58Idx = raw.indexOf('5802');
+  }
+  if (tag58Idx !== -1) {
+    raw = raw.substring(0, tag58Idx) + tag54 + raw.substring(tag58Idx);
+  } else {
+    raw += tag54;
+  }
+  const payloadWithTag63 = raw + '6304';
+  const checksum = crc16ccitt(payloadWithTag63);
+  return payloadWithTag63 + checksum;
+}
+
 
 const supabaseUrl = 'https://mpluzajlzpregmjwpjqr.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wbHV6YWpsenByZWdtandwanFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTcyMzIsImV4cCI6MjEwMTk5MzIzMn0.Tn7MREcxcOyWzkhgz5t0XOzVOBagQ7PsH-JTch0ZF0M';
