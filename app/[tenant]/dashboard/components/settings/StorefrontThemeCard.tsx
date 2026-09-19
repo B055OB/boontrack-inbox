@@ -12,6 +12,7 @@ import {
   Crown,
   ArrowRight,
   X,
+  Save,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -110,6 +111,7 @@ interface StorefrontThemeCardProps {
   isAdsPerformance?: boolean;
   onThemeChange?: (themeId: VisualThemeType) => void;
   currentVisualTheme?: VisualThemeType;
+  onSaved?: (msg: string) => void;
 }
 
 export default function StorefrontThemeCard({
@@ -118,6 +120,7 @@ export default function StorefrontThemeCard({
   isAdsPerformance = false,
   onThemeChange,
   currentVisualTheme,
+  onSaved,
 }: StorefrontThemeCardProps) {
   const [selectedTheme, setSelectedTheme] = useState<VisualThemeType>(
     currentVisualTheme || 'clean_minimal'
@@ -256,8 +259,11 @@ export default function StorefrontThemeCard({
         console.warn('[StorefrontThemeCard] Direct Supabase update note:', sbErr);
       }
 
-      setToastMessage('✅ Tema visual berhasil diubah!');
-      setTimeout(() => setToastMessage(null), 3000);
+      setToastMessage('✅ Perubahan tampilan toko berhasil disimpan!');
+      if (onSaved) {
+        onSaved('✅ Perubahan tampilan toko berhasil disimpan!');
+      }
+      setTimeout(() => setToastMessage(null), 3500);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Gagal menyimpan tema toko';
       setErrorMessage(msg);
@@ -494,6 +500,22 @@ export default function StorefrontThemeCard({
                   chatEnabled ? 'translate-x-5' : 'translate-x-0'
                 }`}
               />
+            </button>
+          </div>
+
+          {/* Action Bar: Simpan Perubahan Tampilan */}
+          <div className="pt-3 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
+            <p className="text-xs text-slate-500 font-medium">
+              Simpan tema visual dan preferensi tampilan untuk pengunjung storefront Anda.
+            </p>
+            <button
+              type="button"
+              onClick={() => saveThemeConfig(selectedTheme, chatEnabled)}
+              disabled={isSaving}
+              className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-600/20 active:scale-95 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+            >
+              {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <span>Simpan Perubahan Tampilan</span>
             </button>
           </div>
         </div>

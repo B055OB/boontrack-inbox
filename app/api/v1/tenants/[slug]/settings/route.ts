@@ -153,6 +153,7 @@ export async function GET(
         metadata: metadata,
         theme: metadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
         microsite: metadata.microsite || { buttons: [] },
+        rotator: metadata.rotator || null,
       },
     });
   } catch (err: unknown) {
@@ -194,6 +195,7 @@ export async function PUT(
       microsite,
       is_bot_active,
       bot_paused,
+      rotator,
     } = body;
 
     const supabase = getSupabase();
@@ -257,6 +259,7 @@ export async function PUT(
       ...(whatsapp !== undefined ? { whatsapp_number: whatsapp, whatsapp } : {}),
       ...(whatsapp_number !== undefined ? { whatsapp_number, whatsapp: whatsapp_number } : {}),
       ...(microsite !== undefined ? { microsite } : {}),
+      ...(rotator !== undefined ? { rotator } : {}),
     };
 
     const { error: updateError } = await supabase

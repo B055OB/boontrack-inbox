@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink } from 'lucide-react';
+import React, { useEffect, useMemo } from 'react';
+import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink, Sparkles } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
 import {
   ProductItem,
@@ -228,6 +228,49 @@ export default function ProductFormModal({
         ...prev,
         fulfillment_metadata: updatedMeta,
         download_url: key === 'access_url' ? value : prev.download_url,
+      };
+    });
+  };
+
+  // Resolve string for Materi & Fasilitas Utama
+  const facilitiesString = useMemo(() => {
+    if (typeof productForm.facilities === 'string') return productForm.facilities;
+    if (Array.isArray(productForm.facilities)) return productForm.facilities.join('\n');
+    if (typeof productForm.features === 'string') return productForm.features;
+    if (Array.isArray(productForm.features)) return productForm.features.join('\n');
+    if (Array.isArray(productForm.single_page_config?.solution_points)) {
+      return productForm.single_page_config.solution_points.join('\n');
+    }
+    const metaPts = productForm.metadata?.facilities || productForm.metadata?.features || productForm.metadata?.solution_points;
+    if (Array.isArray(metaPts)) return metaPts.join('\n');
+    if (typeof metaPts === 'string') return metaPts;
+    return '';
+  }, [productForm.facilities, productForm.features, productForm.single_page_config, productForm.metadata]);
+
+  const handleFacilitiesChange = (val: string) => {
+    const pointsArray = val
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    setProductForm((prev) => {
+      const currentConfig = prev.single_page_config || ({} as any);
+      const currentMeta = prev.metadata || {};
+      return {
+        ...prev,
+        facilities: pointsArray,
+        features: pointsArray,
+        single_page_config: {
+          ...currentConfig,
+          solution_points: pointsArray,
+          solution_title: currentConfig.solution_title || 'Materi & Fasilitas Utama',
+        },
+        metadata: {
+          ...currentMeta,
+          facilities: pointsArray,
+          features: pointsArray,
+          solution_points: pointsArray,
+        },
       };
     });
   };
@@ -617,6 +660,29 @@ export default function ProductFormModal({
               onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))}
               placeholder="Penjelasan ringkas materi, spesifikasi, atau layanan..."
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+            />
+          </div>
+
+          {/* 10. Materi & Fasilitas Utama (Khusus Digital/Course) */}
+          <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Materi &amp; Fasilitas Utama (Khusus Digital/Course)</span>
+              </label>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                1 Baris = 1 Poin
+              </span>
+            </div>
+            <p className="text-[11px] text-emerald-800/80 leading-relaxed">
+              Tuliskan daftar modul materi, fasilitas, bonus, atau benefit yang didapat pembeli (1 baris per poin). Poin-poin ini otomatis ter-render di landing page checkout produk.
+            </p>
+            <textarea
+              rows={4}
+              value={facilitiesString}
+              onChange={(e) => handleFacilitiesChange(e.target.value)}
+              placeholder="Contoh:&#10;Akses Selamanya Video Tutorial HD&#10;Template Notion &amp; Spreadsheet Siap Pakai&#10;Grup Diskusi &amp; Support Eksklusif&#10;Gratis Update Modul Materi Berikutnya"
+              className="w-full px-3.5 py-2.5 bg-white border border-emerald-300/80 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/20 font-medium leading-relaxed"
             />
           </div>
 

@@ -487,7 +487,7 @@ export default function DashboardSidebar({
           </div>
         )}
 
-        {/* Quick Action: Lihat Etalase Toko */}
+        {/* Quick Action: Lihat Tampilan Toko */}
         <div className="mt-2">
           <Link
             href={`https://boontrack.com/${tenantSlug}`}
@@ -496,7 +496,7 @@ export default function DashboardSidebar({
           >
             <span className="flex items-center gap-2 truncate">
               <Store className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 shrink-0" />
-              <span className="truncate">Lihat Etalase Toko</span>
+              <span className="truncate">Lihat Tampilan Toko</span>
             </span>
             <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
           </Link>

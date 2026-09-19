@@ -36,6 +36,7 @@ import AiKnowledgeTab from './components/AiKnowledgeTab';
 import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
 import WhatsAppAutoReplyManager from './components/WhatsAppAutoReplyManager';
+import WhatsAppRotatorManager from './components/WhatsAppRotatorManager';
 import BoonPilotWidget from '@/components/BoonPilotWidget';
 import StoreBioLinkWidget from './components/StoreBioLinkWidget';
 import ProductFormModal from './components/ProductFormModal';
@@ -652,6 +653,10 @@ export default function TenantDashboardPage() {
             isAdsPerformance={isAdsPerformance}
             currentVisualTheme={activeVisualTheme}
             onThemeChange={handleThemeChange}
+            onSaved={(msg) => {
+              setSaveFeedback(msg);
+              setTimeout(() => setSaveFeedback(null), 3500);
+            }}
           />
 
           <CustomDomainCard tenantSlug={tenantSlug} isTeamScale={isTeamScale} />
@@ -745,7 +750,7 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB 5: WHATSAPP & BROADCAST UNIFIED HUB */}
-      {(activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply') && (
+      {(activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply' || activeTab === 'rotator') && (
         <div className="flex-1 flex flex-col">
           {/* Sub Navigation Hub */}
           <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center justify-between gap-3">
@@ -782,6 +787,17 @@ export default function TenantDashboardPage() {
                 }`}
               >
                 Broadcast WA Massal
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('rotator')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'rotator'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>🔄 CS / WhatsApp Rotator</span>
               </button>
             </div>
             <span className="text-[11px] text-slate-500 hidden sm:inline">
@@ -820,6 +836,17 @@ export default function TenantDashboardPage() {
 
           {activeTab === 'auto_reply' && (
             <WhatsAppAutoReplyManager
+              tenantSlug={tenantSlug}
+              displayName={displayName}
+              onSaved={(msg) => {
+                setSaveFeedback(msg);
+                setTimeout(() => setSaveFeedback(null), 4000);
+              }}
+            />
+          )}
+
+          {activeTab === 'rotator' && (
+            <WhatsAppRotatorManager
               tenantSlug={tenantSlug}
               displayName={displayName}
               onSaved={(msg) => {

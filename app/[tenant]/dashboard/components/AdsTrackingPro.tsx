@@ -139,13 +139,21 @@ const SAMPLE_RECENT_LEADS: LeadScoreItem[] = [
 
 export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: AdsTrackingProProps) {
   const [isEnabled, setIsEnabled] = useState(true);
-  const [metaPixelId, setMetaPixelId] = useState('128940182901924');
-  const [metaCapiToken, setMetaCapiToken] = useState('EAABwz...');
-  const [metaTestCode, setMetaTestCode] = useState('TEST9901');
-  const [tiktokPixelId, setTiktokPixelId] = useState('C982019ABCDE92');
+  const [metaPixelId, setMetaPixelId] = useState('');
+  const [metaCapiToken, setMetaCapiToken] = useState('');
+  const [metaTestCode, setMetaTestCode] = useState('');
+  const [tiktokPixelId, setTiktokPixelId] = useState('');
   const [tiktokAccessToken, setTiktokAccessToken] = useState('');
   const [enableWaUtm, setEnableWaUtm] = useState(true);
   const [autoDeduplication, setAutoDeduplication] = useState(true);
+
+  // UTM Campaign Generator state
+  const [utmBaseUrl, setUtmBaseUrl] = useState(`https://boontrack.com/${tenantSlug}`);
+  const [utmSource, setUtmSource] = useState('meta');
+  const [utmMedium, setUtmMedium] = useState('cpc');
+  const [utmCampaign, setUtmCampaign] = useState('promo_launch');
+  const [utmContent, setUtmContent] = useState('');
+  const [copiedUtmLink, setCopiedUtmLink] = useState(false);
 
   // Analytics & Filter state
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | 'all'>('7d');
@@ -154,12 +162,37 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
   const [searchCampaign, setSearchCampaign] = useState('');
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState<boolean>(true);
-  const [recentLeads, setRecentLeads] = useState<LeadScoreItem[]>(SAMPLE_RECENT_LEADS);
+  const [recentLeads, setRecentLeads] = useState<LeadScoreItem[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [copiedScript, setCopiedScript] = useState(false);
   const [testLog, setTestLog] = useState<string[]>([]);
+
+  const generatedUtmUrl = useMemo(() => {
+    try {
+      const base = utmBaseUrl.trim() || `https://boontrack.com/${tenantSlug}`;
+      const url = new URL(base.startsWith('http') ? base : `https://${base}`);
+      if (utmSource.trim()) url.searchParams.set('utm_source', utmSource.trim());
+      if (utmMedium.trim()) url.searchParams.set('utm_medium', utmMedium.trim());
+      if (utmCampaign.trim()) url.searchParams.set('utm_campaign', utmCampaign.trim());
+      if (utmContent.trim()) url.searchParams.set('utm_content', utmContent.trim());
+      return url.toString();
+    } catch {
+      const qs: string[] = [];
+      if (utmSource.trim()) qs.push(`utm_source=${encodeURIComponent(utmSource.trim())}`);
+      if (utmMedium.trim()) qs.push(`utm_medium=${encodeURIComponent(utmMedium.trim())}`);
+      if (utmCampaign.trim()) qs.push(`utm_campaign=${encodeURIComponent(utmCampaign.trim())}`);
+      if (utmContent.trim()) qs.push(`utm_content=${encodeURIComponent(utmContent.trim())}`);
+      return `${utmBaseUrl.trim() || `https://boontrack.com/${tenantSlug}`}${qs.length > 0 ? `?${qs.join('&')}` : ''}`;
+    }
+  }, [utmBaseUrl, utmSource, utmMedium, utmCampaign, utmContent, tenantSlug]);
+
+  const copyUtmLink = () => {
+    navigator.clipboard.writeText(generatedUtmUrl);
+    setCopiedUtmLink(true);
+    setTimeout(() => setCopiedUtmLink(false), 2500);
+  };
 
   const fetchCampaigns = useCallback(async () => {
     if (!tenantSlug) return;
@@ -231,6 +264,41 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
             setEnableWaUtm(cfg.enable_wa_utm ?? true);
             setAutoDeduplication(cfg.auto_deduplication ?? true);
           }
+
+          // Fetch real recent orders/leads for lead scoring display
+          try {
+            const { data: realOrders } = await supabase
+              .from('orders')
+              .select('id, buyer_name, buyer_phone, customer_name, customer_phone, total_amount, metadata, created_at, status')
+              .eq('tenant_slug', tenantSlug)
+              .order('created_at', { ascending: false })
+              .limit(9);
+
+            if (realOrders && realOrders.length > 0) {
+              const mappedLeads: LeadScoreItem[] = realOrders.map((ord: any) => {
+                const name = ord.buyer_name || ord.customer_name || 'Pelanggan';
+                const phone = ord.buyer_phone || ord.customer_phone || '-';
+                const meta = ord.metadata || {};
+                const utm = meta.utm_campaign || meta.campaign || 'direct';
+                const source = meta.utm_source || 'Direct Store';
+                const isPaid = ord.status === 'PAID' || ord.status === 'COMPLETED';
+                return {
+                  id: String(ord.id),
+                  buyerName: name,
+                  phone,
+                  utmCampaign: utm,
+                  platform: source.toUpperCase().includes('META') ? 'Meta Ads' : source.toUpperCase().includes('TIKTOK') ? 'TikTok Ads' : source,
+                  score: isPaid ? 98 : 75,
+                  quality: isPaid ? 'HOT' : 'WARM',
+                  intentAction: isPaid ? 'Checkout QRIS Lunas' : 'Menunggu Pembayaran',
+                  timestamp: new Date(ord.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                };
+              });
+              setRecentLeads(mappedLeads);
+            }
+          } catch (leadErr) {
+            console.warn('[Ads Tracking Pro] Lead query note:', leadErr);
+          }
         }
       } catch (err) {
         console.warn('[Ads Tracking Pro] Using default state:', err);
@@ -268,19 +336,33 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
   }, [campaigns]);
 
   const trendData = useMemo(() => {
+    const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
     if (campaigns.length === 0) {
-      return [
-        { day: 'Senin', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
-        { day: 'Selasa', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
-        { day: 'Rabu', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
-        { day: 'Kamis', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
-        { day: 'Jumat', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
-        { day: 'Sabtu', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
-        { day: 'Minggu', clicks: 0, leads: 0, orders: 0, revenue: 0, roas: 0 },
-      ];
+      return days.map((day) => ({
+        day,
+        clicks: 0,
+        leads: 0,
+        orders: 0,
+        revenue: 0,
+        roas: 0,
+      }));
     }
-    return DAILY_TREND_DATA;
-  }, [campaigns]);
+
+    const totalRev = campaigns.reduce((acc, curr) => acc + curr.revenue, 0);
+    const totalLeads = campaigns.reduce((acc, curr) => acc + curr.leads, 0);
+    const totalOrders = campaigns.reduce((acc, curr) => acc + curr.closings, 0);
+    const totalClicks = campaigns.reduce((acc, curr) => acc + curr.clicks, 0);
+    const blendedRoas = Number(totals.blendedRoas) || 0;
+
+    return days.map((day) => ({
+      day,
+      clicks: Math.round(totalClicks / 7),
+      leads: Math.round(totalLeads / 7),
+      orders: Math.round(totalOrders / 7),
+      revenue: Math.round(totalRev / 7),
+      roas: blendedRoas,
+    }));
+  }, [campaigns, totals.blendedRoas]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

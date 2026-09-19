@@ -70,6 +70,7 @@ export default function SettingsTab({
 }: SettingsTabProps) {
   const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping'>('profile');
   const [isSavingStore, setIsSavingStore] = useState(false);
+  const [isReaderModalOpen, setIsReaderModalOpen] = useState(false);
 
   // Basic Shipping state
   const [originCity, setOriginCity] = useState('Kota Bandung');
@@ -513,18 +514,108 @@ export default function SettingsTab({
             </div>
           </div>
 
-          <div className="pt-0.5">
+          <div className="pt-0.5 flex flex-wrap items-center gap-2">
             <a
               href="https://api.boontrack.com/dl-reader-x9k2m/BoonTrackReader.apk"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>Download APK BoonTrack Reader</span>
+              <Download className="w-4 h-4" />
+              <span>Download / Pasang BoonTrack Reader</span>
             </a>
+
+            <button
+              type="button"
+              onClick={() => setIsReaderModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 transition-all shadow-2xs active:scale-95 cursor-pointer"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-slate-500" />
+              <span>Lihat Panduan Instalasi</span>
+            </button>
           </div>
         </div>
+
+        {/* Modal Panduan & Download BoonTrack Reader */}
+        {isReaderModalOpen && (
+          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700 font-bold">
+                    <QrCode className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-slate-900">
+                      Panduan &amp; Pasang BoonTrack Reader
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Verifikasi mutasi QRIS otomatis 100% tanpa biaya perantara (0% MDR)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsReaderModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs text-slate-600 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
+                  <div>
+                    <p className="font-bold text-slate-900">Pasang di Smartphone Toko (Android)</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Unduh dan pasang aplikasi pada HP yang menerima SMS / notifikasi m-Banking atau e-Wallet toko Anda.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
+                  <div>
+                    <p className="font-bold text-slate-900">Mendukung Seluruh QRIS Populer</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      BCA Mobile / myBCA, DANA Bisnis, GoPay Usaha, Livin Mandiri, dan BRImo.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
+                  <div>
+                    <p className="font-bold text-slate-900">Verifikasi Real-Time Tanpa Cek Manual</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Saat pembeli scan QRIS dan transfer masuk, Reader APK otomatis mengubah status order menjadi LUNAS dalam hitungan detik.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
+                <a
+                  href="https://api.boontrack.com/dl-reader-x9k2m/BoonTrackReader.apk"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer text-center"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download / Pasang BoonTrack Reader</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setIsReaderModalOpen(false)}
+                  className="w-full sm:w-auto px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
