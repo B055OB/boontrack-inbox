@@ -156,15 +156,22 @@ export async function POST(req: NextRequest) {
     let matchStrategy = 'none';
 
     if (resolvedTenantSlug) {
-      const { data: tenantOrders, error: tErr } = await supabase
+      const isUuidSlug = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedTenantSlug);
+      let tenantQuery = supabase
         .from('orders')
         .select('*')
-        .or(`tenant_slug.eq.${resolvedTenantSlug},tenant_id.eq.${resolvedTenantSlug}`)
         .eq('gross_amount', parsedAmount)
         .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
         .order('created_at', { ascending: false })
         .limit(5);
 
+      if (isUuidSlug) {
+        tenantQuery = tenantQuery.or(`tenant_slug.eq.${resolvedTenantSlug},tenant_id.eq.${resolvedTenantSlug}`);
+      } else {
+        tenantQuery = tenantQuery.eq('tenant_slug', resolvedTenantSlug);
+      }
+
+      const { data: tenantOrders, error: tErr } = await tenantQuery;
       if (!tErr && tenantOrders && tenantOrders.length > 0) {
         pendingOrders = tenantOrders;
         matchStrategy = 'tenant_exact_gross_amount';
