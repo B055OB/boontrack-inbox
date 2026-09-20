@@ -264,64 +264,80 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   }
 
   // JALUR 2: Pencocokan berbasis Nominal Notifikasi Reader (BoonTrack Reader APK)
+  // Dilengkapi toleransi timing (3x retry dengan delay 1.5 detik jika frontend checkout terlambat insert)
   if (!matchedOrder && parsedAmount && parsedAmount > 0) {
-    console.log(`[Webhook Reader ${logId}] Mencari order dengan nominal ${parsedAmount} (Tenant: ${tenantSlug || 'ALL'})...`);
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 1500;
 
-    // Ambil order yang statusnya belum lunas
-    let ordersQuery = supabase
-      .from('orders')
-      .select('*')
-      .or('status.eq.WAITING_PAYMENT,status.eq.PENDING_PAYMENT,status.eq.PENDING,status.eq.UNPAID')
-      .order('created_at', { ascending: false })
-      .limit(50);
+    for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+      console.log(`[Webhook Reader ${logId}] Mencari order dengan nominal ${parsedAmount} (Tenant: ${tenantSlug || 'ALL'}, Percobaan ${attempt}/${MAX_RETRIES + 1})...`);
 
-    if (tenantSlug) {
-      ordersQuery = ordersQuery.eq('tenant_slug', tenantSlug);
-    }
-
-    const { data: pendingOrders, error: fetchErr } = await ordersQuery;
-
-    if (fetchErr) {
-      console.error(`[Webhook Reader ${logId}] Error querying pending orders:`, fetchErr);
-    }
-
-    if (pendingOrders && pendingOrders.length > 0) {
-      // 2.A: Cocokkan EXACT AMOUNT (gross_amount === parsedAmount)
-      const exactMatch = pendingOrders.find((o) => Number(o.gross_amount) === parsedAmount);
-
-      if (exactMatch) {
-        matchedOrder = exactMatch;
-        matchStrategy = 'exact_gross_amount';
-      } else {
-        // 2.B: Cocokkan dengan Toleransi Kode Unik (1 s/d 999)
-        // Kasus: gross_amount disimpan harga dasar (2000), transfer masuk setelah kode unik dipotong (1771)
-        // |gross_amount - parsedAmount| <= 999
-        const toleranceMatch = pendingOrders.find((o) => {
-          const diff = Math.abs(Number(o.gross_amount) - parsedAmount);
-          return diff >= 1 && diff <= 999;
-        });
-
-        if (toleranceMatch) {
-          matchedOrder = toleranceMatch;
-          matchStrategy = 'unique_code_tolerance';
-        }
-      }
-    }
-
-    // 2.C: Fallback global jika tenantSlug mismatch atau tidak menemukan match
-    if (!matchedOrder) {
-      console.log(`[Webhook Reader ${logId}] Global fallback: Mencari order pending gross_amount = ${parsedAmount}...`);
-      const { data: globalOrders } = await supabase
+      // Ambil order yang statusnya belum lunas
+      let ordersQuery = supabase
         .from('orders')
         .select('*')
         .or('status.eq.WAITING_PAYMENT,status.eq.PENDING_PAYMENT,status.eq.PENDING,status.eq.UNPAID')
-        .eq('gross_amount', parsedAmount)
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(50);
 
-      if (globalOrders && globalOrders.length > 0) {
-        matchedOrder = globalOrders[0];
-        matchStrategy = 'global_exact_gross_amount';
+      if (tenantSlug) {
+        ordersQuery = ordersQuery.eq('tenant_slug', tenantSlug);
+      }
+
+      const { data: pendingOrders, error: fetchErr } = await ordersQuery;
+
+      if (fetchErr) {
+        console.error(`[Webhook Reader ${logId}] Error querying pending orders:`, fetchErr);
+      }
+
+      if (pendingOrders && pendingOrders.length > 0) {
+        // 2.A: Cocokkan EXACT AMOUNT (gross_amount === parsedAmount)
+        const exactMatch = pendingOrders.find((o) => Number(o.gross_amount) === parsedAmount);
+
+        if (exactMatch) {
+          matchedOrder = exactMatch;
+          matchStrategy = 'exact_gross_amount';
+        } else {
+          // 2.B: Cocokkan dengan Toleransi Kode Unik (1 s/d 999)
+          const toleranceMatch = pendingOrders.find((o) => {
+            const diff = Math.abs(Number(o.gross_amount) - parsedAmount);
+            return diff >= 1 && diff <= 999;
+          });
+
+          if (toleranceMatch) {
+            matchedOrder = toleranceMatch;
+            matchStrategy = 'unique_code_tolerance';
+          }
+        }
+      }
+
+      // 2.C: Fallback global jika tenantSlug mismatch atau tidak menemukan match
+      if (!matchedOrder) {
+        console.log(`[Webhook Reader ${logId}] Global fallback: Mencari order pending gross_amount = ${parsedAmount}...`);
+        const { data: globalOrders } = await supabase
+          .from('orders')
+          .select('*')
+          .or('status.eq.WAITING_PAYMENT,status.eq.PENDING_PAYMENT,status.eq.PENDING,status.eq.UNPAID')
+          .eq('gross_amount', parsedAmount)
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (globalOrders && globalOrders.length > 0) {
+          matchedOrder = globalOrders[0];
+          matchStrategy = 'global_exact_gross_amount';
+        }
+      }
+
+      if (matchedOrder) {
+        if (attempt > 1) {
+          console.log(`[Webhook Reader ${logId}] Match ditemukan pada retry ke-${attempt - 1} (${matchStrategy})`);
+        }
+        break;
+      }
+
+      if (attempt <= MAX_RETRIES) {
+        console.log(`[Webhook Reader ${logId}] Belum ada order pending Rp ${parsedAmount}. Menunggu toleransi ${RETRY_DELAY_MS}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
       }
     }
   }

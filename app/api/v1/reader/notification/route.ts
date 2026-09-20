@@ -150,81 +150,101 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Cari baris di tabel orders Supabase
-    // JALUR 1: Jika tenant slug tersedia, cari spesifik tenant tersebut
+    // 2. Cari baris di tabel orders Supabase dengan toleransi timing / race condition
+    // Jika frontend checkout terlambat menyimpan order, lakukan buffer retry (3x jeda 1.5 detik)
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 1500;
+
     let pendingOrders: any[] = [];
     let matchStrategy = 'none';
 
-    if (resolvedTenantSlug) {
-      const isUuidSlug = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedTenantSlug);
-      let tenantQuery = supabase
-        .from('orders')
-        .select('*')
-        .eq('gross_amount', parsedAmount)
-        .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
-        .order('created_at', { ascending: false })
-        .limit(5);
+    for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+      // JALUR 1: Jika tenant slug tersedia, cari spesifik tenant tersebut
+      if (resolvedTenantSlug) {
+        const isUuidSlug = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedTenantSlug);
+        let tenantQuery = supabase
+          .from('orders')
+          .select('*')
+          .eq('gross_amount', parsedAmount)
+          .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
+          .order('created_at', { ascending: false })
+          .limit(5);
 
-      if (isUuidSlug) {
-        tenantQuery = tenantQuery.or(`tenant_slug.eq.${resolvedTenantSlug},tenant_id.eq.${resolvedTenantSlug}`);
-      } else {
-        tenantQuery = tenantQuery.eq('tenant_slug', resolvedTenantSlug);
-      }
-
-      const { data: tenantOrders, error: tErr } = await tenantQuery;
-      if (!tErr && tenantOrders && tenantOrders.length > 0) {
-        pendingOrders = tenantOrders;
-        matchStrategy = 'tenant_exact_gross_amount';
-      }
-    }
-
-    // JALUR 2 (GLOBAL FALLBACK): Jika belum cocok, cari order pending di seluruh tenant dengan exact gross_amount
-    // (Kode unik 3 digit downward 1-999 membuat nominal transaksi unik di antara pesanan aktif)
-    if (pendingOrders.length === 0) {
-      console.log(`[BoonTrack Reader Webhook] Fallback: Mencari order pending gross_amount = ${parsedAmount} secara global...`);
-      const { data: globalOrders, error: gErr } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('gross_amount', parsedAmount)
-        .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (!gErr && globalOrders && globalOrders.length > 0) {
-        pendingOrders = globalOrders;
-        matchStrategy = 'global_exact_gross_amount';
-      }
-    }
-
-    // JALUR 3 (TOLERANSI KODE UNIK 1-999): Jika gross_amount di database tersimpan sebelum potongan kode unik
-    if (pendingOrders.length === 0) {
-      const { data: allPending } = await supabase
-        .from('orders')
-        .select('*')
-        .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
-        .order('created_at', { ascending: false })
-        .limit(30);
-
-      if (allPending && allPending.length > 0) {
-        const tolMatch = allPending.find((o) => {
-          const diff = Math.abs(Number(o.gross_amount) - parsedAmount);
-          return diff >= 1 && diff <= 999;
-        });
-        if (tolMatch) {
-          pendingOrders = [tolMatch];
-          matchStrategy = 'unique_code_tolerance';
+        if (isUuidSlug) {
+          tenantQuery = tenantQuery.or(`tenant_slug.eq.${resolvedTenantSlug},tenant_id.eq.${resolvedTenantSlug}`);
+        } else {
+          tenantQuery = tenantQuery.eq('tenant_slug', resolvedTenantSlug);
         }
+
+        const { data: tenantOrders, error: tErr } = await tenantQuery;
+        if (!tErr && tenantOrders && tenantOrders.length > 0) {
+          pendingOrders = tenantOrders;
+          matchStrategy = 'tenant_exact_gross_amount';
+        }
+      }
+
+      // JALUR 2 (GLOBAL FALLBACK): Jika belum cocok, cari order pending di seluruh tenant dengan exact gross_amount
+      // (Kode unik 3 digit downward 1-999 membuat nominal transaksi unik di antara pesanan aktif)
+      if (pendingOrders.length === 0) {
+        const { data: globalOrders, error: gErr } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('gross_amount', parsedAmount)
+          .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (!gErr && globalOrders && globalOrders.length > 0) {
+          pendingOrders = globalOrders;
+          matchStrategy = 'global_exact_gross_amount';
+        }
+      }
+
+      // JALUR 3 (TOLERANSI KODE UNIK 1-999): Jika gross_amount di database tersimpan sebelum potongan kode unik
+      if (pendingOrders.length === 0) {
+        const { data: allPending } = await supabase
+          .from('orders')
+          .select('*')
+          .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
+          .order('created_at', { ascending: false })
+          .limit(30);
+
+        if (allPending && allPending.length > 0) {
+          const tolMatch = allPending.find((o) => {
+            const diff = Math.abs(Number(o.gross_amount) - parsedAmount);
+            return diff >= 1 && diff <= 999;
+          });
+          if (tolMatch) {
+            pendingOrders = [tolMatch];
+            matchStrategy = 'unique_code_tolerance';
+          }
+        }
+      }
+
+      // Jika match ditemukan, hentikan loop retry
+      if (pendingOrders.length > 0) {
+        if (attempt > 1) {
+          console.log(`[BoonTrack Reader Webhook] Match order ditemukan pada percobaan retry ke-${attempt - 1} (${matchStrategy})!`);
+        }
+        break;
+      }
+
+      // Jika belum ditemukan dan masih ada sisa percobaan, tunggu jeda buffer
+      if (attempt <= MAX_RETRIES) {
+        console.log(`[BoonTrack Reader Webhook] Belum ada candidate order pending Rp ${parsedAmount} (Percobaan ${attempt}/${MAX_RETRIES + 1}). Menunggu toleransi jeda ${RETRY_DELAY_MS}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
       }
     }
 
     if (!pendingOrders || pendingOrders.length === 0) {
-      console.log(`[BoonTrack Reader Webhook] Tidak ada pesanan pending dengan nominal Rp ${parsedAmount.toLocaleString('id-ID')}.`);
+      console.log(`[BoonTrack Reader Webhook] Tidak ada pesanan pending dengan nominal Rp ${parsedAmount.toLocaleString('id-ID')} setelah ${MAX_RETRIES}x retry.`);
       return NextResponse.json({
         success: true,
         matched: false,
         message: `Tidak ditemukan pesanan menunggu pembayaran dengan nominal Rp ${parsedAmount.toLocaleString('id-ID')}.`,
         parsed_amount: parsedAmount,
         tenant_slug: resolvedTenantSlug || null,
+        retries_attempted: MAX_RETRIES,
       });
     }
 
