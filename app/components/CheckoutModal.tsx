@@ -241,48 +241,73 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     let active = true;
     const checkStatus = async () => {
       try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: ord } = await supabase
-            .from('orders')
-            .select('status, payment_status, download_url, fulfillment_metadata')
-            .eq('id', paymentData.orderId)
-            .maybeSingle();
+        let isPaid = false;
+        let accessUrl: string | undefined = undefined;
+        let instructions: string | undefined = undefined;
 
-          if (ord && active) {
-            const statusUpper = (ord.payment_status || ord.status || '').toUpperCase();
-            if (statusUpper === 'PAID' || statusUpper === 'COMPLETED' || statusUpper === 'SUCCESS' || statusUpper === 'SETTLED') {
-              setOrderStatus('PAID');
-              const resolvedAccess =
-                ord.fulfillment_metadata?.access_url ||
-                ord.download_url ||
-                product?.download_url ||
-                product?.link_digital ||
-                product?.delivery_url;
+        try {
+          const res = await fetch(`/api/orders/${encodeURIComponent(paymentData.orderId)}/status`, {
+            cache: 'no-store',
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.status === 'PAID') {
+              isPaid = true;
+              accessUrl = data.link_digital || data.fulfillment_metadata?.access_url;
+              instructions = data.fulfillment_metadata?.instructions;
+            }
+          }
+        } catch {}
 
-              setOrderFulfillment({
-                access_url: resolvedAccess,
-                instructions: ord.fulfillment_metadata?.instructions,
-              });
+        if (!isPaid) {
+          const supabase = getSupabase();
+          if (supabase) {
+            const { data: ord } = await supabase
+              .from('orders')
+              .select('status, payment_status, download_url, fulfillment_metadata')
+              .eq('id', paymentData.orderId)
+              .maybeSingle();
 
-              // Fire standard browser pixel events on paid verification
-              if (typeof window !== "undefined") {
-                const win = window as any;
-                if (typeof win.fbq === "function") {
-                  win.fbq("track", "Purchase", {
-                    content_name: product?.title || 'Order Checkout',
-                    value: totalAmount,
-                    currency: "IDR",
-                  });
-                }
-                if (typeof win.ttq === "object" && typeof win.ttq.track === "function") {
-                  win.ttq.track("CompletePayment", {
-                    content_name: product?.title || 'Order Checkout',
-                    value: totalAmount,
-                    currency: "IDR",
-                  });
-                }
+            if (ord) {
+              const statusUpper = (ord.payment_status || ord.status || '').toUpperCase();
+              if (statusUpper === 'PAID' || statusUpper === 'COMPLETED' || statusUpper === 'SUCCESS' || statusUpper === 'SETTLED') {
+                isPaid = true;
+                accessUrl = ord.fulfillment_metadata?.access_url || ord.download_url;
+                instructions = ord.fulfillment_metadata?.instructions;
               }
+            }
+          }
+        }
+
+        if (isPaid && active) {
+          setOrderStatus('PAID');
+          const resolvedAccess =
+            accessUrl ||
+            product?.download_url ||
+            product?.link_digital ||
+            product?.delivery_url;
+
+          setOrderFulfillment({
+            access_url: resolvedAccess,
+            instructions: instructions,
+          });
+
+          // Fire standard browser pixel events on paid verification
+          if (typeof window !== "undefined") {
+            const win = window as any;
+            if (typeof win.fbq === "function") {
+              win.fbq("track", "Purchase", {
+                content_name: product?.title || 'Order Checkout',
+                value: totalAmount,
+                currency: "IDR",
+              });
+            }
+            if (typeof win.ttq === "object" && typeof win.ttq.track === "function") {
+              win.ttq.track("CompletePayment", {
+                content_name: product?.title || 'Order Checkout',
+                value: totalAmount,
+                currency: "IDR",
+              });
             }
           }
         }

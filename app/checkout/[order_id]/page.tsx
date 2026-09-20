@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Clock, 
   MessageSquare, 
@@ -37,6 +38,7 @@ interface Props {
 export default function CheckoutPage({ params }: Props) {
   const resolvedParams = use(params);
   const orderId = resolvedParams.order_id;
+  const router = useRouter();
 
   const [timeLeft, setTimeLeft] = useState(900); // 15 menit
   const [order, setOrder] = useState<any>(null);
@@ -191,54 +193,29 @@ export default function CheckoutPage({ params }: Props) {
 
     const pollInterval = setInterval(async () => {
       try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: dbOrder } = await supabase
-            .from('orders')
-            .select('*')
-            .eq('id', orderId)
-            .maybeSingle();
+        const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/status`, {
+          cache: 'no-store',
+        });
 
-          const isOrderPaid = Boolean(
-            dbOrder && (
-              dbOrder.status === 'PAID' ||
-              dbOrder.status === 'COMPLETED' ||
-              dbOrder.status === 'SUCCESS' ||
-              dbOrder.status === 'SETTLED' ||
-              dbOrder.payment_status === 'PAID' ||
-              dbOrder.order_status === 'PAID'
-            )
-          );
-
-          if (isOrderPaid) {
-            let enriched = { ...dbOrder };
-            if (!enriched.fulfillment_metadata || !enriched.link_digital) {
-              const pSlug = enriched.product_id || enriched.slug;
-              if (pSlug) {
-                const { data: pData } = await supabase
-                  .from('products')
-                  .select('*')
-                  .eq('slug', pSlug)
-                  .maybeSingle();
-                if (pData) {
-                  enriched = {
-                    ...enriched,
-                    link_digital: pData.link_digital || enriched.link_digital,
-                    asset_reference: pData.asset_reference || enriched.asset_reference,
-                    button_text: pData.fulfillment_metadata?.button_text || pData.button_text,
-                    fulfillment_metadata: pData.fulfillment_metadata || enriched.fulfillment_metadata
-                  };
-                }
-              }
-            }
-            setOrder((prev: any) => ({
-              ...prev,
-              ...enriched,
-              status: 'PAID',
-              payment_status: 'PAID',
-            }));
-            triggerPurchasePixels(enriched);
+        if (res.ok) {
+          const statusData = await res.json();
+          if (statusData?.status === 'PAID') {
             clearInterval(pollInterval);
+
+            // Perbarui state lokal secara instan untuk menampilkan layar sukses
+            setOrder((prev: any) => {
+              const merged = {
+                ...prev,
+                ...statusData,
+                status: 'PAID',
+                payment_status: 'PAID',
+                order_status: 'PAID',
+                link_digital: statusData.link_digital || prev?.link_digital,
+                fulfillment_metadata: statusData.fulfillment_metadata || prev?.fulfillment_metadata,
+              };
+              triggerPurchasePixels(merged);
+              return merged;
+            });
             return;
           }
         }

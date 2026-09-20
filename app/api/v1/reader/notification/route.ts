@@ -14,6 +14,27 @@ export const dynamic = 'force-dynamic';
  * - "Rp 1.771,00"
  * - "1771"
  */
+function parseExplicitAmount(val: any): number {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === 'number') {
+    if (val > 0 && val < 1000 && !Number.isInteger(val)) {
+      const s = val.toString();
+      const parts = s.split('.');
+      if (parts[1] && parts[1].length === 3) {
+        return Math.round(val * 1000);
+      }
+    }
+    return Math.round(val);
+  }
+  const str = String(val).trim();
+  if (!str) return 0;
+  const parsed = extractAmountFromText(str);
+  if (parsed && parsed > 0) return parsed;
+  const clean = str.replace(/[.,]00$/, '').replace(/[,.]-$/, '').replace(/\D/g, '');
+  const num = parseInt(clean, 10);
+  return !isNaN(num) && num > 0 ? num : 0;
+}
+
 function extractAmountFromText(rawText: string): number | null {
   if (!rawText || typeof rawText !== 'string') return null;
 
@@ -46,7 +67,15 @@ function extractAmountFromText(rawText: string): number | null {
     if (!isNaN(parsed) && parsed > 0) return parsed;
   }
 
-  // 3. Fallback: Angka bulat 3-9 digit yang berdiri sendiri
+  // 3. Format angka ribuan standar Indonesia (e.g. 1.615 atau 1,615 atau 1.615.000 atau 50.000)
+  const thousandMatch = rawText.match(/\b([1-9]\d{0,2}(?:[.,]\d{3})+)(?:[.,]00|-)?\b/);
+  if (thousandMatch && thousandMatch[1]) {
+    const cleanDigits = thousandMatch[1].replace(/[.,]/g, '');
+    const parsed = parseInt(cleanDigits, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+
+  // 4. Fallback: Angka bulat 3-9 digit yang berdiri sendiri
   const genericMatch = rawText.match(/\b([1-9]\d{2,8})\b/);
   if (genericMatch && genericMatch[1]) {
     const parsed = parseInt(genericMatch[1], 10);
@@ -88,6 +117,20 @@ export async function POST(req: NextRequest) {
       ''
     ).trim();
 
+    // Kumpulkan semua tenant slugs yang terhubung dari payload multi-store Android
+    const candidateTenantSlugs: string[] = [];
+    if (Array.isArray(body.tenants)) {
+      for (const t of body.tenants) {
+        const s = typeof t === 'string' ? t.trim() : (t?.tenant_slug || t?.slug || '').trim();
+        if (s && !candidateTenantSlugs.includes(s)) {
+          candidateTenantSlugs.push(s);
+        }
+      }
+    }
+    if (rawTenantInput && !candidateTenantSlugs.includes(rawTenantInput)) {
+      candidateTenantSlugs.unshift(rawTenantInput);
+    }
+
     // Gabungkan text notifikasi dari semua kemungkinan field
     const combinedText = [
       body.title,
@@ -102,18 +145,14 @@ export async function POST(req: NextRequest) {
       .join(' ')
       .trim();
 
-    // Ekstraksi nominal uang
-    const explicitAmount = Number(
-      body.amount ||
-      body.nominal ||
-      body.parsed_amount ||
-      body.gross_amount ||
-      0
+    // Ekstraksi nominal uang dengan support format angka desimal/ribuan Indonesia
+    const explicitAmount = parseExplicitAmount(
+      body.amount ?? body.nominal ?? body.parsed_amount ?? body.gross_amount ?? null
     );
 
     const parsedAmount = explicitAmount > 0 ? explicitAmount : extractAmountFromText(combinedText);
 
-    console.log(`[BoonTrack Reader Webhook] Extracted: rawTenant='${rawTenantInput}', amount=${parsedAmount}, text='${combinedText.slice(0, 100)}'`);
+    console.log(`[BoonTrack Reader Webhook] Extracted: candidateTenants=[${candidateTenantSlugs.join(', ')}], amount=${parsedAmount}, text='${combinedText.slice(0, 100)}'`);
 
     if (!parsedAmount || parsedAmount <= 0) {
       console.warn('[BoonTrack Reader Webhook] Gagal mengekstrak nominal uang valid.');
@@ -134,21 +173,30 @@ export async function POST(req: NextRequest) {
     }
 
     // Resolusi UUID ke slug jika tenant_id dikirim dalam format UUID
-    let resolvedTenantSlug = rawTenantInput;
-    if (resolvedTenantSlug && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedTenantSlug)) {
-      try {
-        const { data: tRow } = await supabase
-          .from('tenants')
-          .select('slug')
-          .eq('id', resolvedTenantSlug)
-          .maybeSingle();
-        if (tRow?.slug) {
-          resolvedTenantSlug = tRow.slug;
+    const resolvedTenantSlugs: string[] = [];
+    for (const item of candidateTenantSlugs) {
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item)) {
+        try {
+          const { data: tRow } = await supabase
+            .from('tenants')
+            .select('slug')
+            .eq('id', item)
+            .maybeSingle();
+          if (tRow?.slug && !resolvedTenantSlugs.includes(tRow.slug)) {
+            resolvedTenantSlugs.push(tRow.slug);
+          }
+        } catch (tResolveErr) {
+          console.debug('[BoonTrack Reader Webhook] Tenant resolve note:', tResolveErr);
         }
-      } catch (tResolveErr) {
-        console.debug('[BoonTrack Reader Webhook] Tenant resolve note:', tResolveErr);
+      } else if (!resolvedTenantSlugs.includes(item)) {
+        resolvedTenantSlugs.push(item);
       }
     }
+
+    const PENDING_STATUSES = [
+      'PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID',
+      'pending', 'waiting_payment', 'pending_payment', 'unpaid'
+    ];
 
     // 2. Cari baris di tabel orders Supabase dengan toleransi timing / race condition
     // Jika frontend checkout terlambat menyimpan order, lakukan buffer retry (3x jeda 1.5 detik)
@@ -159,43 +207,42 @@ export async function POST(req: NextRequest) {
     let matchStrategy = 'none';
 
     for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
-      // JALUR 1: Jika tenant slug tersedia, cari spesifik tenant tersebut
-      if (resolvedTenantSlug) {
-        const isUuidSlug = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedTenantSlug);
+      // JALUR 1: Jika tenant slug(s) tersedia dari reader HP, cari di daftar toko yang terpasang di reader
+      if (resolvedTenantSlugs.length > 0) {
         let tenantQuery = supabase
           .from('orders')
           .select('*')
           .eq('gross_amount', parsedAmount)
-          .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
+          .in('status', PENDING_STATUSES)
           .order('created_at', { ascending: false })
-          .limit(5);
+          .limit(10);
 
-        if (isUuidSlug) {
-          tenantQuery = tenantQuery.or(`tenant_slug.eq.${resolvedTenantSlug},tenant_id.eq.${resolvedTenantSlug}`);
+        if (resolvedTenantSlugs.length === 1) {
+          tenantQuery = tenantQuery.eq('tenant_slug', resolvedTenantSlugs[0]);
         } else {
-          tenantQuery = tenantQuery.eq('tenant_slug', resolvedTenantSlug);
+          tenantQuery = tenantQuery.in('tenant_slug', resolvedTenantSlugs);
         }
 
         const { data: tenantOrders, error: tErr } = await tenantQuery;
         if (!tErr && tenantOrders && tenantOrders.length > 0) {
           pendingOrders = tenantOrders;
-          matchStrategy = 'tenant_exact_gross_amount';
+          matchStrategy = 'paired_tenants_exact_gross_amount';
         }
       }
 
-      // JALUR 2 (GLOBAL MULTI-TENANT FALLBACK): Jika belum cocok, cari order pending di SELURUH tenant
-      // dalam 30 menit terakhir dengan exact gross_amount.
-      // Fitur: 1 HP Reader bisa melayani lebih dari 1 toko sekaligus tanpa unpair.
+      // JALUR 2 (GLOBAL MULTI-TENANT FALLBACK 24 JAM): Jika belum cocok, cari order pending di SELURUH tenant
+      // dalam 24 jam terakhir dengan exact gross_amount.
+      // Fitur: 1 HP Reader bisa melayani banyak toko sekaligus tanpa unpair.
       if (pendingOrders.length === 0) {
-        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const { data: globalOrders, error: gErr } = await supabase
           .from('orders')
           .select('*')
           .eq('gross_amount', parsedAmount)
-          .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
-          .gte('created_at', thirtyMinutesAgo)
+          .in('status', PENDING_STATUSES)
+          .gte('created_at', twentyFourHoursAgo)
           .order('created_at', { ascending: false })
-          .limit(1);
+          .limit(5);
 
         if (!gErr && globalOrders && globalOrders.length > 0) {
           pendingOrders = globalOrders;
@@ -203,18 +250,33 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // JALUR 3 (TOLERANSI KODE UNIK 1-999, MULTI-TENANT, 30 MENIT):
-      // Jika gross_amount tersimpan sebelum potongan kode unik, toleransi selisih 1-999.
-      // Juga mencakup seluruh tenant dalam 30 menit terakhir.
+      // JALUR 3 (GLOBAL ANYTIME EXACT): Jika masih belum ketemu (misal order dibuat lebih lama)
       if (pendingOrders.length === 0) {
-        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const { data: anytimeOrders, error: aErr } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('gross_amount', parsedAmount)
+          .in('status', PENDING_STATUSES)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (!aErr && anytimeOrders && anytimeOrders.length > 0) {
+          pendingOrders = anytimeOrders;
+          matchStrategy = 'global_anytime_exact';
+        }
+      }
+
+      // JALUR 4 (TOLERANSI KODE UNIK 1-999, MULTI-TENANT, 24 JAM):
+      // Jika gross_amount tersimpan sebelum potongan kode unik, toleransi selisih 1-999.
+      if (pendingOrders.length === 0) {
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const { data: allPending } = await supabase
           .from('orders')
           .select('*')
-          .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
-          .gte('created_at', thirtyMinutesAgo)
+          .in('status', PENDING_STATUSES)
+          .gte('created_at', twentyFourHoursAgo)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(100);
 
         if (allPending && allPending.length > 0) {
           const tolMatch = allPending.find((o) => {
@@ -250,7 +312,8 @@ export async function POST(req: NextRequest) {
         matched: false,
         message: `Tidak ditemukan pesanan menunggu pembayaran dengan nominal Rp ${parsedAmount.toLocaleString('id-ID')}.`,
         parsed_amount: parsedAmount,
-        tenant_slug: resolvedTenantSlug || null,
+        tenant_slug: resolvedTenantSlugs[0] || null,
+        candidate_tenants: resolvedTenantSlugs,
         retries_attempted: MAX_RETRIES,
       });
     }
@@ -258,15 +321,16 @@ export async function POST(req: NextRequest) {
     // Pilih order paling relevan
     const matchedOrder = pendingOrders[0];
     const paidAt = new Date().toISOString();
-    const effectiveTenantSlug = matchedOrder.tenant_slug || resolvedTenantSlug || 'default';
+    const primaryTenantSlug = resolvedTenantSlugs[0] || 'default';
+    const effectiveTenantSlug = matchedOrder.tenant_slug || primaryTenantSlug;
 
     // Log multi-tenant redirect: jika order ditemukan di toko berbeda dari sender
-    const isMultiTenantMatch = resolvedTenantSlug &&
+    const isMultiTenantMatch = resolvedTenantSlugs.length > 0 &&
       matchedOrder.tenant_slug &&
-      matchedOrder.tenant_slug !== resolvedTenantSlug;
+      !resolvedTenantSlugs.includes(matchedOrder.tenant_slug);
 
     if (isMultiTenantMatch) {
-      console.log(`[Multi-Tenant Match] Mutasi dari device (tenant: '${resolvedTenantSlug}') dialihkan ke toko: '${matchedOrder.tenant_slug}' | Order #${matchedOrder.id} Rp ${matchedOrder.gross_amount}`);
+      console.log(`[Multi-Tenant Match] Mutasi dari device (tenants: [${resolvedTenantSlugs.join(', ')}]) dialihkan ke toko: '${matchedOrder.tenant_slug}' | Order #${matchedOrder.id} Rp ${matchedOrder.gross_amount}`);
     }
 
     console.log(`[BoonTrack Reader Webhook] MATCH FOUND: Order #${matchedOrder.id} (${matchedOrder.customer_name || 'Customer'}) Rp ${matchedOrder.gross_amount} via ${matchStrategy}${isMultiTenantMatch ? ` [→ toko: ${matchedOrder.tenant_slug}]` : ''}. Mengupdate ke PAID...`);
