@@ -27,12 +27,22 @@ export default function TrialBanner({
   );
 
   // Kalkulasi dinamis real-time sisa hari dari trial_ends_at
-  const calculatedDays = useMemo(() => {
+  // Gunakan Math.floor agar hari yang ditampilkan = hari penuh tersisa.
+  // Jika sisa waktu < 24 jam, tampilkan dalam jam.
+  const { calculatedDays, hoursLeft, showHours } = useMemo(() => {
     if (trialEndsAt) {
       const diffMs = new Date(trialEndsAt).getTime() - Date.now();
-      return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+      if (diffMs <= 0) return { calculatedDays: 0, hoursLeft: 0, showHours: false };
+      const totalHours = diffMs / (1000 * 60 * 60);
+      const days = Math.floor(totalHours / 24);
+      if (days < 1) {
+        // Kurang dari 24 jam — tampilkan dalam jam
+        return { calculatedDays: 0, hoursLeft: Math.floor(totalHours), showHours: true };
+      }
+      return { calculatedDays: days, hoursLeft: 0, showHours: false };
     }
-    return daysLeft !== null ? Math.max(0, daysLeft) : null;
+    const fallback = daysLeft !== null ? Math.max(0, daysLeft) : null;
+    return { calculatedDays: fallback, hoursLeft: 0, showHours: false };
   }, [trialEndsAt, daysLeft]);
 
   if (!isTrial && calculatedDays === null) {
@@ -40,8 +50,23 @@ export default function TrialBanner({
   }
 
   const safeDays = calculatedDays !== null ? calculatedDays : 0;
-  const isExpired = safeDays === 0;
-  const planLabel = isAdsTrial ? 'Ads Performance' : 'Solo';
+  const isExpired = safeDays === 0 && !showHours;
+
+  // Label paket dinamis berdasarkan tier aktif — TIDAK hardcoded
+  const planLabel = useMemo(() => {
+    const t = (tier || '').toLowerCase();
+    if (t.includes('ads') || t.includes('performance') || t === 'pro_scale') return 'Ads Performance';
+    if (t.includes('enterprise') || t.includes('team')) return 'Team Scale';
+    if (t.includes('checkout') || t.includes('lite')) return 'Checkout Lite';
+    if (t.includes('starter') || t.includes('solo')) return 'Solo';
+    // Fallback: kapitalisasi tier raw agar tetap bermakna
+    return tier ? tier.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Trial';
+  }, [tier]);
+
+  // Teks sisa waktu: hari jika >= 1 hari, jam jika < 24 jam
+  const timeLeftLabel = showHours
+    ? `${hoursLeft} jam tersisa`
+    : `${safeDays} hari tersisa`;
 
   return (
     <div
@@ -49,7 +74,7 @@ export default function TrialBanner({
       className={`w-full px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 border-b text-xs transition-colors ${
         isExpired
           ? 'bg-rose-50 border-rose-200 text-rose-900'
-          : safeDays <= 3
+          : (safeDays <= 3 || showHours)
           ? 'bg-amber-50 border-amber-200 text-amber-900'
           : 'bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-amber-200 text-amber-900'
       }`}
@@ -78,20 +103,27 @@ export default function TrialBanner({
                 : 'bg-white/80 border-amber-300/60 text-amber-800'
             }`}
           >
-            {isExpired ? 'Trial Kedaluwarsa' : isAdsTrial ? 'Ads Performance Trial' : 'Reverse Trial'}
+            {isExpired ? 'Trial Kedaluwarsa' : `${planLabel} Trial`}
           </span>
           <p className="font-medium text-xs truncate">
             {isExpired ? (
               <span className="font-bold text-rose-700">
-                Masa Trial {planLabel} telah berakhir (0 hari tersisa)! Akses storefront &amp; fitur automasi dibatasi.
+                Masa Trial {planLabel} telah berakhir! Akses storefront &amp; fitur automasi dibatasi.
               </span>
             ) : (
               <span>
                 Masa Trial {planLabel}:{' '}
                 <strong className="font-black text-amber-950 font-mono">
-                  {safeDays} hari tersisa
+                  {timeLeftLabel}
                 </strong>
-                . {safeDays <= 3 ? 'Segera upgrade agar automasi toko & etalase tidak terputus.' : isAdsTrial ? 'Nikmati fitur automasi toko, deteksi pembayaran & pixel tracking CAPI aktif tanpa biaya awal.' : 'Nikmati fitur otomatisasi toko & katalog aktif tanpa biaya awal.'}
+                .{' '}
+                {showHours
+                  ? 'Kurang dari 24 jam! Segera upgrade agar toko tidak terputus.'
+                  : safeDays <= 3
+                  ? 'Segera upgrade agar automasi toko & etalase tidak terputus.'
+                  : isAdsTrial
+                  ? 'Nikmati fitur automasi toko, deteksi pembayaran & pixel tracking CAPI aktif tanpa biaya awal.'
+                  : 'Nikmati fitur otomatisasi toko & katalog aktif tanpa biaya awal.'}
               </span>
             )}
           </p>
