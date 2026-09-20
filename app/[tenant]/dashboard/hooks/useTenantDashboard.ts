@@ -232,14 +232,14 @@ export function useTenantDashboard() {
       : 'Paket Solo');
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [targetUpgradeTier, setTargetUpgradeTier] = useState<'ads_performance' | 'team_scale'>('ads_performance');
+  const [targetUpgradeTier, setTargetUpgradeTier] = useState<'ads_performance' | 'team_scale' | 'solo' | 'checkout_lite'>('ads_performance');
 
-  const openUpgradeModal = (targetTier: 'ads_performance' | 'team_scale' = 'ads_performance') => {
+  const openUpgradeModal = (targetTier: 'ads_performance' | 'team_scale' | 'solo' | 'checkout_lite' = 'ads_performance') => {
     setTargetUpgradeTier(targetTier);
     setIsPaymentModalOpen(true);
   };
 
-  const handleUpgradeTier = (targetTier: 'ads_performance' | 'team_scale' = 'ads_performance') => {
+  const handleUpgradeTier = (targetTier: 'ads_performance' | 'team_scale' | 'solo' | 'checkout_lite' = 'ads_performance') => {
     openUpgradeModal(targetTier);
   };
 

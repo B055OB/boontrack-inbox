@@ -7,7 +7,7 @@ interface TrialBannerProps {
   daysLeft: number | null;
   tier?: string;
   trialEndsAt?: string | null;
-  onUpgrade: (targetTier: 'ads_performance' | 'team_scale') => void;
+  onUpgrade: (targetTier: 'ads_performance' | 'team_scale' | 'solo' | 'checkout_lite') => void;
 }
 
 export default function TrialBanner({
