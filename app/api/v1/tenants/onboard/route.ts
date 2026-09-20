@@ -195,7 +195,34 @@ export async function POST(req: NextRequest) {
       slug: generatedSlug,
     });
 
-    // 1. INSERT / UPSERT ke tabel tenants di Supabase dengan status belum aktif (unverified)
+    // Cek tenant eksisting untuk menjaga wa_verification_token dari registrasi
+    const { data: existingTenant } = await supabase
+      .from('tenants')
+      .select('id, slug, status, metadata')
+      .eq('slug', generatedSlug)
+      .maybeSingle();
+
+    const existingMeta = (existingTenant?.metadata && typeof existingTenant.metadata === 'object')
+      ? (existingTenant.metadata as Record<string, any>)
+      : {};
+
+    const incomingWaToken =
+      body.wa_verification_token ||
+      body.code ||
+      body.token ||
+      existingMeta.wa_verification_token ||
+      existingMeta.code ||
+      existingMeta.token ||
+      null;
+
+    let tenantStatus = 'unverified';
+    if (incomingWaToken || isTrial || body.status === 'PENDING') {
+      tenantStatus = 'PENDING';
+    } else if (existingTenant?.status && ['pending', 'pending_wa_verification', 'pending_activation', 'trial'].includes(String(existingTenant.status).toLowerCase())) {
+      tenantStatus = existingTenant.status;
+    }
+
+    // 1. INSERT / UPSERT ke tabel tenants di Supabase
     const { data: upsertedTenant, error: upsertError } = await supabase
       .from('tenants')
       .upsert(
@@ -205,13 +232,14 @@ export async function POST(req: NextRequest) {
           category: resolvedBusinessType,
           business_type: resolvedBusinessType,
           tier: dbTier,
-          status: 'unverified',
+          status: tenantStatus,
           is_active: false,
           trial_ends_at: isTrial ? trialEndsAt : null,
           subscription_ends_at: subscriptionEndsAt,
           access_username: generatedSlug,
           access_password: pin,
           metadata: {
+            ...existingMeta,
             template,
             onboarding_mode: onboardingMode,
             merchant_name: merchantName,
@@ -219,9 +247,17 @@ export async function POST(req: NextRequest) {
             wa_number: formattedWa,
             phone: formattedWa,
             email: customerEmail,
-            email_verified: false,
+            email_verified: Boolean(existingMeta.email_verified),
             verification_token: verificationToken,
             verification_expires_at: verificationExpiresAt,
+            ...(incomingWaToken ? {
+              wa_verification_token: incomingWaToken,
+              activation_code: 'AKTIVASI ' + incomingWaToken,
+              code: incomingWaToken,
+              token: incomingWaToken,
+              wa_verification_status: 'PENDING',
+              status: 'PENDING',
+            } : {}),
             access_pin: pin,
             pin_hash: pin,
             plan_tier: canonicalPlanTier,

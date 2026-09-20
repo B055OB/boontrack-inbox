@@ -28,17 +28,33 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    let query = supabase
-      .from('tenants')
-      .select('id, slug, name, status, is_active, tier, metadata');
+    let tenant: any = null;
+    let error: any = null;
 
     if (token) {
-      query = query.eq('metadata->>wa_verification_token', token);
-    } else if (slug) {
-      query = query.eq('slug', slug);
+      const cleanToken = token.toUpperCase().trim();
+      const tokenSuffix = cleanToken.replace(/^BT-?/i, '');
+      const canonicalToken = 'BT-' + tokenSuffix;
+
+      const { data: t1, error: e1 } = await supabase
+        .from('tenants')
+        .select('id, slug, name, status, is_active, tier, metadata')
+        .or('metadata->>wa_verification_token.eq.' + canonicalToken + ',metadata->>wa_verification_token.eq.' + cleanToken + ',metadata->>code.eq.' + canonicalToken + ',metadata->>token.eq.' + canonicalToken)
+        .maybeSingle();
+
+      tenant = t1;
+      error = e1;
     }
 
-    const { data: tenant, error } = await query.maybeSingle();
+    if (!tenant && slug) {
+      const { data: t2, error: e2 } = await supabase
+        .from('tenants')
+        .select('id, slug, name, status, is_active, tier, metadata')
+        .eq('slug', slug)
+        .maybeSingle();
+      tenant = t2;
+      error = e2;
+    }
 
     if (error || !tenant) {
       return NextResponse.json({
@@ -99,17 +115,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let query = supabase
-      .from('tenants')
-      .select('id, slug, name, status, is_active, tier, metadata');
+    let tenant: any = null;
+    let error: any = null;
 
     if (token) {
-      query = query.eq('metadata->>wa_verification_token', token);
-    } else if (slug) {
-      query = query.eq('slug', slug);
+      const cleanToken = token.toUpperCase().trim();
+      const tokenSuffix = cleanToken.replace(/^BT-?/i, '');
+      const canonicalToken = 'BT-' + tokenSuffix;
+
+      const { data: t1, error: e1 } = await supabase
+        .from('tenants')
+        .select('id, slug, name, status, is_active, tier, metadata')
+        .or('metadata->>wa_verification_token.eq.' + canonicalToken + ',metadata->>wa_verification_token.eq.' + cleanToken + ',metadata->>code.eq.' + canonicalToken + ',metadata->>token.eq.' + canonicalToken)
+        .maybeSingle();
+
+      tenant = t1;
+      error = e1;
     }
 
-    const { data: tenant, error } = await query.maybeSingle();
+    if (!tenant && slug) {
+      const { data: t2, error: e2 } = await supabase
+        .from('tenants')
+        .select('id, slug, name, status, is_active, tier, metadata')
+        .eq('slug', slug)
+        .maybeSingle();
+      tenant = t2;
+      error = e2;
+    }
 
     if (error || !tenant) {
       return NextResponse.json({

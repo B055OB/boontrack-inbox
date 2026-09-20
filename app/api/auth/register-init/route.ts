@@ -118,31 +118,39 @@ export async function POST(req: NextRequest) {
     // Persiapkan industry menu standar untuk bot
     const defaultMenu = buildDefaultIndustryMenu(shopName, rawCategory);
 
-    // Simpan ke tabel tenants dengan status 'pending_wa_verification'
+    // Simpan ke tabel tenants dengan status 'PENDING'
     const tenantPayload = {
       slug: baseSlug,
       name: shopName,
       category: rawCategory,
       business_type: rawCategory,
       tier: 'PRO_SCALE', // Trial 7 Hari Ads Performance
-      status: 'pending_wa_verification',
+      status: 'PENDING',
       is_active: false,
       trial_ends_at: trialEndsAt,
       access_username: baseSlug,
       access_password: password,
       metadata: {
         shop_name: shopName,
+        store_name: shopName,
+        name: shopName,
         merchant_name: body.merchant_name || shopName,
         phone,
+        wa_number: phone,
         whatsapp_number: phone,
         email: email || null,
         password_raw: password,
         wa_verification_token: verificationToken,
-        wa_verification_status: 'pending',
+        activation_code: activationMessage,
+        code: verificationToken,
+        token: verificationToken,
+        wa_verification_status: 'PENDING',
+        status: 'PENDING',
         wa_verification_expires_at: tokenExpiresAt,
         official_waba_number: officialWaNumber,
         selected_plan: rawPlan,
         plan_tier: 'PRO_SCALE',
+        tier: 'PRO_SCALE',
         trial_days: 7,
         referral_code: referralCode,
         utm_params: utmParams,
