@@ -100,38 +100,6 @@ Ekosistem BoonTrack meresmikan standarisasi 3 Tier Komersial baku yang mengikat 
   - `PHYSICAL`: Mengaktifkan kalkulasi ongkir dan form logistik pengiriman lengkap.
 - **Dynamic Links**: Link checkout WhatsApp wajib menggunakan resolver dinamis (`shop.boontrack.com/{tenant_slug}` atau custom domain), dilarang hardcode domain tertentu.
 
-### 4.1 Single Source of Truth Transaksi Toko (Standarisasi Skema `orders`)
-Ekosistem multi-tenant toko BoonTrack menetapkan tabel **`orders`** sebagai **Single Source of Truth** untuk seluruh siklus hidup transaksi (Checkout, Dashboard Merchant, Webhook Reader, dan Auto-Fulfillment).
-
-> **⚠️ DEPRECATION NOTICE**: Tabel lawas `product_orders` resmi **DIDEPRESIASI (DEPRECATED)** secara permanen dan dilarang digunakan di seluruh rute baru maupun rute migrasi.
-
-#### Skema Riil Tabel `orders` (PostgreSQL Supabase):
-| Kolom | Tipe Data | Constraint | Keterangan |
-| :--- | :--- | :--- | :--- |
-| `id` | `text` | `PRIMARY KEY` | Format baku Invoice / Order ID: `ORD-...` |
-| `tenant_slug` | `text` | Indexed | Identifikasi tenant toko (contoh: `'buzzerukm'`) |
-| `product_id` | `text` | `NOT NULL` | ID referensi produk yang dipesan (wajib terisi saat checkout) |
-| `product_title` | `text` | Nullable | Judul / nama produk pada saat transaksi dibuat |
-| `customer_name` | `text` | Nullable | Nama lengkap pembeli |
-| `customer_phone`| `text` | Nullable | Nomor WhatsApp/telepon pembeli |
-| `gross_amount`  | `numeric`| Not Null | Total pembayaran akhir (termasuk kode unik / ongkir) |
-| `status`        | `text` | Default `'PENDING'` | Status pesanan: `'PENDING'`, `'PAID'`, `'COMPLETED'`, dll. |
-| `created_at`    | `timestamptz` | Default `now()` | Waktu pesanan dibuat |
-
-#### Kontrak Operasional Transaksi:
-1. **API List Pesanan (`/api/orders`, `/api/v1/tenants/[slug]/orders`)**:
-   - Query langsung ke tabel `orders` dengan filter `.eq('tenant_slug', targetSlug)`.
-   - Diurutkan berdasarkan `.order('created_at', { ascending: false })`.
-   - Menggunakan paginasi/limit bersih (`limit(100)`).
-   - **Zero Fake Fallback Policy**: Jika query menghasilkan array kosong (`[]`), return `[]` apa adanya. DILARANG membuat while-loop 3.500 atau menyuntikkan data tiruan/mock statis.
-2. **Mutasi Checkout (`lib/checkout-service.ts`)**:
-   - Wajib menyertakan `product_id` (tidak boleh `null`) untuk mematuhi database integrity constraint.
-   - Status awal pesanan baru adalah `'PENDING'`.
-3. **Webhook Reader & Payment Matching (`/api/v1/reader/notification`)**:
-   - Membaca notifikasi mutasi masuk dari aplikasi BoonTrack Reader APK.
-   - Melakukan matching terhadap tabel `orders` berdasarkan kecocokan nominal `gross_amount` dan status `PENDING` (atau status belum lunas lainnya).
-   - Mengupdate status pesanan di tabel `orders` menjadi `'PAID'` secara atomik dan idempotent.
-
 ---
 
 ## 5. Monetization & Entitlement Lifecycle (Flexible Policy)
@@ -402,14 +370,19 @@ Khusus untuk vertikal `FIELD_SERVICE` dan `PROFESSIONAL_SERVICE`:
 - **Status Engine Lain**: WAHA hanya berstatus local development container / secondary driver dan BUKAN driver gateway production aktif. Tidak diperbolehkan mengarahkan panggilan production ke WAHA tanpa ADR resmi.
 
 ### 9.2 Device Pairing & Authentication Protocol
-Platform menstandarisasikan mekanisme penautan perangkat WhatsApp secara real-time:
-1. **Scan QR Code (Single Standard & Ultra-Stable)**:
-   - Dashboard polling status session ke endpoint Evolution API `/instance/connect/{instance}` via backend proxy resmi.
+Platform menyediakan dua mekanisme penautan perangkat WhatsApp bagi tenant secara real-time:
+1. **Scan QR Code (Primary & Ultra-Stable)**:
+   - Dashboard polling status session ke endpoint Evolution API `/instance/connect/{instance}`.
    - Mengambil data string base64 / QR code langsung dari Evolution API.
    - Di-render sebagai gambar QR di dashboard merchant (`WhatsAppTab.tsx`).
-   - Sesi yang telah `open` langsung dipetakan statusnya ke `CONNECTED`.
-2. **Deprecation of Phone Pairing Code**:
-   - Berdasarkan evaluasi stabilitas socket Baileys, fitur penautan via pairing code 8-digit telah didepresiasi & dihapus total demi integritas koneksi webhook dan pencegahan konflik sesi perangkat.
+2. **Phone Number Pairing Code (Secondary - 8 Character Format)**:
+   - Tenant memasukkan nomor telepon aktif (format internasional `628xxx`).
+   - Backend memanggil endpoint resmi Evolution API v2:
+     `GET /instance/connect/{instance}?number={clean_phone}`
+     Headers: `apikey: {EVOLUTION_API_KEY}`
+   - Nilai balik wajib diambil dari field resmi `pairingCode` atau `code` yang diterbitkan oleh WhatsApp Meta server melalui Baileys socket.
+   - Karakter kode resmi adalah tepat 8 digit alfanumerik (`XXXX-XXXX`).
+   - DILARANG KERAS merender raw QR string (teks panjang berawalan `2@...`) ke dalam form pairing code.
 
 ### 9.3 Zero Fake Fallback & Transparent Error Policy
 - Jika Evolution API belum siap, session gagal, atau nomor tidak valid:
@@ -631,14 +604,6 @@ Navigasi sidebar (`DashboardSidebar.tsx`) pada grup `STORE ENGINE` menyematkan M
   - Superadmin dapat menerbitkan AM baru per regional/wilayah (provinsi/luar negeri) melalui portal admin.
   - Setiap AM baru memiliki kuota dan pool sub-affiliate terisolasi tanpa merombak arsitektur inti database.
 
-## Affiliate & AM Hierarchy Architecture
-- **Affiliate Manager (AM)**: Entitas manajerial (`role: 'am'`) yang mengawasi jaringan affiliate dalam satu teritori/channel. Default Master AM: Kang Sakti (`buzzerukm`).
-- **Sub-Affiliate**: Mitra lapangan (`role: 'affiliate'`, `parent_am_id: <AM_ID>`) yang mendatangkan merchant/UKM dengan komisi 25%.
-- **Routing & Attribusi**:
-  - Pendaftaran publik di `/affiliate/register` otomatis terhubung ke Master AM aktif saat ini.
-  - Dashboard AM mengagregasikan metrik seluruh downstream sub-affiliate secara real-time.
-  - Skalabilitas siap mendukung penambahan AM Regional (provinsi lain / lintas negara) via Control Plane Superadmin.
-
 ---
 
 ## WhatsApp Gateway & Multi-Tenant Connection Architecture
@@ -684,114 +649,339 @@ Pedoman keputusan arsitektur dan batasan teknis operasional infrastruktur WhatsA
 
 ---
 
-## 13. Zero-MDR Payment Ingestion & EMVCo Dynamic QRIS Architecture
+## 13. Webhook Boundary Isolation, Idempotency & Distributed Tracing Standard (Production Contract)
 
-### 13.1 High-Level Ingestion Flow & Distributed Roles
+> **Architectural Status**: 🔒 **FROZEN & CERTIFIED (P0, P0.5, P1 E2E)**  
+> **Core Principle**: *"phone_number_id determines domain authority. Message text, tenant slug, and AI intents NEVER determine routing boundaries."*
 
-Sistem pembayaran BoonTrack menerapkan pemisahan peran tiga lapis (*Three-Tier Architecture*) untuk menjamin *zero cold-start latency*, determinisme status transaksi, dan skalabilitas fulfillment:
+### 13.1 Deterministic Traffic Splitter & Domain Isolation (P0 Contract)
+Setiap webhook inbound dari Meta Cloud API disaring di layer gerbang terdepan (`TrafficSplitter`) menggunakan atribut `metadata.phone_number_id` server-side registry secara deterministik:
 
-```
-+-----------------------------------------------------------------------------+
-|                            PEMBELI / PELANGGAN                              |
-|   1. Buka Invoice Checkout: /checkout/[order_id]                            |
-|   2. Scan QRIS Dinamis (EMVCo) via BCA, Mandiri, BRI, DANA, GoPay, dsb.    |
-|   3. Pembeli Transfer Rp 1.615 (Nominal Otomatis Terkunci, Direct Settlement)|
-+-----------------------------------------------------------------------------+
-                                       |
-                                       v
-+-----------------------------------------------------------------------------+
-|                     SMARTPHONE ANDROID KASIR / MERCHANT                     |
-|   - Terpasang aplikasi BoonTrack Reader (Notification Listener Service)     |
-|   - Menerima push notifikasi mutasi masuk:                                  |
-|     "Pembayaran Masuk - Rp1.615 diterima DANA Bisnis."                      |
-|   - Menembak Ingress Webhook via HTTPS POST                                 |
-+-----------------------------------------------------------------------------+
-                                       |
-                                       v
-+-----------------------------------------------------------------------------+
-|                  TIER 1: VERCEL (NEXT.JS EDGE GATEWAY)                      |
-|   Endpoint: https://shop.boontrack.com/api/v1/reader/notification           |
-|   - Ingress terpusat, zero cold-start, latency < 100ms                      |
-|   - Verifikasi Bearer Token / Tenant Pairing                                |
-|   - Parsing nominal mutasi: Regex / extraction nominal Rp 1.615             |
-|   - Race-Condition Tolerance: Buffer retry loop 3x (jeda 1.5 detik)         |
-|   - Mutasi Matching: Match single candidate order where gross_amount = 1615 |
-|   - Audit Logging: Simpan payload masuk ke tabel reader_notifications       |
-+-----------------------------------------------------------------------------+
-                                       |
-                                       v
-+-----------------------------------------------------------------------------+
-|               TIER 2: SUPABASE POSTGRESQL (STATE STORE & SOT)               |
-|   - Single Source of Truth status transaksi                                 |
-|   - Instant State Transition: orders.status = 'PAID',                       |
-|     orders.payment_status = 'PAID', paid_at = now()                         |
-|   - Frontend checkout mendeteksi perubahan via polling interval             |
-+-----------------------------------------------------------------------------+
-                                       | (PostgreSQL Webhook / Trigger)
-                                       v
-+-----------------------------------------------------------------------------+
-|            TIER 3: BOONTRACK CORE FASTAPI (FULFILLMENT ENGINE)              |
-|   - Event-Driven Fulfillment Engine                                         |
-|   - Otomasi pengiriman digital assets / akses materi                        |
-|   - WhatsApp Order Confirmation Broadcast via Evolution API                 |
-|   - Meta CAPI Purchase event firing & tracking konversi ads                 |
-+-----------------------------------------------------------------------------+
+```text
+                    META WEBHOOK INBOUND
+                             │
+                             ▼
+                     TrafficSplitter
+                             │
+                      phone_number_id
+                             │
+              ┌──────────────┴──────────────┐
+              ▼                             ▼
+     PLATFORM_PHONE_NUMBER_ID          TENANT PHONE
+              │                             │
+              ▼                             ▼
+     PlatformWebhookRouter          TenantWebhookRouter
+              │                             │
+       ┌──────┼──────┐             ┌────────┼────────┐
+       ▼      ▼      ▼             ▼        ▼        ▼
+    Activation Payment Support   Catalog   Order     CS
+       │
+       ▼
+    EARLY RETURN 200 OK
 ```
 
-### 13.2 Pemisahan Peran Sistem (Separation of Concerns)
+Platform WABA Routing (PLATFORM_TRANSACTIONAL):
 
-1. **Vercel Edge / Next.js Gateway (Payment Ingress & Real-time Calculator)**:
-   - Bertindak sebagai gateway murni (*Stateless Gateway*).
-   - Menangani kalkulasi QRIS Dinamis standar EMVCo secara instan di edge.
-   - Menerima payload webhook dari HP Android Reader tanpa latency cold-start.
-   - Menjalankan buffer retry (3 iterasi, 1.5s delay) untuk mengantisipasi race-condition jika pembeli transfer sangat cepat sebelum frontend checkout selesai meng-insert order.
-   - Menghubungkan mutasi ke database Supabase dan mengembalikan response 200 OK ke perangkat Android.
+Terikat mutlak pada PLATFORM_PHONE_NUMBER_ID (1268977686299719 / nomor resmi 0851-7955-5449).
 
-2. **Supabase Database (State Store & SOT)**:
-   - Bertindak sebagai otoritas data tunggal (*Single Source of Truth*).
-   - Menyimpan tabel `orders`, `tenants`, dan `reader_notifications`.
-   - Mengelola state machine transaksional: `PENDING` -> `PAID`.
-   - Menyimpan string payload QRIS EMVCo toko di `tenants.metadata.qris_payload`.
+Khusus melayani: System Commands registrasi (AKTIVASI BT-xxxx), notifikasi pembayaran platform, dan panduan sistem resmi (GLOBAL_FALLBACK_PLATFORM).
 
-3. **BoonTrack Core Engine (FastAPI / Railway)**:
-   - Bertindak sebagai mesin orkestrasi pemenuhan pesanan (*Fulfillment & Notification Engine*).
-   - Mengirim notifikasi WA lunas ke pembeli dan merchant.
-   - Mengirim link akses digital / tiket telegram / instruksi kurir fisik.
-   - Mengirim data konversi `Purchase` ke Meta Conversions API (CAPI) dan TikTok Pixel.
+Terisolasi 100% dari Conversation Engine, katalog toko, keranjang belanja, dan antrean CS merchant.
 
-### 13.3 Standar & Spesifikasi EMVCo QRIS Dinamis
+Tenant WABA Routing (TENANT_SALES):
 
-Sistem mengubah QRIS Statis Merchant (0% MDR) menjadi QRIS Dinamis berstandar nasional EMVCo (Bank Indonesia / ASPI) dengan spesifikasi tag berikut:
+Terikat pada nomor telepon tenant yang terdaftar di database whatsapp_connections / metadata toko.
 
-| Tag EMVCo | Nama Field | Nilai / Spesifikasi | Keterangan |
+Mengalir ke TenantRuntimeContext, Conversation Engine (LLM/State Machine), katalog produk, dan CS multi-seat.
+
+Anti-Retry Storm & Safe Acknowledgment (P1 Rule):
+
+Jika phone_number_id yang masuk tidak dikenali di platform maupun tenant, backend DILARANG melempar HTTP 404/400 (yang memicu pengulangan kirim dari Meta berhari-hari).
+
+Backend wajib mencatat log audit peringatan dan mengembalikan HTTP 200 OK dengan respons aman {"status": "IGNORED_UNMAPPED"}.
+
+Pemisahan Konseptual Messaging Window vs Token Expiry (P1 Rule):
+
+Token Expiry (Domain Bisnis - 48 Jam): Mengatur masa berlaku token BT-xxxx untuk otorisasi status registrasi tenant di database.
+
+Messaging Window (Domain Kebijakan Provider - 24 Jam): Pengiriman pesan teks konfirmasi bebas biaya (free-form message) HANYA diizinkan jika dipicu oleh pesan inbound pengguna (is_user_initiated = True). Aktivasi di luar interaksi pengguna menahan pengiriman pesan bebas biaya guna mencegah penolakan Meta Error #131047.
+
+System Command Early-Return:
+
+Format AKTIVASI BT-xxxx diperlakukan sebagai perintah sistem deterministik, bukan entitas percakapan bot.
+
+Setelah 5-parameter check (token, pengirim, status registrasi, masa berlaku 48 jam, status belum aktif) terpenuhi, sistem langsung mengembalikan status Early Return 200 OK dan menghentikan pipeline.
+
+13.2 Idempotency Layer & Database Defense-in-Depth (P0.5 Contract)
+Sistem menolak ketergantungan mutlak pada Redis/in-memory lock semata. Kepastian effectively-once side effect dikunci melalui kombinasi lapisan ganda (defense-in-depth):
+
+Deduplication Key Hierarchy:
+
+Primary Identity: idemp:wamid:{provider_message_id} (berbasis ID resmi pesan Meta wamid).
+
+Fallback Identity: SHA-256 hash dari sender_phone + raw_text + timestamp dengan jendela kedaluwarsa terbatas (bounded dedup window).
+
+Two-Phase Lock (2PL) Concurrency Control:
+
+Fase 1 (Acquire): Atomic SETNX status IN_PROGRESS (timeout 60 detik). Jika ditemukan entri berstatus COMPLETED, sistem seketika melakukan Early Return 200 OK mengembalikan respons ter-cache tanpa mengeksekusi efek samping ulang.
+
+Fase 2 (Commit/Release): Menyimpan hasil eksekusi (TTL 24 jam). Jika terjadi kegagalan tak terduga (unhandled exception), lock dilepaskan agar pengiriman ulang Meta yang sah dapat diproses.
+
+Database Integrity & Uniqueness Boundary (Pagar Terakhir):
+
+Constraint unik UNIQUE (verification_token) dan composite index (whatsapp_number, verification_token) pada tabel registrasi.
+
+Transisi status wajib atomik:
+
+```sql
+UPDATE tenants 
+SET status = 'active', is_verified = true, wa_verified_at = :now 
+WHERE id = :tenant_id AND status = 'pending_wa_verification';
+```
+
+Idempotency Hit (0 Rows Affected): Jika baris terpengaruh bernilai 0 (karena sudah berstatus active), operasi diperlakukan sebagai keberhasilan idempoten: sistem merespons sukses tanpa mengeksekusi mutasi ulang ke database dan tanpa mengirim ulang pesan WhatsApp.
+
+Crash-After-Commit Recovery Authority:
+
+Jika proses backend mati/crash tepat setelah transaksi database berhasil dicatat namun sebelum status cache diubah menjadi COMPLETED, pengiriman ulang dari Meta diverifikasi langsung ke status database terkini. Database state bertindak sebagai otoritas pemulihan (recovery authority) tertinggi.
+
+Strict DB Outage Degradation Boundary:
+
+In-memory fallback/cache HANYA diperbolehkan untuk resolusi perutean (routing availability).
+
+Otorisasi bisnis, pengesahan akun, pemotongan kuota, dan transaksi finansial WAJIB memverifikasi database langsung (source of truth).
+
+Jika koneksi database terputus, sistem wajib mengeksekusi kegagalan terkontrol (HTTP 503 DATABASE_UNAVAILABLE) agar provider melakukan exponential retry, dilarang mengasumsikan keberhasilan berbasis memori lokal yang berpotensi stale.
+
+13.3 Distributed Tracing & Observability Taxonomy (Production Standard)
+Sistem observability dirancang untuk memantau kebenaran bisnis (business truth), bukan sekadar metrik infrastruktur (CPU/RAM). Seluruh siklus hidup pesan dan transaksi wajib membawa taksonomi identitas terpisah:
+
+1. Identitas Taksonomi Konteks
+trace_id: UUID tunggal untuk satu siklus eksekusi request/runtime flow (contextvars).
+
+correlation_id: Identifier payung yang mengaitkan seluruh siklus bisnis dari hulu ke hilir (mulai dari chat masuk, pembuatan order, checkout, QRIS, settlement pembayaran, hingga dispatch WhatsApp dan Meta CAPI).
+
+order_id: Identitas unik entitas pesanan bisnis internal.
+
+payment_id: Identitas mutasi/transaksi pembayaran internal.
+
+wamid: Identitas spesifik pesan yang diterbitkan Meta WhatsApp.
+
+provider_event_id: Identitas unik event yang diterbitkan oleh payment gateway (Midtrans/Tripay/Xendit) atau agregator kurir.
+
+2. Skema Log JSON Terstruktur (Mandatory Production Log)
+Setiap event operasional wajib mencatat format log terstruktur yang terisolasi dalam cakupan tenant_id:
+
+```json
+{
+  "timestamp": "ISO-8601",
+  "trace_id": "...",
+  "correlation_id": "...",
+  "tenant_id": "...",
+  "service": "payment_gateway",
+  "event_type": "PAYMENT_SETTLEMENT_PROCESSED",
+  "entity_type": "order",
+  "entity_id": "ORD-1769617304114-7271",
+  "provider": "xendit",
+  "provider_event_id": "67cb123...",
+  "status": "SUCCESS",
+  "duration_ms": 142,
+  "error_code": null
+}
+```
+
+13.4 Production E2E Certification Gates
+Setiap rilis operasional wajib memvalidasi integritas alur menyeluruh melalui 8 skenario pengujian:
+
+Happy Path Flow: Inbound WA -> Product Intent -> Checkout -> QRIS Generation -> Payment Webhook -> Atomic LUNAS Transition -> Outbound WA Notification -> Meta CAPI Purchase.
+
+Duplicate Inbound & Webhooks: Mengirimkan webhook transaksi identik secara berulang menghasilkan status HTTP 200 OK dengan tepat satu kali eksekusi efek samping (single side-effect).
+
+Delayed Webhook Recovery: Penanganan event pembayaran yang tiba terlambat tetap memperbarui transaksi secara benar tanpa false rejection.
+
+Provider Error & Timeout Resilience: Penanganan kegagalan gateway eksternal via fallback generator tanpa merusak state transaksi.
+
+Database Outage Graceful Handling: Kegagalan database pada alur finansial wajib menghasilkan kegagalan terkontrol (HTTP 503 DATABASE_UNAVAILABLE) tanpa mutasi parsial dan tanpa asumsi sukses di in-memory cache.
+
+Decoupled CAPI Failure Isolation: Kegagalan API Meta CAPI (HTTP 5xx/Timeout) tidak boleh membatalkan status pelunasan transaksi pesanan; transaksi tetap LUNAS dan WA tetap terkirim.
+
+Tenant Isolation Audit: Log, data transaksi, dan context trace Tenant A terisolasi mutlak dan kedap 100% dari Tenant B.
+
+Worker & Service Restart Reconciliation: Event yang tertahan saat restart layanan backend dapat dilanjutkan atau direkonsiliasi secara aman dan idempotent.
+
+---
+
+## 14. ARCHITECTURAL STANDARD: TENANT STATIC-TO-DYNAMIC QRIS EMVCo TRANSFORMATION
+
+> **Architectural Status**: 🔒 **PRODUCTION STANDARD & COMPATIBILITY CERTIFIED (blu by BCA Digital, BCA Mobile, DANA 100%)**  
+> **Core Principle**: *"Never mutate acquirer identity tags (Tag 01 & Tag 62). Only perform precision injection of transaction amount (Tag 54) and recompute CRC16-CCITT."*
+
+### 14.1 The 4 Immutable Rules of Dynamic QRIS Transformation
+
+Ketika string QRIS statis dari merchant acquirer (GoPay, DANA, ShopeePay, dsb.) ditransformasikan menjadi Dynamic QRIS dengan nominal pesanan (amount injection), sistem **WAJIB** tunduk pada 4 hukum arsitektur berikut:
+
+#### 1. Dynamic Tag 01 Standard ('010212' Sesuai Regulasi ASPI Bank Indonesia)
+- **Hukum**: Jika payload diawali `000201010211`, ganti menjadi `000201010212` saat menginjeksi Tag 54 (Nominal).
+- **Rasional**: Standar resmi ASPI (Asosiasi Sistem Pembayaran Indonesia) dan Bank Indonesia menetapkan bahwa setiap QRIS yang menyertakan Tag 54 (Transaction Amount) wajib memiliki Point of Initiation Method bernilai `12` (Dinamis). Aplikasi perbankan seperti **blu by BCA Digital** memvalidasi keberadaan Tag 01 = `12` ketika nominal telah dispesifikasikan.
+
+#### 2. Preservation of Acquirer Tag 62 (No Overwrite / No Duplication)
+- **Hukum**: **Dilarang keras** menimpa, menghapus, atau memodifikasi Tag 62 bawaan acquirer merchant (contoh: `62070703A01` pada GoJek/GoPay).
+- **Rasional**: Tag 62 bawaan berisi data identitas terminal atau sub-merchant acquirer asli. Menimpa Tag 62 dengan nomor invoice internal atau menyisipkan Tag 62 kedua di akhir payload merusak struktur TLV (Tag-Length-Value) acquirer dan menyebabkan kegagalan decoding m-banking. Tag 62 bawaan acquirer wajib dipertahankan apa adanya.
+
+#### 3. Precision Injection of Tag 54 & Anti-Duplication Cleaning
+- **Hukum**: Tag 54 lama yang mungkin sudah ada dibersihkan terlebih dahulu sebelum Tag 58. Tag 54 baru dibentuk dengan format:
+  ```python
+  amt_str = str(int(amount))
+  tag_54 = f"54{len(amt_str):02d}{amt_str}"
+  ```
+  dan disisipkan **tepat sebelum Tag 58 (`5802ID` atau `5802` - Country Code)**.
+- **Rasional**: Menjamin tidak ada duplikasi Tag 54 pada re-injeksi transaksi dan memastikan nominal terbaca presisi oleh parser perbankan.
+
+#### 4. Strict CRC16-CCITT Recalculation (Poly 0x1021, Init 0xFFFF)
+- **Hukum**:
+  1. Hapus 4 karakter hex CRC lama di belakang string beserta prefix `6304`.
+  2. Susun ulang payload dengan menambahkan Tag 63 header: `payload_body + "6304"`.
+  3. Hitung ulang checksum menggunakan algoritma **CRC16-CCITT standard EMVCo** (polinomial `0x1021`, nilai inisial `0xFFFF`).
+  4. Satukan string payload dengan 4 karakter hex uppercase hasil kalkulasi.
+
+### 14.2 Canonical Reference & Validation Vector (Merchant 'kurastoren')
+- **Static Master (Raw EMVCo dari Acquirer GoPay/BCA)**:
+  ```text
+  00020101021126610014COM.GO-JEK.WWW01189360091437387604280210G7387604280303UMI51440014ID.CO.QRIS.WWW0215ID10265733762290303UMI5204899953033605802ID5925Basti als, Digital & Krea6008KARAWANG61054131462070703A016304EE91
+  ```
+- **Dynamic Injected Output (Nominal Rp 75.000)**:
+  ```text
+  00020101021226610014COM.GO-JEK.WWW01189360091437387604280210G7387604280303UMI51440014ID.CO.QRIS.WWW0215ID10265733762290303UMI5204899953033605405750005802ID5925Basti als, Digital & Krea6008KARAWANG61054131462070703A0163042F39
+  ```
+- **Hasil Verifikasi**:
+  - Tag 01: `010212` (Dinamis sesuai ASPI).
+  - Tag 54: `540575000` (Disisipkan tepat sebelum `5802ID`).
+  - Tag 62: `62070703A01` (Utuh bawaan acquirer).
+  - Tag 63: `63042F39` (CRC16-CCITT kalkulasi ulang menghasilkan `2F39`).
+
+### 14.3 Visual QRIS Decoding via html5-qrcode & EMVCo Standard Specifications
+
+Untuk mempermudah merchant yang memiliki barcode statis cetak fisik dari acquirer (DANA Bisnis, GoPay Usaha, BCA QRIS, dll.), sistem menyediakan fitur decoding visual langsung di browser:
+
+1. **Client-Side Decoding via html5-qrcode**:
+   - Saat merchant mengunggah file gambar QRIS di dashboard toko (`/dashboard`), client mengeksekusi library `html5-qrcode` (`Html5Qrcode.scanFile(file, false)`).
+   - Decoding berlangsung 100% di sisi browser merchant tanpa membebani server backend.
+   - Hasil ekstraksi berupa raw EMVCo payload string yang divalidasi keutuhannya (wajib diawali `000201` dan lolos validasi checksum CRC16 Tag 63).
+   - String mentah disimpan ke database Supabase pada kolom `tenants.metadata.payment_settings.qris_raw` bersama dengan URL gambar publik di Cloudflare R2 / Supabase Storage.
+
+2. **Tabel Spesifikasi EMVCo Tag QRIS Dinamis BoonTrack**:
+   | Tag EMVCo | Nama Atribut | Nilai Standar BoonTrack | Fungsi & Aturan Regulasi ASPI / BI |
+   | :--- | :--- | :--- | :--- |
+   | **Tag 01** | Point of Initiation Method | `12` (Dynamic) | Wajib bernilai `12` jika transaksi membawa nominal unik (Tag 54). Menghindari penolakan decoding m-banking (blu BCA, Livin, dll.). |
+   | **Tag 53** | Transaction Currency Code | `360` | Kode mata uang resmi Rupiah Indonesia (ISO 4217). |
+   | **Tag 54** | Transaction Amount | Nominal Dinamis (contoh: `54041125`) | Nilai total tagihan pesanan setelah ditambah/dikurangi kode unik acak downward 1-999. |
+   | **Tag 58** | Country Code | `ID` | Kode negara Republik Indonesia (ISO 3166-1 alpha-2). |
+   | **Tag 62** | Additional Data Field | *Preserved as-is* | Dilarang keras menimpa data bawaan terminal acquirer. Wajib dipertahankan utuh. |
+   | **Tag 63** | CRC16 Checksum | 4 digit hex uppercase (contoh: `63042F39`) | Dihitung menggunakan polinomial `0x1021` dengan initial value `0xFFFF`. |
+
+---
+
+## 15. END-TO-END HYBRID COMMERCE ARCHITECTURE & DATA FLOW
+
+Platform BoonTrack menerapkan arsitektur *Hybrid Event-Driven Commerce* yang menghubungkan antarmuka pembeli (Next.js), sistem perbankan nasional (QRIS EMVCo), perangkat kasir lokal (Android Reader APK), shared state database (Supabase), dan background intelligence engine (FastAPI Core).
+
+### 15.1 Diagram Alur Transaksi & Settlement (Mermaid Sequence)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Buyer as Pembeli (Browser / Storefront)
+    participant Vercel as Vercel Edge / Next.js (shop.boontrack.com)
+    participant Supabase as Supabase Database (Orders State Store)
+    actor Bank as Jaringan Bank / E-Wallet (BCA, DANA, GoPay)
+    participant Android as HP Kasir Android (BoonTrack Reader APK)
+    participant Core as BoonTrack Core (FastAPI / Railway Worker)
+
+    Buyer->>Vercel: 1. Checkout Pesanan (Pilih Produk & Buat Pesanan)
+    Vercel->>Vercel: 2. Hitung Nominal + Generate Dynamic QRIS EMVCo (Tag 54)
+    Vercel->>Supabase: 3. Insert Order (status: 'PENDING', gross_amount: 1125)
+    Vercel-->>Buyer: 4. Render Dynamic QRIS & Mulai Polling Status (Interval 2000ms)
+
+    Buyer->>Bank: 5. Scan QRIS & Bayar Rp 1.125 via M-Banking / E-Wallet
+    Bank-->>Android: 6. Push Notifikasi Mutasi ("Pembayaran Masuk - Rp1.125 diterima DANA Bisnis")
+
+    Android->>Vercel: 7. POST /api/v1/reader/notification (Payload: text, tenant_id, package_name)
+
+    rect rgb(240, 248, 255)
+    note over Vercel,Supabase: 3x Retry Buffer Loop (Jeda 1.5s) Anti-Race Condition
+    Vercel->>Vercel: 8. Ekstraksi Nominal via Regex (Rp1.125 -> 1125)
+    Vercel->>Supabase: 9. Query Candidate Order Pending (Jalur 1: Tenant -> Jalur 2: Global Fallback -> Jalur 3: Toleransi)
+    alt Order Belum Ditemukan & Attempt <= 3
+        Vercel->>Vercel: Jeda buffer 1500ms lalu ulangi query (mengatasi jeda insert checkout)
+    end
+    Vercel->>Supabase: 10. Update Atomic: status='PAID', payment_status='PAID', paid_at=NOW()
+    Vercel->>Supabase: 11. Update Heartbeat: tenants.metadata.reader_device (status='CONNECTED')
+    end
+
+    Vercel-->>Android: 12. Response HTTP 200 OK (matched: true, order_id)
+
+    Buyer->>Vercel: 13. Polling Request (/api/orders?tenant=xxx atau /checkout/[id])
+    Vercel-->>Buyer: 14. Response Status 'PAID'
+    Buyer->>Buyer: 15. Auto-redirect ke Invoice Sukses + Trigger Meta Pixel/CAPI Purchase (Deduplicated)
+
+    Supabase->>Core: 16. Event Dispatch / Realtime Trigger (Order Lunas)
+    Core->>Core: 17. Eksekusi Fulfillment (Akses Kelas / Konten Digital / Slot Jadwal)
+    Core-->>Buyer: 18. Kirim Notifikasi WhatsApp Otomatis (WA Bot / Evolution API)
+```
+
+### 15.2 Ingestion Webhook & 3x Retry Buffer Resilience
+
+Endpoint penerima webhook notifikasi di Next.js (`/api/v1/reader/notification`) dirancang untuk tahan terhadap fluktuasi latensi jaringan seluler:
+
+1. **Pencegahan Race Condition (3x Retry Buffer Loop)**:
+   - **Kasus Nyata**: Pembeli melakukan transfer QRIS begitu cepat atau sinyal seluler pembeli mengalami delay saat melakukan insert order ke Supabase, sehingga push notifikasi bank tiba di HP Reader dan diteruskan ke server *sebelum* proses insert order dari browser pembeli selesai dicatat di database.
+   - **Solusi Arsitektur**: Handler webhook menerapkan loop toleransi:
+     ```typescript
+     const MAX_RETRIES = 3;
+     const RETRY_DELAY_MS = 1500;
+     // Total toleransi waktu tunggu: 4.5 detik
+     ```
+   - Jika pada percobaan pertama pesanan berstatus `PENDING` belum ditemukan, server tidak langsung menolak transaksi, melainkan menunggu jeda buffer 1.5 detik sebelum mencoba query ulang ke database.
+
+2. **Strategi 3-Tier Order Matching**:
+   - **Jalur 1 (Tenant Exact Amount)**: Mencocokkan nominal dengan pesanan pending pada tenant spesifik. Kueri dipagari validasi format UUID untuk menghindari error syntax PostgreSQL `22P02`.
+   - **Jalur 2 (Global Exact Amount Fallback)**: Jika konfigurasi tenant di HP Reader tidak cocok (misal HP terdaftar sebagai `buzzerukm` namun toko yang melayani transaksi adalah `hellohijau`), keunikan kode unik transaksi 3 digit menjamin pencocokan global tetap akurat 100% tanpa salah sasaran.
+   - **Jalur 3 (Unique Code Tolerance Match)**: Jika nominal yang tersimpan di order adalah harga dasar sebelum diskon kode unik, sistem menghitung selisih toleransi (1 s/d 999).
+
+3. **Atomic State Mutation & Audit Trail**:
+   - Mutasi status pesanan dilakukan secara atomik menggunakan `SUPABASE_SERVICE_ROLE_KEY` untuk melewati batasan Row Level Security (RLS) publik.
+   - Kolom yang diperbarui: `status = 'PAID'`, `payment_status = 'PAID'`, `order_status = 'PAID'`, `paid_at = NOW()`, `updated_at = NOW()`.
+   - Metadata perangkat pembaca (`reader_device`) di tabel `tenants` otomatis mencatat timestamp `last_active_at` sebagai indikator status kesehatan koneksi alat kasir.
+
+---
+
+## 16. COMPUTATIONAL DIVISION & RUNTIME BOUNDARIES (PEMBAGIAN PERAN KOMPUTASI)
+
+Ekosistem BoonTrack membagi beban komputasi secara tegas ke dalam 3 tier infrastruktur sesuai karakteristik beban kerja:
+
+| Tier Komputasi | Infrastruktur / Engine | Peran & Tanggung Jawab Utama | Alasan Arsitektural & SLA |
 | :--- | :--- | :--- | :--- |
-| **Tag 00** | Payload Format Indicator | `01` (panjang `02`) | Standar EMV QR Code versi 1.0 |
-| **Tag 01** | Point of Initiation Method | `12` (panjang `02`) | **Wajib `12` (Dinamis)**, diubah dari `11` (statis) agar aplikasi m-banking mengunci nominal |
-| **Tag 26 - 51** | Merchant Account Information | Data merchant asli (DANA/BCA/GoPay/LinkAja/dsb.) | Dipertahankan utuh dari QRIS asli merchant |
-| **Tag 52** | Merchant Category Code (MCC) | 4 digit kode MCC toko | Dipertahankan |
-| **Tag 53** | Transaction Currency | `360` (panjang `03`) | **360** adalah kode mata uang Rupiah (IDR) berdasarkan ISO 4217 |
-| **Tag 54** | Transaction Amount | Nominal integer (e.g. `1615` -> `54041615`) | Disuntikkan tepat sebelum Tag 58. Tag 54 lama dihapus jika ada |
-| **Tag 58** | Country Code | `ID` (panjang `02`) | Kode negara Indonesia (ISO 3166-1 alpha-2) |
-| **Tag 59** | Merchant Name | Nama toko merchant | Dipertahankan |
-| **Tag 60** | Merchant City | Kota toko merchant | Dipertahankan |
-| **Tag 63** | Checksum (CRC16-CCITT) | 4 digit Hex uppercase (e.g. `CD9A`) | Dihitung ulang dari seluruh string mulai dari Tag 00 sampai `6304` |
+| **Edge & Presentation** | **Vercel** (Next.js 16 App Router) | • Storefront publik & landing page toko<br>• Client checkout & render QRIS dinamis<br>• Edge caching & SSR UI rendering<br>• Fast payment webhook ingestion (`/api/v1/reader/notification`)<br>• Client-side polling invoice status | **Latensi Ultra-Rendah (<100ms)**:<br>Serverless Edge menjamin penerimaan mutasi kasir instan tanpa cold-start lambat dan melayani ribuan pembeli checkout secara bersamaan tanpa scaling bottleneck. |
+| **State Store & Source of Truth** | **Supabase** (PostgreSQL 15+ Managed) | • Shared transactional ledger (`orders` table)<br>• Single source of truth seluruh transaksi platform<br>• Row Level Security (RLS) isolasi data antar toko<br>• Tenant registry, catalog, & user identity<br>• Elevated operations via `SUPABASE_SERVICE_ROLE_KEY` | **ACID Compliance & Integritas Finansial**:<br>Mencegah data race, menjamin konsistensi status order, dan menjadi titik temu independen antara frontend Next.js dan backend FastAPI. |
+| **Heavy Processing & AI Core** | **Railway** (FastAPI + aiohttp runner - `boontrack-core`) | • Heavy AI Reasoning (Gemini LLM & BoonPilot)<br>• Semantic vector search & RAG katalog<br>• Background workers & long-running scheduled tasks<br>• Integrasi WhatsApp WABA & Evolution API bridge<br>• Kalkulasi komisi afiliasi & audit entitlement | **Persistent Compute & Asynchronous Queue**:<br>Proses AI dan worker jangka panjang tidak cocok dijalankan di serverless function yang memiliki batas timeout eksekusi (Vercel max 15-60s). |
 
-#### Formula Checksum CRC16-CCITT:
-- **Polynomial**: `0x1021` ($x^{16} + x^{12} + x^5 + 1$)
-- **Initial Value**: `0xFFFF`
-- **Input Stream**: Byte UTF-8 dari payload string terpotong sebelum 4 digit hex checksum.
-- **Output**: 4 karakter heksadesimal huruf besar (*Zero-padded*, misal `CD9A`).
+---
 
-### 13.4 Catatan Legalitas, Keamanan & Kepatuhan Regulasi (Compliance)
+## 17. REGULATORY & LEGAL DEFENSIVE POSITIONING
 
-1. **Direct Settlement (Zero-Escrow) Model**:
-   - BoonTrack **BUKAN** Penyelenggara Jasa Pembayaran (PJP) penampung dana, bukan e-wallet, dan tidak melakukan *escrow* / penampungan dana pihak ketiga.
-   - Pembayaran dari pembeli langsung ditransfer 100% dari rekening pembeli ke rekening/e-wallet pribadi merchant secara *peer-to-peer / direct settlement*.
-   - BoonTrack tidak memotong biaya transaksi apa pun (*0% MDR*).
+Untuk menjamin kepatuhan penuh terhadap regulasi Bank Indonesia, OJK, dan undang-undang sistem pembayaran nasional, BoonTrack menerapkan arsitektur pemisahan legalitas (*dual-track payment architecture*):
 
-2. **Self-Hosted Notification Bridge**:
-   - Aplikasi **BoonTrack Reader** beroperasi sebagai asisten otomasi perangkat pribadi (*self-hosted client-side accessibility/notification bridge*) yang berjalan atas izin eksplisit dari pemilik smartphone (*Notification Access Permission* Android).
-   - Aplikasi hanya membaca notifikasi masuk yang relevan dengan kata kunci mutasi finansial toko milik merchant sendiri, tanpa mengakses data perbankan pribadi lain.
+### 17.1 Platform Subscriptions & Public SaaS (PJP Kategori 1 Official Partner)
+- **Cakupan**: Pembayaran biaya langganan software BoonTrack oleh merchant (`shop_subscriptions`), upgrade tier (`STARTER`, `PRO_SCALE`, `ENTERPRISE`), dan penagihan add-on platform.
+- **Kepatuhan Regulasi**: Diproses 100% secara resmi melalui mitra Penyelenggara Jasa Pembayaran (PJP) Berlisensi Bank Indonesia Kategori 1 (**PT Sinar Digital Terdepan / Xendit**).
+- BoonTrack tidak bertindak sebagai payment gateway publik independen tanpa izin; seluruh dana langganan SaaS disalurkan melalui rekening escrow dan gateway berlisensi resmi.
 
-3. **Jalur Merchant Publik Default (Licensed PJP Fallback)**:
-   - Untuk merchant yang tidak ingin menggunakan perangkat Android pribadi, sistem BoonTrack tetap menyediakan jalur integrasi resmi melalui payment gateway berizin resmi Bank Indonesia (seperti Xendit, Duitku, atau Midtrans) sebagai alternatif pemrosesan transaksi otomatis berizin PJP.
+### 17.2 Merchant Store Direct-Settlement (BoonTrack Reader APK)
+- **Cakupan**: Transaksi penjualan produk/jasa antara pembeli akhir (*end-buyer*) dengan toko milik merchant.
+- **Definisi Perangkat Lunak**: BoonTrack Reader adalah modul utilitas lokal perangkat keras Android (*local client-side device automation tool*) yang memanfaatkan API resmi sistem operasi Android (`NotificationListenerService`).
+- **Direct-to-Merchant Settlement**: Dana transaksi pembeli masuk **100% secara langsung ke rekening bank atau e-wallet milik merchant sendiri** (BCA, DANA Bisnis, GoPay Usaha, Mandiri, dsb.).
+- **Jaminan Non-Custodial & Zero Fund Holding**:
+  1. BoonTrack **TIDAK PERNAH** menampung, mengendapkan, menguasai, atau memfasilitasi penampungan dana (*escrow*) milik pembeli atau merchant.
+  2. BoonTrack **TIDAK** memotong biaya admin/komisi per transaksi secara langsung dari saldo mutasi kasir.
+  3. BoonTrack **BUKAN** dompet digital (*e-wallet*), bukan penyedia transfer dana pihak ketiga, dan bukan acquirer QRIS.
+  4. Posisi hukum BoonTrack Reader murni sebagai **asisten pencatat akuntansi kasir otomatis** (pengganti peran manusia yang memeriksa notifikasi SMS/mutasi bank di kasir dan mencatat centang lunas di buku kas internal toko).
