@@ -958,7 +958,16 @@ export default function DashboardSidebar({
       {/* ======================================================== */}
       {/* 3. BOTTOM SECTION: BOONTRACK HUB LOGO & FOOTER (BAWAH)  */}
       {/* ======================================================== */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50/70">
+      <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2">
+        {/* Tombol Install App / PWA Selalu Tampil di Sidebar Mobile & Desktop */}
+        <PwaInstallPrompt
+          tenantSlug={tenantSlug}
+          variant="menu-item"
+          onActionComplete={() => {
+            if (onCloseMobileDrawer) onCloseMobileDrawer();
+          }}
+        />
+
         <div className="flex items-center gap-2.5 px-1.5 py-1">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-700 via-indigo-600 to-blue-500 text-white flex items-center justify-center font-black shadow-md shadow-indigo-600/20 shrink-0 text-xs">
             B

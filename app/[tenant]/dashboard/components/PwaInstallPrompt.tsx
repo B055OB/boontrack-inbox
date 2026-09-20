@@ -12,12 +12,14 @@ interface BeforeInstallPromptEvent extends Event {
 export interface PwaInstallPromptProps {
   tenantSlug: string;
   variant?: 'button' | 'banner' | 'menu-item';
+  showNotificationButton?: boolean;
   onActionComplete?: () => void;
 }
 
 export default function PwaInstallPrompt({
   tenantSlug,
   variant = 'button',
+  showNotificationButton = true,
   onActionComplete,
 }: PwaInstallPromptProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(() => {
@@ -32,16 +34,13 @@ export default function PwaInstallPrompt({
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [isRequestingNotification, setIsRequestingNotification] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    setIsMounted(true);
     if (typeof window !== 'undefined') {
       // 1. Check if running in standalone mode (already installed PWA)
       const isStandaloneMode =
         window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true ||
-        document.referrer.includes('android-app://');
+        (window.navigator as any).standalone === true;
       setIsStandalone(isStandaloneMode);
 
       // 2. Check if iOS device
@@ -99,12 +98,12 @@ export default function PwaInstallPrompt({
   }, []);
 
   const handleInstallClick = async () => {
-    // 1. Cek apakah deferredPrompt tersedia
+    // 1. Cek apakah deferredPrompt tersedia (dari state atau window global)
     const promptEvent = deferredPrompt || (typeof window !== 'undefined' ? (window as any).__bt_deferred_prompt : null);
 
     if (promptEvent && typeof promptEvent.prompt === 'function') {
       try {
-        // Panggil deferredPrompt.prompt()
+        // Panggil deferredPrompt.prompt() native
         await promptEvent.prompt();
         // Tunggu hasil userChoice
         const choiceResult = await promptEvent.userChoice;
@@ -126,7 +125,7 @@ export default function PwaInstallPrompt({
         setShowIOSGuide(true);
       }
     } else {
-      // Jika TIDAK ADA (misal di Safari iOS atau browser tanpa dukungan API): Barulah buka modal petunjuk manual 3 langkah ("Tambah ke Layar Utama")
+      // 2. Jika deferredPrompt belum/tidak tersedia (misal di iOS atau sebelum event fired): tetap buka modal petunjuk manual
       setShowIOSGuide(true);
     }
   };
@@ -171,9 +170,12 @@ export default function PwaInstallPrompt({
     }
   };
 
-  const canInstall = isMounted && !isStandalone;
+  // Jangan tampilkan komponen sama sekali jika user sudah menjalankan aplikasi dalam mode standalone (PWA terinstall)
+  if (isStandalone) {
+    return null;
+  }
 
-  const modalGuide = showIOSGuide && isMounted ? (
+  const modalGuide = showIOSGuide ? (
     <div className="fixed inset-0 z-[99999] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
       <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-200 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
         <div className="flex items-center justify-between">
@@ -230,7 +232,7 @@ export default function PwaInstallPrompt({
   return (
     <>
       {/* ── VARIANT 1: SLIM MOBILE TOP BANNER ── */}
-      {variant === 'banner' && canInstall && !isBannerDismissed && (
+      {variant === 'banner' && !isBannerDismissed && (
         <div className="lg:hidden bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white px-3.5 py-2 border-b border-indigo-800/40 shadow-sm flex items-center justify-between gap-2.5 z-25 sticky top-[45px]">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-400/30 text-purple-300 flex items-center justify-center shrink-0">
@@ -268,28 +270,28 @@ export default function PwaInstallPrompt({
       )}
 
       {/* ── VARIANT 2: MENU ITEM (Inside Burger Drawer / Profile Popover) ── */}
-      {variant === 'menu-item' && canInstall && (
+      {variant === 'menu-item' && (
         <button
           type="button"
           onClick={() => {
             handleInstallClick();
           }}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-purple-700 hover:bg-purple-50 transition text-left cursor-pointer"
+          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-purple-700 bg-purple-50/50 hover:bg-purple-100/70 border border-purple-200/60 transition text-left cursor-pointer shadow-2xs active:scale-95"
         >
           <div className="flex items-center gap-2.5">
             <Smartphone className="w-3.5 h-3.5 text-purple-600" />
             <span>Install App</span>
           </div>
-          <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-purple-100 text-purple-800">
+          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
             APP
           </span>
         </button>
       )}
 
-      {/* ── VARIANT 3: DEFAULT BUTTON (Desktop Navbar) ── */}
+      {/* ── VARIANT 3: DEFAULT BUTTON (Desktop / Mobile Navbar) ── */}
       {variant === 'button' && (
         <div className="flex items-center gap-1.5">
-          {notificationPermission !== 'granted' && (
+          {showNotificationButton && notificationPermission !== 'granted' && (
             <button
               type="button"
               onClick={handleRequestNotification}
@@ -302,17 +304,15 @@ export default function PwaInstallPrompt({
             </button>
           )}
 
-          {canInstall && (
-            <button
-              type="button"
-              onClick={handleInstallClick}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              title="Install Dashboard BoonTrack ke Layar Utama HP / Laptop"
-            >
-              <Smartphone className="w-3.5 h-3.5 text-purple-600" />
-              <span className="hidden md:inline">Install App</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleInstallClick}
+            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+            title="Install Dashboard BoonTrack ke Layar Utama HP / Laptop"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-purple-600" />
+            <span className="hidden sm:inline">Install App</span>
+          </button>
         </div>
       )}
 

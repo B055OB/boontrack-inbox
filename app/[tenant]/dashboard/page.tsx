@@ -455,6 +455,9 @@ export default function TenantDashboardPage() {
               )}
             </button>
 
+            {/* Install App Button Mobile Header */}
+            <PwaInstallPrompt tenantSlug={tenantSlug} variant="button" showNotificationButton={false} />
+
             <button
               type="button"
               onClick={() => setActiveTab('orders')}
