@@ -747,6 +747,10 @@ export default function CheckoutPage({ params }: Props) {
           ) : rawQrisValue ? (
             /* QR Code Container (QRIS Standar Nasional SVG Dinamis) */
             <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center shadow-inner">
+              <div className="mb-2.5 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-full text-[11px] font-bold shadow-xs">
+                <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
+                <span>QRIS Dinamis • Nominal Pas Otomatis</span>
+              </div>
               <div className="p-2.5 bg-white rounded-xl flex items-center justify-center">
                 <QRCodeSVG
                   value={rawQrisValue}
@@ -759,6 +763,11 @@ export default function CheckoutPage({ params }: Props) {
                 QRIS STANDAR PEMBAYARAN NASIONAL
               </div>
               <p className="text-[10px] text-slate-500 text-center">BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay</p>
+
+              <div className="mt-2.5 pt-2 border-t border-slate-100 w-full flex items-center justify-between text-[11px] text-slate-600">
+                <span className="text-slate-500">Nominal Terkunci:</span>
+                <span className="font-extrabold text-emerald-700">Rp {grossAmount.toLocaleString('id-ID')}</span>
+              </div>
             </div>
           ) : candidateQrImageUrl ? (
             /* Gambar QRIS Toko Resmi (Fallback dari Upload Dashboard) */

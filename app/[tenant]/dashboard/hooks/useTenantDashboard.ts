@@ -203,6 +203,7 @@ export function useTenantDashboard() {
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [storeQrisUrl, setStoreQrisUrl] = useState<string>('');
+  const [storeQrisPayload, setStoreQrisPayload] = useState<string>('');
   const [isUploadingQris, setIsUploadingQris] = useState(false);
   const [storeLogoUrl, setStoreLogoUrl] = useState<string>('');
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -361,6 +362,33 @@ export function useTenantDashboard() {
 
     setIsUploadingQris(true);
     try {
+      // 1. Auto-decode QR code dari file gambar jika merupakan EMVCo QRIS standar
+      let decodedPayload = '';
+      if (typeof window !== 'undefined') {
+        try {
+          const { Html5Qrcode } = await import('html5-qrcode');
+          const tempContainerId = 'temp-qr-decoder-' + Date.now();
+          let tempEl = document.getElementById(tempContainerId);
+          if (!tempEl) {
+            tempEl = document.createElement('div');
+            tempEl.id = tempContainerId;
+            tempEl.style.display = 'none';
+            document.body.appendChild(tempEl);
+          }
+          const html5QrCode = new Html5Qrcode(tempContainerId, false);
+          const scannedText = await html5QrCode.scanFile(file, false);
+          try {
+            await html5QrCode.clear();
+            tempEl.remove();
+          } catch {}
+          if (scannedText && scannedText.startsWith('000201')) {
+            decodedPayload = scannedText.trim();
+          }
+        } catch (scanErr) {
+          console.warn('[QRIS Auto-Decode Note]:', scanErr);
+        }
+      }
+
       const publicUrl = await uploadImageFile(file, {
         folder: 'qris',
         tenantSlug,
@@ -371,8 +399,11 @@ export function useTenantDashboard() {
       }
 
       setStoreQrisUrl(publicUrl);
+      if (decodedPayload) {
+        setStoreQrisPayload(decodedPayload);
+      }
 
-      // Direct persist ke database Supabase (tenants.metadata.qris_image_url)
+      // Direct persist ke database Supabase (tenants.metadata)
       try {
         const supabase = getSupabase();
         if (supabase) {
@@ -390,6 +421,10 @@ export function useTenantDashboard() {
               qris_image: publicUrl,
               is_qris_active: true,
               qris_enabled: true,
+              ...(decodedPayload ? {
+                qris_payload: decodedPayload,
+                qris_static_string: decodedPayload,
+              } : {}),
               payment_settings: {
                 ...(tenantRow.metadata?.payment_settings || {}),
                 qris: publicUrl,
@@ -399,6 +434,11 @@ export function useTenantDashboard() {
                 ...(tenantRow.metadata?.payment_config || {}),
                 enable_qris: true,
                 qris_image_url: publicUrl,
+                ...(decodedPayload ? {
+                  qris_payload: decodedPayload,
+                  raw_qris_string: decodedPayload,
+                  static_qris_payload: decodedPayload,
+                } : {}),
               },
             };
             await supabase
@@ -422,13 +462,21 @@ export function useTenantDashboard() {
             qris_image: publicUrl,
             is_qris_active: true,
             qris_enabled: true,
+            ...(decodedPayload ? {
+              qris_payload: decodedPayload,
+              qris_static_string: decodedPayload,
+            } : {}),
           }),
         });
       } catch (settingsErr) {
         console.warn('Gagal sync qris_image_url via settings route:', settingsErr);
       }
 
-      setSaveFeedback('✅ Gambar QRIS berhasil disimpan!');
+      setSaveFeedback(
+        decodedPayload
+          ? '⚡ QRIS Dinamis & Gambar berhasil disimpan! Nominal otomatis terisi saat pembeli scan.'
+          : '✅ Gambar QRIS berhasil disimpan!'
+      );
       setTimeout(() => setSaveFeedback(null), 3500);
     } catch (err: any) {
       alert(err.message || 'Gagal mengunggah QRIS');
@@ -590,6 +638,12 @@ export function useTenantDashboard() {
             tenant.qris_image_url ||
             '';
           if (qrisUrlFromDb) setStoreQrisUrl(sanitizeImageUrl(qrisUrlFromDb));
+          const qrisPayloadFromDb =
+            tenant.metadata?.qris_payload ||
+            tenant.metadata?.qris_static_string ||
+            tenant.qris_payload ||
+            '';
+          if (qrisPayloadFromDb) setStoreQrisPayload(qrisPayloadFromDb);
           const logoUrlFromDb =
             tenant.metadata?.logo_url ||
             tenant.metadata?.avatar_url ||
@@ -786,6 +840,9 @@ export function useTenantDashboard() {
           const data = await res.json();
           const s = data.settings || {};
           if (s.qris_image_url) setStoreQrisUrl(s.qris_image_url);
+          if (s.qris_payload || s.metadata?.qris_payload) {
+            setStoreQrisPayload(s.qris_payload || s.metadata?.qris_payload);
+          }
           if (s.logo_url) setStoreLogoUrl(s.logo_url);
           if (s.bio) setStoreBio(s.bio);
           if (s.metadata?.total_omzet || s.total_omzet) {
@@ -1572,6 +1629,8 @@ export function useTenantDashboard() {
     setNameError,
     storeQrisUrl,
     setStoreQrisUrl,
+    storeQrisPayload,
+    setStoreQrisPayload,
     isUploadingQris,
     handleQrisUpload,
     storeLogoUrl,

@@ -31,6 +31,8 @@ export interface SettingsTabProps {
   storeWhatsapp: string;
   setStoreWhatsapp: (wa: string) => void;
   storeQrisUrl: string | null;
+  storeQrisPayload?: string;
+  setStoreQrisPayload?: (payload: string) => void;
   handleQrisUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isUploadingQris: boolean;
   storeLogoUrl?: string | null;
@@ -55,6 +57,8 @@ export default function SettingsTab({
   storeWhatsapp,
   setStoreWhatsapp,
   storeQrisUrl,
+  storeQrisPayload,
+  setStoreQrisPayload,
   handleQrisUpload,
   isUploadingQris,
   storeLogoUrl,
@@ -71,6 +75,13 @@ export default function SettingsTab({
 }: SettingsTabProps) {
   const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping'>('profile');
   const [isSavingStore, setIsSavingStore] = useState(false);
+  const [localQrisPayload, setLocalQrisPayload] = useState(storeQrisPayload || '');
+
+  useEffect(() => {
+    if (storeQrisPayload) {
+      setLocalQrisPayload(storeQrisPayload);
+    }
+  }, [storeQrisPayload]);
 
   // Basic Shipping state
   const [originCity, setOriginCity] = useState('Kota Bandung');
@@ -90,11 +101,18 @@ export default function SettingsTab({
             .eq('slug', tenantSlug)
             .maybeSingle();
 
-          if (isMounted && data?.metadata?.basic_shipping) {
-            const bs = data.metadata.basic_shipping;
-            if (bs.origin_city) setOriginCity(bs.origin_city);
-            if (bs.origin_address) setOriginAddress(bs.origin_address);
-            if (bs.selected_courier) setSelectedCourier(bs.selected_courier);
+          if (isMounted && data?.metadata) {
+            if (data.metadata.basic_shipping) {
+              const bs = data.metadata.basic_shipping;
+              if (bs.origin_city) setOriginCity(bs.origin_city);
+              if (bs.origin_address) setOriginAddress(bs.origin_address);
+              if (bs.selected_courier) setSelectedCourier(bs.selected_courier);
+            }
+            if (!storeQrisPayload && (data.metadata.qris_payload || data.metadata.qris_static_string)) {
+              const p = data.metadata.qris_payload || data.metadata.qris_static_string;
+              setLocalQrisPayload(p);
+              if (setStoreQrisPayload) setStoreQrisPayload(p);
+            }
           }
         }
       } catch (err) {
@@ -154,6 +172,10 @@ export default function SettingsTab({
                 qris_image: storeQrisUrl,
                 is_qris_active: true,
                 qris_enabled: true,
+                ...(localQrisPayload ? {
+                  qris_payload: localQrisPayload,
+                  qris_static_string: localQrisPayload,
+                } : {}),
                 payment_settings: {
                   ...(tenantRow.metadata?.payment_settings || {}),
                   qris: storeQrisUrl,
@@ -163,6 +185,11 @@ export default function SettingsTab({
                   ...(tenantRow.metadata?.payment_config || {}),
                   enable_qris: true,
                   qris_image_url: storeQrisUrl,
+                  ...(localQrisPayload ? {
+                    qris_payload: localQrisPayload,
+                    raw_qris_string: localQrisPayload,
+                    static_qris_payload: localQrisPayload,
+                  } : {}),
                 },
               } : {}),
             };
@@ -197,6 +224,8 @@ export default function SettingsTab({
           qris_image_url: storeQrisUrl || undefined,
           qris_url: storeQrisUrl || undefined,
           qris_image: storeQrisUrl || undefined,
+          qris_payload: localQrisPayload || undefined,
+          qris_static_string: localQrisPayload || undefined,
           is_qris_active: storeQrisUrl ? true : undefined,
           qris_enabled: storeQrisUrl ? true : undefined,
           logo_url: storeLogoUrl || undefined,
@@ -487,9 +516,49 @@ export default function SettingsTab({
           {isUploadingQris && (
             <p className="text-xs text-emerald-600 font-medium animate-pulse mt-1.5 flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
-              Mengunggah &amp; mengonversi QRIS ke WebP...
+              Mengunggah &amp; membaca kode QRIS otomatis...
             </p>
           )}
+        </div>
+
+        {/* Dynamic QRIS Status & Payload Input */}
+        <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-emerald-600" />
+              <span>QRIS Dinamis (Auto-inject Tagihan Pas)</span>
+            </span>
+            {localQrisPayload ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3" />
+                Dinamis Aktif
+              </span>
+            ) : (
+              <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                Mode Gambar Statis
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-slate-500 leading-relaxed">
+            {localQrisPayload
+              ? '✅ String QRIS berhasil terdeteksi. Setiap transaksi di halaman checkout akan otomatis memuat nominal pas tagihan saat dipindai oleh pembeli.'
+              : 'Unggah file gambar QRIS toko di atas, sistem akan otomatis membaca kode EMVCo untuk mengaktifkan nominal otomatis.'}
+          </p>
+          <div>
+            <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+              Payload String QRIS EMVCo (000201...):
+            </label>
+            <textarea
+              rows={2}
+              value={localQrisPayload}
+              onChange={(e) => {
+                setLocalQrisPayload(e.target.value);
+                if (setStoreQrisPayload) setStoreQrisPayload(e.target.value);
+              }}
+              placeholder="Contoh: 00020101021126570011ID.DANA.WWW..."
+              className="w-full font-mono text-[10px] p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:bg-white focus:border-emerald-500 focus:outline-hidden"
+            />
+          </div>
         </div>
 
         {/* Integrasi HP Reader (Automasi Mutasi) */}

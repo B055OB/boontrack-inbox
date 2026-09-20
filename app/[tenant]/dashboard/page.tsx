@@ -94,6 +94,8 @@ export default function TenantDashboardPage() {
     nameError,
     setNameError,
     storeQrisUrl,
+    storeQrisPayload,
+    setStoreQrisPayload,
     handleQrisUpload,
     isUploadingQris,
     storeLogoUrl,
@@ -736,6 +738,8 @@ export default function TenantDashboardPage() {
           storeWhatsapp={storeWhatsapp}
           setStoreWhatsapp={setStoreWhatsapp}
           storeQrisUrl={storeQrisUrl}
+          storeQrisPayload={storeQrisPayload}
+          setStoreQrisPayload={setStoreQrisPayload}
           handleQrisUpload={handleQrisUpload}
           isUploadingQris={isUploadingQris}
           storeLogoUrl={storeLogoUrl}
@@ -1027,6 +1031,8 @@ export default function TenantDashboardPage() {
           storeWhatsapp={storeWhatsapp}
           setStoreWhatsapp={setStoreWhatsapp}
           storeQrisUrl={storeQrisUrl}
+          storeQrisPayload={storeQrisPayload}
+          setStoreQrisPayload={setStoreQrisPayload}
           handleQrisUpload={handleQrisUpload}
           isUploadingQris={isUploadingQris}
           storeLogoUrl={storeLogoUrl}

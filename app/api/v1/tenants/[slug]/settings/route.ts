@@ -199,6 +199,8 @@ export async function PUT(
       is_bot_active,
       bot_paused,
       rotator,
+      qris_payload,
+      qris_static_string,
     } = body;
 
     const supabase = getSupabase();
@@ -271,6 +273,17 @@ export async function PUT(
           ...(existing.metadata?.payment_config || {}),
           enable_qris: Boolean(qris_image_url),
           qris_image_url,
+        },
+      } : {}),
+      ...(qris_payload !== undefined || qris_static_string !== undefined ? {
+        qris_payload: qris_payload || qris_static_string,
+        qris_static_string: qris_static_string || qris_payload,
+        payment_config: {
+          ...(existing.metadata?.payment_config || {}),
+          enable_qris: true,
+          qris_payload: qris_payload || qris_static_string,
+          raw_qris_string: qris_payload || qris_static_string,
+          static_qris_payload: qris_payload || qris_static_string,
         },
       } : {}),
       ...(effectiveLogo !== undefined ? { logo_url: effectiveLogo, store_logo_url: effectiveLogo, avatar_url: effectiveLogo } : {}),

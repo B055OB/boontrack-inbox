@@ -440,26 +440,71 @@ export default function ReaderIntegrationCard({
         </div>
       </div>
 
-      {/* ── DOWNLOAD APK & PANDUAN BUTTONS ──────────────────────────────────── */}
-      <div className="pt-1 flex flex-wrap items-center gap-2 border-t border-slate-100">
-        <a
-          href="https://api.boontrack.com/dl-reader-x9k2m/BoonTrackReader.apk"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition"
-        >
-          <Download className="w-3.5 h-3.5 text-slate-600" />
-          <span>Download BoonTrack Reader (APK)</span>
-          <ExternalLink className="w-3 h-3 text-slate-400" />
-        </a>
+      {/* ── PANDUAN RINGKAS 3 LANGKAH PEMAKAIAN ───────────────────────────── */}
+      <div className="p-4 bg-slate-50/90 border border-slate-200/90 rounded-2xl space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+            <span>🚀</span>
+            <span>Panduan 3 Langkah Menghubungkan BoonTrack Reader</span>
+          </span>
+          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+            Setup Sekali • Otomatis Selamanya
+          </span>
+        </div>
 
-        <button
-          type="button"
-          onClick={() => setIsGuideModalOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer"
-        >
-          <span>Buka Panduan Instalasi APK</span>
-        </button>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">1</span>
+              <p className="font-bold text-slate-900">Unduh &amp; Pasang APK</p>
+            </div>
+            <p className="text-[11px] text-slate-600 leading-relaxed pl-7">
+              Unduh dan pasang aplikasi BoonTrack Reader di HP Android kasir / DANA toko Anda.
+            </p>
+          </div>
+
+          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">2</span>
+              <p className="font-bold text-slate-900">Izinkan Notifikasi</p>
+            </div>
+            <p className="text-[11px] text-slate-600 leading-relaxed pl-7">
+              Aktifkan izin akses notifikasi untuk BoonTrack Reader di menu pengaturan Android Anda.
+            </p>
+          </div>
+
+          <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center shrink-0">3</span>
+              <p className="font-bold text-slate-900">Scan QR Pairing</p>
+            </div>
+            <p className="text-[11px] text-slate-600 leading-relaxed pl-7">
+              Buka aplikasi, klik <strong>&quot;Hubungkan ke Toko&quot;</strong>, lalu scan QR Pairing di atas.
+            </p>
+          </div>
+        </div>
+
+        {/* Download & Action Buttons */}
+        <div className="pt-1 flex flex-wrap items-center gap-2.5">
+          <a
+            href="https://assets.boontrack.com/reader/BoonTrackReader.apk"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 active:scale-95 transition cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download BoonTrack Reader (APK Android)</span>
+            <ExternalLink className="w-3 h-3 text-emerald-200" />
+          </a>
+
+          <button
+            type="button"
+            onClick={() => setIsGuideModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
+          >
+            <span>Buka Detail Petunjuk Instalasi</span>
+          </button>
+        </div>
       </div>
 
       {/* ===================================================================== */}
@@ -674,9 +719,9 @@ export default function ReaderIntegrationCard({
               <div className="flex items-start gap-2.5">
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
                 <div>
-                  <p className="font-bold text-slate-900">Pasang di Smartphone Toko (Android)</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Unduh dan pasang aplikasi pada HP yang menerima SMS / notifikasi m-Banking atau e-Wallet toko Anda.
+                  <p className="font-bold text-slate-900">Unduh &amp; Pasang Aplikasi</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                    Unduh dan pasang aplikasi BoonTrack Reader di HP Android kasir / DANA toko Anda melalui tombol download di bawah.
                   </p>
                 </div>
               </div>
@@ -684,9 +729,9 @@ export default function ReaderIntegrationCard({
               <div className="flex items-start gap-2.5">
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
                 <div>
-                  <p className="font-bold text-slate-900">Mendukung Seluruh QRIS Populer</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    BCA Mobile / myBCA, DANA Bisnis, GoPay Usaha, Livin Mandiri, dan BRImo.
+                  <p className="font-bold text-slate-900">Aktifkan Izin Akses Notifikasi</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                    Buka Pengaturan Android &gt; Notifikasi &gt; Akses Notifikasi (Notification Access), lalu aktifkan izin untuk BoonTrack Reader agar aplikasi dapat membaca mutasi pembayaran masuk secara instan.
                   </p>
                 </div>
               </div>
@@ -694,9 +739,9 @@ export default function ReaderIntegrationCard({
               <div className="flex items-start gap-2.5">
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
                 <div>
-                  <p className="font-bold text-slate-900">Verifikasi Real-Time Tanpa Cek Manual</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Saat pembeli scan QRIS dan transfer masuk, Reader APK otomatis mengubah status order menjadi LUNAS dalam hitungan detik.
+                  <p className="font-bold text-slate-900">Hubungkan via Scan QR Pairing</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                    Buka aplikasi BoonTrack Reader, tekan tombol <strong>&quot;Hubungkan ke Toko&quot;</strong>, lalu scan QR Pairing yang ada di dashboard ini. Perangkat Anda akan langsung online dan siap menerima verifikasi otomatis!
                   </p>
                 </div>
               </div>
@@ -704,13 +749,13 @@ export default function ReaderIntegrationCard({
 
             <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
               <a
-                href="https://api.boontrack.com/dl-reader-x9k2m/BoonTrackReader.apk"
+                href="https://assets.boontrack.com/reader/BoonTrackReader.apk"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full sm:flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer text-center"
               >
                 <Download className="w-4 h-4" />
-                <span>Download / Pasang BoonTrack Reader</span>
+                <span>Download BoonTrack Reader (APK Android)</span>
               </a>
               <button
                 type="button"

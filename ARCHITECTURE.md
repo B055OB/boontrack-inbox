@@ -681,3 +681,117 @@ Pedoman keputusan arsitektur dan batasan teknis operasional infrastruktur WhatsA
 3. **Gateway Pool Blueprint (Multi-Server Readiness)**:
    - Skalabilitas multi-server masa depan dirancang berbasis *Gateway Nodes Registry*.
    - Tabel koneksi mendukung pencatatan node gateway (`gateway_node_url`, `api_key`) sehingga penambahan server kontainer Evolution API baru di masa depan tidak akan mengubah kontrak antarmuka (*interface contract*) pada Core backend maupun Inbox frontend.
+
+---
+
+## 13. Zero-MDR Payment Ingestion & EMVCo Dynamic QRIS Architecture
+
+### 13.1 High-Level Ingestion Flow & Distributed Roles
+
+Sistem pembayaran BoonTrack menerapkan pemisahan peran tiga lapis (*Three-Tier Architecture*) untuk menjamin *zero cold-start latency*, determinisme status transaksi, dan skalabilitas fulfillment:
+
+```
++-----------------------------------------------------------------------------+
+|                            PEMBELI / PELANGGAN                              |
+|   1. Buka Invoice Checkout: /checkout/[order_id]                            |
+|   2. Scan QRIS Dinamis (EMVCo) via BCA, Mandiri, BRI, DANA, GoPay, dsb.    |
+|   3. Pembeli Transfer Rp 1.615 (Nominal Otomatis Terkunci, Direct Settlement)|
++-----------------------------------------------------------------------------+
+                                       |
+                                       v
++-----------------------------------------------------------------------------+
+|                     SMARTPHONE ANDROID KASIR / MERCHANT                     |
+|   - Terpasang aplikasi BoonTrack Reader (Notification Listener Service)     |
+|   - Menerima push notifikasi mutasi masuk:                                  |
+|     "Pembayaran Masuk - Rp1.615 diterima DANA Bisnis."                      |
+|   - Menembak Ingress Webhook via HTTPS POST                                 |
++-----------------------------------------------------------------------------+
+                                       |
+                                       v
++-----------------------------------------------------------------------------+
+|                  TIER 1: VERCEL (NEXT.JS EDGE GATEWAY)                      |
+|   Endpoint: https://shop.boontrack.com/api/v1/reader/notification           |
+|   - Ingress terpusat, zero cold-start, latency < 100ms                      |
+|   - Verifikasi Bearer Token / Tenant Pairing                                |
+|   - Parsing nominal mutasi: Regex / extraction nominal Rp 1.615             |
+|   - Race-Condition Tolerance: Buffer retry loop 3x (jeda 1.5 detik)         |
+|   - Mutasi Matching: Match single candidate order where gross_amount = 1615 |
+|   - Audit Logging: Simpan payload masuk ke tabel reader_notifications       |
++-----------------------------------------------------------------------------+
+                                       |
+                                       v
++-----------------------------------------------------------------------------+
+|               TIER 2: SUPABASE POSTGRESQL (STATE STORE & SOT)               |
+|   - Single Source of Truth status transaksi                                 |
+|   - Instant State Transition: orders.status = 'PAID',                       |
+|     orders.payment_status = 'PAID', paid_at = now()                         |
+|   - Frontend checkout mendeteksi perubahan via polling interval             |
++-----------------------------------------------------------------------------+
+                                       | (PostgreSQL Webhook / Trigger)
+                                       v
++-----------------------------------------------------------------------------+
+|            TIER 3: BOONTRACK CORE FASTAPI (FULFILLMENT ENGINE)              |
+|   - Event-Driven Fulfillment Engine                                         |
+|   - Otomasi pengiriman digital assets / akses materi                        |
+|   - WhatsApp Order Confirmation Broadcast via Evolution API                 |
+|   - Meta CAPI Purchase event firing & tracking konversi ads                 |
++-----------------------------------------------------------------------------+
+```
+
+### 13.2 Pemisahan Peran Sistem (Separation of Concerns)
+
+1. **Vercel Edge / Next.js Gateway (Payment Ingress & Real-time Calculator)**:
+   - Bertindak sebagai gateway murni (*Stateless Gateway*).
+   - Menangani kalkulasi QRIS Dinamis standar EMVCo secara instan di edge.
+   - Menerima payload webhook dari HP Android Reader tanpa latency cold-start.
+   - Menjalankan buffer retry (3 iterasi, 1.5s delay) untuk mengantisipasi race-condition jika pembeli transfer sangat cepat sebelum frontend checkout selesai meng-insert order.
+   - Menghubungkan mutasi ke database Supabase dan mengembalikan response 200 OK ke perangkat Android.
+
+2. **Supabase Database (State Store & SOT)**:
+   - Bertindak sebagai otoritas data tunggal (*Single Source of Truth*).
+   - Menyimpan tabel `orders`, `tenants`, dan `reader_notifications`.
+   - Mengelola state machine transaksional: `PENDING` -> `PAID`.
+   - Menyimpan string payload QRIS EMVCo toko di `tenants.metadata.qris_payload`.
+
+3. **BoonTrack Core Engine (FastAPI / Railway)**:
+   - Bertindak sebagai mesin orkestrasi pemenuhan pesanan (*Fulfillment & Notification Engine*).
+   - Mengirim notifikasi WA lunas ke pembeli dan merchant.
+   - Mengirim link akses digital / tiket telegram / instruksi kurir fisik.
+   - Mengirim data konversi `Purchase` ke Meta Conversions API (CAPI) dan TikTok Pixel.
+
+### 13.3 Standar & Spesifikasi EMVCo QRIS Dinamis
+
+Sistem mengubah QRIS Statis Merchant (0% MDR) menjadi QRIS Dinamis berstandar nasional EMVCo (Bank Indonesia / ASPI) dengan spesifikasi tag berikut:
+
+| Tag EMVCo | Nama Field | Nilai / Spesifikasi | Keterangan |
+| :--- | :--- | :--- | :--- |
+| **Tag 00** | Payload Format Indicator | `01` (panjang `02`) | Standar EMV QR Code versi 1.0 |
+| **Tag 01** | Point of Initiation Method | `12` (panjang `02`) | **Wajib `12` (Dinamis)**, diubah dari `11` (statis) agar aplikasi m-banking mengunci nominal |
+| **Tag 26 - 51** | Merchant Account Information | Data merchant asli (DANA/BCA/GoPay/LinkAja/dsb.) | Dipertahankan utuh dari QRIS asli merchant |
+| **Tag 52** | Merchant Category Code (MCC) | 4 digit kode MCC toko | Dipertahankan |
+| **Tag 53** | Transaction Currency | `360` (panjang `03`) | **360** adalah kode mata uang Rupiah (IDR) berdasarkan ISO 4217 |
+| **Tag 54** | Transaction Amount | Nominal integer (e.g. `1615` -> `54041615`) | Disuntikkan tepat sebelum Tag 58. Tag 54 lama dihapus jika ada |
+| **Tag 58** | Country Code | `ID` (panjang `02`) | Kode negara Indonesia (ISO 3166-1 alpha-2) |
+| **Tag 59** | Merchant Name | Nama toko merchant | Dipertahankan |
+| **Tag 60** | Merchant City | Kota toko merchant | Dipertahankan |
+| **Tag 63** | Checksum (CRC16-CCITT) | 4 digit Hex uppercase (e.g. `CD9A`) | Dihitung ulang dari seluruh string mulai dari Tag 00 sampai `6304` |
+
+#### Formula Checksum CRC16-CCITT:
+- **Polynomial**: `0x1021` ($x^{16} + x^{12} + x^5 + 1$)
+- **Initial Value**: `0xFFFF`
+- **Input Stream**: Byte UTF-8 dari payload string terpotong sebelum 4 digit hex checksum.
+- **Output**: 4 karakter heksadesimal huruf besar (*Zero-padded*, misal `CD9A`).
+
+### 13.4 Catatan Legalitas, Keamanan & Kepatuhan Regulasi (Compliance)
+
+1. **Direct Settlement (Zero-Escrow) Model**:
+   - BoonTrack **BUKAN** Penyelenggara Jasa Pembayaran (PJP) penampung dana, bukan e-wallet, dan tidak melakukan *escrow* / penampungan dana pihak ketiga.
+   - Pembayaran dari pembeli langsung ditransfer 100% dari rekening pembeli ke rekening/e-wallet pribadi merchant secara *peer-to-peer / direct settlement*.
+   - BoonTrack tidak memotong biaya transaksi apa pun (*0% MDR*).
+
+2. **Self-Hosted Notification Bridge**:
+   - Aplikasi **BoonTrack Reader** beroperasi sebagai asisten otomasi perangkat pribadi (*self-hosted client-side accessibility/notification bridge*) yang berjalan atas izin eksplisit dari pemilik smartphone (*Notification Access Permission* Android).
+   - Aplikasi hanya membaca notifikasi masuk yang relevan dengan kata kunci mutasi finansial toko milik merchant sendiri, tanpa mengakses data perbankan pribadi lain.
+
+3. **Jalur Merchant Publik Default (Licensed PJP Fallback)**:
+   - Untuk merchant yang tidak ingin menggunakan perangkat Android pribadi, sistem BoonTrack tetap menyediakan jalur integrasi resmi melalui payment gateway berizin resmi Bank Indonesia (seperti Xendit, Duitku, atau Midtrans) sebagai alternatif pemrosesan transaksi otomatis berizin PJP.
