@@ -47,6 +47,10 @@ interface DashboardOverviewTabProps {
   isTeamScale?: boolean;
   isAdsPerformance?: boolean;
   isSoloOrTrial?: boolean;
+  isCheckoutLite?: boolean;
+  isTrialActive?: boolean;
+  tierLabel?: string;
+  trialDaysLeft?: number | null;
   storeCategory?: string;
   chatConversationsCount?: number;
   onOpenStoreSettings: () => void;
@@ -71,6 +75,10 @@ export default function DashboardOverviewTab({
   isTeamScale = false,
   isAdsPerformance = false,
   isSoloOrTrial = false,
+  isCheckoutLite = false,
+  isTrialActive = false,
+  tierLabel,
+  trialDaysLeft,
   storeCategory,
   chatConversationsCount,
   onOpenStoreSettings,
@@ -406,14 +414,25 @@ export default function DashboardOverviewTab({
               </h1>
               <span
                 className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
-                  isTeamScale
+                  isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
+                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                    : isTeamScale || (tierLabel && tierLabel.toLowerCase().includes('team'))
                     ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : isAdsPerformance
+                    : isAdsPerformance || (tierLabel && (tierLabel.toLowerCase().includes('ads') || tierLabel.toLowerCase().includes('performance')))
                     ? 'bg-blue-50 text-blue-700 border-blue-200'
                     : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 }`}
               >
-                {isTeamScale ? 'Team Scale • Unlimited' : isAdsPerformance ? 'Ads Performance' : 'Paket Solo Aktif'}
+                {tierLabel ||
+                  (isCheckoutLite
+                    ? 'Paket Checkout'
+                    : isTeamScale
+                    ? 'Team Scale'
+                    : isAdsPerformance
+                    ? isTrialActive || trialDaysLeft !== null
+                      ? 'Ads Performance Trial'
+                      : 'Ads Performance'
+                    : 'Paket Solo')}
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">

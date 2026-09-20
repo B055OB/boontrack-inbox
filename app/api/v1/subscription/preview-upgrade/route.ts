@@ -9,12 +9,15 @@ const TIER_PRICES: Record<string, number> = {
   FREE: 0,
   SOLO_TRIAL: 0,
   TRIAL: 0,
+  CHECKOUT_LITE: 59000,
+  ENTRY: 59000,
+  CHECKOUT: 59000,
   SOLO: 199000,
   STARTER: 199000,
   GROWTH: 199000,
-  PRO_SCALE: 299000,
   ADS_PERFORMANCE: 299000,
-  PROSCALE: 299000,
+  PRO_ADS: 299000,
+  PRO_SCALE: 499000,
   TEAM_SCALE: 499000,
   ENTERPRISE: 499000,
   SCALE: 499000,
@@ -23,7 +26,7 @@ const TIER_PRICES: Record<string, number> = {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const targetTierParam = searchParams.get('target_tier') || searchParams.get('tier') || 'PRO_SCALE';
+    const targetTierParam = searchParams.get('target_tier') || searchParams.get('tier') || 'ADS_PERFORMANCE';
     const querySlug = searchParams.get('slug') || searchParams.get('tenant_slug') || searchParams.get('tenant') || '';
     const cookieStore =
       req.cookies.get('merchant_store')?.value ||
@@ -35,17 +38,20 @@ export async function GET(req: NextRequest) {
 
     // 1. Resolve Target Tier ke Canonical
     const rawTarget = targetTierParam.toUpperCase().replace('-', '_').replace(' ', '_');
-    let canonicalTargetTier = 'PRO_SCALE';
+    let canonicalTargetTier = 'ADS_PERFORMANCE';
     let newTierPrice = 299000;
 
-    if (rawTarget.includes('TEAM') || rawTarget.includes('ENTERPRISE') || rawTarget.includes('SCALE')) {
-      canonicalTargetTier = 'ENTERPRISE';
-      newTierPrice = 499000;
-    } else if (rawTarget.includes('ADS') || rawTarget.includes('PRO') || rawTarget.includes('PERFORMANCE')) {
+    if (rawTarget.includes('TEAM') || rawTarget.includes('ENTERPRISE') || rawTarget.includes('SCALE') || rawTarget === 'PRO_SCALE') {
       canonicalTargetTier = 'PRO_SCALE';
+      newTierPrice = 499000;
+    } else if (rawTarget.includes('ADS') || rawTarget.includes('PERFORMANCE') || rawTarget === 'PRO_ADS') {
+      canonicalTargetTier = 'ADS_PERFORMANCE';
       newTierPrice = 299000;
+    } else if (rawTarget.includes('CHECKOUT') || rawTarget.includes('LITE') || rawTarget === 'ENTRY') {
+      canonicalTargetTier = 'CHECKOUT_LITE';
+      newTierPrice = 59000;
     } else {
-      canonicalTargetTier = 'STARTER';
+      canonicalTargetTier = 'SOLO';
       newTierPrice = 199000;
     }
 

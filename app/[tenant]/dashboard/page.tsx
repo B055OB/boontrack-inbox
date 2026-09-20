@@ -69,6 +69,8 @@ export default function TenantDashboardPage() {
     isGrowth,
     isAdsTrackingUnlocked,
     isSoloOrTrial,
+    isTrialActive,
+    tierLabel,
     handleUpgradeTier,
     isPaymentModalOpen,
     setIsPaymentModalOpen,
@@ -355,6 +357,9 @@ export default function TenantDashboardPage() {
               isAdsTrackingUnlocked={isAdsTrackingUnlocked}
               isSoloOrTrial={isSoloOrTrial}
               isCheckoutLite={isCheckoutLite}
+              isTrialActive={isTrialActive}
+              tierLabel={tierLabel}
+              trialDaysLeft={trialDaysLeft}
               productCount={products.length}
               activeProductCount={activeProductsCount}
               orderCount={transactions.length}
@@ -391,6 +396,9 @@ export default function TenantDashboardPage() {
         isAdsTrackingUnlocked={isAdsTrackingUnlocked}
         isSoloOrTrial={isSoloOrTrial}
         isCheckoutLite={isCheckoutLite}
+        isTrialActive={isTrialActive}
+        tierLabel={tierLabel}
+        trialDaysLeft={trialDaysLeft}
         productCount={products.length}
         activeProductCount={activeProductsCount}
         orderCount={transactions.length}
@@ -575,6 +583,10 @@ export default function TenantDashboardPage() {
           isTeamScale={isTeamScale}
           isAdsPerformance={isAdsPerformance}
           isSoloOrTrial={isSoloOrTrial}
+          isCheckoutLite={isCheckoutLite}
+          isTrialActive={isTrialActive}
+          tierLabel={tierLabel}
+          trialDaysLeft={trialDaysLeft}
           storeCategory={storeCategory || businessType}
           chatConversationsCount={conversations.length}
           onOpenStoreSettings={() => {
@@ -1069,7 +1081,7 @@ export default function TenantDashboardPage() {
         tenantSlug={tenantSlug}
         displayName={displayName}
         targetTier={targetUpgradeTier}
-        currentTier={tenantFeatureFlags?.tier || (isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'PRO_SCALE' : 'ENTERPRISE')}
+        currentTier={tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'SOLO' : isAdsPerformance ? 'ADS_PERFORMANCE' : 'PRO_SCALE')}
       />
     </main>
   );

@@ -18,34 +18,79 @@ export async function POST(req: NextRequest) {
     const merchantName = body.merchantName || body.merchant_name || storeName;
     const customerEmail = body.email || body.customer_email || null;
     const pin = String(body.pin || body.password || body.access_pin || '123456').trim();
-    const rawPlan = String(body.selectedPlan || body.plan_tier || body.tier || body.plan || 'starter').toLowerCase();
+    const rawPlan = String(
+      body.selected_plan ||
+      body.selectedPlan ||
+      body.plan_tier ||
+      body.tier ||
+      body.plan ||
+      'ads_performance'
+    ).trim().toLowerCase();
 
-    // Standarisasi 4 Tier Resmi & Pemetaan ke Enum PostgreSQL (tenant_tier_enum):
-    // 0. "Checkout Lite" -> enum database: 'CHECKOUT_LITE'
-    // 1. "Solo / Starter" -> enum database: 'STARTER'
-    // 2. "Ads Performance" -> enum database: 'PRO_SCALE'
-    // 3. "Team Scale" -> enum database: 'ENTERPRISE'
-    let dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' = 'STARTER';
-    let canonicalPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' = 'STARTER';
-    const requestedTrial = body.is_trial !== undefined ? Boolean(body.is_trial) : (Boolean(body.trial_days) || true);
+    // Standarisasi 3 Tier Resmi sesuai ARCHITECTURE.md ADR:
+    // - Ads Performance  → 'PRO_SCALE' (is_trial: true, Trial 7 Hari)
+    // - Checkout / Entry → 'STARTER'   (plan_type: 'entry')
+    // - Solo / Starter   → 'STARTER'   (plan_type: 'solo')
+    // - Team Scale       → 'ENTERPRISE'
+    // CHECKPOINT: CHECKOUT_LITE tidak lagi menjadi nilai enum DB yang valid.
+    let dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' = 'PRO_SCALE';
+    let canonicalPlanTier: string = 'PRO_SCALE';
+    let planType: 'ads_performance' | 'entry' | 'solo' | 'team_scale' = 'ads_performance';
     let isTrial = false;
 
-    if (rawPlan.includes('checkout') || rawPlan.includes('lite')) {
-      dbTier = 'CHECKOUT_LITE';
-      canonicalPlanTier = 'CHECKOUT_LITE';
-      isTrial = false;
-    } else if (rawPlan.includes('team') || rawPlan.includes('enterprise') || rawPlan.includes('scale')) {
-      dbTier = 'ENTERPRISE';
-      canonicalPlanTier = 'ENTERPRISE';
-      isTrial = requestedTrial;
-    } else if (rawPlan.includes('ads') || rawPlan.includes('performance') || rawPlan.includes('pro')) {
+    // 1. Ads Performance (Hero Promo Trial 7 Hari) - DB: 'PRO_SCALE'
+    if (
+      rawPlan === 'ads_performance' ||
+      rawPlan === 'pro_ads' ||
+      rawPlan === 'pro_scale' ||
+      rawPlan.includes('ads') ||
+      rawPlan.includes('performance')
+    ) {
       dbTier = 'PRO_SCALE';
       canonicalPlanTier = 'PRO_SCALE';
-      isTrial = requestedTrial;
-    } else {
-      // Solo / Starter (Default)
+      planType = 'ads_performance';
+      isTrial = body.is_trial !== undefined ? Boolean(body.is_trial) : true;
+    } else if (
+      rawPlan === 'checkout_lite' ||
+      rawPlan === 'checkout' ||
+      rawPlan === 'entry' ||
+      rawPlan === 'lite' ||
+      rawPlan.includes('checkout') ||
+      rawPlan.includes('lite') ||
+      rawPlan.includes('entry')
+    ) {
       dbTier = 'STARTER';
       canonicalPlanTier = 'STARTER';
+      planType = 'entry';
+      isTrial = false;
+    } else if (
+      rawPlan === 'solo' ||
+      rawPlan === 'starter' ||
+      rawPlan === 'basic' ||
+      rawPlan.includes('solo') ||
+      rawPlan.includes('starter')
+    ) {
+      dbTier = 'STARTER';
+      canonicalPlanTier = 'STARTER';
+      planType = 'solo';
+      isTrial = false;
+    } else if (
+      rawPlan === 'team_scale' ||
+      rawPlan === 'scale' ||
+      rawPlan === 'enterprise' ||
+      rawPlan.includes('team') ||
+      rawPlan.includes('scale') ||
+      rawPlan.includes('enterprise')
+    ) {
+      dbTier = 'ENTERPRISE';
+      canonicalPlanTier = 'ENTERPRISE';
+      planType = 'team_scale';
+      isTrial = false;
+    } else {
+      // Default: Ads Performance Trial
+      dbTier = 'PRO_SCALE';
+      canonicalPlanTier = 'PRO_SCALE';
+      planType = 'ads_performance';
       isTrial = true;
     }
 
@@ -261,8 +306,19 @@ export async function POST(req: NextRequest) {
             access_pin: pin,
             pin_hash: pin,
             plan_tier: canonicalPlanTier,
+            plan_type: planType,
             tier: dbTier,
-            created_via: isTrial ? 'register_solo_trial' : 'register_paid',
+            selected_plan:
+              planType === 'entry' || body.selected_plan === 'Paket Checkout'
+                ? 'Paket Checkout'
+                : planType === 'solo' || body.selected_plan === 'Paket Solo'
+                ? 'Paket Solo'
+                : dbTier === 'ENTERPRISE' || body.selected_plan === 'Team Scale'
+                ? 'Team Scale'
+                : (isTrial ? 'Ads Performance Trial' : 'Ads Performance'),
+            is_trial: isTrial,
+            trial_days: isTrial ? 7 : 0,
+            created_via: isTrial ? 'register_ads_trial' : 'register_paid',
             trial_ends_at: isTrial ? trialEndsAt : null,
             subscription_ends_at: subscriptionEndsAt,
             referral_code: cleanRef,

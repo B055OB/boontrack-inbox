@@ -58,8 +58,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const rawTier = String(tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'SOLO_TRIAL');
-    const isTrial = Boolean(rawTier.toLowerCase().includes('trial') || rawTier.toUpperCase() === 'SOLO_TRIAL');
+    const rawTier = String(tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'SOLO');
+    const isTrial = Boolean(
+      rawTier.toLowerCase().includes('trial') ||
+      rawTier.toUpperCase() === 'SOLO_TRIAL' ||
+      Boolean(tenant.trial_ends_at && !tenant.subscription_ends_at) ||
+      Boolean(tenant.metadata?.is_trial)
+    );
 
     // Kolom resmi di database Supabase adalah subscription_ends_at (dan trial_ends_at)
     const effectiveEndDateRaw =

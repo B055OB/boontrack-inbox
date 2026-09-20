@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
           // Cari tenant dengan token verifikasi tersebut di Supabase
           const { data: tenant, error: searchErr } = await supabase
             .from('tenants')
-            .select('id, slug, name, status, metadata')
+            .select('id, slug, name, status, tier, metadata')
             .eq('metadata->>wa_verification_token', token)
             .maybeSingle();
 
@@ -106,10 +106,23 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          // Toko ditemukan: Aktifkan toko & berikan Trial 7 Hari Ads Performance
+          // Toko ditemukan: Aktifkan toko & pertahankan tier dinamis (Ads Performance Trial 7 Hari)
           const currentMeta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
           const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
           const verifiedAt = new Date().toISOString();
+
+          // Dynamic Tier Mapping (Zero Hardcoding):
+          const resolvedTier = tenant.tier || currentMeta.tier || 'ADS_PERFORMANCE';
+          const resolvedPlanTier = currentMeta.plan_tier || resolvedTier;
+          const resolvedPlanLabel =
+            currentMeta.selected_plan ||
+            (resolvedTier === 'ADS_PERFORMANCE'
+              ? 'Ads Performance Trial'
+              : resolvedTier === 'PRO_SCALE'
+              ? 'Team Scale'
+              : resolvedTier === 'CHECKOUT_LITE'
+              ? 'Paket Checkout'
+              : 'Paket Solo');
 
           const updatedMetadata = {
             ...currentMeta,
@@ -118,8 +131,9 @@ export async function POST(req: NextRequest) {
             wa_verified_phone: senderPhone,
             phone: senderPhone,
             whatsapp_number: senderPhone,
-            tier: 'PRO_SCALE',
-            plan_tier: 'PRO_SCALE',
+            tier: resolvedTier,
+            plan_tier: resolvedPlanTier,
+            selected_plan: resolvedPlanLabel,
             trial_ends_at: trialEndsAt,
           };
 
@@ -128,7 +142,7 @@ export async function POST(req: NextRequest) {
             .update({
               status: 'active',
               is_active: true,
-              tier: 'PRO_SCALE',
+              tier: resolvedTier,
               trial_ends_at: trialEndsAt,
               metadata: updatedMetadata,
               updated_at: verifiedAt,

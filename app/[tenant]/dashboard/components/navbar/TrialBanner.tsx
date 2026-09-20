@@ -16,9 +16,14 @@ export default function TrialBanner({
   trialEndsAt,
   onUpgrade,
 }: TrialBannerProps) {
-  // Hanya tampilkan jika tier adalah trial (SOLO_TRIAL, solo_trial, dll.)
+  // Hanya tampilkan jika tier adalah trial (ADS_PERFORMANCE dengan trialEndsAt, SOLO_TRIAL, dll.)
+  const isAdsTrial = Boolean(
+    tier && (tier.toLowerCase().includes('ads') || tier.toLowerCase().includes('performance'))
+  );
   const isTrial = Boolean(
-    tier && (tier.toLowerCase().includes('trial') || tier.toUpperCase() === 'SOLO_TRIAL')
+    trialEndsAt ||
+    isAdsTrial ||
+    (tier && (tier.toLowerCase().includes('trial') || tier.toUpperCase() === 'SOLO_TRIAL'))
   );
 
   // Kalkulasi dinamis real-time sisa hari dari trial_ends_at
@@ -36,6 +41,7 @@ export default function TrialBanner({
 
   const safeDays = calculatedDays !== null ? calculatedDays : 0;
   const isExpired = safeDays === 0;
+  const planLabel = isAdsTrial ? 'Ads Performance' : 'Solo';
 
   return (
     <div
@@ -67,23 +73,25 @@ export default function TrialBanner({
             className={`font-extrabold tracking-wide uppercase text-[10px] sm:text-[11px] px-2 py-0.5 rounded-md shrink-0 border ${
               isExpired
                 ? 'bg-rose-100 border-rose-300 text-rose-800'
+                : isAdsTrial
+                ? 'bg-blue-100 border-blue-300 text-blue-800'
                 : 'bg-white/80 border-amber-300/60 text-amber-800'
             }`}
           >
-            {isExpired ? 'Trial Kedaluwarsa' : 'Reverse Trial'}
+            {isExpired ? 'Trial Kedaluwarsa' : isAdsTrial ? 'Ads Performance Trial' : 'Reverse Trial'}
           </span>
           <p className="font-medium text-xs truncate">
             {isExpired ? (
               <span className="font-bold text-rose-700">
-                Masa Trial Solo telah berakhir (0 hari tersisa)! Akses storefront &amp; fitur automasi dibatasi.
+                Masa Trial {planLabel} telah berakhir (0 hari tersisa)! Akses storefront &amp; fitur automasi dibatasi.
               </span>
             ) : (
               <span>
-                Masa Trial Solo:{' '}
+                Masa Trial {planLabel}:{' '}
                 <strong className="font-black text-amber-950 font-mono">
                   {safeDays} hari tersisa
                 </strong>
-                . {safeDays <= 3 ? 'Segera upgrade agar automasi toko & etalase tidak terputus.' : 'Nikmati fitur otomatisasi toko & katalog aktif tanpa biaya awal.'}
+                . {safeDays <= 3 ? 'Segera upgrade agar automasi toko & etalase tidak terputus.' : isAdsTrial ? 'Nikmati fitur automasi toko, deteksi pembayaran & pixel tracking CAPI aktif tanpa biaya awal.' : 'Nikmati fitur otomatisasi toko & katalog aktif tanpa biaya awal.'}
               </span>
             )}
           </p>

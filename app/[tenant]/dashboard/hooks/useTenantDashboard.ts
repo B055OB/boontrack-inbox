@@ -105,6 +105,15 @@ export function useTenantDashboard() {
     tier?: string;
   }>({});
 
+  // Selected plan from tenant metadata (Single Source of Truth)
+  const [selectedPlan, setSelectedPlan] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(`bt_selected_plan_${tenantSlug}`);
+      if (stored) return stored;
+    }
+    return '';
+  });
+
   // Reverse Trial Days Left & End Date
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
@@ -119,10 +128,10 @@ export function useTenantDashboard() {
       const urlParams = new URLSearchParams(window.location.search);
       const tierParam = urlParams.get('tier')?.toLowerCase();
       if (tierParam) {
-        if (['ads_performance', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
+        if (['ads_performance', 'ads', 'performance', 'pro_ads', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
           return 'ads_performance';
         }
-        if (['team_scale', 'proscale', 'enterprise', 'pro'].some(t => tierParam.includes(t))) {
+        if (['team_scale', 'scale', 'enterprise'].some(t => tierParam.includes(t))) {
           return 'team_scale';
         }
         if (['growth', 'starter', 'solo'].some(t => tierParam.includes(t))) {
@@ -137,40 +146,57 @@ export function useTenantDashboard() {
 
   const isCheckoutLite =
     String(tenantFeatureFlags.tier || '').toUpperCase() === 'CHECKOUT_LITE' ||
+    selectedPlan.toLowerCase().includes('checkout') ||
     (typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).get('tier')?.toUpperCase() === 'CHECKOUT_LITE');
 
-  const isTeamScale =
-    !isCheckoutLite &&
-    (planTier === 'team_scale' ||
-      tenantFeatureFlags.tier === 'TEAM_SCALE' ||
-      tenantFeatureFlags.tier === 'PRO_SCALE' ||
-      tenantFeatureFlags.tier === 'ENTERPRISE');
-
+  // Ads Performance — DB canonical: 'PRO_SCALE' (ARCHITECTURE.md ADR)
+  // Backward-compat aliases: 'ADS_PERFORMANCE', 'GROWTH_PLUS'
   const isAdsPerformance =
     !isCheckoutLite &&
     (planTier === 'ads_performance' ||
-      tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
-      tenantFeatureFlags.tier === 'GROWTH_PLUS') &&
-    !isTeamScale;
+      String(tenantFeatureFlags.tier || '').toUpperCase() === 'PRO_SCALE' ||
+      String(tenantFeatureFlags.tier || '').toUpperCase() === 'ADS_PERFORMANCE' ||
+      String(tenantFeatureFlags.tier || '').toUpperCase() === 'GROWTH_PLUS' ||
+      String(tenantFeatureFlags.tier || '').toUpperCase().includes('ADS') ||
+      selectedPlan.toLowerCase().includes('ads') ||
+      selectedPlan.toLowerCase().includes('performance'));
 
-  const isProScale = isTeamScale;
+  // Team Scale — DB canonical: 'ENTERPRISE' (ARCHITECTURE.md ADR)
+  // Backward-compat aliases: 'TEAM_SCALE'
+  const isTeamScale =
+    !isCheckoutLite &&
+    !isAdsPerformance &&
+    (planTier === 'team_scale' ||
+      String(tenantFeatureFlags.tier || '').toUpperCase() === 'ENTERPRISE' ||
+      String(tenantFeatureFlags.tier || '').toUpperCase() === 'TEAM_SCALE' ||
+      selectedPlan.toLowerCase().includes('team'));
+
+  const isProScale = isAdsPerformance;
   const isGrowthPlus = isAdsPerformance;
   const isGrowth = !isCheckoutLite && planTier === 'growth' && !isAdsPerformance && !isTeamScale;
 
+  // Solo/Starter — DB canonical: 'STARTER' (ARCHITECTURE.md ADR)
+  // Backward-compat aliases: 'SOLO', 'SOLO_TRIAL'
   const isSoloOrTrial = Boolean(
-    isCheckoutLite ||
-    tenantFeatureFlags.tier === 'SOLO_TRIAL' ||
-    tenantFeatureFlags.tier === 'SOLO' ||
-    (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial')) ||
-    isGrowth
+    !isAdsPerformance &&
+    !isTeamScale &&
+    (isCheckoutLite ||
+      tenantFeatureFlags.tier === 'STARTER' ||
+      tenantFeatureFlags.tier === 'SOLO' ||
+      tenantFeatureFlags.tier === 'SOLO_TRIAL' ||
+      selectedPlan.toLowerCase().includes('solo') ||
+      selectedPlan.toLowerCase().includes('starter') ||
+      (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial') && !tenantFeatureFlags.tier.toLowerCase().includes('ads') && !selectedPlan.toLowerCase().includes('ads')) ||
+      isGrowth)
   );
 
   const isAdsTrackingUnlocked = !isCheckoutLite && !isSoloOrTrial && Boolean(
     isAdsPerformance ||
     isTeamScale ||
-    tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
     tenantFeatureFlags.tier === 'PRO_SCALE' ||
+    tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
+    tenantFeatureFlags.tier === 'ENTERPRISE' ||
     tenantFeatureFlags.tier === 'TEAM_SCALE'
   );
 
@@ -179,8 +205,31 @@ export function useTenantDashboard() {
   const isAiBotAllowed = !isCheckoutLite && Boolean(
     isAdsPerformance ||
     isTeamScale ||
-    (tenantFeatureFlags.tier && tenantFeatureFlags.tier.toLowerCase().includes('trial'))
+    tenantFeatureFlags.tier === 'PRO_SCALE' ||
+    tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
+    tenantFeatureFlags.tier === 'ENTERPRISE' ||
+    tenantFeatureFlags.tier === 'TEAM_SCALE'
   );
+
+  const isTrialActive = Boolean(
+    trialEndsAt ||
+    (trialDaysLeft !== null && trialDaysLeft > 0) ||
+    String(tenantFeatureFlags.tier || '').toLowerCase().includes('trial') ||
+    selectedPlan.toLowerCase().includes('trial') ||
+    (isAdsPerformance && Boolean(trialEndsAt || (trialDaysLeft !== null && trialDaysLeft > 0)))
+  );
+
+  // Standarisasi UI Dashboard: Label di bawah nama toko berdasarkan metadata.selected_plan
+  // Fallback ke resolusi tier jika selectedPlan belum tersedia
+  const tierLabel =
+    selectedPlan ||
+    (isCheckoutLite
+      ? 'Paket Checkout'
+      : isTeamScale
+      ? 'Team Scale'
+      : isAdsPerformance
+      ? (isTrialActive || trialDaysLeft !== null ? 'Ads Performance Trial' : 'Ads Performance')
+      : 'Paket Solo');
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [targetUpgradeTier, setTargetUpgradeTier] = useState<'ads_performance' | 'team_scale'>('ads_performance');
@@ -603,7 +652,7 @@ export function useTenantDashboard() {
 
         if (!tenant) {
           if (isLocalSession) {
-            setTenantFeatureFlags(prev => ({ ...prev, tier: 'SOLO_TRIAL' }));
+            setTenantFeatureFlags(prev => ({ ...prev, tier: 'STARTER' }));
             setPlanTier('growth');
             const fallbackEnds = new Date(Date.now() + 7 * 86400000).toISOString();
             setTrialEndsAt(fallbackEnds);
@@ -759,21 +808,60 @@ export function useTenantDashboard() {
             setStoreCategory('PHYSICAL');
           }
 
-          const resolvedTier = tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'SOLO_TRIAL';
+          const resolvedTier = tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'STARTER';
           const rawTier = String(resolvedTier).toLowerCase();
+          const selectedPlanMeta = String(tenant.metadata?.selected_plan || tenant.metadata?.selectedPlan || '');
+          const selectedPlanLower = selectedPlanMeta.toLowerCase();
+          const planTypeMeta = String(tenant.metadata?.plan_type || '').toLowerCase();
+
+          if (selectedPlanMeta) {
+            setSelectedPlan(selectedPlanMeta);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(`bt_selected_plan_${tenantSlug}`, selectedPlanMeta);
+            }
+          }
+
           setTenantFeatureFlags(prev => ({ ...prev, tier: resolvedTier }));
-          if (rawTier.includes('team_scale') || rawTier.includes('proscale') || rawTier.includes('enterprise')) {
-            setPlanTier('team_scale');
-          } else if (rawTier.includes('ads_performance') || rawTier.includes('growth_plus') || rawTier.includes('plus')) {
+
+          // Prioritaskan Ads Performance (DB canonical: PRO_SCALE)
+          if (
+            rawTier === 'pro_scale' ||
+            rawTier === 'ads_performance' ||
+            rawTier.includes('ads') ||
+            rawTier.includes('performance') ||
+            selectedPlanLower.includes('ads') ||
+            selectedPlanLower.includes('performance') ||
+            planTypeMeta === 'ads_performance' ||
+            rawTier.includes('growth_plus') ||
+            rawTier.includes('plus')
+          ) {
             setPlanTier('ads_performance');
+          // Team Scale (DB canonical: ENTERPRISE)
+          } else if (
+            rawTier === 'enterprise' ||
+            rawTier === 'team_scale' ||
+            rawTier.includes('team') ||
+            selectedPlanLower.includes('team') ||
+            selectedPlanLower.includes('scale') ||
+            planTypeMeta === 'team_scale'
+          ) {
+            setPlanTier('team_scale');
+          // Solo / Starter / Checkout (DB canonical: STARTER)
           } else {
             setPlanTier('growth');
           }
 
-          // Hitung sisa hari Reverse Trial (7 Hari)
-          const isTrialStore = rawTier.includes('trial') || resolvedTier === 'SOLO_TRIAL';
-          if (isTrialStore) {
-            const rawTrialEnds = tenant.trial_ends_at || tenant.metadata?.trial_ends_at;
+          // Hitung sisa hari Reverse Trial (7 Hari) untuk Ads Performance Promo / Solo Trial
+          const rawTrialEnds = tenant.trial_ends_at || tenant.metadata?.trial_ends_at;
+          const isTrialStore =
+            Boolean(tenant.metadata?.is_trial) ||
+            Boolean(rawTrialEnds) ||
+            rawTier.includes('trial') ||
+            selectedPlanLower.includes('trial') ||
+            resolvedTier === 'SOLO_TRIAL' ||
+            ((rawTier === 'pro_scale' || rawTier.includes('ads')) && (Boolean(tenant.metadata?.is_trial) || Boolean(rawTrialEnds)));
+
+          if (isTrialStore || rawTrialEnds) {
             let finalTrialEnds = rawTrialEnds;
             if (!finalTrialEnds && tenant.created_at) {
               finalTrialEnds = new Date(new Date(tenant.created_at).getTime() + 7 * 86400000).toISOString();
@@ -847,6 +935,13 @@ export function useTenantDashboard() {
           if (s.bio) setStoreBio(s.bio);
           if (s.metadata?.total_omzet || s.total_omzet) {
             setTenantMetaOmzet(Number(s.metadata?.total_omzet || s.total_omzet || 0));
+          }
+          if (s.metadata?.selected_plan || s.metadata?.selectedPlan) {
+            const planString = s.metadata?.selected_plan || s.metadata?.selectedPlan;
+            setSelectedPlan(planString);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(`bt_selected_plan_${tenantSlug}`, planString);
+            }
           }
           const aiK = s.ai_knowledge || s.persona || {};
           const loadedStrategy = s.bot_strategy || aiK.bot_strategy || 'trust_builder';
@@ -1607,6 +1702,9 @@ export function useTenantDashboard() {
     isGrowth,
     isAdsTrackingUnlocked,
     isSoloOrTrial,
+    isTrialActive,
+    selectedPlan,
+    tierLabel,
     isBroadcastUnlocked,
     handleUpgradeTier,
     isPaymentModalOpen,

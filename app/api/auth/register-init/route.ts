@@ -19,6 +19,102 @@ function sanitizeSlug(val: string): string {
     .replace(/^-|-$/g, '');
 }
 
+interface PlanMapping {
+  dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE';
+  planLabel: string;
+  planType: 'entry' | 'solo' | 'ads_performance' | 'team_scale';
+  isTrial: boolean;
+  trialDays: number;
+}
+
+export function resolveRegistrationPlan(rawInput: string | undefined): PlanMapping {
+  const normalized = String(rawInput || '').trim().toLowerCase();
+
+  // 1. Ads Performance (Promo Pilihan Utama - Trial 7 Hari Rp 0)
+  // DB canonical (ADR): 'PRO_SCALE', is_trial: true
+  if (
+    normalized === 'ads_performance' ||
+    normalized === 'pro_ads' ||
+    normalized === 'pro_scale' ||
+    normalized.includes('ads') ||
+    normalized.includes('performance')
+  ) {
+    return {
+      dbTier: 'PRO_SCALE',
+      planLabel: 'Ads Performance Trial',
+      planType: 'ads_performance',
+      isTrial: true,
+      trialDays: 7,
+    };
+  }
+
+  // 2. Paket Checkout / Entry
+  // DB canonical (ADR): 'STARTER' (metadata.plan_type: 'entry')
+  if (
+    normalized === 'checkout_lite' ||
+    normalized === 'checkout' ||
+    normalized === 'entry' ||
+    normalized === 'lite' ||
+    normalized.includes('checkout') ||
+    normalized.includes('lite') ||
+    normalized.includes('entry')
+  ) {
+    return {
+      dbTier: 'STARTER',
+      planLabel: 'Paket Checkout',
+      planType: 'entry',
+      isTrial: false,
+      trialDays: 0,
+    };
+  }
+
+  // 3. Paket Solo / Starter
+  // DB canonical (ADR): 'STARTER' (metadata.plan_type: 'solo')
+  if (
+    normalized === 'solo' ||
+    normalized === 'starter' ||
+    normalized === 'basic' ||
+    normalized.includes('solo') ||
+    normalized.includes('starter')
+  ) {
+    return {
+      dbTier: 'STARTER',
+      planLabel: 'Paket Solo',
+      planType: 'solo',
+      isTrial: false,
+      trialDays: 0,
+    };
+  }
+
+  // 4. Paket Team Scale / Enterprise
+  // DB canonical (ADR): 'ENTERPRISE'
+  if (
+    normalized === 'team_scale' ||
+    normalized === 'scale' ||
+    normalized === 'enterprise' ||
+    normalized.includes('team') ||
+    normalized.includes('scale') ||
+    normalized.includes('enterprise')
+  ) {
+    return {
+      dbTier: 'ENTERPRISE',
+      planLabel: 'Team Scale',
+      planType: 'team_scale',
+      isTrial: false,
+      trialDays: 0,
+    };
+  }
+
+  // Fallback: Ads Performance Trial
+  return {
+    dbTier: 'PRO_SCALE',
+    planLabel: 'Ads Performance Trial',
+    planType: 'ads_performance',
+    isTrial: true,
+    trialDays: 7,
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -28,7 +124,8 @@ export async function POST(req: NextRequest) {
     const rawEmail = body.email || body.customer_email || '';
     const rawPassword = body.password || body.pin || body.access_pin || '123456';
     const rawCategory = body.category || body.business_type || 'PHYSICAL';
-    const rawPlan = body.plan_tier || body.selectedPlan || 'ads_performance';
+    const rawPlanInput = body.selected_plan || body.selectedPlan || body.plan_tier || body.tier || 'ads_performance';
+    const planConfig = resolveRegistrationPlan(rawPlanInput);
     const referralCode = body.referral_code || body.referralCode || body.ref || null;
     const utmParams = body.utm_params || {
       utm_source: body.utm_source || 'organik',
@@ -43,27 +140,17 @@ export async function POST(req: NextRequest) {
     const email = String(rawEmail).trim().toLowerCase();
     const password = String(rawPassword).trim();
 
-    // ── STRICT BACKEND TRIAL GUARD: HANYA ADS PERFORMANCE (PRO_SCALE) ──
-    // Hanya pendaftar dengan paket 'PRO_SCALE' / Ads Performance yang diizinkan memproses inisiasi verifikasi trial WhatsApp (Rp 0).
-    // Jika request datang dengan paket Solo ('SOLO') atau Team Scale ('TEAM_SCALE'), tolak pembuatan token aktivasi gratis
-    // dan kembalikan response instruksi redirect ke pembayaran/invoice QRIS.
-    const planTierUpper = String(body.plan_tier || '').trim().toUpperCase();
-    const selectedPlanLower = String(body.selectedPlan || '').trim().toLowerCase();
-
-    const isAdsPerformance =
-      planTierUpper === 'PRO_SCALE' ||
-      planTierUpper === 'ADS_PERFORMANCE' ||
-      selectedPlanLower === 'ads_performance' ||
-      selectedPlanLower === 'pro_scale';
-
-    if (!isAdsPerformance) {
+    // ── STRICT BACKEND TRIAL GUARD: HANYA ADS PERFORMANCE (Rp 0 TRIAL 7 HARI) ──
+    // Hanya pendaftar dengan paket Ads Performance yang diizinkan memproses aktivasi trial WhatsApp Rp 0.
+    // Paket Solo, Checkout Lite, dan Team Scale memerlukan pembayaran langganan langsung.
+    if (!planConfig.isTrial || planConfig.dbTier !== 'PRO_SCALE') {
       return NextResponse.json(
         {
           success: false,
           error:
             'Trial gratis 7 hari (Rp 0) hanya tersedia untuk paket Ads Performance. Paket Solo dan Team Scale memerlukan pembayaran langganan langsung.',
           requires_payment: true,
-          plan: planTierUpper || selectedPlanLower || 'SOLO',
+          plan: planConfig.planLabel,
           action: 'REDIRECT_TO_PAYMENT',
           instruction: 'Silakan lanjutkan pembayaran paket langganan Anda melalui invoice QRIS.',
         },
@@ -109,7 +196,9 @@ export async function POST(req: NextRequest) {
     // Generate Token Verifikasi 6 Digit (contoh: "BT-8921")
     const verificationToken = generateVerificationToken();
     const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const trialEndsAt = planConfig.isTrial
+      ? new Date(Date.now() + planConfig.trialDays * 24 * 60 * 60 * 1000).toISOString()
+      : null;
 
     const officialWaNumber = getOfficialWhatsAppNumber();
     const activationMessage = `AKTIVASI ${verificationToken}`;
@@ -124,7 +213,7 @@ export async function POST(req: NextRequest) {
       name: shopName,
       category: rawCategory,
       business_type: rawCategory,
-      tier: 'PRO_SCALE', // Trial 7 Hari Ads Performance
+      tier: planConfig.dbTier, // 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' (ADR canonical)
       status: 'PENDING',
       is_active: false,
       trial_ends_at: trialEndsAt,
@@ -148,10 +237,13 @@ export async function POST(req: NextRequest) {
         status: 'PENDING',
         wa_verification_expires_at: tokenExpiresAt,
         official_waba_number: officialWaNumber,
-        selected_plan: rawPlan,
-        plan_tier: 'PRO_SCALE',
-        tier: 'PRO_SCALE',
-        trial_days: 7,
+        selected_plan: planConfig.planLabel,
+        plan_tier: planConfig.dbTier,
+        plan_type: planConfig.planType,
+        tier: planConfig.dbTier,
+        is_trial: planConfig.isTrial,
+        trial_days: planConfig.trialDays,
+        trial_ends_at: trialEndsAt,
         referral_code: referralCode,
         utm_params: utmParams,
         interactive_menus: [defaultMenu],

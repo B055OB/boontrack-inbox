@@ -134,8 +134,8 @@ export function useDashboardData(tenantSlug: string) {
             }
             if (s.plan_tier || s.tier || s.pricing?.tier) {
               const rawTier = (s.plan_tier || s.tier || s.pricing?.tier || '').toLowerCase();
-              if (rawTier.includes('team_scale') || rawTier.includes('proscale') || rawTier.includes('enterprise')) setPlanTier('team_scale');
-              else if (rawTier.includes('ads_performance') || rawTier.includes('tracking') || rawTier.includes('plus')) setPlanTier('ads_performance');
+              if (rawTier.includes('enterprise') || rawTier.includes('team_scale')) setPlanTier('team_scale');
+              else if (rawTier.includes('ads_performance') || rawTier.includes('pro_scale') || rawTier.includes('tracking') || rawTier.includes('plus')) setPlanTier('ads_performance');
               else if (rawTier.includes('growth') || rawTier === 'starter' || rawTier === 'solo') setPlanTier('growth');
             }
           }

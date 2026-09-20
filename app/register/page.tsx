@@ -201,7 +201,7 @@ export function resolveCanonicalCategory(raw?: string | null): CanonicalBusiness
   return "PHYSICAL";
 }
 
-export type OfficialPlan = "checkout_lite" | "starter" | "pro_scale" | "enterprise" | "solo" | "ads_performance" | "team_scale";
+export type OfficialPlan = "checkout_lite" | "starter" | "pro_scale" | "enterprise" | "solo" | "ads_performance" | "pro_ads" | "team_scale";
 
 export const PLAN_PRICING: Record<OfficialPlan, number> = {
   checkout_lite: 59000,
@@ -210,6 +210,7 @@ export const PLAN_PRICING: Record<OfficialPlan, number> = {
   enterprise: 499000,
   solo: 199000,
   ads_performance: 299000,
+  pro_ads: 299000,
   team_scale: 499000,
 };
 
@@ -986,26 +987,35 @@ export default function RegisterShopPage() {
       return;
     }
 
-    // Standarisasi 4 Tier Resmi:
-    // 0. "Checkout Lite" -> enum database: 'CHECKOUT_LITE' (Bayar Langsung Rp 59.000)
-    // 1. "Solo / Starter" -> enum database: 'STARTER' (Bayar Langsung Rp 199.000)
-    // 2. "Ads Performance" -> enum database: 'PRO_SCALE' (HERO TIER: Free Trial 7 Hari Rp 0)
-    // 3. "Team Scale" -> enum database: 'ENTERPRISE' (Bayar Langsung Rp 499.000)
-    const isTrial = selectedPlan === "pro_scale" || selectedPlan === "ads_performance";
+    // Standarisasi 3 Tier DB sesuai ARCHITECTURE.md ADR:
+    // Solo/Starter   → 'STARTER'
+    // Ads Performance → 'PRO_SCALE'  (isTrial: true, Rp 0)
+    // Team Scale     → 'ENTERPRISE'
+    // Checkout Lite  → 'STARTER'
+    const dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' =
+      selectedPlan === 'checkout_lite'
+        ? 'STARTER'
+        : selectedPlan === 'ads_performance' || selectedPlan === 'pro_ads'
+        ? 'PRO_SCALE'
+        : selectedPlan === 'enterprise' || selectedPlan === 'team_scale'
+        ? 'ENTERPRISE'
+        : 'STARTER';
+    const isTrial = selectedPlan === "ads_performance" || selectedPlan === "pro_ads";
     const planAmount = isTrial
       ? 0
       : PLAN_PRICING[selectedPlan] ||
         (selectedPlan === "checkout_lite" ? 59000 : selectedPlan === "enterprise" || selectedPlan === "team_scale" ? 499000 : 199000);
 
-    const dbTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' =
+    const canonicalSelectedPlan =
       selectedPlan === 'checkout_lite'
-        ? 'CHECKOUT_LITE'
+        ? 'Paket Checkout'
+        : selectedPlan === 'ads_performance' || selectedPlan === 'pro_ads'
+        ? 'Ads Performance Trial'
         : selectedPlan === 'enterprise' || selectedPlan === 'team_scale'
-        ? 'ENTERPRISE'
-        : selectedPlan === 'pro_scale' || selectedPlan === 'ads_performance'
-        ? 'PRO_SCALE'
-        : 'STARTER';
-    const targetPlanTier: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' = dbTier;
+        ? 'Team Scale'
+        : 'Paket Solo';
+
+    const targetPlanTier = dbTier;
 
     // Standarisasi nomor telepon WhatsApp (format 628...)
     let formattedPhone = merchantData.phone.replace(/[^0-9]/g, '');
@@ -1043,7 +1053,11 @@ export default function RegisterShopPage() {
             pin: cleanPin,
             category: resolvedBusinessType,
             plan_tier: targetPlanTier,
-            selectedPlan,
+            selected_plan: canonicalSelectedPlan,
+            selectedPlan: canonicalSelectedPlan,
+            tier: targetPlanTier,
+            is_trial: true,
+            trial_days: 7,
             referral_code: cleanRef,
             utm_params: utmParams,
             slug,
@@ -1072,8 +1086,10 @@ export default function RegisterShopPage() {
             email: cleanEmail,
             pin: cleanPin,
             category: resolvedBusinessType,
-            selectedPlan,
+            selectedPlan: canonicalSelectedPlan,
+            selected_plan: canonicalSelectedPlan,
             plan_tier: targetPlanTier,
+            tier: targetPlanTier,
             trial_days: 7,
             is_trial: true,
             wa_verification_token: initData.token,
@@ -1124,8 +1140,10 @@ export default function RegisterShopPage() {
             business_type: resolvedBusinessType,
             vertical_type: resolvedBusinessType,
             business_category: resolvedBusinessType,
-            selectedPlan,
+            selectedPlan: canonicalSelectedPlan,
+            selected_plan: canonicalSelectedPlan,
             plan_tier: targetPlanTier,
+            tier: targetPlanTier,
             amount: planAmount,
             trial_days: 0,
             is_trial: false,

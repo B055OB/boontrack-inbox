@@ -238,6 +238,9 @@ interface DashboardSidebarProps {
   isAdsTrackingUnlocked?: boolean;
   isSoloOrTrial?: boolean;
   isCheckoutLite?: boolean;
+  isTrialActive?: boolean;
+  tierLabel?: string;
+  trialDaysLeft?: number | null;
   productCount?: number;
   activeProductCount?: number;
   orderCount?: number;
@@ -268,6 +271,9 @@ export default function DashboardSidebar({
   isAdsTrackingUnlocked = false,
   isSoloOrTrial = false,
   isCheckoutLite = false,
+  isTrialActive = false,
+  tierLabel,
+  trialDaysLeft,
   productCount = 0,
   activeProductCount = 0,
   orderCount = 0,
@@ -379,22 +385,25 @@ export default function DashboardSidebar({
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span
                   className={`inline-block text-[9px] font-bold px-1.5 py-0.2 rounded-full border leading-tight ${
-                    isCheckoutLite
+                    isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
                       ? 'bg-amber-50 text-amber-800 border-amber-200'
-                      : isTeamScale
+                      : isTeamScale || (tierLabel && tierLabel.toLowerCase().includes('team'))
                       ? 'bg-purple-50 text-purple-700 border-purple-200'
-                      : isAdsPerformance
+                      : isAdsPerformance || (tierLabel && (tierLabel.toLowerCase().includes('ads') || tierLabel.toLowerCase().includes('performance')))
                       ? 'bg-blue-50 text-blue-700 border-blue-200'
                       : 'bg-slate-100 text-slate-600 border-slate-200'
                   }`}
                 >
-                  {isCheckoutLite
-                    ? 'Checkout Lite'
-                    : isTeamScale
-                    ? 'Team Scale'
-                    : isAdsPerformance
-                    ? 'Ads Performance'
-                    : 'Solo Starter'}
+                  {tierLabel ||
+                    (isCheckoutLite
+                      ? 'Paket Checkout'
+                      : isTeamScale
+                      ? 'Team Scale'
+                      : isAdsPerformance
+                      ? isTrialActive || trialDaysLeft !== null
+                        ? 'Ads Performance Trial'
+                        : 'Ads Performance'
+                      : 'Paket Solo')}
                 </span>
               </div>
             </div>
