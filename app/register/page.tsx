@@ -1784,27 +1784,35 @@ export default function RegisterShopPage() {
                       <ul className="space-y-2 text-xs">
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>Etalase Katalog Toko Instan (Subdomain Toko)</span>
+                          <span>Etalase Katalog Multi-Produk Tanpa Batas (Bukan cuma 1 produk)</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>Integrasi WhatsApp Checkout</span>
+                          <span>Kalkulasi Ongkir Otomatis Multi-Ekspedisi (JNE, J&amp;T, SiCepat)</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>Dynamic QRIS Standar Bank Indonesia</span>
+                          <span>Checkout WhatsApp Cepat &amp; Dynamic QRIS Standar 0% MDR</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>Rekap Keuangan &amp; Laporan Penjualan</span>
+                          <span>Manajemen Stok Real-Time &amp; Laporan Penjualan Lengkap</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Akses Unduh Otomatis Produk Digital &amp; Lisensi</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Custom Branding Toko, Logo &amp; Link Bio Mandiri</span>
                         </li>
                         <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
                           <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                          <span>Verifikasi Pembayaran Manual (Wajib cek m-Banking satu per satu)</span>
+                          <span>Verifikasi Pembayaran Manual (Cek Rekening Mandiri)</span>
                         </li>
                         <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
                           <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                          <span>Tanpa Server-Side CAPI (Iklan berjalan &apos;buta&apos;, berisiko data loss)</span>
+                          <span>Tanpa Server-Side CAPI (Hanya Web Pixel Standar)</span>
                         </li>
                       </ul>
                     </div>
