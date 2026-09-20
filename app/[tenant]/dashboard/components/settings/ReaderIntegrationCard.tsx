@@ -30,6 +30,8 @@ export interface DeviceInfo {
   last_active_at?: string | null;
 }
 
+export const BOONTRACK_READER_APK_URL = 'https://assets.boontrack.com/apps/boontrack-reader.apk';
+
 export interface ReaderIntegrationCardProps {
   tenantSlug: string;
   tenantId?: string;
@@ -487,7 +489,7 @@ export default function ReaderIntegrationCard({
         {/* Download & Action Buttons */}
         <div className="pt-1 flex flex-wrap items-center gap-2.5">
           <a
-            href="https://assets.boontrack.com/apps/boontrack-reader.apk"
+            href={BOONTRACK_READER_APK_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-600/20 active:scale-95 transition cursor-pointer"
@@ -749,7 +751,7 @@ export default function ReaderIntegrationCard({
 
             <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
               <a
-                href="https://assets.boontrack.com/apps/boontrack-reader.apk"
+                href={BOONTRACK_READER_APK_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full sm:flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer text-center"
