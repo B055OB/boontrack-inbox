@@ -41,10 +41,10 @@ export function useDashboardData(tenantSlug: string) {
       const urlParams = new URLSearchParams(window.location.search);
       const tierParam = urlParams.get('tier')?.toLowerCase();
       if (tierParam) {
-        if (['ads_performance', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
+        if (['ads_performance', 'pro_scale', 'proscale', 'ads', 'performance', 'pro_ads', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
           return 'ads_performance';
         }
-        if (['team_scale', 'proscale', 'enterprise', 'pro'].some(t => tierParam.includes(t))) {
+        if (['team_scale', 'enterprise'].some(t => tierParam.includes(t)) || (tierParam.includes('scale') && !tierParam.includes('pro'))) {
           return 'team_scale';
         }
         if (['growth', 'starter', 'solo'].some(t => tierParam.includes(t))) {

@@ -316,6 +316,7 @@ export async function POST(req: NextRequest) {
                 : dbTier === 'ENTERPRISE' || body.selected_plan === 'Team Scale'
                 ? 'Team Scale'
                 : (isTrial ? 'Ads Performance Trial' : 'Ads Performance'),
+            subscription_status: isTrial ? 'trial' : 'active',
             is_trial: isTrial,
             trial_days: isTrial ? 7 : 0,
             created_via: isTrial ? 'register_ads_trial' : 'register_paid',
@@ -348,8 +349,9 @@ export async function POST(req: NextRequest) {
               booking: isServiceStore,
               digital_fulfillment: isDigital,
             },
+            // Clean state: Katalog toko baru harus 100% kosong (tanpa produk tiruan / mock)
             products: [],
-            product: productName ? {
+            product: (productName && productName.trim() !== storeName.trim() && Number(productPrice) > 0) ? {
               type: isDigital ? 'digital' : isServiceStore ? 'service' : 'physical',
               name: productName,
               price: Number(productPrice || 0),

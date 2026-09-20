@@ -241,6 +241,7 @@ export async function POST(req: NextRequest) {
         plan_tier: planConfig.dbTier,
         plan_type: planConfig.planType,
         tier: planConfig.dbTier,
+        subscription_status: planConfig.isTrial ? 'trial' : 'active',
         is_trial: planConfig.isTrial,
         trial_days: planConfig.trialDays,
         trial_ends_at: trialEndsAt,
@@ -252,6 +253,8 @@ export async function POST(req: NextRequest) {
         is_bot_active: true,
         created_via: 'wa_user_initiated_register',
         initiated_at: new Date().toISOString(),
+        products: [],
+        product: null,
       },
     };
 

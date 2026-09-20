@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
           // Cari tenant dengan token verifikasi tersebut di Supabase
           const { data: tenant, error: searchErr } = await supabase
             .from('tenants')
-            .select('id, slug, name, status, tier, metadata')
+            .select('id, slug, name, status, tier, trial_ends_at, metadata')
             .eq('metadata->>wa_verification_token', token)
             .maybeSingle();
 
@@ -111,18 +111,27 @@ export async function POST(req: NextRequest) {
           const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
           const verifiedAt = new Date().toISOString();
 
-          // Dynamic Tier Mapping (Zero Hardcoding):
-          const resolvedTier = tenant.tier || currentMeta.tier || 'ADS_PERFORMANCE';
+          // Dynamic Tier Mapping (Deterministic 4-Tier Canonical):
+          const rawTier = tenant.tier || currentMeta.tier || 'PRO_SCALE';
+          const resolvedTier = rawTier === 'ADS_PERFORMANCE' ? 'PRO_SCALE' : rawTier;
           const resolvedPlanTier = currentMeta.plan_tier || resolvedTier;
           const resolvedPlanLabel =
             currentMeta.selected_plan ||
-            (resolvedTier === 'ADS_PERFORMANCE'
+            (resolvedTier === 'PRO_SCALE' || resolvedTier === 'ADS_PERFORMANCE'
               ? 'Ads Performance Trial'
-              : resolvedTier === 'PRO_SCALE'
+              : resolvedTier === 'ENTERPRISE' || resolvedTier === 'TEAM_SCALE'
               ? 'Team Scale'
               : resolvedTier === 'CHECKOUT_LITE'
               ? 'Paket Checkout'
               : 'Paket Solo');
+
+          const isTrial = Boolean(
+            currentMeta.is_trial ||
+            tenant.trial_ends_at ||
+            resolvedTier === 'PRO_SCALE' ||
+            resolvedTier === 'ADS_PERFORMANCE' ||
+            resolvedPlanLabel.includes('Trial')
+          );
 
           const updatedMetadata = {
             ...currentMeta,
@@ -134,7 +143,10 @@ export async function POST(req: NextRequest) {
             tier: resolvedTier,
             plan_tier: resolvedPlanTier,
             selected_plan: resolvedPlanLabel,
-            trial_ends_at: trialEndsAt,
+            subscription_status: isTrial ? 'trial' : 'active',
+            is_trial: isTrial,
+            trial_days: isTrial ? 7 : 0,
+            trial_ends_at: isTrial ? trialEndsAt : null,
           };
 
           const { error: updateErr } = await supabase
@@ -143,7 +155,7 @@ export async function POST(req: NextRequest) {
               status: 'active',
               is_active: true,
               tier: resolvedTier,
-              trial_ends_at: trialEndsAt,
+              trial_ends_at: isTrial ? trialEndsAt : null,
               metadata: updatedMetadata,
               updated_at: verifiedAt,
             })

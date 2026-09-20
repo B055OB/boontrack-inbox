@@ -128,10 +128,10 @@ export function useTenantDashboard() {
       const urlParams = new URLSearchParams(window.location.search);
       const tierParam = urlParams.get('tier')?.toLowerCase();
       if (tierParam) {
-        if (['ads_performance', 'ads', 'performance', 'pro_ads', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
+        if (['ads_performance', 'pro_scale', 'proscale', 'ads', 'performance', 'pro_ads', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
           return 'ads_performance';
         }
-        if (['team_scale', 'scale', 'enterprise'].some(t => tierParam.includes(t))) {
+        if (['team_scale', 'enterprise'].some(t => tierParam.includes(t)) || (tierParam.includes('scale') && !tierParam.includes('pro'))) {
           return 'team_scale';
         }
         if (['growth', 'starter', 'solo'].some(t => tierParam.includes(t))) {
@@ -842,7 +842,7 @@ export function useTenantDashboard() {
             rawTier === 'team_scale' ||
             rawTier.includes('team') ||
             selectedPlanLower.includes('team') ||
-            selectedPlanLower.includes('scale') ||
+            (selectedPlanLower.includes('scale') && !selectedPlanLower.includes('pro')) ||
             planTypeMeta === 'team_scale'
           ) {
             setPlanTier('team_scale');
