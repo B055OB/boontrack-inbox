@@ -15,6 +15,15 @@ import {
   Save,
   ShoppingBag,
   Package,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  MessageCircle,
+  Video,
+  MapPin,
+  Phone,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { ProductItem } from '@/lib/product-catalog';
@@ -24,7 +33,16 @@ export type VisualThemeType =
   | 'aurora_gradient'
   | 'midnight_luxe'
   | 'warm_terra'
-  | 'bold_performance';
+  | 'bold_performance'
+  | 'slate_monochrome';
+
+export interface BioButton {
+  id: string;
+  label: string;
+  url: string;
+  icon: 'whatsapp' | 'instagram' | 'tiktok' | 'maps' | 'phone' | 'link';
+  is_active: boolean;
+}
 
 export interface VisualThemeOption {
   id: VisualThemeType;
@@ -106,7 +124,66 @@ export const VISUAL_THEMES: VisualThemeOption[] = [
       accent: '#059669',
     },
   },
+  {
+    id: 'slate_monochrome',
+    title: 'Minimalist Slate Monochrome',
+    subtitle: 'Monokrom Modern & Netral',
+    description: 'Palet warna slate monokrom elegan dengan estetika industrial minimalis. Sempurna untuk portofolio, studio, & brand modern.',
+    badge: 'PREMIUM (Eksklusif)',
+    isLockedForSolo: true,
+    swatches: {
+      bg: '#F8FAFC',
+      card: '#FFFFFF',
+      accent: '#334155',
+    },
+  },
 ];
+
+function InstagramIconSvg({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+    </svg>
+  );
+}
+
+const BIO_ICON_OPTIONS: { id: BioButton['icon']; label: string; icon: React.ElementType }[] = [
+  { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+  { id: 'link', label: 'Web / Link', icon: LinkIcon },
+  { id: 'instagram', label: 'Instagram', icon: InstagramIconSvg },
+  { id: 'tiktok', label: 'TikTok', icon: Video },
+  { id: 'maps', label: 'Lokasi Maps', icon: MapPin },
+  { id: 'phone', label: 'Telepon', icon: Phone },
+];
+
+export function getDefaultStarterButtons(slug: string, waNumber?: string): BioButton[] {
+  const cleanWa = waNumber?.replace(/\D/g, '') || '6285139555449';
+  return [
+    {
+      id: 'btn-wa',
+      label: 'Chat WhatsApp CS',
+      url: `https://wa.me/${cleanWa}`,
+      icon: 'whatsapp',
+      is_active: true,
+    },
+    {
+      id: 'btn-catalog',
+      label: 'Katalog Produk & Promo',
+      url: `/${slug}`,
+      icon: 'link',
+      is_active: true,
+    },
+    {
+      id: 'btn-ig',
+      label: 'Instagram Resmi Toko',
+      url: 'https://instagram.com',
+      icon: 'instagram',
+      is_active: true,
+    },
+  ];
+}
 
 interface StorefrontThemeCardProps {
   tenantSlug: string;
@@ -116,6 +193,9 @@ interface StorefrontThemeCardProps {
   currentVisualTheme?: VisualThemeType;
   products?: ProductItem[];
   onFeaturedProductsChange?: (productIds: string[]) => void;
+  initialButtons?: BioButton[];
+  storeWhatsapp?: string;
+  onButtonsChange?: (buttons: BioButton[]) => void;
   onSaved?: (msg: string) => void;
 }
 
@@ -127,6 +207,9 @@ export default function StorefrontThemeCard({
   currentVisualTheme,
   products = [],
   onFeaturedProductsChange,
+  initialButtons,
+  storeWhatsapp,
+  onButtonsChange,
   onSaved,
 }: StorefrontThemeCardProps) {
   const [selectedTheme, setSelectedTheme] = useState<VisualThemeType>(
@@ -135,6 +218,10 @@ export default function StorefrontThemeCard({
   const [chatEnabled, setChatEnabled] = useState(true);
   const [featuredProductIds, setFeaturedProductIds] = useState<string[]>([]);
   const [availableProducts, setAvailableProducts] = useState<ProductItem[]>(products);
+  const [buttons, setButtons] = useState<BioButton[]>(() => {
+    if (initialButtons && initialButtons.length > 0) return initialButtons;
+    return getDefaultStarterButtons(tenantSlug, storeWhatsapp);
+  });
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -149,6 +236,58 @@ export default function StorefrontThemeCard({
       setSelectedTheme(currentVisualTheme);
     }
   }, [currentVisualTheme]);
+
+  useEffect(() => {
+    if (initialButtons && initialButtons.length > 0) {
+      setButtons(initialButtons);
+    }
+  }, [initialButtons]);
+
+  const notifyButtonsChange = useCallback((newButtons: BioButton[]) => {
+    setButtons(newButtons);
+    if (onButtonsChange) {
+      onButtonsChange(newButtons);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('storefront-buttons-changed', {
+          detail: { buttons: newButtons },
+        })
+      );
+    }
+  }, [onButtonsChange]);
+
+  const handleAddButton = () => {
+    const newBtn: BioButton = {
+      id: `btn-${Date.now()}`,
+      label: 'Tombol Baru',
+      url: 'https://',
+      icon: 'link',
+      is_active: true,
+    };
+    const next = [...buttons, newBtn];
+    notifyButtonsChange(next);
+  };
+
+  const handleUpdateButton = (id: string, updates: Partial<BioButton>) => {
+    const next = buttons.map((b) => (b.id === id ? { ...b, ...updates } : b));
+    notifyButtonsChange(next);
+  };
+
+  const handleDeleteButton = (id: string) => {
+    const next = buttons.filter((b) => b.id !== id);
+    notifyButtonsChange(next);
+  };
+
+  const handleMoveButton = (index: number, direction: 'up' | 'down') => {
+    const targetIdx = direction === 'up' ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= buttons.length) return;
+    const copy = [...buttons];
+    const temp = copy[index];
+    copy[index] = copy[targetIdx];
+    copy[targetIdx] = temp;
+    notifyButtonsChange(copy);
+  };
 
   // Flag ref agar fetch tema HANYA dieksekusi 1 kali saat komponen mount
   const hasFetchedRef = useRef(false);
@@ -195,7 +334,7 @@ export default function StorefrontThemeCard({
     };
   }, [tenantSlug]);
 
-  // Load produk aktif & ID unggulan dari Supabase
+  // Load produk aktif, buttons & ID unggulan dari Supabase
   useEffect(() => {
     let isMounted = true;
     async function loadFeaturedAndProducts() {
@@ -212,6 +351,18 @@ export default function StorefrontThemeCard({
 
         if (tenantRow && isMounted) {
           const meta = tenantRow.metadata || {};
+
+          // Hydrate buttons
+          const rawButtons = meta.microsite?.buttons || meta.buttons;
+          if (Array.isArray(rawButtons) && rawButtons.length > 0) {
+            setButtons(rawButtons);
+            onButtonsChange?.(rawButtons);
+          } else if (!initialButtons || initialButtons.length === 0) {
+            const starters = getDefaultStarterButtons(tenantSlug, meta.whatsapp_number || storeWhatsapp);
+            setButtons(starters);
+            onButtonsChange?.(starters);
+          }
+
           const rawFeat =
             meta.featured_product_ids ||
             meta.microsite?.featured_product_ids ||
@@ -277,7 +428,7 @@ export default function StorefrontThemeCard({
     return () => {
       isMounted = false;
     };
-  }, [tenantSlug]);
+  }, [tenantSlug, initialButtons, storeWhatsapp, onButtonsChange]);
 
   // Sync prop jika parent menyediakan daftar produk
   useEffect(() => {
@@ -330,6 +481,7 @@ export default function StorefrontThemeCard({
           template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
           chat_enabled: newChatEnabled,
           chat_position: 'bottom-right',
+          buttons: buttons,
         }),
       });
 
@@ -345,6 +497,11 @@ export default function StorefrontThemeCard({
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            buttons: buttons,
+            microsite: {
+              buttons: buttons,
+              featured_product_ids: featuredProductIds,
+            },
             theme: {
               visual_theme: newThemeId,
               template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
@@ -373,8 +530,10 @@ export default function StorefrontThemeCard({
               visual_theme: newThemeId,
               featured_product_ids: featuredProductIds,
               microsite_featured_product_ids: featuredProductIds,
+              buttons: buttons,
               microsite: {
                 ...(tenantRow.metadata?.microsite || {}),
+                buttons: buttons,
                 featured_product_ids: featuredProductIds,
               },
               theme: {
@@ -465,7 +624,7 @@ export default function StorefrontThemeCard({
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-black text-slate-900">Pilihan Tema Visual Storefront</h3>
               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                5 Pilihan Tema
+                6 Pilihan Tema
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -497,9 +656,9 @@ export default function StorefrontThemeCard({
         </div>
       )}
 
-      {/* 5 Theme Options Grid */}
+      {/* 6 Theme Options Grid (3 x 2) */}
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {VISUAL_THEMES.map((theme) => {
               const isSelected = selectedTheme === theme.id;
               const locked = isThemeLocked(theme);
@@ -587,6 +746,184 @@ export default function StorefrontThemeCard({
                 </div>
               );
             })}
+          </div>
+
+          {/* KONTROL: FORM MANAJEMEN TOMBOL BIO LINKS (BIO LINKS EDITOR) */}
+          <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0 border border-indigo-100">
+                  <LinkIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs sm:text-sm font-black text-slate-900">
+                      Kelola Tombol Bio Link Toko ({buttons.length})
+                    </h4>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200">
+                      Live Preview Interaktif
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Atur tombol navigasi utama (WhatsApp, Katalog, Instagram, Maps, dll.) yang tampil di bio storefront Anda.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddButton}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95 self-start sm:self-auto shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tambah Tombol</span>
+              </button>
+            </div>
+
+            {buttons.length === 0 ? (
+              <div className="p-6 border border-dashed border-slate-200 rounded-2xl text-center space-y-2 text-slate-400 bg-white">
+                <Sparkles className="w-5 h-5 mx-auto text-slate-300" />
+                <p className="text-xs font-semibold">Belum ada tombol link di bio storefront Anda.</p>
+                <button
+                  type="button"
+                  onClick={handleAddButton}
+                  className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                >
+                  + Tambah tombol link pertama
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {buttons.map((btn, idx) => {
+                  const activeIconOpt = BIO_ICON_OPTIONS.find((o) => o.id === btn.icon) || BIO_ICON_OPTIONS[1];
+                  const IconComp = activeIconOpt.icon;
+
+                  return (
+                    <div
+                      key={btn.id}
+                      className={`p-3.5 rounded-2xl border transition-all space-y-3 ${
+                        btn.is_active
+                          ? 'bg-white border-slate-200 shadow-2xs'
+                          : 'bg-slate-100/60 border-slate-200 opacity-60'
+                      }`}
+                    >
+                      {/* Top Bar: Reorder, Icon preview, Title, Toggle, Delete */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-6 h-6 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-[11px] font-black text-slate-600 shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="p-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 shrink-0">
+                            <IconComp className="w-3.5 h-3.5" />
+                          </span>
+                          <span className="text-xs font-bold text-slate-900 truncate">
+                            {btn.label || 'Tanpa Label'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleMoveButton(idx, 'up')}
+                            disabled={idx === 0}
+                            className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 transition cursor-pointer"
+                            title="Pindah ke Atas"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveButton(idx, 'down')}
+                            disabled={idx === buttons.length - 1}
+                            className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 transition cursor-pointer"
+                            title="Pindah ke Bawah"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Switch Active */}
+                          <label className="relative inline-flex items-center cursor-pointer ml-1">
+                            <input
+                              type="checkbox"
+                              checked={btn.is_active}
+                              onChange={(e) => handleUpdateButton(btn.id, { is_active: e.target.checked })}
+                              className="sr-only peer"
+                            />
+                            <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteButton(btn.id)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer ml-0.5"
+                            title="Hapus Tombol"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Inputs: Label & URL */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                            Label Tombol
+                          </label>
+                          <input
+                            type="text"
+                            value={btn.label}
+                            onChange={(e) => handleUpdateButton(btn.id, { label: e.target.value })}
+                            placeholder="Contoh: Chat WhatsApp CS"
+                            className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                            URL Tujuan
+                          </label>
+                          <input
+                            type="text"
+                            value={btn.url}
+                            onChange={(e) => handleUpdateButton(btn.id, { url: e.target.value })}
+                            placeholder="https://wa.me/... atau /slug"
+                            className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-900 font-mono text-[11px] focus:outline-none focus:border-indigo-500 focus:bg-white transition"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Icon Selector Chips */}
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-500 mb-1.5">
+                          Pilihan Ikon:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {BIO_ICON_OPTIONS.map((opt) => {
+                            const ChipIcon = opt.icon;
+                            const isIconSelected = btn.icon === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => handleUpdateButton(btn.id, { icon: opt.id })}
+                                className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border transition cursor-pointer ${
+                                  isIconSelected
+                                    ? 'bg-indigo-50 border-indigo-600 text-indigo-700 shadow-2xs'
+                                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
+                                }`}
+                              >
+                                <ChipIcon className="w-3 h-3" />
+                                <span>{opt.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* KONTROL: PILIH PRODUK UNGGULAN DISPLAY (MAKSIMAL 5 PRODUK) */}

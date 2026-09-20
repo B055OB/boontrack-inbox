@@ -275,8 +275,17 @@ export default function TenantDashboardPage() {
         setActiveVisualTheme(e.detail.visual_theme);
       }
     }
+    function handleButtonsEvent(e: any) {
+      if (Array.isArray(e.detail?.buttons)) {
+        setLivePreviewButtons(e.detail.buttons);
+      }
+    }
     window.addEventListener('storefront-theme-changed', handleThemeEvent);
-    return () => window.removeEventListener('storefront-theme-changed', handleThemeEvent);
+    window.addEventListener('storefront-buttons-changed', handleButtonsEvent);
+    return () => {
+      window.removeEventListener('storefront-theme-changed', handleThemeEvent);
+      window.removeEventListener('storefront-buttons-changed', handleButtonsEvent);
+    };
   }, []);
 
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = React.useState(false);
@@ -687,7 +696,10 @@ export default function TenantDashboardPage() {
             isAdsPerformance={isAdsPerformance}
             currentVisualTheme={activeVisualTheme}
             products={products}
+            initialButtons={livePreviewButtons}
+            storeWhatsapp={storeWhatsapp}
             onThemeChange={handleThemeChange}
+            onButtonsChange={(btns) => setLivePreviewButtons(btns)}
             onFeaturedProductsChange={(ids) => setLivePreviewFeaturedProductIds(ids)}
             onSaved={(msg) => {
               setSaveFeedback(msg);
@@ -977,6 +989,30 @@ export default function TenantDashboardPage() {
         />
       )}
 
+            {/* MOBILE LIVE PHONE PREVIEW (< lg, smartphone) */}
+            {isPreviewEnabledTab && (
+              <div className="lg:hidden mt-8 pt-8 border-t border-slate-200 dark:border-slate-800 flex flex-col items-center">
+                <div className="w-full max-w-[360px]">
+                  <div className="mb-3 px-1 text-center">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Pratinjau Langsung Mobile (Live Preview)
+                    </span>
+                  </div>
+                  <LivePhonePreview
+                    tenantSlug={tenantSlug}
+                    displayName={storeDisplayName || displayName}
+                    storeBio={storeBio}
+                    storeLogoUrl={storeLogoUrl}
+                    storeWhatsapp={storeWhatsapp}
+                    visualTheme={activeVisualTheme}
+                    buttons={livePreviewButtons}
+                    showProducts={livePreviewShowProducts}
+                    products={products}
+                    featuredProductIds={livePreviewFeaturedProductIds}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* KOLOM 3: STICKY LIVE PHONE PREVIEW DESKTOP (SPLIT-SCREEN DUA KOLOM, >= lg) */}

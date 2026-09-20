@@ -114,6 +114,14 @@ function LinkDefaultIcon() {
   );
 }
 
+function PhoneCallIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-blue-500">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+    </svg>
+  );
+}
+
 function renderButtonIcon(iconName?: string) {
   switch (iconName?.toLowerCase()) {
     case 'whatsapp':
@@ -124,6 +132,9 @@ function renderButtonIcon(iconName?: string) {
       return <TikTokIcon />;
     case 'maps':
       return <MapsIcon />;
+    case 'phone':
+    case 'call':
+      return <PhoneCallIcon />;
     case 'shopee':
     case 'shopeefood':
       return <ShopeeIcon />;
@@ -270,6 +281,25 @@ export default function LivePhonePreview({
           productBadge: 'rounded px-2 py-0.5 text-[9px] font-black bg-black text-emerald-400',
           productTitle: 'text-black font-black',
           footerText: 'text-slate-700 font-bold',
+        };
+      case 'slate_monochrome':
+        return {
+          screenBg: 'bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200 text-slate-900',
+          radialOverlay: false,
+          avatarRing: 'ring-3 ring-slate-400 shadow-md shadow-slate-900/10',
+          avatarBg: 'bg-slate-900 text-slate-100 font-black',
+          titleColor: 'text-slate-950 font-black tracking-tight',
+          slugBadge: 'text-slate-600 font-mono text-[10px] bg-slate-200/80 px-1.5 py-0.5 rounded',
+          bioColor: 'text-slate-600 text-xs font-normal',
+          buttonStyle:
+            'rounded-full py-2.5 px-3.5 bg-slate-900 hover:bg-slate-800 text-white border border-slate-950 shadow-sm flex items-center justify-between transition-all active:scale-[0.98]',
+          buttonBadge: 'bg-slate-700 text-slate-200 text-[9px] font-bold px-1.5 py-0.5 rounded-full',
+          buttonArrow: 'text-slate-300',
+          productBox: 'rounded-2xl p-3 bg-white border border-slate-300 text-slate-900 shadow-sm space-y-2',
+          productSubtext: 'text-slate-900 font-black',
+          productBadge: 'rounded-full px-2 py-0.5 text-[9px] font-bold bg-slate-900 text-white',
+          productTitle: 'text-slate-950 font-bold',
+          footerText: 'text-slate-500',
         };
       case 'clean_minimal':
       default:

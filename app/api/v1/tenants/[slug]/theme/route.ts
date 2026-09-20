@@ -8,7 +8,8 @@ export type VisualThemeType =
   | 'aurora_gradient'
   | 'midnight_luxe'
   | 'warm_terra'
-  | 'bold_performance';
+  | 'bold_performance'
+  | 'slate_monochrome';
 
 export interface StoreThemeConfig {
   template: 'default' | 'personal' | 'microsite';
@@ -127,6 +128,7 @@ export async function PUT(
       'midnight_luxe',
       'warm_terra',
       'bold_performance',
+      'slate_monochrome',
     ];
     const newVisualTheme =
       visual_theme && validVisualThemes.includes(visual_theme)
@@ -154,6 +156,12 @@ export async function PUT(
       visual_theme: newVisualTheme,
       theme: updatedTheme,
     };
+
+    if (Array.isArray(body.buttons)) {
+      if (!updatedMetadata.microsite) updatedMetadata.microsite = {};
+      updatedMetadata.microsite.buttons = body.buttons;
+      updatedMetadata.buttons = body.buttons;
+    }
 
     if (Array.isArray(featured_product_ids)) {
       const cleanIds = featured_product_ids.map(String).slice(0, 5);
