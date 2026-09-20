@@ -67,6 +67,12 @@ export default function RootLayout({
             __html: `(function(){if(typeof window!=='undefined'){if(typeof window.structuredClone!=='function'){window.structuredClone=function(v){if(v===undefined)return undefined;if(v===null||typeof v!=='object')return v;try{return JSON.parse(JSON.stringify(v));}catch(e){if(Array.isArray(v))return v.slice();var o={};for(var k in v)if(Object.prototype.hasOwnProperty.call(v,k))o[k]=v[k];return o;}};}}})();`,
           }}
         />
+        {/* Early PWA beforeinstallprompt capture (ensures event is never missed prior to React hydration) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){if(typeof window!=='undefined'){window.__bt_deferred_prompt=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__bt_deferred_prompt=e;window.dispatchEvent(new CustomEvent('bt_beforeinstallprompt',{detail:e}));});}})();`,
+          }}
+        />
       </head>
       <body className="min-h-full flex flex-col">
         <PwaRegister />

@@ -40,7 +40,8 @@ export default function PwaInstallPrompt({
       // 1. Check if running in standalone mode (already installed PWA)
       const isStandaloneMode =
         window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true;
+        (window.navigator as any).standalone === true ||
+        document.referrer.includes('android-app://');
       setIsStandalone(isStandaloneMode);
 
       // 2. Check if iOS device
@@ -60,37 +61,72 @@ export default function PwaInstallPrompt({
         }
       } catch {}
 
-      // 5. Capture beforeinstallprompt for Android & Desktop Chromium
+      // 5. Check if deferredPrompt was captured globally prior to mount
+      if ((window as any).__bt_deferred_prompt) {
+        setDeferredPrompt((window as any).__bt_deferred_prompt);
+      }
+
+      // 6. Capture beforeinstallprompt for Android & Desktop Chromium
       const handleBeforeInstallPrompt = (e: Event) => {
         e.preventDefault();
         (window as any).__bt_deferred_prompt = e;
         setDeferredPrompt(e as BeforeInstallPromptEvent);
       };
 
+      const handleCustomPrompt = (e: any) => {
+        if (e.detail) {
+          setDeferredPrompt(e.detail as BeforeInstallPromptEvent);
+        }
+      };
+
+      const handleAppInstalled = () => {
+        setDeferredPrompt(null);
+        (window as any).__bt_deferred_prompt = null;
+        setIsStandalone(true);
+        setIsBannerDismissed(true);
+      };
+
       window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.addEventListener('bt_beforeinstallprompt', handleCustomPrompt);
+      window.addEventListener('appinstalled', handleAppInstalled);
 
       return () => {
         window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.removeEventListener('bt_beforeinstallprompt', handleCustomPrompt);
+        window.removeEventListener('appinstalled', handleAppInstalled);
       };
     }
   }, []);
 
   const handleInstallClick = async () => {
+    // 1. Cek apakah deferredPrompt tersedia
     const promptEvent = deferredPrompt || (typeof window !== 'undefined' ? (window as any).__bt_deferred_prompt : null);
+
     if (promptEvent && typeof promptEvent.prompt === 'function') {
       try {
+        // Panggil deferredPrompt.prompt()
         await promptEvent.prompt();
-        const { outcome } = await promptEvent.userChoice;
-        if (outcome === 'accepted') {
-          setDeferredPrompt(null);
+        // Tunggu hasil userChoice
+        const choiceResult = await promptEvent.userChoice;
+        console.log('[PWA] User choice outcome:', choiceResult?.outcome);
+
+        // Setelah selesai, kosongkan state deferredPrompt dan sembunyikan banner
+        setDeferredPrompt(null);
+        if (typeof window !== 'undefined') {
           (window as any).__bt_deferred_prompt = null;
         }
+        setIsBannerDismissed(true);
+        try {
+          sessionStorage.setItem('bt_pwa_banner_dismissed', 'true');
+        } catch {}
+
+        onActionComplete?.();
       } catch (err) {
-        console.warn('PWA prompt execution note:', err);
+        console.warn('[PWA] Native prompt execution error:', err);
         setShowIOSGuide(true);
       }
     } else {
-      // Tampilkan modal instruksi jika prompt native belum tersedia atau pada browser Safari/iOS
+      // Jika TIDAK ADA (misal di Safari iOS atau browser tanpa dukungan API): Barulah buka modal petunjuk manual 3 langkah ("Tambah ke Layar Utama")
       setShowIOSGuide(true);
     }
   };
@@ -135,7 +171,7 @@ export default function PwaInstallPrompt({
     }
   };
 
-  const canInstall = !isStandalone;
+  const canInstall = isMounted && !isStandalone;
 
   const modalGuide = showIOSGuide && isMounted ? (
     <div className="fixed inset-0 z-[99999] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
@@ -232,7 +268,7 @@ export default function PwaInstallPrompt({
       )}
 
       {/* ── VARIANT 2: MENU ITEM (Inside Burger Drawer / Profile Popover) ── */}
-      {variant === 'menu-item' && (
+      {variant === 'menu-item' && canInstall && (
         <button
           type="button"
           onClick={() => {
@@ -266,7 +302,7 @@ export default function PwaInstallPrompt({
             </button>
           )}
 
-          {!isStandalone && (
+          {canInstall && (
             <button
               type="button"
               onClick={handleInstallClick}
