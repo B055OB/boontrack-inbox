@@ -438,6 +438,8 @@ export async function middleware(req: NextRequest) {
 
   // ── 2. Universal pass-through: Auth/Checkout, Manager, Pricing, Legal & Vertical Apps ──
   if (
+    pathname === '/app' ||
+    pathname.startsWith('/app/') ||
     pathname === '/register' ||
     pathname.startsWith('/register/') ||
     pathname === '/affiliate' ||
