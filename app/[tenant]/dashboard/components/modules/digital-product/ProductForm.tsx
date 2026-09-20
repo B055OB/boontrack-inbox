@@ -91,8 +91,12 @@ export default function DigitalProductForm({
             </label>
             <input
               type="text"
-              value={productForm.promo || 'Video HD + PDF Modul'}
-              onChange={(e) => setProductForm((p) => ({ ...p, promo: e.target.value }))}
+              value={productForm.promo !== undefined ? productForm.promo : (metadata.file_format || 'Video HD + PDF Modul')}
+              onChange={(e) => {
+                const val = e.target.value;
+                setProductForm((p) => ({ ...p, promo: val }));
+                onMetadataChange('file_format', val);
+              }}
               placeholder="Contoh: Video MP4, E-book PDF, Template Notion"
               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-indigo-600"
             />

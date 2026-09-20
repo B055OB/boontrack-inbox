@@ -794,15 +794,26 @@ function SingleProductContent() {
               <span>Metode Akses:</span>
             </span>
             <span className="font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 text-[11px]">
-              {meta.delivery_type === 'TELEGRAM_GROUP' || accessUrl?.includes('t.me')
-                ? '🚀 Grup Telegram Kelas Eksklusif'
-                : meta.delivery_type === 'DOWNLOAD_LINK'
+              {meta.delivery_type === 'DOWNLOAD_LINK' || (Boolean(accessUrl) && meta.delivery_type !== 'BRIEF_FORM' && meta.delivery_type !== 'LICENSE_KEY' && meta.delivery_type !== 'TELEGRAM_GROUP')
                 ? '📥 Link Download Instan'
+                : meta.delivery_type === 'TELEGRAM_GROUP' || (meta.delivery_type !== 'DOWNLOAD_LINK' && accessUrl?.includes('t.me'))
+                ? '🚀 Grup Telegram Eksklusif'
                 : meta.delivery_type === 'LICENSE_KEY'
                 ? '🔑 Kunci Lisensi / Akses'
+                : meta.delivery_type === 'BRIEF_FORM'
+                ? '📋 Form Brief Klien'
+                : accessUrl
+                ? '📥 Link Akses Instan'
                 : '📋 Form Brief Klien'}
             </span>
           </div>
+
+          {(product.promo || meta.file_format) && (
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-emerald-100">
+              <span className="text-slate-500 font-medium">Format File:</span>
+              <span className="font-bold text-slate-700">{product.promo || meta.file_format}</span>
+            </div>
+          )}
 
           {meta.license_key && (
             <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
@@ -841,9 +852,7 @@ function SingleProductContent() {
             >
               <Sparkles className="w-4 h-4 text-emerald-200 animate-pulse" />
               <span>
-                {meta.delivery_type === 'TELEGRAM_GROUP' || accessUrl?.includes('t.me')
-                  ? (product.button_text || meta.button_text || '🚀 Gabung Grup Telegram Kelas Sekarang')
-                  : (product.button_text || meta.button_text || 'Buka Akses / Unduh Materi Sekarang')}
+                {product.button_text || meta.button_text || (product.promo ? `Download ${product.promo}` : (meta.delivery_type === 'TELEGRAM_GROUP' ? '🚀 Gabung Grup Telegram Kelas Sekarang' : 'Akses Materi Sekarang'))}
               </span>
               <ExternalLink className="w-4 h-4" />
             </a>

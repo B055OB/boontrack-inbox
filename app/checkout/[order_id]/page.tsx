@@ -89,6 +89,7 @@ export default function CheckoutPage({ params }: Props) {
     async function loadOrder() {
       setLoading(true);
       try {
+        let localBackup: any = null;
         // 1. Coba baca dari backup lokal untuk instant render awal
         if (typeof window !== 'undefined') {
           const localOrderStr = localStorage.getItem(`bt_order_${orderId}`);
@@ -96,6 +97,7 @@ export default function CheckoutPage({ params }: Props) {
             try {
               const parsed = JSON.parse(localOrderStr);
               if (parsed?.id) {
+                localBackup = parsed;
                 setOrder(parsed);
               }
             } catch {}
@@ -112,26 +114,101 @@ export default function CheckoutPage({ params }: Props) {
             .maybeSingle();
 
           if (dbOrder) {
-            let enriched = { ...dbOrder };
-            if (!enriched.fulfillment_metadata || !enriched.link_digital) {
-              const pSlug = enriched.product_id || enriched.slug;
-              if (pSlug) {
+            let enriched: any = { ...localBackup, ...dbOrder };
+
+            // Resolusi data tenant & katalog produk dari tabel tenants (Single Source of Truth)
+            const tSlug = (dbOrder.tenant_slug || dbOrder.tenant_id || '').toLowerCase();
+            let tenantData: any = null;
+
+            if (tSlug) {
+              const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tSlug);
+              let tQuery = supabase.from('tenants').select('*');
+              if (isUuid) {
+                tQuery = tQuery.or(`slug.eq.${tSlug},id.eq.${tSlug}`);
+              } else {
+                tQuery = tQuery.eq('slug', tSlug);
+              }
+              const { data: tRow } = await tQuery.maybeSingle();
+              if (tRow) {
+                tenantData = tRow;
+                setTenant(tRow);
+                setBankAccounts(extractTenantBankAccounts(tRow));
+              }
+            }
+
+            // Cari produk di katalog tenant (tenants.metadata.products)
+            const pList: any[] = Array.isArray(tenantData?.metadata?.products) ? tenantData.metadata.products : [];
+            const pIdStr = String(dbOrder.product_id || '').trim();
+            const pTitleStr = String(dbOrder.product_title || '').trim().toLowerCase();
+
+            const matchedProd = pList.find((p: any) => {
+              if (!p) return false;
+              if (pIdStr && (String(p.id) === pIdStr || String(p.sku) === pIdStr || String(p.slug) === pIdStr)) {
+                return true;
+              }
+              if (pTitleStr && p.name && p.name.trim().toLowerCase() === pTitleStr) {
+                return true;
+              }
+              return false;
+            });
+
+            if (matchedProd) {
+              const resolvedAccess =
+                matchedProd.download_url ||
+                matchedProd.fulfillment_metadata?.access_url ||
+                matchedProd.link_digital ||
+                matchedProd.access_url ||
+                matchedProd.delivery_url ||
+                '';
+
+              const resolvedFulfillment = matchedProd.fulfillment_metadata || (resolvedAccess ? {
+                delivery_type: matchedProd.delivery_type || 'DOWNLOAD_LINK',
+                access_url: resolvedAccess,
+                instructions: matchedProd.instructions || '',
+                button_text: matchedProd.button_text || '',
+                file_format: matchedProd.promo || matchedProd.format_file || '',
+              } : null);
+
+              enriched = {
+                ...enriched,
+                link_digital: resolvedAccess || enriched.link_digital,
+                download_url: resolvedAccess || enriched.download_url,
+                access_url: resolvedAccess || enriched.access_url,
+                file_format: matchedProd.promo || matchedProd.format_file || matchedProd.fulfillment_metadata?.file_format || enriched.file_format,
+                promo: matchedProd.promo || enriched.promo,
+                variants: matchedProd.variants || enriched.variants,
+                button_text: matchedProd.button_text || matchedProd.fulfillment_metadata?.button_text || enriched.button_text,
+                fulfillment_metadata: resolvedFulfillment || enriched.fulfillment_metadata,
+                product_type: matchedProd.type || matchedProd.product_type || enriched.product_type,
+              };
+            } else if (!enriched.fulfillment_metadata || (!enriched.download_url && !enriched.link_digital)) {
+              // Fallback jika belum ditemukan di tenant, coba cari di tabel products
+              if (pIdStr) {
                 const { data: pData } = await supabase
                   .from('products')
                   .select('*')
-                  .eq('slug', pSlug)
+                  .or(`slug.eq.${pIdStr},id.eq.${pIdStr},sku.eq.${pIdStr}`)
                   .maybeSingle();
                 if (pData) {
+                  const pAccess = pData.download_url || pData.link_digital || pData.fulfillment_metadata?.access_url || '';
                   enriched = {
                     ...enriched,
-                    link_digital: pData.link_digital || enriched.link_digital,
+                    link_digital: pAccess || enriched.link_digital,
+                    download_url: pAccess || enriched.download_url,
                     asset_reference: pData.asset_reference || enriched.asset_reference,
-                    button_text: pData.fulfillment_metadata?.button_text || pData.button_text,
-                    fulfillment_metadata: pData.fulfillment_metadata || enriched.fulfillment_metadata
+                    file_format: pData.promo || pData.format_file || pData.fulfillment_metadata?.file_format || enriched.file_format,
+                    promo: pData.promo || enriched.promo,
+                    button_text: pData.fulfillment_metadata?.button_text || pData.button_text || enriched.button_text,
+                    fulfillment_metadata: pData.fulfillment_metadata || (pAccess ? {
+                      delivery_type: pData.delivery_type || 'DOWNLOAD_LINK',
+                      access_url: pAccess,
+                      instructions: pData.instructions || '',
+                    } : enriched.fulfillment_metadata),
                   };
                 }
               }
             }
+
             setOrder(enriched);
             setLoading(false);
 
@@ -153,7 +230,7 @@ export default function CheckoutPage({ params }: Props) {
         const res = await fetch(getBackendApiUrl(`/api/v1/orders/${orderId}`));
         if (res.ok) {
           const data = await res.json();
-          setOrder(data);
+          setOrder((prev: any) => ({ ...prev, ...data }));
           if (data?.status === 'PAID' || data?.payment_status === 'PAID') {
             triggerPurchasePixels(data);
           }
@@ -210,7 +287,10 @@ export default function CheckoutPage({ params }: Props) {
                 status: 'PAID',
                 payment_status: 'PAID',
                 order_status: 'PAID',
-                link_digital: statusData.link_digital || prev?.link_digital,
+                download_url: statusData.download_url || statusData.link_digital || prev?.download_url,
+                link_digital: statusData.link_digital || statusData.download_url || prev?.link_digital,
+                file_format: statusData.file_format || prev?.file_format,
+                button_text: statusData.button_text || prev?.button_text,
                 fulfillment_metadata: statusData.fulfillment_metadata || prev?.fulfillment_metadata,
               };
               triggerPurchasePixels(merged);
@@ -249,6 +329,49 @@ export default function CheckoutPage({ params }: Props) {
             setTenant(data);
             const accounts = extractTenantBankAccounts(data);
             setBankAccounts(accounts);
+
+            // Jika order belum memiliki fulfillment_metadata atau download_url, perkaya dari katalog tenant
+            if (!order?.download_url || !order?.fulfillment_metadata?.access_url) {
+              const pList: any[] = Array.isArray(data?.metadata?.products) ? data.metadata.products : [];
+              const pId = String(order.product_id || '').trim();
+              const pTitle = String(order.product_title || '').trim().toLowerCase();
+
+              const matchedP = pList.find((p: any) =>
+                (pId && (String(p.id) === pId || String(p.sku) === pId || String(p.slug) === pId)) ||
+                (pTitle && p.name && p.name.trim().toLowerCase() === pTitle)
+              );
+
+              if (matchedP) {
+                const accUrl =
+                  matchedP.download_url ||
+                  matchedP.fulfillment_metadata?.access_url ||
+                  matchedP.link_digital ||
+                  matchedP.access_url ||
+                  '';
+
+                const fMeta = matchedP.fulfillment_metadata || (accUrl ? {
+                  delivery_type: matchedP.delivery_type || 'DOWNLOAD_LINK',
+                  access_url: accUrl,
+                  instructions: matchedP.instructions || '',
+                  button_text: matchedP.button_text || '',
+                  file_format: matchedP.promo || matchedP.format_file || '',
+                } : null);
+
+                setOrder((prev: any) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    download_url: accUrl || prev.download_url,
+                    link_digital: accUrl || prev.link_digital,
+                    access_url: accUrl || prev.access_url,
+                    file_format: matchedP.promo || matchedP.format_file || matchedP.fulfillment_metadata?.file_format || prev.file_format,
+                    promo: matchedP.promo || prev.promo,
+                    button_text: matchedP.button_text || matchedP.fulfillment_metadata?.button_text || prev.button_text,
+                    fulfillment_metadata: prev.fulfillment_metadata?.access_url ? prev.fulfillment_metadata : (fMeta || prev.fulfillment_metadata),
+                  };
+                });
+              }
+            }
             return;
           }
         }
@@ -261,7 +384,7 @@ export default function CheckoutPage({ params }: Props) {
     }
 
     fetchTenantInfo();
-  }, [order?.tenant_slug, order?.tenant_id]);
+  }, [order?.tenant_slug, order?.tenant_id, order?.product_id, order?.download_url, order?.fulfillment_metadata?.access_url]);
 
   // Request dynamic QRIS jika belum ada qr_code_url
   useEffect(() => {
@@ -443,26 +566,45 @@ export default function CheckoutPage({ params }: Props) {
       ? 'Mohon dicek dan proses pengiriman pesanan saya. Terima kasih!'
       : 'Mohon dicek dan aktivasi akses saya. Terima kasih!';
 
+  const resolvedFulfillment =
+    order?.fulfillment_metadata ||
+    order?.metadata?.fulfillment_metadata ||
+    null;
+
   const accessUrlCandidate =
-    order?.fulfillment_metadata?.access_url ||
+    resolvedFulfillment?.access_url ||
+    order?.download_url ||
     order?.link_digital ||
     order?.asset_reference ||
-    order?.download_url ||
     order?.delivery_url ||
+    order?.access_url ||
     (order?.product_id === 'ctwa-mastery-7day' || (order?.product_title || '').toLowerCase().includes('ctwa')
       ? 'https://t.me/+zhWxgGbzZxhmMjU1'
       : null);
 
+  const deliveryType = String(
+    resolvedFulfillment?.delivery_type ||
+    order?.delivery_type ||
+    order?.access_type ||
+    (accessUrlCandidate ? 'DOWNLOAD_LINK' : '')
+  ).toUpperCase();
+
+  const fileFormat =
+    order?.file_format ||
+    order?.promo ||
+    resolvedFulfillment?.file_format ||
+    '';
+
   const isTelegram =
-    order?.fulfillment_metadata?.delivery_type === 'TELEGRAM_GROUP' ||
-    (typeof accessUrlCandidate === 'string' && accessUrlCandidate.includes('t.me'));
+    deliveryType === 'TELEGRAM_GROUP' ||
+    (deliveryType !== 'DOWNLOAD_LINK' && typeof accessUrlCandidate === 'string' && accessUrlCandidate.includes('t.me'));
 
   const ctaButtonText =
-    order?.fulfillment_metadata?.button_text ||
+    resolvedFulfillment?.button_text ||
     order?.button_text ||
-    (isTelegram ? '🚀 Gabung Grup Telegram Kelas Sekarang' : 'Buka Akses / Unduh Materi Sekarang');
+    (fileFormat ? `Download ${fileFormat}` : 'Akses Materi Sekarang');
 
-  // Auto-redirect ke Telegram/link akses pasca status bayar PAID (countdown 3 detik)
+  // Auto-redirect ke link akses pasca status bayar PAID (countdown 3 detik)
   useEffect(() => {
     if (!isPaidOrder || !accessUrlCandidate || hasAutoRedirected) return;
 
@@ -525,7 +667,7 @@ export default function CheckoutPage({ params }: Props) {
           </div>
         )}
 
-        {/* Kartu Akses Delivery Payload / Grup Telegram Jika Status Lunas (PAID) */}
+        {/* Kartu Akses Delivery Payload / Link Unduhan Jika Status Lunas (PAID) */}
         {isPaidOrder && (
           <div className="bg-gradient-to-b from-emerald-950/80 via-slate-900 to-slate-900 border-2 border-emerald-500/80 rounded-3xl p-5 space-y-4 shadow-2xl shadow-emerald-950/50 text-xs animate-in fade-in zoom-in-95 duration-500">
             {/* Header Ucapan Selamat */}
@@ -541,8 +683,10 @@ export default function CheckoutPage({ params }: Props) {
                   Selamat! Pembayaran Anda Berhasil 🎉
                 </h2>
                 <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
-                  {isTelegram
+                  {deliveryType === 'TELEGRAM_GROUP'
                     ? 'Akses ke Grup Telegram Kelas Eksklusif sudah aktif. Anda dapat langsung bergabung sekarang tanpa wajib menunggu chat WhatsApp!'
+                    : accessUrlCandidate
+                    ? 'Akses materi unduhan produk Anda sudah aktif dan siap langsung dibuka.'
                     : 'Akses produk dan layanan Anda sudah aktif dan siap digunakan.'}
                 </p>
               </div>
@@ -567,11 +711,11 @@ export default function CheckoutPage({ params }: Props) {
                 {countdown > 0 && !hasAutoRedirected ? (
                   <p className="text-[11px] text-center text-slate-400 flex items-center justify-center gap-1.5 font-medium">
                     <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                    <span>Otomatis dialihkan ke grup Telegram dalam <strong className="text-amber-300 font-mono font-bold text-xs">{countdown}</strong> detik...</span>
+                    <span>Otomatis dialihkan ke link akses materi dalam <strong className="text-amber-300 font-mono font-bold text-xs">{countdown}</strong> detik...</span>
                   </p>
                 ) : (
                   <p className="text-[11px] text-center text-slate-400">
-                    💡 <em>Klik tombol di atas jika link grup Telegram belum terbuka otomatis di tab baru.</em>
+                    💡 <em>Klik tombol di atas jika link akses belum terbuka otomatis di tab baru.</em>
                   </p>
                 )}
               </div>
@@ -582,37 +726,50 @@ export default function CheckoutPage({ params }: Props) {
               <div className="flex items-center justify-between">
                 <span className="text-slate-400 font-medium">Metode Akses:</span>
                 <span className="font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-md border border-emerald-800/60 text-[11px]">
-                  {isTelegram
-                    ? '🚀 Grup Telegram Eksklusif'
-                    : order?.fulfillment_metadata?.delivery_type === 'DOWNLOAD_LINK'
+                  {deliveryType === 'DOWNLOAD_LINK' || (Boolean(accessUrlCandidate) && deliveryType !== 'BRIEF_FORM' && deliveryType !== 'LICENSE_KEY' && deliveryType !== 'TELEGRAM_GROUP')
                     ? '📥 Link Download Instan'
-                    : order?.fulfillment_metadata?.delivery_type === 'LICENSE_KEY'
+                    : deliveryType === 'TELEGRAM_GROUP' || (deliveryType !== 'DOWNLOAD_LINK' && typeof accessUrlCandidate === 'string' && accessUrlCandidate.includes('t.me'))
+                    ? '🚀 Grup Telegram Eksklusif'
+                    : deliveryType === 'LICENSE_KEY'
                     ? '🔑 Lisensi / Kode Akses'
+                    : deliveryType === 'BRIEF_FORM'
+                    ? '📋 Form Brief Klien'
+                    : accessUrlCandidate
+                    ? '📥 Link Akses Instan'
                     : '📋 Form Brief Klien'}
                 </span>
               </div>
 
-              {order?.fulfillment_metadata?.license_key && (
+              {fileFormat && (
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-900">
+                  <span className="text-slate-400 font-medium">Format File:</span>
+                  <span className="font-bold text-slate-200">{fileFormat}</span>
+                </div>
+              )}
+
+              {resolvedFulfillment?.license_key && (
                 <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                   <span className="text-[11px] font-bold text-slate-400 block flex items-center gap-1">
                     <Key className="w-3.5 h-3.5 text-blue-400" />
                     <span>Kunci Lisensi / Akses:</span>
                   </span>
                   <div className="font-mono text-sm font-bold text-blue-400 select-all bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
-                    {order.fulfillment_metadata.license_key}
+                    {resolvedFulfillment.license_key}
                   </div>
                 </div>
               )}
 
-              {(order?.fulfillment_metadata?.instructions || isTelegram) && (
+              {(resolvedFulfillment?.instructions || accessUrlCandidate) && (
                 <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
                   <span className="text-[11px] font-bold text-slate-400 block flex items-center gap-1">
                     <FileText className="w-3.5 h-3.5 text-slate-400" />
                     <span>Petunjuk Penggunaan:</span>
                   </span>
                   <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
-                    {order?.fulfillment_metadata?.instructions ||
-                      'Pastikan aplikasi Telegram Anda sudah terpasang di HP atau Laptop. Klik tombol di atas untuk langsung bergabung ke grup kelas dan pantau materi sprint 7 hari.'}
+                    {resolvedFulfillment?.instructions ||
+                      (accessUrlCandidate?.includes('t.me')
+                        ? 'Klik tombol di atas untuk langsung membuka dan mengakses materi kelas / channel Telegram Anda.'
+                        : 'Klik tombol di atas untuk langsung mengunduh dan mengakses materi produk Anda.')}
                   </p>
                 </div>
               )}
