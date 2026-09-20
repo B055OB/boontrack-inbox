@@ -81,7 +81,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Perangkat Reader berhasil dipasangkan (Paired)!',
-      tenant_id: tenant.id,
+      tenant_id: tenant.slug || tenant.id,
+      tenant_uuid: tenant.id,
       tenant_slug: tenant.slug,
       device_name: deviceName,
       paired_at: nowStr,
