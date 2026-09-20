@@ -13,10 +13,12 @@ export const getSupabase = () => {
   return supabaseInstance;
 };
 
-const supabaseServiceRoleKey =
+const rawServiceRoleKey = (
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_SERVICE_KEY ||
-  supabaseAnonKey;
+  ''
+).trim();
+const supabaseServiceRoleKey = rawServiceRoleKey || supabaseAnonKey;
 
 export const getSupabaseAdmin = () => {
   if (!supabaseAdminInstance) {
