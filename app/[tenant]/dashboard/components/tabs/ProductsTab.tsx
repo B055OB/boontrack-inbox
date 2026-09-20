@@ -27,10 +27,11 @@ function ProductCardImage({ src, alt }: { src?: string; alt: string }) {
 
   if (!safeSrc || error) {
     return (
-      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 shrink-0 flex flex-col items-center justify-center text-slate-400 p-1">
-        <Package className="w-7 h-7 text-slate-400 mb-0.5" />
-        <span className="text-[9px] font-bold text-slate-400 text-center leading-tight">No Image</span>
-      </div>
+      <img
+        src="/placeholder-product.png"
+        alt={alt || "Produk"}
+        className="w-20 h-20 rounded-2xl object-cover border border-slate-100 shrink-0 bg-slate-50"
+      />
     );
   }
 
@@ -339,7 +340,7 @@ export default function ProductsTab({
                     className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
                   >
                     <div className="flex items-start gap-4">
-                      <ProductCardImage src={p.image} alt={p.name} />
+                      <ProductCardImage src={(p as any).image_url || p.image} alt={p.name} />
                       <div className="flex-1 min-w-0">
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase tracking-wider">
                           {p.category}

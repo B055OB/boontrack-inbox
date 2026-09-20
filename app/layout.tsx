@@ -36,13 +36,12 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/shopping-cart.svg", type: "image/svg+xml" },
-      { url: "/shopping-cart.png", sizes: "512x512", type: "image/png" },
-      { url: "/cart-icon.png", sizes: "192x192", type: "image/png" },
+      { url: "/favicon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/favicon.ico" },
     ],
-    shortcut: "/shopping-cart.png",
-    apple: "/shopping-cart.png",
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
 };
 
@@ -57,10 +56,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        <link rel="icon" type="image/svg+xml" href="/shopping-cart.svg" />
-        <link rel="alternate icon" href="/favicon.ico" />
-        <link rel="shortcut icon" href="/shopping-cart.png" />
-        <link rel="apple-touch-icon" href="/shopping-cart.png" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         {/* Early Safari / WebKit Compatibility Polyfill (before scripts execute) */}
         <script
           dangerouslySetInnerHTML={{

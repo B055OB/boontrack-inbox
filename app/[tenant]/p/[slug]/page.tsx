@@ -1308,18 +1308,14 @@ function SingleProductContent() {
         {/* 1. Hero Section (Hook + Flexible Banner/Image) */}
         <section className="space-y-4">
           <div className="w-full max-h-[420px] rounded-2xl overflow-hidden flex items-center justify-center bg-slate-50 border border-slate-100 shadow-sm relative group">
-            {(config.banner_url || product.image) ? (
-              <img 
-                src={config.banner_url || product.image} 
-                alt={product.name} 
-                className="w-full h-auto max-h-[420px] object-contain rounded-2xl transition-transform duration-300 group-hover:scale-[1.01]"
-              />
-            ) : (
-              <div className="w-full py-16 flex flex-col items-center justify-center text-slate-400 bg-slate-100/60">
-                <ShoppingBag className="w-12 h-12 mb-2 text-slate-300" />
-                <span className="text-xs font-semibold">{product.name}</span>
-              </div>
-            )}
+            <img 
+              src={config.banner_url || (product as any).image_url || product.image || "/placeholder-product.png"} 
+              alt={product.name} 
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
+              }}
+              className="w-full h-auto max-h-[420px] object-contain rounded-2xl transition-transform duration-300 group-hover:scale-[1.01]"
+            />
           </div>
 
           {/* Pricing & Value Proposition */}

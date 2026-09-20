@@ -458,18 +458,15 @@ export default function LivePhonePreview({
                       key={prod.id}
                       className="flex items-center gap-2 p-1.5 rounded-xl border border-white/10 bg-white/5"
                     >
-                      {pImg ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={pImg}
-                          alt={prod.name}
-                          className="w-9 h-9 rounded-lg object-cover border border-white/15 shrink-0"
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-                          <Package className="w-4 h-4 opacity-70" />
-                        </div>
-                      )}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={pImg || "/placeholder-product.png"}
+                        alt={prod.name}
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
+                        }}
+                        className="w-9 h-9 rounded-lg object-cover border border-white/15 shrink-0 bg-white/10"
+                      />
                       <div className="min-w-0 flex-1">
                         <h5 className={`text-[11px] truncate ${themeStyles.productTitle}`}>{prod.name}</h5>
                         <p className={`text-[10px] ${themeStyles.productSubtext}`}>

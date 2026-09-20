@@ -54,27 +54,12 @@ function StoreProductImage({
   const isFallback = !safeSrc || error || safeSrc === "/logo-shop.png" || safeSrc === "null" || safeSrc === "undefined";
 
   if (isFallback) {
-    const isSmall = Boolean(className?.includes("w-12") || className?.includes("w-14") || className?.includes("w-10") || className?.includes("w-8") || className?.includes("w-16"));
-    if (isSmall) {
-      return (
-        <div className={`${className || "w-14 h-14"} bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 flex items-center justify-center p-2 rounded-xl shrink-0`}>
-          <img
-            src="/logo.png"
-            alt="BoonTrack Shop"
-            className="object-contain max-h-7 w-auto drop-shadow-xs"
-          />
-        </div>
-      );
-    }
-
     return (
-      <div className={`w-full ${className?.includes('h-56') ? 'h-56' : 'h-48'} bg-gradient-to-br from-slate-50 to-slate-100 border-b border-slate-100 flex items-center justify-center p-6`}>
-        <img
-          src="/logo.png"
-          alt="BoonTrack Shop"
-          className="object-contain max-h-16 w-auto drop-shadow-sm"
-        />
-      </div>
+      <img
+        src="/placeholder-product.png"
+        alt={alt || "BoonTrack Shop"}
+        className={className || "w-full h-48 object-cover"}
+      />
     );
   }
 
@@ -272,9 +257,9 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
   );
 
   const rawImg = p.image_url || p.image || (Array.isArray(p.images) && p.images[0]) || "";
-  const sanitizedImg = (rawImg === "/logo-shop.png" || rawImg === "null" || rawImg === "undefined")
-    ? ""
-    : (sanitizeImageUrl(rawImg) || "");
+  const sanitizedImg = (rawImg === "/logo-shop.png" || rawImg === "null" || rawImg === "undefined" || !rawImg)
+    ? "/placeholder-product.png"
+    : (sanitizeImageUrl(rawImg) || "/placeholder-product.png");
 
   const externalUrl = resolveProductExternalUrl(p);
   const isExternal = Boolean(externalUrl);
