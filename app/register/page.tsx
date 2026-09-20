@@ -28,6 +28,9 @@ import {
   MessageSquare,
   Copy,
   ExternalLink,
+  Smartphone,
+  Laptop,
+  Scan,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
@@ -545,9 +548,15 @@ function WhatsAppVerificationModal({
   onVerified: (slug: string) => void;
 }) {
   const [pollStatus, setPollStatus] = useState<"polling" | "verified">("polling");
-  const [copied, setCopied] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(false);
+  const [copiedPhone, setCopiedPhone] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const officialDisplayNumber = "0851-7955-5449";
+  const officialRawPhone = "6285179555449";
+  const activationText = `AKTIVASI ${data.token}`;
+  const dynamicWaUrl = `https://wa.me/${officialRawPhone}?text=${encodeURIComponent(activationText)}`;
 
   const checkStatus = useCallback(async () => {
     try {
@@ -584,29 +593,36 @@ function WhatsAppVerificationModal({
   };
 
   const copyToken = () => {
-    navigator.clipboard.writeText(`AKTIVASI ${data.token}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(activationText);
+    setCopiedToken(true);
+    setTimeout(() => setCopiedToken(false), 2000);
+  };
+
+  const copyPhone = () => {
+    navigator.clipboard.writeText(officialDisplayNumber);
+    setCopiedPhone(true);
+    setTimeout(() => setCopiedPhone(false), 2000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-xl md:max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden text-white my-auto animate-in fade-in zoom-in-95 duration-200">
         {/* Ambient glow */}
-        <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-72 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
 
         {pollStatus !== "verified" && (
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+            className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+            title="Tutup Modal"
           >
             <X className="w-4 h-4" />
           </button>
         )}
 
-        <div className="relative p-6 sm:p-8 space-y-6">
+        <div className="relative p-5 sm:p-6 md:p-8 space-y-6">
           {pollStatus === "verified" ? (
-            <div className="text-center space-y-4 py-6">
+            <div className="text-center space-y-4 py-8">
               <div className="w-20 h-20 mx-auto rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center shadow-lg shadow-emerald-500/30 animate-bounce">
                 <CheckCircle2 className="w-10 h-10 text-emerald-400" />
               </div>
@@ -629,85 +645,161 @@ function WhatsAppVerificationModal({
           ) : (
             <>
               {/* Header */}
-              <div className="text-center space-y-2">
+              <div className="text-center space-y-2 max-w-lg mx-auto">
                 <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full text-xs font-bold">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
                   <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Verifikasi Registrasi WhatsApp</span>
+                  <span>Aktivasi WhatsApp Resmi BoonTrack</span>
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                   Kirim Pesan Aktivasi Toko
                 </h3>
-                <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
-                  Untuk mengaktifkan toko dan mengklaim <strong className="text-white">Trial 7 Hari Ads Performance</strong> gratis, kirim pesan verifikasi berikut dari nomor WhatsApp Anda:
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Kirim pesan verifikasi untuk mengaktifkan toko & klaim <strong className="text-white">Trial 7 Hari Ads Performance</strong>. Pilih opsi yang paling sesuai dengan perangkat Anda:
                 </p>
               </div>
 
-              {/* Token Box */}
-              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-center space-y-2 relative shadow-inner">
-                <p className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">
-                  Kode Verifikasi Unik Toko
-                </p>
-                <div className="flex items-center justify-center gap-3">
-                  <span className="font-mono text-3xl sm:text-4xl font-black tracking-wider text-emerald-400">
-                    {data.token}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={copyToken}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
-                    title="Salin teks aktivasi"
-                  >
-                    {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-400 font-mono">
-                  Teks Pesan: <span className="text-white font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-800">AKTIVASI {data.token}</span>
-                </p>
-              </div>
-
-              {/* Big CTA Button */}
-              <div className="space-y-3">
+              {/* TAMPILAN MOBILE: Direct CTA Button di posisi primer */}
+              <div className="block md:hidden space-y-3">
                 <a
-                  href={data.waUrl}
+                  href={dynamicWaUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-4 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                  className="w-full py-3.5 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-all cursor-pointer"
                 >
                   <MessageSquare className="w-5 h-5 text-slate-950 fill-slate-950" />
-                  <span>[ 💬 Buka WhatsApp &amp; Kirim Pesan Verifikasi ]</span>
+                  <span>Buka WhatsApp &amp; Kirim Pesan</span>
                   <ExternalLink className="w-4 h-4 ml-1 opacity-70" />
                 </a>
+              </div>
 
-                {/* Polling Indicator */}
-                <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 pt-1">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                  <span>Mendeteksi pesan masuk otomatis setiap 2,5 detik...</span>
+              {/* GRID RESPONSIVE DESKTOP & MOBILE */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch">
+                {/* KOLOM KIRI (QR CODE GENERATOR - Prioritas Desktop) */}
+                <div className="md:col-span-6 bg-slate-950/70 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col items-center justify-between text-center relative shadow-inner">
+                  <div className="w-full space-y-1 mb-2">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/90 text-[11px] font-bold text-emerald-400 border border-slate-700">
+                      <Scan className="w-3 h-3 text-emerald-400" />
+                      <span>Scan via Kamera HP</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
+                      Scan QR Code ini menggunakan kamera HP Anda untuk langsung mengirim pesan aktivasi ke WhatsApp resmi BoonTrack.
+                    </p>
+                  </div>
+
+                  {/* QR Box with white background for crisp camera detection */}
+                  <div className="p-3 bg-white rounded-2xl shadow-xl border border-slate-200 inline-block my-2 transition-transform duration-200 hover:scale-105">
+                    <QRCodeSVG
+                      value={dynamicWaUrl}
+                      size={148}
+                      level="M"
+                      includeMargin={false}
+                    />
+                  </div>
+
+                  <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1.5 justify-center">
+                    <Smartphone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Arahkan kamera smartphone ke QR Code di atas</span>
+                  </div>
+                </div>
+
+                {/* KOLOM KANAN (OPSI MANUAL COPY-PASTE & DIRECT WA WEB) */}
+                <div className="md:col-span-6 flex flex-col justify-between space-y-3.5">
+                  {/* Card Salin Manual */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-inner">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1.5">
+                        <Copy className="w-3 h-3 text-emerald-400" />
+                        Opsi Manual (Kirim Sendiri)
+                      </span>
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded font-mono">
+                        Resmi Meta
+                      </span>
+                    </div>
+
+                    {/* Field 1: Nomor WhatsApp Resmi */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-slate-400 font-medium">Nomor WhatsApp WABA</p>
+                        <p className="font-mono text-xs sm:text-sm font-bold text-white tracking-wide truncate">
+                          {officialDisplayNumber}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={copyPhone}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
+                          copiedPhone
+                            ? "bg-emerald-500 text-slate-950"
+                            : "bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white"
+                        }`}
+                        title="Salin Nomor WhatsApp"
+                      >
+                        {copiedPhone ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedPhone ? "Tersalin!" : "Salin Nomor"}</span>
+                      </button>
+                    </div>
+
+                    {/* Field 2: Format Pesan Aktivasi */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-slate-400 font-medium">Format Teks Pesan</p>
+                        <p className="font-mono text-xs sm:text-sm font-black text-emerald-400 tracking-wider truncate">
+                          {activationText}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={copyToken}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
+                          copiedToken
+                            ? "bg-emerald-500 text-slate-950"
+                            : "bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white"
+                        }`}
+                        title="Salin Teks Pesan"
+                      >
+                        {copiedToken ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedToken ? "Tersalin!" : "Salin Pesan"}</span>
+                      </button>
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 leading-tight">
+                      Atau kirim manual teks di atas ke nomor resmi BoonTrack melalui WhatsApp di ponsel Anda.
+                    </p>
+                  </div>
+
+                  {/* Tombol Direct Link WhatsApp Web / Desktop */}
+                  <div>
+                    <a
+                      href={dynamicWaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-slate-700 hover:border-emerald-500/50 text-slate-200 hover:text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm group"
+                    >
+                      <Laptop className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                      <span>Buka WhatsApp Web / Desktop</span>
+                      <ExternalLink className="w-3.5 h-3.5 opacity-60 ml-auto" />
+                    </a>
+                  </div>
                 </div>
               </div>
 
-              {/* Instructions / Footer info */}
-              <div className="p-3.5 bg-slate-800/50 rounded-2xl border border-slate-700/60 text-xs text-slate-300 space-y-2">
-                <div className="flex items-start gap-2">
-                  <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold mt-0.5 shrink-0">1</div>
-                  <p>Tekan tombol hijau di atas untuk membuka chat WhatsApp resmi BoonTrack.</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold mt-0.5 shrink-0">2</div>
-                  <p>Kirim pesan template yang sudah terisi otomatis.</p>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold mt-0.5 shrink-0">3</div>
-                  <p>Sistem kami akan memverifikasi nomor Anda secara instan dan membuka dashboard toko.</p>
-                </div>
+              {/* Polling Indicator */}
+              <div className="flex items-center justify-center gap-2 text-xs text-slate-400 pt-1">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                <span>Mendeteksi pesan aktivasi otomatis setiap 2,5 detik...</span>
               </div>
 
-              {/* Manual Check Fallback */}
-              <div className="flex items-center justify-between text-xs pt-1">
+              {/* Footer Controls */}
+              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
                 <button
                   type="button"
                   onClick={handleManualCheck}
                   disabled={isChecking}
-                  className="text-slate-400 hover:text-emerald-400 underline underline-offset-4 flex items-center gap-1 transition cursor-pointer"
+                  className="text-slate-400 hover:text-emerald-400 underline underline-offset-4 flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <RefreshCw className={`w-3 h-3 ${isChecking ? 'animate-spin text-emerald-400' : ''}`} />
                   <span>{isChecking ? 'Memeriksa status...' : 'Sudah kirim pesan? Cek Ulang'}</span>
