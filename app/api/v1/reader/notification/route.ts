@@ -183,31 +183,38 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // JALUR 2 (GLOBAL FALLBACK): Jika belum cocok, cari order pending di seluruh tenant dengan exact gross_amount
-      // (Kode unik 3 digit downward 1-999 membuat nominal transaksi unik di antara pesanan aktif)
+      // JALUR 2 (GLOBAL MULTI-TENANT FALLBACK): Jika belum cocok, cari order pending di SELURUH tenant
+      // dalam 30 menit terakhir dengan exact gross_amount.
+      // Fitur: 1 HP Reader bisa melayani lebih dari 1 toko sekaligus tanpa unpair.
       if (pendingOrders.length === 0) {
+        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
         const { data: globalOrders, error: gErr } = await supabase
           .from('orders')
           .select('*')
           .eq('gross_amount', parsedAmount)
           .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
+          .gte('created_at', thirtyMinutesAgo)
           .order('created_at', { ascending: false })
-          .limit(5);
+          .limit(1);
 
         if (!gErr && globalOrders && globalOrders.length > 0) {
           pendingOrders = globalOrders;
-          matchStrategy = 'global_exact_gross_amount';
+          matchStrategy = 'global_multi_tenant_exact';
         }
       }
 
-      // JALUR 3 (TOLERANSI KODE UNIK 1-999): Jika gross_amount di database tersimpan sebelum potongan kode unik
+      // JALUR 3 (TOLERANSI KODE UNIK 1-999, MULTI-TENANT, 30 MENIT):
+      // Jika gross_amount tersimpan sebelum potongan kode unik, toleransi selisih 1-999.
+      // Juga mencakup seluruh tenant dalam 30 menit terakhir.
       if (pendingOrders.length === 0) {
+        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
         const { data: allPending } = await supabase
           .from('orders')
           .select('*')
           .in('status', ['PENDING', 'WAITING_PAYMENT', 'PENDING_PAYMENT', 'UNPAID'])
+          .gte('created_at', thirtyMinutesAgo)
           .order('created_at', { ascending: false })
-          .limit(30);
+          .limit(50);
 
         if (allPending && allPending.length > 0) {
           const tolMatch = allPending.find((o) => {
@@ -216,7 +223,7 @@ export async function POST(req: NextRequest) {
           });
           if (tolMatch) {
             pendingOrders = [tolMatch];
-            matchStrategy = 'unique_code_tolerance';
+            matchStrategy = 'global_unique_code_tolerance';
           }
         }
       }
@@ -253,7 +260,16 @@ export async function POST(req: NextRequest) {
     const paidAt = new Date().toISOString();
     const effectiveTenantSlug = matchedOrder.tenant_slug || resolvedTenantSlug || 'default';
 
-    console.log(`[BoonTrack Reader Webhook] MATCH FOUND: Order #${matchedOrder.id} (${matchedOrder.customer_name || 'Customer'}) Rp ${matchedOrder.gross_amount} via ${matchStrategy}. Mengupdate ke PAID...`);
+    // Log multi-tenant redirect: jika order ditemukan di toko berbeda dari sender
+    const isMultiTenantMatch = resolvedTenantSlug &&
+      matchedOrder.tenant_slug &&
+      matchedOrder.tenant_slug !== resolvedTenantSlug;
+
+    if (isMultiTenantMatch) {
+      console.log(`[Multi-Tenant Match] Mutasi dari device (tenant: '${resolvedTenantSlug}') dialihkan ke toko: '${matchedOrder.tenant_slug}' | Order #${matchedOrder.id} Rp ${matchedOrder.gross_amount}`);
+    }
+
+    console.log(`[BoonTrack Reader Webhook] MATCH FOUND: Order #${matchedOrder.id} (${matchedOrder.customer_name || 'Customer'}) Rp ${matchedOrder.gross_amount} via ${matchStrategy}${isMultiTenantMatch ? ` [→ toko: ${matchedOrder.tenant_slug}]` : ''}. Mengupdate ke PAID...`);
 
     // 3. Update kolom status = 'PAID', payment_status = 'PAID', order_status = 'PAID', paid_at
     const { error: updateErr } = await supabase
