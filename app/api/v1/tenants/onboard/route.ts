@@ -195,9 +195,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Lookup affiliate partner from referral code
-    const cleanRef = referralCode ? String(referralCode).trim().toLowerCase() : null;
-    let matchedAffiliateId: string | null = body.affiliate_id || body.referrer_id || null;
+    // Lookup affiliate partner from referral code (Organic registrations have cleanRef = null)
+    const rawRefClean = referralCode ? String(referralCode).trim().toLowerCase() : null;
+    const cleanRef = (rawRefClean && rawRefClean !== '1' && rawRefClean !== 'null' && rawRefClean !== 'undefined') ? rawRefClean : null;
+    let matchedAffiliateId: string | null = cleanRef ? (body.affiliate_id || body.referrer_id || null) : null;
     let matchedAffiliateName: string | null = null;
 
     if (cleanRef && !matchedAffiliateId) {

@@ -41,11 +41,11 @@ export function getOfficialWhatsAppNumber(): string {
     process.env.WHATSAPP_OFFICIAL_NUMBER ||
     process.env.WHATSAPP_PHONE_NUMBER ||
     process.env.NEXT_PUBLIC_META_BOT_NUMBER ||
-    '6285179555449';
+    '6285139555449';
 
   let clean = normalizeWhatsAppNumber(envNumber);
-  if (!clean || clean === '6285139555449') {
-    clean = '6285179555449';
+  if (!clean || clean === '6285179555449') {
+    clean = '6285139555449';
   }
   return clean;
 }

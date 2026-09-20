@@ -126,7 +126,8 @@ export async function POST(req: NextRequest) {
     const rawCategory = body.category || body.business_type || 'PHYSICAL';
     const rawPlanInput = body.selected_plan || body.selectedPlan || body.plan_tier || body.tier || 'ads_performance';
     const planConfig = resolveRegistrationPlan(rawPlanInput);
-    const referralCode = body.referral_code || body.referralCode || body.ref || null;
+    const rawRef = String(body.referral_code || body.referralCode || body.ref || '').trim().toLowerCase();
+    const referralCode = (rawRef && rawRef !== '1' && rawRef !== 'null' && rawRef !== 'undefined') ? rawRef : null;
     const utmParams = body.utm_params || {
       utm_source: body.utm_source || 'organik',
       utm_medium: body.utm_medium || '',

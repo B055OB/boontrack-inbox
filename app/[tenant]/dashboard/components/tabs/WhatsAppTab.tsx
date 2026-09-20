@@ -90,7 +90,7 @@ export default function WhatsAppTab({
   renderLockedFeatureCard,
   setSaveFeedback,
 }: WhatsAppTabProps) {
-  // Pastikan nomor Platform WABA (+62 851-7955-5449 / ID 1268977686299719) TIDAK MUNCUL sebagai koneksi toko merchant
+  // Pastikan nomor Platform WABA (+62 851-3955-5449 / ID 1268977686299719) TIDAK MUNCUL sebagai koneksi toko merchant
   const isMerchantConnected =
     waStatus === 'CONNECTED' &&
     Boolean(connectedPhone) &&

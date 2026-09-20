@@ -553,8 +553,8 @@ function WhatsAppVerificationModal({
   const [isChecking, setIsChecking] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const officialDisplayNumber = "0851-7955-5449";
-  const officialRawPhone = "6285179555449";
+  const officialDisplayNumber = "0851-3955-5449";
+  const officialRawPhone = "6285139555449";
   const activationText = `AKTIVASI ${data.token}`;
   const dynamicWaUrl = `https://wa.me/${officialRawPhone}?text=${encodeURIComponent(activationText)}`;
 
@@ -879,58 +879,43 @@ export default function RegisterShopPage() {
       const initialStore = params.get("shop") || params.get("store") || params.get("claim") || "";
       const initialPlan = params.get("plan");
 
-      // ── DETEKSI KODE REFERRAL (QUERY PARAM, SUBDOMAIN, LOCALSTORAGE) ──
-      const hostname = window.location.hostname.toLowerCase();
-      let refCode = (
+      // ── DETEKSI KODE REFERRAL (HANYA DARI PARAMETER URL RESMI ?ref=... ATAU SUBDOMAIN MITRA) ──
+      // Aturan Mutlak: Jika pendaftar membuka /register tanpa parameter ?ref=... (organik):
+      // - Kolom referral WAJIB kosong dan TIDAK dikunci otomatis.
+      // - DILARANG membaca dari cookie/localStorage untuk membajak trafik organik.
+      // - DILARANG mengisi default '1'.
+      const rawParamRef = (
         params.get("ref") ||
         params.get("code") ||
         params.get("referral") ||
         ""
       ).trim().toLowerCase();
 
-      // Normalisasi alias mafiasakti / kangsakti -> buzzerukm
-      if (refCode === "mafiasakti" || refCode === "kangsakti") {
-        refCode = "buzzerukm";
-      }
+      let refCode = "";
 
-      // Deteksi otomatis jika URL browser membuka subdomain mitra (misal buzzerukm.boontrack.com)
-      if (!refCode) {
-        if (hostname.includes("buzzerukm")) {
-          refCode = "buzzerukm";
-        } else if (hostname.endsWith(".boontrack.com")) {
+      // Kode referral HANYA boleh terisi & terkunci jika ada parameter valid di URL (bukan '1' atau kosong)
+      if (rawParamRef && rawParamRef !== "1" && rawParamRef !== "null" && rawParamRef !== "undefined") {
+        refCode = rawParamRef;
+      } else if (!rawParamRef) {
+        // Cek jika membuka subdomain mitra resmi (misal: buzzerukm.boontrack.com)
+        const hostname = window.location.hostname.toLowerCase();
+        if (hostname.endsWith(".boontrack.com")) {
           const sub = hostname.replace(".boontrack.com", "").split(".").pop() || "";
           const RESERVED_HOSTS = new Set([
-            "shop", "app", "creator", "login", "register", "admin", "www", "chat", "manager", "affiliate", "api"
+            "shop", "app", "creator", "login", "register", "admin", "www", "chat", "manager", "affiliate", "api", "localhost"
           ]);
-          if (sub && !RESERVED_HOSTS.has(sub)) {
+          if (sub && !RESERVED_HOSTS.has(sub) && sub !== "1") {
             refCode = sub;
           }
         }
       }
 
-      // Fallback ke localStorage / cookies jika belum ada
-      if (!refCode) {
-        try {
-          refCode = (
-            localStorage.getItem("boontrack_merchant_ref") ||
-            localStorage.getItem("boontrack_referral_code") ||
-            localStorage.getItem("boontrack_affiliate_code") ||
-            localStorage.getItem("affiliate_code") ||
-            ""
-          ).trim().toLowerCase();
-        } catch (_) {}
-      }
-
-      if (!refCode && typeof document !== "undefined") {
-        const match = document.cookie.match(/(?:^|;\s*)(?:ref|boontrack_referral_code|boontrack_merchant_ref)=([^;]+)/);
-        if (match) refCode = decodeURIComponent(match[1]).trim().toLowerCase();
-      }
-
+      // Normalisasi alias jika ada
       if (refCode === "mafiasakti" || refCode === "kangsakti") {
         refCode = "buzzerukm";
       }
 
-      if (refCode) {
+      if (refCode && refCode !== "1") {
         setReferralCode(refCode);
         setIsReferralLocked(true);
         try {
@@ -942,6 +927,10 @@ export default function RegisterShopPage() {
           document.cookie = `boontrack_referral_code=${refCode}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
           document.cookie = `boontrack_merchant_ref=${refCode}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
         } catch (_) {}
+      } else {
+        // Pendaftaran Organik Murni: Kosongkan dan JANGAN kunci kolom input!
+        setReferralCode("");
+        setIsReferralLocked(false);
       }
 
       // ── DETEKSI PARAMETER UTM TRACKING & SUMBER PROMOSI ──
@@ -1128,7 +1117,10 @@ export default function RegisterShopPage() {
 
     try {
       const resolvedBusinessType: CanonicalBusinessType = resolveCanonicalCategory(category);
-      const cleanRef = referralCode.trim().toLowerCase() || null;
+      const rawRefTrimmed = referralCode.trim().toLowerCase();
+      const cleanRef = (rawRefTrimmed && rawRefTrimmed !== "1" && rawRefTrimmed !== "null" && rawRefTrimmed !== "undefined")
+        ? rawRefTrimmed
+        : null;
 
       if (isTrial) {
         // ── ADS PERFORMANCE HERO TIER: VERIFIKASI WHATSAPP & TRIAL 7 HARI ──
