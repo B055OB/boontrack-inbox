@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(backendData);
       }
     } catch {
-      // Backend offline / timeout — gunakan fallback Supabase
+      // Backend offline / timeout - gunakan fallback Supabase
     }
 
     // 2. Fallback: Validasi token dari Supabase tenants.metadata.reader_pairing_session
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     // 3. Jika token tidak ditemukan di Supabase (mungkin dari Core Backend)
     // Respons sukses generik agar Android tidak stuck di toast 404
     if (!matchedTenant) {
-      console.warn('[Reader Pair] Token tidak ditemukan di Supabase — respons sukses generik.');
+      console.warn('[Reader Pair] Token tidak ditemukan di Supabase - respons sukses generik.');
       return NextResponse.json({
         success: true,
         credential: pairingToken,
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 4. Token valid — Update metadata tenant dengan info perangkat terhubung
+    // 4. Token valid - Update metadata tenant dengan info perangkat terhubung
     const pairedAt = new Date().toISOString();
     const updatedMeta = {
       ...(matchedTenant.metadata || {}),
