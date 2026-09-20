@@ -1028,8 +1028,40 @@ export function useTenantDashboard() {
           setOrders(ordersList);
           setTransactions(ordersList);
 
-          const scaledChats = generateConversationsFromOrders(ordersList);
-          setConversations(scaledChats);
+          // Cek percakapan riil dari tabel conversations di Supabase terlebih dahulu
+          try {
+            const supabase = getSupabase();
+            if (supabase) {
+              const { data: dbConversations } = await supabase
+                .from('conversations')
+                .select('*')
+                .or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantSlug}`)
+                .order('updated_at', { ascending: false });
+
+              if (Array.isArray(dbConversations) && dbConversations.length > 0) {
+                const mappedChats: ChatConversation[] = dbConversations.map((c: any) => ({
+                  id: c.id,
+                  customerPhone: c.phone_number || '',
+                  customerName: c.contact_name || 'Pelanggan WhatsApp',
+                  lastMessage: c.last_message || 'Percakapan berlangsung',
+                  time: 'Baru saja',
+                  status: 'online',
+                  messages: [],
+                }));
+                setConversations(mappedChats);
+                return;
+              }
+            }
+          } catch (convErr) {
+            console.debug('Direct conversations query note:', convErr);
+          }
+
+          if (ordersList.length > 0) {
+            const scaledChats = generateConversationsFromOrders(ordersList);
+            setConversations(scaledChats);
+          } else {
+            setConversations([]);
+          }
         } else {
           setOrders([]);
           setTransactions([]);

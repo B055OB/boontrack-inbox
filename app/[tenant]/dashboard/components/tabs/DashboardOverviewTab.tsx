@@ -376,12 +376,36 @@ export default function DashboardOverviewTab({
       ? checklistItems[nextStepIndex].desc
       : 'Etalase, automasi WhatsApp, dan sistem pembayaran QRIS telah aktif 100%.';
 
-  // Analytics estimate calculations
-  const totalVisits = useMemo(() => {
-    const base = Math.max(products.length * 28, 45);
-    const orderTraffic = transactions.length * 14;
-    return base + orderTraffic;
-  }, [products.length, transactions.length]);
+  // Real 7-day Analytics (100% dynamic, zero dummy numbers)
+  const [realVisits, setRealVisits] = useState<number | null>(null);
+  const [realChatSessions, setRealChatSessions] = useState<number | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadAnalyticsSummary() {
+      if (!tenantSlug) return;
+      try {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/analytics/summary`, {
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && isMounted) {
+            setRealVisits(typeof json.visits === 'number' ? json.visits : 0);
+            setRealChatSessions(typeof json.chat_sessions === 'number' ? json.chat_sessions : 0);
+          }
+        }
+      } catch (err) {
+        console.warn('Gagal memuat ringkasan analitik:', err);
+      }
+    }
+    loadAnalyticsSummary();
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug]);
+
+  const totalVisits = realVisits !== null ? realVisits : 0;
 
   const recentOrdersCount = useMemo(() => {
     if (!transactions || transactions.length === 0) return 0;
@@ -390,16 +414,33 @@ export default function DashboardOverviewTab({
       const tTime = new Date(t.created_at || t.date || 0).getTime();
       return !isNaN(tTime) && tTime >= sevenDaysAgo;
     });
-    return recent.length > 0 ? recent.length : transactions.length;
+    return recent.length;
   }, [transactions]);
 
   const totalChatInteractions = useMemo(() => {
-    if (chatConversationsCount && chatConversationsCount > 0) {
-      return chatConversationsCount.toLocaleString('id-ID');
+    if (realChatSessions !== null) return realChatSessions;
+    if (chatConversationsCount !== undefined && chatConversationsCount !== null) {
+      return chatConversationsCount;
     }
-    const derived = Math.max(Math.round((transactions?.length || 0) * 0.85), 1450);
-    return derived.toLocaleString('id-ID');
-  }, [chatConversationsCount, transactions?.length]);
+    return 0;
+  }, [realChatSessions, chatConversationsCount]);
+
+  const recentOmzet = useMemo(() => {
+    if (!transactions || transactions.length === 0) return totalOmzet > 0 ? totalOmzet : 0;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const paidRecent = transactions.filter((t: any) => {
+      const tTime = new Date(t.created_at || t.date || 0).getTime();
+      const status = (t.payment_status || t.status || '').toUpperCase();
+      const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes(status);
+      return isPaid && !isNaN(tTime) && tTime >= sevenDaysAgo;
+    });
+    const calculated = paidRecent.reduce(
+      (sum: number, t: any) => sum + Number(t.gross_amount || t.total_amount || t.total_price || 0),
+      0
+    );
+    if (calculated > 0) return calculated;
+    return totalOmzet > 0 ? totalOmzet : 0;
+  }, [transactions, totalOmzet]);
 
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
@@ -666,9 +707,12 @@ export default function DashboardOverviewTab({
               <div className="text-2xl font-black text-slate-900 tracking-tight">
                 {totalVisits.toLocaleString('id-ID')}
               </div>
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
-                <span>↑ +18.4%</span>
-                <span className="text-slate-400 font-medium">vs minggu lalu</span>
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold">
+                {totalVisits > 0 ? (
+                  <span className="text-emerald-600 font-semibold">Trafik kunjungan 7 hari terakhir</span>
+                ) : (
+                  <span className="text-slate-400 font-medium">0 Kunjungan 7 hari terakhir</span>
+                )}
               </div>
             </div>
           </div>
@@ -683,10 +727,16 @@ export default function DashboardOverviewTab({
             </div>
             <div>
               <div className="text-2xl font-black text-slate-900 tracking-tight">
-                {totalChatInteractions}
+                {totalChatInteractions.toLocaleString('id-ID')}
               </div>
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
-                <span>● Online & Aktif • {totalChatInteractions} Sesi Terlayani</span>
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold">
+                {totalChatInteractions > 0 ? (
+                  <span className="text-emerald-600">
+                    ● Online &amp; Aktif • {totalChatInteractions.toLocaleString('id-ID')} Sesi Terlayani
+                  </span>
+                ) : (
+                  <span className="text-slate-400 font-medium">0 Sesi Terlayani</span>
+                )}
               </div>
             </div>
           </div>
@@ -701,10 +751,14 @@ export default function DashboardOverviewTab({
             </div>
             <div>
               <div className="text-2xl font-black text-slate-900 tracking-tight">
-                {transactions.length > 0 ? transactions.length.toLocaleString('id-ID') : recentOrdersCount.toLocaleString('id-ID')}
+                {recentOrdersCount.toLocaleString('id-ID')}
               </div>
               <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
-                <span>{transactions.length > 0 ? `${transactions.length.toLocaleString('id-ID')} Total Riwayat Pesanan` : 'Menunggu pesanan pertama'}</span>
+                <span>
+                  {recentOrdersCount > 0
+                    ? `${recentOrdersCount.toLocaleString('id-ID')} Pesanan (7 Hari Terakhir)`
+                    : 'Menunggu pesanan pertama'}
+                </span>
               </div>
             </div>
           </div>
@@ -719,7 +773,7 @@ export default function DashboardOverviewTab({
             </div>
             <div>
               <div className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                Rp {totalOmzet.toLocaleString('id-ID')}
+                Rp {recentOmzet.toLocaleString('id-ID')}
               </div>
               <div className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
                 <span>100% Masuk Rekening</span>
