@@ -132,10 +132,29 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   // 1. Simpan order ke database Supabase tabel orders (Single Source of Truth)
   const resolvedProductId = String(payload.productId || '').trim() || `prod_${Date.now()}`;
 
+  // Resolusi tenant_id (UUID) dari tabel tenants menggunakan tenant_slug
+  // WAJIB diisi untuk memastikan identitas ganda tenant_id + tenant_slug tidak NULL
+  let resolvedTenantId: string | null = null;
+  try {
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('slug', payload.tenantSlug)
+      .maybeSingle();
+    resolvedTenantId = tenantRow?.id || null;
+  } catch (tenantResolveErr) {
+    console.warn('[Checkout Service] Gagal resolve tenant_id dari slug:', tenantResolveErr);
+  }
+
+  if (!resolvedTenantId) {
+    console.warn(`[Checkout Service] tenant_id tidak ditemukan untuk slug '${payload.tenantSlug}'. Order akan disimpan hanya dengan tenant_slug.`);
+  }
+
   const dbOrderData = {
     id: orderId,
-    tenant_slug: payload.tenantSlug,
-    product_id: resolvedProductId, // Wajib NOT NULL di skema PostgreSQL
+    tenant_slug: payload.tenantSlug,           // Selalu diisi: slug string toko
+    tenant_id: resolvedTenantId,               // Selalu diisi: UUID toko (tidak boleh NULL)
+    product_id: resolvedProductId,             // Wajib NOT NULL di skema PostgreSQL
     product_title: payload.productTitle,
     gross_amount: grossAmount,
     customer_name: payload.customerName,
