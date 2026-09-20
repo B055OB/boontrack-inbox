@@ -17,7 +17,7 @@ const TIER_PRICES: Record<string, number> = {
   GROWTH: 199000,
   ADS_PERFORMANCE: 299000,
   PRO_ADS: 299000,
-  PRO_SCALE: 499000,
+  PRO_SCALE: 299000,
   TEAM_SCALE: 499000,
   ENTERPRISE: 499000,
   SCALE: 499000,
@@ -36,22 +36,22 @@ export async function GET(req: NextRequest) {
     const rawSlug = querySlug || cookieStore;
     const tenantSlug = normalizeTenantSlug(rawSlug);
 
-    // 1. Resolve Target Tier ke Canonical
+    // 1. Resolve Target Tier ke Canonical (ARCHITECTURE.md: STARTER, PRO_SCALE, ENTERPRISE, CHECKOUT_LITE)
     const rawTarget = targetTierParam.toUpperCase().replace('-', '_').replace(' ', '_');
-    let canonicalTargetTier = 'ADS_PERFORMANCE';
+    let canonicalTargetTier = 'PRO_SCALE';
     let newTierPrice = 299000;
 
-    if (rawTarget.includes('TEAM') || rawTarget.includes('ENTERPRISE') || rawTarget.includes('SCALE') || rawTarget === 'PRO_SCALE') {
-      canonicalTargetTier = 'PRO_SCALE';
+    if (rawTarget.includes('TEAM') || rawTarget.includes('ENTERPRISE') || (rawTarget.includes('SCALE') && !rawTarget.includes('PRO'))) {
+      canonicalTargetTier = 'ENTERPRISE';
       newTierPrice = 499000;
-    } else if (rawTarget.includes('ADS') || rawTarget.includes('PERFORMANCE') || rawTarget === 'PRO_ADS') {
-      canonicalTargetTier = 'ADS_PERFORMANCE';
+    } else if (rawTarget.includes('ADS') || rawTarget.includes('PERFORMANCE') || rawTarget === 'PRO_SCALE' || rawTarget === 'PRO_ADS') {
+      canonicalTargetTier = 'PRO_SCALE';
       newTierPrice = 299000;
     } else if (rawTarget.includes('CHECKOUT') || rawTarget.includes('LITE') || rawTarget === 'ENTRY') {
       canonicalTargetTier = 'CHECKOUT_LITE';
       newTierPrice = 59000;
     } else {
-      canonicalTargetTier = 'SOLO';
+      canonicalTargetTier = 'STARTER';
       newTierPrice = 199000;
     }
 

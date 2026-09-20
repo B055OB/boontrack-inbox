@@ -82,6 +82,10 @@ export interface UpgradePaymentModalProps {
   displayName: string;
   currentTier?: string;
   targetTier?: AllTierKey;
+  /** true jika tenant sedang dalam masa trial */
+  isTrial?: boolean;
+  /** 'trial' | 'active' | 'expired' — opsional, untuk logika renew */
+  subscriptionStatus?: string;
   onSuccess?: () => void;
 }
 
@@ -134,6 +138,8 @@ export default function UpgradePaymentModal({
   displayName,
   currentTier = 'STARTER',
   targetTier = 'ads_performance',
+  isTrial = false,
+  subscriptionStatus,
   onSuccess,
 }: UpgradePaymentModalProps) {
   const currentTierKey = useMemo(() => resolveCurrentTierKey(currentTier), [currentTier]);
@@ -276,12 +282,27 @@ export default function UpgradePaymentModal({
     };
   }, [isOpen, pollStatus, tenantSlug, stopAll, onSuccess]);
 
+  // Trial detection: isTrial prop OR subscriptionStatus === 'trial' OR currentTier contains trial
+  const isTrialActive = Boolean(
+    isTrial ||
+    subscriptionStatus === 'trial' ||
+    String(currentTier).toLowerCase().includes('trial')
+  );
+
   // Build tier options dynamically based on currentTierKey
   // HARUS di atas semua early-return agar tidak melanggar Rules of Hooks
+  // Saat isTrial: sertakan currentTierKey sendiri agar merchant bisa aktivasi langganan resmi
   const availableTiers = useMemo((): AllTierKey[] => {
     const all: AllTierKey[] = ['checkout_lite', 'solo', 'ads_performance', 'team_scale'];
+    if (isTrialActive) {
+      // Tampilkan semua 4 tier — currentTierKey akan dirender sebagai kartu "Aktifkan"
+      return all;
+    }
     return all.filter((t) => t !== currentTierKey);
-  }, [currentTierKey]);
+  }, [currentTierKey, isTrialActive]);
+
+  const isActivePaidSubscription =
+    !isTrialActive && (subscriptionStatus === 'active' || subscriptionStatus === 'ACTIVE');
 
   if (!isOpen) return null;
 
@@ -336,8 +357,16 @@ export default function UpgradePaymentModal({
   };
 
   // Determine which tiers to show (derived from availableTiers, not a hook)
-  const isDowngrade = (tier: AllTierKey) => TIER_RANK[tier] < TIER_RANK[currentTierKey];
-  const upgradeTiers = availableTiers.filter((t) => !isDowngrade(t));
+  // When isTrial: currentTierKey is rendered as "activate" card (not strictly upgrade/downgrade)
+  const isDowngrade = (tier: AllTierKey) =>
+    tier !== currentTierKey && TIER_RANK[tier] < TIER_RANK[currentTierKey];
+  const isCurrentTrialTierFn = (tier: AllTierKey) => isTrialActive && tier === currentTierKey;
+
+  // Trial-activate cards: currentTierKey (activate) + higher tiers = shown in upgrade section
+  // Non-trial: normal filter
+  const upgradeTiers = availableTiers.filter(
+    (t) => !isDowngrade(t)
+  );
   const downgradeTiers = availableTiers.filter((t) => isDowngrade(t));
 
   const hasProrataCredit = Boolean(previewData && previewData.credit_amount > 0);
@@ -435,6 +464,7 @@ export default function UpgradePaymentModal({
   const TierCard = ({ tier }: { tier: AllTierKey }) => {
     const isSelected = selectedTier === tier;
     const isDg = isDowngrade(tier);
+    const isCurrentTrialTier = isTrialActive && tier === currentTierKey;
     const price = TIER_PRICE[tier];
     const label = TIER_LABEL[tier];
     const dbKey = TIER_DB[tier];
@@ -514,6 +544,23 @@ export default function UpgradePaymentModal({
     const priceLabel =
       isSelected && hasProrataCredit ? '(Tagihan Prorata)' : '/ bulan';
 
+    // Badge overlay: trial-activate, downgrade, or normal
+    const badgeOverlay = isCurrentTrialTier ? (
+      <div className="absolute top-3 right-3">
+        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[9px] font-black uppercase tracking-wider">
+          <CheckCircle2 className="w-2.5 h-2.5" />
+          Paket Saat Ini (Trial)
+        </span>
+      </div>
+    ) : isDg ? (
+      <div className="absolute top-3 right-3">
+        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
+          <ChevronDown className="w-2.5 h-2.5" />
+          Downgrade
+        </span>
+      </div>
+    ) : null;
+
     return (
       <div
         onClick={() => setSelectedTier(tier)}
@@ -523,15 +570,8 @@ export default function UpgradePaymentModal({
             : 'bg-slate-900/90 border-slate-800 hover:border-slate-700'
         }`}
       >
-        {/* Downgrade badge */}
-        {isDg && (
-          <div className="absolute top-3 right-3">
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 text-[9px] font-black uppercase tracking-wider">
-              <ChevronDown className="w-2.5 h-2.5" />
-              Downgrade
-            </span>
-          </div>
-        )}
+        {/* Badge overlay */}
+        {badgeOverlay}
 
         <div className="space-y-4">
           {/* Badge Header */}
@@ -590,39 +630,51 @@ export default function UpgradePaymentModal({
 
         {/* CTA Button */}
         <div className="pt-6">
-          <button
-            type="button"
-            disabled={loadingCheckoutTier !== null}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isDg) {
-                // Trigger downgrade confirm guard
-                setPendingDowngradeTier(tier);
-                setDowngradeAcknowledged(false);
-              } else {
+          {isCurrentTrialTier ? (
+            // Trial-tier: special "Aktifkan Langganan Resmi" CTA
+            <button
+              type="button"
+              disabled={loadingCheckoutTier !== null}
+              onClick={(e) => {
+                e.stopPropagation();
                 handleCheckoutXendit(tier);
-              }
-            }}
-            className={`w-full py-3 px-4 rounded-xl bg-gradient-to-r ${palette.btn} text-white font-black text-xs shadow-lg transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50`}
-          >
-            {loadingCheckoutTier === tier ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Menghubungkan Xendit...</span>
-              </>
-            ) : isDg ? (
-              <>
-                <ArrowDownRight className="w-4 h-4 text-amber-200" />
-                <span>Downgrade ke {label}</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4 text-yellow-300" />
-                <span>Upgrade ke {label}</span>
-                <ArrowRight className="w-4 h-4 opacity-70" />
-              </>
-            )}
-          </button>
+              }}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-600/20 transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {loadingCheckoutTier === tier ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /><span>Menghubungkan Xendit...</span></>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-white" />
+                  <span>Aktifkan Langganan Resmi (Rp {price.toLocaleString('id-ID')})</span>
+                  <ArrowRight className="w-4 h-4 opacity-70" />
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={loadingCheckoutTier !== null}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isDg) {
+                  setPendingDowngradeTier(tier);
+                  setDowngradeAcknowledged(false);
+                } else {
+                  handleCheckoutXendit(tier);
+                }
+              }}
+              className={`w-full py-3 px-4 rounded-xl bg-gradient-to-r ${palette.btn} text-white font-black text-xs shadow-lg transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50`}
+            >
+              {loadingCheckoutTier === tier ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /><span>Menghubungkan Xendit...</span></>
+              ) : isDg ? (
+                <><ArrowDownRight className="w-4 h-4 text-amber-200" /><span>Downgrade ke {label}</span></>
+              ) : (
+                <><Zap className="w-4 h-4 text-yellow-300" /><span>Upgrade ke {label}</span><ArrowRight className="w-4 h-4 opacity-70" /></>
+              )}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -675,12 +727,22 @@ export default function UpgradePaymentModal({
                 <span>Pilihan Paket Resmi &bull; Pembayaran Aman Xendit</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                Kelola Langganan Toko Anda
+                {isTrialActive ? 'Aktivasi Langganan Toko Anda' : 'Kelola Langganan Toko Anda'}
               </h2>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Paket saat ini:{' '}
-                <strong className="text-slate-200">{TIER_LABEL[currentTierKey] ?? currentTier}</strong>.
-                Pilih paket upgrade atau downgrade di bawah ini.
+                {isTrialActive ? (
+                  <>
+                    Toko Anda saat ini dalam{' '}
+                    <strong className="text-emerald-400">Masa Trial ({TIER_LABEL[currentTierKey] ?? currentTier})</strong>.
+                    Aktifkan langganan resmi untuk melanjutkan tanpa jeda, atau pilih paket lain di bawah ini.
+                  </>
+                ) : (
+                  <>
+                    Paket saat ini:{' '}
+                    <strong className="text-slate-200">{TIER_LABEL[currentTierKey] ?? currentTier}</strong>.
+                    Pilih paket upgrade atau downgrade di bawah ini.
+                  </>
+                )}
               </p>
             </div>
 
@@ -695,7 +757,7 @@ export default function UpgradePaymentModal({
             {upgradeTiers.length > 0 && (
               <div>
                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-3">
-                  Upgrade Paket
+                  {isTrialActive ? 'Aktivasi Resmi & Upgrade Paket' : 'Upgrade Paket'}
                 </p>
                 <div className={`grid grid-cols-1 ${upgradeTiers.length >= 2 ? 'md:grid-cols-2' : ''} gap-4 sm:gap-5`}>
                   {upgradeTiers.map((t) => (
@@ -825,7 +887,7 @@ export default function UpgradePaymentModal({
               </button>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {(['checkout_lite', 'solo', 'ads_performance', 'team_scale'] as AllTierKey[])
-                  .filter((t) => t !== currentTierKey)
+                  .filter((t) => (isTrialActive ? true : t !== currentTierKey))
                   .map((t) => (
                     <button
                       key={t}

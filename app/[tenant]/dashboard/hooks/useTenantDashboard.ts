@@ -117,6 +117,7 @@ export function useTenantDashboard() {
   // Reverse Trial Days Left & End Date
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [tenantMetaOmzet, setTenantMetaOmzet] = useState<number>(0);
 
   // Upsell Modal State for Locked Features
@@ -860,6 +861,10 @@ export function useTenantDashboard() {
             selectedPlanLower.includes('trial') ||
             resolvedTier === 'SOLO_TRIAL' ||
             ((rawTier === 'pro_scale' || rawTier.includes('ads')) && (Boolean(tenant.metadata?.is_trial) || Boolean(rawTrialEnds)));
+
+          const rawSubStatus = tenant.subscription_status || tenant.metadata?.subscription_status;
+          const finalSubStatus = rawSubStatus || (isTrialStore ? 'trial' : 'active');
+          setSubscriptionStatus(finalSubStatus);
 
           if (isTrialStore || rawTrialEnds) {
             let finalTrialEnds = rawTrialEnds;
@@ -1826,6 +1831,7 @@ export function useTenantDashboard() {
     // Reverse Trial & Entitlement
     trialDaysLeft,
     trialEndsAt,
+    subscriptionStatus,
     isAiBotAllowed,
     isUpsellModalOpen,
     setIsUpsellModalOpen,

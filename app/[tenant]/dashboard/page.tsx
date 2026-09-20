@@ -79,6 +79,7 @@ export default function TenantDashboardPage() {
 
     trialDaysLeft,
     trialEndsAt,
+    subscriptionStatus,
     tenantFeatureFlags,
     isAiBotAllowed,
     isUpsellModalOpen,
@@ -1082,6 +1083,8 @@ export default function TenantDashboardPage() {
         displayName={displayName}
         targetTier={targetUpgradeTier}
         currentTier={tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'SOLO' : isAdsPerformance ? 'ADS_PERFORMANCE' : 'PRO_SCALE')}
+        isTrial={isTrialActive}
+        subscriptionStatus={subscriptionStatus || (isTrialActive ? 'trial' : 'active')}
       />
     </main>
   );
