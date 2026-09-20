@@ -276,6 +276,13 @@ export default function UpgradePaymentModal({
     };
   }, [isOpen, pollStatus, tenantSlug, stopAll, onSuccess]);
 
+  // Build tier options dynamically based on currentTierKey
+  // HARUS di atas semua early-return agar tidak melanggar Rules of Hooks
+  const availableTiers = useMemo((): AllTierKey[] => {
+    const all: AllTierKey[] = ['checkout_lite', 'solo', 'ads_performance', 'team_scale'];
+    return all.filter((t) => t !== currentTierKey);
+  }, [currentTierKey]);
+
   if (!isOpen) return null;
 
   const minutes = Math.floor(timeLeft / 60);
@@ -328,15 +335,8 @@ export default function UpgradePaymentModal({
     }
   };
 
-  // Determine which tiers to show
+  // Determine which tiers to show (derived from availableTiers, not a hook)
   const isDowngrade = (tier: AllTierKey) => TIER_RANK[tier] < TIER_RANK[currentTierKey];
-
-  // Build tier options dynamically based on currentTierKey
-  const availableTiers = useMemo((): AllTierKey[] => {
-    const all: AllTierKey[] = ['checkout_lite', 'solo', 'ads_performance', 'team_scale'];
-    return all.filter((t) => t !== currentTierKey);
-  }, [currentTierKey]);
-
   const upgradeTiers = availableTiers.filter((t) => !isDowngrade(t));
   const downgradeTiers = availableTiers.filter((t) => isDowngrade(t));
 

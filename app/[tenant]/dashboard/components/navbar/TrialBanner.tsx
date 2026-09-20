@@ -45,23 +45,23 @@ export default function TrialBanner({
     return { calculatedDays: fallback, hoursLeft: 0, showHours: false };
   }, [trialEndsAt, daysLeft]);
 
-  if (!isTrial && calculatedDays === null) {
-    return null;
-  }
-
-  const safeDays = calculatedDays !== null ? calculatedDays : 0;
-  const isExpired = safeDays === 0 && !showHours;
-
   // Label paket dinamis berdasarkan tier aktif — TIDAK hardcoded
+  // HARUS di atas early-return agar tidak melanggar Rules of Hooks
   const planLabel = useMemo(() => {
     const t = (tier || '').toLowerCase();
     if (t.includes('ads') || t.includes('performance') || t === 'pro_scale') return 'Ads Performance';
     if (t.includes('enterprise') || t.includes('team')) return 'Team Scale';
     if (t.includes('checkout') || t.includes('lite')) return 'Checkout Lite';
     if (t.includes('starter') || t.includes('solo')) return 'Solo';
-    // Fallback: kapitalisasi tier raw agar tetap bermakna
     return tier ? tier.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Trial';
   }, [tier]);
+
+  if (!isTrial && calculatedDays === null) {
+    return null;
+  }
+
+  const safeDays = calculatedDays !== null ? calculatedDays : 0;
+  const isExpired = safeDays === 0 && !showHours;
 
   // Teks sisa waktu: hari jika >= 1 hari, jam jika < 24 jam
   const timeLeftLabel = showHours
