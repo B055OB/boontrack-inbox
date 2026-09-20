@@ -67,12 +67,19 @@ export async function GET(
       tierStr === 'SCALE' ||
       metadata.plan_tier === 'scale';
 
+    const featIds =
+      metadata.featured_product_ids ||
+      metadata.microsite?.featured_product_ids ||
+      metadata.microsite_featured_product_ids ||
+      [];
+
     return NextResponse.json({
       success: true,
       slug,
       theme,
       tier: tenantRow.tier,
       isTeamScale,
+      featured_product_ids: Array.isArray(featIds) ? featIds.map(String).slice(0, 5) : [],
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Gagal memuat tema toko';
@@ -89,7 +96,7 @@ export async function PUT(
     const slug = normalizeTenantSlug(rawSlug || '');
     const body = await req.json();
 
-    const { template, visual_theme, chat_enabled, chat_position } = body;
+    const { template, visual_theme, chat_enabled, chat_position, featured_product_ids } = body;
 
     const supabase = getSupabase();
     const { data: tenantRow, error: fetchErr } = await supabase
@@ -141,12 +148,20 @@ export async function PUT(
       chat_position: newChatPosition,
     };
 
-    const updatedMetadata = {
+    const updatedMetadata: Record<string, any> = {
       ...existingMetadata,
       template: newTemplate,
       visual_theme: newVisualTheme,
       theme: updatedTheme,
     };
+
+    if (Array.isArray(featured_product_ids)) {
+      const cleanIds = featured_product_ids.map(String).slice(0, 5);
+      updatedMetadata.featured_product_ids = cleanIds;
+      updatedMetadata.microsite_featured_product_ids = cleanIds;
+      if (!updatedMetadata.microsite) updatedMetadata.microsite = {};
+      updatedMetadata.microsite.featured_product_ids = cleanIds;
+    }
 
     const { error: updateErr } = await supabase
       .from('tenants')

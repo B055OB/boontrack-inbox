@@ -254,6 +254,7 @@ export default function MicrositeTab({
         ...currentMeta,
         storefront_template: activeTemplate,
         bio: bioText,
+        featured_product_ids: featuredProductIds,
         microsite_show_products: showProducts,
         microsite_featured_product_ids: featuredProductIds,
         microsite_product_mode: productMode,
@@ -325,10 +326,10 @@ export default function MicrositeTab({
     if (!showProducts || catalogProducts.length === 0) return [];
     if (productMode === 'manual') {
       if (featuredProductIds.length === 0) return [];
-      return catalogProducts.filter((p) => featuredProductIds.includes(String(p.id)));
+      return catalogProducts.filter((p) => featuredProductIds.includes(String(p.id))).slice(0, 5);
     }
-    // Mode 'all': maksimal 6 produk
-    return catalogProducts.slice(0, 6);
+    // Mode 'all': maksimal 5 produk
+    return catalogProducts.slice(0, 5);
   }, [showProducts, productMode, featuredProductIds, catalogProducts]);
 
   return (
@@ -586,7 +587,7 @@ export default function MicrositeTab({
                     <Package className="w-4 h-4" />
                   </span>
                   <h3 className="text-sm font-black text-slate-900">
-                    Katalog Produk di Bio-Link
+                    Pilih Produk Unggulan untuk Ditampilkan di Bio Storefront (Maksimal 5 Produk)
                   </h3>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -630,9 +631,9 @@ export default function MicrositeTab({
                         <Layers className="w-4 h-4" />
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-slate-900">Semua Produk (Maksimal 6)</div>
+                        <div className="text-xs font-bold text-slate-900">Semua Produk (Maksimal 5)</div>
                         <div className="text-[11px] text-slate-500 mt-0.5">
-                          Menampilkan hingga 6 produk teratas secara otomatis dari katalog toko.
+                          Menampilkan hingga 5 produk teratas secara otomatis dari katalog toko.
                         </div>
                       </div>
                     </button>
@@ -664,7 +665,7 @@ export default function MicrositeTab({
                   <div className="space-y-2 pt-2 border-t border-slate-100">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-bold text-slate-700">
-                        Pilih Produk Unggulan ({featuredProductIds.length} dipilih):
+                        Pilih Produk Unggulan ({featuredProductIds.length}/5 dipilih):
                       </span>
                       {featuredProductIds.length > 0 && (
                         <button
@@ -687,22 +688,44 @@ export default function MicrositeTab({
                         {catalogProducts.map((prod) => {
                           const prodIdStr = String(prod.id);
                           const isSelected = featuredProductIds.includes(prodIdStr);
+                          const isDisabled = !isSelected && featuredProductIds.length >= 5;
                           const prodImage = prod.image || (prod as any).image_url;
 
                           return (
                             <label
                               key={prodIdStr}
+                              onClick={(e) => {
+                                if (isDisabled) {
+                                  e.preventDefault();
+                                  setFeedback({
+                                    type: 'error',
+                                    text: 'Maksimal 5 produk unggulan yang dapat ditampilkan di bio storefront.',
+                                  });
+                                  setTimeout(() => setFeedback(null), 3000);
+                                }
+                              }}
                               className={`flex items-center gap-3 p-2.5 rounded-xl border transition cursor-pointer select-none ${
                                 isSelected
                                   ? 'border-emerald-500 bg-emerald-50/60 shadow-2xs'
+                                  : isDisabled
+                                  ? 'border-slate-200 bg-slate-100/50 opacity-60 cursor-not-allowed'
                                   : 'border-slate-200 hover:bg-slate-50 bg-white'
                               }`}
                             >
                               <input
                                 type="checkbox"
                                 checked={isSelected}
+                                disabled={isDisabled}
                                 onChange={(e) => {
                                   if (e.target.checked) {
+                                    if (featuredProductIds.length >= 5) {
+                                      setFeedback({
+                                        type: 'error',
+                                        text: 'Maksimal 5 produk unggulan yang dapat ditampilkan di bio storefront.',
+                                      });
+                                      setTimeout(() => setFeedback(null), 3000);
+                                      return;
+                                    }
                                     setFeaturedProductIds((prev) => [...prev, prodIdStr]);
                                   } else {
                                     setFeaturedProductIds((prev) => prev.filter((id) => id !== prodIdStr));

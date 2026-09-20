@@ -211,6 +211,7 @@ export default function TenantDashboardPage() {
   const [activeVisualTheme, setActiveVisualTheme] = React.useState<VisualThemeType>('aurora_gradient');
   const [livePreviewButtons, setLivePreviewButtons] = React.useState<any[]>([]);
   const [livePreviewShowProducts, setLivePreviewShowProducts] = React.useState(true);
+  const [livePreviewFeaturedProductIds, setLivePreviewFeaturedProductIds] = React.useState<string[]>([]);
   const hasLoadedPreviewDataRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -238,6 +239,14 @@ export default function TenantDashboardPage() {
           }
           const showProd = Boolean(meta.microsite?.show_products ?? meta.microsite_show_products ?? true);
           setLivePreviewShowProducts(showProd);
+
+          const rawFeat =
+            meta.featured_product_ids ||
+            meta.microsite?.featured_product_ids ||
+            meta.microsite_featured_product_ids;
+          if (Array.isArray(rawFeat) && rawFeat.length > 0) {
+            setLivePreviewFeaturedProductIds(rawFeat.map(String).slice(0, 5));
+          }
         } else {
           const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`);
           if (res.ok) {
@@ -310,7 +319,9 @@ export default function TenantDashboardPage() {
 
   const isPreviewEnabledTab =
     activeTab === 'themes' ||
-    activeTab === 'storefront';
+    activeTab === 'storefront' ||
+    activeTab === 'microsite' ||
+    activeTab === 'links';
 
   return (
     <main className={`min-h-[100dvh] font-sans flex flex-col lg:flex-row antialiased dashboard-theme-container ${
@@ -657,6 +668,7 @@ export default function TenantDashboardPage() {
             if (data.bio !== undefined) setStoreBio(data.bio);
             if (data.buttons !== undefined) setLivePreviewButtons(data.buttons);
             if (data.showProducts !== undefined) setLivePreviewShowProducts(data.showProducts);
+            if (data.featuredProductIds !== undefined) setLivePreviewFeaturedProductIds(data.featuredProductIds);
           }}
           onNavigateTab={(tab) => setActiveTab(tab as any)}
           onSaved={(msg) => {
@@ -674,7 +686,9 @@ export default function TenantDashboardPage() {
             isTeamScale={isTeamScale}
             isAdsPerformance={isAdsPerformance}
             currentVisualTheme={activeVisualTheme}
+            products={products}
             onThemeChange={handleThemeChange}
+            onFeaturedProductsChange={(ids) => setLivePreviewFeaturedProductIds(ids)}
             onSaved={(msg) => {
               setSaveFeedback(msg);
               setTimeout(() => setSaveFeedback(null), 3500);
@@ -978,6 +992,7 @@ export default function TenantDashboardPage() {
                 buttons={livePreviewButtons}
                 showProducts={livePreviewShowProducts}
                 products={products}
+                featuredProductIds={livePreviewFeaturedProductIds}
               />
             </div>
           )}

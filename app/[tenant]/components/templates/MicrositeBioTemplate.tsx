@@ -281,8 +281,11 @@ export default function MicrositeBioTemplate({
     true;
 
   const featuredIds: string[] = React.useMemo(() => {
-    const raw = tenantMetadata?.microsite_featured_product_ids || tenantMetadata?.microsite?.featured_product_ids;
-    return Array.isArray(raw) ? raw.map(String) : [];
+    const raw =
+      tenantMetadata?.featured_product_ids ||
+      tenantMetadata?.microsite_featured_product_ids ||
+      tenantMetadata?.microsite?.featured_product_ids;
+    return Array.isArray(raw) ? raw.map(String).slice(0, 5) : [];
   }, [tenantMetadata]);
 
   const productMode =
@@ -293,10 +296,10 @@ export default function MicrositeBioTemplate({
   const visibleProducts = React.useMemo(() => {
     if (!showProducts || !Array.isArray(storeProducts) || storeProducts.length === 0) return [];
     if (productMode === 'manual' && featuredIds.length > 0) {
-      return storeProducts.filter((p) => featuredIds.includes(String(p.id)));
+      return storeProducts.filter((p) => featuredIds.includes(String(p.id))).slice(0, 5);
     }
-    // Default mode 'all': tampilkan seluruh produk katalog aktif (maks 20 produk)
-    return storeProducts.slice(0, 20);
+    // Default mode 'all': tampilkan hingga 5 produk unggulan katalog
+    return storeProducts.slice(0, 5);
   }, [showProducts, storeProducts, productMode, featuredIds]);
 
   const isDigitalCatalog = ['DIGITAL', 'COURSE', 'SOFTWARE', 'CREATOR', 'AGENCY'].some((k) =>

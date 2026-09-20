@@ -31,6 +31,7 @@ interface LivePhonePreviewProps {
   buttons?: PreviewButton[];
   showProducts?: boolean;
   products?: ProductItem[];
+  featuredProductIds?: string[];
 }
 
 // ─── Brand SVG Icons 1:1 Identical to Public Storefront ──────────────────────
@@ -143,6 +144,7 @@ export default function LivePhonePreview({
   buttons = [],
   showProducts = true,
   products = [],
+  featuredProductIds = [],
 }: LivePhonePreviewProps) {
   // Resolve buttons: Jika buttons kosong dari props, gunakan starter buttons dinamis toko
   const resolvedButtons: PreviewButton[] = React.useMemo(() => {
@@ -178,7 +180,17 @@ export default function LivePhonePreview({
     ];
   }, [buttons, storeWhatsapp, tenantSlug]);
 
-  const previewProducts = (products || []).slice(0, 4);
+  // Tampilkan produk unggulan sesuai ID yang dipilih (maksimal 5 produk)
+  const previewProducts = React.useMemo(() => {
+    const all = products || [];
+    if (Array.isArray(featuredProductIds) && featuredProductIds.length > 0) {
+      const filtered = all.filter((p) => featuredProductIds.includes(String(p.id)));
+      if (filtered.length > 0) {
+        return filtered.slice(0, 5);
+      }
+    }
+    return all.slice(0, 5);
+  }, [products, featuredProductIds]);
 
   // Theme-specific styling classes matching public storefront 1:1
   const getThemeStyles = () => {
@@ -405,7 +417,7 @@ export default function LivePhonePreview({
                   <ShoppingBag className="w-3.5 h-3.5" />
                   <span className="text-[11px] font-black">Katalog Unggulan</span>
                 </div>
-                <span className="text-[9px] font-bold opacity-75">{products.length} Item</span>
+                <span className="text-[9px] font-bold opacity-75">{previewProducts.length} Produk</span>
               </div>
 
               <div className="space-y-1.5">

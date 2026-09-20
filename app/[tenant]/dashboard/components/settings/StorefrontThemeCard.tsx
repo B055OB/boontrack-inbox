@@ -13,8 +13,11 @@ import {
   ArrowRight,
   X,
   Save,
+  ShoppingBag,
+  Package,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { ProductItem } from '@/lib/product-catalog';
 
 export type VisualThemeType =
   | 'clean_minimal'
@@ -111,6 +114,8 @@ interface StorefrontThemeCardProps {
   isAdsPerformance?: boolean;
   onThemeChange?: (themeId: VisualThemeType) => void;
   currentVisualTheme?: VisualThemeType;
+  products?: ProductItem[];
+  onFeaturedProductsChange?: (productIds: string[]) => void;
   onSaved?: (msg: string) => void;
 }
 
@@ -120,12 +125,17 @@ export default function StorefrontThemeCard({
   isAdsPerformance = false,
   onThemeChange,
   currentVisualTheme,
+  products = [],
+  onFeaturedProductsChange,
   onSaved,
 }: StorefrontThemeCardProps) {
   const [selectedTheme, setSelectedTheme] = useState<VisualThemeType>(
     currentVisualTheme || 'clean_minimal'
   );
   const [chatEnabled, setChatEnabled] = useState(true);
+  const [featuredProductIds, setFeaturedProductIds] = useState<string[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<ProductItem[]>(products);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -185,6 +195,126 @@ export default function StorefrontThemeCard({
     };
   }, [tenantSlug]);
 
+  // Load produk aktif & ID unggulan dari Supabase
+  useEffect(() => {
+    let isMounted = true;
+    async function loadFeaturedAndProducts() {
+      try {
+        setIsLoadingProducts(true);
+        const supabase = getSupabase();
+        if (!supabase || !tenantSlug) return;
+
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('id, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        if (tenantRow && isMounted) {
+          const meta = tenantRow.metadata || {};
+          const rawFeat =
+            meta.featured_product_ids ||
+            meta.microsite?.featured_product_ids ||
+            meta.microsite_featured_product_ids;
+          const featList = Array.isArray(rawFeat) ? rawFeat.map(String).slice(0, 5) : [];
+          setFeaturedProductIds(featList);
+
+          // Ambil daftar produk aktif dari database Supabase (products) milik tenant
+          let dbProdsList: ProductItem[] = [];
+          if (tenantRow.id) {
+            const { data: dbProds } = await supabase
+              .from('products')
+              .select('*')
+              .eq('tenant_id', tenantRow.id)
+              .order('created_at', { ascending: false });
+
+            if (Array.isArray(dbProds) && dbProds.length > 0) {
+              dbProdsList = dbProds
+                .filter((p: any) => p.is_active !== false)
+                .map((p: any) => ({
+                  id: String(p.id),
+                  name: p.title || p.name || 'Produk',
+                  price: Number(p.price) || 0,
+                  promo_price: p.promo_price ? Number(p.promo_price) : 0,
+                  category: p.category || 'Digital',
+                  image: p.image || p.image_url || '',
+                  description: p.description || '',
+                  stock: p.stock !== undefined ? Number(p.stock) : 999999,
+                  is_active: p.is_active !== false,
+                }));
+            }
+          }
+
+          if (dbProdsList.length === 0 && Array.isArray(meta.products) && meta.products.length > 0) {
+            dbProdsList = meta.products
+              .filter((p: any) => p.is_active !== false)
+              .map((p: any) => ({
+                id: String(p.id),
+                name: p.name || p.title || 'Produk',
+                price: Number(p.price) || 0,
+                promo_price: p.promo_price ? Number(p.promo_price) : 0,
+                category: p.category || 'Digital',
+                image: p.image || p.image_url || '',
+                description: p.description || '',
+                stock: p.stock !== undefined ? Number(p.stock) : 999999,
+                is_active: p.is_active !== false,
+              }));
+          }
+
+          if (dbProdsList.length > 0 && isMounted) {
+            setAvailableProducts(dbProdsList);
+          }
+        }
+      } catch (err) {
+        console.warn('[StorefrontThemeCard] Gagal memuat produk aktif:', err);
+      } finally {
+        if (isMounted) setIsLoadingProducts(false);
+      }
+    }
+
+    loadFeaturedAndProducts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug]);
+
+  // Sync prop jika parent menyediakan daftar produk
+  useEffect(() => {
+    if (products && products.length > 0 && availableProducts.length === 0) {
+      setAvailableProducts(products.filter((p) => p.is_active !== false));
+    }
+  }, [products, availableProducts.length]);
+
+  // Handler toggle produk dengan validasi ketat maksimal 5 produk
+  const handleToggleProduct = (prodId: string) => {
+    const isSelected = featuredProductIds.includes(prodId);
+    let nextIds: string[];
+
+    if (isSelected) {
+      nextIds = featuredProductIds.filter((id) => id !== prodId);
+    } else {
+      if (featuredProductIds.length >= 5) {
+        setToastMessage('⚠️ Maksimal 5 produk unggulan yang dapat ditampilkan di bio storefront.');
+        setTimeout(() => setToastMessage(null), 3500);
+        return;
+      }
+      nextIds = [...featuredProductIds, prodId];
+    }
+
+    setFeaturedProductIds(nextIds);
+    if (onFeaturedProductsChange) {
+      onFeaturedProductsChange(nextIds);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('storefront-featured-products-changed', {
+          detail: { featured_product_ids: nextIds },
+        })
+      );
+    }
+  };
+
   // 2. Save theme change persistently to database & settings API
   const saveThemeConfig = async (newThemeId: VisualThemeType, newChatEnabled: boolean) => {
     setIsSaving(true);
@@ -241,6 +371,12 @@ export default function StorefrontThemeCard({
             const updatedMeta = {
               ...(tenantRow.metadata || {}),
               visual_theme: newThemeId,
+              featured_product_ids: featuredProductIds,
+              microsite_featured_product_ids: featuredProductIds,
+              microsite: {
+                ...(tenantRow.metadata?.microsite || {}),
+                featured_product_ids: featuredProductIds,
+              },
               theme: {
                 ...(tenantRow.metadata?.theme || {}),
                 visual_theme: newThemeId,
@@ -451,6 +587,118 @@ export default function StorefrontThemeCard({
                 </div>
               );
             })}
+          </div>
+
+          {/* KONTROL: PILIH PRODUK UNGGULAN DISPLAY (MAKSIMAL 5 PRODUK) */}
+          <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 sm:p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold shrink-0 border border-emerald-100">
+                  <ShoppingBag className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs sm:text-sm font-black text-slate-900">
+                      Pilih Produk Unggulan untuk Ditampilkan di Bio Storefront (Maksimal 5 Produk)
+                    </h4>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                      featuredProductIds.length === 5
+                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}>
+                      {featuredProductIds.length}/5 Dipilih
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Pilih hingga 5 produk aktif dari etalase untuk disorot langsung pada kartu cuplikan bio storefront.
+                  </p>
+                </div>
+              </div>
+
+              {featuredProductIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFeaturedProductIds([]);
+                    onFeaturedProductsChange?.([]);
+                  }}
+                  className="text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer self-start sm:self-auto shrink-0"
+                >
+                  Reset Pilihan
+                </button>
+              )}
+            </div>
+
+            {isLoadingProducts ? (
+              <div className="p-4 rounded-xl bg-white border border-slate-200 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                <span>Memuat daftar produk toko...</span>
+              </div>
+            ) : availableProducts.length === 0 ? (
+              <div className="p-4 rounded-xl bg-white border border-slate-200 text-center text-xs text-slate-500">
+                Belum ada produk aktif di katalog toko Anda. Tambahkan produk di tab{' '}
+                <strong className="text-slate-700">Katalog Produk</strong> agar dapat dipilih sebagai produk unggulan.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                {availableProducts.map((prod) => {
+                  const prodId = String(prod.id);
+                  const isSelected = featuredProductIds.includes(prodId);
+                  const isDisabled = !isSelected && featuredProductIds.length >= 5;
+                  const prodImage = prod.image || (prod as any).image_url;
+
+                  return (
+                    <label
+                      key={prodId}
+                      onClick={(e) => {
+                        if (isDisabled) {
+                          e.preventDefault();
+                          setToastMessage('⚠️ Maksimal 5 produk unggulan yang dapat ditampilkan di bio storefront.');
+                          setTimeout(() => setToastMessage(null), 3000);
+                        }
+                      }}
+                      className={`flex items-center gap-3 p-2.5 rounded-xl border transition cursor-pointer select-none ${
+                        isSelected
+                          ? 'border-emerald-600 bg-emerald-50/70 shadow-2xs ring-1 ring-emerald-500/30'
+                          : isDisabled
+                          ? 'border-slate-200 bg-slate-100/50 opacity-60 cursor-not-allowed'
+                          : 'border-slate-200 hover:bg-white bg-slate-50/50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={isDisabled}
+                        onChange={() => handleToggleProduct(prodId)}
+                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
+                      />
+
+                      {prodImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={prodImage}
+                          alt={prod.name}
+                          className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0 bg-white"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-lg bg-slate-200/70 flex items-center justify-center text-slate-400 shrink-0">
+                          <Package className="w-4 h-4" />
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-slate-900 truncate">
+                          {prod.name}
+                        </div>
+                        <div className="text-[11px] font-semibold text-emerald-600">
+                          Rp {Number(prod.price).toLocaleString('id-ID')}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Switch Toggle: Aktifkan Webchat di Storefront */}
