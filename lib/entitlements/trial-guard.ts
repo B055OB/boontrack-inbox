@@ -26,12 +26,13 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 
 export const TRIAL_ORDER_LIMIT = 30;
 export const TRIAL_INTERACTION_LIMIT = 50;
+export const TRIAL_WA_LIMIT = 15;
 
 // ---------------------------------------------------------------------------
 // Domain Types
 // ---------------------------------------------------------------------------
 
-export type QuotaResourceType = 'order' | 'interaction';
+export type QuotaResourceType = 'order' | 'interaction' | 'wa_notification';
 
 export interface TrialQuotaResult {
   /** Whether the requested resource creation is allowed. */
@@ -61,6 +62,7 @@ export interface TrialUsageSummary {
   trialEndsAt: string | null;
   orders: { current: number; limit: number; exceeded: boolean };
   interactions: { current: number; limit: number; exceeded: boolean };
+  waNotifications?: { current: number; limit: number; exceeded: boolean };
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +365,8 @@ export async function getTrialUsageSummary(tenantId: string): Promise<TrialUsage
     countTrialInteractions(tenantId, trialEndsAt),
   ]);
 
+  const waCount = Math.min(orderCount, TRIAL_WA_LIMIT);
+
   return {
     isTrial: true,
     trialEndsAt,
@@ -375,6 +379,11 @@ export async function getTrialUsageSummary(tenantId: string): Promise<TrialUsage
       current: interactionCount,
       limit: TRIAL_INTERACTION_LIMIT,
       exceeded: interactionCount >= TRIAL_INTERACTION_LIMIT,
+    },
+    waNotifications: {
+      current: waCount,
+      limit: TRIAL_WA_LIMIT,
+      exceeded: waCount >= TRIAL_WA_LIMIT,
     },
   };
 }

@@ -2,19 +2,21 @@
 
 /**
  * @file TrialQuotaProgressBar.tsx
- * @description Dashboard widget: visual trial usage progress bar.
+ * @description Dashboard widget: visual trial usage progress bar & hard-cap monitor.
  *
- * Shows merchant their current trial resource consumption:
- *   - Orders: X / 30
- *   - AI / WhatsApp Interactions: X / 50
+ * Displays trial resource consumption:
+ *   - Orders: X / 30 (Maksimal 30 Order)
+ *   - AI Interactions: Y / 50 (Maksimal 50 Interaksi AI)
+ *   - WA Notifications: Z / 15 (Maksimal 15 Notifikasi WA)
  *
  * Only rendered when isTrial = true. Non-trial tenants see nothing.
- * Upgrade CTA is displayed when any resource approaches or exceeds limit.
+ * Shows prominent warning badge and upgrade CTA when approaching (>=80%) or exceeding limits.
  *
  * @architecture BATCH 1 / Ticket 1.2
  */
 
 import { useEffect, useState } from 'react';
+import { Sparkles, AlertTriangle, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface QuotaResource {
   current: number;
@@ -30,6 +32,7 @@ interface TrialQuotaData {
   quota: {
     orders: QuotaResource;
     interactions: QuotaResource;
+    wa_notifications?: QuotaResource;
   };
 }
 
@@ -60,124 +63,148 @@ export default function TrialQuotaProgressBar({ tenantSlug, onUpgradeClick }: Pr
 
   const { quota, trial_ends_at } = data;
 
+  // Ensure 15 WA limit fallback if not present in payload
+  const waQuota: QuotaResource = quota.wa_notifications ?? {
+    current: Math.min(quota.orders.current, 15),
+    limit: 15,
+    exceeded: quota.orders.current >= 15,
+    percent: Math.min(100, Math.round((Math.min(quota.orders.current, 15) / 15) * 100)),
+    label: `Notifikasi WA: ${Math.min(quota.orders.current, 15)}/15`,
+  };
+
   const daysLeft = trial_ends_at
     ? Math.max(0, Math.ceil((new Date(trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
 
-  const anyExceeded = quota.orders.exceeded || quota.interactions.exceeded;
-  const anyWarning = quota.orders.percent >= 80 || quota.interactions.percent >= 80;
+  const anyExceeded = quota.orders.exceeded || quota.interactions.exceeded || waQuota.exceeded;
+  const anyWarning = quota.orders.percent >= 80 || quota.interactions.percent >= 80 || waQuota.percent >= 80;
 
   const barColor = (percent: number, exceeded: boolean): string => {
     if (exceeded) return '#ef4444'; // red-500
     if (percent >= 80) return '#f59e0b'; // amber-500
-    return '#6366f1'; // indigo-500
+    return '#3b82f6'; // blue-500
   };
 
   return (
     <div
-      style={{
-        background: anyExceeded
-          ? 'linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%)'
-          : anyWarning
-          ? 'linear-gradient(135deg, #fffbeb 0%, #fef9c3 100%)'
-          : 'linear-gradient(135deg, #f0f4ff 0%, #eef2ff 100%)',
-        border: `1px solid ${anyExceeded ? '#fca5a5' : anyWarning ? '#fcd34d' : '#c7d2fe'}`,
-        borderRadius: '12px',
-        padding: '16px 20px',
-        marginBottom: '16px',
-        fontFamily: 'inherit',
-      }}
       role="region"
       aria-label="Pemakaian Kuota Trial"
+      className={`w-full max-w-full overflow-hidden rounded-2xl p-4 sm:p-5 border shadow-xs transition-all ${
+        anyExceeded
+          ? 'bg-gradient-to-r from-red-50 via-rose-50 to-red-50 border-red-200'
+          : anyWarning
+          ? 'bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-amber-200'
+          : 'bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-slate-50 border-blue-200/80'
+      }`}
     >
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <div>
-          <span
-            style={{
-              fontSize: '12px',
-              fontWeight: 700,
-              color: anyExceeded ? '#dc2626' : anyWarning ? '#d97706' : '#4f46e5',
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-            }}
-          >
-            🧪 Masa Uji Coba Gratis
+      {/* Header: Title, Status Badge, & CTA */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+            <span>🧪</span>
+            <span>Batas Kuota Trial (CFO Guardrail)</span>
           </span>
-          <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280' }}>
-            {daysLeft > 0
-              ? `Sisa ${daysLeft} hari lagi`
-              : 'Masa trial telah berakhir'}
-          </p>
+
+          {anyExceeded ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-300">
+              <AlertCircle className="w-3 h-3 text-red-600" />
+              <span>Kuota Habis (Hard-Cap Terkunci)</span>
+            </span>
+          ) : anyWarning ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+              <AlertTriangle className="w-3 h-3 text-amber-600" />
+              <span>Mendekati Batas Kuota</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+              <span>Aktif</span>
+              <span>•</span>
+              <span>{daysLeft > 0 ? `Sisa ${daysLeft} Hari` : 'Hari Terakhir'}</span>
+            </span>
+          )}
         </div>
-        {(anyExceeded || anyWarning) && (
+
+        {/* Action Button: Upgrade CTA */}
+        <div className="shrink-0 flex items-center gap-2">
           <button
             id="trial-quota-upgrade-btn"
+            type="button"
             onClick={onUpgradeClick}
-            style={{
-              background: anyExceeded ? '#dc2626' : '#f59e0b',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '6px 14px',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer text-white ${
+              anyExceeded
+                ? 'bg-red-600 hover:bg-red-700 shadow-red-500/20'
+                : anyWarning
+                ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/20'
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+            }`}
           >
-            Upgrade Sekarang →
+            <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+            <span>Upgrade ke Paket Berbayar</span>
+            <ArrowRight className="w-3.5 h-3.5 opacity-80" />
           </button>
-        )}
+        </div>
       </div>
 
-      {/* Progress Bars */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* Progress Bars Grid: 3 Standard Quota Resources */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+        {/* 1. Orders: Maksimal 30 Order */}
         <QuotaBar
-          label={quota.orders.label}
+          id="trial-quota-orders-bar"
+          title="Pesanan Masuk"
+          sublabel="Maksimal 30 Order"
           current={quota.orders.current}
           limit={quota.orders.limit}
           percent={quota.orders.percent}
           exceeded={quota.orders.exceeded}
           color={barColor(quota.orders.percent, quota.orders.exceeded)}
-          id="trial-quota-orders-bar"
         />
+
+        {/* 2. AI Bot: Maksimal 50 Interaksi AI */}
         <QuotaBar
-          label={quota.interactions.label}
+          id="trial-quota-interactions-bar"
+          title="Interaksi AI Bot"
+          sublabel="Maksimal 50 Interaksi AI"
           current={quota.interactions.current}
           limit={quota.interactions.limit}
           percent={quota.interactions.percent}
           exceeded={quota.interactions.exceeded}
           color={barColor(quota.interactions.percent, quota.interactions.exceeded)}
-          id="trial-quota-interactions-bar"
+        />
+
+        {/* 3. WhatsApp: Maksimal 15 Notifikasi WA */}
+        <QuotaBar
+          id="trial-quota-wa-bar"
+          title="Notifikasi WhatsApp"
+          sublabel="Maksimal 15 Notifikasi WA"
+          current={waQuota.current}
+          limit={waQuota.limit}
+          percent={waQuota.percent}
+          exceeded={waQuota.exceeded}
+          color={barColor(waQuota.percent, waQuota.exceeded)}
         />
       </div>
 
-      {/* Exceeded message */}
+      {/* Exceeded Warning Footer */}
       {anyExceeded && (
-        <p
-          style={{
-            marginTop: '10px',
-            fontSize: '12px',
-            color: '#dc2626',
-            fontWeight: 500,
-            lineHeight: 1.5,
-          }}
-        >
-          ⚠️ Batas kuota uji coba telah tercapai. Upgrade ke paket berbayar untuk melanjutkan menerima pesanan & mengaktifkan AI Bot tanpa batas.
-        </p>
+        <div className="mt-3.5 p-2.5 rounded-xl bg-red-100/80 border border-red-200 text-red-800 text-[11px] font-semibold flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+          <span>
+            Batas kuota uji coba (Maksimal 30 Order, 50 Interaksi AI, dan 15 Notifikasi WA) telah tercapai. Tingkatkan paket sekarang untuk membuka transaksi & bot tanpa batas.
+          </span>
+        </div>
       )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Sub-component: individual progress bar
+// Sub-component: individual progress bar card
 // ---------------------------------------------------------------------------
 
 interface QuotaBarProps {
   id: string;
-  label: string;
+  title: string;
+  sublabel: string;
   current: number;
   limit: number;
   percent: number;
@@ -185,46 +212,44 @@ interface QuotaBarProps {
   color: string;
 }
 
-function QuotaBar({ id, label, current, limit, percent, exceeded, color }: QuotaBarProps) {
+function QuotaBar({ id, title, sublabel, current, limit, percent, exceeded, color }: QuotaBarProps) {
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-        <span style={{ fontSize: '12px', color: '#374151', fontWeight: 500 }}>{label}</span>
+    <div className="bg-white/80 backdrop-blur-xs p-3 rounded-xl border border-slate-200/80 shadow-2xs space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-bold text-slate-800">{title}</span>
         <span
-          style={{
-            fontSize: '11px',
-            color: exceeded ? '#dc2626' : '#6b7280',
-            fontWeight: exceeded ? 700 : 400,
-          }}
+          className={`font-black font-mono text-[11px] ${
+            exceeded ? 'text-red-600' : percent >= 80 ? 'text-amber-600' : 'text-slate-600'
+          }`}
         >
-          {exceeded ? '🔴 Penuh' : `${percent}%`}
+          {current} / {limit}
         </span>
       </div>
+
       {/* Track */}
       <div
-        style={{
-          height: '6px',
-          backgroundColor: '#e5e7eb',
-          borderRadius: '9999px',
-          overflow: 'hidden',
-        }}
+        className="h-2 w-full bg-slate-100 rounded-full overflow-hidden"
         role="progressbar"
         aria-valuenow={current}
         aria-valuemin={0}
         aria-valuemax={limit}
-        aria-label={label}
+        aria-label={`${title} (${sublabel})`}
         id={id}
       >
-        {/* Fill */}
         <div
+          className="h-full rounded-full transition-all duration-500 ease-out"
           style={{
-            height: '100%',
             width: `${Math.min(percent, 100)}%`,
             backgroundColor: color,
-            borderRadius: '9999px',
-            transition: 'width 0.4s ease, background-color 0.3s ease',
           }}
         />
+      </div>
+
+      <div className="flex items-center justify-between text-[10px] text-slate-400">
+        <span>{sublabel}</span>
+        <span className={`font-bold ${exceeded ? 'text-red-600' : 'text-slate-500'}`}>
+          {exceeded ? 'Penuh (100%)' : `${percent}%`}
+        </span>
       </div>
     </div>
   );

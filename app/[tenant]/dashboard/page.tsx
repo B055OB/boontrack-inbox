@@ -27,6 +27,7 @@ import CustomDomainCard from './components/settings/CustomDomainCard';
 import OrderNotificationBell from './components/navbar/OrderNotificationBell';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import TrialBanner from './components/navbar/TrialBanner';
+import TrialQuotaProgressBar from './components/TrialQuotaProgressBar';
 import ProductsTab from './components/tabs/ProductsTab';
 import AdsTrackingTab from './components/tabs/AdsTrackingTab';
 import TeamChatTab from './components/tabs/TeamChatTab';
@@ -582,6 +583,16 @@ export default function TenantDashboardPage() {
           tier={tenantFeatureFlags?.tier}
           onUpgrade={handleUpgradeTier}
         />
+
+        {/* TRIAL QUOTA PROGRESS BAR (30 Order, 50 Interaksi AI, 15 Notifikasi WA) */}
+        {isTrialActive && (
+          <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 pb-0 max-w-7xl mx-auto">
+            <TrialQuotaProgressBar
+              tenantSlug={tenantSlug}
+              onUpgradeClick={() => handleUpgradeTier('ads_performance')}
+            />
+          </div>
+        )}
 
         {/* CONTENT CANVAS AREA (KOLOM 2 & KOLOM 3) */}
         <div className="flex-1 flex items-start gap-6 p-4 sm:p-6 lg:p-8 min-w-0 w-full">

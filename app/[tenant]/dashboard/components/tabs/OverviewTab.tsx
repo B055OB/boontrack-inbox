@@ -143,8 +143,8 @@ export default function OverviewTab({
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-[640px] text-left text-xs text-slate-600">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
               <tr>
                 <th className="px-5 py-3.5">Invoice / Waktu</th>
@@ -205,8 +205,8 @@ export default function OverviewTab({
                           {paymentMethod}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-right font-black text-slate-900 font-mono">
-                        Rp {grossAmount.toLocaleString('id-ID')}
+                      <td className="px-5 py-4 text-right font-black text-slate-900 font-mono whitespace-nowrap">
+                        Rp {Math.round(grossAmount).toLocaleString('id-ID')}
                       </td>
                       <td className="px-5 py-4 text-center">
                         <span className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
@@ -214,7 +214,7 @@ export default function OverviewTab({
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : 'bg-amber-50 text-amber-700 border-amber-200'
                         }`}>
-                          {status}
+                          {isPaid ? 'LUNAS (PAID)' : 'PENDING'}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-center">

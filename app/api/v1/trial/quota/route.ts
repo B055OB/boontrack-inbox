@@ -68,6 +68,9 @@ export async function GET(req: NextRequest) {
     }
 
     const summary = await getTrialUsageSummary(tenantId);
+    const waCurrent = summary.waNotifications?.current ?? Math.min(summary.orders.current, 15);
+    const waLimit = summary.waNotifications?.limit ?? 15;
+    const waExceeded = waCurrent >= waLimit;
 
     return NextResponse.json({
       success: true,
@@ -79,14 +82,21 @@ export async function GET(req: NextRequest) {
           limit: summary.orders.limit,
           exceeded: summary.orders.exceeded,
           percent: Math.min(100, Math.round((summary.orders.current / summary.orders.limit) * 100)),
-          label: `Pemakaian Pesanan: ${summary.orders.current}/${summary.orders.limit}`,
+          label: `Pesanan: ${summary.orders.current}/${summary.orders.limit}`,
         },
         interactions: {
           current: summary.interactions.current,
           limit: summary.interactions.limit,
           exceeded: summary.interactions.exceeded,
           percent: Math.min(100, Math.round((summary.interactions.current / summary.interactions.limit) * 100)),
-          label: `AI/Notifikasi: ${summary.interactions.current}/${summary.interactions.limit}`,
+          label: `Interaksi AI: ${summary.interactions.current}/${summary.interactions.limit}`,
+        },
+        wa_notifications: {
+          current: waCurrent,
+          limit: waLimit,
+          exceeded: waExceeded,
+          percent: Math.min(100, Math.round((waCurrent / waLimit) * 100)),
+          label: `Notifikasi WA: ${waCurrent}/${waLimit}`,
         },
       },
     });

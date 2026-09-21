@@ -493,7 +493,7 @@ export default function AdsTrackingPro({
             <a
               href="https://buzzerukm.adsolution.co.id/register"
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-blue-500/30 transition transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
             >
               <span>Order Akun FB Whitelist</span>
@@ -867,8 +867,8 @@ export default function AdsTrackingPro({
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full min-w-[640px] text-left text-xs text-slate-600">
               <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-black tracking-wider border-y border-slate-200">
                 <tr>
                   <th className="px-4 py-3">Campaign Name</th>

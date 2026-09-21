@@ -372,8 +372,8 @@ export default function OrdersTab({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-[640px] text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                 <th className="py-2.5 px-3">Invoice</th>
@@ -437,21 +437,21 @@ export default function OrdersTab({
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 font-bold text-slate-900 font-mono">
-                        Rp {ord.total_amount?.toLocaleString('id-ID')}
+                      <td className="py-2.5 px-3 font-black text-slate-900 font-mono whitespace-nowrap">
+                        Rp {Math.round(Number(ord.total_amount || 0)).toLocaleString('id-ID')}
                       </td>
                       <td className="py-2.5 px-3 uppercase text-[11px] font-semibold text-slate-600">
                         {ord.payment_method || 'QRIS / TRANSFER'}
                       </td>
                       <td className="py-2.5 px-3">
                         <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border ${
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
                             isPaid
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : 'bg-amber-50 text-amber-700 border-amber-200'
                           }`}
                         >
-                          {isPaid ? 'PAID (LUNAS)' : 'PENDING'}
+                          {isPaid ? 'LUNAS (PAID)' : 'PENDING'}
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-right">
