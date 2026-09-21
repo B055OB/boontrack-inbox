@@ -18,6 +18,9 @@ import {
   ExternalLink,
   ShieldCheck,
   Loader2,
+  BatteryCharging,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -55,6 +58,133 @@ function formatRelativeTime(dateStr?: string | null): string {
   } catch {
     return dateStr;
   }
+}
+
+/**
+ * Callout Card / Accordion: Tips Agar Pembacaan Notifikasi Tetap Stabil 24 Jam
+ * Wajib: Pengaturan Baterai & Latar Belakang HP Android
+ */
+export function AndroidBatteryOptimizationCard({
+  collapsible = true,
+  defaultExpanded = true,
+  className = '',
+}: {
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
+  className?: string;
+}) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+
+  return (
+    <div
+      className={`bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-orange-500/10 border border-amber-300/90 dark:border-amber-500/30 rounded-2xl p-4 text-slate-800 transition shadow-xs ${className}`}
+    >
+      {/* Header */}
+      <div
+        className={`flex items-start justify-between gap-3 ${collapsible ? 'cursor-pointer select-none' : ''}`}
+        onClick={collapsible ? () => setIsExpanded(!isExpanded) : undefined}
+      >
+        <div className="flex items-start gap-3">
+          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-700 font-bold shrink-0 mt-0.5 shadow-2xs">
+            <BatteryCharging className="w-5 h-5 text-amber-600" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-600 text-white shadow-2xs">
+                Tips 24 Jam Non-Stop
+              </span>
+              <span className="text-[11px] font-bold text-amber-900">
+                Tips Agar Pembacaan Notifikasi Tetap Stabil 24 Jam
+              </span>
+            </div>
+            <h4 className="font-black text-xs sm:text-sm text-slate-900 mt-1">
+              Wajib: Pengaturan Baterai &amp; Latar Belakang HP Android
+            </h4>
+            <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
+              Meskipun ponsel dalam kondisi diisi daya (di-charge) terus-menerus, sistem operasi Android tetap dapat menutup paksa background service jika optimasi baterai aktif.
+            </p>
+          </div>
+        </div>
+
+        {collapsible && (
+          <button
+            type="button"
+            className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-amber-100/60 shrink-0 mt-1 transition cursor-pointer"
+            aria-label="Toggle panduan baterai"
+          >
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        )}
+      </div>
+
+      {/* Accordion Content */}
+      {(!collapsible || isExpanded) && (
+        <div className="mt-3.5 pt-3.5 border-t border-amber-200/80 space-y-2 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {/* Poin 1 */}
+            <div className="flex items-start gap-2.5 p-3 bg-white/95 rounded-xl border border-amber-200/60 shadow-2xs">
+              <span className="w-5 h-5 rounded-full bg-amber-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                1
+              </span>
+              <div className="space-y-0.5">
+                <p className="font-bold text-slate-900 text-[11px]">
+                  Ubah Status Baterai ke &apos;Unrestricted&apos;
+                </p>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Masuk ke <strong>Settings &gt; Apps &gt; BoonTrack Reader &gt; Battery</strong> &gt; pilih <strong>&quot;Unrestricted&quot; / &quot;Tidak Dibatasi&quot;</strong>.
+                </p>
+              </div>
+            </div>
+
+            {/* Poin 2 */}
+            <div className="flex items-start gap-2.5 p-3 bg-white/95 rounded-xl border border-amber-200/60 shadow-2xs">
+              <span className="w-5 h-5 rounded-full bg-amber-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                2
+              </span>
+              <div className="space-y-0.5">
+                <p className="font-bold text-slate-900 text-[11px]">
+                  Kunci Aplikasi di Recent Apps
+                </p>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Buka menu <strong>Recent Apps (Multitasking)</strong>, tekan lama pada kartu BoonTrack Reader, lalu pilih ikon <strong>Gembok (Lock)</strong> agar tidak terhapus saat membersihkan RAM.
+                </p>
+              </div>
+            </div>
+
+            {/* Poin 3 */}
+            <div className="flex items-start gap-2.5 p-3 bg-white/95 rounded-xl border border-amber-200/60 shadow-2xs">
+              <span className="w-5 h-5 rounded-full bg-amber-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                3
+              </span>
+              <div className="space-y-0.5">
+                <p className="font-bold text-slate-900 text-[11px]">
+                  Izinkan Autostart (Khusus Xiaomi/MIUI, Oppo/ColorOS, Vivo)
+                </p>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Aktifkan toggle <strong>&quot;Autostart&quot; / &quot;Mulai Otomatis&quot;</strong> di menu info aplikasi agar tetap aktif otomatis setelah HP restart.
+                </p>
+              </div>
+            </div>
+
+            {/* Poin 4 */}
+            <div className="flex items-start gap-2.5 p-3 bg-white/95 rounded-xl border border-amber-200/60 shadow-2xs">
+              <span className="w-5 h-5 rounded-full bg-amber-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                4
+              </span>
+              <div className="space-y-0.5">
+                <p className="font-bold text-slate-900 text-[11px]">
+                  Tips Tambahan (Stay Awake)
+                </p>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Aktifkan opsi <strong>&quot;Stay Awake&quot;</strong> di Opsi Pengembang (<em>Developer Options</em>) agar layar ponsel selalu aktif selama terhubung kabel charger.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ReaderIntegrationCard({
@@ -486,6 +616,9 @@ export default function ReaderIntegrationCard({
           </div>
         </div>
 
+        {/* Callout Tips Optimasi HP Android / Background 24 Jam */}
+        <AndroidBatteryOptimizationCard collapsible={true} defaultExpanded={true} />
+
         {/* Download & Action Buttons */}
         <div className="pt-1 flex flex-wrap items-center gap-2.5">
           <a
@@ -659,6 +792,14 @@ export default function ReaderIntegrationCard({
                   </div>
                 </div>
 
+                {/* Tips Singkat Baterai */}
+                <div className="flex items-start gap-2 p-2.5 bg-amber-500/10 border border-amber-200 rounded-xl text-[11px] text-amber-950">
+                  <BatteryCharging className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="leading-snug">
+                    <strong>Penting:</strong> Ubah setelan baterai ke <em>&quot;Unrestricted / Tidak Dibatasi&quot;</em> dan kunci di Recent Apps agar verifikasi mutasi QRIS aktif stabil 24 jam.
+                  </p>
+                </div>
+
                 {/* Manual Token Fallback */}
                 {pairingToken && (
                   <div className="flex items-center justify-between px-3 py-2 bg-slate-100/70 rounded-xl text-[10px] text-slate-500">
@@ -693,7 +834,7 @@ export default function ReaderIntegrationCard({
       {/* ===================================================================== */}
       {isGuideModalOpen && (
         <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700 font-bold">
@@ -748,6 +889,9 @@ export default function ReaderIntegrationCard({
                 </div>
               </div>
             </div>
+
+            {/* Callout Panduan Baterai & Latar Belakang HP Android */}
+            <AndroidBatteryOptimizationCard collapsible={false} defaultExpanded={true} />
 
             <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
               <a
