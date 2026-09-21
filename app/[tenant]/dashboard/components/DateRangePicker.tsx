@@ -129,28 +129,28 @@ export default function DateRangePicker({
   };
 
   return (
-    <div className={`relative inline-block ${className}`} ref={dropdownRef}>
+    <div className={`relative inline-block ${isOpen ? 'z-[60]' : 'z-10'} ${className}`} ref={dropdownRef}>
       {/* Trigger Button */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="inline-flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer"
+        className="inline-flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer"
         aria-label="Pilih rentang tanggal"
       >
-        <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+        <Calendar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
         <span className="truncate max-w-[170px]">{value.label || 'Pilih Tanggal'}</span>
         <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {/* Popover Menu */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 z-50 w-72 sm:w-80 bg-white rounded-2xl border border-slate-200 shadow-xl p-4 space-y-3 animate-in fade-in zoom-in-95 duration-100">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-            <span className="text-xs font-black text-slate-900">Rentang Waktu</span>
+        <div className="absolute right-0 top-full mt-2 z-[60] w-72 sm:w-80 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-4 space-y-3 animate-in fade-in zoom-in-95 duration-100">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <span className="text-xs font-black text-slate-900 dark:text-slate-100">Rentang Waktu</span>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition"
+              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -167,43 +167,43 @@ export default function DateRangePicker({
                   onClick={() => handleSelectPreset(p.id)}
                   className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                     isSelected
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/60'
+                      ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                      : 'bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700'
                   }`}
                 >
                   <span className="truncate">{p.label}</span>
-                  {isSelected && <Check className="w-3 h-3 text-blue-600 shrink-0 ml-1" />}
+                  {isSelected && <Check className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0 ml-1" />}
                 </button>
               );
             })}
           </div>
 
           {/* Custom Date Range */}
-          <div className="pt-2 border-t border-slate-100 space-y-2">
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-700">Custom Rentang Tanggal</span>
+              <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Custom Rentang Tanggal</span>
               {value.preset === 'custom' && (
-                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">Aktif</span>
+                <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/80 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">Aktif</span>
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
-                <label className="text-[10px] text-slate-400 font-semibold block mb-1">Mulai</label>
+                <label className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold block mb-1">Mulai</label>
                 <input
                   type="date"
                   value={customStart}
                   onChange={(e) => setCustomStart(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-medium text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-slate-400 font-semibold block mb-1">Selesai</label>
+                <label className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold block mb-1">Selesai</label>
                 <input
                   type="date"
                   value={customEnd}
                   onChange={(e) => setCustomEnd(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-medium text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -222,3 +222,4 @@ export default function DateRangePicker({
     </div>
   );
 }
+

@@ -80,7 +80,7 @@ export default function OverviewTab({
 
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4 relative z-20 overflow-visible">
         <div>
           <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
             <Wallet className="w-5 h-5 text-emerald-600" />
@@ -91,7 +91,7 @@ export default function OverviewTab({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto relative z-30 overflow-visible">
           {/* Global Date Range Picker */}
           <DateRangePicker value={dateRange} onChange={setDateRange} />
 

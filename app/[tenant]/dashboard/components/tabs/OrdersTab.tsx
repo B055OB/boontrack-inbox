@@ -355,8 +355,8 @@ export default function OrdersTab({
       </div>
 
       {/* Filter Bar & Tabel Pesanan */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-        <div className="p-3 sm:p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3 justify-between">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
+        <div className="p-3 sm:p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
           <div className="relative flex-1 max-w-sm">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -368,7 +368,7 @@ export default function OrdersTab({
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
             <DateRangePicker value={dateRange} onChange={setDateRange} />
 
             <div className="flex items-center gap-2">
@@ -386,7 +386,7 @@ export default function OrdersTab({
           </div>
         </div>
 
-        <div className="overflow-x-auto w-full">
+        <div className="overflow-x-auto w-full rounded-b-2xl">
           <table className="w-full min-w-[640px] text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">

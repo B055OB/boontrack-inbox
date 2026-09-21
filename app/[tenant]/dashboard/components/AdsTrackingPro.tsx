@@ -628,8 +628,8 @@ export default function AdsTrackingPro({
       </div>
 
       {/* ── 1. TAB GRAFIK ANALITIK INTERAKTIF REAL-TIME ── */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-6 relative overflow-visible">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 relative z-20 overflow-visible">
           <div>
             <div className="flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-600" />
@@ -642,7 +642,7 @@ export default function AdsTrackingPro({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
             <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
               <button
                 type="button"
@@ -766,8 +766,8 @@ export default function AdsTrackingPro({
       </div>
 
       {/* ── 2. TABEL ATRIBUSI CAMPAIGN DINAMIS (UTM SOURCE & ADS) ── */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4 relative overflow-visible">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4 relative z-20 overflow-visible">
           <div>
             <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
               <Target className="w-5 h-5 text-indigo-600" />
@@ -778,7 +778,7 @@ export default function AdsTrackingPro({
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-2.5">
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 relative z-30 overflow-visible">
             <DateRangePicker value={dateRange} onChange={setDateRange} />
 
             <button
