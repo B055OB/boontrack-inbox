@@ -102,7 +102,7 @@ export default function TrialQuotaProgressBar({ tenantSlug, onUpgradeClick }: Pr
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
             <span>🧪</span>
-            <span>Batas Kuota Trial (CFO Guardrail)</span>
+            <span>Batas Kuota Trial</span>
           </span>
 
           {anyExceeded ? (
