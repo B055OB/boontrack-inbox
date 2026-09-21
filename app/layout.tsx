@@ -26,9 +26,32 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://shop.boontrack.com'),
   title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
   description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
   manifest: "/manifest.json",
+  openGraph: {
+    title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
+    description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
+    url: "https://shop.boontrack.com",
+    siteName: "BoonTrack Shop",
+    images: [
+      {
+        url: '/images/logo-master.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'BoonTrack Shop',
+      },
+    ],
+    locale: 'id_ID',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
+    description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
+    images: ['/images/logo-master.jpg'],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

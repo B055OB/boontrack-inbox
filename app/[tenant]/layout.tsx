@@ -121,7 +121,7 @@ export async function generateMetadata({
       }
     }
 
-    const BOONTRACK_OFFICIAL_LOGO = 'https://shop.boontrack.com/logo-shop.png';
+    const BOONTRACK_OFFICIAL_LOGO = 'https://shop.boontrack.com/images/logo-master.jpg';
 
     const resolvedOgImage =
       bannerUrl ||
