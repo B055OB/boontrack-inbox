@@ -473,7 +473,7 @@ export default function AdsTrackingPro({
         </div>
       )}
 
-      {/* ── BANNER ORDER AKUN FB WHITELIST (MELANGKAH.ID) ── */}
+      {/* ── BANNER ORDER AKUN FB WHITELIST (BUZZERUKM.ADSOLUTION.CO.ID) ── */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-950 via-slate-900 to-indigo-950 p-6 text-white shadow-xl border border-blue-500/30">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div className="space-y-1.5 max-w-2xl">
@@ -485,13 +485,13 @@ export default function AdsTrackingPro({
               Butuh Akun Iklan Anti-Ame & Limit Harian Tanpa Batas?
             </h3>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Order Akun FB Whitelist resmi via Melangkah.id. Dapatkan akun agency Meta bergaransi replace, siap scale-up konversi tinggi tanpa khawatir terkena restriksi harian.
+              Order Akun FB Whitelist resmi via BuzzerUKM Adsolution. Dapatkan akun agency Meta bergaransi replace, siap scale-up konversi tinggi tanpa khawatir terkena restriksi harian.
             </p>
           </div>
 
           <div className="shrink-0 flex items-center gap-3">
             <a
-              href="https://melangkah.id"
+              href="https://buzzerukm.adsolution.co.id/register"
               target="_blank"
               rel="noreferrer"
               className="px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-blue-500/30 transition transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
