@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Palette,
   CheckCircle2,
@@ -23,6 +23,7 @@ import {
   Video,
   MapPin,
   Phone,
+  Search,
   Link as LinkIcon,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
@@ -230,6 +231,30 @@ export default function StorefrontThemeCard({
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [targetUpgradeTheme, setTargetUpgradeTheme] = useState<VisualThemeOption | null>(null);
 
+  // Search Autocomplete state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement | null>(null);
+  const hasLoadedProductsRef = useRef(false);
+
+  const onButtonsChangeRef = useRef(onButtonsChange);
+  onButtonsChangeRef.current = onButtonsChange;
+  const onFeaturedProductsChangeRef = useRef(onFeaturedProductsChange);
+  onFeaturedProductsChangeRef.current = onFeaturedProductsChange;
+
+  // Tutup dropdown pencarian saat klik di luar area
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   // Sync prop jika ada perubahan dari parent
   useEffect(() => {
     if (currentVisualTheme) {
@@ -334,14 +359,28 @@ export default function StorefrontThemeCard({
     };
   }, [tenantSlug]);
 
-  // Load produk aktif, buttons & ID unggulan dari Supabase
+  // Sync prop jika parent menyediakan daftar produk aktif
   useEffect(() => {
+    if (Array.isArray(products) && products.length > 0) {
+      setAvailableProducts(products.filter((p) => p && p.is_active !== false));
+      setIsLoadingProducts(false);
+    }
+  }, [products]);
+
+  // Load produk aktif, buttons & ID unggulan dari Supabase & API
+  useEffect(() => {
+    if (!tenantSlug || hasLoadedProductsRef.current) return;
+    hasLoadedProductsRef.current = true;
+
     let isMounted = true;
     async function loadFeaturedAndProducts() {
       try {
         setIsLoadingProducts(true);
         const supabase = getSupabase();
-        if (!supabase || !tenantSlug) return;
+        if (!supabase || !tenantSlug) {
+          if (isMounted) setIsLoadingProducts(false);
+          return;
+        }
 
         const { data: tenantRow } = await supabase
           .from('tenants')
@@ -356,11 +395,11 @@ export default function StorefrontThemeCard({
           const rawButtons = meta.microsite?.buttons || meta.buttons;
           if (Array.isArray(rawButtons) && rawButtons.length > 0) {
             setButtons(rawButtons);
-            onButtonsChange?.(rawButtons);
+            onButtonsChangeRef.current?.(rawButtons);
           } else if (!initialButtons || initialButtons.length === 0) {
             const starters = getDefaultStarterButtons(tenantSlug, meta.whatsapp_number || storeWhatsapp);
             setButtons(starters);
-            onButtonsChange?.(starters);
+            onButtonsChangeRef.current?.(starters);
           }
 
           const rawFeat =
@@ -369,36 +408,41 @@ export default function StorefrontThemeCard({
             meta.microsite_featured_product_ids;
           const featList = Array.isArray(rawFeat) ? rawFeat.map(String).slice(0, 5) : [];
           setFeaturedProductIds(featList);
+          onFeaturedProductsChangeRef.current?.(featList);
 
           // Ambil daftar produk aktif dari database Supabase (products) milik tenant
           let dbProdsList: ProductItem[] = [];
           if (tenantRow.id) {
-            const { data: dbProds } = await supabase
-              .from('products')
-              .select('*')
-              .eq('tenant_id', tenantRow.id)
-              .order('created_at', { ascending: false });
+            try {
+              const { data: dbProds } = await supabase
+                .from('products')
+                .select('*')
+                .eq('tenant_id', tenantRow.id)
+                .order('created_at', { ascending: false });
 
-            if (Array.isArray(dbProds) && dbProds.length > 0) {
-              dbProdsList = dbProds
-                .filter((p: any) => p.is_active !== false)
-                .map((p: any) => ({
-                  id: String(p.id),
-                  name: p.title || p.name || 'Produk',
-                  price: Number(p.price) || 0,
-                  promo_price: p.promo_price ? Number(p.promo_price) : 0,
-                  category: p.category || 'Digital',
-                  image: p.image || p.image_url || '',
-                  description: p.description || '',
-                  stock: p.stock !== undefined ? Number(p.stock) : 999999,
-                  is_active: p.is_active !== false,
-                }));
+              if (Array.isArray(dbProds) && dbProds.length > 0) {
+                dbProdsList = dbProds
+                  .filter((p: any) => p.is_active !== false)
+                  .map((p: any) => ({
+                    id: String(p.id),
+                    name: p.title || p.name || 'Produk',
+                    price: Number(p.price) || 0,
+                    promo_price: p.promo_price ? Number(p.promo_price) : 0,
+                    category: p.category || 'Digital',
+                    image: p.image || p.image_url || '',
+                    description: p.description || '',
+                    stock: p.stock !== undefined ? Number(p.stock) : 999999,
+                    is_active: p.is_active !== false,
+                  }));
+              }
+            } catch (pDbErr) {
+              console.warn('[StorefrontThemeCard] SQL products fetch note:', pDbErr);
             }
           }
 
           if (dbProdsList.length === 0 && Array.isArray(meta.products) && meta.products.length > 0) {
             dbProdsList = meta.products
-              .filter((p: any) => p.is_active !== false)
+              .filter((p: any) => p && p.is_active !== false)
               .map((p: any) => ({
                 id: String(p.id),
                 name: p.name || p.title || 'Produk',
@@ -410,6 +454,34 @@ export default function StorefrontThemeCard({
                 stock: p.stock !== undefined ? Number(p.stock) : 999999,
                 is_active: p.is_active !== false,
               }));
+          }
+
+          // Fallback: API endpoint /api/v1/tenants/[slug]/products
+          if (dbProdsList.length === 0) {
+            try {
+              const apiRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, { cache: 'no-store' });
+              if (apiRes.ok) {
+                const apiData = await apiRes.json();
+                const apiProds = Array.isArray(apiData?.products) ? apiData.products : [];
+                if (apiProds.length > 0) {
+                  dbProdsList = apiProds
+                    .filter((p: any) => p && p.is_active !== false)
+                    .map((p: any) => ({
+                      id: String(p.id),
+                      name: p.name || p.title || 'Produk',
+                      price: Number(p.price) || 0,
+                      promo_price: p.promo_price ? Number(p.promo_price) : 0,
+                      category: p.category || 'Digital',
+                      image: p.image || p.image_url || '',
+                      description: p.description || '',
+                      stock: p.stock !== undefined ? Number(p.stock) : 999999,
+                      is_active: p.is_active !== false,
+                    }));
+                }
+              }
+            } catch (apiErr) {
+              console.warn('[StorefrontThemeCard] API products fetch note:', apiErr);
+            }
           }
 
           if (dbProdsList.length > 0 && isMounted) {
@@ -428,35 +500,12 @@ export default function StorefrontThemeCard({
     return () => {
       isMounted = false;
     };
-  }, [tenantSlug, initialButtons, storeWhatsapp, onButtonsChange]);
+  }, [tenantSlug]);
 
-  // Sync prop jika parent menyediakan daftar produk
-  useEffect(() => {
-    if (products && products.length > 0 && availableProducts.length === 0) {
-      setAvailableProducts(products.filter((p) => p.is_active !== false));
-    }
-  }, [products, availableProducts.length]);
-
-  // Handler toggle produk dengan validasi ketat maksimal 5 produk
-  const handleToggleProduct = (prodId: string) => {
-    const isSelected = featuredProductIds.includes(prodId);
-    let nextIds: string[];
-
-    if (isSelected) {
-      nextIds = featuredProductIds.filter((id) => id !== prodId);
-    } else {
-      if (featuredProductIds.length >= 5) {
-        setToastMessage('⚠️ Maksimal 5 produk unggulan yang dapat ditampilkan di bio storefront.');
-        setTimeout(() => setToastMessage(null), 3500);
-        return;
-      }
-      nextIds = [...featuredProductIds, prodId];
-    }
-
-    setFeaturedProductIds(nextIds);
-    if (onFeaturedProductsChange) {
-      onFeaturedProductsChange(nextIds);
-    }
+  // Helper sinkronisasi produk unggulan ke API, Supabase, dan Live Preview
+  const persistFeaturedProducts = async (nextIds: string[]) => {
+    // 1. Update live phone preview & parent callback secara instan
+    onFeaturedProductsChangeRef.current?.(nextIds);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('storefront-featured-products-changed', {
@@ -464,7 +513,97 @@ export default function StorefrontThemeCard({
         })
       );
     }
+
+    // 2. Simpan secara paralel ke backend settings API & Supabase
+    try {
+      fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          featured_product_ids: nextIds,
+          microsite: {
+            featured_product_ids: nextIds,
+          },
+          theme: {
+            featured_product_ids: nextIds,
+          },
+        }),
+      }).catch((apiErr) => {
+        console.warn('[StorefrontThemeCard] Settings API sync note:', apiErr);
+      });
+
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+
+        if (tenantRow) {
+          const updatedMeta = {
+            ...(tenantRow.metadata || {}),
+            featured_product_ids: nextIds,
+            microsite_featured_product_ids: nextIds,
+            microsite: {
+              ...(tenantRow.metadata?.microsite || {}),
+              featured_product_ids: nextIds,
+            },
+            theme: {
+              ...(tenantRow.metadata?.theme || {}),
+              featured_product_ids: nextIds,
+            },
+          };
+          await supabase
+            .from('tenants')
+            .update({ metadata: updatedMeta })
+            .eq('slug', tenantSlug);
+        }
+      }
+    } catch (saveErr) {
+      console.warn('[StorefrontThemeCard] Persist featured products error:', saveErr);
+    }
   };
+
+  // Handler penambahan produk dari search autocomplete
+  const handleAddFeaturedProduct = (prodId: string) => {
+    if (featuredProductIds.length >= 5) {
+      setToastMessage('⚠️ Maksimal 5 produk unggulan telah tercapai.');
+      setTimeout(() => setToastMessage(null), 3500);
+      return;
+    }
+    if (featuredProductIds.includes(prodId)) return;
+    const nextIds = [...featuredProductIds, prodId];
+    setFeaturedProductIds(nextIds);
+    setSearchQuery('');
+    setIsSearchOpen(false);
+    persistFeaturedProducts(nextIds);
+    setToastMessage('✅ Produk berhasil ditambahkan ke produk unggulan.');
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  // Handler penghapusan produk unggulan via tombol X
+  const handleRemoveFeaturedProduct = (prodId: string) => {
+    const nextIds = featuredProductIds.filter((id) => id !== prodId);
+    setFeaturedProductIds(nextIds);
+    persistFeaturedProducts(nextIds);
+    setToastMessage('Produk dihapus dari unggulan.');
+    setTimeout(() => setToastMessage(null), 2000);
+  };
+
+  // Filter produk untuk autocomplete real-time
+  const filteredSearchProducts = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase().trim();
+    return availableProducts
+      .filter((p) => !featuredProductIds.includes(String(p.id)))
+      .filter((p) => {
+        const name = (p.name || '').toLowerCase();
+        const cat = (p.category || '').toLowerCase();
+        return name.includes(q) || cat.includes(q);
+      })
+      .slice(0, 10);
+  }, [availableProducts, featuredProductIds, searchQuery]);
 
   // 2. Save theme change persistently to database & settings API
   const saveThemeConfig = async (newThemeId: VisualThemeType, newChatEnabled: boolean) => {
@@ -926,7 +1065,7 @@ export default function StorefrontThemeCard({
             )}
           </div>
 
-          {/* KONTROL: PILIH PRODUK UNGGULAN DISPLAY (MAKSIMAL 5 PRODUK) */}
+          {/* KONTROL: PILIH PRODUK UNGGULAN DISPLAY (SEARCH AUTOCOMPLETE & CHIPS) */}
           <div className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 sm:p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200/60">
               <div className="flex items-center gap-2.5">
@@ -936,14 +1075,14 @@ export default function StorefrontThemeCard({
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="text-xs sm:text-sm font-black text-slate-900">
-                      Pilih Produk Unggulan untuk Ditampilkan di Bio Storefront (Maksimal 5 Produk)
+                      Produk Unggulan di Bio Storefront
                     </h4>
                     <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
                       featuredProductIds.length === 5
                         ? 'bg-amber-100 text-amber-800 border-amber-300'
                         : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     }`}>
-                      {featuredProductIds.length}/5 Dipilih
+                      {featuredProductIds.length}/5 Terpilih
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
@@ -957,85 +1096,179 @@ export default function StorefrontThemeCard({
                   type="button"
                   onClick={() => {
                     setFeaturedProductIds([]);
-                    onFeaturedProductsChange?.([]);
+                    persistFeaturedProducts([]);
                   }}
                   className="text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer self-start sm:self-auto shrink-0"
                 >
-                  Reset Pilihan
+                  Reset Semua Pilihan
                 </button>
               )}
             </div>
 
-            {isLoadingProducts ? (
-              <div className="p-4 rounded-xl bg-white border border-slate-200 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                <span>Memuat daftar produk toko...</span>
+            {/* FORM INPUT PENCARIAN & DROPDOWN AUTOCOMPLETE */}
+            <div ref={searchContainerRef} className="relative space-y-2">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  disabled={featuredProductIds.length >= 5}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setIsSearchOpen(true);
+                  }}
+                  onFocus={() => {
+                    if (searchQuery.trim().length > 0) setIsSearchOpen(true);
+                  }}
+                  placeholder={
+                    featuredProductIds.length >= 5
+                      ? "Maksimal 5 produk unggulan telah tercapai"
+                      : "Ketik nama produk untuk menambahkan..."
+                  }
+                  className={`w-full pl-9 pr-4 py-2.5 rounded-xl border text-xs font-medium transition ${
+                    featuredProductIds.length >= 5
+                      ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+                      : "bg-white border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-2xs"
+                  }`}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setIsSearchOpen(false);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
-            ) : availableProducts.length === 0 ? (
-              <div className="p-4 rounded-xl bg-white border border-slate-200 text-center text-xs text-slate-500">
-                Belum ada produk aktif di katalog toko Anda. Tambahkan produk di tab{' '}
-                <strong className="text-slate-700">Katalog Produk</strong> agar dapat dipilih sebagai produk unggulan.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
-                {availableProducts.map((prod) => {
-                  const prodId = String(prod.id);
-                  const isSelected = featuredProductIds.includes(prodId);
-                  const isDisabled = !isSelected && featuredProductIds.length >= 5;
-                  const prodImage = prod.image || (prod as any).image_url;
 
-                  return (
-                    <label
-                      key={prodId}
-                      onClick={(e) => {
-                        if (isDisabled) {
-                          e.preventDefault();
-                          setToastMessage('⚠️ Maksimal 5 produk unggulan yang dapat ditampilkan di bio storefront.');
-                          setTimeout(() => setToastMessage(null), 3000);
-                        }
-                      }}
-                      className={`flex items-center gap-3 p-2.5 rounded-xl border transition cursor-pointer select-none ${
-                        isSelected
-                          ? 'border-emerald-600 bg-emerald-50/70 shadow-2xs ring-1 ring-emerald-500/30'
-                          : isDisabled
-                          ? 'border-slate-200 bg-slate-100/50 opacity-60 cursor-not-allowed'
-                          : 'border-slate-200 hover:bg-white bg-slate-50/50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        disabled={isDisabled}
-                        onChange={() => handleToggleProduct(prodId)}
-                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
-                      />
+              {/* Info batas maksimal 5 produk */}
+              {featuredProductIds.length >= 5 && (
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-3 py-1.5 rounded-xl">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                  <span>Maksimal 5 produk unggulan telah tercapai. Hapus salah satu produk di bawah jika ingin menambahkan produk lain.</span>
+                </div>
+              )}
 
-                      {prodImage ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={prodImage}
-                          alt={prod.name}
-                          className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0 bg-white"
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-lg bg-slate-200/70 flex items-center justify-center text-slate-400 shrink-0">
-                          <Package className="w-4 h-4" />
-                        </div>
-                      )}
+              {/* Real-time Search Results Dropdown */}
+              {isSearchOpen && searchQuery.trim().length > 0 && featuredProductIds.length < 5 && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-30 max-h-64 overflow-y-auto divide-y divide-slate-100">
+                  {filteredSearchProducts.length === 0 ? (
+                    <div className="p-3.5 text-center text-xs text-slate-400">
+                      Tidak ada produk aktif yang cocok dengan &quot;<strong className="text-slate-600">{searchQuery}</strong>&quot;
+                    </div>
+                  ) : (
+                    filteredSearchProducts.map((prod: ProductItem) => {
+                      const prodImage = prod.image || (prod as any).image_url;
+                      return (
+                        <div
+                          key={prod.id}
+                          onClick={() => handleAddFeaturedProduct(String(prod.id))}
+                          className="flex items-center gap-3 p-2.5 hover:bg-indigo-50/60 transition cursor-pointer group"
+                        >
+                          {prodImage ? (
+                            <img
+                              src={prodImage}
+                              alt={prod.name}
+                              className="w-9 h-9 rounded-lg object-cover border border-slate-100 shrink-0 bg-slate-50"
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                              <Package className="w-4 h-4" />
+                            </div>
+                          )}
 
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold text-slate-900 truncate">
-                          {prod.name}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-slate-900 truncate group-hover:text-indigo-600 transition-colors">
+                              {prod.name}
+                            </div>
+                            <div className="text-[11px] font-semibold text-emerald-600">
+                              {Number(prod.price) === 0 ? 'Gratis' : `Rp ${Number(prod.price).toLocaleString('id-ID')}`}
+                            </div>
+                          </div>
+
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 group-hover:bg-indigo-600 group-hover:text-white px-2.5 py-1 rounded-lg transition-all shrink-0">
+                            <Plus className="w-3 h-3" />
+                            <span>Pilih</span>
+                          </span>
                         </div>
-                        <div className="text-[11px] font-semibold text-emerald-600">
-                          Rp {Number(prod.price).toLocaleString('id-ID')}
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* DAFTAR PRODUK UNGGULAN TERPILIH (CHIP / KARTU KECIL) */}
+            <div className="space-y-2 pt-2">
+              <span className="text-xs font-bold text-slate-700 block">
+                Produk Unggulan Terpilih ({featuredProductIds.length}/5):
+              </span>
+
+              {isLoadingProducts ? (
+                <div className="p-4 rounded-xl bg-white border border-slate-200 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                  <span>Memuat daftar produk toko...</span>
+                </div>
+              ) : featuredProductIds.length === 0 ? (
+                <div className="p-4 rounded-xl bg-white border border-dashed border-slate-200 text-center text-xs text-slate-400 space-y-1">
+                  <p>Belum ada produk unggulan yang dipilih untuk bio storefront.</p>
+                  <p className="text-[11px] text-slate-400">Gunakan form pencarian di atas untuk menambahkan produk unggulan.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {featuredProductIds.map((prodId) => {
+                    const prod = availableProducts.find((p: ProductItem) => String(p.id) === String(prodId)) || {
+                      id: prodId,
+                      name: `Produk (${prodId})`,
+                      price: 0,
+                      image: '',
+                    };
+                    const prodImage = prod.image || (prod as any).image_url;
+
+                    return (
+                      <div
+                        key={prodId}
+                        className="flex items-center gap-2.5 p-2.5 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 transition relative group"
+                      >
+                        {prodImage ? (
+                          <img
+                            src={prodImage}
+                            alt={prod.name}
+                            className="w-10 h-10 rounded-lg object-cover border border-slate-100 shrink-0 bg-slate-50"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                            <Package className="w-5 h-5" />
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1 pr-6">
+                          <h5 className="text-xs font-bold text-slate-900 truncate" title={prod.name}>
+                            {prod.name}
+                          </h5>
+                          <p className="text-[11px] font-semibold text-emerald-600 mt-0.5">
+                            {Number(prod.price) === 0 ? 'Gratis' : `Rp ${Number(prod.price).toLocaleString('id-ID')}`}
+                          </p>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFeaturedProduct(prodId)}
+                          className="absolute top-2 right-2 p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                          title="Hapus dari produk unggulan"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Switch Toggle: Aktifkan Webchat di Storefront */}
