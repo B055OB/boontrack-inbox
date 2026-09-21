@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "jest",
+    "test:payment": "jest --testPathPattern=payment_boundary --no-coverage"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
@@ -21,14 +23,18 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
+    "jest": "^30.5.2",
+    "jest-environment-node": "^30.5.2",
     "playwright": "^1.63.0",
     "tailwindcss": "^4",
+    "ts-jest": "^29.4.12",
     "typescript": "^5"
   },
   "browserslist": [
