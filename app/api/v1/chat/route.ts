@@ -247,22 +247,30 @@ export async function POST(req: NextRequest) {
         let productCatalogText = '';
         if (tenantProducts.length > 0) {
           productCatalogText = tenantProducts
-            .map((p: any) => `• ${p.name || p.title || 'Paket'}: Rp ${Number(p.promo_price || p.price || 0).toLocaleString('id-ID')}${p.description ? ' — ' + p.description : ''}`)
-            .join('\n');
+            .map((p: any) => {
+              const pSlug = p.slug || p.id || '';
+              const pUrl = pSlug ? `https://shop.boontrack.com/${slug}/p/${pSlug}` : `https://shop.boontrack.com/${slug}`;
+              return `• ${p.name || p.title || 'Paket'}: Rp ${Number(p.promo_price || p.price || 0).toLocaleString('id-ID')}${p.description ? ' — ' + p.description : ''}\n  Link Checkout Resmi: ${pUrl}`;
+            })
+            .join('\n\n');
         } else {
           try {
             const supabase = getSupabase();
             if (supabase) {
               const { data: dbProds } = await supabase
                 .from('products')
-                .select('title, name, price, promo_price, description')
+                .select('id, slug, title, name, price, promo_price, description')
                 .eq('tenant_id', slug)
                 .eq('is_available', true)
                 .limit(10);
               if (dbProds && dbProds.length > 0) {
                 productCatalogText = dbProds
-                  .map((p: any) => `• ${p.title || p.name || 'Paket'}: Rp ${Number(p.promo_price || p.price || 0).toLocaleString('id-ID')}${p.description ? ' — ' + p.description : ''}`)
-                  .join('\n');
+                  .map((p: any) => {
+                    const pSlug = p.slug || p.id || '';
+                    const pUrl = pSlug ? `https://shop.boontrack.com/${slug}/p/${pSlug}` : `https://shop.boontrack.com/${slug}`;
+                    return `• ${p.title || p.name || 'Paket'}: Rp ${Number(p.promo_price || p.price || 0).toLocaleString('id-ID')}${p.description ? ' — ' + p.description : ''}\n  Link Checkout Resmi: ${pUrl}`;
+                  })
+                  .join('\n\n');
               }
             }
           } catch {}
@@ -270,6 +278,10 @@ export async function POST(req: NextRequest) {
 
         const menuSummary = formatInteractiveMenusSummary(interactiveMenus);
         const systemPrompt = `Anda adalah asisten AI customer service resmi untuk toko "${storeName}" (Kategori: ${category}).
+
+INFORMASI RESMI TOKO & TAUTAN WEB:
+- Website Toko Resmi: https://shop.boontrack.com/${slug}
+- Link Checkout Utama: ${checkoutUrl}
 
 Katalog Produk & Layanan RESMI (WAJIB DIGUNAKAN, jangan jawab 'tidak tersedia' atau 'belum menyediakan' untuk paket di bawah):
 ${productCatalogText}
@@ -282,12 +294,24 @@ Detail Produk Utama:
 - Tipe: ${product.type || 'Fisik / Digital'}
 - Link Checkout Resmi: ${checkoutUrl}
 ${menuSummary ? `\nMenu Navigasi & Pilihan Cepat Toko:\n${menuSummary}\n` : ''}
-Instruksi:
+ATURAN MUTLAK KEAMANAN TAUTAN & ZERO-HALLUCINATION:
+1. DILARANG KERAS mengarang, memodifikasi, atau membagikan link/URL eksternal fiktif (seperti domain sendiri .com fiktif, blog fiktif, linktree, atau landing page palsu seperti ${slug}.com atau domain eksternal lain).
+2. HANYA gunakan tautan resmi yang tertera di katalog di atas (format wajib: https://shop.boontrack.com/${slug}/p/... atau https://shop.boontrack.com/${slug}).
+3. Jangan pernah memberikan informasi palsu atau tarif di luar data produk yang ada.
+
+ALUR PENDAFTARAN & CHECKOUT RESMI (NATIVE LEAD COLLECTION):
+Ketika calon pembeli menyatakan minat membeli, mendaftar, atau bertanya cara daftarnya (contoh: 'mau ambil yang 7-Day Sprint', 'gimana cara daftarnya', 'mau daftar', 'mau beli'):
+1. Konfirmasi nama paket yang dipilih beserta harganya secara ramah.
+2. LANGSUNG minta data diri pembeli di chat untuk penyiapan akses/pendaftaran:
+   • *Nama Lengkap:*
+   • *Alamat Email:* (untuk pengiriman link akses materi & member area)
+3. Sertakan pula Link Checkout Resmi produk tersebut dari katalog untuk opsi jika pembeli ingin langsung menyelesaikan pesanan dan bayar instan via QRIS di web.
+
+Instruksi Lainnya:
 1. Jawab pertanyaan pengguna dengan ramah, jelas, ringkas, dan persuasif dalam bahasa Indonesia.
-2. Katalog produk di atas adalah DAFTAR RESMI. Jika customer menyebut ukuran (misal 800L, 1000L, 650L), KONFIRMASI bahwa paket tersebut TERSEDIA dan sebutkan harganya.
+2. Katalog produk di atas adalah DAFTAR RESMI. Jika customer menyebut ukuran/varian, KONFIRMASI ketersediaan dan sebutkan harganya.
 3. Selalu dorong pengguna untuk melakukan pembayaran melalui link checkout resmi: ${checkoutUrl}
-4. Jika pengguna menanyakan topik yang ada di Menu Navigasi di atas (jadwal, harga, fasilitas, materi), jelaskan mengacu pada rincian opsi tersebut.
-5. Jangan pernah memberikan informasi palsu di luar data produk yang ada.`;
+4. Jika pengguna menanyakan topik di Menu Navigasi (jadwal, harga, fasilitas, materi), jelaskan mengacu pada opsi tersebut.`;
 
 
         const geminiMessages = [
