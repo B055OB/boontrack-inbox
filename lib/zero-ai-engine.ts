@@ -1229,13 +1229,27 @@ export async function processZeroAiMessage(
   }
 
   // ── [FALLBACK / MENU TRIGGER]: Tampilkan Dual-Mode Navigation Menu (WABA List & WAHA Numbers) ──
-  const wabaPayload = formatWabaInteractive(activeMenu);
-  const wahaText = formatWahaInteractive(activeMenu);
+  const botMode = String(meta.bot_mode || 'HYBRID').toUpperCase();
+  const isMenuTrigger = /^(menu|pilihan|bantuan|opsi|help|daftar menu|buka menu|mulai)\b/i.test(cleanMsg);
 
+  // Jika botMode adalah STATIC atau pesan memang eksplisit meminta menu navigasi
+  if (botMode === 'STATIC' || isMenuTrigger) {
+    const wabaPayload = formatWabaInteractive(activeMenu);
+    const wahaText = formatWahaInteractive(activeMenu);
+
+    return sendResult({
+      handled: true,
+      reply: wahaText,
+      type: channelType === 'WABA' ? 'INTERACTIVE' : 'TEXT',
+      interactive_payload: channelType === 'WABA' ? wabaPayload : undefined,
+    });
+  }
+
+  // Jika botMode adalah HYBRID atau AI dan pesan berupa pertanyaan bebas/natural:
+  // Serahkan ke Conversational LLM / State Machine / Knowledge Base pipeline (handled: false)
   return sendResult({
-    handled: true,
-    reply: wahaText,
-    type: channelType === 'WABA' ? 'INTERACTIVE' : 'TEXT',
-    interactive_payload: channelType === 'WABA' ? wabaPayload : undefined,
+    handled: false,
+    reply: '',
+    type: 'TEXT',
   });
 }
