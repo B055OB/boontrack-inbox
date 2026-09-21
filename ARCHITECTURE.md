@@ -999,3 +999,220 @@ Untuk menjamin kepatuhan penuh terhadap regulasi Bank Indonesia, OJK, dan undang
   2. Setel konsumsi baterai ke mode **Unrestricted** (Tanpa Batasan Penghemat Baterai).
   3. **Kunci aplikasi di Recent Apps** (ikon gembok) agar service listener tidak dihentikan paksa oleh pembersih memori sistem.
   4. Nonaktifkan opsi **'Hapus izin jika aplikasi tidak digunakan'** (*Auto-revoke permissions: Off*) agar izin Notification Access tetap aktif permanen.
+
+---
+
+## 18. MODULAR PAYMENT DOMAIN BOUNDARY & VENDOR-AGNOSTIC EVENT AUDIT (P0)
+
+> **Architectural Status**: 🔒 **PRODUCTION STANDARD (TICKET 1.1 / BATCH 1)**  
+> **Core Principle**: *"Payment gateways and reader adapters are replaceable infrastructure plugins. Business logic and order lifecycle must only depend on vendor-neutral domain contracts."*
+
+### 18.1 Modular Provider Interfaces (Separation of Concerns)
+
+Sistem memisahkan domain pembayaran menjadi 3 interface TypeScript / Python terpisah (`lib/payment/contracts.ts`):
+
+```typescript
+// 1. Inisiasi Pembayaran (Payment Intent & Dynamic QR Generation)
+export interface PaymentInitiationProvider {
+  readonly providerId: string;
+  createPaymentIntent(request: PaymentIntentRequest): Promise<PaymentIntentResult>;
+  generateQrPayload?(orderId: string, amount: number, metadata?: Record<string, unknown>): Promise<string>;
+}
+
+// 2. Deteksi & Verifikasi Konfirmasi Pembayaran (Webhook Ingestion & Polling)
+export interface PaymentConfirmationProvider {
+  readonly providerId: string;
+  verifyPayment(request: PaymentVerificationRequest): Promise<PaymentVerificationResult>;
+  parseWebhookPayload(rawBody: string | Record<string, unknown>, headers?: Record<string, string>): Promise<NormalizedPaymentEvent>;
+  pollStatus?(orderId: string): Promise<PaymentVerificationResult>;
+}
+
+// 3. Rekonsiliasi & Pencairan Dana (Settlement & Ledger Reconciliation)
+export interface SettlementProvider {
+  readonly providerId: string;
+  reconcileBatch?(date: string, tenantId?: string): Promise<SettlementBatchResult>;
+  getSettlementStatus?(settlementId: string): Promise<SettlementStatusResult>;
+}
+```
+
+### 18.2 Decoupled Event Processing & Order Mutation
+
+- **Vendor-Agnostic Normalizer**:
+  Adapter parsing (seperti `BoonTrack Reader APK`, `Xendit`, atau `Duitku`) bertindak sebagai parser murni (*pure translator*). Adapter mengekstrak payload mentah vendor dan memetakan menjadi `NormalizedPaymentEvent`:
+  ```typescript
+  export interface NormalizedPaymentEvent {
+    eventId: string;
+    orderId: string;
+    tenantId: string;
+    provider: 'reader' | 'xendit' | 'duitku' | 'manual';
+    eventType: 'payment.pending' | 'payment.success' | 'payment.failed' | 'payment.expired';
+    amount: number;
+    currency: 'IDR';
+    rawPayload: Record<string, unknown>;
+    occurredAt: string;
+  }
+  ```
+- **Zero Direct Order Mutation in Adapters**:
+  Adapter dilarang keras melakukan mutasi status database pesanan (`orders`) secara langsung. Seluruh mutasi didelegasikan ke `PaymentWebhookService` yang mengeksekusi transisi atomik status pesanan secara deterministik.
+
+### 18.3 Universal Payment Event Audit Ledger (`payment_events` Table)
+
+Setiap event pembayaran yang diterima sistem dicatat terlebih dahulu ke dalam tabel audit immutable di Supabase sebelum diproses lebih lanjut:
+
+| Kolom Database | Tipe Data | Deskripsi & Aturan Integritas |
+| :--- | :--- | :--- |
+| `id` | `UUID (PK)` | Identifier unik record audit internal. |
+| `event_id` | `VARCHAR(128)` | Idempotency key unik dari provider atau hash payload mentah. Mencegah pemrosesan ganda. |
+| `order_id` | `VARCHAR(128)` | Foreign reference ke pesanan pembeli (`orders.id`). |
+| `tenant_id` | `VARCHAR(64)` | Identifier penyewa toko pemilik transaksi. |
+| `provider` | `VARCHAR(32)` | Nama adapter sumber: `'reader'`, `'xendit'`, `'duitku'`, `'manual'`. |
+| `event_type` | `VARCHAR(64)` | Event kanonikal: `'payment.success'`, `'payment.pending'`, `'payment.failed'`, `'payment.expired'`. |
+| `amount` | `NUMERIC(15,2)` | Nominal mutasi pembayaran yang terverifikasi (IDR). |
+| `raw_payload` | `JSONB` | Payload asli tanpa modifikasi untuk keperluan forensik finansial dan rekonsiliasi. |
+| `processed_at` | `TIMESTAMPTZ` | Timestamp saat mutasi status pesanan berhasil dieksekusi ke tabel `orders`. |
+| `created_at` | `TIMESTAMPTZ` | Timestamp saat event webhook pertama kali diterima edge gateway. |
+
+---
+
+## 19. RESOURCE HARDENING & CFO HARD-CAP TRIAL GUARDRAIL (P0)
+
+> **Architectural Status**: 🔒 **PRODUCTION STANDARD (TICKET 1.2 / BATCH 1)**  
+> **Core Principle**: *"Free trial infrastructure cost must never exceed Rp 7.000 per tenant. Zero runaway compute, zero rogue WhatsApp broadcast on trial tier."*
+
+### 19.1 Strict Trial Quota Enforcement (CFO Hard-Cap)
+
+Untuk melindungi margin bisnis dan mencegah eksploitasi infrastruktur cloud (Supabase Database, AI LLM Token, WhatsApp Gateway Cloud), setiap tenant dengan status Free Trial (7 Hari Promo Paket Ads Performance / Solo Trial) dibatasi oleh hard limit teknis (`lib/entitlements/trial-guard.ts`):
+
+1. **Batas Maksimal Pesanan**: **Maksimal 30 pesanan (`TRIAL_ORDER_LIMIT = 30`)** selama 7 hari masa trial.
+2. **Batas Maksimal Interaksi**: **Maksimal 50 interaksi (`TRIAL_INTERACTION_LIMIT = 50`)** mencakup percakapan AI Bot dan notifikasi pesan keluar WhatsApp.
+3. **Budget Guardrail**: Menjamin akumulasi biaya variabel serverless & API pihak ketiga tidak melebihi **Rp 7.000 per tenant trial**.
+
+### 19.2 Domain Error & HTTP 402 Hard-Stop Protocol
+
+Ketika batas kuota tercapai:
+- **Status Respon HTTP**: `402 Payment Required`.
+- **Domain Error Code**: `TRIAL_LIMIT_EXCEEDED`.
+- **Payload Struktur Baku**:
+  ```json
+  {
+    "error": "TRIAL_LIMIT_EXCEEDED",
+    "message": "Batas pesanan paket trial (30 pesanan) telah tercapai. Tingkatkan paket langganan toko Anda untuk melanjutkan penerimaan pesanan tanpa batas.",
+    "resource": "order",
+    "current": 30,
+    "limit": 30,
+    "upgrade_url": "/dashboard/billing/upgrade"
+  }
+  ```
+- **Alur Hard-Stop Mutasi Pembayaran**:
+  Webhook reader / payment processor mengeksekusi `checkTrialQuota(tenantId, 'order')` sebelum mengizinkan pembuatan order baru atau mutasi checkout. Jika kuota penuh, transaksi baru ditahan secara elegan dan pembeli/merchant diarahkan untuk upgrade paket.
+- **Pengecualian (Non-Trial Bypass)**:
+  Tenant pada paket langganan aktif berbayar (`is_trial = false`, status langganan `active`) otomatis melewati seluruh trial guardrail tanpa batas kuota (*unlimited orders & interactions*).
+
+### 19.3 Visual Dashboard Quota Progress Bar
+
+Merchant trial diberikan transparansi penuh terhadap sisa kuota sumber daya melalui komponen antarmuka reaktif:
+- **Komponen**: `TrialQuotaProgressBar.tsx` (`app/[tenant]/dashboard/components/TrialQuotaProgressBar.tsx`).
+- **Indikator Progresif**:
+  - Hijau: Penggunaan < 70% (0 - 20 pesanan).
+  - Kuning / Oranye: Peringatan mendekati limit (21 - 29 pesanan).
+  - Merah: Kuota habis (30/30 pesanan), mengunci fungsionalitas dan menampilkan tombol langsung `Tingkatkan Paket (Upgrade Sekarang)`.
+
+---
+
+## 20. GOOGLE TAG MANAGER (GTM) CONTAINER & SECURE TRACKING ENGINE (P1)
+
+> **Architectural Status**: 🔒 **PRODUCTION STANDARD (BATCH 2 / TICKET 2.1)**  
+> **Core Principle**: *"External tracking scripts are privileged analytics tools exclusive to performance tiers. Client DataLayer must remain 100% PII-free in compliance with Google Privacy Regulations."*
+
+### 20.1 Tier Entitlement Access Control (GTM Script Injection)
+
+Pemuatan container pihak ketiga Google Tag Manager (`googletagmanager.com/gtm.js`) dibatasi secara ketat berdasarkan tier komersial tenant:
+
+- **Paket Diizinkan (Eligible Tiers)**:
+  - **Ads Performance** (`PRO_SCALE`, `ADS_PERFORMANCE`, `'ads'`)
+  - **Team Scale** (`ENTERPRISE`, `TEAM_SCALE`, `'scale'`)
+- **Paket Diblokir Mutlak (Blocked Tiers)**:
+  - **Checkout Lite** (`CHECKOUT_LITE`, `'lite'`)
+  - **Solo / Starter** (`STARTER`, `SOLO`, `SOLO_TRIAL`, `'solo'`)
+- **Gatekeeper Implementation**:
+  Fungsi `isTierGtmEligible(tier)` di [`lib/tracking/gtm-datalayer.ts`](file:///c:/boontrack-inbox/lib/tracking/gtm-datalayer.ts) memvalidasi status hak akses sebelum:
+  1. Menginjeksi tag `<script>` container GTM ke `<head>` dokumen storefront.
+  2. Memancarkan event e-commerce apa pun ke array `window.dataLayer`.
+- **Idempotensi Injeksi**: Injeksi container script diproteksi oleh ID elemen unik (`gtm-injected-GTM-XXXXXXX`) untuk menjamin tidak ada duplikasi tag saat terjadi re-render halaman atau navigasi Next.js.
+
+### 20.2 GA4 Standard E-Commerce Events Specification
+
+Tracking engine memancarkan event e-commerce yang kompatibel 100% dengan skema GA4 dan Meta Conversions API via GTM:
+
+```
+[Storefront Browse]          ──→ pushViewItem()        ──→ event: "view_item"
+[Buka Form / Modal Pesan]    ──→ pushBeginCheckout()   ──→ event: "begin_checkout"
+[Halaman Sukses Pembayaran]  ──→ pushPurchase()        ──→ event: "purchase"
+```
+
+1. **`view_item`**:
+   Dipancarkan saat pembeli membuka halaman detail produk atau modal informasi item:
+   ```json
+   {
+     "event": "view_item",
+     "ecommerce": {
+       "currency": "IDR",
+       "value": 299000,
+       "items": [
+         {
+           "item_id": "SKU-PROD-01",
+           "item_name": "Paket Masterclass AI Agent",
+           "price": 299000,
+           "quantity": 1,
+           "item_category": "DIGITAL",
+           "item_brand": "BoonTrack"
+         }
+       ]
+     }
+   }
+   ```
+2. **`begin_checkout`**:
+   Dipancarkan saat pembeli membuka form checkout pemesanan:
+   ```json
+   {
+     "event": "begin_checkout",
+     "ecommerce": {
+       "currency": "IDR",
+       "value": 299000,
+       "coupon": "PROMO2026",
+       "items": [ ... ]
+     }
+   }
+   ```
+3. **`purchase`**:
+   Dipancarkan tepat satu kali saat pesanan terkonfirmasi lunas pada halaman status sukses / invoice:
+   ```json
+   {
+     "event": "purchase",
+     "ecommerce": {
+       "transaction_id": "INV-20260921-001",
+       "currency": "IDR",
+       "value": 299000,
+       "coupon": "PROMO2026",
+       "items": [ ... ]
+     }
+   }
+   ```
+
+### 20.3 PII Sanitization Engine & Google Privacy Compliance
+
+Sesuai dengan ketentuan layanan Google Analytics & Google Tag Manager (Terms of Service) yang **melarang keras pengiriman Personally Identifiable Information (PII)** ke server analitik browser:
+
+1. **Pembersihan Rekursif Otomatis (`sanitizeDataLayerPayload`)**:
+   Sebelum objek payload dimasukkan ke `window.dataLayer`, engine secara otomatis menyaring dan membuang seluruh key sensitif:
+   - Identitas Personal: `name`, `buyer_name`, `customer_name`, `full_name`.
+   - Kontak: `phone`, `customer_phone`, `buyer_phone`, `whatsapp`, `msisdn`, `email`, `buyer_email`, `customer_email`.
+   - Logistik & Fisik: `address`, `shipping_address`, `street`, `postal_code`, `city`.
+   - Kredensial & Finansial: `password`, `token`, `secret`, `api_key`, `rekening`, `account_number`, `card_number`, `cvv`, `pin`, `nik`, `ktp`.
+2. **Perlindungan Atribut E-Commerce**:
+   Mesin sanitasi mengecualikan secara eksplisit atribut e-commerce standar GA4 (`item_name`, `item_brand`, `item_category`, `transaction_id`, `price`, `quantity`, `currency`, `value`, `coupon`) sehingga metrik performa katalog produk tetap utuh dan presisi.
+3. **Utilitas Masking Data**:
+   Untuk kebutuhan log diagnostik internal non-PII, disediakan fungsi utilitas:
+   - `maskPhone('081234567890')` → `"0812***"`
+   - `maskEmail('buyer@gmail.com')` → `"b***@gmail.com"`
+
