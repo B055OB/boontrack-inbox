@@ -1802,7 +1802,7 @@ export default function RegisterShopPage() {
                         </li>
                         <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
                           <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                          <span>Tanpa Server-Side CAPI (Iklan dapat &apos;buta&apos;, berisiko data loss)</span>
+                          <span>Tanpa Server-Side CAPI &amp; GTM (Iklan berisiko data loss)</span>
                         </li>
                         <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
                           <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
@@ -1886,6 +1886,10 @@ export default function RegisterShopPage() {
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Basic Pixel Tracking (Meta &amp; TikTok Pixel Standar)</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                           <span>Manajemen Stok Real-Time &amp; Laporan Penjualan Lengkap</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
@@ -1902,7 +1906,7 @@ export default function RegisterShopPage() {
                         </li>
                         <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
                           <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                          <span>Tanpa Server-Side CAPI (Hanya Web Pixel Standar)</span>
+                          <span>Tanpa Server-Side CAPI &amp; GTM</span>
                         </li>
                       </ul>
                     </div>
@@ -1985,6 +1989,10 @@ export default function RegisterShopPage() {
                         </li>
                         <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Integrasi Google Tag Manager (GTM) Container</span>
+                        </li>
+                        <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                           <span>Tombol Manual Override Purchase: Kirim event Purchase ke ads kapan saja dengan 1 klik</span>
                         </li>
                         <li className="flex items-start gap-2 text-indigo-950 font-medium bg-indigo-50/70 p-1.5 rounded-lg border border-indigo-100">
@@ -2060,7 +2068,7 @@ export default function RegisterShopPage() {
                       <ul className="space-y-2 text-xs">
                         <li className="flex items-start gap-2 text-slate-800 font-bold">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>Semua fitur di Paket Ads Performance</span>
+                          <span>Semua fitur di Paket Ads Performance (Termasuk CAPI &amp; GTM Full Access)</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
