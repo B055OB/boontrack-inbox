@@ -14,11 +14,23 @@ export async function GET(req: NextRequest) {
     try {
       const supabase = getSupabase();
       if (supabase) {
+        const startDate = searchParams.get('start_date') || searchParams.get('startDate');
+        const endDate = searchParams.get('end_date') || searchParams.get('endDate');
+
         // Query orders for this tenant
-        const { data: orders, error } = await supabase
+        let query = supabase
           .from('orders')
           .select('id, gross_amount, metadata, created_at, status')
           .eq('tenant_slug', tenantSlug);
+
+        if (startDate) {
+          query = query.gte('created_at', startDate);
+        }
+        if (endDate) {
+          query = query.lte('created_at', endDate);
+        }
+
+        const { data: orders, error } = await query;
 
         if (!error && orders && orders.length > 0) {
           const campaignMap = new Map<string, {

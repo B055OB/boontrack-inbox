@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ArrowUpRight, ShoppingBag, Sparkles, Download, QrCode, ExternalLink } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, ShoppingBag, Sparkles, Download, QrCode, ExternalLink } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
 import { sanitizeImageUrl } from '@/lib/image-utils';
@@ -477,15 +477,25 @@ export default function MicrositeBioTemplate({
 
             {/* Product cards */}
             {visibleProducts.map((item) => {
-              const rawExternal =
-                item.external_url ||
-                (item as any).affiliate_url ||
-                (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
-                (typeof item.download_url === 'string' && (item.download_url.startsWith('http://') || item.download_url.startsWith('https://')) ? item.download_url : null) ||
-                resolveProductExternalUrl(item);
+              const hasDedicatedPage =
+                (item.slug && item.slug === 'ctwa-mastery-7day') ||
+                Boolean(item.single_page_config) ||
+                Boolean((item as any).single_page_enabled);
+              const dedicatedPageUrl = hasDedicatedPage && item.slug
+                ? `/${tenantSlug}/p/${item.slug}`
+                : null;
+
+              const rawExternal = !hasDedicatedPage
+                ? (item.external_url ||
+                   (item as any).affiliate_url ||
+                   (item.metadata && (item.metadata.external_url || item.metadata.affiliate_url)) ||
+                   resolveProductExternalUrl(item))
+                : null;
               const externalUrl = rawExternal ? String(rawExternal).trim() : null;
               const isExternal = Boolean(externalUrl);
-              const ctaLabel = resolveProductCtaLabel(item, isExternal);
+              const ctaLabel = item.slug === 'ctwa-mastery-7day'
+                ? (item.cta_label || 'Daftar Kelas Sekarang - Rp 100.000')
+                : resolveProductCtaLabel(item, isExternal);
 
               const handleExternalClick = (e: React.MouseEvent) => {
                 e.stopPropagation();
@@ -522,12 +532,21 @@ export default function MicrositeBioTemplate({
                 window.open(externalUrl, "_blank", "noopener,noreferrer");
               };
 
+              const handleCardClick = (e: React.MouseEvent) => {
+                if (dedicatedPageUrl) {
+                  e.stopPropagation();
+                  window.location.href = dedicatedPageUrl;
+                } else if (isExternal && externalUrl) {
+                  handleExternalClick(e);
+                }
+              };
+
               return (
                 <div
                   key={item.id}
-                  onClick={isExternal ? handleExternalClick : undefined}
+                  onClick={dedicatedPageUrl || isExternal ? handleCardClick : undefined}
                   className={`bg-white/15 backdrop-blur-md border border-white/20 rounded-2xl p-4 text-white flex items-center gap-3 transition-all ${
-                    isExternal ? 'hover:bg-white/25 cursor-pointer active:scale-[0.99]' : ''
+                    dedicatedPageUrl || isExternal ? 'hover:bg-white/25 cursor-pointer active:scale-[0.99]' : ''
                   }`}
                 >
                   <MicrositeItemImage src={item.image} alt={item.name} />
@@ -546,7 +565,18 @@ export default function MicrositeBioTemplate({
                     </div>
                   </div>
 
-                  {isExternal ? (
+                  {dedicatedPageUrl ? (
+                    <a
+                      href={dedicatedPageUrl}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                      className="rounded-full px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-[11px] font-black transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer shadow-md"
+                    >
+                      <span>{ctaLabel}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  ) : isExternal ? (
                     <a
                       href={externalUrl!}
                       target="_blank"

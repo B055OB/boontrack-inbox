@@ -38,6 +38,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import DateRangePicker, { DateRangeState, getDateRangeFromPreset } from './DateRangePicker';
 
 interface AdsTrackingProProps {
   tenantSlug: string;
@@ -110,7 +111,7 @@ export default function AdsTrackingPro({
   const [copiedUtmLink, setCopiedUtmLink] = useState(false);
 
   // Analytics & Filter state
-  const [timeRange, setTimeRange] = useState<'7d' | '30d' | 'all'>('7d');
+  const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('7d'));
   const [activeChartMetric, setActiveChartMetric] = useState<'revenue' | 'orders' | 'leads' | 'roas'>('revenue');
   const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
   const [searchCampaign, setSearchCampaign] = useState('');
@@ -152,7 +153,10 @@ export default function AdsTrackingPro({
     if (!tenantSlug) return;
     setLoadingCampaigns(true);
     try {
-      const res = await fetch(`/api/v1/analytics/campaigns?tenant_slug=${encodeURIComponent(tenantSlug)}`);
+      let url = `/api/v1/analytics/campaigns?tenant_slug=${encodeURIComponent(tenantSlug)}`;
+      if (dateRange.startDate) url += `&start_date=${encodeURIComponent(dateRange.startDate)}`;
+      if (dateRange.endDate) url += `&end_date=${encodeURIComponent(dateRange.endDate)}`;
+      const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
         if (json?.success && Array.isArray(json.data)) {
@@ -183,7 +187,7 @@ export default function AdsTrackingPro({
     } finally {
       setLoadingCampaigns(false);
     }
-  }, [tenantSlug]);
+  }, [tenantSlug, dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     fetchCampaigns();
@@ -222,10 +226,15 @@ export default function AdsTrackingPro({
 
           // Fetch real recent orders/leads for lead scoring display
           try {
-            const { data: realOrders } = await supabase
+            let leadQuery = supabase
               .from('orders')
               .select('id, buyer_name, buyer_phone, customer_name, customer_phone, total_amount, metadata, created_at, status')
-              .eq('tenant_slug', tenantSlug)
+              .eq('tenant_slug', tenantSlug);
+
+            if (dateRange.startDate) leadQuery = leadQuery.gte('created_at', dateRange.startDate);
+            if (dateRange.endDate) leadQuery = leadQuery.lte('created_at', dateRange.endDate);
+
+            const { data: realOrders } = await leadQuery
               .order('created_at', { ascending: false })
               .limit(9);
 
@@ -681,26 +690,7 @@ export default function AdsTrackingPro({
               </button>
             </div>
 
-            <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
-              <button
-                type="button"
-                onClick={() => setTimeRange('7d')}
-                className={`px-2.5 py-1.5 rounded-lg transition ${
-                  timeRange === '7d' ? 'bg-blue-600 text-white shadow-xs' : 'hover:text-slate-900'
-                }`}
-              >
-                7 Hari
-              </button>
-              <button
-                type="button"
-                onClick={() => setTimeRange('30d')}
-                className={`px-2.5 py-1.5 rounded-lg transition ${
-                  timeRange === '30d' ? 'bg-blue-600 text-white shadow-xs' : 'hover:text-slate-900'
-                }`}
-              >
-                30 Hari
-              </button>
-            </div>
+            <DateRangePicker value={dateRange} onChange={setDateRange} />
           </div>
         </div>
 
@@ -789,6 +779,8 @@ export default function AdsTrackingPro({
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-2.5">
+            <DateRangePicker value={dateRange} onChange={setDateRange} />
+
             <button
               type="button"
               onClick={() => fetchCampaigns()}

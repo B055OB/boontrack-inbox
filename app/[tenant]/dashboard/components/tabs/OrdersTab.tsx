@@ -20,6 +20,7 @@ import {
   Loader2,
   Check,
 } from 'lucide-react';
+import DateRangePicker, { DateRangeState, getDateRangeFromPreset } from '../DateRangePicker';
 import GodPayButton, { OrderItem as GodPayOrderItem } from '../orders/GodPayButton';
 import { 
   resolveFulfillmentRequirements, 
@@ -68,6 +69,7 @@ export default function OrdersTab({
   const [internalLoading, setInternalLoading] = useState(!hasPropOrders);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('all'));
 
   const orders: OrderItem[] = React.useMemo(() => {
     const raw = hasPropOrders ? propOrders : internalOrders;
@@ -109,7 +111,10 @@ export default function OrdersTab({
     }
     setInternalLoading(true);
     try {
-      const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}`);
+      let url = `/api/orders?tenant=${encodeURIComponent(tenantSlug)}`;
+      if (dateRange.startDate) url += `&start_date=${encodeURIComponent(dateRange.startDate)}`;
+      if (dateRange.endDate) url += `&end_date=${encodeURIComponent(dateRange.endDate)}`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         const rawList = Array.isArray(data) ? data : (data.orders || data.data || []);
@@ -140,7 +145,7 @@ export default function OrdersTab({
     } finally {
       setInternalLoading(false);
     }
-  }, [tenantSlug, propOnRefresh]);
+  }, [tenantSlug, propOnRefresh, dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     if (!hasPropOrders) {
@@ -190,7 +195,12 @@ export default function OrdersTab({
       (statusFilter === 'PAID' && (pStatus === 'PAID' || pStatus === 'LUNAS')) ||
       (statusFilter === 'UNPAID' && (pStatus === 'UNPAID' || pStatus === 'PENDING' || pStatus === 'WAITING_PAYMENT'));
 
-    return matchSearch && matchStatus;
+    const createdMs = new Date(o.created_at || Date.now()).getTime();
+    const startMs = dateRange.startDate ? new Date(dateRange.startDate).getTime() : 0;
+    const endMs = dateRange.endDate ? new Date(dateRange.endDate).getTime() : Infinity;
+    const matchDate = createdMs >= startMs && createdMs <= endMs;
+
+    return matchSearch && matchStatus && matchDate;
   });
 
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
@@ -358,17 +368,21 @@ export default function OrdersTab({
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="UNPAID">Menunggu Pembayaran / Belum Lunas</option>
-              <option value="PAID">Lunas (Paid / Verified)</option>
-            </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <DateRangePicker value={dateRange} onChange={setDateRange} />
+
+            <div className="flex items-center gap-2">
+              <Filter className="w-3.5 h-3.5 text-slate-400" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+              >
+                <option value="ALL">Semua Status</option>
+                <option value="UNPAID">Menunggu Pembayaran / Belum Lunas</option>
+                <option value="PAID">Lunas (Paid / Verified)</option>
+              </select>
+            </div>
           </div>
         </div>
 

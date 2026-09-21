@@ -96,6 +96,9 @@ export interface Product {
   affiliate_url?: string;
   cta_label?: string;
   checkout_type?: string;
+  slug?: string;
+  single_page_config?: any;
+  single_page_enabled?: boolean;
   metadata?: Record<string, any>;
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Wallet,
   ArrowUpRight,
@@ -11,8 +11,10 @@ import {
   Clock,
   X,
   Loader2,
+  Calendar,
 } from 'lucide-react';
 import { TransactionItem } from '@/lib/product-catalog';
+import DateRangePicker, { DateRangeState, getDateRangeFromPreset } from '../DateRangePicker';
 
 export interface OverviewTabProps {
   totalOmzet: number;
@@ -53,6 +55,29 @@ export default function OverviewTab({
   handleProcessWithdraw,
   isWithdrawing = false,
 }: OverviewTabProps) {
+  const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('all'));
+
+  const filteredTransactions = useMemo(() => {
+    if (!transactions) return [];
+    if (!dateRange.startDate && !dateRange.endDate) return transactions;
+    const startMs = dateRange.startDate ? new Date(dateRange.startDate).getTime() : 0;
+    const endMs = dateRange.endDate ? new Date(dateRange.endDate).getTime() : Infinity;
+
+    return transactions.filter((t: any) => {
+      const createdMs = new Date(t.created_at || t.date || Date.now()).getTime();
+      return createdMs >= startMs && createdMs <= endMs;
+    });
+  }, [transactions, dateRange]);
+
+  const filteredOmzet = useMemo(() => {
+    if (!dateRange.startDate && !dateRange.endDate) {
+      return totalOmzet;
+    }
+    return filteredTransactions
+      .filter((t: any) => ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes((t.status || t.payment_status || '').toUpperCase()))
+      .reduce((sum: number, t: any) => sum + Number(t.gross_amount || t.total_amount || t.amount || 0), 0);
+  }, [filteredTransactions, dateRange, totalOmzet]);
+
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
@@ -66,29 +91,36 @@ export default function OverviewTab({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsWithdrawModalOpen(true)}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-md shadow-emerald-600/20 transition active:scale-95 cursor-pointer self-start sm:self-auto"
-        >
-          <ArrowUpRight className="w-4 h-4" />
-          <span>Tarik Saldo Toko</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          {/* Global Date Range Picker */}
+          <DateRangePicker value={dateRange} onChange={setDateRange} />
+
+          <button
+            type="button"
+            onClick={() => setIsWithdrawModalOpen(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-md shadow-emerald-600/20 transition active:scale-95 cursor-pointer"
+          >
+            <ArrowUpRight className="w-4 h-4" />
+            <span>Tarik Saldo Toko</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Total Omzet Masuk</span>
+            <span className="text-xs font-bold text-slate-400">
+              Total Omzet Masuk {dateRange.preset !== 'all' ? `(${dateRange.label})` : ''}
+            </span>
             <span className="p-2 bg-blue-50 text-blue-600 rounded-xl">
               <TrendingUp className="w-4 h-4" />
             </span>
           </div>
           <div className="text-2xl font-black text-slate-900">
-            Rp {totalOmzet.toLocaleString('id-ID')}
+            Rp {filteredOmzet.toLocaleString('id-ID')}
           </div>
           <p className="text-[11px] text-slate-400 font-medium">
-            Akumulasi seluruh transaksi sukses
+            {dateRange.preset !== 'all' ? `Periode: ${dateRange.label}` : 'Akumulasi seluruh transaksi sukses'}
           </p>
         </div>
 
@@ -157,7 +189,7 @@ export default function OverviewTab({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
-              {transactions.length === 0 ? (
+              {filteredTransactions.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <div className="max-w-md mx-auto flex flex-col items-center justify-center space-y-2">
@@ -165,16 +197,18 @@ export default function OverviewTab({
                         <FileText className="w-5 h-5 text-slate-400" />
                       </div>
                       <p className="text-xs font-bold text-slate-700">
-                        Belum ada transaksi masuk.
+                        Belum ada transaksi masuk pada periode ini.
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        Transaksi dari checkout etalase atau WhatsApp akan tercatat otomatis di sini.
+                        {dateRange.preset !== 'all'
+                          ? `Tidak ditemukan transaksi untuk periode: ${dateRange.label}`
+                          : 'Transaksi dari checkout etalase atau WhatsApp akan tercatat otomatis di sini.'}
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                transactions.map((t: any) => {
+                filteredTransactions.map((t: any) => {
                   const invoiceNo = t.invoice_no || t.id;
                   const dateVal = t.date || t.created_at;
                   const customerName = t.customer_name || t.customerName || 'Pelanggan';

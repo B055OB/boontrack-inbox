@@ -43,11 +43,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, orders: [], count: 0 });
     }
 
+    const startDate = searchParams.get('start_date') || searchParams.get('startDate');
+    const endDate = searchParams.get('end_date') || searchParams.get('endDate');
+
     // QUERY LANGSUNG KE TABEL orders (SINGLE SOURCE OF TRUTH)
-    const { data: ordersData, error: ordersErr } = await supabase
+    let query = supabase
       .from('orders')
       .select('*')
-      .eq('tenant_slug', targetSlug)
+      .eq('tenant_slug', targetSlug);
+
+    if (startDate) {
+      query = query.gte('created_at', startDate);
+    }
+    if (endDate) {
+      query = query.lte('created_at', endDate);
+    }
+
+    const { data: ordersData, error: ordersErr } = await query
       .order('created_at', { ascending: false })
       .limit(limit);
 

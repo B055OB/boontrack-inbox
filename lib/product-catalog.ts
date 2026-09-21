@@ -791,20 +791,22 @@ export function resolveSinglePageProduct(
 export function resolveProductExternalUrl(item: any): string | null {
   if (!item || typeof item !== 'object') return null;
 
+  // Never treat internal checkout, landing page products, or CTWA mastery as external
+  if (
+    item.checkout_type === 'internal' ||
+    item.single_page_config ||
+    item.slug === 'ctwa-mastery-7day' ||
+    item.id === 'c7ba0001-7de7-4888-9999-000000000001'
+  ) {
+    return null;
+  }
+
+  // Only external / affiliate referral URLs
   const candidate =
     item.external_url ||
     item.affiliate_url ||
     item.metadata?.external_url ||
-    item.metadata?.affiliate_url ||
-    item.fulfillment_metadata?.access_url ||
-    (typeof item.download_url === 'string' &&
-    (item.download_url.startsWith('http://') || item.download_url.startsWith('https://'))
-      ? item.download_url
-      : null) ||
-    (typeof item.link_digital === 'string' &&
-    (item.link_digital.startsWith('http://') || item.link_digital.startsWith('https://'))
-      ? item.link_digital
-      : null);
+    item.metadata?.affiliate_url;
 
   if (candidate && typeof candidate === 'string') {
     const trimmed = candidate.trim();

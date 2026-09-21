@@ -175,7 +175,7 @@ export async function POST(
         // Coba sync juga ke tabel SQL `products` jika memungkinkan
         try {
           const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(productId));
-          await supabase.from('products').upsert({
+          const sqlProductPayload = {
             ...(isUuid ? { id: String(productId) } : {}),
             tenant_id: existing.id,
             title: name,
@@ -192,7 +192,20 @@ export async function POST(
             license_status: 'UNVERIFIED',
             product_type: 'DIGITAL_FILE',
             fulfillment_metadata: body.fulfillment_metadata || {},
-          });
+          };
+
+          const { data: existingSql } = await supabase
+            .from('products')
+            .select('id')
+            .eq('tenant_id', existing.id)
+            .or(`slug.eq.${finalSlug}${isUuid ? `,id.eq.${productId}` : ''}`)
+            .maybeSingle();
+
+          if (existingSql?.id) {
+            await supabase.from('products').update(sqlProductPayload).eq('id', existingSql.id);
+          } else {
+            await supabase.from('products').insert(sqlProductPayload);
+          }
         } catch (sqlErr) {
           console.debug('[Products Route] SQL products table sync note:', sqlErr);
         }
@@ -272,7 +285,10 @@ export async function DELETE(
         ? [existing.metadata.product]
         : [];
 
-      remainingProducts = existingProducts.filter((p) => String(p.id) !== String(id));
+      const targetProduct = existingProducts.find((p) => String(p.id) === String(id) || p.slug === String(id));
+      const targetSlug = targetProduct?.slug;
+
+      remainingProducts = existingProducts.filter((p) => String(p.id) !== String(id) && p.slug !== String(id));
 
       const updatedMetadata = {
         ...(existing?.metadata || {}),
@@ -287,6 +303,19 @@ export async function DELETE(
             metadata: updatedMetadata,
           })
           .eq('id', existing.id);
+
+        // Hapus juga dari tabel SQL products Supabase
+        try {
+          const deleteConditions = [`id.eq.${id}`];
+          if (targetSlug) deleteConditions.push(`slug.eq.${targetSlug}`);
+          await supabase
+            .from('products')
+            .delete()
+            .eq('tenant_id', existing.id)
+            .or(deleteConditions.join(','));
+        } catch (delSqlErr) {
+          console.debug('[Products Route] SQL products delete note:', delSqlErr);
+        }
       } else {
         await supabase.from('tenants').upsert({
           slug,
@@ -377,8 +406,9 @@ export async function GET(
           }));
 
           const existingSlugs = new Set(products.map((p) => (p.slug || '').toLowerCase()));
+          const existingIds = new Set(products.map((p) => String(p.id)));
           for (const sp of sqlMapped) {
-            if (!existingSlugs.has((sp.slug || '').toLowerCase())) {
+            if (!existingSlugs.has((sp.slug || '').toLowerCase()) && !existingIds.has(String(sp.id))) {
               products.push(sp);
             }
           }

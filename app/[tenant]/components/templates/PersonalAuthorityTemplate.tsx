@@ -406,9 +406,31 @@ export default function PersonalAuthorityTemplate({
 
                   <div className="flex items-center gap-2">
                     {(() => {
-                      const extUrl = resolveProductExternalUrl(mainProduct);
+                      const hasDedicatedPage =
+                        (mainProduct.slug && mainProduct.slug === 'ctwa-mastery-7day') ||
+                        Boolean(mainProduct.single_page_config) ||
+                        Boolean((mainProduct as any).single_page_enabled);
+                      const dedicatedPageUrl = hasDedicatedPage && mainProduct.slug
+                        ? `/${tenantSlug}/p/${mainProduct.slug}`
+                        : null;
+
+                      const extUrl = !hasDedicatedPage ? resolveProductExternalUrl(mainProduct) : null;
                       const isExternal = Boolean(extUrl);
-                      const ctaLabel = resolveProductCtaLabel(mainProduct, isExternal);
+                      const ctaLabel = mainProduct.slug === 'ctwa-mastery-7day'
+                        ? (mainProduct.cta_label || 'Daftar Kelas Sekarang - Rp 100.000')
+                        : resolveProductCtaLabel(mainProduct, isExternal);
+
+                      if (dedicatedPageUrl) {
+                        return (
+                          <a
+                            href={dedicatedPageUrl}
+                            className="flex-1 sm:flex-none px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
+                          >
+                            <span>{ctaLabel}</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </a>
+                        );
+                      }
 
                       if (isExternal && extUrl) {
                         return (
@@ -521,9 +543,31 @@ export default function PersonalAuthorityTemplate({
                         </div>
 
                         {(() => {
-                          const extUrl = resolveProductExternalUrl(item);
+                          const hasDedicatedPage =
+                            (item.slug && item.slug === 'ctwa-mastery-7day') ||
+                            Boolean(item.single_page_config) ||
+                            Boolean((item as any).single_page_enabled);
+                          const dedicatedPageUrl = hasDedicatedPage && item.slug
+                            ? `/${tenantSlug}/p/${item.slug}`
+                            : null;
+
+                          const extUrl = !hasDedicatedPage ? resolveProductExternalUrl(item) : null;
                           const isExternal = Boolean(extUrl);
-                          const ctaLabel = resolveProductCtaLabel(item, isExternal);
+                          const ctaLabel = item.slug === 'ctwa-mastery-7day'
+                            ? (item.cta_label || 'Daftar Kelas Sekarang - Rp 100.000')
+                            : resolveProductCtaLabel(item, isExternal);
+
+                          if (dedicatedPageUrl) {
+                            return (
+                              <a
+                                href={dedicatedPageUrl}
+                                className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <span>{ctaLabel}</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </a>
+                            );
+                          }
 
                           if (isExternal && extUrl) {
                             return (

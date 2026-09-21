@@ -42,56 +42,72 @@ export async function GET(
       .maybeSingle();
 
     const tenantId = tenantRow?.id;
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { searchParams } = new URL(_req.url);
+    const startDate = searchParams.get('start_date') || searchParams.get('startDate');
+    const endDate = searchParams.get('end_date') || searchParams.get('endDate');
+    const effectiveStart = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // 2. Hitung Pengunjung Etalase (Visits) dari tracking_sessions, capi_events, & event_ledger
+    let sessionsQ = supabase
+      .from('tracking_sessions')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_slug', slug)
+      .gte('created_at', effectiveStart);
+    if (endDate) sessionsQ = sessionsQ.lte('created_at', endDate);
+
+    let capiQ = supabase
+      .from('capi_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_slug', slug)
+      .gte('created_at', effectiveStart);
+    if (endDate) capiQ = capiQ.lte('created_at', endDate);
+
+    let ledgerQ = tenantId
+      ? supabase
+          .from('event_ledger')
+          .select('*', { count: 'exact', head: true })
+          .or(`tenant_id.eq.${slug},tenant_id.eq.${tenantId}`)
+          .gte('created_at', effectiveStart)
+      : supabase
+          .from('event_ledger')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', slug)
+          .gte('created_at', effectiveStart);
+    if (endDate) ledgerQ = ledgerQ.lte('created_at', endDate);
+
     const [sessionsRes, capiRes, ledgerRes] = await Promise.all([
-      supabase
-        .from('tracking_sessions')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_slug', slug)
-        .gte('created_at', sevenDaysAgo),
-      supabase
-        .from('capi_events')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_slug', slug)
-        .gte('created_at', sevenDaysAgo),
-      tenantId
-        ? supabase
-            .from('event_ledger')
-            .select('*', { count: 'exact', head: true })
-            .or(`tenant_id.eq.${slug},tenant_id.eq.${tenantId}`)
-            .gte('created_at', sevenDaysAgo)
-        : supabase
-            .from('event_ledger')
-            .select('*', { count: 'exact', head: true })
-            .eq('tenant_id', slug)
-            .gte('created_at', sevenDaysAgo),
+      sessionsQ,
+      capiQ,
+      ledgerQ,
     ]);
 
     const totalVisits = (sessionsRes.count || 0) + (capiRes.count || 0) + (ledgerRes.count || 0);
 
-    // 3. Hitung Chat Masuk WA Bot (Conversations 7 Hari Terakhir)
-    const convQuery = tenantId
+    // 3. Hitung Chat Masuk WA Bot (Conversations)
+    let convQuery = tenantId
       ? supabase
           .from('conversations')
           .select('*', { count: 'exact', head: true })
           .or(`tenant_id.eq.${slug},tenant_slug.eq.${slug},tenant_id.eq.${tenantId}`)
-          .gte('updated_at', sevenDaysAgo)
+          .gte('updated_at', effectiveStart)
       : supabase
           .from('conversations')
           .select('*', { count: 'exact', head: true })
           .or(`tenant_id.eq.${slug},tenant_slug.eq.${slug}`)
-          .gte('updated_at', sevenDaysAgo);
+          .gte('updated_at', effectiveStart);
+    if (endDate) convQuery = convQuery.lte('updated_at', endDate);
 
     const { count: chatSessionsCount } = await convQuery;
 
-    // 4. Hitung Pesanan / Orders (7 Hari Terakhir)
-    const { data: recentOrders } = await supabase
+    // 4. Hitung Pesanan / Orders
+    let ordersQuery = supabase
       .from('orders')
       .select('id, gross_amount, total_amount, payment_status, status, created_at')
       .eq('tenant_slug', slug)
-      .gte('created_at', sevenDaysAgo);
+      .gte('created_at', effectiveStart);
+    if (endDate) ordersQuery = ordersQuery.lte('created_at', endDate);
+
+    const { data: recentOrders } = await ordersQuery;
 
     const ordersCount = recentOrders?.length || 0;
     const paidOmzet = (recentOrders || [])
