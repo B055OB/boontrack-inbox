@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   Store,
   ExternalLink,
@@ -525,7 +526,7 @@ export default function DashboardSidebar({
                 CHECKOUT LITE MENU
               </span>
               <span className="text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                4 MENU
+                5 MENU
               </span>
             </div>
 
@@ -625,6 +626,30 @@ export default function DashboardSidebar({
                 </div>
                 <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-600">
                   4 Sub-menu
+                </span>
+              </button>
+
+              {/* 5. Ads Tracking Lite: Pengaturan Meta & TikTok Pixel */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('ads_tracking')}
+                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                  activeTab === 'ads_tracking'
+                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                }`}
+              >
+                {activeTab === 'ads_tracking' && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-amber-50 text-amber-600">
+                    <Target className="w-4 h-4" />
+                  </div>
+                  <span className="truncate">Ads Tracking Pro</span>
+                </div>
+                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                  Pixel Lite
                 </span>
               </button>
             </div>
@@ -978,18 +1003,22 @@ export default function DashboardSidebar({
         />
 
         <div className="flex items-center gap-2.5 px-1.5 py-1">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-700 via-indigo-600 to-blue-500 text-white flex items-center justify-center font-black shadow-md shadow-indigo-600/20 shrink-0 text-xs">
-            B
+          <div className="w-8 h-8 rounded-xl overflow-hidden border border-slate-200 shrink-0 bg-white shadow-xs">
+            <Image
+              src="/logo-master.jpg"
+              alt="BoonTrack Shop"
+              width={32}
+              height={32}
+              className="w-full h-full object-cover"
+            />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 leading-none">
               <span className="text-xs font-black text-slate-900 tracking-tight">BoonTrack</span>
-              <span className="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 font-extrabold text-[8px] border border-indigo-100">
-                HUB
-              </span>
+              <span className="text-xs font-extrabold text-blue-600">Shop</span>
             </div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate">
-              Merchant Console
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mt-0.5">
+              COMMERCE ENGINE
             </p>
           </div>
         </div>

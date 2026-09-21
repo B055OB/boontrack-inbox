@@ -368,9 +368,22 @@ export function trackInitiateCheckout(
 }
 
 export function trackClientPurchase(orderId: string, amount: number, productTitle?: string): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || !orderId) return;
+  const cleanOrderId = String(orderId).trim();
+  const dedupKey = `tracked_purchase_${cleanOrderId}`;
+
+  // Deduplication guard berbasis order_id: mencegah refresh halaman memicu sinyal ganda
+  try {
+    if (sessionStorage.getItem(dedupKey) || localStorage.getItem(dedupKey)) {
+      console.log(`[Tracking] Purchase event for order ${cleanOrderId} already tracked. Skipping duplicate.`);
+      return;
+    }
+    sessionStorage.setItem(dedupKey, "1");
+    localStorage.setItem(dedupKey, "1");
+  } catch {}
+
   const win = window as unknown as Record<string, any>;
-  const eventId = `PURCHASE_${orderId}`;
+  const eventId = `PURCHASE_${cleanOrderId}`;
 
   if (win.fbq) {
     win.fbq("track", "Purchase", {

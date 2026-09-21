@@ -935,6 +935,7 @@ export default function TenantDashboardPage() {
       {activeTab === 'ads_tracking' && (
         <AdsTrackingTab
           isAdsTrackingUnlocked={isAdsTrackingUnlocked}
+          isCheckoutLite={isCheckoutLite}
           tenantSlug={tenantSlug}
           displayName={displayName}
           onUpgradeTier={handleUpgradeTier}

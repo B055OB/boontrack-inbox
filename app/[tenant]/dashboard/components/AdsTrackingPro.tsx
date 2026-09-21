@@ -32,7 +32,10 @@ import {
   Info,
   Clock,
   Sparkles,
-  Loader2
+  Loader2,
+  Lock,
+  Crown,
+  ArrowRight
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -40,6 +43,8 @@ interface AdsTrackingProProps {
   tenantSlug: string;
   displayName: string;
   onSaved?: (msg: string) => void;
+  isCheckoutLite?: boolean;
+  onUpgradeTier?: (targetTier: 'ads_performance' | 'team_scale') => void;
 }
 
 interface CampaignRow {
@@ -79,13 +84,20 @@ const DAILY_TREND_DATA = [
   { day: 'Minggu', clicks: 2750, leads: 385, orders: 139, revenue: 6950000, roas: 7.6 },
 ];
 
-export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: AdsTrackingProProps) {
+export default function AdsTrackingPro({
+  tenantSlug,
+  displayName,
+  onSaved,
+  isCheckoutLite = false,
+  onUpgradeTier,
+}: AdsTrackingProProps) {
   const [isEnabled, setIsEnabled] = useState(true);
   const [metaPixelId, setMetaPixelId] = useState('');
   const [metaCapiToken, setMetaCapiToken] = useState('');
   const [metaTestCode, setMetaTestCode] = useState('');
   const [tiktokPixelId, setTiktokPixelId] = useState('');
   const [tiktokAccessToken, setTiktokAccessToken] = useState('');
+  const [gtmId, setGtmId] = useState('');
   const [enableWaUtm, setEnableWaUtm] = useState(true);
   const [autoDeduplication, setAutoDeduplication] = useState(true);
 
@@ -203,6 +215,7 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
             setMetaTestCode(cfg.meta_test_code || '');
             setTiktokPixelId(cfg.tiktok_pixel_id || '');
             setTiktokAccessToken(cfg.tiktok_access_token || '');
+            setGtmId(cfg.gtm_id || cfg.gtmId || '');
             setEnableWaUtm(cfg.enable_wa_utm ?? true);
             setAutoDeduplication(cfg.auto_deduplication ?? true);
           }
@@ -321,6 +334,7 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
       meta_test_code: metaTestCode,
       tiktok_pixel_id: tiktokPixelId,
       tiktok_access_token: tiktokAccessToken,
+      gtm_id: gtmId,
       enable_wa_utm: enableWaUtm,
       auto_deduplication: autoDeduplication,
       updated_at: new Date().toISOString(),
@@ -358,6 +372,7 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
             meta_test_code: metaTestCode,
             tiktok_pixel_id: tiktokPixelId,
             tiktok_access_token: tiktokAccessToken,
+            gtm_id: gtmId,
             enable_wa_utm: enableWaUtm,
             auto_deduplication: autoDeduplication,
             is_enabled: isEnabled,
@@ -1000,6 +1015,34 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
 
       {/* ── 4. KONFIGURASI PIXEL, CAPI & EMBED CODE ── */}
       <form onSubmit={handleSave} className="space-y-6">
+        {/* Banner Penjelasan Tier Checkout Lite */}
+        {isCheckoutLite && (
+          <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-200 text-slate-800 space-y-2.5 shadow-xs">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 font-black text-xs text-amber-900">
+                <Crown className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Paket Checkout Lite: Pelacakan Browser Pixel Aktif</span>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
+                Meta &amp; TikTok Pixel Aktif
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Anda dapat menggunakan <strong>Meta Pixel ID</strong> dan <strong>TikTok Pixel ID</strong> di bawah ini untuk mengumpulkan data konversi browser standar (ViewContent, InitiateCheckout, Contact). Fitur <strong>Conversions API (CAPI) Server-Side</strong>, <strong>Test Event Code</strong>, dan <strong>Google Tag Manager (GTM)</strong> terkunci khusus paket Ads Performance (Rp 299k).
+            </p>
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => onUpgradeTier?.('ads_performance')}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-700 hover:to-indigo-700 text-white font-bold text-xs shadow-xs transition active:scale-95 cursor-pointer"
+              >
+                <span>Upgrade ke Ads Performance (Rp 299k)</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           
           {/* META (FACEBOOK) ADS & CAPI */}
@@ -1014,8 +1057,12 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
                   <p className="text-[11px] text-slate-500">Pixel Browser + Conversions API (CAPI)</p>
                 </div>
               </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Live CAPI Engine
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                isCheckoutLite
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              }`}>
+                {isCheckoutLite ? 'Pixel Client-Side' : 'Live CAPI Engine'}
               </span>
             </div>
 
@@ -1035,29 +1082,69 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Conversions API (CAPI) System User Token
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Conversions API (CAPI) System User Token
+                  </label>
+                  {isCheckoutLite && (
+                    <span
+                      title="Fitur CAPI eksklusif untuk paket Ads Performance (Rp 299k). Upgrade untuk mengaktifkan."
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold cursor-help"
+                    >
+                      <Lock className="w-2.5 h-2.5 text-amber-600" />
+                      <span>Terkunci (Upgrade 299k)</span>
+                    </span>
+                  )}
+                </div>
                 <input
                   type="password"
+                  disabled={isCheckoutLite}
                   value={metaCapiToken}
                   onChange={(e) => setMetaCapiToken(e.target.value)}
-                  placeholder="EAABwz..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-blue-500 transition"
+                  placeholder={isCheckoutLite ? "🔒 Fitur CAPI Server-Side eksklusif untuk paket Ads Performance" : "EAABwz..."}
+                  className={`w-full border rounded-xl px-3.5 py-2.5 text-xs font-mono transition ${
+                    isCheckoutLite
+                      ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500'
+                  }`}
                 />
-                <p className="text-[10px] text-slate-400 mt-1">Token server-side untuk bypass ad-blocker dan proteksi Apple iOS 14.5+.</p>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {isCheckoutLite ? (
+                    <span className="text-amber-700 font-medium">
+                      Terkunci di tier Checkout Lite. Upgrade ke Ads Performance untuk bypass ad-blocker dan iOS 14.5+.
+                    </span>
+                  ) : (
+                    "Token server-side untuk bypass ad-blocker dan proteksi Apple iOS 14.5+."
+                  )}
+                </p>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Test Event Code (Opsional untuk Testing)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Test Event Code (Opsional untuk Testing)
+                  </label>
+                  {isCheckoutLite && (
+                    <span
+                      title="Fitur Test Event Code CAPI eksklusif untuk paket Ads Performance (Rp 299k). Upgrade untuk mengaktifkan."
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold cursor-help"
+                    >
+                      <Lock className="w-2.5 h-2.5 text-amber-600" />
+                      <span>Terkunci (Upgrade 299k)</span>
+                    </span>
+                  )}
+                </div>
                 <input
                   type="text"
+                  disabled={isCheckoutLite}
                   value={metaTestCode}
                   onChange={(e) => setMetaTestCode(e.target.value)}
-                  placeholder="TEST12345"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-blue-500 transition uppercase"
+                  placeholder={isCheckoutLite ? "🔒 Eksklusif Ads Performance" : "TEST12345"}
+                  className={`w-full border rounded-xl px-3.5 py-2.5 text-xs font-mono uppercase transition ${
+                    isCheckoutLite
+                      ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500'
+                  }`}
                 />
               </div>
             </div>
@@ -1075,8 +1162,12 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
                   <p className="text-[11px] text-slate-500">TikTok Business Ads Manager</p>
                 </div>
               </div>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                TikTok Ads Pro
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                isCheckoutLite
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : 'bg-purple-50 text-purple-700 border-purple-200'
+              }`}>
+                {isCheckoutLite ? 'Pixel Client-Side' : 'TikTok Ads Pro'}
               </span>
             </div>
 
@@ -1096,16 +1187,63 @@ export default function AdsTrackingPro({ tenantSlug, displayName, onSaved }: Ads
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  TikTok Events API Access Token (Opsional)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    TikTok Events API Access Token (Opsional)
+                  </label>
+                  {isCheckoutLite && (
+                    <span
+                      title="Fitur TikTok Events API Server-Side eksklusif untuk paket Ads Performance (Rp 299k)."
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold cursor-help"
+                    >
+                      <Lock className="w-2.5 h-2.5 text-amber-600" />
+                      <span>Terkunci (Upgrade 299k)</span>
+                    </span>
+                  )}
+                </div>
                 <input
                   type="password"
+                  disabled={isCheckoutLite}
                   value={tiktokAccessToken}
                   onChange={(e) => setTiktokAccessToken(e.target.value)}
-                  placeholder="Masukkan access token TikTok Events API..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-mono focus:bg-white focus:outline-none focus:border-blue-500 transition"
+                  placeholder={isCheckoutLite ? "🔒 Eksklusif Ads Performance" : "Masukkan access token TikTok Events API..."}
+                  className={`w-full border rounded-xl px-3.5 py-2.5 text-xs font-mono transition ${
+                    isCheckoutLite
+                      ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500'
+                  }`}
                 />
+              </div>
+
+              {/* GOOGLE TAG MANAGER (GTM) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    Google Tag Manager (GTM) Container ID
+                  </label>
+                  {isCheckoutLite && (
+                    <span
+                      title="Integrasi Google Tag Manager (GTM) eksklusif untuk paket Ads Performance (Rp 299k)."
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold cursor-help"
+                    >
+                      <Lock className="w-2.5 h-2.5 text-amber-600" />
+                      <span>Terkunci (Upgrade 299k)</span>
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  disabled={isCheckoutLite}
+                  value={gtmId}
+                  onChange={(e) => setGtmId(e.target.value)}
+                  placeholder={isCheckoutLite ? "🔒 Eksklusif Ads Performance (GTM-XXXXXXX)" : "Contoh: GTM-ABC1234"}
+                  className={`w-full border rounded-xl px-3.5 py-2.5 text-xs font-mono uppercase transition ${
+                    isCheckoutLite
+                      ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-blue-500'
+                  }`}
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Ditemukan di dashboard Google Tag Manager (format: GTM-XXXXXXX).</p>
               </div>
 
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Store, ExternalLink, ArrowUpRight } from 'lucide-react';
 import { PlanTier } from '../../hooks/useDashboardData';
 
@@ -26,6 +27,27 @@ export default function TopNavBar({
   return (
     <header className="px-4 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
       <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+        <div className="hidden lg:flex items-center gap-2 pr-3 border-r border-slate-200 shrink-0">
+          <div className="w-7 h-7 rounded-lg overflow-hidden border border-slate-200 bg-white shrink-0">
+            <Image
+              src="/logo-master.jpg"
+              alt="BoonTrack Shop"
+              width={28}
+              height={28}
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div>
+            <div className="flex items-center gap-1 leading-none">
+              <span className="text-xs font-black text-slate-900 tracking-tight">BoonTrack</span>
+              <span className="text-xs font-extrabold text-blue-600">Shop</span>
+            </div>
+            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">
+              COMMERCE ENGINE
+            </span>
+          </div>
+        </div>
+
         <Link
           href={`https://boontrack.com/${tenantSlug}`}
           target="_blank"

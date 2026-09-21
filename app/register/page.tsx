@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Check,
   CheckCircle2,
@@ -1364,12 +1365,15 @@ export default function RegisterShopPage() {
         <div className="w-full max-w-4xl flex flex-col items-center">
           {/* Logo Resmi BoonTrack Shop */}
           <Link href="/" className="flex items-center gap-3 mb-6 group cursor-pointer">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-0.5 shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform duration-200 flex items-center justify-center">
-              <div className="w-full h-full bg-white rounded-[14px] flex items-center justify-center">
-                <span className="font-black text-2xl text-transparent bg-clip-text bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 tracking-tighter">
-                  B
-                </span>
-              </div>
+            <div className="w-11 h-11 rounded-2xl overflow-hidden shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform duration-200 shrink-0 border border-slate-200/80 bg-white">
+              <Image
+                src="/logo-master.jpg"
+                alt="BoonTrack Shop"
+                width={44}
+                height={44}
+                priority
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5">

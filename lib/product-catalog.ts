@@ -38,10 +38,12 @@ export interface SinglePageConfig {
   banner_url: string;
   badge_text?: string;
 
-  // 2. Problem & Solution
+  // 2. Problem, Agitation & Solution
   problem_title?: string;
   pain_points?: string[];       // Poin-poin masalah audiens
   problem_image_url?: string;   // Ilustrasi masalah di sela teks
+  agitation_title?: string;
+  agitation_points?: string[];  // Poin-poin eskalasi/dampak masalah
   solution_title?: string;
   solution_points?: string[];   // Poin-poin solusi & keunggulan
 
@@ -55,11 +57,17 @@ export interface SinglePageConfig {
   // 5. Offer & Bonus
   bonus_items?: BonusItem[];
 
-  // 6. Voucher Diskon
+  // 6. FAQ (Pertanyaan yang Sering Diajukan)
+  faqs?: Array<{ id?: string; question?: string; answer?: string; q?: string; a?: string }>;
+
+  // 7. Mode Single-Page / Cartless Funnel
+  direct_checkout_only?: boolean;
+
+  // 8. Voucher Diskon
   discount_coupon: string;
   voucher?: VoucherConfig;
 
-  // 7. Payment & Affiliate
+  // 9. Payment & Affiliate
   enable_qris: boolean;
   enable_manual_transfer: boolean;
   affiliate_commission_rate: number;

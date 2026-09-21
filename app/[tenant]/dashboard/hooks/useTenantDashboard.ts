@@ -265,7 +265,7 @@ export function useTenantDashboard() {
 
   const handleSelectTab = (tab: DashboardTab) => {
     hasUserSelectedTabRef.current = true;
-    if (isCheckoutLite && !['dashboard', 'overview', 'catalog', 'products', 'orders', 'settings', 'shipping'].includes(tab)) {
+    if (isCheckoutLite && !['dashboard', 'overview', 'catalog', 'products', 'orders', 'settings', 'shipping', 'ads_tracking', 'ads'].includes(tab)) {
       setActiveTab('dashboard');
       return;
     }

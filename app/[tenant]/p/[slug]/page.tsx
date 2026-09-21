@@ -31,7 +31,8 @@ import {
   FileText,
   Key,
   Download,
-  ShoppingBag
+  ShoppingBag,
+  HelpCircle
 } from 'lucide-react';
 import { syncAttributionSession } from '@/lib/attribution';
 import { getTenantWhatsApp } from '@/lib/tenant-config';
@@ -399,6 +400,40 @@ function SingleProductContent() {
   const [hasTrackedAddToCart, setHasTrackedAddToCart] = useState(false);
   const [hasTrackedInitiateCheckout, setHasTrackedInitiateCheckout] = useState(false);
   const [hasTrackedPaymentInfo, setHasTrackedPaymentInfo] = useState(false);
+  const [hasTrackedPaidPurchase, setHasTrackedPaidPurchase] = useState(false);
+
+  // Mode Direct Checkout / Cartless Funnel
+  const isDirectCheckoutOnly = Boolean(
+    config.direct_checkout_only ||
+    searchParams.get('direct') === '1' ||
+    searchParams.get('checkout') === 'direct'
+  );
+
+  // Parsing varian produk dinamis
+  const variantList = useMemo(() => {
+    if (!product.variants) return [];
+    if (Array.isArray(product.variants)) return (product.variants as string[]).filter(Boolean);
+    if (typeof product.variants === 'string') {
+      if (product.variants.includes(',')) {
+        return product.variants.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+      if (product.variants.includes('•')) {
+        return product.variants.split('•').map((s: string) => s.trim()).filter(Boolean);
+      }
+      return [product.variants.trim()];
+    }
+    return [];
+  }, [product.variants]);
+
+  const [selectedVariant, setSelectedVariant] = useState<string>('');
+
+  useEffect(() => {
+    if (variantList.length > 0 && !selectedVariant) {
+      setSelectedVariant(variantList[0]);
+    }
+  }, [variantList, selectedVariant]);
+
+  const orderIdFromUrl = searchParams.get('order_id') || searchParams.get('orderId') || searchParams.get('order') || '';
 
   const availableShippingOptions = useMemo(() => {
     return [...BASE_SHIPPING_OPTIONS, ...instantCouriers];
@@ -609,6 +644,27 @@ function SingleProductContent() {
     }
   }, [tenant, searchParams, slug, product.name, basePrice]);
 
+  // 1. Pemicu browser event: InitiateCheckout saat halaman checkout terbuka / termuat
+  useEffect(() => {
+    if (product && !hasTrackedInitiateCheckout) {
+      trackInitiateCheckout({
+        id: String(product.id || slug),
+        name: product.name,
+        price: basePrice
+      });
+      setHasTrackedInitiateCheckout(true);
+    }
+  }, [product, basePrice, slug, hasTrackedInitiateCheckout]);
+
+  // 2. Pemicu browser event: Purchase HANYA saat order berstatus terkonfirmasi lunas (PAID)
+  useEffect(() => {
+    if (isPaid && product && !hasTrackedPaidPurchase) {
+      const targetOrderId = orderIdFromUrl || `ORDER_${slug}_${Date.now()}`;
+      trackClientPurchase(targetOrderId, totalAmount, product.name);
+      setHasTrackedPaidPurchase(true);
+    }
+  }, [isPaid, product, totalAmount, slug, orderIdFromUrl, hasTrackedPaidPurchase]);
+
   // ── TRACKING 2 JALUR: DIRECT CHECKOUT (FULL FUNNEL) & WHATSAPP CONSULTATION ──
   const triggerAddToCart = () => {
     if (!hasTrackedAddToCart) {
@@ -717,7 +773,10 @@ function SingleProductContent() {
         shippingAddress: requiresAddress ? `${shippingAddress}, ${shippingCity}` : undefined,
         shippingCourier: requiresShipping ? (selectedShipping.eta ? `${selectedShipping.name} (${selectedShipping.eta})` : selectedShipping.name) : undefined,
         productType,
-        fulfillmentMetadata: product.fulfillment_metadata,
+        fulfillmentMetadata: {
+          ...(product.fulfillment_metadata || {}),
+          selected_variant: selectedVariant || undefined,
+        },
         voucherCode: appliedVoucher?.code || undefined,
         adminFee: 0,
         uniqueCode: currentUniqueCode,
@@ -731,24 +790,10 @@ function SingleProductContent() {
       });
 
       if (result?.orderId) {
-        trackClientPurchase(result.orderId, totalAmount, product.name);
         trackLeadFormSubmission(totalAmount);
-        if (typeof window !== "undefined") {
-          const win = window as any;
-          if (typeof win.fbq === "function") {
-            win.fbq("track", "Purchase", {
-              content_name: product.name,
-              value: totalAmount,
-              currency: "IDR",
-            });
-          }
-          if (typeof win.ttq === "object" && typeof win.ttq.track === "function") {
-            win.ttq.track("CompletePayment", {
-              content_name: product.name,
-              value: totalAmount,
-              currency: "IDR",
-            });
-          }
+        // HANYA memicu event Purchase bila order gratis (Rp 0) yang otomatis langsung terkonfirmasi lunas
+        if (totalAmount === 0) {
+          trackClientPurchase(result.orderId, 0, product.name);
         }
       }
 
@@ -869,6 +914,58 @@ function SingleProductContent() {
           {errorMessage}
         </div>
       )}
+
+      {/* Visual Produk & Varian (Direct Ordering Summary) */}
+      <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-2.5">
+        <div className="flex items-center gap-3">
+          <img
+            src={config.banner_url || (product as any).image_url || product.image || "/placeholder-product.png"}
+            alt={product.name}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
+            }}
+            className="w-14 h-14 object-cover rounded-xl border border-slate-200 bg-white shrink-0 shadow-2xs"
+          />
+          <div className="flex-1 min-w-0">
+            <h4 className="font-bold text-slate-900 text-xs truncate">{product.name}</h4>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="font-black text-emerald-600 text-sm">
+                {totalAmount === 0 ? 'GRATIS' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
+              </span>
+              {promoPrice > basePrice && (
+                <span className="text-[10px] line-through text-slate-400">
+                  Rp {promoPrice.toLocaleString('id-ID')}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Pilihan Varian Produk jika tersedia */}
+        {variantList.length > 0 && (
+          <div className="pt-2 border-t border-slate-200/70">
+            <span className="text-[11px] font-bold text-slate-600 block mb-1.5">
+              Pilihan Varian / Paket:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {variantList.map((v, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setSelectedVariant(v)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                    selectedVariant === v
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Input Data Pembeli: Hanya 3 Field (Ultra-Lean Single Section) */}
       <div className="space-y-3">
@@ -1404,211 +1501,262 @@ function SingleProductContent() {
           </div>
         </section>
 
-        {/* 2. Problem Section (Pain Points + Ilustrasi) */}
-        {config.pain_points && config.pain_points.length > 0 && (
-          <section className="bg-rose-50/70 border border-rose-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-            <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-              {config.problem_title || 'Apakah Anda Sering Mengalami Masalah Ini?'}
-            </h2>
-            <div className="space-y-2.5">
-              {config.pain_points.map((point, idx) => (
-                <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-rose-100/90 rounded-2xl shadow-xs">
-                  <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">{point}</span>
-                </div>
-              ))}
-            </div>
-            {config.problem_image_url && (
-              <div className="rounded-2xl overflow-hidden border border-rose-200/80 shadow-sm mt-3 bg-white">
-                <img 
-                  src={config.problem_image_url} 
-                  alt="Ilustrasi Masalah" 
-                  className="w-full h-auto max-h-72 object-cover"
-                />
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* 3. Solution Section (Fitur Unggulan) */}
-        {config.solution_points && config.solution_points.length > 0 && (
-          <section className="bg-emerald-50/60 border border-emerald-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-            <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-              {config.solution_title || 'Materi & Fasilitas Utama'}
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {config.solution_points.map((point, idx) => (
-                <div key={idx} className="flex items-start gap-2.5 p-3.5 bg-white border border-emerald-100 rounded-2xl shadow-xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span className="text-xs sm:text-sm text-slate-800 font-semibold leading-snug">{point}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 4. Tabel Perbandingan Responsif (Us vs Them) */}
-        {config.comparison_rows && config.comparison_rows.length > 0 && (
-          <section className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
-            <div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                Kenapa Memilih Solusi Kami Dibanding Cara Lain?
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Perbedaan nyata efisiensi, akurasi, dan hasil yang akan Anda dapatkan:
-              </p>
-            </div>
-
-            <div className="space-y-3 pt-1">
-              {config.comparison_rows.map((row, idx) => (
-                <div key={row.id || idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50/50 shadow-xs">
-                  <div className="bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-800 border-b border-slate-200">
-                    {row.feature}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-                    {/* Them / Cara Lama */}
-                    <div className="p-3.5 bg-rose-50/40 flex items-start gap-2.5">
-                      <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Cara Lain / Lama</span>
-                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">{row.others}</p>
+        {/* 2. Copywriting Narrative Sections (Kondisional Murni — Zero Margin/Padding Gap jika Kosong atau mode Direct Checkout Only) */}
+        {!isDirectCheckoutOnly && (
+          <>
+            {/* 2a. Problem Section (Pain Points + Ilustrasi) */}
+            {Boolean((config.pain_points && config.pain_points.length > 0) || (config.problem_title && config.problem_title.trim())) ? (
+              <section className="bg-rose-50/70 border border-rose-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                  {config.problem_title || 'Apakah Anda Sering Mengalami Masalah Ini?'}
+                </h2>
+                {config.pain_points && config.pain_points.length > 0 && (
+                  <div className="space-y-2.5">
+                    {config.pain_points.map((point, idx) => (
+                      <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-rose-100/90 rounded-2xl shadow-xs">
+                        <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                        <span className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">{point}</span>
                       </div>
-                    </div>
-                    {/* Us / Solusi Kami */}
-                    <div className="p-3.5 bg-emerald-50/50 flex items-start gap-2.5 border-l-2 border-emerald-500 sm:border-l-0">
+                    ))}
+                  </div>
+                )}
+                {config.problem_image_url && (
+                  <div className="rounded-2xl overflow-hidden border border-rose-200/80 shadow-sm mt-3 bg-white">
+                    <img 
+                      src={config.problem_image_url} 
+                      alt="Ilustrasi Masalah" 
+                      className="w-full h-auto max-h-72 object-cover"
+                    />
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            {/* 2b. Agitation Section (Dampak Masalah Jika Dibiarkan) */}
+            {Boolean((config.agitation_points && config.agitation_points.length > 0) || (config.agitation_title && config.agitation_title.trim())) ? (
+              <section className="bg-amber-50/70 border border-amber-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                  {config.agitation_title || 'Apa yang Terjadi Jika Masalah Ini Terus Dibiarkan?'}
+                </h2>
+                {config.agitation_points && config.agitation_points.length > 0 && (
+                  <div className="space-y-2.5">
+                    {config.agitation_points.map((point, idx) => (
+                      <div key={idx} className="flex items-start gap-3 p-3 bg-white border border-amber-100/90 rounded-2xl shadow-xs">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                        <span className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">{point}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            {/* 2c. Solution Section (Fitur Unggulan) */}
+            {Boolean(config.solution_points && config.solution_points.length > 0) ? (
+              <section className="bg-emerald-50/60 border border-emerald-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                  {config.solution_title || 'Materi & Fasilitas Utama'}
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {config.solution_points?.map((point, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5 p-3.5 bg-white border border-emerald-100 rounded-2xl shadow-xs">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Solusi Produk Ini</span>
-                        <p className="text-xs font-bold text-slate-900 mt-1 leading-relaxed">{row.us}</p>
-                      </div>
+                      <span className="text-xs sm:text-sm text-slate-800 font-semibold leading-snug">{point}</span>
                     </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 5. Galeri & Ulasan Testimoni */}
-        {((config.testimonials && config.testimonials.length > 0) || (config.testimonial_images && config.testimonial_images.length > 0)) && (
-          <section className="bg-slate-50/90 border border-slate-200/90 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-1.5 text-amber-500 font-bold text-xs">
-                <div className="flex">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                   ))}
                 </div>
-                <span className="text-slate-800 font-bold text-xs ml-1">5.0 / 5.0 Rating Kepuasan</span>
-              </div>
-              <span className="text-[11px] font-semibold text-slate-500">Hasil Nyata Member</span>
-            </div>
-            <div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                Bukti Nyata &amp; Kepuasan Pengguna
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Pengalaman dan hasil nyata dari mereka yang telah mempraktikkan materi ini:
-              </p>
-            </div>
+              </section>
+            ) : null}
 
-            {config.testimonials && config.testimonials.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                {config.testimonials.map((t) => (
-                  <div key={t.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex text-amber-400 gap-0.5">
-                          {[...Array(t.rating || 5)].map((_, i) => (
-                            <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
-                          ))}
+            {/* 2d. Tabel Perbandingan Responsif (Us vs Them) */}
+            {Boolean(config.comparison_rows && config.comparison_rows.length > 0) ? (
+              <section className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                    Kenapa Memilih Solusi Kami Dibanding Cara Lain?
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Perbedaan nyata efisiensi, akurasi, dan hasil yang akan Anda dapatkan:
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-1">
+                  {config.comparison_rows?.map((row, idx) => (
+                    <div key={row.id || idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50/50 shadow-xs">
+                      <div className="bg-slate-100 px-4 py-2.5 text-xs font-bold text-slate-800 border-b border-slate-200">
+                        {row.feature}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
+                        {/* Them / Cara Lama */}
+                        <div className="p-3.5 bg-rose-50/40 flex items-start gap-2.5">
+                          <XCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Cara Lain / Lama</span>
+                            <p className="text-xs text-slate-600 mt-1 leading-relaxed">{row.others}</p>
+                          </div>
                         </div>
-                        {t.badge && (
-                          <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-2 py-0.5 rounded-full">
-                            {t.badge}
+                        {/* Us / Solusi Kami */}
+                        <div className="p-3.5 bg-emerald-50/50 flex items-start gap-2.5 border-l-2 border-emerald-500 sm:border-l-0">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Solusi Produk Ini</span>
+                            <p className="text-xs font-bold text-slate-900 mt-1 leading-relaxed">{row.us}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {/* 2e. Galeri & Ulasan Testimoni */}
+            {Boolean((config.testimonials && config.testimonials.length > 0) || (config.testimonial_images && config.testimonial_images.length > 0)) ? (
+              <section className="bg-slate-50/90 border border-slate-200/90 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 text-amber-500 font-bold text-xs">
+                    <div className="flex">
+                      {[...Array(5)].map((_, i) => (
+                        <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                      ))}
+                    </div>
+                    <span className="text-slate-800 font-bold text-xs ml-1">5.0 / 5.0 Rating Kepuasan</span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-slate-500">Hasil Nyata Member</span>
+                </div>
+                <div>
+                  <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                    Bukti Nyata &amp; Kepuasan Pengguna
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Pengalaman dan hasil nyata dari mereka yang telah mempraktikkan materi ini:
+                  </p>
+                </div>
+
+                {config.testimonials && config.testimonials.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {config.testimonials.map((t) => (
+                      <div key={t.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex text-amber-400 gap-0.5">
+                              {[...Array(t.rating || 5)].map((_, i) => (
+                                <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
+                              ))}
+                            </div>
+                            {t.badge && (
+                              <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-2 py-0.5 rounded-full">
+                                {t.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-700 italic leading-relaxed mb-3">&ldquo;{t.quote}&rdquo;</p>
+                        </div>
+                        <div className="pt-2.5 border-t border-slate-100 flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                            {t.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-bold text-slate-900">{t.name}</h5>
+                            <p className="text-[10px] text-slate-500">{t.role}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {config.testimonial_images && config.testimonial_images.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                    {config.testimonial_images.map((imgUrl, idx) => (
+                      <div key={idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group">
+                        <div className="overflow-hidden bg-slate-100">
+                          <img 
+                            src={imgUrl} 
+                            alt={`Bukti Testimoni ${idx + 1}`} 
+                            className="w-full h-48 sm:h-52 object-cover object-top group-hover:scale-105 transition duration-300"
+                            loading="lazy"
+                          />
+                        </div>
+                        <div className="p-2.5 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
+                          <span className="font-semibold text-slate-700">Verified User</span>
+                          <span className="text-emerald-600 font-bold flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Sukses
                           </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            {/* 2f. Irresistible Offer & Bonus Box */}
+            {Boolean(config.bonus_items && config.bonus_items.length > 0) ? (
+              <section className="bg-gradient-to-br from-amber-50 via-yellow-50/60 to-orange-50/40 border-2 border-amber-300/90 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                    Dapatkan Ekstra Bonus Eksklusif Senilai {totalBonusValue > 0 ? `Rp ${totalBonusValue.toLocaleString('id-ID')}` : 'Ratusan Ribu Rupiah'}
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    Semua bonus berharga di bawah ini otomatis menjadi milik Anda 100% GRATIS saat menyelesaikan pesanan sekarang:
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-1">
+                  {config.bonus_items?.map((bonus, idx) => (
+                    <div key={bonus.id || idx} className="p-3.5 bg-white/95 border border-amber-200 rounded-2xl shadow-xs flex items-start gap-3">
+                      <div className="p-2 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
+                        <Gift className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <h4 className="font-bold text-xs sm:text-sm text-slate-900">{bonus.title}</h4>
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0">
+                            Senilai Rp {bonus.value.toLocaleString('id-ID')} (GRATIS)
+                          </span>
+                        </div>
+                        {bonus.description && (
+                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">{bonus.description}</p>
                         )}
                       </div>
-                      <p className="text-xs text-slate-700 italic leading-relaxed mb-3">&ldquo;{t.quote}&rdquo;</p>
                     </div>
-                    <div className="pt-2.5 border-t border-slate-100 flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                        {t.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
-                      </div>
-                      <div>
-                        <h5 className="text-xs font-bold text-slate-900">{t.name}</h5>
-                        <p className="text-[10px] text-slate-500">{t.role}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {config.testimonial_images && config.testimonial_images.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
-                {config.testimonial_images.map((imgUrl, idx) => (
-                  <div key={idx} className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xs hover:shadow-md transition group">
-                    <div className="overflow-hidden bg-slate-100">
-                      <img 
-                        src={imgUrl} 
-                        alt={`Bukti Testimoni ${idx + 1}`} 
-                        className="w-full h-48 sm:h-52 object-cover object-top group-hover:scale-105 transition duration-300"
-                        loading="lazy"
-                      />
-                    </div>
-                    <div className="p-2.5 bg-white text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100">
-                      <span className="font-semibold text-slate-700">Verified User</span>
-                      <span className="text-emerald-600 font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Sukses
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* 6. Irresistible Offer & Bonus Box */}
-        {config.bonus_items && config.bonus_items.length > 0 && (
-          <section className="bg-gradient-to-br from-amber-50 via-yellow-50/60 to-orange-50/40 border-2 border-amber-300/90 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
-            <div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                Dapatkan Ekstra Bonus Eksklusif Senilai {totalBonusValue > 0 ? `Rp ${totalBonusValue.toLocaleString('id-ID')}` : 'Ratusan Ribu Rupiah'}
-              </h2>
-              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                Semua bonus berharga di bawah ini otomatis menjadi milik Anda 100% GRATIS saat menyelesaikan pesanan sekarang:
-              </p>
-            </div>
-
-            <div className="space-y-3 pt-1">
-              {config.bonus_items.map((bonus, idx) => (
-                <div key={bonus.id || idx} className="p-3.5 bg-white/95 border border-amber-200 rounded-2xl shadow-xs flex items-start gap-3">
-                  <div className="p-2 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
-                    <Gift className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2 flex-wrap">
-                      <h4 className="font-bold text-xs sm:text-sm text-slate-900">{bonus.title}</h4>
-                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md shrink-0">
-                        Senilai Rp {bonus.value.toLocaleString('id-ID')} (GRATIS)
-                      </span>
-                    </div>
-                    {bonus.description && (
-                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{bonus.description}</p>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {totalBonusValue > 0 && (
-              <div className="p-3 bg-amber-200/60 rounded-xl border border-amber-300/80 text-center text-xs font-bold text-amber-950">
-                🎉 Total Nilai Semua Bonus: Rp {totalBonusValue.toLocaleString('id-ID')} (100% Bebas Biaya)
-              </div>
-            )}
-          </section>
+                {totalBonusValue > 0 && (
+                  <div className="p-3 bg-amber-200/60 rounded-xl border border-amber-300/80 text-center text-xs font-bold text-amber-950">
+                    🎉 Total Nilai Semua Bonus: Rp {totalBonusValue.toLocaleString('id-ID')} (100% Bebas Biaya)
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            {/* 2g. FAQ Section (Pertanyaan yang Sering Diajukan) */}
+            {Boolean(config.faqs && config.faqs.length > 0) ? (
+              <section className="bg-slate-50 border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <HelpCircle className="w-5 h-5 text-blue-600 shrink-0" />
+                  <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
+                    Pertanyaan yang Sering Diajukan (FAQ)
+                  </h2>
+                </div>
+                <div className="space-y-3 pt-1">
+                  {config.faqs?.map((faq: any, idx: number) => (
+                    <div key={faq.id || idx} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-1.5">
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 flex items-start gap-2">
+                        <span className="text-blue-600 font-black">Q:</span>
+                        <span>{faq.question || faq.q}</span>
+                      </h4>
+                      <p className="text-xs text-slate-600 pl-5 leading-relaxed">
+                        {faq.answer || faq.a}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </>
         )}
 
         {/* 7. Ultra-Lean Single Page Checkout Section */}

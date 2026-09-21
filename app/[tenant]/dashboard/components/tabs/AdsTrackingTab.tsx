@@ -6,6 +6,7 @@ import AdsTrackingPro from '../AdsTrackingPro';
 
 export interface AdsTrackingTabProps {
   isAdsTrackingUnlocked: boolean;
+  isCheckoutLite?: boolean;
   tenantSlug: string;
   displayName: string;
   onSaved?: (msg: string) => void;
@@ -21,13 +22,15 @@ export interface AdsTrackingTabProps {
 
 export default function AdsTrackingTab({
   isAdsTrackingUnlocked,
+  isCheckoutLite = false,
   tenantSlug,
   displayName,
   onSaved,
   onUpgradeTier,
   renderLockedFeatureCard,
 }: AdsTrackingTabProps) {
-  if (!isAdsTrackingUnlocked) {
+  // Hanya kunci total bila merchant bukan Ads Performance/Enterprise DAN bukan Checkout Lite
+  if (!isAdsTrackingUnlocked && !isCheckoutLite) {
     if (renderLockedFeatureCard) {
       return (
         <>
@@ -80,6 +83,8 @@ export default function AdsTrackingTab({
       tenantSlug={tenantSlug}
       displayName={displayName}
       onSaved={onSaved}
+      isCheckoutLite={isCheckoutLite}
+      onUpgradeTier={onUpgradeTier}
     />
   );
 }

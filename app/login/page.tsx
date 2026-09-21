@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   Store,
   ArrowRight,
@@ -149,9 +150,15 @@ export default function MerchantLoginPage() {
     setRecoveryFeedback(null);
     setRecoveryWaUrl(null);
 
-    const input = recoveryIdentifier.trim();
+    const input = recoveryIdentifier.trim().toLowerCase();
     if (!input) {
-      setRecoveryError('Masukkan email atau nomor WhatsApp terdaftar.');
+      setRecoveryError('Silakan masukkan alamat email terdaftar toko Anda.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(input)) {
+      setRecoveryError('Format email tidak valid. Masukkan alamat email yang benar (contoh: nama@bisnis.com).');
       return;
     }
 
@@ -161,20 +168,17 @@ export default function MerchantLoginPage() {
       const res = await fetch('/api/v1/auth/recovery', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: input }),
+        body: JSON.stringify({ email: input }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setRecoveryError(data.error || 'Data akun toko tidak ditemukan.');
+        setRecoveryError(data.error || 'Email tidak terdaftar. Pastikan memasukkan alamat email yang digunakan saat mendaftar toko.');
         return;
       }
 
-      setRecoveryFeedback(data.message || 'Tautan pemulihan berhasil diproses.');
-      if (data.redirectWaUrl) {
-        setRecoveryWaUrl(data.redirectWaUrl);
-      }
+      setRecoveryFeedback(data.message || 'PIN akses dan link masuk berhasil dikirimkan ke email Anda. Silakan periksa inbox/spam.');
     } catch {
       setRecoveryError('Gagal memproses pemulihan akses. Periksa koneksi internet Anda.');
     } finally {
@@ -191,22 +195,41 @@ export default function MerchantLoginPage() {
       {/* Main Container */}
       <div className="w-full max-w-md space-y-6 relative z-10">
         {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition group"
-          >
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <span>BoonTrack Merchant Portal</span>
-            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+        <div className="text-center space-y-3">
+          <Link href="/" className="inline-flex items-center gap-3 group cursor-pointer">
+            <div className="w-11 h-11 rounded-2xl overflow-hidden shadow-lg shadow-blue-500/20 border border-slate-700/80 bg-slate-900 shrink-0 group-hover:scale-105 transition-transform">
+              <Image
+                src="/logo-master.jpg"
+                alt="BoonTrack Shop"
+                width={44}
+                height={44}
+                priority
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="text-left">
+              <div className="flex items-center gap-1.5 leading-none">
+                <span className="font-black text-xl tracking-tight text-white">
+                  BoonTrack
+                </span>
+                <span className="font-extrabold text-lg text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">
+                  Shop
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mt-1">
+                COMMERCE ENGINE
+              </span>
+            </div>
           </Link>
 
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight pt-1">
-            Masuk ke Dashboard Toko
-          </h1>
-          <p className="text-xs text-slate-400 max-w-xs mx-auto">
-            Kelola pesanan, katalog produk, integrasi WhatsApp, dan laporan keuangan toko Anda.
-          </p>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              Masuk ke Dashboard Toko
+            </h1>
+            <p className="text-xs text-slate-400 max-w-xs mx-auto mt-1">
+              Kelola pesanan, katalog produk, integrasi WhatsApp, dan laporan keuangan toko Anda.
+            </p>
+          </div>
         </div>
 
         {/* Main Card */}
@@ -280,7 +303,7 @@ export default function MerchantLoginPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setRecoveryIdentifier(storeSlug);
+                    setRecoveryIdentifier('');
                     setRecoveryError(null);
                     setRecoveryFeedback(null);
                     setRecoveryWaUrl(null);
@@ -288,7 +311,7 @@ export default function MerchantLoginPage() {
                   }}
                   className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition underline underline-offset-4 cursor-pointer"
                 >
-                  Lupa PIN / Kirim Link Masuk via Email atau WhatsApp
+                  Lupa PIN? Kirim via Email
                 </button>
               </div>
             </div>
@@ -350,7 +373,7 @@ export default function MerchantLoginPage() {
                   Pemulihan Akses Toko
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Kirim PIN & link masuk ke kontak terdaftar
+                  Kirim PIN &amp; link masuk ke email terdaftar pemilik toko
                 </p>
               </div>
             </div>
@@ -368,36 +391,24 @@ export default function MerchantLoginPage() {
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <span>{recoveryFeedback}</span>
                 </div>
-                {recoveryWaUrl && (
-                  <a
-                    href={recoveryWaUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Verifikasi via WhatsApp Resmi</span>
-                    <ExternalLink className="w-3 h-3 ml-0.5" />
-                  </a>
-                )}
               </div>
             )}
 
             <form onSubmit={handleRecoverySubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300 block">
-                  Email, Nomor WhatsApp, atau Slug Toko
+                  Masukkan Email Terdaftar Toko
                 </label>
                 <input
-                  type="text"
+                  type="email"
                   required
                   value={recoveryIdentifier}
                   onChange={(e) => setRecoveryIdentifier(e.target.value)}
-                  placeholder="email@bisnis.com atau 08123456789"
+                  placeholder="nama@bisnis.com"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-medium placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
                 />
                 <p className="text-[11px] text-slate-500">
-                  Sistem akan mencocokkan identitas dengan data merchant di Supabase database.
+                  PIN dan tautan akses toko akan dikirimkan langsung ke email Anda tanpa biaya WhatsApp.
                 </p>
               </div>
 
@@ -422,7 +433,7 @@ export default function MerchantLoginPage() {
                   ) : (
                     <>
                       <Mail className="w-3.5 h-3.5" />
-                      <span>Kirim Info Akses</span>
+                      <span>Kirim PIN Akses via Email</span>
                     </>
                   )}
                 </button>
