@@ -24,6 +24,7 @@ import type { InteractiveMenu } from '@/lib/whatsappFormatter';
 import {
   generateConversationsFromOrders,
 } from '../components/tabs/mockInboxConversations';
+import { getRemainingDays } from '@/lib/subscription-tiers';
 
 export type DashboardTab =
   | 'dashboard'
@@ -120,6 +121,11 @@ export function useTenantDashboard() {
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
   const [tenantMetaOmzet, setTenantMetaOmzet] = useState<number>(0);
 
+  // Subscription Special Grant State
+  const [isGrant, setIsGrant] = useState<boolean>(false);
+  const [grantValidUntil, setGrantValidUntil] = useState<string | null>(null);
+  const [grantDaysLeft, setGrantDaysLeft] = useState<number | null>(null);
+
   // Upsell Modal State for Locked Features
   const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false);
 
@@ -192,18 +198,22 @@ export function useTenantDashboard() {
       isGrowth)
   );
 
-  const isAdsTrackingUnlocked = !isCheckoutLite && !isSoloOrTrial && Boolean(
-    isAdsPerformance ||
-    isTeamScale ||
-    tenantFeatureFlags.tier === 'PRO_SCALE' ||
-    tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
-    tenantFeatureFlags.tier === 'ENTERPRISE' ||
-    tenantFeatureFlags.tier === 'TEAM_SCALE'
+  const isAdsTrackingUnlocked = !isCheckoutLite && (
+    (isGrant && (isAdsPerformance || isTeamScale)) ||
+    (!isSoloOrTrial && Boolean(
+      isAdsPerformance ||
+      isTeamScale ||
+      tenantFeatureFlags.tier === 'PRO_SCALE' ||
+      tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
+      tenantFeatureFlags.tier === 'ENTERPRISE' ||
+      tenantFeatureFlags.tier === 'TEAM_SCALE'
+    ))
   );
 
   const isBroadcastUnlocked = !isCheckoutLite && isTeamScale;
 
   const isAiBotAllowed = !isCheckoutLite && Boolean(
+    isGrant ||
     isAdsPerformance ||
     isTeamScale ||
     tenantFeatureFlags.tier === 'PRO_SCALE' ||
@@ -212,7 +222,7 @@ export function useTenantDashboard() {
     tenantFeatureFlags.tier === 'TEAM_SCALE'
   );
 
-  const isTrialActive = Boolean(
+  const isTrialActive = !isGrant && Boolean(
     trialEndsAt ||
     (trialDaysLeft !== null && trialDaysLeft > 0) ||
     String(tenantFeatureFlags.tier || '').toLowerCase().includes('trial') ||
@@ -222,15 +232,22 @@ export function useTenantDashboard() {
 
   // Standarisasi UI Dashboard: Label di bawah nama toko berdasarkan metadata.selected_plan
   // Fallback ke resolusi tier jika selectedPlan belum tersedia
-  const tierLabel =
-    selectedPlan ||
-    (isCheckoutLite
-      ? 'Paket Checkout'
-      : isTeamScale
-      ? 'Team Scale'
-      : isAdsPerformance
-      ? (isTrialActive || trialDaysLeft !== null ? 'Ads Performance Trial' : 'Ads Performance')
-      : 'Paket Solo');
+  const tierLabel = isGrant
+    ? (isTeamScale
+        ? 'Team Scale • Special Grant'
+        : isAdsPerformance
+        ? 'Ads Performance • Special Grant'
+        : isCheckoutLite
+        ? 'Checkout Lite • Special Grant'
+        : 'Solo • Special Grant')
+    : (selectedPlan ||
+      (isCheckoutLite
+        ? 'Paket Checkout'
+        : isTeamScale
+        ? 'Team Scale'
+        : isAdsPerformance
+        ? (isTrialActive || trialDaysLeft !== null ? 'Ads Performance Trial' : 'Ads Performance')
+        : 'Paket Solo'));
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [targetUpgradeTier, setTargetUpgradeTier] = useState<'ads_performance' | 'team_scale' | 'solo' | 'checkout_lite'>('ads_performance');
@@ -852,37 +869,64 @@ export function useTenantDashboard() {
             setPlanTier('growth');
           }
 
-          // Hitung sisa hari Reverse Trial (7 Hari) untuk Ads Performance Promo / Solo Trial
-          const rawTrialEnds = tenant.trial_ends_at || tenant.metadata?.trial_ends_at;
-          const isTrialStore =
-            Boolean(tenant.metadata?.is_trial) ||
-            Boolean(rawTrialEnds) ||
-            rawTier.includes('trial') ||
-            selectedPlanLower.includes('trial') ||
-            resolvedTier === 'SOLO_TRIAL' ||
-            ((rawTier === 'pro_scale' || rawTier.includes('ads')) && (Boolean(tenant.metadata?.is_trial) || Boolean(rawTrialEnds)));
+          // Cek Special Grant (Akses Khusus)
+          const subObj = tenant.metadata?.subscription;
+          const isSpecialGrant = Boolean(
+            subObj?.type === 'granted' ||
+              subObj?.subscription_type === 'granted' ||
+              subObj?.billing_cycle === 'grant' ||
+              tenant.metadata?.subscription_type === 'granted' ||
+              subObj?.is_grant === true
+          );
+          setIsGrant(isSpecialGrant);
 
-          const rawSubStatus = tenant.subscription_status || tenant.metadata?.subscription_status;
-          const finalSubStatus = rawSubStatus || (isTrialStore ? 'trial' : 'active');
-          setSubscriptionStatus(finalSubStatus);
-
-          if (isTrialStore || rawTrialEnds) {
-            let finalTrialEnds = rawTrialEnds;
-            if (!finalTrialEnds && tenant.created_at) {
-              finalTrialEnds = new Date(new Date(tenant.created_at).getTime() + 7 * 86400000).toISOString();
-            }
-            setTrialEndsAt(finalTrialEnds || null);
-
-            if (finalTrialEnds) {
-              const diffMs = new Date(finalTrialEnds).getTime() - Date.now();
-              const days = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-              setTrialDaysLeft(days);
-            } else {
-              setTrialDaysLeft(7);
-            }
-          } else {
+          if (isSpecialGrant) {
+            const grantValid =
+              subObj?.valid_until ||
+              tenant.subscription_ends_at ||
+              tenant.metadata?.subscription_ends_at ||
+              null;
+            setGrantValidUntil(grantValid);
+            setGrantDaysLeft(grantValid ? getRemainingDays(grantValid) : null);
             setTrialEndsAt(null);
             setTrialDaysLeft(null);
+            setSubscriptionStatus('active');
+          } else {
+            setGrantValidUntil(null);
+            setGrantDaysLeft(null);
+
+            // Hitung sisa hari Reverse Trial (7 Hari) untuk Ads Performance Promo / Solo Trial
+            const rawTrialEnds = tenant.trial_ends_at || tenant.metadata?.trial_ends_at;
+            const isTrialStore =
+              Boolean(tenant.metadata?.is_trial) ||
+              Boolean(rawTrialEnds) ||
+              rawTier.includes('trial') ||
+              selectedPlanLower.includes('trial') ||
+              resolvedTier === 'SOLO_TRIAL' ||
+              ((rawTier === 'pro_scale' || rawTier.includes('ads')) && (Boolean(tenant.metadata?.is_trial) || Boolean(rawTrialEnds)));
+
+            const rawSubStatus = tenant.subscription_status || tenant.metadata?.subscription_status;
+            const finalSubStatus = rawSubStatus || (isTrialStore ? 'trial' : 'active');
+            setSubscriptionStatus(finalSubStatus);
+
+            if (isTrialStore || rawTrialEnds) {
+              let finalTrialEnds = rawTrialEnds;
+              if (!finalTrialEnds && tenant.created_at) {
+                finalTrialEnds = new Date(new Date(tenant.created_at).getTime() + 7 * 86400000).toISOString();
+              }
+              setTrialEndsAt(finalTrialEnds || null);
+
+              if (finalTrialEnds) {
+                const diffMs = new Date(finalTrialEnds).getTime() - Date.now();
+                const days = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+                setTrialDaysLeft(days);
+              } else {
+                setTrialDaysLeft(7);
+              }
+            } else {
+              setTrialEndsAt(null);
+              setTrialDaysLeft(null);
+            }
           }
 
           // Hydrate Interactive Menu dari metadata tenant
@@ -1864,6 +1908,9 @@ export function useTenantDashboard() {
     trialDaysLeft,
     trialEndsAt,
     subscriptionStatus,
+    isGrant,
+    grantValidUntil,
+    grantDaysLeft,
     isAiBotAllowed,
     isUpsellModalOpen,
     setIsUpsellModalOpen,

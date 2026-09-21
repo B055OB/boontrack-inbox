@@ -27,9 +27,12 @@ import {
   Activity,
   DollarSign,
   UserCheck,
+  Sparkles,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { HealthStatus, WaGatewayStatus } from '@/lib/tenant-config';
+import GrantAccessModal from '@/app/admin/components/GrantAccessModal';
+import { getRemainingDays } from '@/lib/subscription-tiers';
 
 interface Tenant {
   id: string;
@@ -101,6 +104,85 @@ export default function SuperAdminDashboard() {
   const [newPhone, setNewPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [modalMsg, setModalMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+
+  // Grant Access Modal & Quick Extension State
+  const [grantModalOpen, setGrantModalOpen] = useState(false);
+  const [selectedTenantForGrant, setSelectedTenantForGrant] = useState<any | null>(null);
+  const [quickExtendingSlug, setQuickExtendingSlug] = useState<string | null>(null);
+  const [grantBannerMsg, setGrantBannerMsg] = useState<string | null>(null);
+
+  const handleQuickExtendMonth = async (t: Tenant) => {
+    setQuickExtendingSlug(t.slug);
+    try {
+      const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(t.slug)}/grant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tier: t.metadata?.subscription?.plan_tier || t.plan || 'PRO_SCALE',
+          months: 1,
+          notes: 'Quick Extend +1 Bulan via Admin Workspace Table',
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Gagal memperpanjang akses khusus');
+      }
+
+      setTenants((prev) =>
+        prev.map((item) => {
+          if (item.slug === t.slug) {
+            return {
+              ...item,
+              plan: json.tier,
+              status: 'active',
+              metadata: {
+                ...(item.metadata || {}),
+                subscription: json.subscription,
+                subscription_type: 'granted',
+                tier: json.tier,
+                selected_plan: `${json.tier_name} • Special Grant`,
+                is_trial: false,
+              },
+            };
+          }
+          return item;
+        })
+      );
+
+      setGrantBannerMsg(`✅ Akses khusus untuk workspace "${t.name}" berhasil diperpanjang +1 Bulan (+30 hari)!`);
+      setTimeout(() => setGrantBannerMsg(null), 4000);
+    } catch (err: any) {
+      alert(err.message || 'Gagal memperpanjang akses khusus');
+    } finally {
+      setQuickExtendingSlug(null);
+    }
+  };
+
+  const handleGrantSuccess = (json: any) => {
+    setTenants((prev) =>
+      prev.map((item) => {
+        if (item.slug === json.tenant_slug) {
+          return {
+            ...item,
+            plan: json.tier,
+            status: 'active',
+            metadata: {
+              ...(item.metadata || {}),
+              subscription: json.subscription,
+              subscription_type: 'granted',
+              tier: json.tier,
+              selected_plan: `${json.tier_name} • Special Grant`,
+              is_trial: false,
+            },
+          };
+        }
+        return item;
+      })
+    );
+    setGrantBannerMsg(`✅ Akses khusus "${json.tier_name} • Special Grant" berhasil diberikan kepada workspace (${json.tenant_slug})!`);
+    setTimeout(() => setGrantBannerMsg(null), 4500);
+  };
 
   // Drawer Incident State
   const [showIncidentDrawer, setShowIncidentDrawer] = useState(false);
@@ -704,6 +786,22 @@ export default function SuperAdminDashboard() {
           </Link>
         </div>
 
+        {/* Grant Feedback Alert Banner */}
+        {grantBannerMsg && (
+          <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{grantBannerMsg}</span>
+            </div>
+            <button
+              onClick={() => setGrantBannerMsg(null)}
+              className="text-[10px] text-slate-400 hover:text-white font-mono"
+            >
+              Tutup
+            </button>
+          </div>
+        )}
+
         {/* 1. GRID CARD VIEW */}
         {viewMode === 'grid' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -816,28 +914,78 @@ export default function SuperAdminDashboard() {
                     <div className="px-3.5 py-2.5 rounded-xl bg-slate-950/50 border border-slate-800/60 flex items-center justify-between text-xs font-mono">
                       <div>
                         <span className="text-slate-500 text-[10px] block">Vertical: {t.vertical || 'shop'}</span>
-                        <span className="text-slate-300 text-[11px]">
-                          Tier: <span className="text-indigo-400 uppercase font-semibold">{t.plan || 'growth'}</span>
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-slate-300 text-[11px]">Tier:</span>
+                          {(() => {
+                            const isGrant = Boolean(
+                              t.metadata?.subscription?.type === 'granted' ||
+                                t.metadata?.subscription?.subscription_type === 'granted' ||
+                                t.metadata?.subscription_type === 'granted' ||
+                                t.metadata?.subscription?.is_grant
+                            );
+                            if (isGrant) {
+                              return (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                  <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                                  <span>{t.plan || 'PRO'} • GRANT</span>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="text-indigo-400 uppercase font-semibold text-[11px]">
+                                {t.plan || 'growth'}
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </div>
+
+                      {/* Quick Action +1 Bulan in Grid */}
+                      <button
+                        onClick={() => handleQuickExtendMonth(t)}
+                        disabled={quickExtendingSlug === t.slug}
+                        className="px-2 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-bold inline-flex items-center gap-1 transition cursor-pointer"
+                        title="Perpanjang Cepat +1 Bulan (30 Hari)"
+                      >
+                        {quickExtendingSlug === t.slug ? (
+                          <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                        ) : (
+                          <>
+                            <Sparkles className="w-2.5 h-2.5" />
+                            <span>+1 Bln</span>
+                          </>
+                        )}
+                      </button>
                     </div>
 
                     <div className="space-y-2 pt-1">
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <button
+                          onClick={() => {
+                            setSelectedTenantForGrant(t);
+                            setGrantModalOpen(true);
+                          }}
+                          className="px-2 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-[11px] font-bold rounded-xl transition inline-flex items-center justify-center gap-1 cursor-pointer"
+                          title="Beri Akses Khusus (Grant Access)"
+                        >
+                          <ShieldCheck className="w-3 h-3 text-indigo-400" />
+                          <span>Grant</span>
+                        </button>
+
                         <Link
                           href={`/admin/${t.slug}/config`}
-                          className="px-3 py-2 bg-blue-600/15 hover:bg-blue-600/25 text-blue-400 border border-blue-500/30 hover:border-blue-500/50 text-xs font-semibold rounded-xl transition inline-flex items-center justify-center gap-1.5"
+                          className="px-2 py-2 bg-blue-600/15 hover:bg-blue-600/25 text-blue-400 border border-blue-500/30 hover:border-blue-500/50 text-[11px] font-semibold rounded-xl transition inline-flex items-center justify-center gap-1"
                         >
-                          <Sliders className="w-3.5 h-3.5" />
-                          <span>Config Editor</span>
+                          <Sliders className="w-3 h-3" />
+                          <span>Config</span>
                         </Link>
 
                         <Link
                           href={`/${t.slug}`}
-                          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-xl border border-slate-700 transition inline-flex items-center justify-center gap-1.5"
+                          className="px-2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-medium rounded-xl border border-slate-700 transition inline-flex items-center justify-center gap-1"
                         >
-                          <Bot className="w-3.5 h-3.5" />
-                          <span>Monitoring</span>
+                          <Bot className="w-3 h-3" />
+                          <span>Chat</span>
                         </Link>
                       </div>
 
@@ -969,7 +1117,30 @@ export default function SuperAdminDashboard() {
 
                           <td className="px-6 py-4 font-mono text-[11px]">
                             <div className="text-slate-400">Vertical: <span className="text-white capitalize">{t.vertical || 'shop'}</span></div>
-                            <div className="text-slate-400 mt-0.5">Plan: <span className="text-indigo-400 uppercase font-semibold">{t.plan || 'growth'}</span></div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-slate-400">Tier:</span>
+                              {(() => {
+                                const isGrant = Boolean(
+                                  t.metadata?.subscription?.type === 'granted' ||
+                                    t.metadata?.subscription?.subscription_type === 'granted' ||
+                                    t.metadata?.subscription_type === 'granted' ||
+                                    t.metadata?.subscription?.is_grant
+                                );
+                                if (isGrant) {
+                                  return (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                      <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                                      <span>{t.plan || 'PRO'} • GRANT</span>
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="text-indigo-400 uppercase font-semibold">
+                                    {t.plan || 'growth'}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </td>
 
                           <td className="px-6 py-4">
@@ -980,6 +1151,36 @@ export default function SuperAdminDashboard() {
 
                           <td className="px-6 py-4 text-center">
                             <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                              {/* Quick Action +1 Bulan in Table */}
+                              <button
+                                onClick={() => handleQuickExtendMonth(t)}
+                                disabled={quickExtendingSlug === t.slug}
+                                className="px-2 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-bold inline-flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                                title="Perpanjang Cepat Akses Khusus +1 Bulan (30 Hari)"
+                              >
+                                {quickExtendingSlug === t.slug ? (
+                                  <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                                ) : (
+                                  <>
+                                    <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                                    <span>+1 Bln</span>
+                                  </>
+                                )}
+                              </button>
+
+                              {/* Grant Modal Trigger in Table */}
+                              <button
+                                onClick={() => {
+                                  setSelectedTenantForGrant(t);
+                                  setGrantModalOpen(true);
+                                }}
+                                className="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-[11px] font-bold transition inline-flex items-center gap-1 cursor-pointer"
+                                title="Beri Akses Khusus (Grant Access)"
+                              >
+                                <ShieldCheck className="w-3 h-3 text-indigo-400" />
+                                <span>Grant</span>
+                              </button>
+
                               <Link
                                 href={`/admin/${t.slug}/config`}
                                 className="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-[11px] font-semibold transition inline-flex items-center gap-1"
@@ -1201,6 +1402,13 @@ export default function SuperAdminDashboard() {
           </div>
         )}
 
+        {/* Modal Beri Akses Khusus (Grant Access) */}
+        <GrantAccessModal
+          isOpen={grantModalOpen}
+          onClose={() => setGrantModalOpen(false)}
+          shop={selectedTenantForGrant}
+          onSuccess={handleGrantSuccess}
+        />
       </div>
     </main>
   );

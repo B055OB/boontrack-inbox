@@ -240,6 +240,9 @@ interface DashboardSidebarProps {
   isSoloOrTrial?: boolean;
   isCheckoutLite?: boolean;
   isTrialActive?: boolean;
+  isGrant?: boolean;
+  grantDaysLeft?: number | null;
+  grantValidUntil?: string | null;
   tierLabel?: string;
   trialDaysLeft?: number | null;
   productCount?: number;
@@ -273,6 +276,9 @@ export default function DashboardSidebar({
   isSoloOrTrial = false,
   isCheckoutLite = false,
   isTrialActive = false,
+  isGrant = false,
+  grantDaysLeft = null,
+  grantValidUntil,
   tierLabel,
   trialDaysLeft,
   productCount = 0,
@@ -383,10 +389,12 @@ export default function DashboardSidebar({
                   {nameToShow}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 <span
-                  className={`inline-block text-[9px] font-bold px-1.5 py-0.2 rounded-full border leading-tight ${
-                    isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
+                  className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full border leading-tight ${
+                    isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))
+                      ? 'bg-amber-50 text-amber-900 border-amber-300 font-extrabold shadow-2xs'
+                      : isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
                       ? 'bg-amber-50 text-amber-800 border-amber-200'
                       : isTeamScale || (tierLabel && tierLabel.toLowerCase().includes('team'))
                       ? 'bg-purple-50 text-purple-700 border-purple-200'
@@ -395,17 +403,28 @@ export default function DashboardSidebar({
                       : 'bg-slate-100 text-slate-600 border-slate-200'
                   }`}
                 >
-                  {tierLabel ||
-                    (isCheckoutLite
-                      ? 'Paket Checkout'
-                      : isTeamScale
-                      ? 'Team Scale'
-                      : isAdsPerformance
-                      ? isTrialActive || trialDaysLeft !== null
-                        ? 'Ads Performance Trial'
-                        : 'Ads Performance'
-                      : 'Paket Solo')}
+                  {(isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))) && (
+                    <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                  )}
+                  <span>
+                    {tierLabel ||
+                      (isCheckoutLite
+                        ? 'Paket Checkout'
+                        : isTeamScale
+                        ? 'Team Scale'
+                        : isAdsPerformance
+                        ? isTrialActive || trialDaysLeft !== null
+                          ? 'Ads Performance Trial'
+                          : 'Ads Performance'
+                        : 'Paket Solo')}
+                  </span>
                 </span>
+
+                {(isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))) && grantDaysLeft !== null && (
+                  <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-100/70 px-1 py-0.2 rounded border border-amber-300">
+                    {grantDaysLeft > 0 ? `Sisa ${grantDaysLeft} hr` : 'Aktif'}
+                  </span>
+                )}
               </div>
             </div>
           </div>

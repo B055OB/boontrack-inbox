@@ -454,8 +454,10 @@ export default function DashboardOverviewTab({
                 Selamat {timeGreeting}, {activeStoreName} 👋
               </h1>
               <span
-                className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
-                  isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
+                className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
+                  tierLabel && tierLabel.toLowerCase().includes('grant')
+                    ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-2xs'
+                    : isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
                     ? 'bg-amber-50 text-amber-800 border-amber-200'
                     : isTeamScale || (tierLabel && tierLabel.toLowerCase().includes('team'))
                     ? 'bg-purple-50 text-purple-700 border-purple-200'
@@ -464,16 +466,21 @@ export default function DashboardOverviewTab({
                     : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 }`}
               >
-                {tierLabel ||
-                  (isCheckoutLite
-                    ? 'Paket Checkout'
-                    : isTeamScale
-                    ? 'Team Scale'
-                    : isAdsPerformance
-                    ? isTrialActive || trialDaysLeft !== null
-                      ? 'Ads Performance Trial'
-                      : 'Ads Performance'
-                    : 'Paket Solo')}
+                {tierLabel && tierLabel.toLowerCase().includes('grant') && (
+                  <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
+                )}
+                <span>
+                  {tierLabel ||
+                    (isCheckoutLite
+                      ? 'Paket Checkout'
+                      : isTeamScale
+                      ? 'Team Scale'
+                      : isAdsPerformance
+                      ? isTrialActive || trialDaysLeft !== null
+                        ? 'Ads Performance Trial'
+                        : 'Ads Performance'
+                      : 'Paket Solo')}
+                </span>
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">

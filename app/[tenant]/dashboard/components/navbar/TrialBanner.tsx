@@ -7,6 +7,7 @@ interface TrialBannerProps {
   daysLeft: number | null;
   tier?: string;
   trialEndsAt?: string | null;
+  isGrant?: boolean;
   onUpgrade: (targetTier: 'ads_performance' | 'team_scale' | 'solo' | 'checkout_lite') => void;
 }
 
@@ -14,8 +15,14 @@ export default function TrialBanner({
   daysLeft,
   tier,
   trialEndsAt,
+  isGrant = false,
   onUpgrade,
 }: TrialBannerProps) {
+  // Never show trial banner for granted subscriptions
+  if (isGrant) {
+    return null;
+  }
+
   // Hanya tampilkan jika tier adalah trial (ADS_PERFORMANCE dengan trialEndsAt, SOLO_TRIAL, dll.)
   const isAdsTrial = Boolean(
     tier && (tier.toLowerCase().includes('ads') || tier.toLowerCase().includes('performance'))

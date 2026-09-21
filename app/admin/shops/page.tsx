@@ -22,8 +22,11 @@ import {
   CheckCircle2,
   Video,
   Trash2,
+  ShieldCheck,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import GrantAccessModal from '@/app/admin/components/GrantAccessModal';
+import { getRemainingDays } from '@/lib/subscription-tiers';
 
 const MASTER_PIN = '998877';
 
@@ -255,6 +258,86 @@ export default function SuperAdminShopDirectory() {
   const [activeVertical, setActiveVertical] = useState<VerticalFilterKey>('ALL');
   const [updatingSlug, setUpdatingSlug] = useState<string | null>(null);
 
+  // Grant Access Modal & Quick Extension State
+  const [grantModalOpen, setGrantModalOpen] = useState(false);
+  const [selectedShopForGrant, setSelectedShopForGrant] = useState<any | null>(null);
+  const [quickExtendingSlug, setQuickExtendingSlug] = useState<string | null>(null);
+  const [grantBannerMsg, setGrantBannerMsg] = useState<string | null>(null);
+
+  // Quick Action: +1 Bulan Grant Extension
+  const handleQuickExtendMonth = async (shop: any) => {
+    setQuickExtendingSlug(shop.slug);
+    try {
+      const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(shop.slug)}/grant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tier: shop.metadata?.subscription?.plan_tier || shop.tier || 'PRO_SCALE',
+          months: 1,
+          notes: 'Quick Extend +1 Bulan via Admin Table',
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Gagal memperpanjang akses khusus');
+      }
+
+      setShops((prev) =>
+        prev.map((s) => {
+          if (s.slug === shop.slug) {
+            return {
+              ...s,
+              tier: json.tier,
+              subscription_ends_at: json.valid_until,
+              metadata: {
+                ...(s.metadata || {}),
+                subscription: json.subscription,
+                subscription_type: 'granted',
+                tier: json.tier,
+                selected_plan: `${json.tier_name} • Special Grant`,
+                is_trial: false,
+              },
+            };
+          }
+          return s;
+        })
+      );
+
+      setGrantBannerMsg(`✅ Akses khusus untuk toko "${shop.name}" berhasil diperpanjang +1 Bulan (+30 hari)!`);
+      setTimeout(() => setGrantBannerMsg(null), 4000);
+    } catch (err: any) {
+      alert(err.message || 'Gagal memperpanjang akses khusus');
+    } finally {
+      setQuickExtendingSlug(null);
+    }
+  };
+
+  const handleGrantSuccess = (json: any) => {
+    setShops((prev) =>
+      prev.map((s) => {
+        if (s.slug === json.tenant_slug) {
+          return {
+            ...s,
+            tier: json.tier,
+            subscription_ends_at: json.valid_until,
+            metadata: {
+              ...(s.metadata || {}),
+              subscription: json.subscription,
+              subscription_type: 'granted',
+              tier: json.tier,
+              selected_plan: `${json.tier_name} • Special Grant`,
+              is_trial: false,
+            },
+          };
+        }
+        return s;
+      })
+    );
+    setGrantBannerMsg(`✅ Akses khusus "${json.tier_name} • Special Grant" berhasil diberikan kepada toko (${json.tenant_slug})!`);
+    setTimeout(() => setGrantBannerMsg(null), 4500);
+  };
+
   // Authenticate PIN
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -275,7 +358,7 @@ export default function SuperAdminShopDirectory() {
 
       const { data, error } = await supabase
         .from('tenants')
-        .select('id, name, slug, tier, category, status, is_active, created_at, metadata')
+        .select('id, name, slug, tier, category, status, is_active, created_at, subscription_ends_at, metadata')
         .order('name', { ascending: true });
 
       if (error) {
@@ -535,6 +618,22 @@ export default function SuperAdminShopDirectory() {
           </div>
         </div>
 
+        {/* Grant Feedback Alert Banner */}
+        {grantBannerMsg && (
+          <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{grantBannerMsg}</span>
+            </div>
+            <button
+              onClick={() => setGrantBannerMsg(null)}
+              className="text-[10px] text-slate-400 hover:text-white font-mono"
+            >
+              Tutup
+            </button>
+          </div>
+        )}
+
         {/* Superadmin Module Navigation (Consistent Header Tabs) */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
           <Link
@@ -741,19 +840,55 @@ export default function SuperAdminShopDirectory() {
 
                         {/* 4. Plan Tier */}
                         <td className="px-5 py-4">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
-                              planTier.includes('ENTERPRISE')
-                                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                                : planTier.includes('PRO')
-                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
-                                : planTier.includes('GROWTH')
-                                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                                : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                            }`}
-                          >
-                            {planTier}
-                          </span>
+                          {(() => {
+                            const isGrant = Boolean(
+                              shop.metadata?.subscription?.type === 'granted' ||
+                                shop.metadata?.subscription?.subscription_type === 'granted' ||
+                                shop.metadata?.subscription_type === 'granted' ||
+                                shop.metadata?.subscription?.is_grant
+                            );
+
+                            const validUntil =
+                              shop.metadata?.subscription?.valid_until ||
+                              shop.subscription_ends_at ||
+                              shop.metadata?.subscription_ends_at;
+
+                            const days = validUntil ? getRemainingDays(validUntil) : null;
+
+                            if (isGrant) {
+                              return (
+                                <div className="space-y-1">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border bg-amber-500/15 text-amber-300 border-amber-500/40">
+                                    <Sparkles className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                                    <span>{planTier} • SPECIAL GRANT</span>
+                                  </span>
+                                  {validUntil && (
+                                    <span className="block text-[10px] font-mono text-slate-400">
+                                      {days !== null && days > 0
+                                        ? `Sisa ${days} hari`
+                                        : 'Kedaluwarsa'}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${
+                                  planTier.includes('ENTERPRISE')
+                                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                    : planTier.includes('PRO')
+                                    ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                                    : planTier.includes('GROWTH')
+                                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                    : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                }`}
+                              >
+                                {planTier}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {/* 5. Status: Interactive Toggle (ACTIVE / SUSPENDED) */}
@@ -789,12 +924,42 @@ export default function SuperAdminShopDirectory() {
 
                         {/* 6. Aksi Langsung */}
                         <td className="px-5 py-4 text-center">
-                          <div className="inline-flex items-center gap-2">
+                          <div className="inline-flex items-center gap-1.5 flex-wrap justify-center">
+                            {/* Quick Action: +1 Bulan Grant Extension */}
+                            <button
+                              onClick={() => handleQuickExtendMonth(shop)}
+                              disabled={quickExtendingSlug === shop.slug}
+                              className="px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-[11px] font-bold inline-flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
+                              title="Perpanjangan Cepat Akses Khusus +1 Bulan (30 Hari)"
+                            >
+                              {quickExtendingSlug === shop.slug ? (
+                                <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                              ) : (
+                                <>
+                                  <Sparkles className="w-3 h-3 text-amber-400" />
+                                  <span>+1 Bulan</span>
+                                </>
+                              )}
+                            </button>
+
+                            {/* Modal Trigger: Beri Akses Khusus */}
+                            <button
+                              onClick={() => {
+                                setSelectedShopForGrant(shop);
+                                setGrantModalOpen(true);
+                              }}
+                              className="px-2.5 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-[11px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
+                              title="Beri Akses Khusus (Grant Access) / Atur Tier"
+                            >
+                              <ShieldCheck className="w-3 h-3 text-indigo-400" />
+                              <span>Grant</span>
+                            </button>
+
                             <a
                               href={`/${shop.slug}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-[11px] inline-flex items-center gap-1.5 font-semibold transition border border-slate-700 cursor-pointer"
+                              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-[11px] inline-flex items-center gap-1 font-semibold transition border border-slate-700 cursor-pointer"
                               title="Buka Etalase Storefront Publik"
                             >
                               <Store className="w-3 h-3 text-blue-400" />
@@ -803,7 +968,7 @@ export default function SuperAdminShopDirectory() {
                             </a>
                             <Link
                               href={`/admin/shops/${shop.slug}/config`}
-                              className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-xl text-[11px] inline-flex items-center gap-1.5 font-semibold transition border border-blue-500/30 cursor-pointer"
+                              className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-xl text-[11px] inline-flex items-center gap-1 font-semibold transition border border-blue-500/30 cursor-pointer"
                               title="Edit Konfigurasi Payment & Ongkir Toko"
                             >
                               <Sliders className="w-3 h-3 text-blue-400" />
@@ -828,6 +993,14 @@ export default function SuperAdminShopDirectory() {
           </div>
         </div>
       </div>
+
+      {/* Modal Beri Akses Khusus (Grant Access) */}
+      <GrantAccessModal
+        isOpen={grantModalOpen}
+        onClose={() => setGrantModalOpen(false)}
+        shop={selectedShopForGrant}
+        onSuccess={handleGrantSuccess}
+      />
     </main>
   );
 }

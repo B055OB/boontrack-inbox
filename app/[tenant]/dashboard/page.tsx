@@ -81,6 +81,9 @@ export default function TenantDashboardPage() {
     trialDaysLeft,
     trialEndsAt,
     subscriptionStatus,
+    isGrant,
+    grantValidUntil,
+    grantDaysLeft,
     tenantFeatureFlags,
     isAiBotAllowed,
     isUpsellModalOpen,
@@ -380,6 +383,9 @@ export default function TenantDashboardPage() {
               isSoloOrTrial={isSoloOrTrial}
               isCheckoutLite={isCheckoutLite}
               isTrialActive={isTrialActive}
+              isGrant={isGrant}
+              grantDaysLeft={grantDaysLeft}
+              grantValidUntil={grantValidUntil}
               tierLabel={tierLabel}
               trialDaysLeft={trialDaysLeft}
               productCount={products.length}
@@ -419,6 +425,9 @@ export default function TenantDashboardPage() {
         isSoloOrTrial={isSoloOrTrial}
         isCheckoutLite={isCheckoutLite}
         isTrialActive={isTrialActive}
+        isGrant={isGrant}
+        grantDaysLeft={grantDaysLeft}
+        grantValidUntil={grantValidUntil}
         tierLabel={tierLabel}
         trialDaysLeft={trialDaysLeft}
         productCount={products.length}
@@ -580,12 +589,13 @@ export default function TenantDashboardPage() {
         <TrialBanner
           daysLeft={trialDaysLeft}
           trialEndsAt={trialEndsAt}
+          isGrant={isGrant}
           tier={tenantFeatureFlags?.tier}
           onUpgrade={handleUpgradeTier}
         />
 
         {/* TRIAL QUOTA PROGRESS BAR (30 Order, 50 Interaksi AI, 15 Notifikasi WA) */}
-        {isTrialActive && (
+        {isTrialActive && !isGrant && (
           <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 pb-0 max-w-7xl mx-auto">
             <TrialQuotaProgressBar
               tenantSlug={tenantSlug}

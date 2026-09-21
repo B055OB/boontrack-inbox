@@ -10,6 +10,9 @@ interface TopNavBarProps {
   tenantSlug: string;
   displayName: string;
   planTier: PlanTier;
+  isGrant?: boolean;
+  grantDaysLeft?: number | null;
+  grantValidUntil?: string | null;
   permissions: {
     isSolo: boolean;
     isAdsPerformance: boolean;
@@ -21,6 +24,9 @@ interface TopNavBarProps {
 export default function TopNavBar({
   tenantSlug,
   displayName,
+  planTier,
+  isGrant = false,
+  grantDaysLeft = null,
   permissions,
   onUpgrade,
 }: TopNavBarProps) {
@@ -61,27 +67,44 @@ export default function TopNavBar({
 
         <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
 
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap">
           <h1 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-tight truncate">
             {displayName}
           </h1>
           
-          <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 ${
-            permissions.isTeamScale
-              ? 'bg-purple-50 text-purple-700 border-purple-200'
-              : permissions.isAdsPerformance
-              ? 'bg-blue-50 text-blue-700 border-blue-200'
-              : 'bg-slate-100 text-slate-700 border-slate-200'
-          }`}>
-            {permissions.isTeamScale
-              ? 'Team Scale (499k)'
-              : permissions.isAdsPerformance
-              ? 'Ads Performance (299k)'
-              : 'Solo (199k)'}
-          </span>
+          {isGrant ? (
+            <div className="inline-flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-900 border-amber-300 shadow-2xs">
+                {permissions.isTeamScale
+                  ? 'Team Scale'
+                  : permissions.isAdsPerformance
+                  ? 'Ads Performance'
+                  : 'Solo'} &bull; Special Grant
+              </span>
+              {grantDaysLeft !== null && (
+                <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-100/70 px-1.5 py-0.5 rounded border border-amber-200">
+                  {grantDaysLeft > 0 ? `Sisa ${grantDaysLeft} Hari` : 'Aktif'}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md border shrink-0 ${
+              permissions.isTeamScale
+                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                : permissions.isAdsPerformance
+                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                : 'bg-slate-100 text-slate-700 border-slate-200'
+            }`}>
+              {permissions.isTeamScale
+                ? 'Team Scale (499k)'
+                : permissions.isAdsPerformance
+                ? 'Ads Performance (299k)'
+                : 'Solo (199k)'}
+            </span>
+          )}
 
-          {/* Tombol Inline Upgrade Paket */}
-          {!permissions.isTeamScale && (
+          {/* Tombol Inline Upgrade Paket (Hanya tampil untuk non-grant dan belum Team Scale) */}
+          {!permissions.isTeamScale && !isGrant && (
             <button
               type="button"
               onClick={() => onUpgrade(permissions.isSolo ? 'ads_performance' : 'team_scale')}
