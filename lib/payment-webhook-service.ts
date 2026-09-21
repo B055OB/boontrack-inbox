@@ -5,6 +5,7 @@ import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { dispatchMetaCAPI } from '@/lib/capi.service';
 import { readerAdapter } from '@/lib/payment/adapters/reader-adapter';
 import { paymentEventService } from '@/lib/payment/payment-event-service';
+import { checkTrialQuota } from '@/lib/entitlements/trial-guard';
 
 // In-memory diagnostic logs ring buffer (stores up to 50 latest webhook calls)
 export interface WebhookLogEntry {
@@ -409,6 +410,44 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   }
 
   const paidAt = new Date().toISOString();
+
+  // TRIAL QUOTA GUARD — Webhook Processor (BATCH 1 / Ticket 1.2)
+  // Check before confirming PAID: if trial tenant has hit order limit, reject the
+  // confirmation and return 402. This prevents charging infrastructure costs beyond
+  // the CFO-approved Rp 7.000 per trial tenant hard cap.
+  // NOTE: Merchant dashboard login remains accessible (only transactional mutation blocked).
+  const webhookTenantId = matchedOrder.tenant_id || null;
+  if (webhookTenantId) {
+    const quotaCheck = await checkTrialQuota(webhookTenantId, 'order');
+    if (!quotaCheck.allowed) {
+      const quotaExceededRes = {
+        success: false,
+        error: quotaCheck.errorCode,
+        message: quotaCheck.message,
+        order_id: orderId,
+        current_usage: quotaCheck.currentUsage,
+        limit: quotaCheck.limit,
+        log_id: logId,
+      };
+      addWebhookLog({
+        id: logId,
+        timestamp: new Date().toISOString(),
+        endpoint: endpointSource,
+        method: 'POST',
+        headers: headersObj,
+        rawBody,
+        parsedAmount,
+        detectedApp,
+        tenantSlug,
+        matchedOrderId: orderId,
+        matchStrategy,
+        resultStatus: 402,
+        resultBody: quotaExceededRes,
+      });
+      console.warn(`[Webhook Reader ${logId}] TRIAL_LIMIT_EXCEEDED: Order ${orderId} blocked for tenant ${webhookTenantId}`);
+      return NextResponse.json(quotaExceededRes, { status: 402 });
+    }
+  }
 
   // UPDATE STATUS ORDER KE 'PAID' (Single Source of Truth: orders)
   // NOTE (BATCH 1 / Ticket 1.1): Order mutation stays here intentionally as

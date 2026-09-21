@@ -1,6 +1,7 @@
 import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
+import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
 
 export interface CreateOrderPayload {
   tenantSlug: string;
@@ -148,6 +149,25 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   if (!resolvedTenantId) {
     console.warn(`[Checkout Service] tenant_id tidak ditemukan untuk slug '${payload.tenantSlug}'. Order akan disimpan hanya dengan tenant_slug.`);
+  }
+
+  // TRIAL QUOTA GUARD (BATCH 1 / Ticket 1.2)
+  // Hard-stop: blokir pembuatan order jika trial tenant sudah mencapai limit 30 pesanan.
+  // Non-trial / paid tenants always bypass (allowed: true).
+  if (resolvedTenantId) {
+    const quotaCheck = await checkTrialQuota(resolvedTenantId, 'order');
+    if (!quotaCheck.allowed) {
+      console.warn(`[Checkout Service] TRIAL_LIMIT_EXCEEDED for tenant '${payload.tenantSlug}':`, {
+        currentUsage: quotaCheck.currentUsage,
+        limit: quotaCheck.limit,
+      });
+      throw Object.assign(new Error(quotaCheck.message ?? 'Batas kuota trial tercapai.'), {
+        code: quotaCheck.errorCode ?? 'TRIAL_LIMIT_EXCEEDED',
+        currentUsage: quotaCheck.currentUsage,
+        limit: quotaCheck.limit,
+        isTrial: true,
+      });
+    }
   }
 
   const dbOrderData = {
