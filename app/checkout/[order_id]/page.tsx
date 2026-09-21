@@ -514,6 +514,10 @@ export default function CheckoutPage({ params }: Props) {
     order?.order_status === 'PAID';
 
   const fallbackQrisString =
+    tenant?.metadata?.payment_settings?.qris_raw ||
+    tenant?.metadata?.payment_settings?.raw_qris_string ||
+    tenant?.metadata?.qris_raw ||
+    tenant?.metadata?.raw_qris_string ||
     tenant?.qris_content ||
     tenant?.qris_payload ||
     tenant?.qris_static_string ||
@@ -524,7 +528,6 @@ export default function CheckoutPage({ params }: Props) {
     tenant?.metadata?.payment_config?.qris_content ||
     tenant?.metadata?.payment_config?.raw_qris_string ||
     tenant?.metadata?.payment_config?.static_qris_payload ||
-    tenant?.metadata?.raw_qris_string ||
     tenant?.metadata?.static_qris_payload ||
     '';
 

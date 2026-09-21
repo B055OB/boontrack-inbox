@@ -181,6 +181,10 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               }
 
               const staticQris =
+                data?.metadata?.payment_settings?.qris_raw ||
+                data?.metadata?.payment_settings?.raw_qris_string ||
+                data?.metadata?.qris_raw ||
+                data?.metadata?.raw_qris_string ||
                 (data as any)?.qris_content ||
                 (data as any)?.qris_payload ||
                 (data as any)?.qris_static_string ||
@@ -191,7 +195,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 data?.metadata?.payment_config?.qris_content ||
                 data?.metadata?.payment_config?.raw_qris_string ||
                 data?.metadata?.payment_config?.static_qris_payload ||
-                data?.metadata?.raw_qris_string ||
                 data?.metadata?.static_qris_payload ||
                 '';
               if (staticQris) {

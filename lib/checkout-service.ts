@@ -278,6 +278,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
         const pcfg = tenantData?.metadata?.payment_config;
         tenantStaticQris =
+          tenantData?.metadata?.payment_settings?.qris_raw ||
+          tenantData?.metadata?.payment_settings?.raw_qris_string ||
+          tenantData?.metadata?.qris_raw ||
+          tenantData?.metadata?.raw_qris_string ||
           (tenantData as any)?.qris_content ||
           (tenantData as any)?.qris_payload ||
           (tenantData as any)?.qris_static_string ||
@@ -288,7 +292,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
           pcfg?.qris_content ||
           pcfg?.raw_qris_string ||
           pcfg?.static_qris_payload ||
-          tenantData?.metadata?.raw_qris_string ||
           tenantData?.metadata?.static_qris_payload ||
           "";
         tenantQrisImageUrl =
