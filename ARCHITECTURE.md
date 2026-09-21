@@ -1251,7 +1251,7 @@ Sesuai dengan ketentuan layanan Google Analytics & Google Tag Manager (Terms of 
    - Sistem wajib mengonversi payload string QRIS toko menjadi **Dynamic QRIS Standar EMVCo Bank Indonesia (ASPI)** on-the-fly.
 2. **Injeksi 3-Digit Kode Unik**:
    - Sistem mengenerate kode unik acak 3 digit (rentang 100 - 999), contoh: `unique_code = 347`.
-   - Nominal transaksi dihitung dari: `total_amount = base_amount + unique_code` (contoh: Rp100.000 + 347 = Rp100.347) untuk membedakan tiket mutasi pembayaran di rekening seller.
+   - Nominal transaksi dihitung dari: `total_amount = base_amount - unique_code (DOWNWARD)` (contoh: Rp100.000 + 347 = Rp100.347) untuk membedakan tiket mutasi pembayaran di rekening seller.
 3. **Struktur EMVCo Dynamic Payload**:
    - **Tag 01 (Point of Initiation Method)**: Wajib diubah menjadi `010212` (Dynamic QRIS).
    - **Tag 54 (Transaction Amount)**: Diinjeksi dengan nominal persis beserta kode unik: `f"54{len(amt):02d}{amt}"` tepat sebelum Tag 58 (`5802ID`).
