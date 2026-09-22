@@ -1007,6 +1007,395 @@ function OrdersTab() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// ADS TRACKING PRO TAB
+// ─────────────────────────────────────────────────────────────
+function AdsTrackingTab() {
+  const [activeEvent, setActiveEvent] = useState<string | null>(null);
+
+  const events = [
+    { name: 'Purchase',        count: 2_940, matchQuality: 9.4, dedup: '98.4%', status: 'Active',   color: 'emerald' },
+    { name: 'InitiateCheckout', count: 4_218, matchQuality: 9.1, dedup: '97.2%', status: 'Active',   color: 'blue'    },
+    { name: 'Lead (CTWA)',      count: 15_963, matchQuality: 8.8, dedup: '96.5%', status: 'Active',  color: 'indigo'  },
+    { name: 'ViewContent',     count: 22_401, matchQuality: 7.9, dedup: '94.1%', status: 'Active',   color: 'purple'  },
+  ];
+
+  const campaigns = [
+    { name: 'CTWA Mastery — Cold Traffic WC',    spend: 18_400_000, results: 1_241, cpa: 14_826, roas: 6.94, status: 'Aktif',   budget: 650_000  },
+    { name: 'CTWA Mastery — Retargeting VIP',    spend:  9_800_000, results:   623, cpa: 15_730, roas: 9.48, status: 'Aktif',   budget: 400_000  },
+    { name: 'CTWA Mastery — Lookalike 1-3%',     spend: 12_100_000, results:   802, cpa: 15_087, roas: 6.61, status: 'Aktif',   budget: 500_000  },
+    { name: 'CTWA Mastery — ABO Testing Phase',  spend:  5_900_000, results:   274, cpa: 21_533, roas: 4.60, status: 'Paused', budget: 300_000  },
+  ];
+
+  const pixelHealth = [
+    { label: 'Server Container Status',  value: 'ACTIVE',          ok: true  },
+    { label: 'Deduplication',            value: '98.4% clean',      ok: true  },
+    { label: 'Event Match Quality',      value: '9.4 / 10 — Great', ok: true  },
+    { label: 'Browser Pixel Fallback',   value: 'ON (Redundant)',    ok: true  },
+    { label: 'Conversions API Version',  value: 'v21.0 — Latest',   ok: true  },
+    { label: 'Test Event Code',          value: 'TEST43922 — Clear', ok: true  },
+  ];
+
+  return (
+    <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+            <Target className="w-5 h-5 text-blue-600" />Ads Tracking Pro
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">Meta Conversions API (CAPI) · WhatsApp Server Container · ROAS 6.89× · CPA Rp 15.714</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />CAPI Server Online
+          </span>
+        </div>
+      </div>
+
+      {/* CAPI Health Card */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 border border-indigo-700/30 shadow-lg">
+        <div className="flex flex-col lg:flex-row gap-6">
+          <div className="flex-1 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
+                <Server className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-white font-black text-sm">Meta Conversions API — WhatsApp Server Container</p>
+                <p className="text-emerald-400 text-xs font-bold">● ACTIVE · DEDUPLICATED · v21.0</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {pixelHealth.map(h => (
+                <div key={h.label} className="bg-white/5 border border-white/10 rounded-xl p-3">
+                  <p className="text-slate-400 text-[10px] font-medium mb-1">{h.label}</p>
+                  <p className={`text-xs font-black ${h.ok ? 'text-emerald-400' : 'text-red-400'}`}>{h.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* EQ Score ring */}
+          <div className="flex flex-row lg:flex-col items-center gap-4 shrink-0 p-4 bg-white/5 border border-white/10 rounded-2xl lg:w-44 justify-center">
+            <div className="relative w-20 h-20">
+              <svg className="w-20 h-20 -rotate-90" viewBox="0 0 36 36">
+                <path stroke="#1e293b" strokeWidth="3.5" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path stroke="#10b981" strokeDasharray="94, 100" strokeLinecap="round" strokeWidth="3.5" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-lg font-black text-white">9.4</span>
+                <span className="text-[9px] font-bold text-slate-400">/10</span>
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="text-white font-black text-sm">Event Match</p>
+              <p className="text-emerald-400 font-bold text-xs">Quality Score</p>
+              <p className="text-emerald-300 font-black text-xs mt-0.5">🏆 GREAT</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Event table */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h3 className="text-sm font-black text-slate-900">Custom Events — Status CAPI</h3>
+          <p className="text-slate-500 text-xs mt-0.5">Klik baris untuk detail deduplication & match rate</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+                <th className="text-left px-5 py-3 font-bold">Event Name</th>
+                <th className="text-right px-3 py-3 font-bold">Count (30hr)</th>
+                <th className="text-center px-3 py-3 font-bold">Match Quality</th>
+                <th className="text-center px-3 py-3 font-bold">Dedup Rate</th>
+                <th className="text-center px-3 py-3 font-bold">Status</th>
+                <th className="text-center px-5 py-3 font-bold">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map(ev => (
+                <React.Fragment key={ev.name}>
+                  <tr onClick={() => setActiveEvent(activeEvent === ev.name ? null : ev.name)} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer group">
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full bg-${ev.color}-500 inline-block shrink-0`} />
+                        <span className="font-mono text-xs font-black text-slate-800">{ev.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{ev.count.toLocaleString('id-ID')}</td>
+                    <td className="px-3 py-3.5 text-center">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black ${ ev.matchQuality >= 9 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-blue-50 text-blue-800 border border-blue-200' }`}>
+                        {ev.matchQuality}/10
+                      </span>
+                    </td>
+                    <td className="px-3 py-3.5 text-center font-black text-sm text-emerald-700">{ev.dedup}</td>
+                    <td className="px-3 py-3.5 text-center">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />{ev.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-center">
+                      <ChevronDown size={16} className={`inline transition-transform duration-200 text-slate-400 group-hover:text-indigo-500 ${activeEvent === ev.name ? 'rotate-180' : ''}`} />
+                    </td>
+                  </tr>
+                  {activeEvent === ev.name && (
+                    <tr className="bg-slate-50/80 border-b border-slate-100">
+                      <td colSpan={6} className="px-5 py-4">
+                        <div className="flex flex-wrap gap-x-8 gap-y-3 text-xs">
+                          {[
+                            ['Channel', 'WhatsApp CTWA (Server Container)'],
+                            ['Deduplication Key', 'external_id + fbclid'],
+                            ['Browser Pixel', 'ON (Redundant fallback)'],
+                            ['Server Container', 'Meta CAPI v21.0 · ACTIVE'],
+                            ['Last Received', '23 Sep, 05:14 WIB · Purchase'],
+                            ['Test Event', 'TEST43922 · Passed ✓'],
+                          ].map(([k, v]) => (
+                            <div key={k}><p className="text-slate-400 font-medium mb-0.5">{k}</p><p className="text-slate-800 font-bold">{v}</p></div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Campaign performance table */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h3 className="text-sm font-black text-slate-900">Performa Campaign Meta Ads</h3>
+          <p className="text-slate-500 text-xs mt-0.5">Total Spend: {fmtRp(46_200_000)} · Total Results: 2.940 · Avg ROAS: 6.89×</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+                <th className="text-left px-5 py-3 font-bold">Campaign</th>
+                <th className="text-right px-3 py-3 font-bold">Spend</th>
+                <th className="text-right px-3 py-3 font-bold">Results</th>
+                <th className="text-right px-3 py-3 font-bold">CPA</th>
+                <th className="text-right px-3 py-3 font-bold">ROAS</th>
+                <th className="text-right px-3 py-3 font-bold hidden lg:table-cell">Budget/Day</th>
+                <th className="text-center px-5 py-3 font-bold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {campaigns.map(c => (
+                <tr key={c.name} className="border-b border-slate-100 hover:bg-slate-50/40 transition-colors">
+                  <td className="px-5 py-3.5">
+                    <span className="text-xs font-bold text-slate-800 line-clamp-1">{c.name}</span>
+                  </td>
+                  <td className="px-3 py-3.5 text-right font-bold text-xs text-slate-700">{fmtRp(c.spend)}</td>
+                  <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{c.results.toLocaleString('id-ID')}</td>
+                  <td className="px-3 py-3.5 text-right text-xs font-bold text-slate-600">Rp {c.cpa.toLocaleString('id-ID')}</td>
+                  <td className="px-3 py-3.5 text-right">
+                    <span className={`font-black text-sm ${c.roas >= 6 ? 'text-emerald-600' : 'text-amber-600'}`}>{c.roas.toFixed(2)}×</span>
+                  </td>
+                  <td className="px-3 py-3.5 text-right text-xs font-bold text-slate-500 hidden lg:table-cell">{fmtRp(c.budget)}</td>
+                  <td className="px-5 py-3.5 text-center">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black ${c.status === 'Aktif' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${c.status === 'Aktif' ? 'bg-emerald-500' : 'bg-amber-500'} inline-block`} />{c.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// LAPORAN KEUANGAN TAB
+// ─────────────────────────────────────────────────────────────
+function FinanceTab() {
+  const [activeDay, setActiveDay] = useState<string | null>(null);
+
+  const withdrawals = [
+    { date: '23 Sep 2026', amount: 12_640_000, method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026092301' },
+    { date: '22 Sep 2026', amount: 11_880_000, method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026092201' },
+    { date: '21 Sep 2026', amount: 13_210_000, method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026092101' },
+    { date: '20 Sep 2026', amount: 10_450_000, method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026092001' },
+    { date: '19 Sep 2026', amount: 9_970_000,  method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026091901' },
+    { date: '18 Sep 2026', amount: 11_320_000, method: 'Auto Transfer Mandiri', status: 'Selesai', ref: 'TRF-2026091801' },
+    { date: '17 Sep 2026', amount: 8_890_000,  method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026091701' },
+  ];
+
+  const dailyRevs = [
+    { date: '23 Sep', orders: 7,   gross: 842_000,   net: 824_000,   day: '23 Sep 2026' },
+    { date: '22 Sep', orders: 98,  gross: 11_880_000, net: 11_638_000, day: '22 Sep 2026' },
+    { date: '21 Sep', orders: 112, gross: 13_210_000, net: 12_945_800, day: '21 Sep 2026' },
+    { date: '20 Sep', orders: 89,  gross: 10_450_000, net: 10_241_000, day: '20 Sep 2026' },
+    { date: '19 Sep', orders: 84,  gross:  9_970_000, net:  9_770_600, day: '19 Sep 2026' },
+    { date: '18 Sep', orders: 96,  gross: 11_320_000, net: 11_093_600, day: '18 Sep 2026' },
+    { date: '17 Sep', orders: 76,  gross:  8_890_000, net:  8_712_200, day: '17 Sep 2026' },
+  ];
+
+  const totalNet = 318_483_000;
+  const totalFee = Math.round(totalNet * 0.02);
+  const totalGross = totalNet + totalFee;
+
+  return (
+    <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-amber-600" />Laporan Keuangan
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">Mutasi saldo bersih · Pencairan otomatis · Rekap harian — 30 Hari Terakhir</p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+          ✓ Saldo Tersinkronisasi
+        </span>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[
+          { label: 'Gross Revenue (30 Hari)',  value: fmtRp(totalGross),  sub: 'Sebelum biaya platform', iconBg: 'bg-slate-100', iconColor: 'text-slate-600', icon: Wallet,       color: 'slate' },
+          { label: 'Biaya Platform (2%)',      value: fmtRp(totalFee),    sub: 'MDR + Processing fee',   iconBg: 'bg-rose-50',   iconColor: 'text-rose-500',  icon: CreditCard,   color: 'rose'  },
+          { label: 'Saldo Bersih (Net)',       value: fmtRp(totalNet),    sub: '100% masuk rekening',    iconBg: 'bg-emerald-50',iconColor: 'text-emerald-600',icon: CheckCircle, color: 'emerald'},
+        ].map(c => (
+          <div key={c.label} className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">{c.label}</span>
+              <div className={`w-8 h-8 rounded-xl ${c.iconBg} ${c.iconColor} flex items-center justify-center`}><c.icon className="w-4 h-4" /></div>
+            </div>
+            <div>
+              <div className={`text-2xl font-black tracking-tight ${c.color === 'emerald' ? 'text-emerald-700' : c.color === 'rose' ? 'text-rose-600' : 'text-slate-900'}`}>{c.value}</div>
+              <div className="mt-1 text-[11px] font-bold text-slate-400">{c.sub}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Balance visual bar */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-black text-slate-800">Distribusi Pendapatan</span>
+          <span className="text-xs font-bold text-slate-500">{fmtRp(totalGross)} Total Gross</span>
+        </div>
+        <div className="h-4 w-full rounded-full bg-slate-100 overflow-hidden flex">
+          <div className="h-full bg-emerald-500 rounded-l-full transition-all" style={{ width: '98%' }} />
+          <div className="h-full bg-rose-400 rounded-r-full transition-all" style={{ width: '2%' }} />
+        </div>
+        <div className="flex items-center gap-4 mt-2 text-[11px]">
+          <span className="flex items-center gap-1 font-bold text-emerald-700"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />Saldo Bersih (98%)</span>
+          <span className="flex items-center gap-1 font-bold text-rose-500"><span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block" />Biaya Platform (2%)</span>
+        </div>
+      </div>
+
+      {/* Withdrawal History */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h3 className="text-sm font-black text-slate-900">Riwayat Pencairan Otomatis</h3>
+          <p className="text-slate-500 text-xs mt-0.5">Auto-transfer setiap hari jam 07.00 WIB · Langsung ke rekening terdaftar</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+                <th className="text-left px-5 py-3 font-bold">Tanggal</th>
+                <th className="text-right px-3 py-3 font-bold">Nominal</th>
+                <th className="text-left px-3 py-3 font-bold hidden md:table-cell">Metode</th>
+                <th className="text-left px-3 py-3 font-bold hidden lg:table-cell">Ref Transfer</th>
+                <th className="text-center px-5 py-3 font-bold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {withdrawals.map(w => (
+                <tr key={w.ref} className="border-b border-slate-100 hover:bg-slate-50/40 transition-colors">
+                  <td className="px-5 py-3.5 font-bold text-xs text-slate-700">{w.date}</td>
+                  <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{fmtRp(w.amount)}</td>
+                  <td className="px-3 py-3.5 hidden md:table-cell text-slate-500 text-xs">{w.method}</td>
+                  <td className="px-3 py-3.5 hidden lg:table-cell">
+                    <span className="font-mono text-[11px] text-indigo-600 font-bold">{w.ref}</span>
+                  </td>
+                  <td className="px-5 py-3.5 text-center">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />{w.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Daily Revenue Breakdown */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h3 className="text-sm font-black text-slate-900">Rincian Transaksi Harian</h3>
+          <p className="text-slate-500 text-xs mt-0.5">Klik baris untuk melihat breakdown gross / net / fee</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
+                <th className="text-left px-5 py-3 font-bold">Tanggal</th>
+                <th className="text-right px-3 py-3 font-bold">Orders</th>
+                <th className="text-right px-3 py-3 font-bold">Gross</th>
+                <th className="text-right px-5 py-3 font-bold">Net (98%)</th>
+                <th className="text-center px-5 py-3 font-bold">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyRevs.map(d => (
+                <React.Fragment key={d.day}>
+                  <tr onClick={() => setActiveDay(activeDay === d.day ? null : d.day)} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer group">
+                    <td className="px-5 py-3.5 font-bold text-xs text-slate-700">{d.date}</td>
+                    <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{d.orders}</td>
+                    <td className="px-3 py-3.5 text-right text-xs font-bold text-slate-600">{fmtRp(d.gross)}</td>
+                    <td className="px-5 py-3.5 text-right font-black text-sm text-emerald-700">{fmtRp(d.net)}</td>
+                    <td className="px-5 py-3.5 text-center">
+                      <ChevronDown size={16} className={`inline transition-transform duration-200 text-slate-400 group-hover:text-indigo-500 ${activeDay === d.day ? 'rotate-180' : ''}`} />
+                    </td>
+                  </tr>
+                  {activeDay === d.day && (
+                    <tr className="bg-slate-50/80 border-b border-slate-100">
+                      <td colSpan={5} className="px-5 py-4">
+                        <div className="flex flex-wrap gap-x-8 gap-y-3 text-xs">
+                          {[
+                            ['Gross Revenue', fmtRp(d.gross)],
+                            ['Biaya Platform (2%)', fmtRp(Math.round(d.gross * 0.02))],
+                            ['Saldo Bersih (Net)', fmtRp(d.net)],
+                            ['Jumlah Order', `${d.orders} transaksi`],
+                            ['Avg Order Value', fmtRp(Math.round(d.gross / d.orders))],
+                            ['Pencairan', 'Auto Transfer jam 07.00 WIB'],
+                          ].map(([k, v]) => (
+                            <div key={k}><p className="text-slate-400 font-medium mb-0.5">{k}</p><p className="text-slate-800 font-bold">{v}</p></div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {/* Total footer */}
+        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between">
+          <span className="text-xs font-black text-slate-700">Total 30 Hari</span>
+          <div className="flex items-center gap-6">
+            <span className="text-xs font-bold text-slate-500">2.940 orders</span>
+            <span className="text-xs font-black text-emerald-700">{fmtRp(totalNet)} Bersih</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // PLACEHOLDER TABS
 // ─────────────────────────────────────────────────────────────
 function PlaceholderTab({ title, desc, icon: Icon }: { title: string; desc: string; icon: React.ElementType }) {
@@ -1052,8 +1441,8 @@ export default function ShowcaseDashboard() {
       case 'ai_knowledge': return <PlaceholderTab title="AI Knowledge & Bot" desc="Bot WA aktif 24/7 dengan training product CTWA Mastery." icon={Brain} />;
       case 'whatsapp':     return <PlaceholderTab title="WhatsApp & Broadcast" desc="WABA + CAPI Server Container aktif & deduplicated." icon={Radio} />;
       case 'inbox':        return <PlaceholderTab title="BoonTrack Inbox" desc="10 chat masuk baru menunggu — CS siap merespons." icon={MessageSquare} />;
-      case 'ads_tracking': return <PlaceholderTab title="Ads Tracking Pro" desc="Meta Pixel + CAPI · ROAS 6.89× · CPA Rp 15.714." icon={Target} />;
-      case 'finance':      return <PlaceholderTab title="Laporan Keuangan" desc="Total omzet 30 hari: Rp 318.483.000 · 100% masuk rekening." icon={CreditCard} />;
+      case 'ads_tracking': return <AdsTrackingTab />;
+      case 'finance':      return <FinanceTab />;
     }
   };
 
