@@ -8,7 +8,7 @@ const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   rootDir: '.',
-  testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx', '**/tests/**/*.test.ts'],
   moduleNameMapper: {
     // Resolve Next.js path aliases
     '^@/(.*)$': '<rootDir>/$1',

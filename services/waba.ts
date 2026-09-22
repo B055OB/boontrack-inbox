@@ -187,6 +187,74 @@ export class MetaWabaProviderAdapter {
       return false;
     }
   }
+
+  /**
+   * Section 22.3 Assertion Guard for Outbound Dispatch:
+   * 1. connection.tenant_id == targetTenantId
+   * 2. connection.ownership_domain == "TENANT"
+   * 3. connection.status == "CONNECTED"
+   * 4. dispatchedCredentialRef matches connection.credential_ref
+   */
+  assertOutboundAuthority(
+    targetTenantId: string,
+    connection: WabaConnectionAuthority,
+    dispatchedCredentialRef?: string
+  ): void {
+    if (!targetTenantId || !connection) {
+      throw new Error('[SECURITY_OUTBOUND_VIOLATION] Missing tenant context or connection authority');
+    }
+    if (connection.tenant_id !== targetTenantId) {
+      throw new Error(
+        `[SECURITY_OUTBOUND_VIOLATION] Cross-tenant boundary breach: Tenant '${targetTenantId}' attempted to use connection belonging to '${connection.tenant_id}'`
+      );
+    }
+    if (connection.ownership_domain !== 'TENANT') {
+      throw new Error(
+        `[SECURITY_OUTBOUND_VIOLATION] Domain breach: expected TENANT, got '${connection.ownership_domain}'`
+      );
+    }
+    if (connection.status !== 'CONNECTED') {
+      throw new Error(
+        `[SECURITY_OUTBOUND_VIOLATION] Operational state breach: connection status is '${connection.status}', expected CONNECTED`
+      );
+    }
+    if (
+      dispatchedCredentialRef &&
+      connection.credential_ref &&
+      dispatchedCredentialRef !== connection.credential_ref
+    ) {
+      throw new Error(
+        `[SECURITY_OUTBOUND_VIOLATION] Credential spoofing detected: dispatched credential_ref '${dispatchedCredentialRef}' does not match tenant connection credential_ref '${connection.credential_ref}'`
+      );
+    }
+  }
+
+  /**
+   * Mengirim pesan outbound aman dengan penegakan otoritas Section 22.3.
+   */
+  async dispatchTenantMessage(
+    targetTenantId: string,
+    connection: WabaConnectionAuthority,
+    to: string,
+    payload: WabaMessagePayload,
+    resolvedToken: string,
+    dispatchedCredentialRef?: string
+  ): Promise<MetaWabaSendResult> {
+    this.assertOutboundAuthority(targetTenantId, connection, dispatchedCredentialRef);
+    const phoneId = connection.phone_number_id;
+    if (!phoneId) {
+      return { success: false, error: 'Missing phone_number_id on connection authority' };
+    }
+    return this.sendMessage(phoneId, resolvedToken, to, payload);
+  }
+}
+
+export interface WabaConnectionAuthority {
+  tenant_id: string;
+  ownership_domain: string;
+  status: string;
+  credential_ref?: string;
+  phone_number_id?: string;
 }
 
 export const metaWabaAdapter = new MetaWabaProviderAdapter();

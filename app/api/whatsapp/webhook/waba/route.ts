@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { metaWabaAdapter } from '@/services/waba';
 import { ConversationEngine } from '@/lib/conversationEngine';
@@ -6,10 +7,44 @@ import { ConversationEngine } from '@/lib/conversationEngine';
 export const dynamic = 'force-dynamic';
 
 /**
- * 1. Meta Webhook Challenge Verification (GET)
- * Memverifikasi webhook subscription handshake dari Meta Developer Platform.
+ * Helper: Meta Webhook HMAC-SHA256 Signature Verification.
+ * Returns true if valid or if secret is not configured in non-production.
+ * Returns false if header is missing, malformed, or mismatch.
  */
-export async function GET(req: NextRequest) {
+export function verifyMetaWebhookSignature(
+  rawBody: string,
+  signatureHeader: string | null,
+  appSecret?: string
+): boolean {
+  const secret = appSecret || process.env.META_APP_SECRET;
+  if (!secret) {
+    // Jika tidak ada secret dan tidak ada signature header, bypass hanya di non-prod
+    return !signatureHeader;
+  }
+
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
+    return false;
+  }
+
+  const expectedSignature =
+    'sha256=' +
+    crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
+
+  const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+  const actualBuf = Buffer.from(signatureHeader, 'utf8');
+
+  if (expectedBuf.length !== actualBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
+}
+
+/**
+ * 1. Meta Webhook Challenge Verification (GET)
+ * Murni memvalidasi `hub.mode === 'subscribe'` dan `hub.verify_token`, lalu return challenge.
+ */
+export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get('hub.mode');
@@ -17,36 +52,59 @@ export async function GET(req: NextRequest) {
     const challenge = searchParams.get('hub.challenge');
 
     const expectedToken =
+      process.env.META_VERIFY_TOKEN ||
       process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
       process.env.META_WEBHOOK_VERIFY_TOKEN ||
       'boontrack_waba_webhook_verify_token';
 
     if (mode === 'subscribe' && token === expectedToken) {
       console.log('[WABA Webhook] Handshake challenge verified successfully.');
-      return new NextResponse(challenge || '', {
+      return new Response(challenge || '', {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
       });
     }
 
     console.warn('[WABA Webhook] Handshake verification rejected: token mismatch.');
-    return new NextResponse('Forbidden: Token mismatch', { status: 403 });
+    return new Response('Forbidden: Token mismatch', { status: 403 });
   } catch (err: unknown) {
     console.error('[WABA Webhook GET Exception]:', err);
-    return new NextResponse('Internal Server Error', { status: 500 });
+    return new Response('Internal Server Error', { status: 500 });
   }
 }
 
 /**
  * 2. WABA Ingress Webhook Handler (POST)
- * Menegakkan Rule 1 (No Identity, No Tenant) & Rule 2 (No Ownership Chain, No Business Logic):
- * - Identitas tenant HANYA di-resolve dari tabel whatsapp_connections melalui phone_number_id eksak.
- * - Jika resource tidak terdaftar, bukan TENANT domain, atau tidak CONNECTED:
- *   Wajib melakukan SILENT DROP (HTTP 200, 0 AI call, 0 database mutation).
+ * Pipeline:
+ * 1. Signature Check (HMAC-SHA256) -> Reject 401 jika invalid / mismatch.
+ * 2. Payload Extraction -> Raw body text diparse ke JSON.
+ * 3. Phone Resolver -> phone_number_id diekstrak dari metadata.
+ * 4. Ownership Validation -> domain TENANT, status != REVOKED (Operational state hanya divalidasi pada OUTBOUND).
+ * 5. Conversation Engine -> Teruskan ke internal commerce/conversation engine.
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
+    // 1. Baca raw text body request
+    const rawBody = await req.text();
+    const signatureHeader = req.headers.get('x-hub-signature-256');
+    const appSecret = process.env.META_APP_SECRET;
+
+    // 2. Meta Webhook Signature Verification (HMAC-SHA256)
+    if (appSecret || signatureHeader) {
+      const isValid = verifyMetaWebhookSignature(rawBody, signatureHeader, appSecret);
+      if (!isValid) {
+        console.warn('[SECURITY_WABA_SIGNATURE_REJECTED] Invalid or missing HMAC signature. Blocking ingress.');
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+      }
+    }
+
+    // 3. Payload Extraction
+    let body: any = {};
+    try {
+      body = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      return NextResponse.json({ status: 'ignored', reason: 'invalid_json' }, { status: 200 });
+    }
 
     // Ekstrak phone_number_id dari metadata payload WABA
     const rawPhoneId = body?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
@@ -59,7 +117,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'ignored', reason: 'missing_phone_number_id' }, { status: 200 });
     }
 
-    // Resolusikan otoritas koneksi dari Supabase Registry (whatsapp_connections)
+    // 4. Ingress Resolver: Query Supabase whatsapp_connections
+    // Pisahkan Ownership State (TENANT, bukan REVOKED) vs Operational State (CONNECTED).
     const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
       console.error('[SECURITY_WABA_INGRESS_ERROR] Database client unreachable.');
@@ -68,22 +127,23 @@ export async function POST(req: NextRequest) {
 
     const { data: connection, error: connError } = await supabase
       .from('whatsapp_connections')
-      .select('tenant_id, ownership_domain, status, credential_ref')
+      .select('tenant_id, ownership_domain, status, credential_ref, phone_number_id')
       .eq('phone_number_id', phoneNumberId)
       .eq('ownership_domain', 'TENANT')
       .eq('provider', 'META')
       .single();
 
-    // Validasi Invariant Keamanan: Wajib TENANT domain & CONNECTED
+    // Validasi Syarat Kepemilikan (Ownership State):
+    // Record wajib ada, domain TENANT, tenant_id ada, dan status BUKAN REVOKED.
     if (
       connError ||
       !connection ||
-      connection.status !== 'CONNECTED' ||
       connection.ownership_domain !== 'TENANT' ||
-      !connection.tenant_id
+      !connection.tenant_id ||
+      connection.status === 'REVOKED'
     ) {
       console.warn(
-        `[SECURITY_WABA_UNMAPPED_RESOURCE] phone_number_id="${phoneNumberId}" is unmapped or inactive (status=${connection?.status || 'NOT_FOUND'}, domain=${connection?.ownership_domain || 'UNKNOWN'}). Dropping silently without AI call or DB mutation.`
+        `[SECURITY_WABA_UNMAPPED_RESOURCE] phone_number_id="${phoneNumberId}" is unmapped or revoked (status=${connection?.status || 'NOT_FOUND'}, domain=${connection?.ownership_domain || 'UNKNOWN'}). Dropping silently without AI call or DB mutation.`
       );
       return NextResponse.json({ status: 'ignored' }, { status: 200 });
     }
@@ -109,9 +169,6 @@ export async function POST(req: NextRequest) {
       const senderPhone = String(msg.from || '').replace(/\D/g, '');
       if (!senderPhone) continue;
 
-      const senderName =
-        contacts.find((c: any) => c.wa_id === msg.from)?.profile?.name || 'Pelanggan';
-
       let textContent = '';
       let interactiveReply: any = undefined;
 
@@ -136,7 +193,7 @@ export async function POST(req: NextRequest) {
       if (!textContent) continue;
 
       try {
-        // Teruskan payload bersama tenant_id terverifikasi ke alur pemrosesan percakapan/commerce internal
+        // Teruskan payload bersama tenant_id terverifikasi ke internal ConversationEngine
         const engineResult = await ConversationEngine.process({
           tenant_id: tenantId,
           channel: 'WHATSAPP',
@@ -147,21 +204,33 @@ export async function POST(req: NextRequest) {
           channel_type: 'WABA',
         });
 
-        // Jika engine mengembalikan balasan dan kredensial tersedia, kirim via transport adapter
+        // 5. Outbound Dispatch: Penegakan State Operasional (CONNECTED)
+        // State operasional HANYA divalidasi pada saat OUTBOUND (pengiriman pesan), bukan saat INBOUND ingress.
         if (engineResult?.reply && connection.credential_ref) {
-          const resolvedToken =
-            process.env[`META_TOKEN_${tenantId.toUpperCase()}`] ||
-            process.env.META_WA_TOKEN ||
-            process.env.WHATSAPP_API_TOKEN ||
-            (connection.credential_ref.startsWith('ey') ? connection.credential_ref : '');
-
-          if (resolvedToken) {
-            await metaWabaAdapter.sendText(
-              phoneNumberId,
-              resolvedToken,
-              senderPhone,
-              engineResult.reply
+          if (connection.status !== 'CONNECTED') {
+            console.warn(
+              `[SECURITY_WABA_OUTBOUND_SUPPRESSED] Operational state is '${connection.status}' (not CONNECTED). Inbound accepted for tenant=${tenantId}, but outbound reply suppressed.`
             );
+          } else {
+            const resolvedToken =
+              process.env[`META_TOKEN_${tenantId.toUpperCase()}`] ||
+              process.env.META_WA_TOKEN ||
+              process.env.WHATSAPP_API_TOKEN ||
+              (connection.credential_ref.startsWith('ey') ? connection.credential_ref : '');
+
+            if (resolvedToken) {
+              await metaWabaAdapter.dispatchTenantMessage(
+                tenantId,
+                connection,
+                senderPhone,
+                {
+                  type: 'text',
+                  text: { preview_url: false, body: engineResult.reply },
+                },
+                resolvedToken,
+                connection.credential_ref
+              );
+            }
           }
         }
 

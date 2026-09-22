@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "jest",
-    "test:payment": "jest --testPathPattern=payment_boundary --no-coverage"
+    "test:payment": "jest payment_boundary --no-coverage",
+    "test:waba": "jest waba_security_matrix --no-coverage"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
