@@ -54,45 +54,92 @@ function cleanBase64(raw: unknown): string | null {
 }
 
 /**
+ * Ensure tenant has a registered record in whatsapp_connections
+ */
+async function ensureTenantConnectionRecord(
+  tenantSlug: string,
+  instanceName: string,
+  mode: "DEDICATED" | "SHARED" = "DEDICATED",
+  status: string = "close"
+) {
+  try {
+    const supabase = getSupabaseAdmin();
+    if (!supabase) return;
+    await supabase.from("whatsapp_connections").upsert(
+      {
+        tenant_id: tenantSlug,
+        tenant_slug: tenantSlug,
+        instance_name: instanceName,
+        provider: "EVOLUTION",
+        channel_type: "BAILEYS",
+        status: status || "close",
+        metadata: {
+          mode,
+          instance_name: instanceName,
+          tenant_slug: tenantSlug,
+          provider: "EVOLUTION",
+          updated_at: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "instance_name" }
+    );
+  } catch (e) {
+    console.warn("[WhatsAppConnect] ensureTenantConnectionRecord note:", e);
+  }
+}
+
+/**
  * 1. Query Supabase Registry (whatsapp_connections)
  * Mengambil authority instance_name, provider, dan mode.
- * Jika tidak ditemukan di database, default otomatis ke shared gateway "boontrack-gateway".
+ * Untuk setiap merchant SaaS, wajib diperlakukan sebagai mode DEDICATED dengan instance_name = tenantSlug.
  */
 async function getTenantConnectionRegistry(tenantSlug: string): Promise<WhatsAppConnectionConfig> {
-  const defaultFallback: WhatsAppConnectionConfig = {
+  const cleanTenant = tenantSlug.trim().toLowerCase();
+  const defaultDedicated: WhatsAppConnectionConfig = {
     provider: "EVOLUTION",
-    mode: "SHARED",
-    instance_name: EVOLUTION_GATEWAY_INSTANCE,
+    mode: "DEDICATED",
+    instance_name: cleanTenant,
     phone_number: null,
     fromDb: false,
   };
 
   try {
     const supabase = getSupabaseAdmin();
-    if (!supabase) return defaultFallback;
+    if (!supabase) return defaultDedicated;
 
     const { data, error } = await supabase
       .from("whatsapp_connections")
-      .select("provider, mode, instance_name, phone_number, status")
-      .eq("tenant_id", tenantSlug)
+      .select("provider, instance_name, phone_number, status, metadata")
+      .or(`tenant_id.eq.${cleanTenant},tenant_slug.eq.${cleanTenant}`)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (!error && data && data.instance_name) {
+      const rawInst = String(data.instance_name).trim();
+      // Cegah legacy fallback ke shared gateway untuk merchant toko
+      if (rawInst === EVOLUTION_GATEWAY_INSTANCE) {
+        await ensureTenantConnectionRecord(cleanTenant, cleanTenant, "DEDICATED", data.status || "close");
+        return defaultDedicated;
+      }
+      const rawMode = (data.metadata?.mode || "DEDICATED") as "SHARED" | "DEDICATED";
       return {
         provider: (data.provider as "EVOLUTION" | "WABA") || "EVOLUTION",
-        mode: (data.mode as "SHARED" | "DEDICATED") || "SHARED",
-        instance_name: String(data.instance_name).trim(),
+        mode: rawMode,
+        instance_name: rawInst,
         phone_number: data.phone_number || null,
         fromDb: true,
       };
+    } else {
+      // Belum ada mapping di DB -> Daftarkan instance dedicated baru untuk merchant
+      await ensureTenantConnectionRecord(cleanTenant, cleanTenant, "DEDICATED", "close");
     }
   } catch (err) {
-    console.warn("[WhatsAppConnect] Registry lookup error, falling back to default:", err);
+    console.warn("[WhatsAppConnect] Registry lookup error, defaulting to dedicated:", err);
   }
 
-  return defaultFallback;
+  return defaultDedicated;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -156,17 +203,40 @@ async function createInstance(instanceName: string) {
     },
     body: JSON.stringify({
       instanceName,
-      integration: "WHATSAPP-BAILEYS",
+      token: EVOLUTION_API_KEY,
       qrcode: true,
-      webhook: `${coreBase}/webhook/whatsapp`,
-      webhook_by_events: false,
-      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+      integration: "WHATSAPP-BAILEYS",
+      clientName: "BoonTrack Engine",
+      browser: ["BoonTrack Engine", "Chrome", "1.0.0"],
+      browserName: "BoonTrack Engine",
     }),
   }).catch(() => null);
 
   if (!res) return { ok: false, data: {} };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = await res.json().catch(() => ({}));
+
+  // Configure Webhook on Evolution API for inbound messages & status updates
+  try {
+    const webhookUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/webhook/set/${encodeURIComponent(instanceName)}`;
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: EVOLUTION_API_KEY,
+      },
+      body: JSON.stringify({
+        webhook: {
+          enabled: true,
+          url: `${coreBase}/api/v1/whatsapp/webhook/evolution/${encodeURIComponent(instanceName)}`,
+          byEvents: false,
+          base64: true,
+          events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"],
+        },
+      }),
+    }).catch(() => null);
+  } catch (_) {}
+
   return { ok: res.ok, data };
 }
 
@@ -297,9 +367,12 @@ export async function POST(req: NextRequest) {
     if (isConnected) {
       const info = await fetchInstanceInfo(activeInstanceName);
       const resolvedPhone =
-        registryConfig.phone_number ||
-        cleanPhoneJid(info?.ownerJid || stateCheck.data?.instance?.ownerJid) ||
-        "6281237450222";
+        sanitizeMerchantPhone(
+          registryConfig.phone_number ||
+          cleanPhoneJid(info?.ownerJid || stateCheck.data?.instance?.ownerJid)
+        ) || null;
+
+      await ensureTenantConnectionRecord(tenantSlug, activeInstanceName, mode, "open");
 
       return NextResponse.json({
         success: true,
@@ -319,11 +392,14 @@ export async function POST(req: NextRequest) {
     if (stateCheck.status === 404) {
       console.log(`[WhatsAppConnect] Instance ${targetInstance} not found (404), creating fresh instance...`);
       await createInstance(targetInstance);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     let connectResult = await fetchConnect(targetInstance);
     if (connectResult.status === 404) {
+      console.log(`[WhatsAppConnect] Instance ${targetInstance} connect returned 404, re-creating...`);
       await createInstance(targetInstance);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       connectResult = await fetchConnect(targetInstance);
     }
 
@@ -331,7 +407,9 @@ export async function POST(req: NextRequest) {
     const instanceState = data?.instance?.state || data?.state || data?.status;
     if (instanceState === "open" || instanceState === "CONNECTED") {
       const resolvedPhone =
-        sanitizeMerchantPhone(cleanPhoneJid(data?.instance?.ownerJid || data?.connected_phone) || registryConfig.phone_number);
+        sanitizeMerchantPhone(cleanPhoneJid(data?.instance?.ownerJid || data?.connected_phone) || registryConfig.phone_number) || null;
+
+      await ensureTenantConnectionRecord(tenantSlug, targetInstance, mode, "open");
 
       return NextResponse.json({
         success: true,
@@ -354,35 +432,32 @@ export async function POST(req: NextRequest) {
       data?.qr ||
       null;
 
-    const base64 = cleanBase64(rawBase64);
-    const code = data?.code || data?.pairingCode || data?.qrcode?.code || null;
+    let base64 = cleanBase64(rawBase64);
+    let code = data?.code || data?.pairingCode || data?.qrcode?.code || null;
 
-    if (!base64 && connectResult.status === 200) {
+    if (!base64 && (connectResult.status === 200 || connectResult.status === 201)) {
       const restartUrl = `${EVOLUTION_API_URL.replace(/\/$/, "")}/instance/restart/${encodeURIComponent(targetInstance)}`;
       await fetch(restartUrl, {
         method: "POST",
         headers: { apikey: EVOLUTION_API_KEY },
       }).catch(() => null);
 
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       const retryConn = await fetchConnect(targetInstance);
       const retryBase64 = cleanBase64(
-        retryConn.data?.base64 || retryConn.data?.qrcode?.base64
+        retryConn.data?.base64 ||
+        retryConn.data?.qrcode?.base64 ||
+        retryConn.data?.qr_image
       );
       if (retryBase64) {
-        return NextResponse.json({
-          success: true,
-          status: "CONNECTING",
-          provider,
-          mode,
-          instance_name: targetInstance,
-          phone_number: null,
-          base64: retryBase64,
-          code: retryConn.data?.code || null,
-          tenant_slug: tenantSlug,
-        });
+        base64 = retryBase64;
+      }
+      if (retryConn.data?.code || retryConn.data?.qrcode?.code || retryConn.data?.pairingCode) {
+        code = retryConn.data?.code || retryConn.data?.qrcode?.code || retryConn.data?.pairingCode;
       }
     }
+
+    await ensureTenantConnectionRecord(tenantSlug, targetInstance, mode, "close");
 
     return NextResponse.json({
       success: true,

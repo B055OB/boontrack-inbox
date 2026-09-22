@@ -245,21 +245,42 @@ export default function WhatsAppTab({
                   </div>
                 ) : qrCodeUrl ? (
                   <div className="flex flex-col items-center justify-center text-center space-y-3">
-                    <img
-                      src={qrCodeUrl}
-                      alt="WhatsApp QR Code"
-                      className="w-56 h-56 object-contain"
-                    />
-                    <p className="text-[11px] font-bold text-slate-400 font-mono">
-                      SESI TENANT: {tenantSlug.toUpperCase()}
-                    </p>
+                    <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-200 inline-block">
+                      <img
+                        src={qrCodeUrl}
+                        alt="WhatsApp QR Code"
+                        className="w-56 h-56 object-contain block mx-auto"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                        Dedicated Instance: {tenantSlug.toLowerCase()}
+                      </span>
+                      <p className="text-[11px] font-medium text-slate-500">
+                        Buka WhatsApp &gt; Perangkat Tertaut &gt; Tautkan Perangkat
+                      </p>
+                    </div>
                   </div>
                 ) : (
-                  <div className="text-center py-8 space-y-2">
+                  <div className="text-center py-8 space-y-3">
                     <Smartphone className="w-12 h-12 text-slate-300 mx-auto" />
-                    <p className="text-xs font-bold text-slate-400">
-                      Disediakan WhatsApp
-                    </p>
+                    <div>
+                      <p className="text-xs font-bold text-slate-600">
+                        Disediakan WhatsApp
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Klik tombol di kiri atau muat ulang untuk mengaktifkan barcode QR Code.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleConnectGrowthSession(true)}
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg transition cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Muat QR Code</span>
+                    </button>
                   </div>
                 )}
               </div>

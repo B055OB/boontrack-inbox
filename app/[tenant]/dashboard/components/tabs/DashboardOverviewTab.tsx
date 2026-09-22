@@ -218,6 +218,7 @@ export default function DashboardOverviewTab({
     connectedPhone.includes('1268977686299719')
   ));
   const isWaConnected = (waStatus === 'CONNECTED' || Boolean(connectedPhone)) && !isPlatformPhone;
+  const isQrisUploaded = Boolean(storeQrisUrl && storeQrisUrl.trim() !== '');
   const isProductAdded = products.length > 0;
   const isTemplateConfigured = Boolean(activeTemplate);
   const isStoreShared = hasCopiedUrl;
@@ -330,6 +331,14 @@ export default function DashboardOverviewTab({
       isDone: isWaConnected,
       actionLabel: isWaConnected ? 'Lihat Koneksi' : 'Scan Barcode',
       onAction: () => onNavigateTab('whatsapp'),
+    },
+    {
+      id: 'qris',
+      title: 'Pasang Barcode QRIS Toko (Otomasi EMVCo)',
+      desc: 'Unggah QRIS statis agar sistem otomatis menerbitkan Dynamic QRIS dengan kode diskon unik (DOWNWARD).',
+      isDone: isQrisUploaded,
+      actionLabel: isQrisUploaded ? 'Ubah QRIS' : 'Upload QRIS',
+      onAction: () => onNavigateTab('settings'),
     },
     {
       id: 'products',
@@ -537,6 +546,201 @@ export default function DashboardOverviewTab({
 
         {/* WIDGET PENGELOLAAN TAUTAN BIO RESMI TOKO LANGSUNG MENYATU */}
         <StoreBioLinkWidget tenantSlug={tenantSlug} />
+
+        {/* PANDUAN 3 LANGKAH AKTIVASI WHATSAPP COMMERCE & DYNAMIC QRIS */}
+        <div className="rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-7 shadow-xs space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 mb-1.5">
+                <Zap className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                <span>SOP AKTIVASI TOKO &amp; WHATSAPP COMMERCE</span>
+              </div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                Panduan 3 Langkah Menuju Penjualan Otomatis 24/7
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Lengkapi 3 langkah wajib berikut agar toko siap menerima order, melayani chat AI otomatis, dan menerbitkan QRIS Dinamis.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`px-3 py-1 rounded-xl text-xs font-black border transition-all ${
+                isWaConnected && isQrisUploaded && isProductAdded
+                  ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+              }`}>
+                {Number(isWaConnected) + Number(isQrisUploaded) + Number(isProductAdded)}/3 Langkah Selesai
+              </span>
+            </div>
+          </div>
+
+          {/* 3 Step Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Step 1: WhatsApp Terhubung */}
+            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3.5 ${
+              isWaConnected
+                ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/80'
+                : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-emerald-300'
+            }`}>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Langkah 1
+                  </span>
+                  <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                    isWaConnected
+                      ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                      : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                  }`}>
+                    {isWaConnected ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <Radio className="w-3 h-3 text-slate-400" />}
+                    <span>{isWaConnected ? 'Terhubung (CONNECTED)' : 'Belum Terhubung'}</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                    isWaConnected ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}>
+                    <MessageSquare className="w-4 h-4" />
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    WhatsApp Terhubung
+                  </h4>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Tautkan WhatsApp toko untuk mode 2-way AI Commerce agar bot dapat melayani tanya-jawab dan memandu pembeli.
+                </p>
+                {connectedPhone && isWaConnected && (
+                  <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                    Nomor: +{connectedPhone}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onNavigateTab('whatsapp')}
+                className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${
+                  isWaConnected
+                    ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-900/50 dark:hover:bg-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/30'
+                }`}
+              >
+                <span>{isWaConnected ? 'Lihat Sesi WA' : 'Hubungkan WA'}</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Step 2: QRIS Terpasang */}
+            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3.5 ${
+              isQrisUploaded
+                ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/80'
+                : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-emerald-300'
+            }`}>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Langkah 2
+                  </span>
+                  <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                    isQrisUploaded
+                      ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                      : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                  }`}>
+                    {isQrisUploaded ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <QrCode className="w-3 h-3 text-slate-400" />}
+                    <span>{isQrisUploaded ? 'QRIS Terpasang (EMVCo)' : 'Belum Ada QRIS'}</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                    isQrisUploaded ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}>
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    QRIS Terpasang
+                  </h4>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Unggah barcode QRIS statis toko. Sistem otomatis mengubahnya menjadi Dynamic QRIS EMVCo dengan kode diskon unik (DOWNWARD).
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => onNavigateTab('settings')}
+                className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${
+                  isQrisUploaded
+                    ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-900/50 dark:hover:bg-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/30'
+                }`}
+              >
+                <span>{isQrisUploaded ? 'Perbarui QRIS' : 'Upload QRIS'}</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Step 3: Produk Ditambahkan */}
+            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3.5 ${
+              isProductAdded
+                ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/80'
+                : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-emerald-300'
+            }`}>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                    Langkah 3
+                  </span>
+                  <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                    isProductAdded
+                      ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                      : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                  }`}>
+                    {isProductAdded ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <Package className="w-3 h-3 text-slate-400" />}
+                    <span>{isProductAdded ? `${products.length} Produk Aktif` : 'Belum Ada Produk'}</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                    isProductAdded ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}>
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    Produk Ditambahkan
+                  </h4>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Tambahkan produk aktif (Nama, Deskripsi, Harga) sebagai Single Source of Truth harga resmi yang dijawab bot.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={onOpenNewProduct}
+                className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 ${
+                  isProductAdded
+                    ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 dark:bg-emerald-900/50 dark:hover:bg-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/30'
+                }`}
+              >
+                <span>{isProductAdded ? '+ Tambah Produk Lagi' : 'Tambah Produk'}</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Testing & Handoff Info Banner */}
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300">
+              <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+              <span>
+                <strong>Instruksi Uji Coba:</strong> Kirim chat WhatsApp <em>&ldquo;Halo kak, mau pesan&rdquo;</em> dari nomor lain ke nomor toko untuk memverifikasi lead capture dan invoice QRIS otomatis.
+              </span>
+            </div>
+            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 shrink-0">
+              🤝 <strong>Handoff:</strong> Saat CS membalas manual, bot otomatis jeda (<code className="text-[10px] bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded font-mono">bot_paused=true</code>).
+            </div>
+          </div>
+        </div>
 
         {/* Banner Interaktif Onboarding BoonPilot */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white p-6 sm:p-7 shadow-lg border border-purple-700/40">

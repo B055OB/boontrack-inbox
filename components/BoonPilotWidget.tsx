@@ -17,7 +17,8 @@ import {
   AlertCircle,
   MessageSquare,
   FileSpreadsheet,
-  FileText
+  FileText,
+  Lock,
 } from 'lucide-react';
 import { searchPlatformKnowledge } from '@/lib/boonpilotKnowledge';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
@@ -62,9 +63,16 @@ interface BoonPilotWidgetProps {
   botConnected?: boolean;
   isQrisUploaded?: boolean;
   subscriptionPlan?: string;
+  isAiBotAllowed?: boolean;
+  isCheckoutLite?: boolean;
+  onUpgrade?: (tier?: string) => void;
 }
 
 const STARTER_CHIPS = [
+  {
+    label: '🎯 SOP 3 Langkah Aktivasi Toko & WhatsApp Commerce',
+    icon: Sparkles,
+  },
   {
     label: '🎯 Mulai Guided Setup Toko (AI Interview)',
     icon: Sparkles,
@@ -72,6 +80,14 @@ const STARTER_CHIPS = [
   {
     label: '5 Checklist Wajib Siap Jual',
     icon: TrendingUp,
+  },
+  {
+    label: '⚡ Cara Kerja Dynamic QRIS EMVCo & Kode Unik',
+    icon: Zap,
+  },
+  {
+    label: '🤝 Aturan Handoff CS Manual & Bot Paused',
+    icon: MessageSquare,
   },
   {
     label: 'Kenapa toko online tidak butuh FAQ panjang?',
@@ -89,12 +105,20 @@ const STARTER_CHIPS = [
 
 const EMPTY_PRODUCTS_STARTER_CHIPS = [
   {
+    label: '🎯 SOP 3 Langkah Aktivasi Toko & WhatsApp Commerce',
+    icon: Sparkles,
+  },
+  {
     label: '🎯 Mulai Guided Setup Toko (AI Interview)',
     icon: Sparkles,
   },
   {
     label: '5 Checklist Wajib Siap Jual',
     icon: TrendingUp,
+  },
+  {
+    label: '⚡ Cara Kerja Dynamic QRIS EMVCo & Kode Unik',
+    icon: Zap,
   },
   {
     label: 'Bagaimana cara import file Tokopedia/Shopee?',
@@ -232,10 +256,20 @@ export default function BoonPilotWidget({
   botConnected = false,
   isQrisUploaded = false,
   subscriptionPlan = 'SOLO_TRIAL',
+  isAiBotAllowed = true,
+  isCheckoutLite = false,
+  onUpgrade,
 }: BoonPilotWidgetProps) {
   const normalizedSlug = Array.isArray(tenantSlug)
     ? tenantSlug[0]
     : tenantSlug || '';
+
+  const isLocked = Boolean(
+    isCheckoutLite ||
+    isAiBotAllowed === false ||
+    String(subscriptionPlan || '').toUpperCase() === 'CHECKOUT_LITE' ||
+    String(subscriptionPlan || '').toUpperCase() === 'LITE'
+  );
 
   const [isOpen, setIsOpen] = useState(false);
   const [activeMode, setActiveMode] = useState<'chat' | 'guided_setup'>('chat');
@@ -359,6 +393,12 @@ export default function BoonPilotWidget({
   const handleSendMessage = useCallback(async (textToSend?: string) => {
     const userText = (textToSend || inputText).trim();
     if (!userText || loading) return;
+
+    // Hard Entitlement Guard: CHECKOUT_LITE tidak boleh memicu query AI
+    if (isLocked) {
+      setInputText('');
+      return;
+    }
 
     if (
       userText.includes('Guided Setup') ||
@@ -655,48 +695,59 @@ export default function BoonPilotWidget({
               <div>
                 <h3 className="font-black text-sm text-white tracking-tight flex items-center gap-1.5">
                   <span>BoonPilot Copilot</span>
-                  <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                    AI PRO
-                  </span>
+                  {isLocked ? (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" />
+                      LOCKED
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                      AI PRO
+                    </span>
+                  )}
                 </h3>
-                <div className="flex items-center gap-1 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => setActiveMode('chat')}
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer flex items-center gap-1 ${
-                      activeMode === 'chat'
-                        ? 'bg-blue-600 text-white shadow-2xs'
-                        : 'text-slate-400 hover:text-white bg-slate-800/60'
-                    }`}
-                  >
-                    <MessageSquare className="w-2.5 h-2.5" />
-                    <span>Chat</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveMode('guided_setup')}
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer flex items-center gap-1 ${
-                      activeMode === 'guided_setup'
-                        ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-2xs'
-                        : 'text-slate-400 hover:text-white bg-slate-800/60'
-                    }`}
-                  >
-                    <Sparkles className="w-2.5 h-2.5 text-amber-300" />
-                    <span>Setup Terpandu</span>
-                  </button>
-                </div>
+                {!isLocked && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveMode('chat')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                        activeMode === 'chat'
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-slate-400 hover:text-white bg-slate-800/60'
+                      }`}
+                    >
+                      <MessageSquare className="w-2.5 h-2.5" />
+                      <span>Chat</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveMode('guided_setup')}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition cursor-pointer flex items-center gap-1 ${
+                        activeMode === 'guided_setup'
+                          ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-2xs'
+                          : 'text-slate-400 hover:text-white bg-slate-800/60'
+                      }`}
+                    >
+                      <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                      <span>Setup Terpandu</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleResetChat}
-                title="Mulai Sesi Baru"
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
+              {!isLocked && (
+                <button
+                  type="button"
+                  onClick={handleResetChat}
+                  title="Mulai Sesi Baru"
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition cursor-pointer"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
@@ -708,7 +759,45 @@ export default function BoonPilotWidget({
             </div>
           </div>
 
-          {activeMode === 'guided_setup' ? (
+          {isLocked ? (
+            <div className="flex-1 p-6 flex flex-col items-center justify-center text-center space-y-4 bg-slate-50 dark:bg-slate-900">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-inner">
+                <Lock className="w-7 h-7" />
+              </div>
+              <div className="space-y-1.5 max-w-xs">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 inline-block">
+                  Paket Checkout Lite
+                </span>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  BoonPilot AI Copilot Terkunci
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Paket <strong>Checkout Lite</strong> difokuskan untuk Single Page Checkout &amp; Dynamic QRIS 0% MDR. Fitur konsultasi AI, rekomendasi katalog, dan WhatsApp Commerce AI tersedia pada paket <strong>Starter</strong> dan <strong>Pro Scale</strong>.
+                </p>
+              </div>
+
+              <div className="w-full max-w-xs pt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    onUpgrade?.('starter');
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold transition shadow-md shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Upgrade ke Starter (Rp 149k/bln)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="w-full py-1.5 px-3 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 transition cursor-pointer"
+                >
+                  Kembali ke Dashboard
+                </button>
+              </div>
+            </div>
+          ) : activeMode === 'guided_setup' ? (
             <div className="flex-1 overflow-hidden flex flex-col">
               <GuidedSetupInterview
                 tenantSlug={normalizedSlug}
@@ -988,16 +1077,30 @@ export default function BoonPilotWidget({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="group relative flex items-center gap-2.5 p-3 sm:px-4 sm:py-3.5 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white shadow-xl shadow-indigo-500/30 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer isolate"
+        className={`group relative flex items-center gap-2.5 p-3 sm:px-4 sm:py-3.5 rounded-full text-white shadow-xl transition-all duration-200 cursor-pointer isolate ${
+          isLocked
+            ? 'bg-gradient-to-r from-slate-700 via-slate-800 to-slate-900 shadow-slate-900/30 border border-slate-600/50 hover:scale-105 active:scale-95'
+            : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 shadow-indigo-500/30 hover:scale-105 active:scale-95'
+        }`}
         aria-label="Toggle BoonPilot Copilot"
       >
         <span className="absolute -top-1 -right-1 flex h-4 w-4">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-white" />
+          {isLocked ? (
+            <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 bg-amber-500 border-2 border-white text-[8px] font-black text-white shadow-xs">
+              <Lock className="w-2 h-2" />
+            </span>
+          ) : (
+            <>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-white" />
+            </>
+          )}
         </span>
 
         {isOpen ? (
           <X className="w-5 h-5 text-white" />
+        ) : isLocked ? (
+          <Lock className="w-5 h-5 text-amber-300" />
         ) : (
           <Sparkles className="w-5 h-5 text-white animate-pulse" />
         )}
@@ -1007,7 +1110,7 @@ export default function BoonPilotWidget({
             BoonPilot Copilot
           </span>
           <span className="text-[10px] text-blue-100 font-semibold leading-none mt-0.5">
-            Store Copilot
+            {isLocked ? '🔒 Upgrade' : 'Store Copilot'}
           </span>
         </div>
       </button>

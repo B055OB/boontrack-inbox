@@ -1073,7 +1073,10 @@ export default function TenantDashboardPage() {
         productsCount={products.length}
         botConnected={waStatus === 'CONNECTED' || !!connectedPhone}
         isQrisUploaded={!!storeQrisUrl}
-        subscriptionPlan={tenantFeatureFlags.tier || (isSoloOrTrial ? 'SOLO_TRIAL' : 'GROWTH')}
+        subscriptionPlan={tenantFeatureFlags.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'SOLO_TRIAL' : 'GROWTH')}
+        isAiBotAllowed={isAiBotAllowed}
+        isCheckoutLite={isCheckoutLite}
+        onUpgrade={(tier) => handleUpgradeTier((tier as any) || 'starter')}
       />
 
       {/* MODAL BULK IMPORT */}

@@ -23,11 +23,14 @@ export async function POST(req: NextRequest) {
   try {
     const body: ChatRequestPayload = await req.json();
     const { tenant_slug, session_id, message } = body;
-    const slug = (tenant_slug || 'onlineboost').trim().toLowerCase();
-    const sessionId = session_id || `bp_${Date.now()}`;
-    const conversationHistory: ConversationHistoryItem[] =
-      body.conversation_history || body.history || [];
-    const q = (message || '').trim().toLowerCase();
+    const rawSlug = tenant_slug || req.headers.get('X-Tenant-Slug') || req.headers.get('X-Tenant-ID');
+    if (!rawSlug) {
+      return NextResponse.json(
+        { error: 'MISSING_TENANT', message: 'Tenant slug atau ID wajib disertakan.' },
+        { status: 400 }
+      );
+    }
+    const slug = rawSlug.trim().toLowerCase();
 
     if (!message) {
       return NextResponse.json(
@@ -35,6 +38,36 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // ── ENTITLEMENT GUARD (ARCHITECTURE.md): Blokir CHECKOUT_LITE dari fitur AI ──
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('tier, metadata')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (tenantRow) {
+        const rawTier = String(tenantRow.tier || '').toUpperCase();
+        const features = tenantRow.metadata?.features || {};
+        if (rawTier === 'CHECKOUT_LITE' || features.ai_bot === false) {
+          return NextResponse.json(
+            {
+              error: 'ENTITLEMENT_RESTRICTED',
+              message:
+                'Paket CHECKOUT_LITE tidak memiliki akses ke fitur BoonPilot AI Copilot. Silakan upgrade ke paket Starter atau Pro Scale.',
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
+    const sessionId = session_id || `bp_${Date.now()}`;
+    const conversationHistory: ConversationHistoryItem[] =
+      body.conversation_history || body.history || [];
+    const q = (message || '').trim().toLowerCase();
 
     // ── 1. TERUSKAN SESSION & CONVERSATION HISTORY KE BACKEND FASTAPI (boontrack-core) ──
     try {

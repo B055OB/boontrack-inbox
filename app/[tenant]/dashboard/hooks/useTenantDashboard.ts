@@ -107,13 +107,7 @@ export function useTenantDashboard() {
   }>({});
 
   // Selected plan from tenant metadata (Single Source of Truth)
-  const [selectedPlan, setSelectedPlan] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(`bt_selected_plan_${tenantSlug}`);
-      if (stored) return stored;
-    }
-    return '';
-  });
+  const [selectedPlan, setSelectedPlan] = useState<string>('');
 
   // Reverse Trial Days Left & End Date
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
@@ -130,32 +124,13 @@ export function useTenantDashboard() {
   const [isUpsellModalOpen, setIsUpsellModalOpen] = useState(false);
 
   // Plan Tier
-  const [planTier, setPlanTier] = useState<'growth' | 'ads_performance' | 'team_scale'>(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const tierParam = urlParams.get('tier')?.toLowerCase();
-      if (tierParam) {
-        if (['ads_performance', 'pro_scale', 'proscale', 'ads', 'performance', 'pro_ads', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
-          return 'ads_performance';
-        }
-        if (['team_scale', 'enterprise'].some(t => tierParam.includes(t)) || (tierParam.includes('scale') && !tierParam.includes('pro'))) {
-          return 'team_scale';
-        }
-        if (['growth', 'starter', 'solo'].some(t => tierParam.includes(t))) {
-          return 'growth';
-        }
-      }
-      const stored = localStorage.getItem(`bt_tier_${tenantSlug}`) as 'growth' | 'ads_performance' | 'team_scale' | null;
-      if (stored && ['growth', 'ads_performance', 'team_scale'].includes(stored)) return stored;
-    }
-    return 'growth';
-  });
+  const [planTier, setPlanTier] = useState<'growth' | 'ads_performance' | 'team_scale'>('growth');
+  const [isUrlCheckoutLite, setIsUrlCheckoutLite] = useState(false);
 
   const isCheckoutLite =
     String(tenantFeatureFlags.tier || '').toUpperCase() === 'CHECKOUT_LITE' ||
     selectedPlan.toLowerCase().includes('checkout') ||
-    (typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).get('tier')?.toUpperCase() === 'CHECKOUT_LITE');
+    isUrlCheckoutLite;
 
   // Ads Performance — DB canonical: 'PRO_SCALE' (ARCHITECTURE.md ADR)
   // Backward-compat aliases: 'ADS_PERFORMANCE', 'GROWTH_PLUS'
@@ -300,40 +275,64 @@ export function useTenantDashboard() {
   const [waConnectionMode, setWaConnectionMode] = useState<'SHARED' | 'DEDICATED'>('SHARED');
 
   // Conversations State (Isolated strictly by tenantSlug)
-  const [conversations, setConversations] = useState<ChatConversation[]>(() => {
-    if (typeof window !== 'undefined' && tenantSlug) {
-      try {
-        const saved = localStorage.getItem(`bt_conversations_${tenantSlug}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch (err) {
-        console.warn('Gagal memuat percakapan dari storage:', err);
-      }
-    }
-    return [];
-  });
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [isTenantBotPaused, setIsTenantBotPaused] = useState<boolean>(false);
 
   // Products State
-  const [products, setProducts] = useState<ProductItem[]>(() => {
-    if (typeof window !== 'undefined' && tenantSlug) {
-      try {
-        const saved = localStorage.getItem(`bt_products_${tenantSlug}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch { }
-    }
-    return [];
-  });
+  const [products, setProducts] = useState<ProductItem[]>([]);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | string | null>(null);
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
+
+  // Client-side hydration sync: loads cached localStorage & URL params AFTER mount to guarantee 0 SSR mismatch (#418)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !tenantSlug) return;
+
+    try {
+      const stored = localStorage.getItem(`bt_selected_plan_${tenantSlug}`);
+      if (stored) setSelectedPlan(stored);
+    } catch (_) {}
+
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tierParam = urlParams.get('tier')?.toLowerCase();
+      if (tierParam) {
+        if (tierParam.toUpperCase() === 'CHECKOUT_LITE') {
+          setIsUrlCheckoutLite(true);
+        }
+        if (['ads_performance', 'pro_scale', 'proscale', 'ads', 'performance', 'pro_ads', 'growth_tracking', 'growth+', 'growthplus', 'growth-plus', 'growth_plus', 'tracking'].some(t => tierParam.includes(t))) {
+          setPlanTier('ads_performance');
+        } else if (['team_scale', 'enterprise'].some(t => tierParam.includes(t)) || (tierParam.includes('scale') && !tierParam.includes('pro'))) {
+          setPlanTier('team_scale');
+        } else if (['growth', 'starter', 'solo'].some(t => tierParam.includes(t))) {
+          setPlanTier('growth');
+        }
+      } else {
+        const storedTier = localStorage.getItem(`bt_tier_${tenantSlug}`) as 'growth' | 'ads_performance' | 'team_scale' | null;
+        if (storedTier && ['growth', 'ads_performance', 'team_scale'].includes(storedTier)) {
+          setPlanTier(storedTier);
+        }
+      }
+    } catch (_) {}
+
+    try {
+      const savedConvs = localStorage.getItem(`bt_conversations_${tenantSlug}`);
+      if (savedConvs) {
+        const parsed = JSON.parse(savedConvs);
+        if (Array.isArray(parsed) && parsed.length > 0) setConversations(parsed);
+      }
+    } catch (_) {}
+
+    try {
+      const savedProds = localStorage.getItem(`bt_products_${tenantSlug}`);
+      if (savedProds) {
+        const parsed = JSON.parse(savedProds);
+        if (Array.isArray(parsed) && parsed.length > 0) setProducts(parsed);
+      }
+    } catch (_) {}
+  }, [tenantSlug]);
 
   // Single Page Checkout Builder State
   const [isSinglePageModalOpen, setIsSinglePageModalOpen] = useState(false);
@@ -1925,6 +1924,48 @@ export function useTenantDashboard() {
       handleConnectGrowthSession();
     }
   }, [activeTab, tenantSlug]);
+
+  // 11. Background Polling while on 'whatsapp' tab and status is CONNECTING
+  useEffect(() => {
+    if (activeTab !== 'whatsapp' || !tenantSlug || waStatus !== 'CONNECTING') return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+
+        if (data.provider) setWaProvider(data.provider);
+        if (data.mode) setWaConnectionMode(data.mode);
+
+        const rawPhone = String(data.phone_number || data.connected_phone || '');
+        const isPlatform =
+          rawPhone.includes('85179555449') ||
+          rawPhone.includes('85139555449') ||
+          rawPhone.includes('1268977686299719') ||
+          data.mode === 'SHARED';
+
+        if ((data.status === 'CONNECTED' || data.connected) && !isPlatform && rawPhone) {
+          setWaStatus('CONNECTED');
+          setConnectedPhone(rawPhone);
+          setQrCodeUrl(null);
+          setWaErrorMessage(null);
+        } else if (data.status === 'CONNECTING') {
+          const qr = data.base64 || data.qr_image || data.qrcode?.base64 || null;
+          if (qr && qr !== qrCodeUrl) {
+            setQrCodeUrl(qr);
+          }
+        }
+      } catch (err) {
+        console.debug('[WhatsApp Polling Note]', err);
+      }
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, [activeTab, tenantSlug, waStatus, qrCodeUrl]);
 
   return {
     tenantSlug,

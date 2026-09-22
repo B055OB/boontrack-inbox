@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
+import { getSupabase } from '@/lib/supabaseClient';
 
 export interface ActionProposal {
   id: string;
@@ -192,8 +193,46 @@ export async function POST(req: NextRequest) {
       context,
     } = body;
 
-    // Multi-tenant fallback: default ke 'growth' atau 'onlineboost' agar testing / tenant baru tidak mental
-    const slug = normalizeTenantSlug(tenant_slug || tenant_id || 'growth');
+    const rawSlug =
+      tenant_slug ||
+      tenant_id ||
+      req.headers.get('X-Tenant-Slug') ||
+      req.headers.get('X-Tenant-ID');
+
+    if (!rawSlug) {
+      return NextResponse.json(
+        { error: 'MISSING_TENANT', message: 'Tenant slug atau ID wajib disertakan.' },
+        { status: 400 }
+      );
+    }
+
+    const slug = normalizeTenantSlug(rawSlug);
+
+    // ── ENTITLEMENT GUARD (ARCHITECTURE.md): Blokir CHECKOUT_LITE dari fitur AI ──
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('tier, metadata')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (tenantRow) {
+        const rawTier = String(tenantRow.tier || '').toUpperCase();
+        const features = tenantRow.metadata?.features || {};
+        if (rawTier === 'CHECKOUT_LITE' || features.ai_bot === false) {
+          return NextResponse.json(
+            {
+              error: 'ENTITLEMENT_RESTRICTED',
+              message:
+                'Paket CHECKOUT_LITE tidak memiliki akses ke fitur BoonPilot AI Copilot. Silakan upgrade ke paket Starter atau Pro Scale.',
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
     const sessionId = session_id || `copilot_sess_${Date.now()}`;
     const storeName = slug.replace(/[-_]/g, ' ').toUpperCase();
     const activeHistory = conversation_history.length > 0 ? conversation_history : history;
