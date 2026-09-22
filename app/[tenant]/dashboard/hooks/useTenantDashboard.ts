@@ -316,6 +316,7 @@ export function useTenantDashboard() {
   });
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [isTenantBotPaused, setIsTenantBotPaused] = useState<boolean>(false);
 
   // Products State
   const [products, setProducts] = useState<ProductItem[]>(() => {
@@ -718,6 +719,9 @@ export function useTenantDashboard() {
             '';
           if (logoUrlFromDb) setStoreLogoUrl(sanitizeImageUrl(logoUrlFromDb));
 
+          const botPausedFromDb = Boolean(tenant.metadata?.bot_paused || tenant.bot_paused);
+          setIsTenantBotPaused(botPausedFromDb);
+
           // Hydrate Products: Prioritas Supabase (tenants.metadata.products & products table)
           let hydratedProducts: ProductItem[] = [];
 
@@ -1090,6 +1094,9 @@ export function useTenantDashboard() {
                   lastMessage: c.last_message || 'Percakapan berlangsung',
                   time: 'Baru saja',
                   status: 'online',
+                  assignedTo: c.assigned_agent_id ? 'my_chat' : 'unassigned',
+                  assignedAgentName: c.assigned_agent_name || (c.assigned_agent_id ? 'CS Aktif' : 'Unassigned / AI Bot'),
+                  isBotActive: c.bot_paused === true ? false : (c.bot_mode === 'HUMAN_ACTIVE' ? false : true),
                   messages: [],
                 }));
                 setConversations(mappedChats);
@@ -1606,6 +1613,161 @@ export function useTenantDashboard() {
     setReplyText('');
   };
 
+  const handleToggleTenantBot = async () => {
+    if (!tenantSlug) return;
+    const newState = !isTenantBotPaused;
+    setIsTenantBotPaused(newState);
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data: tRow } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+        const meta = tRow?.metadata || {};
+        meta.bot_paused = newState;
+        await supabase
+          .from('tenants')
+          .update({
+            metadata: meta,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('slug', tenantSlug);
+      }
+    } catch (err) {
+      console.warn('[Dashboard] Gagal sync bot_paused ke backend:', err);
+    }
+  };
+
+  // 7a. Fetch messages for selected conversation from Supabase
+  useEffect(() => {
+    if (!activeConversationId) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const fetchMessages = async () => {
+      try {
+        const { data: msgs } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', activeConversationId)
+          .order('created_at', { ascending: true })
+          .limit(150);
+
+        if (Array.isArray(msgs) && msgs.length > 0) {
+          const mappedMsgs: ConversationMessage[] = msgs.map((m: any) => ({
+            id: m.id || m.created_at || Date.now(),
+            sender: m.sender === 'user' ? 'customer' : (m.sender === 'bot' ? 'bot' : 'agent'),
+            senderName: m.user_name || undefined,
+            text: m.text || '',
+            time: m.created_at
+              ? new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+              : '',
+          }));
+
+          setConversations(prev =>
+            prev.map(c => c.id === activeConversationId ? { ...c, messages: mappedMsgs } : c)
+          );
+        }
+      } catch (msgErr) {
+        console.debug('[Inbox] fetchMessages note:', msgErr);
+      }
+    };
+
+    fetchMessages();
+  }, [activeConversationId]);
+
+  // 7b. Supabase Realtime: live push for conversations & messages (Inbox Console)
+  useEffect(() => {
+    if (!tenantSlug) return;
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    const realtimeChannel = supabase
+      .channel(`inbox_realtime_${tenantSlug}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+          filter: `tenant_id=eq.${tenantSlug}`,
+        },
+        (payload: any) => {
+          const c = payload.new || {};
+          if (payload.eventType === 'INSERT') {
+            setConversations(prev => {
+              if (prev.some(x => x.id === c.id)) return prev;
+              const newConv: ChatConversation = {
+                id: c.id,
+                customerPhone: c.phone_number || '',
+                customerName: c.contact_name || 'Pelanggan WhatsApp',
+                lastMessage: c.last_message || 'Percakapan baru',
+                time: 'Baru saja',
+                status: 'online',
+                assignedTo: 'unassigned',
+                isBotActive: true,
+                messages: [],
+              };
+              return [newConv, ...prev];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            setConversations(prev =>
+              prev.map(x =>
+                x.id === c.id
+                  ? { ...x, lastMessage: c.last_message || x.lastMessage, time: 'Baru saja', customerName: c.contact_name || x.customerName }
+                  : x
+              )
+            );
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `tenant_id=eq.${tenantSlug}`,
+        },
+        (payload: any) => {
+          const m = payload.new || {};
+          const convId = m.conversation_id;
+          if (!convId) return;
+
+          const newMsg: ConversationMessage = {
+            id: m.id || Date.now(),
+            sender: m.sender === 'user' ? 'customer' : (m.sender === 'bot' ? 'bot' : 'agent'),
+            senderName: m.user_name || undefined,
+            text: m.text || '',
+            time: m.created_at
+              ? new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+              : 'Baru saja',
+          };
+
+          setConversations(prev =>
+            prev.map(c =>
+              c.id === convId
+                ? {
+                    ...c,
+                    messages: [...c.messages, newMsg],
+                    lastMessage: m.text || c.lastMessage,
+                    time: 'Baru saja',
+                    unreadCount: c.id !== activeConversationId ? (c.unreadCount || 0) + 1 : c.unreadCount,
+                  }
+                : c
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(realtimeChannel);
+    };
+  }, [tenantSlug]);
+
   // 8. Finance / Withdrawal Handlers
   const handleProcessWithdraw = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1903,6 +2065,9 @@ export function useTenantDashboard() {
     replyText,
     setReplyText,
     handleSendMessage,
+    isTenantBotPaused,
+    setIsTenantBotPaused,
+    handleToggleTenantBot,
 
     // Reverse Trial & Entitlement
     trialDaysLeft,

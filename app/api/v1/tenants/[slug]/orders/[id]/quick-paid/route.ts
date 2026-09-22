@@ -94,6 +94,29 @@ export async function POST(
       );
     }
 
+    // 2b. Update Langganan Tenant ke Tier 'CHECKOUT_LITE'
+    try {
+      const { data: tRow } = await supabase
+        .from('tenants')
+        .select('metadata')
+        .eq('slug', slug)
+        .maybeSingle();
+      const meta = tRow?.metadata || {};
+      meta.tier = 'CHECKOUT_LITE';
+      meta.plan_tier = 'CHECKOUT_LITE';
+      meta.subscription_status = 'ACTIVE';
+
+      await supabase
+        .from('tenants')
+        .update({
+          status: 'active',
+          metadata: meta,
+        })
+        .eq('slug', slug);
+    } catch (tierErr) {
+      console.warn('[Quick-Paid Tier Sync Note]:', tierErr);
+    }
+
     // 3. Post auto-fulfillment notification to messages table
     const accessUrl = fulfillmentMeta.access_url || updatedOrder.download_url;
     const fulfillmentNotice = accessUrl

@@ -28,6 +28,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { getSupabase } from '@/lib/supabaseClient';
 
 export interface ConversationMessage {
   id: number | string;
@@ -85,6 +86,8 @@ export interface TeamChatTabProps {
   isSoloOrTrial?: boolean;
   trialDaysLeft?: number | null;
   trialEndsAt?: string | null;
+  isTenantBotPaused?: boolean;
+  handleToggleTenantBot?: () => void;
 }
 
 export default function TeamChatTab({
@@ -105,6 +108,8 @@ export default function TeamChatTab({
   isSoloOrTrial = false,
   trialDaysLeft = null,
   trialEndsAt = null,
+  isTenantBotPaused = false,
+  handleToggleTenantBot,
 }: TeamChatTabProps) {
   // Kalkulasi dinamis real-time sisa hari dari trialEndsAt
   const effectiveDaysLeft = useMemo(() => {
@@ -183,7 +188,7 @@ export default function TeamChatTab({
       if (filterTab === 'mine') {
         if (c.assignedTo !== 'my_chat') return false;
       } else if (filterTab === 'unassigned') {
-        if (c.assignedTo !== 'unassigned') return false;
+        if (c.assignedTo && c.assignedTo !== 'unassigned') return false;
       }
 
       // Filter by search keyword
@@ -207,7 +212,7 @@ export default function TeamChatTab({
   const counts = useMemo(() => {
     const all = conversationsList.length;
     const mine = conversationsList.filter((c) => c.assignedTo === 'my_chat').length;
-    const unassigned = conversationsList.filter((c) => c.assignedTo === 'unassigned').length;
+    const unassigned = conversationsList.filter((c) => !c.assignedTo || c.assignedTo === 'unassigned').length;
     return { all, mine, unassigned };
   }, [conversationsList]);
 
@@ -225,6 +230,24 @@ export default function TeamChatTab({
   const handleToggleBot = () => {
     if (!currentConversation) return;
     const newBotState = !currentConversation.isBotActive;
+
+    // Sinkronisasi status bot ke Supabase conversations
+    try {
+      const supabase = getSupabase();
+      if (supabase && currentConversation.id) {
+        supabase
+          .from('conversations')
+          .update({
+            bot_paused: !newBotState,
+            bot_mode: newBotState ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', currentConversation.id)
+          .then();
+      }
+    } catch (e) {
+      console.debug('[TeamChat] Sync bot_paused error:', e);
+    }
 
     setConversationsList((prev) =>
       prev.map((c) => {
@@ -591,6 +614,33 @@ export default function TeamChatTab({
                 {counts.all} Total
               </span>
             </div>
+
+            {/* Mode Bot Toko Toggle Banner */}
+            {handleToggleTenantBot && (
+              <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="flex items-center gap-1.5">
+                  {isTenantBotPaused ? (
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  )}
+                  <span className="text-[10px] font-bold text-slate-700">
+                    {isTenantBotPaused ? 'CS Manual (Bot Jeda)' : 'Bot AI Otomatis Aktif'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleTenantBot}
+                  className={`px-2 py-0.5 rounded-lg text-[9px] font-bold border transition cursor-pointer ${
+                    isTenantBotPaused
+                      ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
+                      : 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                  }`}
+                >
+                  {isTenantBotPaused ? 'Aktifkan AI' : 'Jeda Bot (CS)'}
+                </button>
+              </div>
+            )}
 
             {/* Search Box */}
             <div className="relative">

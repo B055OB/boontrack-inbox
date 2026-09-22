@@ -180,6 +180,8 @@ export default function TenantDashboardPage() {
     replyText,
     setReplyText,
     handleSendMessage,
+    isTenantBotPaused,
+    handleToggleTenantBot,
 
     bankForm,
     setBankForm,
@@ -664,6 +666,8 @@ export default function TenantDashboardPage() {
           isSoloOrTrial={isSoloOrTrial}
           trialDaysLeft={trialDaysLeft}
           trialEndsAt={trialEndsAt}
+          isTenantBotPaused={isTenantBotPaused}
+          handleToggleTenantBot={handleToggleTenantBot}
         />
       )}
 
