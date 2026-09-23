@@ -1409,3 +1409,51 @@ WhatsApp Gateway diposisikan murni sebagai **Transport Infrastructure**, bukan b
      ON whatsapp_connections (tenant_id) 
      WHERE (ownership_domain = 'TENANT' AND tenant_id IS NOT NULL AND status NOT IN ('LOGGED_OUT', 'PROVISIONING_FAILED'));
      ```
+
+---
+
+## 23. Invarian Arsitektur & CTO Gate Review (Milestones P0, P1, P2)
+
+Dokumentasi invarian arsitektur resmi hasil evaluasi dan persetujuan CTO Gate untuk seluruh milestone rekayasa Core & Messaging BoonTrack:
+
+### 23.1 Security & Identity Boundary (P0)
+1. **Tenant Security Authority (`tenant_id` vs `tenant_slug`)**:
+   - `tenant_id` (trusted UUID) adalah **satu-satunya otoritas keamanan** untuk eksekusi, scoping, dan mutasi di tingkat database (PostgreSQL / Supabase RLS).
+   - `tenant_slug` bertindak **murni sebagai routing presentasi/URL dan alias lookup publik**, bukan penentu hak akses keamanan (*presentation layer only*).
+   - Seluruh tool execution, query database terproteksi, dan outbox dispatcher wajib memverifikasi kepemilikan tenant menggunakan `tenant_id` terverifikasi.
+2. **Webhook Ingress Guard & Loop Protection**:
+   - Filter `msg.key.fromMe === true` (atau pesan keluar dari nomor bot/merchant sendiri) **wajib ditempatkan di layer terdepan ingress webhook** sebelum pesan menyentuh pipeline AI atau storage pesan.
+   - Guard ini mutlak untuk mencegah timbulnya *infinite reply loop* / bot membalas pesannya sendiri yang dapat menguras kuota API dan resource database.
+
+### 23.2 Messaging & Outbox Queue (P1)
+1. **Transactional Outbox Pattern**:
+   - Seluruh pesan notifikasi keluar (WhatsApp order confirmation, reminder, auto-fulfillment) **dilarang dikirim inline secara sinkron** ke API provider.
+   - Pesan wajib di-enqueue ke tabel `message_outbox` dan diproses secara asinkron oleh Outbox Worker menggunakan PostgreSQL concurrency pattern `FOR UPDATE SKIP LOCKED`.
+   - Worker dilengkapi mekanisme *stale-lock recovery window* (ambang 5 menit): outbox item yang tertahan dalam status `PROCESSING` lebih dari 5 menit akibat crash worker akan di-reset otomatis ke `PENDING` untuk di-claim ulang.
+2. **Idempotency Boundary & Delivery Semantics**:
+   - Kunci idempotensi berbasis **SHA-256** (menggabungkan `tenant_id`, `order_id`/referensi, `channel`, dan `recipient`) menjamin deduplikasi pemrosesan logis di tingkat internal BoonTrack (*exact-once processing internally*).
+   - **Delivery Semantics Boundary**: BoonTrack menjamin *at-least-once dispatch* dari worker. Delivery fisik di jaringan WhatsApp eksternal tetap tunduk pada kondisi konektivitas perangkat, handshake provider, dan retry behavior provider eksternal.
+3. **Connection-Driven Provider Resolver**:
+   - Penentuan transport provider (Meta Cloud API / WABA vs Baileys / Evolution API) **diselesaikan secara dinamis langsung dari konfigurasi tabel `whatsapp_connections`** milik tenant.
+   - Provider adapter bersifat terisolasi mutlak (`EvolutionProviderAdapter`, `WabaProviderAdapter`, `MultiProviderAdapter`) tanpa ketergantungan statis antarmuka.
+
+### 23.3 Business Action Layer / Tool Gateway (P2)
+1. **Prinsip Fundamental: *"LLM Proposes; Deterministic Core Disposes"***:
+   - Agen AI (BoonPilot & WhatsApp Copilot) **tidak memiliki hak mutasi langsung ke database**.
+   - LLM hanya dapat mengusulkan eksekusi tool (*Tool Proposal*). Validasi parameter (Zod Schema), batasan otorisasi tenant, dan eksekusi mutasi sepenuhnya dijalankan secara deterministik oleh Core Backend / Tool Gateway.
+2. **Separation of Concerns: Pembatalan vs Keuangan**:
+   - Logika pembatalan pesanan terpisah secara tegas dari alur pengembalian dana (*financial refund*):
+     - `order_status = 'CANCELLED'` (pesanan ditandai batal).
+     - `refund_status = 'MANUAL_REVIEW'` (status dana diserahkan ke peninjauan manual tim merchant untuk eksekusi transfer balik via banking).
+   - Sistem tidak melakukan auto-debet atau transfer balik otomatis tanpa intervensi manual merchant.
+3. **Courier Dispatch Boundary Guardrail (Zero-Liability Guard)**:
+   - Pesanan yang telah mencapai status kurir (`PICKUP_REQUESTED`, `PICKED_UP`, `IN_TRANSIT`, `DELIVERED`, `SHIPPED`, atau `COMPLETE`) **otomatis ditolak (REJECTED)** dari pembatalan mandiri oleh bot.
+   - Menghilangkan risiko kerugian finansial akibat barang sudah di tangan ekspedisi sementara order dibatalkan oleh pembeli.
+4. **Action Audit Trail & Telemetry**:
+   - Setiap pemanggilan Action Tool wajib tercatat permanen di tabel `tool_audit_logs` (menyimpan `tool_name`, `tenant_id`, `caller_user`, `guardrail_status`, `parameters`, `result`, dan timestamp eksekusi).
+
+### 23.4 Legal & Commercial Positioning
+- **Liability-Aware Commerce Architecture**:
+  - Arsitektur sistem diklasifikasikan secara formal sebagai **"Liability-Aware Commerce Architecture"**, bukan klaim absolut tanpa syarat ("Zero-Liability").
+  - Sistem menyediakan boundary teknis (guardrails, kurir boundary, pemisahan refund manual, audit trail), namun tanggung jawab relasi komersial akhir antara penjual dan pembeli tetap berada di bawah kendali merchant.
+
