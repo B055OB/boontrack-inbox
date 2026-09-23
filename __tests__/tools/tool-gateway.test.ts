@@ -31,6 +31,7 @@ interface MockOrder {
   gross_amount?: number;
   total_amount?: number;
   status: string;
+  order_status?: string;
   payment_status?: string;
   shipping_status?: string;
   shipping_courier?: string;
@@ -92,7 +93,7 @@ const mockSupabase = {
             or: (expression: string) => {
               // Parse tenant filter e.g. tenant_slug.eq.store-a,tenant_id.eq.store-a
               if (expression.includes('tenant_slug.eq.') || expression.includes('tenant_id.eq.')) {
-                const match = expression.match(/tenant_slug\.eq\.([^,]+)/);
+                const match = expression.match(/(?:tenant_slug|tenant_id)\.eq\.([^,]+)/);
                 if (match) tenantFilter = match[1];
               }
 
@@ -113,8 +114,11 @@ const mockSupabase = {
               let matches = Array.from(db.orders.values());
 
               if (tenantFilter) {
+                const tf = tenantFilter.toLowerCase();
                 matches = matches.filter(
-                  (o) => o.tenant_slug === tenantFilter || o.tenant_id === tenantFilter
+                  (o) =>
+                    (o.tenant_slug && o.tenant_slug.toLowerCase() === tf) ||
+                    (o.tenant_id && o.tenant_id.toLowerCase() === tf)
                 );
               }
 
@@ -402,12 +406,14 @@ describe('Suite 4: Action Tool Guardrail — request_order_cancellation', () => 
     expect(result.guardrailStatus).toBe('APPROVED');
     expect(result.actionTaken).toBe(true);
     expect(result.data.cancellation_action).toBe('MANUAL_REFUND_REQUIRED');
-    expect(result.data.refund_status).toBe('PENDING_MANUAL_REFUND');
+    expect(result.data.order_status).toBe('CANCELLED');
+    expect(result.data.refund_status).toBe('MANUAL_REVIEW');
 
     // Verify DB update
     const updated = db.getOrder('ORD-PAID-PRE-PICKUP')!;
     expect(updated.status).toBe('CANCELLED');
-    expect(updated.refund_status).toBe('PENDING_MANUAL_REFUND');
+    expect(updated.order_status).toBe('CANCELLED');
+    expect(updated.refund_status).toBe('MANUAL_REVIEW');
   });
 
   it('CASE 3: Dispatched order (IN_TRANSIT) -> REJECTED automatically by Core Guardrail', async () => {
@@ -514,5 +520,184 @@ describe('Suite 5: Action Audit Logging', () => {
     expect(targetLog?.caller_user).toBe('user-audit-123');
     expect(targetLog?.guardrail_status).toBe('APPROVED');
     expect(targetLog?.permission).toBe('ACTION');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test Suite 6: Negative Matrix & Security Scoping Tests (CTO Hardening)
+// ---------------------------------------------------------------------------
+
+describe('Suite 6: Negative Matrix & Security Scoping Tests (CTO Hardening)', () => {
+  const TENANT_A_UUID = '11111111-1111-4111-a111-111111111111';
+  const TENANT_B_UUID = '22222222-2222-4222-b222-222222222222';
+
+  it('Matrix 1: Cross-tenant security isolation — Tenant A cannot cancel Tenant B order (MUST REJECT / NOT_FOUND)', async () => {
+    // Order belongs to Tenant B (using authoritative UUID)
+    db.insertOrder({
+      id: 'ORD-TENANT-B-001',
+      tenant_id: TENANT_B_UUID,
+      tenant_slug: 'tenant-b-store',
+      status: 'PAID',
+      payment_status: 'PAID',
+      shipping_status: 'PENDING',
+      gross_amount: 500000,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    // Tenant A attempts cancellation using context.tenant_id
+    const result = await toolRegistry.execute(
+      'request_order_cancellation',
+      { tenant_id: TENANT_A_UUID, caller_user: 'tenant-a-operator' },
+      { order_id: 'ORD-TENANT-B-001', reason: 'Cross-tenant illegal cancellation attempt' }
+    );
+
+    // Cross-tenant security leak protection: MUST REJECT / NOT_FOUND
+    expect(result.success).toBe(false);
+    expect(result.guardrailStatus).toBe('FAILED');
+    expect(result.error).toContain('tidak ditemukan atau berada di luar akses toko ini');
+
+    // Verify Tenant B order is UNTOUCHED in DB
+    const orderInDb = db.getOrder('ORD-TENANT-B-001')!;
+    expect(orderInDb.status).toBe('PAID');
+    expect(orderInDb.order_status).toBeUndefined();
+    expect(orderInDb.refund_status).toBeUndefined();
+    expect(orderInDb.cancelled_at).toBeUndefined();
+  });
+
+  it('Matrix 2: Status PAID -> cancel -> verify strict state separation (order_status: CANCELLED, refund_status: MANUAL_REVIEW)', async () => {
+    db.insertOrder({
+      id: 'ORD-PAID-SEPARATION-001',
+      tenant_id: TENANT_A_UUID,
+      tenant_slug: 'tenant-a-store',
+      status: 'PAID',
+      payment_status: 'PAID',
+      shipping_status: 'UNFULFILLED',
+      gross_amount: 350000,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const result = await toolRegistry.execute(
+      'request_order_cancellation',
+      { tenant_id: TENANT_A_UUID, caller_user: 'buyer-paid-cancel' },
+      { order_id: 'ORD-PAID-SEPARATION-001', reason: 'Pelanggan minta ganti size baju' }
+    );
+
+    // Result payload state separation
+    expect(result.success).toBe(true);
+    expect(result.guardrailStatus).toBe('APPROVED');
+    expect(result.actionTaken).toBe(true);
+    expect(result.data.order_status).toBe('CANCELLED');
+    expect(result.data.refund_status).toBe('MANUAL_REVIEW');
+    expect(result.data.cancellation_action).toBe('MANUAL_REFUND_REQUIRED');
+
+    // Database state separation
+    const updated = db.getOrder('ORD-PAID-SEPARATION-001')!;
+    expect(updated.order_status).toBe('CANCELLED');
+    expect(updated.refund_status).toBe('MANUAL_REVIEW');
+    expect(updated.status).toBe('CANCELLED');
+    expect(updated.cancellation_reason).toBe('Pelanggan minta ganti size baju');
+    expect(updated.cancelled_at).toBeDefined();
+
+    // Audit log state separation check
+    const logs = getRecentToolAuditLogs();
+    const lastAudit = logs.find((l) => l.target_id === 'ORD-PAID-SEPARATION-001');
+    expect(lastAudit).toBeDefined();
+    expect(lastAudit?.result_data?.order_status).toBe('CANCELLED');
+    expect(lastAudit?.result_data?.refund_status).toBe('MANUAL_REVIEW');
+  });
+
+  it('Matrix 3A: Status IN_TRANSIT -> cancel -> verify REJECTED by courier guardrail', async () => {
+    db.insertOrder({
+      id: 'ORD-IN-TRANSIT-001',
+      tenant_id: TENANT_A_UUID,
+      tenant_slug: 'tenant-a-store',
+      status: 'PAID',
+      shipping_status: 'IN_TRANSIT',
+      tracking_number: 'JNT1234567890',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const result = await toolRegistry.execute(
+      'request_order_cancellation',
+      { tenant_id: TENANT_A_UUID },
+      { order_id: 'ORD-IN-TRANSIT-001', reason: 'Cancel barang yang sudah di jalan' }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.guardrailStatus).toBe('REJECTED');
+    expect(result.actionTaken).toBe(false);
+    expect(result.message).toBe('Pesanan sudah diproses kurir dan tidak dapat dibatalkan secara otomatis.');
+
+    // DB remains unchanged
+    const order = db.getOrder('ORD-IN-TRANSIT-001')!;
+    expect(order.status).toBe('PAID');
+    expect(order.shipping_status).toBe('IN_TRANSIT');
+  });
+
+  it('Matrix 3B: Status DELIVERED -> cancel -> verify REJECTED by courier guardrail', async () => {
+    db.insertOrder({
+      id: 'ORD-DELIVERED-001',
+      tenant_id: TENANT_A_UUID,
+      tenant_slug: 'tenant-a-store',
+      status: 'PAID',
+      shipping_status: 'DELIVERED',
+      tracking_number: 'SICEPAT987654321',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const result = await toolRegistry.execute(
+      'request_order_cancellation',
+      { tenant_id: TENANT_A_UUID },
+      { order_id: 'ORD-DELIVERED-001', reason: 'Barang sudah sampai tapi pembeli minta cancel' }
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.guardrailStatus).toBe('REJECTED');
+    expect(result.actionTaken).toBe(false);
+    expect(result.message).toBe('Pesanan sudah diproses kurir dan tidak dapat dibatalkan secara otomatis.');
+
+    // DB remains unchanged
+    const order = db.getOrder('ORD-DELIVERED-001')!;
+    expect(order.status).toBe('PAID');
+    expect(order.shipping_status).toBe('DELIVERED');
+  });
+
+  it('Matrix 4: Duplicate cancellation on already CANCELLED order -> Idempotent handling (actionTaken: false)', async () => {
+    // Step 1: Pre-existing CANCELLED order
+    db.insertOrder({
+      id: 'ORD-IDEMPOTENT-001',
+      tenant_id: TENANT_A_UUID,
+      tenant_slug: 'tenant-a-store',
+      status: 'CANCELLED',
+      order_status: 'CANCELLED',
+      shipping_status: 'NONE',
+      cancellation_reason: 'First legitimate cancellation',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    // Step 2: Attempt duplicate cancellation
+    const result = await toolRegistry.execute(
+      'request_order_cancellation',
+      { tenant_id: TENANT_A_UUID },
+      { order_id: 'ORD-IDEMPOTENT-001', reason: 'Second duplicate cancellation attempt' }
+    );
+
+    // Idempotency: success is true, but actionTaken is false (no duplicate mutation)
+    expect(result.success).toBe(true);
+    expect(result.guardrailStatus).toBe('APPROVED');
+    expect(result.actionTaken).toBe(false);
+    expect(result.data.order_status).toBe('CANCELLED');
+    expect(result.data.cancellation_action).toBe('NONE');
+    expect(result.message).toContain('Idempotent');
+
+    // DB remains unchanged (retains first cancellation reason)
+    const order = db.getOrder('ORD-IDEMPOTENT-001')!;
+    expect(order.status).toBe('CANCELLED');
+    expect(order.cancellation_reason).toBe('First legitimate cancellation');
   });
 });

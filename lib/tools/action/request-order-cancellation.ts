@@ -3,10 +3,11 @@
  * Action Tool: request_order_cancellation
  *
  * Mengimplementasikan Core Guardrail (Zero-Liability) untuk pembatalan pesanan:
- * 1. UNPAID / PENDING -> APPROVED (Void order)
- * 2. PAID (belum pickup) -> APPROVED & tandai butuh refund manual merchant
- * 3. PICKUP_REQUESTED / IN_TRANSIT / DELIVERED -> REJECTED otomatis dengan pesan guardrail
- * 4. Isolasi ketat tenant context (dilarang mutasi order toko lain)
+ * 1. Security Scoping (Server-side Enforcement): Verifikasi kepemilikan tenant menggunakan context.tenant_id
+ * 2. UNPAID / PENDING -> APPROVED (Void order, order_status: 'CANCELLED')
+ * 3. PAID (belum pickup) -> APPROVED & tandai refund_status: 'MANUAL_REVIEW' (State Separation)
+ * 4. PICKUP_REQUESTED / IN_TRANSIT / DELIVERED -> REJECTED otomatis dengan pesan guardrail
+ * 5. Idempotent skip jika pesanan sudah berstatus CANCELLED sebelumnya
  */
 
 import { z } from 'zod';
@@ -30,8 +31,9 @@ export interface CancellationResultData {
   order_id: string;
   previous_status: string;
   new_status: string;
+  order_status?: string;
   cancellation_action: 'VOID_ORDER' | 'MANUAL_REFUND_REQUIRED' | 'NONE';
-  refund_status?: string | null;
+  refund_status?: 'MANUAL_REVIEW' | string | null;
   cancellation_reason: string;
   cancelled_at?: string;
 }
@@ -62,11 +64,10 @@ export const requestOrderCancellationTool: AgentTool<
     const cleanOrderId = params.order_id.trim();
     const cleanReason = params.reason.trim();
 
-    // 1. Strict Tenant Isolation: Cari order yang valid HANYA milik tenant ini
+    // 1. Fetch Order by ID
     const { data: orders, error: fetchErr } = await supabase
       .from('orders')
       .select('id, order_id, tenant_slug, tenant_id, status, payment_status, shipping_status, gross_amount, customer_phone')
-      .or(`tenant_slug.eq.${context.tenant_id},tenant_id.eq.${context.tenant_id}`)
       .or(`id.eq.${cleanOrderId},order_id.eq.${cleanOrderId}`)
       .limit(1);
 
@@ -87,10 +88,26 @@ export const requestOrderCancellationTool: AgentTool<
     }
 
     const order = orders[0];
+
+    // 2. SECURITY SCOPING (Server-side Enforcement):
+    // context.tenant_id (trusted UUID) is the authoritative security boundary.
+    // tenant_slug is ONLY used for legacy presentation lookup if tenant_id is absent.
+    const isAuthorized = order.tenant_id
+      ? String(order.tenant_id).toLowerCase() === String(context.tenant_id).toLowerCase()
+      : (order.tenant_slug ? String(order.tenant_slug).toLowerCase() === String(context.tenant_id).toLowerCase() : false);
+
+    if (!isAuthorized) {
+      return {
+        success: false,
+        guardrailStatus: 'FAILED',
+        error: `Pesanan '${cleanOrderId}' tidak ditemukan atau berada di luar akses toko ini.`,
+      };
+    }
+
     const currentPaymentStatus = String(order.status || order.payment_status || 'PENDING').toUpperCase();
     const currentShippingStatus = String(order.shipping_status || 'NONE').toUpperCase();
 
-    // 2. Idempotency: Jika pesanan sudah dibatalkan sebelumnya
+    // 3. Idempotency: Jika pesanan sudah dibatalkan sebelumnya
     if (currentPaymentStatus === 'CANCELLED') {
       return {
         success: true,
@@ -100,14 +117,15 @@ export const requestOrderCancellationTool: AgentTool<
           order_id: String(order.id),
           previous_status: currentPaymentStatus,
           new_status: 'CANCELLED',
+          order_status: 'CANCELLED',
           cancellation_action: 'NONE',
           cancellation_reason: cleanReason,
         },
-        message: `Pesanan #${order.id} sudah berstatus DIBATALKAN sebelumnya.`,
+        message: `Pesanan #${order.id} sudah berstatus DIBATALKAN sebelumnya. Tindakan dilewati (Idempotent).`,
       };
     }
 
-    // 3. CORE GUARDRAIL RULE: Kurir Dispatch Boundary
+    // 4. CORE GUARDRAIL RULE: Kurir Dispatch Boundary
     // Jika pesanan sudah dalam proses penjemputan atau pengiriman kurir -> REJECTED OTOMATIS
     const DISPATCHED_STATUSES = [
       'PICKUP_REQUESTED',
@@ -131,7 +149,7 @@ export const requestOrderCancellationTool: AgentTool<
 
     const nowIso = new Date().toISOString();
 
-    // 4. ATURAN BISNIS: Status UNPAID / PENDING -> Void Order
+    // 5. ATURAN BISNIS: Status UNPAID / PENDING -> Void Order
     const UNPAID_STATUSES = ['UNPAID', 'PENDING', 'WAITING_PAYMENT'];
     if (UNPAID_STATUSES.includes(currentPaymentStatus)) {
       const { error: updateErr } = await supabase
@@ -162,6 +180,7 @@ export const requestOrderCancellationTool: AgentTool<
           order_id: String(order.id),
           previous_status: currentPaymentStatus,
           new_status: 'CANCELLED',
+          order_status: 'CANCELLED',
           cancellation_action: 'VOID_ORDER',
           cancellation_reason: cleanReason,
           cancelled_at: nowIso,
@@ -170,7 +189,8 @@ export const requestOrderCancellationTool: AgentTool<
       };
     }
 
-    // 5. ATURAN BISNIS: Status PAID (Belum request pickup) -> Approved & tandai manual refund
+    // 6. ATURAN BISNIS: Status PAID (Belum request pickup) -> Approved & tandai MANUAL_REVIEW
+    // STATE SEPARATION: order_status = 'CANCELLED' & refund_status = 'MANUAL_REVIEW'
     if (currentPaymentStatus === 'PAID' || currentPaymentStatus === 'SETTLED' || currentPaymentStatus === 'COMPLETED') {
       const { error: updateErr } = await supabase
         .from('orders')
@@ -178,7 +198,7 @@ export const requestOrderCancellationTool: AgentTool<
           status: 'CANCELLED',
           order_status: 'CANCELLED',
           cancellation_reason: cleanReason,
-          refund_status: 'PENDING_MANUAL_REFUND',
+          refund_status: 'MANUAL_REVIEW',
           cancelled_at: nowIso,
           updated_at: nowIso,
         })
@@ -200,16 +220,17 @@ export const requestOrderCancellationTool: AgentTool<
           order_id: String(order.id),
           previous_status: currentPaymentStatus,
           new_status: 'CANCELLED',
+          order_status: 'CANCELLED',
           cancellation_action: 'MANUAL_REFUND_REQUIRED',
-          refund_status: 'PENDING_MANUAL_REFUND',
+          refund_status: 'MANUAL_REVIEW',
           cancellation_reason: cleanReason,
           cancelled_at: nowIso,
         },
-        message: `Pesanan lunas #${order.id} berhasil dibatalkan. Sistem telah menandai pesanan untuk proses refund manual oleh tim merchant.`,
+        message: `Pesanan lunas #${order.id} berhasil dibatalkan. Sistem telah menandai pesanan untuk proses refund manual (MANUAL_REVIEW) oleh tim merchant.`,
       };
     }
 
-    // 6. Fallback untuk status tak terduga
+    // 7. Fallback untuk status tak terduga
     return {
       success: false,
       guardrailStatus: 'REJECTED',

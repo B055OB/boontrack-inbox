@@ -158,6 +158,9 @@ export class ToolRegistry {
           message: result.message,
           error: result.error,
           actionTaken: result.actionTaken,
+          order_status: (result.data as any)?.order_status,
+          refund_status: (result.data as any)?.refund_status,
+          data: result.data,
           elapsedMs: Date.now() - startTime,
         },
       });
