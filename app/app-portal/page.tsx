@@ -63,8 +63,13 @@ export default function AppPortalPage() {
                         <a href="#solutions" className="hover:text-white transition-colors">Solusi Industri</a>
                         <a href="#channels" className="hover:text-white transition-colors">Zero-App Channels</a>
                         <a href="#hardware" className="hover:text-white transition-colors">POS &amp; Peripheral API</a>
-                        <a href="https://shop.boontrack.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center gap-1.5">
-                            Shop Engine <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">↗</span>
+                        <a 
+                            href="https://boontrack.com" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-slate-300 hover:text-white font-medium text-sm transition-colors"
+                        >
+                            About Us
                         </a>
                     </nav>
 
