@@ -151,9 +151,20 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
 
   // Load tenant metadata, bank accounts, and default pixel IDs
   useEffect(() => {
-    const activeRef = getActiveAffiliateCode();
-    if (activeRef) {
-      setAffiliateCode(activeRef);
+    // FIX: Hanya baca affiliate code dari URL param sesi ini.
+    // Jangan ambil dari localStorage tanpa validasi URL — mencegah
+    // referral sesi testing sebelumnya (misal 'buzzerukm') bocor ke
+    // toko tenant lain yang dibuka di browser yang sama.
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const refFromUrl = urlParams.get('ref') || urlParams.get('aff');
+      if (refFromUrl) {
+        // Hanya set jika URL aktif memang membawa ?ref= param
+        setAffiliateCode(refFromUrl.trim());
+      } else {
+        // Tidak ada ref di URL saat ini — pastikan state bersih
+        setAffiliateCode(undefined);
+      }
     }
     if (isOpen && tenantSlug) {
       setQrisError(false);
@@ -687,6 +698,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                   Rp {basePrice.toLocaleString("id-ID")}
                 </span>
               </div>
+              {/* FIX: Elemen Reff hanya mount ke DOM jika affiliateCode
+                  benar-benar ada dari URL aktif (?ref=...) saat ini.
+                  Tenant biasa tanpa fitur affiliate tidak akan pernah
+                  melihat teks ini — termasuk jika localStorage
+                  mengandung sisa referral dari sesi testing sebelumnya. */}
               {affiliateCode && (
                 <div className="text-[10px] text-indigo-400 font-mono flex items-center gap-1 pt-1">
                   <ShieldCheck className="w-3 h-3" /> Reff: {affiliateCode} (Komisi 30%: Rp {affiliateCommission.toLocaleString("id-ID")})

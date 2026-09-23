@@ -638,9 +638,14 @@ function SingleProductContent() {
       price: basePrice
     });
 
-    const activeRef = getActiveAffiliateCode();
-    if (activeRef) {
-      setAffiliateCode(activeRef);
+    // FIX: Baca affiliate code dari URL sesi ini (searchParams sudah tersedia via useSearchParams).
+    // Jangan fallback ke localStorage tanpa validasi URL — mencegah sisa kode referral
+    // dari sesi pengujian sebelumnya (misal 'buzzerukm') bocor ke toko tenant lain.
+    const refFromUrl = searchParams.get('ref') || searchParams.get('aff');
+    if (refFromUrl) {
+      setAffiliateCode(refFromUrl.trim());
+    } else {
+      setAffiliateCode(undefined);
     }
   }, [tenant, searchParams, slug, product.name, basePrice]);
 
