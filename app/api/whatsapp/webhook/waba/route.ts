@@ -166,7 +166,17 @@ export async function POST(req: Request) {
     let processedCount = 0;
 
     for (const msg of messages) {
-      const senderPhone = String(msg.from || '').replace(/\D/g, '');
+      // ── GUARD CLAUSE: Abaikan pesan dari bot itu sendiri (fromMe=true).
+      // Tanpa ini, setiap outbound reply bot akan memantul kembali sebagai
+      // inbound event dan memicu infinite reply loop.
+      if (msg.key?.fromMe === true) {
+        console.log(`[WABA Webhook] Skipping outbound bot message (fromMe=true), msgId=${msg.id || 'unknown'}`);
+        continue;
+      }
+
+      // Normalisasi nomor pengirim: strip semua non-digit, hapus suffix @s.whatsapp.net.
+      // Format konsisten: '62xxx' — digunakan sebagai session_id DAN user_identifier.
+      const senderPhone = String(msg.from || '').split('@')[0].replace(/\D/g, '');
       if (!senderPhone) continue;
 
       let textContent = '';

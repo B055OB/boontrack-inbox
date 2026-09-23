@@ -138,6 +138,17 @@ export class ConversationEngine {
         .select()
         .single();
       session = newSession || { current_state: 'GREETING' };
+    } else if (session.current_state === 'GREETING') {
+      // BUG FIX: Sesi SUDAH ADA di DB (bukan sesi baru) tapi state masih 'GREETING'.
+      // Ini terjadi ketika pesan sambutan sudah terkirim di invocation sebelumnya
+      // tapi state tidak pernah di-persist ke 'ACTIVE' (stuck loop).
+      // Advance ke ACTIVE agar pesan lanjutan dirouting ke ZeroAI/LLM, bukan re-render greeting.
+      await supabase
+        .from('conversation_sessions')
+        .update({ current_state: 'ACTIVE' })
+        .eq('session_id', session_id);
+      session = { ...session, current_state: 'ACTIVE' };
+      trace.push('AUTO_ADVANCE_GREETING_TO_ACTIVE');
     }
 
     trace.push(session.current_state);
@@ -216,23 +227,47 @@ export class ConversationEngine {
 
     // --- STEP A: DETERMINISTIC ROUTER (ON-TRACK FLOW) ---
     
-    // GREETING -> Tampilkan Opsi Kapasitas
+    // GREETING -> Tampilkan Opsi Kapasitas (hanya untuk toko FIELD_SERVICE dengan service config)
     if (session.current_state === 'GREETING') {
       const optionsText = services.length > 0
         ? services
             .map((s: ServiceConfigItem) => `• *${s.capacity} Liter* : Rp ${Number(s.price).toLocaleString('id-ID')}`)
             .join('\n')
-        : '• *350 Liter* : Rp 130.000\n• *520 Liter* : Rp 160.000\n• *1000 Liter* : Rp 200.000';
+        : null;
+
+      if (optionsText) {
+        // Toko FIELD_SERVICE dengan kapasitas: gunakan flow kapasitas
+        await supabase
+          .from('conversation_sessions')
+          .update({ current_state: 'ASK_CAPACITY' })
+          .eq('session_id', session_id);
+
+        trace.push('ASK_CAPACITY');
+        return {
+          reply: `Halo Kak! Selamat datang di layanan *Kuras Toren*. 🚰\n\nUntuk estimasi biaya, toren airnya ukuran berapa liter kak?\n\n*Pilihan Kapasitas:*\n${optionsText}\n\nKetik angkanya saja ya Kak (misal: *520*).`,
+          next_state: 'ASK_CAPACITY',
+          state_trace: trace,
+          entities,
+          is_booking_ready: false
+        };
+      }
+
+      // Toko GENERIC (tanpa service config, misal: Plasa Kreatif, toko retail, dll):
+      // Kirim greeting umum, langsung advance state ke ACTIVE agar
+      // pesan lanjutan tidak terjebak infinite greeting loop.
+      const greetingMsg = metadata.bot_greeting ||
+        metadata.greeting_message ||
+        `Halo! Selamat datang di *${tenant?.name || tenant_id}* ✨\n\nAda yang bisa kami bantu? Silakan tanyakan produk, harga, atau info lainnya.`;
 
       await supabase
         .from('conversation_sessions')
-        .update({ current_state: 'ASK_CAPACITY' })
+        .update({ current_state: 'ACTIVE' })
         .eq('session_id', session_id);
 
-      trace.push('ASK_CAPACITY');
+      trace.push('GENERIC_GREETING', 'ADVANCE_TO_ACTIVE');
       return {
-        reply: `Halo Kak! Selamat datang di layanan *Kuras Toren*. 🚰\n\nUntuk estimasi biaya, toren airnya ukuran berapa liter kak?\n\n*Pilihan Kapasitas:*\n${optionsText}\n\nKetik angkanya saja ya Kak (misal: *520*).`,
-        next_state: 'ASK_CAPACITY',
+        reply: greetingMsg,
+        next_state: 'ACTIVE',
         state_trace: trace,
         entities,
         is_booking_ready: false
@@ -286,7 +321,10 @@ export class ConversationEngine {
 
     const isQuestion = cleanMsg.includes('?') || cleanMsg.length > 25 || /(aman|kimia|garansi|kotor|bau|lumut|berapa lama|sabun|kuras)/i.test(cleanMsg);
 
-    if (isQuestion && session.current_state !== 'GREETING') {
+    // BUG FIX: Hapus kondisi `session.current_state !== 'GREETING'` yang memblokir
+    // pertanyaan spesifik pada sesi ACTIVE. Sesi ACTIVE yang melanjutkan pertanyaan
+    // wajib dirouting ke ZeroAI / side-answer handler, bukan dipantulkan ke greeting.
+    if (isQuestion) {
       trace.push('SIDE_QUESTION', 'PULLBACK');
 
       let sideAnswer = 'Pengerjaan kuras toren kami menggunakan semprotan tekanan tinggi dan pembersih higienis alami tanpa bahan kimia berbahaya, jadi air langsung aman digunakan kembali Kak.';
