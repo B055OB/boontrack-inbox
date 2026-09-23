@@ -19,6 +19,7 @@
  */
 
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { isValidUuid } from '@/lib/uuid-guard';
 
 // ---------------------------------------------------------------------------
 // Constants — CFO-approved hard caps
@@ -131,11 +132,21 @@ async function countTrialOrders(
     ? new Date(new Date(trialEndsAt).getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
     : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const { count, error } = await supabase
+  let query = supabase
     .from('orders')
-    .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', tenantId)
-    .gte('created_at', trialStartApprox);
+    .select('id', { count: 'exact', head: true });
+
+  if (isValidUuid(tenantId)) {
+    query = query.eq('tenant_id', tenantId);
+  } else if (tenantId && tenantId !== 'undefined' && tenantId !== 'null') {
+    query = query.eq('tenant_slug', tenantId);
+  } else {
+    return 0;
+  }
+
+  query = query.gte('created_at', trialStartApprox);
+
+  const { count, error } = await query;
 
   if (error) {
     console.warn('[TrialGuard] Error counting trial orders:', error.message);
@@ -218,12 +229,27 @@ export async function checkTrialQuota(
     };
   }
 
-  // 1. Fetch tenant row
-  const { data: tenantRow, error: tenantErr } = await supabase
+  if (!tenantId || tenantId === 'undefined' || tenantId === 'null') {
+    return {
+      allowed: false,
+      isTrial: false,
+      errorCode: 'TENANT_NOT_FOUND',
+      message: `Tenant dengan ID '${tenantId}' tidak valid.`,
+    };
+  }
+
+  // 1. Fetch tenant row (guard UUID vs slug to prevent 22P02 Postgres errors)
+  let tenantQuery = supabase
     .from('tenants')
-    .select('id, tier, trial_ends_at, subscription_ends_at, metadata')
-    .eq('id', tenantId)
-    .maybeSingle();
+    .select('id, tier, trial_ends_at, subscription_ends_at, metadata');
+
+  if (isValidUuid(tenantId)) {
+    tenantQuery = tenantQuery.eq('id', tenantId);
+  } else {
+    tenantQuery = tenantQuery.eq('slug', tenantId);
+  }
+
+  const { data: tenantRow, error: tenantErr } = await tenantQuery.maybeSingle();
 
   if (tenantErr) {
     console.error('[TrialGuard] Error fetching tenant:', tenantErr.message);

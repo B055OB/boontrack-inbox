@@ -273,12 +273,12 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           }
         } catch {}
 
-        if (!isPaid) {
+        if (!isPaid && paymentData?.orderId && paymentData.orderId !== 'undefined' && paymentData.orderId !== 'null') {
           const supabase = getSupabase();
           if (supabase) {
             const { data: ord } = await supabase
               .from('orders')
-              .select('status, payment_status, download_url, fulfillment_metadata')
+              .select('id, status, payment_status')
               .eq('id', paymentData.orderId)
               .maybeSingle();
 
@@ -286,8 +286,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               const statusUpper = (ord.payment_status || ord.status || '').toUpperCase();
               if (statusUpper === 'PAID' || statusUpper === 'COMPLETED' || statusUpper === 'SUCCESS' || statusUpper === 'SETTLED') {
                 isPaid = true;
-                accessUrl = ord.fulfillment_metadata?.access_url || ord.download_url;
-                instructions = ord.fulfillment_metadata?.instructions;
+                accessUrl = product?.download_url || product?.link_digital || product?.delivery_url;
+                instructions = product?.fulfillment_metadata?.instructions;
               }
             }
           }
@@ -328,8 +328,18 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
       } catch {}
     };
 
-    checkStatus();
-    const interval = setInterval(checkStatus, 2500);
+    let checkCount = 0;
+    const guardedCheckStatus = async () => {
+      checkCount++;
+      if (checkCount > 45) { // Stop after ~3 minutes
+        clearInterval(interval);
+        return;
+      }
+      await checkStatus();
+    };
+
+    guardedCheckStatus();
+    const interval = setInterval(guardedCheckStatus, 4000);
 
     return () => {
       active = false;

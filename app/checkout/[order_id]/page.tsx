@@ -268,41 +268,61 @@ export default function CheckoutPage({ params }: Props) {
       return;
     }
 
+    let consecutiveErrors = 0;
     const pollInterval = setInterval(async () => {
       try {
         const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/status`, {
           cache: 'no-store',
         });
 
-        if (res.ok) {
-          const statusData = await res.json();
-          if (statusData?.status === 'PAID') {
+        if (!res.ok) {
+          // Matikan infinite retry jika error client (4xx, misal 404 order tidak ada atau 400 bad request)
+          if (res.status >= 400 && res.status < 500) {
+            console.warn(`[Checkout Polling] Menghentikan polling karena response client error HTTP ${res.status}`);
             clearInterval(pollInterval);
-
-            // Perbarui state lokal secara instan untuk menampilkan layar sukses
-            setOrder((prev: any) => {
-              const merged = {
-                ...prev,
-                ...statusData,
-                status: 'PAID',
-                payment_status: 'PAID',
-                order_status: 'PAID',
-                download_url: statusData.download_url || statusData.link_digital || prev?.download_url,
-                link_digital: statusData.link_digital || statusData.download_url || prev?.link_digital,
-                file_format: statusData.file_format || prev?.file_format,
-                button_text: statusData.button_text || prev?.button_text,
-                fulfillment_metadata: statusData.fulfillment_metadata || prev?.fulfillment_metadata,
-              };
-              triggerPurchasePixels(merged);
-              return merged;
-            });
             return;
           }
+          consecutiveErrors++;
+          if (consecutiveErrors >= 5) {
+            console.warn('[Checkout Polling] Menghentikan polling setelah 5 kali gagal berturut-turut');
+            clearInterval(pollInterval);
+            return;
+          }
+          return;
+        }
+
+        consecutiveErrors = 0;
+        const statusData = await res.json();
+        if (statusData?.status === 'PAID') {
+          clearInterval(pollInterval);
+
+          // Perbarui state lokal secara instan untuk menampilkan layar sukses
+          setOrder((prev: any) => {
+            const merged = {
+              ...prev,
+              ...statusData,
+              status: 'PAID',
+              payment_status: 'PAID',
+              order_status: 'PAID',
+              download_url: statusData.download_url || statusData.link_digital || prev?.download_url,
+              link_digital: statusData.link_digital || statusData.download_url || prev?.link_digital,
+              file_format: statusData.file_format || prev?.file_format,
+              button_text: statusData.button_text || prev?.button_text,
+              fulfillment_metadata: statusData.fulfillment_metadata || prev?.fulfillment_metadata,
+            };
+            triggerPurchasePixels(merged);
+            return merged;
+          });
+          return;
         }
       } catch (err) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 5) {
+          clearInterval(pollInterval);
+        }
         console.warn('[Checkout Polling] Check error:', err);
       }
-    }, 2000);
+    }, 4000);
 
     return () => clearInterval(pollInterval);
   }, [orderId, order?.status, order?.payment_status, triggerPurchasePixels]);

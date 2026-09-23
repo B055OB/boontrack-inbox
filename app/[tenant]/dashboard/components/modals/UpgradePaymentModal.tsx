@@ -246,6 +246,10 @@ export default function UpgradePaymentModal({
           `https://api.boontrack.com/api/v1/shop/subscriptions/status/${encodeURIComponent(tenantSlug)}`,
           { cache: 'no-store' }
         );
+        if (res.status >= 400 && res.status < 500) {
+          stopAll();
+          return;
+        }
         if (!res.ok) return;
 
         const json = await res.json();

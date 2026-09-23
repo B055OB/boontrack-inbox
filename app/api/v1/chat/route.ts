@@ -448,14 +448,14 @@ Instruksi Lainnya:
     // Record into Supabase
     try {
       const supabase = getSupabase();
-      await supabase.from('messages').insert({
-        tenant_slug: slug,
-        conversation_id: 'webchat-demo-visitor',
-        sender: `${storeName} AI`,
-        channel: 'webchat',
-        text: reply,
-        message_text: reply,
-      });
+      if (supabase) {
+        await supabase.from('messages').insert({
+          tenant_slug: slug,
+          sender: `${storeName} AI`,
+          channel: 'webchat',
+          text: reply,
+        });
+      }
     } catch {
       // offline fallback
     }

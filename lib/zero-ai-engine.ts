@@ -1177,7 +1177,6 @@ export async function processZeroAiMessage(
     try {
       await supabase.from('messages').insert({
         tenant_slug: tenant.slug,
-        conversation_id: `wa_${senderPhone || 'visitor'}`,
         sender: 'SYSTEM NOTIFICATION',
         channel: 'whatsapp',
         user_phone: senderPhone || null,

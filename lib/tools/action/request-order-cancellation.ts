@@ -61,14 +61,22 @@ export const requestOrderCancellationTool: AgentTool<
       };
     }
 
-    const cleanOrderId = params.order_id.trim();
-    const cleanReason = params.reason.trim();
+    const cleanOrderId = params.order_id?.trim?.() || '';
+    const cleanReason = params.reason?.trim?.() || '';
+
+    if (!cleanOrderId || cleanOrderId === 'undefined' || cleanOrderId === 'null') {
+      return {
+        success: false,
+        guardrailStatus: 'FAILED',
+        error: '[request_order_cancellation] Parameter order_id tidak valid.',
+      };
+    }
 
     // 1. Fetch Order by ID
     const { data: orders, error: fetchErr } = await supabase
       .from('orders')
-      .select('id, order_id, tenant_slug, tenant_id, status, payment_status, shipping_status, gross_amount, customer_phone')
-      .or(`id.eq.${cleanOrderId},order_id.eq.${cleanOrderId}`)
+      .select('*')
+      .or(`id.eq.${cleanOrderId},correlation_id.eq.${cleanOrderId}`)
       .limit(1);
 
     if (fetchErr) {

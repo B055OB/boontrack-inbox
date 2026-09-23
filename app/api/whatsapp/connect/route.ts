@@ -95,7 +95,7 @@ async function ensureTenantConnectionRecord(
  * Untuk setiap merchant SaaS, wajib diperlakukan sebagai mode DEDICATED dengan instance_name = tenantSlug.
  */
 async function getTenantConnectionRegistry(tenantSlug: string): Promise<WhatsAppConnectionConfig> {
-  const cleanTenant = tenantSlug.trim().toLowerCase();
+  const cleanTenant = tenantSlug?.trim?.().toLowerCase() || '';
   const defaultDedicated: WhatsAppConnectionConfig = {
     provider: "EVOLUTION",
     mode: "DEDICATED",
@@ -103,6 +103,10 @@ async function getTenantConnectionRegistry(tenantSlug: string): Promise<WhatsApp
     phone_number: null,
     fromDb: false,
   };
+
+  if (!cleanTenant || cleanTenant === 'undefined' || cleanTenant === 'null') {
+    return defaultDedicated;
+  }
 
   try {
     const supabase = getSupabaseAdmin();
@@ -269,7 +273,7 @@ export async function POST(req: NextRequest) {
       "";
     const tenantSlug = typeof rawTenant === "string" ? rawTenant.trim() : "";
 
-    if (!tenantSlug) {
+    if (!tenantSlug || tenantSlug === 'undefined' || tenantSlug === 'null') {
       return NextResponse.json(
         {
           success: false,

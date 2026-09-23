@@ -228,7 +228,7 @@ export default function AdsTrackingPro({
           try {
             let leadQuery = supabase
               .from('orders')
-              .select('id, buyer_name, buyer_phone, customer_name, customer_phone, total_amount, metadata, created_at, status')
+              .select('id, customer_name, customer_phone, gross_amount, status, created_at, utm_campaign, utm_source')
               .eq('tenant_slug', tenantSlug);
 
             if (dateRange.startDate) leadQuery = leadQuery.gte('created_at', dateRange.startDate);
@@ -240,11 +240,10 @@ export default function AdsTrackingPro({
 
             if (realOrders && realOrders.length > 0) {
               const mappedLeads: LeadScoreItem[] = realOrders.map((ord: any) => {
-                const name = ord.buyer_name || ord.customer_name || 'Pelanggan';
-                const phone = ord.buyer_phone || ord.customer_phone || '-';
-                const meta = ord.metadata || {};
-                const utm = meta.utm_campaign || meta.campaign || 'direct';
-                const source = meta.utm_source || 'Direct Store';
+                const name = ord.customer_name || 'Pelanggan';
+                const phone = ord.customer_phone || '-';
+                const utm = ord.utm_campaign || 'direct';
+                const source = ord.utm_source || 'Direct Store';
                 const isPaid = ord.status === 'PAID' || ord.status === 'COMPLETED';
                 return {
                   id: String(ord.id),

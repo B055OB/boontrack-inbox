@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { isValidUuid } from '@/lib/uuid-guard';
 
 export const GetOrderStatusSchema = z.object({
   order_id_or_phone: z
@@ -57,9 +58,14 @@ export const getOrderStatusTool: AgentTool<GetOrderStatusParams, OrderStatusSumm
     let query = supabase
       .from('orders')
       .select('*')
-      .or(`tenant_slug.eq.${context.tenant_id},tenant_id.eq.${context.tenant_id}`)
       .order('created_at', { ascending: false })
       .limit(1);
+
+    if (isValidUuid(context.tenant_id)) {
+      query = query.or(`tenant_slug.eq.${context.tenant_id},tenant_id.eq.${context.tenant_id}`);
+    } else {
+      query = query.or(`tenant_slug.eq.${context.tenant_id}`);
+    }
 
     if (isPhoneNumber) {
       const normalizedPhone = cleanDigits.startsWith('0')
@@ -70,7 +76,7 @@ export const getOrderStatusTool: AgentTool<GetOrderStatusParams, OrderStatusSumm
 
       query = query.or(`customer_phone.ilike.%${normalizedPhone}%,customer_phone.ilike.%${cleanDigits}%`);
     } else {
-      query = query.or(`id.eq.${rawInput},id.ilike.%${rawInput}%,order_id.eq.${rawInput}`);
+      query = query.or(`id.eq.${rawInput},id.ilike.%${rawInput}%,correlation_id.eq.${rawInput}`);
     }
 
     const { data: orders, error } = await query;
@@ -78,6 +84,7 @@ export const getOrderStatusTool: AgentTool<GetOrderStatusParams, OrderStatusSumm
     if (error) {
       return {
         success: false,
+        data: null,
         error: `[get_order_status] Failed to query orders: ${error.message}`,
       };
     }

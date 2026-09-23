@@ -26,6 +26,8 @@ async function resolveAccessToken(
   const envToken = process.env.WABA_ACCESS_TOKEN?.trim();
   if (envToken) return envToken;
 
+  if (!tenantId || tenantId === 'undefined' || tenantId === 'null') return null;
+
   // Dynamic path: look up token from whatsapp_connections
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase

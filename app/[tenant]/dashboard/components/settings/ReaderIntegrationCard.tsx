@@ -222,13 +222,20 @@ export default function ReaderIntegrationCard({
 
   // ── 1. Fetch Current Device Status ──────────────────────────────────────────
   const fetchDeviceStatus = useCallback(async () => {
-    if (!tenantSlug && !tenantId) return;
+    const cleanSlug = tenantSlug && tenantSlug !== 'undefined' && tenantSlug !== 'null' ? tenantSlug : '';
+    const cleanId = tenantId && tenantId !== 'undefined' && tenantId !== 'null' ? tenantId : '';
+    if (!cleanSlug && !cleanId) return null;
+
     try {
       const q = new URLSearchParams();
-      if (tenantId) q.set('tenant_id', tenantId);
-      if (tenantSlug) q.set('tenant_slug', tenantSlug);
+      if (cleanId) q.set('tenant_id', cleanId);
+      if (cleanSlug) q.set('tenant_slug', cleanSlug);
 
       const res = await fetch(`/api/v1/reader/device/status?${q.toString()}`);
+      if (res.status >= 400 && res.status < 500) {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        return null;
+      }
       if (res.ok) {
         const data = await res.json();
         if (data?.success && data.device) {

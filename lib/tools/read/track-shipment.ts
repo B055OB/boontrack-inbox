@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { isValidUuid } from '@/lib/uuid-guard';
 
 export const TrackShipmentSchema = z.object({
   tracking_number: z
@@ -58,13 +59,40 @@ export const trackShipmentTool: AgentTool<TrackShipmentParams, ShipmentTrackingS
     const cleanResi = params.tracking_number.trim();
 
     // Strict Tenant Isolation: Only search orders belonging to this tenant
-    const { data: orders, error } = await supabase
+    let query = supabase
       .from('orders')
-      .select('id, order_id, customer_name, shipping_courier, shipping_status, shipping_address, tracking_number, resi, waybill, no_order, shipping_logs, updated_at')
-      .or(`tenant_slug.eq.${context.tenant_id},tenant_id.eq.${context.tenant_id}`)
-      .or(`tracking_number.eq.${cleanResi},resi.eq.${cleanResi},waybill.eq.${cleanResi},no_order.eq.${cleanResi}`)
+      .select('*');
+
+    if (isValidUuid(context.tenant_id)) {
+      query = query.or(`tenant_slug.eq.${context.tenant_id},tenant_id.eq.${context.tenant_id}`);
+    } else {
+      query = query.or(`tenant_slug.eq.${context.tenant_id}`);
+    }
+
+    let { data: orders, error } = await query
+      .or(`id.eq.${cleanResi},correlation_id.eq.${cleanResi}`)
       .order('updated_at', { ascending: false })
       .limit(1);
+
+    // Fallback: If not found by id/correlation_id, check tracking_number (e.g. in-memory mock or future schema)
+    if ((!orders || orders.length === 0) && !error) {
+      try {
+        let fallbackQuery = supabase
+          .from('orders')
+          .select('*');
+        if (isValidUuid(context.tenant_id)) {
+          fallbackQuery = fallbackQuery.or(`tenant_slug.eq.${context.tenant_id},tenant_id.eq.${context.tenant_id}`);
+        } else {
+          fallbackQuery = fallbackQuery.or(`tenant_slug.eq.${context.tenant_id}`);
+        }
+        const { data: altOrders } = await fallbackQuery
+          .or(`tracking_number.eq.${cleanResi},resi.eq.${cleanResi}`)
+          .limit(1);
+        if (altOrders && altOrders.length > 0) {
+          orders = altOrders;
+        }
+      } catch {}
+    }
 
     if (error) {
       return {

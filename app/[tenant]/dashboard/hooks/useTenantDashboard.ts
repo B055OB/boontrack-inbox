@@ -15,7 +15,7 @@ import {
   resolveFulfillmentRequirements,
 } from '@/lib/product-catalog';
 import { mapBusinessCategoryToProductType } from '../components/ProductFormModal';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { optimizeImageToWebP } from '@/components/ImageUpload';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm } from '@/lib/boonpilotMapper';
@@ -1641,18 +1641,24 @@ export function useTenantDashboard() {
 
   // 7a. Fetch messages for selected conversation from Supabase
   useEffect(() => {
-    if (!activeConversationId) return;
+    // Guard UUID syntax: only query messages if activeConversationId is a valid UUID
+    if (!activeConversationId || !isValidUuid(activeConversationId)) return;
     const supabase = getSupabase();
     if (!supabase) return;
 
     const fetchMessages = async () => {
       try {
-        const { data: msgs } = await supabase
+        const { data: msgs, error: msgErr } = await supabase
           .from('messages')
           .select('*')
           .eq('conversation_id', activeConversationId)
           .order('created_at', { ascending: true })
           .limit(150);
+
+        if (msgErr) {
+          console.debug('[Inbox] fetchMessages query error:', msgErr.message);
+          return;
+        }
 
         if (Array.isArray(msgs) && msgs.length > 0) {
           const mappedMsgs: ConversationMessage[] = msgs.map((m: any) => ({
@@ -1929,14 +1935,37 @@ export function useTenantDashboard() {
   useEffect(() => {
     if (activeTab !== 'whatsapp' || !tenantSlug || waStatus !== 'CONNECTING') return;
 
+    let consecutiveErrors = 0;
+    let isCancelled = false;
+
     const pollInterval = setInterval(async () => {
+      if (isCancelled) return;
       try {
         const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
         });
-        if (!res.ok) return;
+
+        if (!res.ok) {
+          consecutiveErrors++;
+          // Hentikan / perlambat polling jika response 4xx client error
+          if (res.status >= 400 && res.status < 500) {
+            if (consecutiveErrors >= 3) {
+              console.warn(`[WhatsApp Polling] Paused polling after repeated ${res.status} client error`);
+              clearInterval(pollInterval);
+              return;
+            }
+          }
+          if (consecutiveErrors >= 5) {
+            clearInterval(pollInterval);
+            return;
+          }
+          return;
+        }
+
+        consecutiveErrors = 0;
         const data = await res.json().catch(() => ({}));
+        if (isCancelled) return;
 
         if (data.provider) setWaProvider(data.provider);
         if (data.mode) setWaConnectionMode(data.mode);
@@ -1953,6 +1982,7 @@ export function useTenantDashboard() {
           setConnectedPhone(rawPhone);
           setQrCodeUrl(null);
           setWaErrorMessage(null);
+          clearInterval(pollInterval);
         } else if (data.status === 'CONNECTING') {
           const qr = data.base64 || data.qr_image || data.qrcode?.base64 || null;
           if (qr && qr !== qrCodeUrl) {
@@ -1960,12 +1990,19 @@ export function useTenantDashboard() {
           }
         }
       } catch (err) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 5) {
+          clearInterval(pollInterval);
+        }
         console.debug('[WhatsApp Polling Note]', err);
       }
-    }, 5000);
+    }, 15000); // Minimum 15 detik untuk mencegah kehabisan quota egress
 
-    return () => clearInterval(pollInterval);
-  }, [activeTab, tenantSlug, waStatus, qrCodeUrl]);
+    return () => {
+      isCancelled = true;
+      clearInterval(pollInterval);
+    };
+  }, [activeTab, tenantSlug, waStatus]);
 
   return {
     tenantSlug,

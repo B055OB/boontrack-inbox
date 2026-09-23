@@ -54,6 +54,9 @@ import {
   Download,
   Smartphone,
   Lock,
+  Search,
+  ArrowUpRight,
+  FileText,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
@@ -96,9 +99,7 @@ const ORDERS = [
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 function fmtRp(n: number): string {
-  if (n >= 1_000_000_000) return `Rp ${(n / 1_000_000_000).toFixed(2)} M`;
-  if (n >= 1_000_000)     return `Rp ${(n / 1_000_000).toFixed(1)} Jt`;
-  return `Rp ${n.toLocaleString('id-ID')}`;
+  return `Rp ${Math.round(n).toLocaleString('id-ID')}`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -934,62 +935,244 @@ function DashboardTab({ range, setRange }: { range: DateRange; setRange: (r: Dat
 }
 
 // ─────────────────────────────────────────────────────────────
-// ORDERS TAB
+// DATE RANGE PICKER (inline, no external dep)
 // ─────────────────────────────────────────────────────────────
+type DRPreset = 'today' | '7d' | '30d' | 'this_month' | 'all';
+interface DRState { preset: DRPreset; label: string; startIso: string; endIso: string; }
+function makeDR(preset: DRPreset): DRState {
+  const now = new Date();
+  const d = (y: number, mo: number, day: number, h = 0, m = 0, s = 0) => new Date(y, mo, day, h, m, s);
+  if (preset === 'today') {
+    const s = d(now.getFullYear(), now.getMonth(), now.getDate());
+    const e = d(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    return { preset, label: 'Hari Ini', startIso: s.toISOString(), endIso: e.toISOString() };
+  }
+  if (preset === '7d') {
+    const s = d(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+    const e = d(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    return { preset, label: '7 Hari Terakhir', startIso: s.toISOString(), endIso: e.toISOString() };
+  }
+  if (preset === '30d') {
+    const s = d(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+    const e = d(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    return { preset, label: '30 Hari Terakhir', startIso: s.toISOString(), endIso: e.toISOString() };
+  }
+  if (preset === 'this_month') {
+    const s = d(now.getFullYear(), now.getMonth(), 1);
+    const e = d(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return { preset, label: 'Bulan Ini', startIso: s.toISOString(), endIso: e.toISOString() };
+  }
+  return { preset: 'all', label: 'Semua Waktu', startIso: '', endIso: '' };
+}
+
+import { Calendar } from 'lucide-react';
+
+function InlineDateRangePicker({ value, onChange }: { value: DRState; onChange: (v: DRState) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [open]);
+  const presets: { id: DRPreset; label: string }[] = [
+    { id: 'today', label: 'Hari Ini' },
+    { id: '7d', label: '7 Hari Terakhir' },
+    { id: '30d', label: '30 Hari Terakhir' },
+    { id: 'this_month', label: 'Bulan Ini' },
+    { id: 'all', label: 'Semua Waktu' },
+  ];
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shadow-xs active:scale-95 cursor-pointer">
+        <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+        <span className="truncate max-w-[160px]">{value.label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-[60] w-64 bg-white rounded-2xl border border-slate-200 shadow-2xl p-3 space-y-1.5 animate-in fade-in zoom-in-95 duration-100">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider px-1 pb-1 border-b border-slate-100">Rentang Waktu</p>
+          {presets.map(p => (
+            <button key={p.id} type="button" onClick={() => { onChange(makeDR(p.id)); setOpen(false); }}
+              className={`w-full text-left flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                value.preset === p.id
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/60'
+              }`}>
+              <span>{p.label}</span>
+              {value.preset === p.id && <Check className="w-3 h-3 text-blue-600 shrink-0" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// ORDERS TAB — mirrors real OrdersTab layout
+// ─────────────────────────────────────────────────────────────
+const ALL_ORDERS = [
+  { id: '#BT-3042', ts: '23 Sep 2026, 05:14', date: '2026-09-23T05:14:00', buyer: 'Ahmad F****',  phone: '0812****8823', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS Mandiri',     status: 'PAID' },
+  { id: '#BT-3041', ts: '23 Sep 2026, 04:48', date: '2026-09-23T04:48:00', buyer: 'Dedi K****',   phone: '0821****1107', product: 'CTWA Mastery VIP Upsell',        amount: 149_000, method: 'BCA Transfer',     status: 'PAID' },
+  { id: '#BT-3040', ts: '23 Sep 2026, 04:12', date: '2026-09-23T04:12:00', buyer: 'Siti N****',   phone: '0857****5530', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS BCA',         status: 'PAID' },
+  { id: '#BT-3039', ts: '23 Sep 2026, 03:35', date: '2026-09-23T03:35:00', buyer: 'Budi S****',   phone: '0813****4492', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS ShopeePay',   status: 'PAID' },
+  { id: '#BT-3038', ts: '23 Sep 2026, 02:50', date: '2026-09-23T02:50:00', buyer: 'Hendra W****', phone: '0878****7761', product: 'CTWA Mastery VIP Upsell',        amount: 149_000, method: 'BCA Transfer',     status: 'PAID' },
+  { id: '#BT-3037', ts: '23 Sep 2026, 01:15', date: '2026-09-23T01:15:00', buyer: 'Rina M****',   phone: '0819****2298', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS Mandiri',     status: 'PAID' },
+  { id: '#BT-3036', ts: '22 Sep 2026, 23:45', date: '2026-09-22T23:45:00', buyer: 'Farhan R****', phone: '0856****6614', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS GoPay',       status: 'PAID' },
+  { id: '#BT-3035', ts: '22 Sep 2026, 21:30', date: '2026-09-22T21:30:00', buyer: 'Lia P****',    phone: '0815****3319', product: 'CTWA Mastery VIP Upsell',        amount: 149_000, method: 'Mandiri Transfer', status: 'PAID' },
+  { id: '#BT-3034', ts: '22 Sep 2026, 19:05', date: '2026-09-22T19:05:00', buyer: 'Wahyu T****',  phone: '0895****8847', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS BCA',         status: 'PAID' },
+  { id: '#BT-3033', ts: '22 Sep 2026, 16:22', date: '2026-09-22T16:22:00', buyer: 'Dewi L****',   phone: '0812****0073', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS ShopeePay',   status: 'PAID' },
+  { id: '#BT-3032', ts: '22 Sep 2026, 14:47', date: '2026-09-22T14:47:00', buyer: 'Agus P****',   phone: '0877****5581', product: 'CTWA Mastery VIP Upsell',        amount: 149_000, method: 'BCA Transfer',     status: 'PAID' },
+  { id: '#BT-3031', ts: '22 Sep 2026, 11:18', date: '2026-09-22T11:18:00', buyer: 'Nisa H****',   phone: '0821****9934', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS Mandiri',     status: 'PAID' },
+  { id: '#BT-3030', ts: '22 Sep 2026, 09:41', date: '2026-09-22T09:41:00', buyer: 'Reza A****',   phone: '0813****2256', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS GoPay',       status: 'PAID' },
+  { id: '#BT-3029', ts: '22 Sep 2026, 08:03', date: '2026-09-22T08:03:00', buyer: 'Yuliana B****',phone: '0896****1120', product: 'CTWA Mastery VIP Upsell',        amount: 149_000, method: 'BNI Transfer',     status: 'PAID' },
+  { id: '#BT-3028', ts: '21 Sep 2026, 22:59', date: '2026-09-21T22:59:00', buyer: 'Tono S****',   phone: '0857****4478', product: 'CTWA Mastery 7-Day Intensive',   amount: 99_000,  method: 'QRIS BCA',         status: 'PAID' },
+];
+
 function OrdersTab() {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [dateRange, setDateRange] = useState<DRState>(() => makeDR('30d'));
+
+  const filteredOrders = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    const startMs = dateRange.startIso ? new Date(dateRange.startIso).getTime() : 0;
+    const endMs = dateRange.endIso ? new Date(dateRange.endIso).getTime() : Infinity;
+    return ALL_ORDERS.filter(o => {
+      const matchSearch = !searchQuery ||
+        o.id.toLowerCase().includes(q) ||
+        o.buyer.toLowerCase().includes(q) ||
+        o.phone.includes(searchQuery);
+      const matchStatus = statusFilter === 'ALL' || o.status === statusFilter;
+      const matchDate = new Date(o.date).getTime() >= startMs && new Date(o.date).getTime() <= endMs;
+      return matchSearch && matchStatus && matchDate;
+    });
+  }, [searchQuery, statusFilter, dateRange]);
+
   return (
-    <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
-      <div>
-        <h2 className="text-xl font-black text-slate-900">Pesanan & Order</h2>
-        <p className="text-xs text-slate-500 mt-0.5">CTWA Mastery 7-Day Intensive · {ORDERS.length} pesanan dini hari 23 Sep</p>
+    <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+        <div>
+          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+            <ShoppingBag className="w-5 h-5 text-blue-600" />
+            <span>Daftar Pesanan Toko ({filteredOrders.length})</span>
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Pantau seluruh transaksi checkout masuk, verifikasi konfirmasi pembayaran manual, dan pemenuhan pesanan instan.
+          </p>
+        </div>
+        <button type="button" className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer">
+          <Download className="w-3.5 h-3.5" />
+          <span>Export CSV</span>
+        </button>
       </div>
 
-      {/* Midnight angle banner */}
-      <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-slate-900 rounded-2xl p-4 border border-indigo-700/30">
-        <p className="text-white font-black text-sm">🌙 Bangun Tidur Banjir Order — Bot CAPI Aktif 24 Jam Nonstop</p>
-        <p className="text-slate-400 text-xs mt-1">Total Dini Hari: <span className="text-emerald-400 font-black">{fmtRp(ORDERS.reduce((s, o) => s + o.amount, 0))}</span> · 7 transaksi otomatis via WhatsApp CTWA</p>
-      </div>
+      {/* Filter bar + table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
+        <div className="p-3 sm:p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3 justify-between relative z-20 overflow-visible">
+          {/* Search */}
+          <div className="relative flex-1 max-w-sm">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Cari invoice, nama, WhatsApp..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-600 font-medium"
+            />
+          </div>
+          {/* Date range + status filter */}
+          <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
+            <InlineDateRangePicker value={dateRange} onChange={setDateRange} />
+            <div className="flex items-center gap-2">
+              <Filter className="w-3.5 h-3.5 text-slate-400" />
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+              >
+                <option value="ALL">Semua Status</option>
+                <option value="PAID">Lunas (Paid / Verified)</option>
+                <option value="UNPAID">Menunggu Pembayaran / Belum Lunas</option>
+              </select>
+            </div>
+          </div>
+        </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto w-full rounded-b-2xl">
+          <table className="w-full min-w-[700px] text-left border-collapse text-xs">
             <thead>
-              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
-                <th className="text-left px-5 py-3 font-bold whitespace-nowrap">Waktu</th>
-                <th className="text-left px-3 py-3 font-bold">ID</th>
-                <th className="text-left px-3 py-3 font-bold">Pembeli</th>
-                <th className="text-left px-3 py-3 font-bold hidden md:table-cell">Produk</th>
-                <th className="text-right px-3 py-3 font-bold">Nominal</th>
-                <th className="text-left px-3 py-3 font-bold hidden lg:table-cell">Metode</th>
-                <th className="text-center px-3 py-3 font-bold">Status</th>
-                <th className="text-center px-5 py-3 font-bold">Detail</th>
+              <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+                <th className="py-2.5 px-3">Invoice / Waktu</th>
+                <th className="py-2.5 px-3">Pelanggan</th>
+                <th className="py-2.5 px-3 hidden md:table-cell">Tipe / Produk</th>
+                <th className="py-2.5 px-3">Nominal</th>
+                <th className="py-2.5 px-3 hidden lg:table-cell">Metode</th>
+                <th className="py-2.5 px-3">Status</th>
+                <th className="py-2.5 px-3 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody>
-              {ORDERS.map(order => (
-                <React.Fragment key={order.id}>
-                  <tr onClick={() => setExpanded(expanded === order.id ? null : order.id)} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer group">
-                    <td className="px-5 py-3.5"><span className="font-mono text-slate-700 text-xs font-bold">{order.ts}</span></td>
-                    <td className="px-3 py-3.5"><span className="font-mono text-indigo-600 text-xs font-black">{order.id}</span></td>
-                    <td className="px-3 py-3.5 text-slate-900 font-bold text-xs">{order.buyer}</td>
-                    <td className="px-3 py-3.5 hidden md:table-cell text-slate-600 text-xs">{order.product}</td>
-                    <td className="px-3 py-3.5 text-right"><span className="text-slate-900 font-black text-xs">Rp {order.amount.toLocaleString('id-ID')}</span></td>
-                    <td className="px-3 py-3.5 hidden lg:table-cell text-slate-500 text-xs">{order.method}</td>
-                    <td className="px-3 py-3.5 text-center">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />{order.status}
+            <tbody className="divide-y divide-slate-100">
+              {filteredOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-10 text-slate-400 text-xs">
+                    Belum ada data pesanan yang cocok.
+                  </td>
+                </tr>
+              ) : filteredOrders.map(ord => (
+                <React.Fragment key={ord.id}>
+                  <tr className="hover:bg-slate-50/80 transition">
+                    <td className="py-2.5 px-3">
+                      <button type="button" onClick={() => setExpanded(expanded === ord.id ? null : ord.id)}
+                        className="font-mono font-bold text-slate-800 hover:text-blue-600 hover:underline cursor-pointer text-left">
+                        {ord.id}
+                      </button>
+                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">{ord.ts}</div>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="font-semibold text-slate-900">{ord.buyer}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">{ord.phone}</div>
+                    </td>
+                    <td className="py-2.5 px-3 hidden md:table-cell">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                        <Sparkles className="w-3 h-3 text-blue-600" />
+                        <span className="truncate max-w-[140px]">{ord.product}</span>
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 text-center">
-                      <ChevronDown size={16} className={`inline transition-transform duration-200 text-slate-400 group-hover:text-indigo-500 ${expanded === order.id ? 'rotate-180' : ''}`} />
+                    <td className="py-2.5 px-3 font-black text-slate-900">{fmtRp(ord.amount)}</td>
+                    <td className="py-2.5 px-3 hidden lg:table-cell">
+                      <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">{ord.method}</span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />{ord.status}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <button type="button" onClick={() => setExpanded(expanded === ord.id ? null : ord.id)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer">
+                        Invoice
+                      </button>
                     </td>
                   </tr>
-                  {expanded === order.id && (
+                  {expanded === ord.id && (
                     <tr className="bg-slate-50/80 border-b border-slate-100">
-                      <td colSpan={8} className="px-5 py-4">
+                      <td colSpan={7} className="px-5 py-4">
                         <div className="flex flex-wrap gap-x-8 gap-y-3 text-xs">
-                          {[['Channel', 'WhatsApp CTWA (CAPI Server)'], ['CAPI Event', 'Purchase · Matched ✓'], ['Dedup', 'No Duplicate ✓'], ['Container', 'WA Server v2 · Aktif']].map(([k, v]) => (
+                          {[
+                            ['Produk', ord.product],
+                            ['Metode Bayar', ord.method],
+                            ['Channel', 'WhatsApp CTWA (CAPI Server)'],
+                            ['CAPI Event', 'Purchase · Matched ✓'],
+                            ['Waktu Bayar', ord.ts + ' WIB'],
+                            ['Dedup Status', 'No Duplicate ✓'],
+                            ['Container', 'WA Server Container v2 · Aktif'],
+                          ].map(([k, v]) => (
                             <div key={k}><p className="text-slate-400 font-medium mb-0.5">{k}</p><p className="text-slate-800 font-bold">{v}</p></div>
                           ))}
                         </div>
@@ -1000,6 +1183,11 @@ function OrdersTab() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <span>Menampilkan {filteredOrders.length} dari {ALL_ORDERS.length} pesanan</span>
+          <span className="font-bold text-slate-700">{dateRange.label}</span>
         </div>
       </div>
     </div>
@@ -1212,83 +1400,191 @@ function AdsTrackingTab() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// LAPORAN KEUANGAN TAB
+// LAPORAN KEUANGAN TAB — mirrors real OverviewTab layout
 // ─────────────────────────────────────────────────────────────
+
+// Mock transactions for Finance tab (30 recent entries)
+const FINANCE_TRANSACTIONS = [
+  { id: 'TRX-3042', invoice_no: '#BT-3042', customer_name: 'Ahmad F****',    customer_phone: '+6281288823',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS Mandiri',     gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-23T05:14:00' },
+  { id: 'TRX-3041', invoice_no: '#BT-3041', customer_name: 'Dedi K****',     customer_phone: '+6282111107',  product_title: 'CTWA Mastery VIP Upsell',        payment_method: 'BCA Transfer',      gross_amount: 149_000, status: 'PAID', created_at: '2026-09-23T04:48:00' },
+  { id: 'TRX-3040', invoice_no: '#BT-3040', customer_name: 'Siti N****',     customer_phone: '+6285755530',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS BCA',          gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-23T04:12:00' },
+  { id: 'TRX-3039', invoice_no: '#BT-3039', customer_name: 'Budi S****',     customer_phone: '+6281344492',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS ShopeePay',   gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-23T03:35:00' },
+  { id: 'TRX-3038', invoice_no: '#BT-3038', customer_name: 'Hendra W****',   customer_phone: '+6287877761',  product_title: 'CTWA Mastery VIP Upsell',        payment_method: 'BCA Transfer',      gross_amount: 149_000, status: 'PAID', created_at: '2026-09-23T02:50:00' },
+  { id: 'TRX-3037', invoice_no: '#BT-3037', customer_name: 'Rina M****',     customer_phone: '+6281922298',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS Mandiri',     gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-23T01:15:00' },
+  { id: 'TRX-3036', invoice_no: '#BT-3036', customer_name: 'Farhan R****',   customer_phone: '+6285666614',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS GoPay',        gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-22T23:45:00' },
+  { id: 'TRX-3035', invoice_no: '#BT-3035', customer_name: 'Lia P****',      customer_phone: '+6281533319',  product_title: 'CTWA Mastery VIP Upsell',        payment_method: 'Mandiri Transfer', gross_amount: 149_000, status: 'PAID', created_at: '2026-09-22T21:30:00' },
+  { id: 'TRX-3034', invoice_no: '#BT-3034', customer_name: 'Wahyu T****',    customer_phone: '+6289588847',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS BCA',          gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-22T19:05:00' },
+  { id: 'TRX-3033', invoice_no: '#BT-3033', customer_name: 'Dewi L****',     customer_phone: '+6281200073',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS ShopeePay',   gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-22T16:22:00' },
+  { id: 'TRX-3032', invoice_no: '#BT-3032', customer_name: 'Agus P****',     customer_phone: '+6287755581',  product_title: 'CTWA Mastery VIP Upsell',        payment_method: 'BCA Transfer',      gross_amount: 149_000, status: 'PAID', created_at: '2026-09-22T14:47:00' },
+  { id: 'TRX-3031', invoice_no: '#BT-3031', customer_name: 'Nisa H****',     customer_phone: '+6282199934',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS Mandiri',     gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-22T11:18:00' },
+  { id: 'TRX-3030', invoice_no: '#BT-3030', customer_name: 'Reza A****',     customer_phone: '+6281322256',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS GoPay',        gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-22T09:41:00' },
+  { id: 'TRX-3029', invoice_no: '#BT-3029', customer_name: 'Yuliana B****',  customer_phone: '+6289611120',  product_title: 'CTWA Mastery VIP Upsell',        payment_method: 'BNI Transfer',      gross_amount: 149_000, status: 'PAID', created_at: '2026-09-22T08:03:00' },
+  { id: 'TRX-3028', invoice_no: '#BT-3028', customer_name: 'Tono S****',     customer_phone: '+6285744478',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS BCA',          gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-21T22:59:00' },
+  { id: 'TRX-3027', invoice_no: '#BT-3027', customer_name: 'Maya S****',     customer_phone: '+6281911235',  product_title: 'CTWA Mastery VIP Upsell',        payment_method: 'BCA Transfer',      gross_amount: 149_000, status: 'PAID', created_at: '2026-09-21T20:14:00' },
+  { id: 'TRX-3026', invoice_no: '#BT-3026', customer_name: 'Doni R****',     customer_phone: '+6285634490',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS Mandiri',     gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-21T17:32:00' },
+  { id: 'TRX-3025', invoice_no: '#BT-3025', customer_name: 'Intan K****',    customer_phone: '+6281277761',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS GoPay',        gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-21T15:08:00' },
+  { id: 'TRX-3024', invoice_no: '#BT-3024', customer_name: 'Bagas W****',    customer_phone: '+6282133381',  product_title: 'CTWA Mastery VIP Upsell',        payment_method: 'Mandiri Transfer', gross_amount: 149_000, status: 'PAID', created_at: '2026-09-21T12:55:00' },
+  { id: 'TRX-3023', invoice_no: '#BT-3023', customer_name: 'Sari P****',     customer_phone: '+6281899942',  product_title: 'CTWA Mastery 7-Day Intensive', payment_method: 'QRIS ShopeePay',   gross_amount: 99_000,  status: 'PAID', created_at: '2026-09-21T10:30:00' },
+];
+
+const TOTAL_OMZET = 318_483_000;
+const READY_BALANCE = 285_500_000; // saldo siap tarik (setelah biaya platform)
+
+// Withdrawals: 23 Sep = Pending Settlement (belum cut-off), 22 Sep ke bawah = Selesai
+const WITHDRAWALS = [
+  { date: '23 Sep 2026', amount: 795_000,    method: 'Auto Transfer BCA',     status: 'Pending Settlement', ref: 'CUT-2026092307',  note: 'Menunggu Cut-off 07:00 WIB' },
+  { date: '22 Sep 2026', amount: 11_638_000, method: 'Auto Transfer BCA',     status: 'Selesai',            ref: 'TRF-2026092201',  note: '' },
+  { date: '21 Sep 2026', amount: 12_945_800, method: 'Auto Transfer BCA',     status: 'Selesai',            ref: 'TRF-2026092101',  note: '' },
+  { date: '20 Sep 2026', amount: 10_241_000, method: 'Auto Transfer BCA',     status: 'Selesai',            ref: 'TRF-2026092001',  note: '' },
+  { date: '19 Sep 2026', amount:  9_770_600, method: 'Auto Transfer BCA',     status: 'Selesai',            ref: 'TRF-2026091901',  note: '' },
+  { date: '18 Sep 2026', amount: 11_093_600, method: 'Auto Transfer Mandiri', status: 'Selesai',            ref: 'TRF-2026091801',  note: '' },
+  { date: '17 Sep 2026', amount:  8_712_200, method: 'Auto Transfer BCA',     status: 'Selesai',            ref: 'TRF-2026091701',  note: '' },
+];
+
 function FinanceTab() {
-  const [activeDay, setActiveDay] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<DRState>(() => makeDR('30d'));
 
-  const withdrawals = [
-    { date: '23 Sep 2026', amount: 12_640_000, method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026092301' },
-    { date: '22 Sep 2026', amount: 11_880_000, method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026092201' },
-    { date: '21 Sep 2026', amount: 13_210_000, method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026092101' },
-    { date: '20 Sep 2026', amount: 10_450_000, method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026092001' },
-    { date: '19 Sep 2026', amount: 9_970_000,  method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026091901' },
-    { date: '18 Sep 2026', amount: 11_320_000, method: 'Auto Transfer Mandiri', status: 'Selesai', ref: 'TRF-2026091801' },
-    { date: '17 Sep 2026', amount: 8_890_000,  method: 'Auto Transfer BCA',    status: 'Selesai', ref: 'TRF-2026091701' },
-  ];
+  const filteredTransactions = useMemo(() => {
+    if (!dateRange.startIso && !dateRange.endIso) return FINANCE_TRANSACTIONS;
+    const startMs = dateRange.startIso ? new Date(dateRange.startIso).getTime() : 0;
+    const endMs = dateRange.endIso ? new Date(dateRange.endIso).getTime() : Infinity;
+    return FINANCE_TRANSACTIONS.filter(t => {
+      const ms = new Date(t.created_at).getTime();
+      return ms >= startMs && ms <= endMs;
+    });
+  }, [dateRange]);
 
-  const dailyRevs = [
-    { date: '23 Sep', orders: 7,   gross: 842_000,   net: 824_000,   day: '23 Sep 2026' },
-    { date: '22 Sep', orders: 98,  gross: 11_880_000, net: 11_638_000, day: '22 Sep 2026' },
-    { date: '21 Sep', orders: 112, gross: 13_210_000, net: 12_945_800, day: '21 Sep 2026' },
-    { date: '20 Sep', orders: 89,  gross: 10_450_000, net: 10_241_000, day: '20 Sep 2026' },
-    { date: '19 Sep', orders: 84,  gross:  9_970_000, net:  9_770_600, day: '19 Sep 2026' },
-    { date: '18 Sep', orders: 96,  gross: 11_320_000, net: 11_093_600, day: '18 Sep 2026' },
-    { date: '17 Sep', orders: 76,  gross:  8_890_000, net:  8_712_200, day: '17 Sep 2026' },
-  ];
+  const filteredOmzet = useMemo(() =>
+    filteredTransactions
+      .filter(t => ['PAID', 'SETTLEMENT', 'LUNAS'].includes(t.status.toUpperCase()))
+      .reduce((s, t) => s + t.gross_amount, 0)
+  , [filteredTransactions]);
 
-  const totalNet = 318_483_000;
+  const totalNet = TOTAL_OMZET;
   const totalFee = Math.round(totalNet * 0.02);
   const totalGross = totalNet + totalFee;
 
   return (
-    <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
+    <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6 animate-in fade-in duration-200">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4 relative z-20 overflow-visible">
         <div>
-          <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-amber-600" />Laporan Keuangan
+          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-emerald-600" />
+            <span>Ringkasan Keuangan &amp; Laporan Penjualan</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">Mutasi saldo bersih · Pencairan otomatis · Rekap harian — 30 Hari Terakhir</p>
+          <p className="text-xs text-slate-500 mt-1">
+            Pantau mutasi pembayaran QRIS otomatis, saldo siap cair, serta riwayat pencairan rekening.
+          </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
-          ✓ Saldo Tersinkronisasi
-        </span>
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto relative z-30 overflow-visible">
+          <InlineDateRangePicker value={dateRange} onChange={setDateRange} />
+          <button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-md shadow-emerald-600/20 transition active:scale-95 cursor-pointer">
+            <ArrowUpRight className="w-4 h-4" />
+            <span>Tarik Saldo Toko</span>
+          </button>
+        </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* 3 summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { label: 'Gross Revenue (30 Hari)',  value: fmtRp(totalGross),  sub: 'Sebelum biaya platform', iconBg: 'bg-slate-100', iconColor: 'text-slate-600', icon: Wallet,       color: 'slate' },
-          { label: 'Biaya Platform (2%)',      value: fmtRp(totalFee),    sub: 'MDR + Processing fee',   iconBg: 'bg-rose-50',   iconColor: 'text-rose-500',  icon: CreditCard,   color: 'rose'  },
-          { label: 'Saldo Bersih (Net)',       value: fmtRp(totalNet),    sub: '100% masuk rekening',    iconBg: 'bg-emerald-50',iconColor: 'text-emerald-600',icon: CheckCircle, color: 'emerald'},
-        ].map(c => (
-          <div key={c.label} className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500">{c.label}</span>
-              <div className={`w-8 h-8 rounded-xl ${c.iconBg} ${c.iconColor} flex items-center justify-center`}><c.icon className="w-4 h-4" /></div>
-            </div>
-            <div>
-              <div className={`text-2xl font-black tracking-tight ${c.color === 'emerald' ? 'text-emerald-700' : c.color === 'rose' ? 'text-rose-600' : 'text-slate-900'}`}>{c.value}</div>
-              <div className="mt-1 text-[11px] font-bold text-slate-400">{c.sub}</div>
-            </div>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400">Total Omzet Masuk {dateRange.preset !== 'all' ? `(${dateRange.label})` : ''}</span>
+            <span className="p-2 bg-blue-50 text-blue-600 rounded-xl"><TrendingUp className="w-4 h-4" /></span>
           </div>
-        ))}
+          <div className="text-2xl font-black text-slate-900">{fmtRp(filteredOmzet > 0 ? filteredOmzet : totalNet)}</div>
+          <p className="text-[11px] text-slate-400 font-medium">{dateRange.preset !== 'all' ? `Periode: ${dateRange.label}` : 'Akumulasi seluruh transaksi sukses'}</p>
+        </div>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400">Saldo Siap Tarik</span>
+            <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><Wallet className="w-4 h-4" /></span>
+          </div>
+          <div className="text-2xl font-black text-emerald-600">{fmtRp(READY_BALANCE)}</div>
+          <p className="text-[11px] text-emerald-700 font-medium">Dana bersih realtime di rekening penampung</p>
+        </div>
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400">Rekening Tujuan</span>
+            <span className="p-2 bg-slate-50 text-slate-600 rounded-xl"><CreditCard className="w-4 h-4" /></span>
+          </div>
+          <div className="text-base font-black text-slate-900 font-mono">BCA</div>
+          <p className="text-[11px] text-slate-500 font-mono font-bold truncate">1234567890 • BUZZER UKM</p>
+        </div>
       </div>
 
-      {/* Balance visual bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-black text-slate-800">Distribusi Pendapatan</span>
-          <span className="text-xs font-bold text-slate-500">{fmtRp(totalGross)} Total Gross</span>
+      {/* Transaction History Table */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
+          <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-600" />
+            <span>Riwayat Transaksi &amp; Invoice Pembeli</span>
+          </h3>
+          <button type="button" onClick={() => alert('Mengekspor laporan penjualan ke file CSV...')} className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer">
+            <Download className="w-3.5 h-3.5" />
+            <span>Export CSV</span>
+          </button>
         </div>
-        <div className="h-4 w-full rounded-full bg-slate-100 overflow-hidden flex">
-          <div className="h-full bg-emerald-500 rounded-l-full transition-all" style={{ width: '98%' }} />
-          <div className="h-full bg-rose-400 rounded-r-full transition-all" style={{ width: '2%' }} />
-        </div>
-        <div className="flex items-center gap-4 mt-2 text-[11px]">
-          <span className="flex items-center gap-1 font-bold text-emerald-700"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />Saldo Bersih (98%)</span>
-          <span className="flex items-center gap-1 font-bold text-rose-500"><span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block" />Biaya Platform (2%)</span>
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-[640px] text-left text-xs text-slate-600">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+              <tr>
+                <th className="px-5 py-3.5">Invoice / Waktu</th>
+                <th className="px-5 py-3.5">Pembeli</th>
+                <th className="px-5 py-3.5 hidden md:table-cell">Produk</th>
+                <th className="px-5 py-3.5 hidden sm:table-cell">Metode</th>
+                <th className="px-5 py-3.5 text-right">Nominal</th>
+                <th className="px-5 py-3.5 text-center">Status</th>
+                <th className="px-5 py-3.5 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-medium">
+              {filteredTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-12 text-center">
+                    <div className="max-w-md mx-auto flex flex-col items-center justify-center space-y-2">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center mb-1"><FileText className="w-5 h-5 text-slate-400" /></div>
+                      <p className="text-xs font-bold text-slate-700">Belum ada transaksi masuk pada periode ini.</p>
+                      <p className="text-[11px] text-slate-400">{dateRange.preset !== 'all' ? `Tidak ditemukan transaksi untuk periode: ${dateRange.label}` : 'Transaksi dari checkout etalase atau WhatsApp akan tercatat otomatis di sini.'}</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredTransactions.map(t => {
+                const isPaid = ['PAID', 'SETTLEMENT', 'LUNAS'].includes(t.status.toUpperCase());
+                return (
+                  <tr key={t.id} className="hover:bg-slate-50/80 transition">
+                    <td className="px-5 py-4">
+                      <div className="font-bold text-slate-900 font-mono">{t.invoice_no}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {new Date(t.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}{' '}
+                        {new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="font-bold text-slate-800">{t.customer_name}</div>
+                      <div className="text-[11px] text-slate-400 font-mono">{t.customer_phone}</div>
+                    </td>
+                    <td className="px-5 py-4 max-w-[200px] hidden md:table-cell">
+                      <div className="truncate font-semibold text-slate-900" title={t.product_title}>{t.product_title}</div>
+                    </td>
+                    <td className="px-5 py-4 hidden sm:table-cell">
+                      <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-mono">{t.payment_method}</span>
+                    </td>
+                    <td className="px-5 py-4 text-right font-black text-slate-900 font-mono whitespace-nowrap">{fmtRp(t.gross_amount)}</td>
+                    <td className="px-5 py-4 text-center">
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${isPaid ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                        {isPaid ? 'LUNAS (PAID)' : 'PENDING'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <button type="button" onClick={() => alert(`Membuka Invoice Resmi untuk ${t.invoice_no}`)} className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer">Invoice</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -1310,85 +1606,50 @@ function FinanceTab() {
               </tr>
             </thead>
             <tbody>
-              {withdrawals.map(w => (
-                <tr key={w.ref} className="border-b border-slate-100 hover:bg-slate-50/40 transition-colors">
-                  <td className="px-5 py-3.5 font-bold text-xs text-slate-700">{w.date}</td>
-                  <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{fmtRp(w.amount)}</td>
-                  <td className="px-3 py-3.5 hidden md:table-cell text-slate-500 text-xs">{w.method}</td>
-                  <td className="px-3 py-3.5 hidden lg:table-cell">
-                    <span className="font-mono text-[11px] text-indigo-600 font-bold">{w.ref}</span>
-                  </td>
-                  <td className="px-5 py-3.5 text-center">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />{w.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {WITHDRAWALS.map(w => {
+                const isPending = w.status === 'Pending Settlement';
+                return (
+                  <tr key={w.ref} className="border-b border-slate-100 hover:bg-slate-50/40 transition-colors">
+                    <td className="px-5 py-3.5">
+                      <div className="font-bold text-xs text-slate-700">{w.date}</div>
+                      {isPending && <div className="text-[10px] text-amber-600 font-bold mt-0.5">{w.note}</div>}
+                    </td>
+                    <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{fmtRp(w.amount)}</td>
+                    <td className="px-3 py-3.5 hidden md:table-cell text-slate-500 text-xs">{w.method}</td>
+                    <td className="px-3 py-3.5 hidden lg:table-cell"><span className="font-mono text-[11px] text-indigo-600 font-bold">{w.ref}</span></td>
+                    <td className="px-5 py-3.5 text-center">
+                      {isPending ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-50 text-amber-800 border border-amber-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block animate-pulse" />Pending Settlement
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />{w.status}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Daily Revenue Breakdown */}
-      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-black text-slate-900">Rincian Transaksi Harian</h3>
-          <p className="text-slate-500 text-xs mt-0.5">Klik baris untuk melihat breakdown gross / net / fee</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-[11px] text-slate-500 uppercase tracking-wider border-b border-slate-100 bg-slate-50/50">
-                <th className="text-left px-5 py-3 font-bold">Tanggal</th>
-                <th className="text-right px-3 py-3 font-bold">Orders</th>
-                <th className="text-right px-3 py-3 font-bold">Gross</th>
-                <th className="text-right px-5 py-3 font-bold">Net (98%)</th>
-                <th className="text-center px-5 py-3 font-bold">Detail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dailyRevs.map(d => (
-                <React.Fragment key={d.day}>
-                  <tr onClick={() => setActiveDay(activeDay === d.day ? null : d.day)} className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer group">
-                    <td className="px-5 py-3.5 font-bold text-xs text-slate-700">{d.date}</td>
-                    <td className="px-3 py-3.5 text-right font-black text-sm text-slate-900">{d.orders}</td>
-                    <td className="px-3 py-3.5 text-right text-xs font-bold text-slate-600">{fmtRp(d.gross)}</td>
-                    <td className="px-5 py-3.5 text-right font-black text-sm text-emerald-700">{fmtRp(d.net)}</td>
-                    <td className="px-5 py-3.5 text-center">
-                      <ChevronDown size={16} className={`inline transition-transform duration-200 text-slate-400 group-hover:text-indigo-500 ${activeDay === d.day ? 'rotate-180' : ''}`} />
-                    </td>
-                  </tr>
-                  {activeDay === d.day && (
-                    <tr className="bg-slate-50/80 border-b border-slate-100">
-                      <td colSpan={5} className="px-5 py-4">
-                        <div className="flex flex-wrap gap-x-8 gap-y-3 text-xs">
-                          {[
-                            ['Gross Revenue', fmtRp(d.gross)],
-                            ['Biaya Platform (2%)', fmtRp(Math.round(d.gross * 0.02))],
-                            ['Saldo Bersih (Net)', fmtRp(d.net)],
-                            ['Jumlah Order', `${d.orders} transaksi`],
-                            ['Avg Order Value', fmtRp(Math.round(d.gross / d.orders))],
-                            ['Pencairan', 'Auto Transfer jam 07.00 WIB'],
-                          ].map(([k, v]) => (
-                            <div key={k}><p className="text-slate-400 font-medium mb-0.5">{k}</p><p className="text-slate-800 font-bold">{v}</p></div>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {/* Total footer */}
-        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between">
-          <span className="text-xs font-black text-slate-700">Total 30 Hari</span>
-          <div className="flex items-center gap-6">
-            <span className="text-xs font-bold text-slate-500">2.940 orders</span>
-            <span className="text-xs font-black text-emerald-700">{fmtRp(totalNet)} Bersih</span>
-          </div>
+      {/* Bank account info */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
+        <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">Rekening Bank Terdaftar</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { label: 'Nama Bank', value: 'BCA' },
+            { label: 'Nomor Rekening', value: '1234567890' },
+            { label: 'Atas Nama', value: 'BUZZER UKM' },
+          ].map(f => (
+            <div key={f.label} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-1">{f.label}</p>
+              <p className="font-black text-slate-800 font-mono text-sm">{f.value}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

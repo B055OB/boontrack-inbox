@@ -53,12 +53,12 @@ export async function GET(
     if (primaryOrder) {
       order = primaryOrder;
     } else {
-      // Fallback: coba cari di kolom order_id atau invoice_no jika ID utama tidak cocok
+      // Fallback: coba cari di correlation_id jika ID utama tidak cocok
       try {
         const { data: altOrder } = await supabase
           .from('orders')
           .select('*')
-          .or(`order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+          .eq('correlation_id', orderId)
           .maybeSingle();
         if (altOrder) {
           order = altOrder;

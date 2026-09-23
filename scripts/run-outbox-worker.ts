@@ -20,11 +20,16 @@
 import { outboxWorker } from '../lib/outbox/worker';
 import { multiProviderAdapter } from '../lib/outbox/adapters/multi-provider-adapter';
 
-const POLL_INTERVAL_MS = parseInt(process.env.OUTBOX_POLL_INTERVAL_MS ?? '5000', 10);
+const MIN_POLL_INTERVAL_MS = 10_000;
+const BASE_POLL_INTERVAL_MS = Math.max(
+  MIN_POLL_INTERVAL_MS,
+  parseInt(process.env.OUTBOX_POLL_INTERVAL_MS ?? '10000', 10)
+);
 const BATCH_SIZE = parseInt(process.env.OUTBOX_BATCH_SIZE ?? '10', 10);
 
 let isRunning = true;
 let cycleCount = 0;
+let consecutiveErrors = 0;
 
 async function runCycle(): Promise<void> {
   cycleCount++;
@@ -33,6 +38,7 @@ async function runCycle(): Promise<void> {
   try {
     const summary = await outboxWorker.runOnce(multiProviderAdapter);
     const elapsed = Date.now() - start;
+    consecutiveErrors = 0; // Reset error backoff on successful cycle
 
     if (summary.claimed > 0) {
       console.log(
@@ -43,8 +49,9 @@ async function runCycle(): Promise<void> {
       );
     }
   } catch (err: unknown) {
+    consecutiveErrors++;
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[OutboxWorker] Cycle #${cycleCount} error:`, msg);
+    console.error(`[OutboxWorker] Cycle #${cycleCount} error (consecutive: ${consecutiveErrors}):`, msg);
   }
 }
 
@@ -52,9 +59,16 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getNextSleepMs(): number {
+  if (consecutiveErrors === 0) return BASE_POLL_INTERVAL_MS;
+  // Exponential backoff up to 60s when errors occur
+  const backoff = BASE_POLL_INTERVAL_MS * Math.pow(1.5, Math.min(consecutiveErrors, 5));
+  return Math.min(60_000, Math.round(backoff));
+}
+
 async function main(): Promise<void> {
   console.log(
-    `[OutboxWorker] Starting — poll interval: ${POLL_INTERVAL_MS}ms, batch size: ${BATCH_SIZE}`
+    `[OutboxWorker] Starting — base poll interval: ${BASE_POLL_INTERVAL_MS}ms, batch size: ${BATCH_SIZE}`
   );
 
   // Graceful shutdown handlers
@@ -70,7 +84,8 @@ async function main(): Promise<void> {
   while (isRunning) {
     await runCycle();
     if (isRunning) {
-      await sleep(POLL_INTERVAL_MS);
+      const sleepDuration = getNextSleepMs();
+      await sleep(sleepDuration);
     }
   }
 

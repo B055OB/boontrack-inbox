@@ -61,6 +61,13 @@ function extractTextFromPayload(payload: unknown): string {
 async function resolveEvolutionInstance(
   tenantId: string
 ): Promise<{ instanceName: string; apiKey: string }> {
+  if (!tenantId || tenantId === 'undefined' || tenantId === 'null') {
+    return {
+      instanceName: EVOLUTION_GATEWAY_INSTANCE,
+      apiKey: EVOLUTION_API_KEY,
+    };
+  }
+
   const supabase = getSupabaseAdmin();
 
   const { data, error } = await supabase

@@ -35,6 +35,10 @@ export class MultiProviderAdapter implements IProviderAdapter {
       return 'WABA';
     }
 
+    if (!tenantId || tenantId === 'undefined' || tenantId === 'null') {
+      return 'EVOLUTION';
+    }
+
     try {
       const supabase = getSupabaseAdmin();
       const { data, error } = await supabase

@@ -282,6 +282,11 @@ function QrisPaymentModal({
           `https://api.boontrack.com/api/v1/shop/subscriptions/status/${encodeURIComponent(data.tenantSlug)}`,
           { cache: "no-store" }
         );
+        if (res.status >= 400 && res.status < 500) {
+          stopAll();
+          setPollError("Gagal memverifikasi status pembayaran. Silakan hubungi admin.");
+          return;
+        }
         if (!res.ok) return; // abaikan error sementara, terus polling
 
         const json = await res.json();
@@ -565,6 +570,10 @@ function WhatsAppVerificationModal({
         `/api/auth/check-verification?token=${encodeURIComponent(data.token)}&slug=${encodeURIComponent(data.slug)}`,
         { cache: "no-store" }
       );
+      if (res.status >= 400 && res.status < 500) {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        return;
+      }
       if (!res.ok) return;
       const json = await res.json();
       if (json?.verified === true) {

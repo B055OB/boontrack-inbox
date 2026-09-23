@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { sendOrderPaidNotification } from '@/lib/whatsapp';
 
@@ -126,11 +126,10 @@ export async function POST(
     try {
       await supabase.from('messages').insert({
         tenant_slug: slug,
-        conversation_id: orderId,
+        ...(isValidUuid(orderId) ? { conversation_id: orderId } : {}),
         sender: 'System AI',
         channel: 'order_fulfillment',
         text: `Pembayaran pesanan #${orderId} (${order.product_title || 'Produk Digital'}) telah terverifikasi LUNAS (PAID). ${fulfillmentNotice}`,
-        message_text: `Pembayaran pesanan #${orderId} (${order.product_title || 'Produk Digital'}) telah terverifikasi LUNAS (PAID). ${fulfillmentNotice}`,
       });
     } catch {}
 
