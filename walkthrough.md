@@ -1,132 +1,70 @@
-# Walkthrough - STEP 4: Order Fulfillment Automation & Core Regression Testing
+# Walkthrough — Emergency Hotfix: Supabase Egress Quota Exceeded & Infinite Request Loop
 
-Pengembangan dan pengujian menyeluruh untuk **STEP 4: Order Fulfillment Automation & Core Regression Testing (Tier Checkout Lite)** telah selesai dieksekusi dengan hasil **100% PASS** tanpa regresi.
-
----
-
-## 1. WhatsApp Auto-Fulfillment Logic (Digital vs Fisik)
-
-Implementasi fungsi fulfillment WhatsApp pada [lib/whatsapp.ts](file:///c:/boontrack-inbox/lib/whatsapp.ts) terisolasi secara dinamis sesuai tipe produk:
-
-### A. Format Notifikasi Produk Digital
-Mengirimkan rincian pesanan, konfirmasi lunas, dan tautan akses/unduh file materi secara instan ke nomor pembeli:
-```typescript
-if (isDigital) {
-  message = `Halo ${customerName}! 🎉\n\n` +
-    `Terima kasih! Pembayaran untuk pesanan *#${orderId}* sebesar *Rp ${totalAmount.toLocaleString('id-ID')}* telah BERHASIL diverifikasi LUNAS.\n\n` +
-    `📦 *Rincian Produk:*\n` +
-    `• Produk: ${productTitle}\n` +
-    `• Total Bayar: Rp ${totalAmount.toLocaleString('id-ID')}\n\n` +
-    `📥 *Akses / Unduh Materi Digital:*\n` +
-    `${downloadUrl}\n\n` +
-    `💡 *Catatan:* Gunakan email Anda untuk login ke dashboard materi.\n\n` +
-    `Semoga materi/produk digital ini bermanfaat! Jika Anda butuh bantuan, balas langsung pesan ini.`;
-}
-```
-
-### B. Format Notifikasi Produk Fisik
-Mengirimkan konfirmasi pembayaran diterima dan pemberitahuan proses pengemasan toko:
-```typescript
-else {
-  message = `Halo ${customerName}! 📦\n\n` +
-    `Kabar baik! Pembayaran untuk pesanan *#${orderId}* sebesar *Rp ${totalAmount.toLocaleString('id-ID')}* telah KAMI TERIMA (LUNAS).\n\n` +
-    `🛍️ *Rincian Pesanan:*\n` +
-    `• Produk: ${productTitle}\n` +
-    `• Total Bayar: Rp ${totalAmount.toLocaleString('id-ID')}\n` +
-    `• Status: Sedang disiapkan & dikemas oleh tim ${storeName}.\n\n` +
-    `Kami akan segera mengabarkan nomor resi pengiriman setelah paket diserahkan ke kurir ekspedisi. Terima kasih telah berbelanja!`;
-}
-```
-
-### C. Payment Atomicity & Fault Tolerance
-Pada [app/api/webhook/payment/route.ts](file:///c:/boontrack-inbox/app/api/webhook/payment/route.ts), pemanggilan dispatch WhatsApp dibungkus secara asinkron tanpa membatalkan transaksi keuangan database bila terjadi gangguan jaringan WhatsApp:
-```typescript
-sendOrderFulfillmentNotification({
-  customerPhone: matchedOrder.customer_phone,
-  customerName: matchedOrder.customer_name || 'Pelanggan',
-  orderId: matchedOrder.order_id,
-  productTitle: matchedOrder.product_title || 'Pesanan Produk',
-  productType: matchedOrder.product_type || 'physical',
-  totalAmount: Number(matchedOrder.total_amount) || Number(amountPaid),
-  digitalFileUrl: matchedOrder.digital_file_url || null,
-  storeName: tenant?.name || 'Toko Kami',
-}).catch((waErr) => {
-  // Non-blocking: Payment atomicity guarantees transaction persists as PAID
-  console.warn('[Webhook] Non-critical WhatsApp fulfillment dispatch error:', waErr);
-});
-```
+## 1. Problem Root Causes
+1. **Schema Mismatches on `orders` Queries**:
+   - Queries requesting non-existent columns (`buyer_name`, `buyer_phone`, `total_amount`, `metadata`, `download_url`, `fulfillment_metadata`, `order_id`, `shipping_status`, `tracking_number`, `resi`, `waybill`), triggering PostgREST HTTP 400 Bad Request (`column orders.xxx does not exist`).
+2. **Invalid UUID Syntax (Postgres 22P02)**:
+   - Polling hooks and routes passed unvalidated slugs, non-UUID strings (`'ord-123'`, `'webchat-demo-visitor'`, `'wa_...'`), or `'undefined'` into Postgres UUID columns (`messages.conversation_id`, `orders.tenant_id`, `tenants.id`).
+3. **Infinite Retry Loop on HTTP 4xx**:
+   - Frontend `setInterval` polling in `useTenantDashboard`, `CheckoutModal`, `checkout/[order_id]`, `UpgradePaymentModal`, `register/page.tsx`, and `ReaderIntegrationCard` lacked circuit breakers for HTTP 4xx (client) errors, leading to infinite polling loops and flooding Supabase `/rest/v1/*` endpoints.
 
 ---
 
-## 2. P0.5 Idempotency Protection
+## 2. Key Changes Made
 
-Webhook handler pada [app/api/webhook/payment/route.ts](file:///c:/boontrack-inbox/app/api/webhook/payment/route.ts) memverifikasi status pesanan sebelum mutasi:
-```typescript
-const isAlreadyPaid = 
-  matchedOrder.payment_status === 'PAID' || 
-  matchedOrder.payment_status === 'SETTLED' ||
-  matchedOrder.status === 'PAID' ||
-  matchedOrder.status === 'COMPLETED';
+### A. Client-Side UUID Guard & Fetch Interceptor
+- **[lib/uuid-guard.ts](file:///c:/boontrack-inbox/lib/uuid-guard.ts)**:
+  - Created standard UUID validator (`isValidUuid`) with regex `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i`.
+- **[lib/supabaseClient.ts](file:///c:/boontrack-inbox/lib/supabaseClient.ts)**:
+  - Implemented `createGuardedFetch`: Intercepts client-side Supabase requests attempting to query `.eq` with `'undefined'`, `'null'`, or `'[object Object]'` and rejects them with HTTP 400 immediately before hitting the network, saving egress quota.
+  - Warns on 4xx errors to trace rogue callers.
 
-if (isAlreadyPaid) {
-  console.log(`[Webhook] Order ${matchedOrder.order_id} already marked as PAID. Returning idempotent success.`);
-  return NextResponse.json({
-    success: true,
-    message: 'Order was already marked as PAID (Idempotent replay detected)',
-    order_id: matchedOrder.order_id,
-    already_paid: true,
-  });
-}
-```
+### B. Fixed Schema Queries on `orders` & `messages`
+- **[app/[tenant]/dashboard/components/AdsTrackingPro.tsx](file:///c:/boontrack-inbox/app/[tenant]/dashboard/components/AdsTrackingPro.tsx)**:
+  - Replaced non-existent columns (`buyer_name`, `buyer_phone`, `total_amount`, `metadata`) with actual `orders` schema (`id, customer_name, customer_phone, gross_amount, status, created_at, utm_campaign, utm_source`).
+- **[app/components/CheckoutModal.tsx](file:///c:/boontrack-inbox/app/components/CheckoutModal.tsx)**:
+  - Fixed `.select('id, status, payment_status')` removing non-existent `download_url, fulfillment_metadata`.
+- **[app/api/orders/[orderId]/status/route.ts](file:///c:/boontrack-inbox/app/api/orders/[orderId]/status/route.ts)**:
+  - Changed `.or('order_id.eq...,invoice_no.eq...')` to `.eq('correlation_id', orderId)`.
+- **[lib/tools/action/request-order-cancellation.ts](file:///c:/boontrack-inbox/lib/tools/action/request-order-cancellation.ts)**:
+  - Replaced `select('id, order_id, ...')` with `select('*')` and `.or('id.eq...,correlation_id.eq...')`.
+- **[lib/tools/read/get-order-status.ts](file:///c:/boontrack-inbox/lib/tools/read/get-order-status.ts)** & **[lib/tools/read/track-shipment.ts](file:///c:/boontrack-inbox/lib/tools/read/track-shipment.ts)**:
+  - Guarded tenant UUID vs slug queries with `.or('tenant_slug.eq...')` to prevent 22P02 UUID errors.
+- **[lib/zero-ai-engine.ts](file:///c:/boontrack-inbox/lib/zero-ai-engine.ts)**, **[app/api/v1/chat/route.ts](file:///c:/boontrack-inbox/app/api/v1/chat/route.ts)**, **[app/api/v1/tenants/[slug]/orders/[id]/quick-paid/route.ts](file:///c:/boontrack-inbox/app/api/v1/tenants/[slug]/orders/[id]/quick-paid/route.ts)**:
+  - Removed or guarded non-UUID strings (`wa_...`, `webchat-demo-visitor`, `orderId`) from `messages.conversation_id`.
 
----
-
-## 3. Hasil Automated Regression Test Suite
-
-Dijalankan menggunakan command `cmd /c npx tsx scratch/test_checkout_lite_step4.ts`:
-
-```text
-================================================================
-STEP 4: ORDER FULFILLMENT AUTOMATION & CORE REGRESSION TEST SUITE
-================================================================
-
---- PILLAR 1: WHATSAPP FULFILLMENT ISOLATION ---
-[WhatsApp Cloud API] Kredensial WABA belum lengkap (PHONE_NUMBER_ID / API_TOKEN). Simulasi pesan ke 6281234567890: Halo Ahmad Fauzi! 🎉
-[PASS] Fulfillment Digital: WhatsApp notification generated successfully
-[WhatsApp Cloud API] Kredensial WABA belum lengkap (PHONE_NUMBER_ID / API_TOKEN). Simulasi pesan ke 6289876543210: Halo Siti Rahma! 📦
-[PASS] Fulfillment Fisik: WhatsApp notification generated successfully (Packaging & Courier status)
-
---- PILLAR 2: P0 WEBHOOK QRIS & PAYMENT ATOMICITY ---
-[PASS] P0 Webhook: QRIS payment successfully verified as PAID
-[Non-Fatal Log] WhatsApp error captured safely: Simulated WhatsApp Gateway Timeout (504 Gateway Timeout)
-[PASS] Payment Atomicity: Financial mutation persists as PAID even if WhatsApp fails (Zero Rollback)
-
---- PILLAR 3: P0.5 IDEMPOTENCY PROTECTION ---
-[PASS] P0.5 Idempotency: Replay webhook correctly detected (already_paid: true, no duplicate processing)
-
---- PILLAR 4: PRODUCT QUOTA LIMIT VALIDATION ---
-[PASS] Quota Enforcement: 4th active product blocked with quota limit message for CHECKOUT_LITE
-[PASS] Quota Flexibility: Inactive/draft products are allowed without exceeding active limit
-
---- PILLAR 5: ENTITLEMENT ISOLATION ---
-[PASS] Entitlement Isolation: CAPI access is strictly DENIED for CHECKOUT_LITE
-[PASS] RBAC Isolation: CHECKOUT_LITE is restricted to exactly 4 menus (Broadcast, Analytics, CAPI hidden)
-
-================================================================
-STEP 4 REGRESSION RESULT: 9/9 PASSED (100%)
-================================================================
-```
+### C. Polling Throttling & 4xx Circuit Breakers
+- **[app/[tenant]/dashboard/hooks/useTenantDashboard.ts](file:///c:/boontrack-inbox/app/[tenant]/dashboard/hooks/useTenantDashboard.ts)**:
+  - Guarded `activeConversationId` with `isValidUuid(activeConversationId)`.
+  - WhatsApp status polling interval throttled from 5s to 15s.
+  - Removed unstable state (`qrCodeUrl`) from `useEffect` dependencies.
+  - Added 3-consecutive-error circuit breaker.
+- **[app/checkout/[order_id]/page.tsx](file:///c:/boontrack-inbox/app/checkout/[order_id]/page.tsx)**:
+  - Throttled polling from 2s to 4s.
+  - Immediately stops polling on HTTP 4xx (404 Not Found, 400 Bad Request) and after 5 consecutive errors.
+- **[app/components/CheckoutModal.tsx](file:///c:/boontrack-inbox/app/components/CheckoutModal.tsx)**:
+  - Throttled interval to 4000ms with a 45-cycle ceiling (~3 minutes) and 4xx circuit breaker.
+- **[app/[tenant]/dashboard/components/modals/UpgradePaymentModal.tsx](file:///c:/boontrack-inbox/app/[tenant]/dashboard/components/modals/UpgradePaymentModal.tsx)** & **[app/register/page.tsx](file:///c:/boontrack-inbox/app/register/page.tsx)**:
+  - Added immediate `stopAll()` on HTTP 4xx responses.
+- **[app/[tenant]/dashboard/components/settings/ReaderIntegrationCard.tsx](file:///c:/boontrack-inbox/app/[tenant]/dashboard/components/settings/ReaderIntegrationCard.tsx)**:
+  - Added parameter guards and stopped interval on HTTP 4xx.
+- **[scripts/run-outbox-worker.ts](file:///c:/boontrack-inbox/scripts/run-outbox-worker.ts)**:
+  - Enforced minimum 10,000ms polling interval with exponential backoff on error up to 60s.
 
 ---
 
-## 4. Status Kesiapan Handoff CTO
+## 3. Verification & Results
 
-| Komponen | Status | Keterangan |
-| :--- | :---: | :--- |
-| **P0 Webhook QRIS & Payment Mutation** | **READY** | Mutasi status `PAID` di Supabase atomik 100%. |
-| **P0.5 Idempotency Protection** | **READY** | Replay/duplicate callback direspons aman tanpa mutasi ulang. |
-| **WhatsApp Fulfillment Isolation** | **READY** | Pesan Digital (link akses) vs Fisik (pengemasan & kurir) terisolasi sempurna. |
-| **Payment Atomicity** | **READY** | Timeout/kegagalan WhatsApp tidak membatalkan status pembayaran yang sah. |
-| **Quota Enforcement** | **READY** | Maksimal 3 produk aktif untuk tier CHECKOUT_LITE (Draft bebas). |
-| **Entitlement Isolation** | **READY** | CAPI & Pro Analytics diblokir/bypassed untuk tier CHECKOUT_LITE. |
-| **Kompilasi TypeScript** | **PASSED** | `tsc --noEmit` exit code 0 tanpa error. |
+### Automated Tests
+- **Jest**: All 6 test suites passed (142 tests passing):
+  - `waba_security_matrix.test.ts` (PASS)
+  - `outbox-worker.test.ts` (PASS)
+  - `test_trial_guard.test.ts` (PASS)
+  - `test_gtm_datalayer.test.ts` (PASS)
+  - `tool-gateway.test.ts` (PASS — all 20 tests including 5 Negative Matrix tests)
+  - `test_payment_boundary.test.ts` (PASS)
+- **TypeScript**: `npx.cmd tsc --noEmit` exited cleanly with code 0 (0 type errors).
+
+### Git
+- Committed: `fix(db): prevent infinite retry loop on 4xx errors, validate uuid, and fix orders schema queries`
+- Pushed to: `origin/main` (`1f44ffe`).
