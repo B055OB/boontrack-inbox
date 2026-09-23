@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 
 export default function AppPortalPage() {
     const [logIndex, setLogIndex] = useState(0);
@@ -22,148 +21,154 @@ export default function AppPortalPage() {
 
     return (
         <div className="min-h-screen bg-white text-slate-900 selection:bg-orange-500 selection:text-white font-sans antialiased relative overflow-hidden">
-            {/* Import Google Font 'Caveat' */}
-            <style jsx global>{`
-                @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@700&display=swap');
-                .font-handwriting {
-                    font-family: 'Caveat', cursive, sans-serif;
-                }
-            `}</style>
-
             {/* Background Ornamen Blob */}
             <div className="absolute -top-32 -left-32 w-96 h-96 bg-slate-100 rounded-full blur-3xl pointer-events-none -z-10"></div>
             <div className="absolute top-1/3 -right-32 w-[500px] h-[500px] bg-orange-50/70 rounded-full blur-3xl pointer-events-none -z-10"></div>
             <div className="absolute bottom-10 left-1/4 w-80 h-80 bg-slate-100 rounded-full blur-2xl pointer-events-none -z-10"></div>
 
             {/* Top Banner */}
-            <div className="bg-slate-900 text-slate-200 py-2.5 px-4 text-center text-xs font-medium border-b border-slate-800 flex items-center justify-center gap-2">
+            <div className="bg-[#070A11] text-slate-300 py-2.5 px-4 text-center text-xs font-medium border-b border-slate-800/80 flex items-center justify-center gap-2">
                 <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
                 </span>
-                <span className="text-orange-400 font-bold">HARDWARE & API OS:</span>
-                Tanpa install app untuk pelanggan. Seluruh interaksi CRM & Transaksi berjalan via Chat & Hardware API.
+                <span className="text-orange-400 font-bold">HARDWARE &amp; API OS:</span>
+                Tanpa install app untuk pelanggan. Seluruh interaksi CRM &amp; Transaksi berjalan via Chat &amp; Hardware API.
             </div>
 
-            {/* Header */}
-            <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+            {/* Header Navbar */}
+            <header className="sticky top-0 z-50 bg-[#0B0F19]/80 backdrop-blur-md border-b border-slate-800/60 transition-all">
                 <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+                    {/* Logo & Brand Identity (Fluid, No Box Framing) */}
                     <div className="flex items-center gap-3">
-                        <a href="#" className="flex items-center group">
-                            <div className="bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-800 shadow-sm flex items-center justify-center group-hover:bg-slate-900 transition">
-                                <div className="relative h-8 w-36 sm:w-44">
-                                    <Image
-                                        src="/app-brand/logo-boontrack-app.png"
-                                        alt="BoonTrack Apps"
-                                        fill
-                                        priority
-                                        className="object-contain object-left"
-                                    />
-                                </div>
+                        <a href="#" className="flex items-center gap-3 group transition-all">
+                            <img
+                                src="/app-brand/logo-master.png"
+                                alt="BoonTrack"
+                                className="h-8 sm:h-9 w-auto object-contain group-hover:drop-shadow-[0_0_12px_rgba(249,115,22,0.35)] transition-all"
+                            />
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-white text-lg tracking-tight font-sans">
+                                    BoonTrack
+                                </span>
+                                <span className="text-[10px] font-semibold bg-orange-500/10 text-orange-400 border border-orange-500/30 px-1.5 py-0.5 rounded tracking-wide">
+                                    ENTERPRISE
+                                </span>
                             </div>
                         </a>
                     </div>
 
-                    <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
-                        <a href="#solutions" className="hover:text-orange-600 transition">Solusi Industri</a>
-                        <a href="#channels" className="hover:text-orange-600 transition">Zero-App Channels</a>
-                        <a href="#hardware" className="hover:text-orange-600 transition">POS & Peripheral API</a>
-                        <a href="https://shop.boontrack.com" target="_blank" rel="noopener noreferrer" className="hover:text-slate-950 transition flex items-center gap-1">
-                            Shop Engine <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">↗</span>
+                    {/* Desktop Navigation Links */}
+                    <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
+                        <a href="#solutions" className="hover:text-white transition-colors">Solusi Industri</a>
+                        <a href="#channels" className="hover:text-white transition-colors">Zero-App Channels</a>
+                        <a href="#hardware" className="hover:text-white transition-colors">POS &amp; Peripheral API</a>
+                        <a href="https://shop.boontrack.com" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors flex items-center gap-1.5">
+                            Shop Engine <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">↗</span>
                         </a>
                     </nav>
 
+                    {/* Header CTA Button */}
                     <div className="flex items-center gap-3">
                         <a
                             href="https://boontrack.com/onboarding"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-5 py-2.5 rounded-xl bg-slate-950 text-white font-extrabold text-xs sm:text-sm hover:bg-slate-800 shadow-md transition transform active:scale-95"
+                            className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-lg shadow-orange-500/20 transition-all hover:scale-[1.02]"
                         >
-                            Audit Operasional Gratis &rarr;
+                            Konsultasi Teknis &rarr;
                         </a>
                     </div>
                 </div>
             </header>
 
-            {/* Hero Section */}
-            <section className="relative pt-16 pb-20 md:pt-24 md:pb-24 border-b border-slate-200/80 overflow-hidden">
-                <div className="max-w-6xl mx-auto px-6 text-center">
-                    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-bold mb-8 shadow-sm">
-                        <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
-                        <span>Outcome As A Service — No App Installation Needed</span>
+            {/* Hero Section (Dark Canvas & Ambient Glow) */}
+            <section className="relative pt-16 pb-20 md:pt-24 md:pb-28 bg-[#0B0F19] text-white border-b border-slate-800/80 overflow-hidden">
+                {/* Ambient Radial Glow di tengah belakang judul */}
+                <div
+                    className="absolute inset-0 pointer-events-none -z-0"
+                    style={{
+                        background: 'radial-gradient(circle at 50% 30%, rgba(249, 115, 22, 0.09) 0%, transparent 70%)',
+                    }}
+                />
+
+                <div className="relative z-10 max-w-6xl mx-auto px-6 text-center">
+                    {/* Eyebrow Badge */}
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-700/60 text-orange-400 text-xs mb-8 shadow-sm">
+                        <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                        <span>Outcome As A Service — Enterprise Custom App &amp; WhatsApp Orchestration</span>
                     </div>
 
-                    <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-slate-950 leading-[1.15] max-w-5xl mx-auto">
+                    {/* Headline Typography */}
+                    <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.12] max-w-5xl mx-auto">
                         Bisnis canggih, <br className="hidden sm:inline" />
-                        <span className="relative inline-block px-4 py-1 my-2">
-                            <span className="absolute inset-0 bg-amber-300 rotate-[-1.5deg] rounded-2xl shadow-sm -z-10"></span>
-                            <span className="font-handwriting text-5xl sm:text-7xl font-bold tracking-wider text-slate-950 drop-shadow-sm">
-                                tanpa <span className="text-indigo-700">repot</span> <span className="text-orange-600">install</span> <span className="text-rose-700">aplikasi.</span>
-                            </span>
+                        <span className="bg-gradient-to-r from-orange-400 via-amber-300 to-orange-500 bg-clip-text text-transparent font-bold block mt-2">
+                            tanpa repot install aplikasi.
                         </span>
                     </h1>
 
-                    <p className="mt-8 text-base sm:text-xl text-slate-600 max-w-3xl mx-auto leading-relaxed">
-                        Hilangkan friksi interaksi. Pelanggan Anda tidak butuh download software baru untuk pesan, bayar, dan akses fasilitas. Semuanya diotomatisasi lewat <strong>WhatsApp, Telegram, Discord, LINE</strong> yang terhubung ke <strong>POS, NFC, dan Smart Doorlock</strong>.
+                    {/* Subheadline */}
+                    <p className="mt-6 text-slate-400 text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
+                        Hilangkan friksi interaksi pelanggan. Orkestrasi transaksi menyeluruh dari WhatsApp Business API, POS kasir, IoT Smart Doorlock, verifikasi mutasi real-time, hingga otomasi backend kustom tanpa download aplikasi tambahan.
                     </p>
 
+                    {/* CTA Button Group */}
                     <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
                         <a
                             href="https://boontrack.com/onboarding"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-orange-600 text-white font-black text-sm hover:bg-orange-700 shadow-xl shadow-orange-600/20 transition transform hover:-translate-y-0.5 active:translate-y-0 text-center"
+                            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold text-sm shadow-xl shadow-orange-500/25 transition-all text-center"
                         >
-                            Jadwalkan Audit Operasional Gratis
+                            Jadwalkan Konsultasi Teknis
                         </a>
                         <a
                             href="#hardware"
-                            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white border border-slate-300 text-slate-800 font-bold text-sm hover:bg-slate-50 shadow-sm transition text-center"
+                            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-200 border border-slate-700 font-medium text-sm transition-all text-center"
                         >
-                            Lihat Integrasi Perangkat &rarr;
+                            Lihat Arsitektur &amp; API &rarr;
                         </a>
                     </div>
 
-                    {/* App Grid */}
-                    <div className="mt-16 pt-12 border-t border-slate-200">
+                    {/* Integrated Ecosystem App Grid (Dark Enterprise Styled) */}
+                    <div className="mt-16 pt-12 border-t border-slate-800/80">
                         <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-8">
                             Ekosistem Lengkap Terintegrasi Dalam 1 Backend
                         </p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 max-w-5xl mx-auto">
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-400 hover:shadow-md transition group flex flex-col items-center">
-                                <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition">💬</div>
-                                <span className="text-xs font-bold text-slate-800">WhatsApp WABA</span>
+                            <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 shadow-sm hover:border-orange-500/40 hover:bg-slate-900/90 transition group flex flex-col items-center">
+                                <div className="w-12 h-12 rounded-xl bg-emerald-950/60 text-emerald-400 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition border border-emerald-800/40">💬</div>
+                                <span className="text-xs font-bold text-slate-200">WhatsApp WABA</span>
                                 <span className="text-[10px] text-slate-400">Official Cloud API</span>
                             </div>
 
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-400 hover:shadow-md transition group flex flex-col items-center">
-                                <div className="w-12 h-12 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition">✈️</div>
-                                <span className="text-xs font-bold text-slate-800">Telegram Bot</span>
-                                <span className="text-[10px] text-slate-400">Instant Alert & Ops</span>
+                            <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 shadow-sm hover:border-orange-500/40 hover:bg-slate-900/90 transition group flex flex-col items-center">
+                                <div className="w-12 h-12 rounded-xl bg-sky-950/60 text-sky-400 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition border border-sky-800/40">✈️</div>
+                                <span className="text-xs font-bold text-slate-200">Telegram Bot</span>
+                                <span className="text-[10px] text-slate-400">Instant Alert &amp; Ops</span>
                             </div>
 
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-400 hover:shadow-md transition group flex flex-col items-center">
-                                <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition">👾</div>
-                                <span className="text-xs font-bold text-slate-800">Discord Hook</span>
+                            <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 shadow-sm hover:border-orange-500/40 hover:bg-slate-900/90 transition group flex flex-col items-center">
+                                <div className="w-12 h-12 rounded-xl bg-indigo-950/60 text-indigo-400 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition border border-indigo-800/40">👾</div>
+                                <span className="text-xs font-bold text-slate-200">Discord Hook</span>
                                 <span className="text-[10px] text-slate-400">Community CRM</span>
                             </div>
 
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-400 hover:shadow-md transition group flex flex-col items-center">
-                                <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition">🧾</div>
-                                <span className="text-xs font-bold text-slate-800">POS Cashier</span>
+                            <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 shadow-sm hover:border-orange-500/40 hover:bg-slate-900/90 transition group flex flex-col items-center">
+                                <div className="w-12 h-12 rounded-xl bg-orange-950/60 text-orange-400 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition border border-orange-800/40">🧾</div>
+                                <span className="text-xs font-bold text-slate-200">POS Cashier</span>
                                 <span className="text-[10px] text-slate-400">Auto Dynamic QRIS</span>
                             </div>
 
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-400 hover:shadow-md transition group flex flex-col items-center">
-                                <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition">💳</div>
-                                <span className="text-xs font-bold text-slate-800">NFC Tap Access</span>
+                            <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 shadow-sm hover:border-orange-500/40 hover:bg-slate-900/90 transition group flex flex-col items-center">
+                                <div className="w-12 h-12 rounded-xl bg-rose-950/60 text-rose-400 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition border border-rose-800/40">💳</div>
+                                <span className="text-xs font-bold text-slate-200">NFC Tap Access</span>
                                 <span className="text-[10px] text-slate-400">Instant Verification</span>
                             </div>
 
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-orange-400 hover:shadow-md transition group flex flex-col items-center">
-                                <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition">🔐</div>
-                                <span className="text-xs font-bold text-slate-800">Smart Doorlock</span>
+                            <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 shadow-sm hover:border-orange-500/40 hover:bg-slate-900/90 transition group flex flex-col items-center">
+                                <div className="w-12 h-12 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition border border-slate-700">🔐</div>
+                                <span className="text-xs font-bold text-slate-200">Smart Doorlock</span>
                                 <span className="text-[10px] text-slate-400">IoT Gate API</span>
                             </div>
                         </div>
