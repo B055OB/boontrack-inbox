@@ -13,6 +13,7 @@ export type OutboxStatus =
   | 'PENDING'
   | 'PROCESSING'
   | 'SENT'
+  | 'DELIVERED'
   | 'FAILED'
   | 'DEAD_LETTER';
 
@@ -42,10 +43,16 @@ export interface OutboxInteractivePayload {
   interactive: Record<string, unknown>;
 }
 
+export interface OutboxEvolutionPayload {
+  type: 'evolution_text';
+  text: string;
+}
+
 export type OutboxMessagePayload =
   | OutboxTextPayload
   | OutboxTemplatePayload
   | OutboxInteractivePayload
+  | OutboxEvolutionPayload
   | Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
@@ -58,13 +65,16 @@ export interface OutboxMessage {
   channel: string;
   phone_number_id: string | null;
   recipient_phone: string;
+  recipient?: string;
   payload: OutboxMessagePayload;
   status: OutboxStatus;
   idempotency_key: string;
   retry_count: number;
   max_retries: number;
   last_error: string | null;
+  error_log?: string | null;
   scheduled_at: string; // ISO 8601 string from Postgres TIMESTAMPTZ
+  next_retry_at?: string;
   sent_at: string | null;
   failed_at: string | null;
   created_at: string;
@@ -72,8 +82,10 @@ export interface OutboxMessage {
 }
 
 // ---------------------------------------------------------------------------
-// Provider Adapter Interface
+// Provider Adapter Interface & Types
 // ---------------------------------------------------------------------------
+
+export type WhatsAppProvider = 'EVOLUTION' | 'WABA';
 
 export interface SendResult {
   success: boolean;
@@ -98,10 +110,14 @@ export interface OutboxRunSummary {
   claimed: number;
   /** Messages sent successfully */
   sent: number;
+  /** Messages delivered successfully (alias for sent) */
+  delivered?: number;
   /** Messages that will be retried (transient failure) */
   retried: number;
   /** Messages escalated to DEAD_LETTER */
   dead_lettered: number;
+  /** Messages escalated to FAILED (alias for dead_lettered) */
+  failed?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,11 +126,13 @@ export interface OutboxRunSummary {
 
 export interface EnqueueOutboxParams {
   tenant_id: string;
-  recipient_phone: string;
+  recipient_phone?: string;
+  recipient?: string;
   payload: OutboxMessagePayload;
   phone_number_id?: string;
   channel?: string;
   idempotency_key?: string;
   scheduled_at?: Date;
+  next_retry_at?: Date;
   max_retries?: number;
 }

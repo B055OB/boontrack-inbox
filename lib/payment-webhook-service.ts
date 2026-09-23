@@ -523,8 +523,10 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   const resolvedInstructions =
     matchedOrder.fulfillment_metadata?.instructions || '';
 
+  const targetTenantSlug = matchedOrder.tenant_slug || matchedOrder.tenant_id || tenantSlug;
+
   if (customerPhone) {
-    console.log(`[Webhook Reader ${logId}] Mengirim WhatsApp auto-fulfillment (${resolvedProductType}) ke ${customerPhone}`);
+    console.log(`[Webhook Reader ${logId}] Mengirim WhatsApp auto-fulfillment (${resolvedProductType}) ke ${customerPhone} (Outbox Queue)`);
     sendOrderFulfillmentNotification({
       phone: customerPhone,
       customerName,
@@ -534,13 +536,13 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       productType: resolvedProductType,
       accessUrl: resolvedAccessUrl,
       instructions: resolvedInstructions,
+      tenantId: targetTenantSlug || 'platform',
     }).catch((waErr) => {
       console.warn(`[Webhook Reader ${logId}] Error dispatching WhatsApp fulfillment (non-fatal):`, waErr);
     });
   }
 
   // META CAPI DISPATCH
-  const targetTenantSlug = matchedOrder.tenant_slug || matchedOrder.tenant_id || tenantSlug;
   if (targetTenantSlug) {
     try {
       const { data: tenantData } = await supabase

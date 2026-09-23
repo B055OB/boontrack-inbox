@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { outboxWorker } from '@/lib/outbox/worker';
-import { wabaProviderAdapter } from '@/lib/outbox/adapters/waba-adapter';
+import { multiProviderAdapter } from '@/lib/outbox/adapters/multi-provider-adapter';
 
 export const runtime = 'nodejs'; // required for Supabase DB connections
 
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = Date.now();
 
   try {
-    const summary = await outboxWorker.runOnce(wabaProviderAdapter);
+    const summary = await outboxWorker.runOnce(multiProviderAdapter);
 
     return NextResponse.json({
       ok: true,

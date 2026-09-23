@@ -18,7 +18,7 @@
  */
 
 import { outboxWorker } from '../lib/outbox/worker';
-import { wabaProviderAdapter } from '../lib/outbox/adapters/waba-adapter';
+import { multiProviderAdapter } from '../lib/outbox/adapters/multi-provider-adapter';
 
 const POLL_INTERVAL_MS = parseInt(process.env.OUTBOX_POLL_INTERVAL_MS ?? '5000', 10);
 const BATCH_SIZE = parseInt(process.env.OUTBOX_BATCH_SIZE ?? '10', 10);
@@ -31,7 +31,7 @@ async function runCycle(): Promise<void> {
   const start = Date.now();
 
   try {
-    const summary = await outboxWorker.runOnce(wabaProviderAdapter);
+    const summary = await outboxWorker.runOnce(multiProviderAdapter);
     const elapsed = Date.now() - start;
 
     if (summary.claimed > 0) {

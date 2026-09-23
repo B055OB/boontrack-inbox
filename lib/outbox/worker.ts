@@ -16,6 +16,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
 import type { IProviderAdapter, OutboxMessage, OutboxRunSummary } from './types';
+import { multiProviderAdapter } from './adapters/multi-provider-adapter';
 
 // ---------------------------------------------------------------------------
 // Jittered Exponential Backoff
@@ -188,15 +189,18 @@ export class OutboxWorker {
    * @param db      - Supabase admin client (injectable for testing)
    */
   async runOnce(
-    adapter: IProviderAdapter,
+    adapter?: IProviderAdapter,
     db?: OutboxDbClient
   ): Promise<OutboxRunSummary> {
+    const effectiveAdapter = adapter ?? multiProviderAdapter;
     const client: OutboxDbClient = db ?? (getSupabaseAdmin() as unknown as OutboxDbClient);
     const summary: OutboxRunSummary = {
       claimed: 0,
       sent: 0,
+      delivered: 0,
       retried: 0,
       dead_lettered: 0,
+      failed: 0,
     };
 
     let batch: OutboxMessage[];
@@ -216,15 +220,21 @@ export class OutboxWorker {
 
     // Process all messages in the batch concurrently
     const results = await Promise.allSettled(
-      batch.map((msg) => processMessage(client, msg, adapter))
+      batch.map((msg) => processMessage(client, msg, effectiveAdapter))
     );
 
     for (const result of results) {
       if (result.status === 'fulfilled') {
         const { outcome } = result.value;
-        if (outcome === 'sent') summary.sent++;
-        else if (outcome === 'retried') summary.retried++;
-        else if (outcome === 'dead_lettered') summary.dead_lettered++;
+        if (outcome === 'sent') {
+          summary.sent++;
+          summary.delivered = (summary.delivered ?? 0) + 1;
+        } else if (outcome === 'retried') {
+          summary.retried++;
+        } else if (outcome === 'dead_lettered') {
+          summary.dead_lettered++;
+          summary.failed = (summary.failed ?? 0) + 1;
+        }
       } else {
         // processMessage itself should never reject, but be defensive
         console.error('[OutboxWorker] processMessage rejected:', result.reason);

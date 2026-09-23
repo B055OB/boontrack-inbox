@@ -44,7 +44,8 @@ async function resolveAccessToken(
 
 export class WabaProviderAdapter implements IProviderAdapter {
   async send(message: OutboxMessage): Promise<SendResult> {
-    const { tenant_id, phone_number_id, recipient_phone, payload } = message;
+    const { tenant_id, phone_number_id, payload } = message;
+    const targetRecipient = message.recipient || message.recipient_phone;
 
     // Resolve access token
     const accessToken = await resolveAccessToken(tenant_id, phone_number_id);
@@ -68,7 +69,7 @@ export class WabaProviderAdapter implements IProviderAdapter {
       const result = await metaWabaAdapter.sendMessage(
         phoneId,
         accessToken,
-        recipient_phone,
+        targetRecipient,
         payload as Record<string, unknown>
       );
 

@@ -228,6 +228,8 @@ export async function sendOrderPaidNotification({
   }
 }
 
+import { enqueueOutboxMessage, generateMessageIdempotencyKey } from '@/lib/outbox/enqueue';
+
 export interface OrderFulfillmentParams {
   phone: string;
   customerName: string;
@@ -239,15 +241,13 @@ export interface OrderFulfillmentParams {
   downloadUrl?: string;
   instructions?: string;
   storeName?: string;
+  tenantId?: string;
 }
 
 /**
- * WhatsApp Auto-Fulfillment Isolation (Digital vs Fisik)
- * 1. Produk Digital: Kirim ringkasan pembelian + link unduh/akses materi instan.
- * 2. Produk Fisik: Kirim konfirmasi pembayaran + status pesanan sedang disiapkan/dikemas.
- * Catatan: Kegagalan pengiriman WhatsApp (timeout / no token) tidak boleh menggugurkan status transaksi lunas (Payment Atomicity).
+ * Format order fulfillment message text based on product type (Digital vs Physical).
  */
-export async function sendOrderFulfillmentNotification({
+export function formatOrderFulfillmentMessage({
   phone,
   customerName,
   orderId,
@@ -258,12 +258,15 @@ export async function sendOrderFulfillmentNotification({
   downloadUrl,
   instructions,
   storeName = 'BoonTrack Shop',
-}: OrderFulfillmentParams): Promise<WhatsAppSendResult> {
+}: OrderFulfillmentParams): {
+  messageText: string;
+  normalizedTo: string;
+  safeName: string;
+  safeOrderId: string;
+  safeItems: string;
+  formattedAmount: string;
+} {
   const normalizedTo = normalizeWhatsAppNumber(phone);
-  if (!normalizedTo) {
-    return { success: false, error: 'Nomor WhatsApp penerima kosong / tidak valid' };
-  }
-
   const formattedAmount = `Rp ${Number(totalAmount || 0).toLocaleString('id-ID')}`;
   const safeName = (customerName || 'Pelanggan').trim().slice(0, 50);
   const safeOrderId = String(orderId || '-').trim();
@@ -306,7 +309,87 @@ ${linkSection}${noteSection}
 Semoga materi/produk digital ini bermanfaat! Jika Anda butuh bantuan, balas langsung pesan ini.`;
   }
 
-  // Coba kirim via session message atau fallback ke template resmi jika window kadaluarsa
+  return {
+    messageText,
+    normalizedTo,
+    safeName,
+    safeOrderId,
+    safeItems,
+    formattedAmount,
+  };
+}
+
+/**
+ * Enqueue order fulfillment notification to Transactional Outbox.
+ * Idempotent: generates a unique deterministic SHA-256 key per tenant + order_id + 'order_fulfillment'.
+ * Duplicate webhooks or retries will be safely ignored.
+ */
+export async function enqueueOrderFulfillmentNotification(
+  params: OrderFulfillmentParams
+): Promise<WhatsAppSendResult> {
+  const { messageText, normalizedTo, safeOrderId } = formatOrderFulfillmentMessage(params);
+
+  if (!normalizedTo) {
+    return { success: false, error: 'Nomor WhatsApp penerima kosong / tidak valid' };
+  }
+
+  const tenantId = params.tenantId || 'platform';
+  const idempotencyKey = generateMessageIdempotencyKey(tenantId, safeOrderId, 'order_fulfillment');
+
+  try {
+    const enqueued = await enqueueOutboxMessage({
+      tenant_id: tenantId,
+      recipient: normalizedTo,
+      recipient_phone: normalizedTo,
+      channel: 'WHATSAPP',
+      idempotency_key: idempotencyKey,
+      payload: {
+        type: 'text',
+        text: {
+          body: messageText,
+          preview_url: false,
+        },
+      },
+    });
+
+    if (enqueued) {
+      console.log(`[WhatsApp Outbox] Enqueued fulfillment notification for order #${safeOrderId} (outbox_id=${enqueued.id})`);
+      return { success: true, messageId: enqueued.id };
+    }
+
+    // Duplicate key - already in queue or processed
+    console.log(`[WhatsApp Outbox] Idempotent skip: fulfillment notification for order #${safeOrderId} already exists.`);
+    return { success: true, messageId: `idempotent_skip_${idempotencyKey}` };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[WhatsApp Outbox] Failed to enqueue order #${safeOrderId}:`, msg);
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * WhatsApp Auto-Fulfillment Isolation (Digital vs Fisik)
+ * 1. Enqueue to Transactional Outbox for reliable, idempotent dispatch.
+ * 2. Fallback to direct delivery if outbox enqueue encounters an infrastructure error.
+ * Catatan: Kegagalan pengiriman WhatsApp (timeout / no token) tidak boleh menggugurkan status transaksi lunas (Payment Atomicity).
+ */
+export async function sendOrderFulfillmentNotification(
+  params: OrderFulfillmentParams
+): Promise<WhatsAppSendResult> {
+  // First attempt: Enqueue via Transactional Outbox (Guaranteed idempotency & queue safety)
+  const outboxResult = await enqueueOrderFulfillmentNotification(params);
+  if (outboxResult.success) {
+    return outboxResult;
+  }
+
+  // Fallback: Inline delivery if outbox queue storage is unavailable
+  const { messageText, normalizedTo, safeName, safeOrderId, safeItems, formattedAmount } =
+    formatOrderFulfillmentMessage(params);
+
+  if (!normalizedTo) {
+    return { success: false, error: 'Nomor WhatsApp penerima kosong / tidak valid' };
+  }
+
   try {
     const sessionRes = await sendWhatsAppSessionMessage(normalizedTo, messageText);
     if (!sessionRes.success) {
@@ -315,7 +398,7 @@ Semoga materi/produk digital ini bermanfaat! Jika Anda butuh bantuan, balas lang
         customerName: safeName,
         orderId: safeOrderId,
         itemsSummary: safeItems,
-        totalAmount,
+        totalAmount: params.totalAmount,
       });
     }
     return sessionRes;

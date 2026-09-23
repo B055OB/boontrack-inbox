@@ -49,15 +49,24 @@ class InMemoryOutboxDb {
 
     const id = `uuid-${Math.random().toString(36).slice(2, 11)}`;
     const now = new Date().toISOString();
+    const targetRecipient = row.recipient ?? row.recipient_phone ?? '';
+    const scheduledTime = row.next_retry_at ?? row.scheduled_at ?? now;
+    const errorText = row.error_log ?? row.last_error ?? null;
+
     const newRow: DbRow = {
       // spread row first, then apply defaults for fields that may be missing
       ...row,
       id,
       created_at: now,
       updated_at: now,
+      recipient: targetRecipient,
+      recipient_phone: targetRecipient,
+      scheduled_at: scheduledTime,
+      next_retry_at: scheduledTime,
       sent_at: row.sent_at ?? null,
       failed_at: row.failed_at ?? null,
-      last_error: row.last_error ?? null,
+      last_error: errorText,
+      error_log: errorText,
       retry_count: row.retry_count ?? 0,
       max_retries: row.max_retries ?? 3,
       status: (row.status as DbRow['status']) ?? 'PENDING',
@@ -76,9 +85,19 @@ class InMemoryOutboxDb {
 
     for (const [, row] of this.rows) {
       if (claimed.length >= batchSize) break;
-      if (row.status !== 'PENDING') continue;
+      const scheduledMs = Math.min(
+        row.next_retry_at ? new Date(row.next_retry_at).getTime() : Infinity,
+        row.scheduled_at ? new Date(row.scheduled_at).getTime() : Infinity
+      );
+      const isPending = row.status === 'PENDING' && (scheduledMs === Infinity || scheduledMs <= now.getTime());
+
+      // Stale PROCESSING lock recovery (e.g. crashed worker stuck > 5 minutes)
+      const isStaleProcessing =
+        row.status === 'PROCESSING' &&
+        now.getTime() - new Date(row.updated_at).getTime() > 5 * 60 * 1000;
+
+      if (!isPending && !isStaleProcessing) continue;
       if (lockedIds.has(row.id)) continue; // Simulate SKIP LOCKED
-      if (new Date(row.scheduled_at) > now) continue;
 
       lockedIds.add(row.id);
       row.status = 'PROCESSING';
@@ -95,6 +114,7 @@ class InMemoryOutboxDb {
     row.status = 'SENT';
     row.sent_at = new Date().toISOString();
     row.last_error = null;
+    row.error_log = null;
     row.updated_at = new Date().toISOString();
   }
 
@@ -108,12 +128,16 @@ class InMemoryOutboxDb {
       row.status = 'DEAD_LETTER';
       row.retry_count = newRetryCount;
       row.last_error = errorMsg;
+      row.error_log = errorMsg;
       row.failed_at = new Date().toISOString();
     } else {
       row.status = 'PENDING';
       row.retry_count = newRetryCount;
       row.last_error = errorMsg;
-      row.scheduled_at = new Date(Date.now() + delayMs).toISOString();
+      row.error_log = errorMsg;
+      const nextTime = new Date(Date.now() + delayMs).toISOString();
+      row.scheduled_at = nextTime;
+      row.next_retry_at = nextTime;
     }
 
     row.updated_at = new Date().toISOString();
@@ -128,7 +152,15 @@ class InMemoryOutboxDb {
   }
 
   countByStatus(status: OutboxStatus): number {
-    return this.getAllRows().filter((r) => r.status === status).length;
+    return this.getAllRows().filter((r) => {
+      if (status === 'SENT' || status === 'DELIVERED') {
+        return r.status === 'SENT' || r.status === 'DELIVERED';
+      }
+      if (status === 'DEAD_LETTER' || status === 'FAILED') {
+        return r.status === 'DEAD_LETTER' || r.status === 'FAILED';
+      }
+      return r.status === status;
+    }).length;
   }
 
   clear(): void {
@@ -183,7 +215,9 @@ const mockDb = {
 
 import { OutboxWorker, jitteredBackoff, type OutboxDbClient } from '@/lib/outbox/worker';
 import { MockProviderAdapter } from '@/lib/outbox/adapters/mock-adapter';
-import { enqueueOutboxMessage } from '@/lib/outbox/enqueue';
+import { enqueueOutboxMessage, generateMessageIdempotencyKey } from '@/lib/outbox/enqueue';
+import { MultiProviderAdapter } from '@/lib/outbox/adapters/multi-provider-adapter';
+import { enqueueOrderFulfillmentNotification } from '@/lib/whatsapp';
 
 // Type-cast the mock to our minimal interface
 const typedMockDb = mockDb as unknown as OutboxDbClient;
@@ -492,3 +526,219 @@ describe('Test 3 — Retry & DLQ Escalation (max_retries=3)', () => {
     expect(callIdx).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Test 4: Stale Lock Recovery (Timeout Window)
+// ---------------------------------------------------------------------------
+
+describe('Test 4 — Stale Lock Recovery (5-Minute Timeout Window)', () => {
+  it('worker reclaims messages stuck in PROCESSING due to worker crash / timeout', async () => {
+    // Manually insert a row that got stuck in PROCESSING 10 minutes ago
+    const staleIdempotencyKey = 'stale-crashed-worker-key';
+    const insertRes = inMemoryDb.insertRow({
+      tenant_id: 'tenant-crash',
+      channel: 'WHATSAPP',
+      phone_number_id: null,
+      recipient_phone: '628999888777',
+      payload: { type: 'text', text: { body: 'Recovered message' } },
+      status: 'PROCESSING',
+      idempotency_key: staleIdempotencyKey,
+      retry_count: 0,
+      max_retries: 3,
+      scheduled_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+      sent_at: null,
+      failed_at: null,
+      last_error: null,
+    });
+
+    const row = inMemoryDb.getRow(insertRes.data!.id)!;
+    // Set updated_at to 10 minutes ago (past 5-min threshold)
+    row.status = 'PROCESSING';
+    row.updated_at = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
+    const successAdapter = new MockProviderAdapter({ shouldFail: false });
+    const worker = new OutboxWorker({ batchSize: 10 });
+
+    const summary = await worker.runOnce(successAdapter, typedMockDb);
+
+    expect(summary.claimed).toBe(1);
+    expect(summary.sent).toBe(1);
+
+    const updatedRow = inMemoryDb.getRow(row.id)!;
+    expect(updatedRow.status === 'SENT' || updatedRow.status === 'DELIVERED').toBe(true);
+    expect(updatedRow.sent_at).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 5: Deterministic SHA-256 Idempotency Key Guard
+// ---------------------------------------------------------------------------
+
+describe('Test 5 — Idempotency Key Guard (Deterministic SHA-256)', () => {
+  it('generates a stable 64-char hex hash from tenant + entity + type', () => {
+    const key1 = generateMessageIdempotencyKey('store-alpha', 'ORD-001', 'order_fulfillment');
+    const key2 = generateMessageIdempotencyKey('store-alpha', 'ORD-001', 'order_fulfillment');
+    const key3 = generateMessageIdempotencyKey('store-beta', 'ORD-001', 'order_fulfillment');
+
+    expect(key1).toHaveLength(64);
+    expect(key1).toBe(key2); // strictly deterministic
+    expect(key1).not.toBe(key3); // tenant scoped
+  });
+
+  it('guarantees identical webhook triggers are deduplicated at enqueue time', async () => {
+    const tenant = 'tenant-guard';
+    const orderId = 'ORD-2026-X99';
+    const key = generateMessageIdempotencyKey(tenant, orderId, 'order_fulfillment');
+
+    const firstEnqueue = await enqueueOutboxMessage(makeOutboxParams({
+      tenant_id: tenant,
+      idempotency_key: key,
+    }));
+    const secondEnqueue = await enqueueOutboxMessage(makeOutboxParams({
+      tenant_id: tenant,
+      idempotency_key: key,
+    }));
+
+    expect(firstEnqueue).not.toBeNull();
+    expect(secondEnqueue).toBeNull(); // deduplicated
+    expect(inMemoryDb.getAllRows().filter(r => r.idempotency_key === key)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 6: Dual-Field Schema Compatibility
+// ---------------------------------------------------------------------------
+
+describe('Test 6 — Dual-Field Schema Compatibility (recipient, next_retry_at, error_log)', () => {
+  it('supports recipient alias alongside recipient_phone', async () => {
+    const enqueued = await enqueueOutboxMessage({
+      tenant_id: 'tenant-alias',
+      recipient: '6285551234',
+      payload: { type: 'text', text: { body: 'Alias test' } },
+      next_retry_at: new Date(Date.now() - 5000),
+      idempotency_key: 'alias-test-key-1',
+    });
+
+    expect(enqueued).not.toBeNull();
+    expect(enqueued?.recipient).toBe('6285551234');
+    expect(enqueued?.recipient_phone).toBe('6285551234');
+
+    const worker = new OutboxWorker({ batchSize: 5 });
+    const adapter = new MockProviderAdapter();
+    const summary = await worker.runOnce(adapter, typedMockDb);
+
+    expect(summary.claimed).toBe(1);
+    expect(summary.sent).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 7: MultiProviderAdapter Routing
+// ---------------------------------------------------------------------------
+
+describe('Test 7 — MultiProviderAdapter Routing', () => {
+  it('routes to WABA adapter when phone_number_id is present', async () => {
+    const wabaSendMock = jest.fn(async () => ({ success: true, messageId: 'waba-msg-1' }));
+    const evoSendMock = jest.fn(async () => ({ success: true, messageId: 'evo-msg-1' }));
+
+    const adapter = new MultiProviderAdapter({
+      wabaAdapter: { send: wabaSendMock },
+      evolutionAdapter: { send: evoSendMock },
+    });
+
+    const msg: OutboxMessage = {
+      id: 'msg-waba',
+      tenant_id: 'tenant-waba',
+      channel: 'WHATSAPP',
+      phone_number_id: 'waba-phone-12345',
+      recipient_phone: '62812345678',
+      payload: { type: 'text', text: { body: 'WABA message' } },
+      status: 'PENDING',
+      idempotency_key: 'waba-route-key',
+      retry_count: 0,
+      max_retries: 3,
+      last_error: null,
+      scheduled_at: new Date().toISOString(),
+      sent_at: null,
+      failed_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const res = await adapter.send(msg);
+    expect(res.success).toBe(true);
+    expect(res.messageId).toBe('waba-msg-1');
+    expect(wabaSendMock).toHaveBeenCalledTimes(1);
+    expect(evoSendMock).not.toHaveBeenCalled();
+  });
+
+  it('routes to Evolution adapter when phone_number_id is absent', async () => {
+    const wabaSendMock = jest.fn(async () => ({ success: true, messageId: 'waba-msg-2' }));
+    const evoSendMock = jest.fn(async () => ({ success: true, messageId: 'evo-msg-2' }));
+
+    const adapter = new MultiProviderAdapter({
+      wabaAdapter: { send: wabaSendMock },
+      evolutionAdapter: { send: evoSendMock },
+    });
+
+    const msg: OutboxMessage = {
+      id: 'msg-evo',
+      tenant_id: 'tenant-evo',
+      channel: 'WHATSAPP',
+      phone_number_id: null,
+      recipient_phone: '62812345678',
+      payload: { type: 'text', text: { body: 'Evolution message' } },
+      status: 'PENDING',
+      idempotency_key: 'evo-route-key',
+      retry_count: 0,
+      max_retries: 3,
+      last_error: null,
+      scheduled_at: new Date().toISOString(),
+      sent_at: null,
+      failed_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const res = await adapter.send(msg);
+    expect(res.success).toBe(true);
+    expect(res.messageId).toBe('evo-msg-2');
+    expect(evoSendMock).toHaveBeenCalledTimes(1);
+    expect(wabaSendMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 8: WhatsApp Order Fulfillment Integration
+// ---------------------------------------------------------------------------
+
+describe('Test 8 — WhatsApp Order Fulfillment via Outbox', () => {
+  it('enqueues fulfillment notification and deduplicates duplicate invocations', async () => {
+    const orderParams = {
+      phone: '081234567890',
+      customerName: 'Budi Santoso',
+      orderId: 'ORD-7788',
+      itemsSummary: 'Paket Kursus Pro',
+      totalAmount: 150000,
+      productType: 'DIGITAL',
+      accessUrl: 'https://example.com/access',
+      tenantId: 'onlineboost',
+    };
+
+    const res1 = await enqueueOrderFulfillmentNotification(orderParams);
+    expect(res1.success).toBe(true);
+    expect(res1.messageId).toMatch(/^uuid-/);
+
+    // Second call with same order ID must be deduplicated
+    const res2 = await enqueueOrderFulfillmentNotification(orderParams);
+    expect(res2.success).toBe(true);
+    expect(res2.messageId).toContain('idempotent_skip_');
+
+    // Only 1 record in database
+    const matching = inMemoryDb.getAllRows().filter(r => r.tenant_id === 'onlineboost');
+    expect(matching).toHaveLength(1);
+    expect(matching[0].recipient_phone).toBe('6281234567890');
+    expect(matching[0].status).toBe('PENDING');
+  });
+});
+
