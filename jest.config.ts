@@ -27,6 +27,8 @@ const config: Config = {
   collectCoverageFrom: [
     'lib/payment/**/*.ts',
     '!lib/payment/**/*.d.ts',
+    'lib/outbox/**/*.ts',
+    '!lib/outbox/**/*.d.ts',
   ],
 };
 

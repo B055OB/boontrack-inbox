@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "jest",
     "test:payment": "jest payment_boundary --no-coverage",
-    "test:waba": "jest waba_security_matrix --no-coverage"
+    "test:waba": "jest waba_security_matrix --no-coverage",
+    "test:outbox": "jest outbox-worker --no-coverage",
+    "worker:outbox": "ts-node scripts/run-outbox-worker.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
