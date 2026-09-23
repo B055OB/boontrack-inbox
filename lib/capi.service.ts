@@ -11,6 +11,10 @@ interface PurchaseEventPayload {
   fbp?: string | null;
   userAgent?: string | null;
   ipAddress?: string | null;
+  /** Optional: Meta CAPI Test Event Code (dari Events Manager → Test Events tab).
+   *  Jika diisi, event dikirim sebagai test event (hijau di Events Manager)
+   *  dan TIDAK dikontaminasi ke data live pixel. Root-level field per Meta spec. */
+  testEventCode?: string;
 }
 
 // SHA-256 Hasher untuk normalisasi data identitas (Meta & TikTok requirement)
@@ -59,7 +63,11 @@ export async function dispatchMetaCAPI(
           value: payload.grossAmount
         }
       }
-    ]
+    ],
+    // test_event_code harus di root body (bukan di dalam data[]) — per Meta CAPI spec.
+    // Jika ada nilainya, event dikirim sebagai Test Event (hijau di Events Manager)
+    // dan tidak mencemari data live pixel.
+    ...(payload.testEventCode ? { test_event_code: payload.testEventCode } : {})
   };
 
   try {

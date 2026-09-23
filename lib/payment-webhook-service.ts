@@ -554,12 +554,22 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
         const metaPixelId = tenantData?.metadata?.pixel_config?.meta_pixel_id || tenantData?.metadata?.meta_pixel_id;
         const metaAccessToken = tenantData?.metadata?.pixel_config?.meta_access_token || tenantData?.metadata?.meta_access_token;
         if (metaPixelId && metaAccessToken) {
+          // Ambil test_event_code dari metadata tenant (via onboarding dashboard)
+          // atau fallback ke env global META_CAPI_TEST_EVENT_CODE (staging).
+          // Jika keduanya kosong → live event (production normal).
+          const testEventCode =
+            tenantData?.metadata?.pixel_config?.meta_test_event_code ||
+            tenantData?.metadata?.meta_test_event_code ||
+            process.env.META_CAPI_TEST_EVENT_CODE ||
+            undefined;
+
           dispatchMetaCAPI(metaPixelId, metaAccessToken, {
             orderId: String(orderId),
             tenantId: tenantData.id || tenantData.slug,
             grossAmount: totalAmount,
             customerPhone,
             customerName,
+            testEventCode,
           }).catch((capiErr) => console.warn(`[Webhook Reader ${logId}] Error dispatching Meta CAPI:`, capiErr));
         }
       }
