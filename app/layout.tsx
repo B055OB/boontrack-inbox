@@ -22,25 +22,25 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#ff6b00",
+  themeColor: "#7c3aed",
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://app.boontrack.com'),
-  title: "BoonTrack | Business Action Layer & Platform Orkestrasi",
-  description: "Platform orkestrasi operasional, tracking, payment, dan transactional decision layer untuk WhatsApp Business & AI Agent.",
-  manifest: "/app-brand/site.webmanifest",
+  metadataBase: new URL('https://shop.boontrack.com'),
+  title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
+  description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
+  manifest: "/manifest.json",
   openGraph: {
-    title: "BoonTrack | Business Action Layer & Platform Orkestrasi",
-    description: "Platform orkestrasi operasional, tracking, payment, dan transactional decision layer untuk WhatsApp Business & AI Agent.",
-    url: "https://app.boontrack.com",
-    siteName: "BoonTrack",
+    title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
+    description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
+    url: "https://shop.boontrack.com",
+    siteName: "BoonTrack Shop",
     images: [
       {
-        url: 'https://app.boontrack.com/app-brand/og-image.png',
+        url: '/images/logo-master.jpg',
         width: 1200,
         height: 630,
-        alt: 'BoonTrack | Business Action Layer & Platform Orkestrasi',
+        alt: 'BoonTrack Shop',
       },
     ],
     locale: 'id_ID',
@@ -48,9 +48,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: "BoonTrack | Business Action Layer & Platform Orkestrasi",
-    description: "Platform orkestrasi operasional, tracking, payment, dan transactional decision layer untuk WhatsApp Business & AI Agent.",
-    images: ['https://app.boontrack.com/app-brand/og-image.png'],
+    title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
+    description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
+    images: ['/images/logo-master.jpg'],
   },
   appleWebApp: {
     capable: true,
@@ -59,14 +59,12 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/app-brand/favicon.ico", sizes: "any" },
-      { url: "/app-brand/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/app-brand/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/app-brand/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
-      { url: "/app-brand/android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
+      { url: "/favicon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/favicon.ico" },
     ],
-    shortcut: "/app-brand/favicon.ico",
-    apple: "/app-brand/apple-touch-icon.png",
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
 };
 
@@ -81,28 +79,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        {/* Favicon & Touch Icons */}
-        <link rel="icon" type="image/x-icon" href="/app-brand/favicon.ico" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/app-brand/favicon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/app-brand/favicon-16x16.png" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/app-brand/apple-touch-icon.png" />
-        <link rel="manifest" href="/app-brand/site.webmanifest" />
-
-        {/* Meta Open Graph (Wajib untuk WhatsApp Link Preview) */}
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://app.boontrack.com" />
-        <meta property="og:title" content="BoonTrack | Business Action Layer & Platform Orkestrasi" />
-        <meta property="og:description" content="Platform orkestrasi operasional, tracking, payment, dan transactional decision layer untuk WhatsApp Business & AI Agent." />
-        <meta property="og:image" content="https://app.boontrack.com/app-brand/og-image.png" />
-        <meta property="og:image:width" content="1200" />
-        <meta property="og:image:height" content="630" />
-
-        {/* Twitter Card */}
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="BoonTrack | Business Action Layer & Platform Orkestrasi" />
-        <meta name="twitter:description" content="Platform orkestrasi operasional, tracking, payment, dan transactional decision layer untuk WhatsApp Business & AI Agent." />
-        <meta name="twitter:image" content="https://app.boontrack.com/app-brand/og-image.png" />
-
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         {/* Early Safari / WebKit Compatibility Polyfill (before scripts execute) */}
         <script
           dangerouslySetInnerHTML={{
