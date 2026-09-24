@@ -1457,3 +1457,60 @@ Dokumentasi invarian arsitektur resmi hasil evaluasi dan persetujuan CTO Gate un
   - Arsitektur sistem diklasifikasikan secara formal sebagai **"Liability-Aware Commerce Architecture"**, bukan klaim absolut tanpa syarat ("Zero-Liability").
   - Sistem menyediakan boundary teknis (guardrails, kurir boundary, pemisahan refund manual, audit trail), namun tanggung jawab relasi komersial akhir antara penjual dan pembeli tetap berada di bawah kendali merchant.
 
+---
+
+## 24. PILOT TENANT & DESIGN PARTNER PROVISIONING STANDARD (ZERO-TOUCH ENGINE CONTRACT)
+
+> **Architectural Status**: 🔒 **PRODUCTION CONTRACT & INVARIANT (P0 ARCHITECTURAL LOCK)**  
+> **Core Principle**: *"Pilot Tenants Are Configuration, Not Code. Build the capability once. Configure it for many tenants."*
+
+### 24.1 The Golden Rule of Pilot Tenants & Design Partners
+Pilot tenant, design partner, mentor, creator, influencer, agency, consultant, dan early adopter DILARANG KERAS menerima tenant-specific business logic di dalam Core backend, frontend engine, maupun middleware. Seluruh perbedaan antar-tenant WAJIB diekspresikan secara murni melalui:
+1. TenantRuntimeContext (Database Record Supabase)
+2. VerticalTemplate (PROFESSIONAL_SERVICE_V1, CREATOR_V1, RETAIL_V1, dll.)
+3. Capabilities & Entitlements (Plan / Feature Flags)
+4. Product/Service Catalog (Data Engine)
+5. AI Persona & Knowledge Base (Semantics Engine)
+6. Payment & Tracking Config (Adapters Configuration)
+
+### 24.2 Zero-Touch Pilot Flow
+Setiap penambahan tenant percontohan wajib melalui rantai resolusi generik tanpa percabangan kode:
+Pilot / Design Partner -> Tenant Record (DB) -> TenantRuntimeContext -> Vertical Template -> Entitlement / Plan -> Configuration (DB) -> Shared Core -> Storefront + Product Page + AI + Dashboard + Checkout
+
+### 24.3 Strict Negative Invariants (Larangan Keras)
+Dilarang keras meloloskan PR / commit yang memuat:
+- ❌ if tenant == "fahami" atau if slug == "mentor_x"
+- ❌ Modul / class service khusus untuk nama tenant tertentu
+- ❌ Membuat folder baru di bawah tenants/ atau app/tenants/*
+- ❌ Hardcode data produk di source code
+- ❌ Hardcode prompt AI di business logic untuk tenant tertentu
+- ❌ Default fallback ke tenant lain saat lookup gagal
+- ❌ Penamaan WhatsApp instance secara liar berdasarkan slug
+- ❌ Custom payment / fee logic eksklusif satu tenant
+- ❌ Bypass terhadap TenantRuntimeContext
+
+### 24.4 Stop Condition & Capability Gap Protocol
+Jika ditemukan kebutuhan operasional tenant percontohan yang belum didukung oleh Vertical Template aktif:
+- STOP CONDITION: Developer WAJIB MENGHENTIKAN proses coding dan dilarang membobol Core dengan patch darurat.
+- Terbitkan laporan CAPABILITY GAP REVIEW kepada CTO.
+
+### 24.5 Pilot Tenant Definition of Done (DoD)
+Wajib memenuhi 16 checklist sebelum status pilot dinyatakan selesai:
+[ ] Tenant dibuat 100% dari DB / Config (Zero Code)
+[ ] TenantRuntimeContext aktif dan terisolasi
+[ ] Menggunakan Vertical Template resmi yang ada
+[ ] Entitlement / Plan tervalidasi via Entitlement Engine
+[ ] Seluruh layanan/produk masuk via Catalog Engine
+[ ] Single Product Page ter-render otomatis (/p/{product-slug})
+[ ] Storefront aktif secara otomatis
+[ ] AI Persona terkonfigurasi via database
+[ ] Knowledge Base terisi via Semantic Categories
+[ ] Dashboard adaptif mengikuti Capabilities
+[ ] WhatsApp connection terikat via whatsapp_connections
+[ ] Checkout & Payment terhubung ke Engine resmi (Dynamic QRIS / Gateway)
+[ ] Tracking terhubung ke GTM & CAPI Engine
+[ ] Cross-tenant isolation test: PASS
+[ ] Existing tenant regression test: PASS
+[ ] Zero tenant-specific code & zero hardcoded fallback
+
+
