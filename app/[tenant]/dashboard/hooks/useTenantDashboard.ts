@@ -1177,9 +1177,9 @@ export function useTenantDashboard() {
           const data = await res.json();
           const rawPhone = String(data.connected_phone || data.phone_number || '');
           const isPlatform =
+            rawPhone.includes('85181830080') ||
             rawPhone.includes('85179555449') ||
             rawPhone.includes('85139555449') ||
-            rawPhone.includes('1268977686299719') ||
             data.mode === 'SHARED';
 
           if (data.status === 'CONNECTED' && !isPlatform && rawPhone && isMounted) {
@@ -1927,9 +1927,9 @@ export function useTenantDashboard() {
 
       const rawPhone = String(data.phone_number || data.connected_phone || '');
       const isPlatform =
+        rawPhone.includes('85181830080') ||
         rawPhone.includes('85179555449') ||
         rawPhone.includes('85139555449') ||
-        rawPhone.includes('1268977686299719') ||
         data.mode === 'SHARED';
 
       if ((data.status === 'CONNECTED' || data.connected) && !isPlatform && rawPhone) {
@@ -2001,9 +2001,9 @@ export function useTenantDashboard() {
 
         const rawPhone = String(data.phone_number || data.connected_phone || '');
         const isPlatform =
+          rawPhone.includes('85181830080') ||
           rawPhone.includes('85179555449') ||
           rawPhone.includes('85139555449') ||
-          rawPhone.includes('1268977686299719') ||
           data.mode === 'SHARED';
 
         if ((data.status === 'CONNECTED' || data.connected) && !isPlatform && rawPhone) {

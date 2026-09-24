@@ -8,6 +8,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+import { verifyMetaWebhookChallenge } from '@/lib/whatsapp/meta-webhook-normalizer';
+
 /**
  * Meta Webhook Challenge Verification (GET)
  * Digunakan oleh Meta Developer Portal saat melakukan registrasi & verifikasi URL Webhook.
@@ -15,18 +17,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const mode = searchParams.get('hub.mode');
-    const token = searchParams.get('hub.verify_token');
-    const challenge = searchParams.get('hub.challenge');
+    const result = verifyMetaWebhookChallenge(searchParams);
 
-    const expectedToken =
-      process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
-      process.env.META_WEBHOOK_VERIFY_TOKEN ||
-      'boontrack_waba_webhook_verify_token';
-
-    if (mode === 'subscribe' && token === expectedToken) {
+    if (result.isValid) {
       console.log('[WhatsApp Webhook] Handshake verified successfully.');
-      return new NextResponse(challenge || '', {
+      return new NextResponse(result.challenge || '', {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
       });

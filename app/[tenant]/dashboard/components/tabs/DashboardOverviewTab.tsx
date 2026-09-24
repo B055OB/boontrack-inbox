@@ -218,9 +218,9 @@ export default function DashboardOverviewTab({
   // Onboarding checklist calculations (s.id style)
   const isProfileComplete = Boolean(storeLogoUrl || storeBio);
   const isPlatformPhone = Boolean(connectedPhone && (
+    connectedPhone.includes('85181830080') ||
     connectedPhone.includes('85179555449') ||
-    connectedPhone.includes('85139555449') ||
-    connectedPhone.includes('1268977686299719')
+    connectedPhone.includes('85139555449')
   ));
   const isWaConnected = (waStatus === 'CONNECTED' || Boolean(connectedPhone)) && !isPlatformPhone;
   const isQrisUploaded = Boolean(storeQrisUrl && storeQrisUrl.trim() !== '');

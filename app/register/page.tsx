@@ -559,8 +559,8 @@ function WhatsAppVerificationModal({
   const [isChecking, setIsChecking] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const officialDisplayNumber = "0851-3955-5449";
-  const officialRawPhone = "6285139555449";
+  const officialDisplayNumber = "0851-8183-0080";
+  const officialRawPhone = "6285181830080";
   const activationText = `AKTIVASI ${data.token}`;
   const dynamicWaUrl = `https://wa.me/${officialRawPhone}?text=${encodeURIComponent(activationText)}`;
 

@@ -54,13 +54,14 @@ function isPlatformWaba(phoneOrId?: string | null): boolean {
   if (!phoneOrId) return false;
   const clean = String(phoneOrId).replace(/\D/g, '');
   return (
+    clean === '6285181830080' ||
+    clean === '085181830080' ||
     clean === '6285179555449' ||
     clean === '6285139555449' ||
     clean === '085179555449' ||
     clean === '085139555449' ||
-    clean === '1268977686299719' ||
-    clean.includes('85179555449') ||
-    clean.includes('1268977686299719')
+    clean.includes('85181830080') ||
+    clean.includes('85179555449')
   );
 }
 
@@ -90,7 +91,7 @@ export default function WhatsAppTab({
   renderLockedFeatureCard,
   setSaveFeedback,
 }: WhatsAppTabProps) {
-  // Pastikan nomor Platform WABA (+62 851-3955-5449 / ID 1268977686299719) TIDAK MUNCUL sebagai koneksi toko merchant
+  // Pastikan nomor Platform WABA (+62 851-8183-0080) TIDAK MUNCUL sebagai koneksi toko merchant
   const isMerchantConnected =
     waStatus === 'CONNECTED' &&
     Boolean(connectedPhone) &&

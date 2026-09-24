@@ -81,7 +81,7 @@ export default function WhatsAppWabaConfig({
             if (cfg.waba_id) setWabaId(cfg.waba_id);
             // Kunci: Sembunyikan dan jangan pernah load ID/Nomor Platform WABA resmi ke akun merchant
             const rawPhoneId = String(cfg.phone_number_id || '');
-            if (rawPhoneId && rawPhoneId !== '1268977686299719' && !rawPhoneId.includes('85179555449')) {
+            if (rawPhoneId && !rawPhoneId.includes('85181830080') && !rawPhoneId.includes('85179555449') && !rawPhoneId.includes('85139555449')) {
               setPhoneNumberId(rawPhoneId);
             } else {
               setPhoneNumberId('');

@@ -26,7 +26,7 @@ interface WhatsAppConnectionConfig {
 function sanitizeMerchantPhone(phone?: string | null): string | null {
   if (!phone) return null;
   const clean = String(phone).replace(/\D/g, "");
-  if (clean.includes("85179555449") || clean.includes("85139555449") || clean.includes("1268977686299719")) {
+  if (clean.includes("85181830080") || clean.includes("85179555449") || clean.includes("85139555449")) {
     return null;
   }
   return clean;

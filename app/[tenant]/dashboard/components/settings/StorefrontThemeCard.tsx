@@ -160,7 +160,7 @@ const BIO_ICON_OPTIONS: { id: BioButton['icon']; label: string; icon: React.Elem
 ];
 
 export function getDefaultStarterButtons(slug: string, waNumber?: string): BioButton[] {
-  const cleanWa = waNumber?.replace(/\D/g, '') || '6285139555449';
+  const cleanWa = waNumber?.replace(/\D/g, '') || '6285181830080';
   return [
     {
       id: 'btn-wa',

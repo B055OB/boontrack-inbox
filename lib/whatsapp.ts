@@ -41,11 +41,11 @@ export function getOfficialWhatsAppNumber(): string {
     process.env.WHATSAPP_OFFICIAL_NUMBER ||
     process.env.WHATSAPP_PHONE_NUMBER ||
     process.env.NEXT_PUBLIC_META_BOT_NUMBER ||
-    '6285139555449';
+    '6285181830080';
 
   let clean = normalizeWhatsAppNumber(envNumber);
-  if (!clean || clean === '6285179555449') {
-    clean = '6285139555449';
+  if (!clean || clean === '6285179555449' || clean === '6285139555449') {
+    clean = '6285181830080';
   }
   return clean;
 }
@@ -74,7 +74,7 @@ export async function sendWhatsAppSessionMessage(
   const phoneNumberId =
     process.env.WHATSAPP_PHONE_NUMBER_ID ||
     process.env.META_PHONE_NUMBER_ID ||
-    '1268977686299719';
+    '';
 
   const accessToken =
     process.env.WHATSAPP_API_TOKEN ||
@@ -154,7 +154,7 @@ export async function sendOrderPaidNotification({
   const phoneNumberId =
     process.env.WHATSAPP_PHONE_NUMBER_ID ||
     process.env.META_PHONE_NUMBER_ID ||
-    '1268977686299719';
+    '';
 
   const accessToken =
     process.env.WHATSAPP_API_TOKEN ||
