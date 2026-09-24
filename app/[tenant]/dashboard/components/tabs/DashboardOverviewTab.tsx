@@ -30,6 +30,8 @@ import {
 import { ProductItem } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import StoreBioLinkWidget from '@/app/[tenant]/dashboard/components/StoreBioLinkWidget';
+import BoonPilotHeroBanner from '@/app/[tenant]/dashboard/components/BoonPilotHeroBanner';
+
 
 interface DashboardOverviewTabProps {
   tenantSlug: string;
@@ -55,9 +57,11 @@ interface DashboardOverviewTabProps {
   chatConversationsCount?: number;
   onOpenStoreSettings: () => void;
   onOpenNewProduct: () => void;
+  onApplyPitch?: (patch: Partial<ProductItem>) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onNavigateTab: (tab: any) => void;
   onSavedFeedback?: (msg: string) => void;
+
 }
 
 export default function DashboardOverviewTab({
@@ -83,6 +87,7 @@ export default function DashboardOverviewTab({
   chatConversationsCount,
   onOpenStoreSettings,
   onOpenNewProduct,
+  onApplyPitch,
   onNavigateTab,
   onSavedFeedback,
 }: DashboardOverviewTabProps) {
@@ -544,8 +549,19 @@ export default function DashboardOverviewTab({
           </div>
         </div>
 
+        {/* ── BOONPILOT OPERATIONAL CO-PILOT HERO BANNER ── */}
+        <BoonPilotHeroBanner
+          tenantSlug={tenantSlug}
+          onOpenNewProduct={onOpenNewProduct}
+          onApplyPitch={onApplyPitch}
+          onNavigateToChat={() => onNavigateTab('boonpilot')}
+          storeCategory={storeCategory}
+          isCheckoutLite={isCheckoutLite}
+        />
+
         {/* WIDGET PENGELOLAAN TAUTAN BIO RESMI TOKO LANGSUNG MENYATU */}
         <StoreBioLinkWidget tenantSlug={tenantSlug} />
+
 
         {/* PANDUAN 3 LANGKAH AKTIVASI WHATSAPP COMMERCE & DYNAMIC QRIS */}
         <div className="rounded-3xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-7 shadow-xs space-y-5">

@@ -1191,7 +1191,7 @@ export function useTenantDashboard() {
     };
   }, [tenantSlug]);
 
-  const openNewProductModal = () => {
+  const openNewProductModal = (initialData?: Partial<ProductItem>) => {
     const activeCount = products.filter(p => p.is_active !== false).length;
     if (isCheckoutLite && activeCount >= 3) {
       const quotaMsg = 'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.';
@@ -1227,6 +1227,7 @@ export function useTenantDashboard() {
       checkout_type: 'internal',
       external_url: '',
       cta_label: '',
+      ...(initialData || {}),
     });
     setIsProductModalOpen(true);
   };

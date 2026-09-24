@@ -638,6 +638,9 @@ export default function TenantDashboardPage() {
             setIsStoreSettingsOpen(true);
           }}
           onOpenNewProduct={openNewProductModal}
+          onApplyPitch={(patch) => {
+            setProductForm((prev) => ({ ...prev, ...patch }));
+          }}
           onNavigateTab={(tab) => setActiveTab(tab)}
           onSavedFeedback={(msg) => {
             setSaveFeedback(msg);

@@ -277,62 +277,20 @@ export default function BoonPilotWidget({
   const [loading, setLoading] = useState(false);
   const [executingActionId, setExecutingActionId] = useState<string | null>(null);
 
-  const storageKey = `boonpilot_history_${normalizedSlug}`;
+  const storageKey = `boonpilot_history_v2_${normalizedSlug}`;
   const sessionKey = `boonpilot_session_id_${normalizedSlug}`;
 
   const buildWelcomeText = (): string => {
-    const isTrial = subscriptionPlan === 'SOLO_TRIAL' || subscriptionPlan === 'solo_trial' || subscriptionPlan === 'SOLO';
-
-    if (productsCount === 0) {
-      return `🎉 **Selamat! Pilihan Anda sangat tepat memulai & scale up bisnis di BoonTrack Shop.**\n\nDi sini toko online Anda langsung dibekali senjata otomatisasi level pro:\n• ⚡ **Ubah QRIS Statis Jadi Dinamis:** Terima transfer uang langsung masuk rekening/e-wallet tanpa potongan fee sepeser pun (BCA, DANA Bisnis, GoPay Usaha).\n• 🤖 **Kustomisasi Bot CS WhatsApp:** Latih bot AI agar luwes, ramah, dan sigap melayani serta closing pembeli 24/7.\n• 📈 **Server-Side Tracking Siap Pakai:** CAPI Meta & TikTok Ads anti-boncos karena dikirim langsung dari server.\n• 📱 **Notifikasi Instan di HP (PWA):** Pantau order masuk langsung dari layar ponsel Anda.\n\n🎯 **5 Checklist Wajib Siap Jual Sebelum Promosi:**\n1. 📦 **Katalog Produk:** Upload produk & rapikan etalase toko Anda.\n2. 🧠 **AI Knowledge Toko:** WAJIB diisi agar bot pintar jawab komplain & spek produk tanpa halu!\n3. 💬 **WhatsApp Bot Gateway:** Scan QR BoonTrack Direct Connect agar CS aktif 24/7.\n4. 🚚 **Logistik Diskon:** Dapatkan potongan ongkir & cashback s/d puluhan persen dibanding drop off agen.\n5. ⚡ **Otomasi QRIS Dinamis:** Unduh BoonTrack Reader agar verifikasi pembayaran 100% otomatis.\n\n💡 *Catatan:* Di BoonTrack Shop kami **sengaja tidak menyediakan halaman FAQ kaku**. Anda punya saya, **BoonPilot**! Tanya apa saja seputar jualan, copywriting maut, trik bundling, sampai strategi bikin orderan banjir!\n\nMari mulai langkah 1 dengan klik **'Import Massal'** atau **'+ Tambah Produk Baru'**!`;
-    }
-
-    if (!isQrisUploaded) {
-      return `🎉 **Katalog produk Anda sudah aktif (${productsCount} produk)!** 🚀\n\n🎯 **Langkah Checklist Siap Jual Berikutnya:**\n- 🧠 **Isi AI Knowledge Toko** di tab *AI Knowledge & Bot* agar bot CS cerdas menjawab pertanyaan pembeli.\n- 💬 **Koneksikan WhatsApp** via scan QR di tab *WhatsApp*.\n- 🚚 **Cek Ekspedisi** untuk dapatkan diskon ongkir & cashback otomatis.\n- ⚡ **Upload QRIS & Download BoonTrack Reader** di tab *Pengaturan* untuk verifikasi transfer instan tanpa repot cek mutasi manual!\n\n💡 *Ingat:* Etalase modern tidak butuh FAQ panjang. Biarkan Bot WhatsApp AI yang mengurus tanya-jawab dan closing!`;
-    }
-
-    if (isTrial && productsCount > 0) {
-      return `Halo! Saya **BoonPilot Copilot**, konsultan penjualan AI toko Anda[cite: 1]. 🚀\n\n🎯 Toko Anda aktif dengan **${productsCount} produk** (Paket Solo/Trial).\n\n💡 **Tips Penjualan Cepat & Impulse Buying:**\n- Etalase toko cukup berisi deskripsi singkat, benefit emosional produk, dan tombol checkout instan tanpa FAQ panjang.\n- Serahkan edukasi dan penanganan keraguan pembeli ke AI Knowledge & Bot WhatsApp.\n- Siap scale-up iklan berbayar (Meta/TikTok Ads)? Tanyakan saya tentang upgrade ke **Ads Performance (Rp 299k/bln)** untuk Server-Side CAPI tracking akurat!`;
-    }
-
-    return `Halo! Saya **BoonPilot Copilot**, konsultan penjualan AI & asisten toko cerdas Anda[cite: 1]. 🚀\n\nSaya siap membantu Anda meninjau 5 Checklist Wajib Siap Jual, strategi *impulse buying* tanpa FAQ panjang, analisa stok, hingga otomasi closing di WhatsApp.`;
+    return `Halo! Saya **BoonPilot**, asisten operasional toko Anda. 🚀\n\nMau saya bantu bikin teks penawaran produk, cek data order, atau siapkan promo hari ini?`;
   };
 
   const buildWelcomeQuickActions = (): string[] => {
-    if (productsCount === 0) {
-      return [
-        '🎯 Mulai Guided Setup Toko (AI Interview)',
-        '5 Checklist Wajib Siap Jual',
-        '⚡ Cara aktifkan konfirmasi QRIS otomatis?',
-        'Apa fungsi download QR meja toko?',
-        '🔥 Bikin promo bundling biar orderan banjir!',
-      ];
-    }
-    if (!isQrisUploaded) {
-      return [
-        '🎯 Mulai Guided Setup Toko (AI Interview)',
-        '5 Checklist Wajib Siap Jual',
-        'Apa fungsi download QR meja toko?',
-        'Cara melatih AI Knowledge Toko',
-        'Kenapa toko online tidak butuh FAQ panjang?',
-      ];
-    }
-    const isTrial = subscriptionPlan === 'SOLO_TRIAL' || subscriptionPlan === 'solo_trial' || subscriptionPlan === 'SOLO';
-    if (isTrial) {
-      return [
-        '🎯 Mulai Guided Setup Toko (AI Interview)',
-        '5 Checklist Wajib Siap Jual',
-        '🔥 Bikin promo bundling biar orderan banjir!',
-        'Keunggulan paket Ads Performance (Rp 299k)',
-        'Apa fungsi download QR meja toko?',
-      ];
-    }
     return [
-      '🎯 Mulai Guided Setup Toko (AI Interview)',
-      '5 Checklist Wajib Siap Jual',
-      'Performa penjualan toko minggu ini',
-      'Optimasi closing rate bot WhatsApp',
-      'Kenapa toko online tidak butuh FAQ panjang?',
+      '✨ Bikin Penawaran Produk Baru',
+      '📦 Cek Data Order & Ringkasan Toko',
+      '🎯 Susun Strategi Diskon & Promo',
+      '💬 Evaluasi Closing Chat WhatsApp',
+      '⚡ 5 Checklist Wajib Siap Jual',
     ];
   };
 
@@ -694,7 +652,7 @@ export default function BoonPilotWidget({
               </div>
               <div>
                 <h3 className="font-black text-sm text-white tracking-tight flex items-center gap-1.5">
-                  <span>BoonPilot Copilot</span>
+                  <span>BoonPilot — Asisten Toko</span>
                   {isLocked ? (
                     <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
                       <Lock className="w-2.5 h-2.5" />
@@ -976,6 +934,9 @@ export default function BoonPilotWidget({
                               onClick={() => {
                                 if (label.includes('Guided Setup') || label.toLowerCase().includes('guided setup')) {
                                   setActiveMode('guided_setup');
+                                } else if (label.includes('Penawaran Produk') && onOpenNewProduct) {
+                                  setIsOpen(false);
+                                  onOpenNewProduct();
                                 } else {
                                   handleSendMessage(label);
                                 }
@@ -1055,7 +1016,7 @@ export default function BoonPilotWidget({
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Tanya BoonPilot seputar jualan &amp; otomasi toko..."
+                  placeholder="Tanya strategi toko, bikin copywriting, cek data order..."
                   disabled={loading}
                   className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-blue-500 transition"
                 />
@@ -1082,7 +1043,8 @@ export default function BoonPilotWidget({
             ? 'bg-gradient-to-r from-slate-700 via-slate-800 to-slate-900 shadow-slate-900/30 border border-slate-600/50 hover:scale-105 active:scale-95'
             : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 shadow-indigo-500/30 hover:scale-105 active:scale-95'
         }`}
-        aria-label="Toggle BoonPilot Copilot"
+        aria-label="Tanya BoonPilot (Asisten Toko)"
+        title="Tanya BoonPilot (Asisten Toko)"
       >
         <span className="absolute -top-1 -right-1 flex h-4 w-4">
           {isLocked ? (
@@ -1107,10 +1069,10 @@ export default function BoonPilotWidget({
 
         <div className="hidden sm:flex flex-col text-left pr-1">
           <span className="text-xs font-black tracking-tight leading-none text-white">
-            BoonPilot Copilot
+            Tanya BoonPilot
           </span>
           <span className="text-[10px] text-blue-100 font-semibold leading-none mt-0.5">
-            {isLocked ? '🔒 Upgrade' : 'Store Copilot'}
+            {isLocked ? '🔒 Upgrade' : 'Asisten Toko'}
           </span>
         </div>
       </button>
