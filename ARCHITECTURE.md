@@ -1513,4 +1513,127 @@ Wajib memenuhi 16 checklist sebelum status pilot dinyatakan selesai:
 [ ] Existing tenant regression test: PASS
 [ ] Zero tenant-specific code & zero hardcoded fallback
 
+---
+
+## 25. WHATSAPP MULTI-PROVIDER ABSTRACTION & META WABA OWNERSHIP CONTRACT
+
+> **Architectural Status**: 🔒 **PRODUCTION CONTRACT & INVARIANT (P0 ARCHITECTURAL LOCK)**  
+> **Core Principles**:  
+> 1. *"BoonTrack Core MUST NOT couple tenant business logic to a specific WhatsApp provider."*  
+> 2. *"Meta Onboarding Creates a Connection, Not Business Authority."*
+
+### 25.1 Multi-Provider Abstraction Layer
+BoonTrack Core mengadopsi arsitektur *Transport-Agnostic Messaging*. Seluruh logika bisnis e-commerce (katalog, checkout, pembatalan, AI bot) beroperasi di atas antarmuka abstrak `IWhatsAppProviderAdapter` tanpa mengetahui implementasi teknis provider di lapisan bawah:
+- **Jalur EVOLUTION (Baileys Engine)**:
+  - Diperuntukkan bagi tenant segmen **Starter / Solo**.
+  - Mengemulasikan koneksi WhatsApp Web via pairing code 8-digit atau QR code.
+  - Berbiaya rendah, tidak memerlukan verifikasi badan usaha Meta, namun memiliki ketergantungan pada kestabilan socket perangkat.
+- **Jalur META_CLOUD_API (Official WhatsApp Business API)**:
+  - Diperuntukkan bagi tenant segmen **Growth / Scale / Enterprise**.
+  - Menggunakan Meta Graph API resmi (Cloud API BSP) dengan dukungan centang hijau (*Verified Business Badge*), throughput pesan tinggi (80+ MPS), dan *zero device dependency*.
+- **Rantai Resolusi Mutlak**:
+  Setiap dispatch pesan wajib menempuh resolusi deterministik berbasis database tanpa tebakan URL:
+  `tenant_id (UUID) -> whatsapp_connections -> provider ('EVOLUTION' | 'META') -> credential_ref`
+- **Isolasi Antarmuka Provider**:
+  Implementasi provider (`EvolutionProviderAdapter`, `WabaProviderAdapter`) terisolasi secara fisik di dalam layer adapter. Pergantian provider untuk seorang tenant tidak boleh mempengaruhi skema data order, status transaksi, maupun riwayat percakapan.
+
+### 25.2 Strict Meta Onboarding & Ownership Boundary
+1. **Identity Provider vs Business Authority**:
+   - `phone_number_id` dan `waba_id` yang diterima dari Meta Webhook atau Embedded Signup bertindak **murni sebagai Transport Identity**, bukan penentu otoritas bisnis (*business authority*).
+   - Otoritas bisnis mutlak ditentukan oleh `TenantRuntimeContext` yang terikat pada record database `whatsapp_connections.tenant_id`.
+2. **Strict No-Fallback Invariant**:
+   - Jika koneksi Meta WABA atau Evolution milik suatu tenant terputus, kadaluarsa, atau terkena suspensi Meta, sistem **DILARANG KERAS mengalihkan pengiriman pesan ke nomor tenant lain ataupun ke nomor WABA platform**.
+   - Kegagalan koneksi wajib menghasilkan status pengiriman `FAILED` atau `DISCONNECTED` secara terisolasi.
+3. **Ingress Drop Boundary (Silent Drop)**:
+   - Webhook ingress yang menerima pesan dengan `phone_number_id` yang tidak terdaftar di database, terikat ke tenant yang tidak valid, atau berstatus `REVOKED` wajib **langsung di-drop (HTTP 200 Silent)**:
+     - 0 eksekusi LLM / AI call.
+     - 0 mutasi database.
+     - 0 pesan balasan outbound.
+4. **Outbound Dispatch Assertion Contract**:
+   - Setiap adapter sebelum melakukan dispatch pesan keluar wajib menegakkan assertion pengaman:
+     ```typescript
+     assert(connection.tenant_id === command.tenant_id, "Tenant mismatch on outbound dispatch");
+     assert(connection.ownership_domain === "TENANT", "Cannot use platform connection for tenant messages");
+     assert(connection.status === "CONNECTED", "Connection is not in operational CONNECTED state");
+     ```
+
+### 25.3 Meta Provider Readiness Gate Model (P0 s/d P9)
+Sebelum integrasi provider Meta Cloud API dinyatakan siap (*production-ready*) untuk melayani tenant skala penuh, sistem wajib melewati 10 gerbang kesiapan bertahap:
+- **Gate P0: Core Provider Contract & Interface Isolation**: Pemisahan interface `IWhatsAppProviderAdapter` dari Core business logic.
+- **Gate P1: Webhook HMAC-SHA256 Ingress Security & Payload Normalizer**: Validasi kriptografis tanda tangan Meta (`x-hub-signature-256`) dan normalisasi payload pesan masuk/interaktif ke format seragam.
+- **Gate P2: Supabase Registry Mapping & Ingress Tenant Resolution**: Pemetaan deterministik `phone_number_id` ke record `whatsapp_connections` dengan pemisahan status kepemilikan (*ownership state*) dan status operasional (*operational state*).
+- **Gate P3: Transactional Outbox Integration & Provider Dispatch Adapter**: Integrasi pengiriman pesan keluar asinkron via `message_outbox` menggunakan PostgreSQL `FOR UPDATE SKIP LOCKED`.
+- **Gate P4: Meta Template Engine**: Pengelolaan dan pengiriman template HSM terverifikasi (kategori *Authentication*, *Utility*, dan *Marketing*) sesuai regulasi Meta 24-hour messaging window.
+- **Gate P5: Media Upload & Attachment Resiliency**: Penanganan berkas gambar katalog dan bukti bayar (konversi CDN URL ke Meta Media ID dengan mekanisme caching).
+- **Gate P6: Embedded Signup & Meta OAuth Onboarding Flow**: Alur registrasi mandiri WABA merchant melalui Meta Embedded Signup SDK yang aman tanpa membocorkan System User Token ke antarmuka klien.
+- **Gate P7: Quality Rating, Tier Limit Monitoring & Webhook Status**: Penangkapan event webhook status nomor telepon Meta (`CONNECTED`, `FLAGGED`, `RESTRICTED`, `RATE_LIMITED`) dan pemantauan limit tier harian (Tier 1K, 10K, 100K, Unlimited).
+- **Gate P8: Multi-Provider Migration Path**: Prosedur migrasi tanpa jeda layanan (*zero-downtime*) bagi tenant yang berpindah dari Baileys (Evolution) ke Meta WABA resmi atau sebaliknya.
+- **Gate P9: Multi-Region High Availability & Enterprise SLA**: Redundansi tingkat regional, failover gateway, dan pemantauan latensi outbox <2 detik untuk tenant tier Enterprise.
+
+---
+
+## 26. PLATFORM WABA OMNI-ASSISTANT & INBOUND MARKETING ENGINE CONTRACT
+
+> **Architectural Status**: 🔒 **PRODUCTION CONTRACT & INVARIANT (P0 ARCHITECTURAL LOCK)**  
+> **Core Principle**: *"Platform WABA is Platform Assistant + Transactional, NEVER Tenant Business Logic. LLM proposes intent; Tool Gateway enforces authority; Core executes mutation."*
+
+### 26.1 Dual Role of Platform WABA
+Nomor resmi WhatsApp Business Account milik platform BoonTrack (`ownership_domain = 'PLATFORM'`) memegang peran ganda (*dual role*) yang terisolasi secara hierarki prioritas:
+1. **System / Transactional Dispatcher (Priority 0 - Highest)**:
+   - Mengirimkan pesan transaksional inti platform: OTP otentikasi merchant, aktivasi toko, tagihan langganan paket, dan peringatan darurat sistem.
+   - Alur ini **mem-bypass seluruh pipeline AI / LLM** dan langsung di-dispatch melalui Outbox Worker untuk menjamin latensi <3 detik.
+2. **Showroom Platform Assistant & Inbound Marketer (Priority 1)**:
+   - Melayani calon merchant yang masuk melalui iklan Meta Click-to-WhatsApp (CTWA), organic referral, atau tombol kontak di landing page `boontrack.id`.
+   - Menjadi *living showroom* yang memperagakan keunggulan AI BoonPilot secara interaktif.
+   - Memberikan konsultasi pemilihan paket harga, panduan registrasi merchant, kalkulasi tarif pengiriman publik, dan pencarian lowongan kerja platform.
+3. **Strict Negative Invariant**:
+   - Platform WABA **DILARANG KERAS** memproses transaksi belanja toko merchant manapun, memvalidasi keranjang belanja produk tenant, mengeksekusi pembayaran, atau mengakses data privat pesanan toko.
+
+### 26.2 3-Layer Conversation Engine Reuse
+Platform Omni-Assistant mengadaptasi arsitektur teruji 3-Layer Conversation Engine BoonTrack dengan penyesuaian domain platform:
+- **Layer 1: State & Coordination Layer (PostgreSQL + Redis)**:
+  - *PostgreSQL*: Penyimpanan persisten riwayat percakapan platform (`platform_conversations`, `platform_messages`), pencatatan prospek terstruktur (`platform_leads`), dan tiket eskalasi (`handover_tickets`).
+  - *Redis*:
+    - Hot session memory (riwayat 10 pesan terakhir per kontak, TTL: 60 menit).
+    - Distributed session lock (`lock:platform:waba:{phone}`, TTL: 15 detik) untuk mencegah double-reply saat user mengirim pesan bertubi-tubi.
+    - Sliding-window rate limiter per nomor pengirim dan per kampanye iklan.
+- **Layer 2: Strategy & Persona Layer (AI Engine)**:
+  - *Persona*: "BoonPilot Platform Showroom Consultant" — berkarakter konsultan bisnis ramah, solutif, berbasis fakta resmi dokumentasi BoonTrack, dan proaktif mengidentifikasi kebutuhan calon merchant.
+  - *Knowledge Base*: Embeddings dokumen fitur platform, paket langganan (SOLO, PRO_SCALE, ADS_PERFORMANCE, ENTERPRISE), daftar kurir & payment gateway resmi, dan syarat onboarding.
+  - *Lead Qualifier Classifier*: Menilai profil calon merchant (kategori bisnis, perkiraan order harian, kebutuhan multi-user) untuk diteruskan ke tim sales.
+- **Layer 3: Response Formatter Layer**:
+  - Memformat keluaran teks LLM ke format native WhatsApp: Markdown tebal/miring, Interactive Quick Reply Buttons (maksimal 3 tombol per balon chat), dan List Messages untuk daftar menu pilihan.
+
+### 26.3 Zero-Trust Tool Gateway Protocol
+Prinsip dasar mutlak: *"LLM Proposes, Deterministic Tool Gateway Enforces Authority, Core Executes Mutation"*.
+
+LLM tidak memiliki akses jaringan atau database secara bebas. LLM hanya diperbolehkan mengusulkan tool call berupa payload JSON terstruktur yang divalidasi secara deterministik oleh Tool Gateway:
+- **Allowed Tool 1: `public_shipping_rate_estimator`**:
+  - Menghitung tarif pengiriman barang publik antar-kecamatan se-Indonesia menggunakan adapter agregator ekspedisi.
+  - Parameter tervalidasi skema Zod: `origin_subdistrict_id`, `destination_subdistrict_id`, `weight_grams`, `courier_code`.
+  - Fungsi murni *read-only calculation*; tidak membuat resi dan tidak mengakses akun saldo kurir tenant.
+- **Allowed Tool 2: `career_vacancy_query`**:
+  - Mengambil daftar posisi lowongan pekerjaan aktif di BoonTrack untuk pelamar kerja.
+  - Parameter tervalidasi skema Zod: `department`, `job_type`.
+  - Fungsi murni *read-only search*; tidak memproses data privasi pelamar via chat.
+- **Negative Tool Invariant**:
+  - Dilarang menyediakan tool: `create_order`, `cancel_order`, `process_refund`, `update_inventory`, atau tool apapun yang memanipulasi entitas tenant.
+  - Seluruh panggilan tool wajib dicatat ke tabel `platform_tool_audit_logs`.
+
+### 26.4 Strict Handover Protocol & Audit Logging
+1. **Handover State Machine**:
+   Interaksi manusia diatur oleh 5 status terstandarisasi:
+   `NONE` ➔ `REQUESTED` ➔ `ASSIGNED` ➔ `IN_PROGRESS` ➔ `RESOLVED`
+   - `NONE`: Interaksi dilayani penuh oleh AI Omni-Assistant.
+   - `REQUESTED`: Terpicu saat pengguna meminta bicara dengan manusia atau terdeteksi prospek tier Enterprise. Tiket dibuat di antrean tim platform.
+   - `IN_PROGRESS`: Agen manusia sedang membalas. **AI Omni-Assistant dinonaktifkan (silent mode)** agar tidak menimpa balasan staf manusia.
+   - `RESOLVED`: Tiket diselesaikan oleh staf atau sesi kedaluwarsa setelah 2 jam tidak aktif. AI aktif kembali (`NONE`).
+2. **Cost Guard & Abuse Protection**:
+   - Model default: **Gemini 1.5 Flash** (throughput tinggi, latensi rendah, efisiensi biaya optimal).
+   - Rate limit berjenjang (Redis Sliding Window):
+     - Maksimal 12 pesan per menit per nomor telepon.
+     - Maksimal 40 pesan per hari per nomor telepon.
+   - Global Daily Budget Cap: Batas biaya token harian $50/hari. Jika tercapai, sistem beralih otomatis ke *Graceful Degradation* (mode tombol interaktif statis tanpa pemanggilan LLM).
+
+
 
