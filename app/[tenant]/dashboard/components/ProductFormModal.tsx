@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink, Sparkles } from 'lucide-react';
+import BoonPilotPitchModal from './BoonPilotPitchModal';
 import ImageUpload from '@/components/ImageUpload';
 import {
   ProductItem,
@@ -153,6 +154,8 @@ export default function ProductFormModal({
   isCheckoutLite = false,
   activeProductsCount = 0,
 }: ProductFormModalProps) {
+  const [isPitchModalOpen, setIsPitchModalOpen] = useState(false);
+
   // Sync vertical option when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -296,6 +299,7 @@ export default function ProductFormModal({
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -303,13 +307,24 @@ export default function ProductFormModal({
             <Package className="w-4 h-4 text-blue-600" />
             <span>{editingProductId ? 'Edit Produk' : 'Tambah Produk Baru'}</span>
           </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:bg-slate-200/60 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPitchModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-[11px] font-black transition cursor-pointer shadow-sm shadow-violet-500/20"
+              title="Generate deskripsi & copy produk dengan BoonPilot AI"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>BoonPilot</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg text-slate-400 hover:bg-slate-200/60 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleFormSubmit} className="p-6 overflow-y-auto space-y-4 flex-1">
@@ -698,5 +713,53 @@ export default function ProductFormModal({
         </form>
       </div>
     </div>
+
+    {/* BoonPilot Product Pitch Architect Modal */}
+    <BoonPilotPitchModal
+      isOpen={isPitchModalOpen}
+      onClose={() => setIsPitchModalOpen(false)}
+      tenantSlug={tenantSlug || ''}
+      defaultProductName={productForm.name || ''}
+      defaultVertical={(() => {
+        const vk = currentVerticalKey;
+        if (vk === 'fnb') return 'FOOD';
+        if (vk === 'digital_product') return 'DIGITAL';
+        if (vk === 'field_service') return 'FIELD_SERVICE';
+        if (vk === 'pro_service') return 'PROFESSIONAL_SERVICE';
+        if (vk === 'creator_agency') return 'CREATOR_AGENCY';
+        return 'PHYSICAL';
+      })()}
+      isCheckoutLite={isCheckoutLite}
+      onApply={(patch) => {
+        setProductForm((prev) => {
+          const facilitiesArr = Array.isArray(patch.facilities) ? patch.facilities : [];
+          const resolvedSlug = patch.slug || prev.slug;
+          const currentConfig = prev.single_page_config || ({} as any);
+          const currentMeta = prev.metadata || {};
+          return {
+            ...prev,
+            ...(patch.name ? { name: patch.name } : {}),
+            description: patch.description || prev.description,
+            slug: resolvedSlug,
+            single_page_config: {
+              ...currentConfig,
+              slug: resolvedSlug,
+              ...(patch.single_page_config || {}),
+            },
+            promo: patch.promo || prev.promo,
+            cta_label: patch.cta_label || prev.cta_label,
+            facilities: facilitiesArr.length ? facilitiesArr : prev.facilities,
+            features: facilitiesArr.length ? facilitiesArr : prev.features,
+            metadata: {
+              ...currentMeta,
+              ...(patch.metadata || {}),
+              facilities: facilitiesArr.length ? facilitiesArr : currentMeta.facilities,
+              features: facilitiesArr.length ? facilitiesArr : currentMeta.features,
+            },
+          };
+        });
+      }}
+    />
+    </>
   );
 }
