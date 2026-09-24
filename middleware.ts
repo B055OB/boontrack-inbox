@@ -270,6 +270,20 @@ function hasAuthSession(req: NextRequest): boolean {
 
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
+  const host = req.headers.get('host') || '';
+  const hostClean = host.split(':')[0].toLowerCase().trim();
+
+  // ── ROUTING KHUSUS FAVICON.ICO PER-DOMAIN ──
+  // app.boontrack.com diarahkan ke favicon korporat di /app-brand/favicon.ico
+  // Domain lainnya (termasuk shop.boontrack.com) memuat default /favicon.ico milik shop
+  if (pathname === '/favicon.ico') {
+    if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/app-brand/favicon.ico';
+      return NextResponse.rewrite(url);
+    }
+    return NextResponse.next();
+  }
 
   // 1. BYPASS API & STATIC LANGSUNG TANPA SENTUH SUBDOMAIN/KV REWRITE
   if (
@@ -277,7 +291,6 @@ export async function middleware(req: NextRequest) {
     pathname === '/api' ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/static') ||
-    pathname === '/favicon.ico' ||
     pathname === '/apple-touch-icon.png' ||
     pathname === '/404-store-not-found' ||
     pathname.includes('.')
@@ -290,8 +303,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const host = req.headers.get('host') || '';
-  const hostClean = host.split(':')[0].toLowerCase().trim();
   const subdomain = extractSubdomain(host);
 
   // ===========================================================================
