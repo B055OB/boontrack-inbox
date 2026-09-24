@@ -30,15 +30,44 @@ export interface TestimonialItem {
   rating?: number;
 }
 
+export interface ClientLogoItem {
+  name: string;
+  logo_url: string;
+  link_url?: string;
+  category?: string;
+}
+
+export interface FaqItem {
+  question: string;
+  answer: string;
+  id?: string;
+  q?: string;
+  a?: string;
+}
+
 export interface SinglePageConfig {
   slug?: string;
-  // 1. Hook
+
+  // ── Toggle Visibility: 8 Canonical Sections ──
+  enable_hero?: boolean;              // default: true
+  enable_client_logos?: boolean;      // default: false
+  enable_problem_solution?: boolean;  // default: true
+  enable_us_vs_them?: boolean;        // default: true
+  enable_testimonials?: boolean;      // default: true
+  enable_offer?: boolean;             // default: true
+  enable_faq?: boolean;               // default: false
+  enable_payment?: boolean;           // default: true
+
+  // 1. Hook & Hero
   headline: string;
   subheadline: string;
   banner_url: string;
   badge_text?: string;
 
-  // 2. Problem, Agitation & Solution
+  // 2. Client Logos / Social Proof Grid
+  client_logos?: ClientLogoItem[];
+
+  // 3. Problem, Agitation & Solution
   problem_title?: string;
   pain_points?: string[];       // Poin-poin masalah audiens
   problem_image_url?: string;   // Ilustrasi masalah di sela teks
@@ -47,27 +76,23 @@ export interface SinglePageConfig {
   solution_title?: string;
   solution_points?: string[];   // Poin-poin solusi & keunggulan
 
-  // 3. Tabel Perbandingan (Us vs Them)
+  // 4. Tabel Perbandingan (Us vs Them)
   comparison_rows?: ComparisonItem[];
 
-  // 4. Social Proof / Testimoni
+  // 5. Social Proof / Testimoni
   testimonial_images?: string[]; // Hingga 3 screenshot bukti/chat
   testimonials?: TestimonialItem[]; // Testimoni teks peserta
 
-  // 5. Offer & Bonus
+  // 6. Offer & Bonus
   bonus_items?: BonusItem[];
 
-  // 6. FAQ (Pertanyaan yang Sering Diajukan)
-  faqs?: Array<{ id?: string; question?: string; answer?: string; q?: string; a?: string }>;
+  // 7. FAQ (Pertanyaan yang Sering Diajukan)
+  faqs?: Array<{ question: string; answer: string; id?: string; q?: string; a?: string }>;
 
-  // 7. Mode Single-Page / Cartless Funnel
+  // 8. Mode Single-Page / Cartless Funnel / Bayar & Voucher
   direct_checkout_only?: boolean;
-
-  // 8. Voucher Diskon
   discount_coupon: string;
   voucher?: VoucherConfig;
-
-  // 9. Payment & Affiliate
   enable_qris: boolean;
   enable_manual_transfer: boolean;
   affiliate_commission_rate: number;
@@ -723,6 +748,16 @@ export function resolveSinglePageProduct(
               headline: match.name,
               subheadline: match.description,
               banner_url: match.image,
+              enable_hero: true,
+              enable_client_logos: false,
+              enable_problem_solution: true,
+              enable_us_vs_them: true,
+              enable_testimonials: true,
+              enable_offer: true,
+              enable_faq: false,
+              enable_payment: true,
+              client_logos: [],
+              faqs: [],
               enable_qris: true,
               enable_manual_transfer: true,
               discount_coupon: '',
@@ -774,6 +809,16 @@ export function resolveSinglePageProduct(
       headline: targetSlug.replace(/[-_]/g, ' '),
       subheadline: '',
       banner_url: '',
+      enable_hero: true,
+      enable_client_logos: false,
+      enable_problem_solution: true,
+      enable_us_vs_them: true,
+      enable_testimonials: true,
+      enable_offer: true,
+      enable_faq: false,
+      enable_payment: true,
+      client_logos: [],
+      faqs: [],
       enable_qris: true,
       enable_manual_transfer: false,
       badge_text: '',

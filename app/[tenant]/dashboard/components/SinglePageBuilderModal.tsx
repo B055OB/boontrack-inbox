@@ -24,11 +24,81 @@ import {
 
 export type BuilderTab =
   | 'hook'
+  | 'client_logos'
   | 'problem_solution'
   | 'comparison'
   | 'social_proof'
   | 'offer_bonus'
+  | 'faq'
   | 'payment_voucher';
+
+export const BUILDER_TABS = [
+  { id: 'hook', label: '1. Hook & Hero', icon: '🎯', toggleKey: 'enable_hero', defaultEnabled: true },
+  { id: 'client_logos', label: '2. Client Logos', icon: '🏢', toggleKey: 'enable_client_logos', defaultEnabled: false },
+  { id: 'problem_solution', label: '3. Problem & Solve', icon: '⚡', toggleKey: 'enable_problem_solution', defaultEnabled: true },
+  { id: 'comparison', label: '4. Us vs Them', icon: '⚖️', toggleKey: 'enable_us_vs_them', defaultEnabled: true },
+  { id: 'social_proof', label: '5. Testimonial', icon: '💬', toggleKey: 'enable_testimonials', defaultEnabled: true },
+  { id: 'offer_bonus', label: '6. Offer & Bonus', icon: '🎁', toggleKey: 'enable_offer', defaultEnabled: true },
+  { id: 'faq', label: '7. FAQ', icon: '❓', toggleKey: 'enable_faq', defaultEnabled: false },
+  { id: 'payment_voucher', label: '8. Bayar & Voucher', icon: '🎟️', toggleKey: 'enable_payment', defaultEnabled: true },
+] as const;
+
+function SectionToggleHeader({
+  title,
+  description,
+  enabled,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  enabled: boolean;
+  onChange: (val: boolean) => void;
+}) {
+  return (
+    <div
+      className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+        enabled
+          ? 'bg-blue-50/70 border-blue-200/90 text-blue-950'
+          : 'bg-slate-50 border-slate-200 text-slate-500'
+      }`}
+    >
+      <div className="space-y-0.5 min-w-0">
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-block w-2.5 h-2.5 rounded-full ${
+              enabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+            }`}
+          />
+          <h4 className="text-xs font-black tracking-tight text-slate-900">
+            Aktifkan Section Ini (Tampil di Halaman)
+          </h4>
+          <span
+            className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+              enabled
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-200 text-slate-600'
+            }`}
+          >
+            {enabled ? 'Aktif' : 'Nonaktif'}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-500 leading-tight">
+          {description}
+        </p>
+      </div>
+
+      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="sr-only peer"
+        />
+        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+      </label>
+    </div>
+  );
+}
 
 export interface SinglePageBuilderModalProps {
   isOpen: boolean;
@@ -165,32 +235,35 @@ export default function SinglePageBuilderModal({
               onScroll={checkBuilderTabsScroll}
               className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth touch-pan-x overscroll-x-contain relative z-10 px-0.5"
             >
-              {[
-                { id: 'hook', label: '1. Hook & Hero', icon: '🎯' },
-                { id: 'problem_solution', label: '2. Problem & Solusi', icon: '⚡' },
-                { id: 'comparison', label: '3. Us vs Them', icon: '⚖️' },
-                { id: 'social_proof', label: '4. Testimoni', icon: '💬' },
-                { id: 'offer_bonus', label: '5. Offer & Bonus', icon: '🎁' },
-                { id: 'payment_voucher', label: '6. Bayar & Voucher', icon: '🎟️' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeBuilderTab === tab.id}
-                  onPointerDown={(e) => { e.preventDefault(); setActiveBuilderTab(tab.id as any); }}
-                  onClick={() => setActiveBuilderTab(tab.id as any)}
-                  style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-                  className={`select-none pointer-events-auto shrink-0 relative z-10 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer touch-manipulation ${
-                    activeBuilderTab === tab.id
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <span>{tab.icon}</span>
-                  <span>{tab.label}</span>
-                </button>
-              ))}
+              {BUILDER_TABS.map((tab) => {
+                const isEnabled = (singlePageForm as any)[tab.toggleKey] ?? tab.defaultEnabled;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeBuilderTab === tab.id}
+                    onPointerDown={(e) => { e.preventDefault(); setActiveBuilderTab(tab.id as any); }}
+                    onClick={() => setActiveBuilderTab(tab.id as any)}
+                    style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
+                    className={`select-none pointer-events-auto shrink-0 relative z-10 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer touch-manipulation ${
+                      activeBuilderTab === tab.id
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                    {!isEnabled && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full ${
+                        activeBuilderTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'
+                      }`}>
+                        Off
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {canScrollTabsRight && (
@@ -208,6 +281,13 @@ export default function SinglePageBuilderModal({
           {/* TAB 1: HOOK & HERO */}
           {activeBuilderTab === 'hook' && (
             <div className="space-y-3.5 animate-fadeIn">
+              <SectionToggleHeader
+                title="Section 1: Hook & Hero"
+                description="Menampilkan headline utama, subheadline persuasif, badge promosi, dan banner gambar hero."
+                enabled={singlePageForm.enable_hero ?? true}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_hero: val }))}
+              />
+
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
                   Headline Penawaran Utama *
@@ -276,9 +356,145 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 2: PROBLEM & SOLUTION */}
+          {/* TAB 2: CLIENT LOGOS */}
+          {activeBuilderTab === 'client_logos' && (
+            <div className="space-y-3.5 animate-fadeIn">
+              <SectionToggleHeader
+                title="Section 2: Client Logos & Brand Social Proof"
+                description="Tampilkan grid logo brand/klien, mitra, atau portofolio untuk membangun trust & kredibilitas instan."
+                enabled={singlePageForm.enable_client_logos ?? false}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_client_logos: val }))}
+              />
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-xs">Daftar Logo Klien & Brand Partner</h4>
+                  <p className="text-[10px] text-slate-500">Tambahkan logo brand/klien yang pernah bekerja sama atau menggunakan layanan Anda.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSinglePageForm(p => ({
+                    ...p,
+                    client_logos: [
+                      ...(p.client_logos || []),
+                      { name: '', logo_url: '', category: '', link_url: '' }
+                    ]
+                  }))}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Tambah Klien/Logo
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {(singlePageForm.client_logos || []).map((logo, idx) => (
+                  <div key={idx} className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700 text-[11px]">Klien / Partner #{idx + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const logos = (singlePageForm.client_logos || []).filter((_, i) => i !== idx);
+                          setSinglePageForm(p => ({ ...p, client_logos: logos }));
+                        }}
+                        className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] text-slate-600 font-bold block mb-1">Nama Brand / Klien *</label>
+                        <input
+                          type="text"
+                          value={logo.name}
+                          onChange={(e) => {
+                            const logos = [...(singlePageForm.client_logos || [])];
+                            logos[idx] = { ...logos[idx], name: e.target.value };
+                            setSinglePageForm(p => ({ ...p, client_logos: logos }));
+                          }}
+                          placeholder="Contoh: Skincare Beauty, Kopi Kenangan, PT Maju"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-blue-600"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-slate-600 font-bold block mb-1">Kategori (Opsional)</label>
+                        <input
+                          type="text"
+                          value={logo.category || ''}
+                          onChange={(e) => {
+                            const logos = [...(singlePageForm.client_logos || [])];
+                            logos[idx] = { ...logos[idx], category: e.target.value };
+                            setSinglePageForm(p => ({ ...p, client_logos: logos }));
+                          }}
+                          placeholder="Contoh: Fashion, Clinic, F&B, Agency"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <ImageUpload
+                        label="Upload Logo Brand / Klien (PNG / SVG Transparan disarankan)"
+                        value={logo.logo_url}
+                        onChange={(url) => {
+                          const logos = [...(singlePageForm.client_logos || [])];
+                          logos[idx] = { ...logos[idx], logo_url: url };
+                          setSinglePageForm(p => ({ ...p, client_logos: logos }));
+                        }}
+                        placeholder="Upload logo brand klien (Auto-convert WebP)"
+                        tenantSlug={tenantSlug}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-slate-600 font-bold block mb-1">URL Website / Profil Klien (Opsional)</label>
+                      <input
+                        type="url"
+                        value={logo.link_url || ''}
+                        onChange={(e) => {
+                          const logos = [...(singlePageForm.client_logos || [])];
+                          logos[idx] = { ...logos[idx], link_url: e.target.value };
+                          setSinglePageForm(p => ({ ...p, client_logos: logos }));
+                        }}
+                        placeholder="https://..."
+                        className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-700 focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+                  </div>
+                ))}
+
+                {(!singlePageForm.client_logos || singlePageForm.client_logos.length === 0) && (
+                  <div className="text-center py-8 bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+                    <p className="text-xs text-slate-500 font-medium">Belum ada logo klien yang ditambahkan.</p>
+                    <button
+                      type="button"
+                      onClick={() => setSinglePageForm(p => ({
+                        ...p,
+                        client_logos: [{ name: '', logo_url: '', category: '', link_url: '' }]
+                      }))}
+                      className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Tambah Logo Pertama
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: PROBLEM & SOLUTION */}
           {activeBuilderTab === 'problem_solution' && (
             <div className="space-y-4 animate-fadeIn">
+              <SectionToggleHeader
+                title="Section 3: Problem & Solve"
+                description="Eksplorasi poin masalah audiens (pain points) dan sajikan solusi serta fitur unggulan."
+                enabled={singlePageForm.enable_problem_solution ?? true}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_problem_solution: val }))}
+              />
+
               <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-rose-900 text-xs flex items-center gap-1.5">
@@ -407,9 +623,16 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 3: COMPARISON */}
+          {/* TAB 4: US VS THEM */}
           {activeBuilderTab === 'comparison' && (
             <div className="space-y-3.5 animate-fadeIn">
+              <SectionToggleHeader
+                title="Section 4: Us vs Them"
+                description="Tabel komparasi yang memperlihatkan keunggulan produk Anda vs cara lama atau kompetitor."
+                enabled={singlePageForm.enable_us_vs_them ?? true}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_us_vs_them: val }))}
+              />
+
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-bold text-slate-900 text-xs">Tabel Perbandingan (Us vs Them)</h4>
@@ -502,9 +725,16 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 4: SOCIAL PROOF */}
+          {/* TAB 5: TESTIMONIAL */}
           {activeBuilderTab === 'social_proof' && (
             <div className="space-y-3.5 animate-fadeIn">
+              <SectionToggleHeader
+                title="Section 5: Testimonial & Review"
+                description="Tampilkan bukti kepuasan pelanggan melalui screenshot testimoni nyata."
+                enabled={singlePageForm.enable_testimonials ?? true}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_testimonials: val }))}
+              />
+
               <div>
                 <h4 className="font-bold text-slate-900 text-xs">Galeri Testimoni Visual (Hingga 3 Screenshot)</h4>
                 <p className="text-[10px] text-slate-500">Masukkan tautan gambar tangkapan layar chat WhatsApp, hasil omset, atau review pelanggan.</p>
@@ -533,9 +763,16 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 5: OFFER & BONUS */}
+          {/* TAB 6: OFFER & BONUS */}
           {activeBuilderTab === 'offer_bonus' && (
             <div className="space-y-3.5 animate-fadeIn">
+              <SectionToggleHeader
+                title="Section 6: Offer & Bonus"
+                description="Daftar item bonus gratis bernilai tinggi yang didapatkan pembeli saat transaksi hari ini."
+                enabled={singlePageForm.enable_offer ?? true}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_offer: val }))}
+              />
+
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-bold text-slate-900 text-xs">Bonus Spesial Pembelian Hari Ini</h4>
@@ -632,9 +869,118 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 6: BAYAR & VOUCHER */}
+          {/* TAB 7: FAQ */}
+          {activeBuilderTab === 'faq' && (
+            <div className="space-y-3.5 animate-fadeIn">
+              <SectionToggleHeader
+                title="Section 7: Frequently Asked Questions (FAQ)"
+                description="Jawab pertanyaan umum dan hilangkan keraguan calon pembeli sebelum melakukan pembayaran."
+                enabled={singlePageForm.enable_faq ?? false}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_faq: val }))}
+              />
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-xs">Daftar Tanya Jawab (FAQ)</h4>
+                  <p className="text-[10px] text-slate-500">Tambahkan FAQ untuk mengantisipasi pertanyaan calon pembeli.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSinglePageForm(p => ({
+                    ...p,
+                    faqs: [
+                      ...(p.faqs || []),
+                      { question: '', answer: '' }
+                    ]
+                  }))}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Tambah FAQ
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {(singlePageForm.faqs || []).map((faq, idx) => (
+                  <div key={idx} className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-700 text-[11px] flex items-center gap-1.5">
+                        <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] flex items-center justify-center font-bold">
+                          Q
+                        </span>
+                        FAQ #{idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const faqs = (singlePageForm.faqs || []).filter((_, i) => i !== idx);
+                          setSinglePageForm(p => ({ ...p, faqs }));
+                        }}
+                        className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-slate-600 font-bold block mb-1">Pertanyaan (Question) *</label>
+                      <input
+                        type="text"
+                        value={faq.question}
+                        onChange={(e) => {
+                          const faqs = [...(singlePageForm.faqs || [])];
+                          faqs[idx] = { ...faqs[idx], question: e.target.value };
+                          setSinglePageForm(p => ({ ...p, faqs }));
+                        }}
+                        placeholder="Contoh: Apakah materi ini cocok untuk pemula?"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-slate-600 font-bold block mb-1">Jawaban (Answer) *</label>
+                      <textarea
+                        rows={2}
+                        value={faq.answer}
+                        onChange={(e) => {
+                          const faqs = [...(singlePageForm.faqs || [])];
+                          faqs[idx] = { ...faqs[idx], answer: e.target.value };
+                          setSinglePageForm(p => ({ ...p, faqs }));
+                        }}
+                        placeholder="Jelaskan jawaban secara ringkas, jelas, dan meyakinkan..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-600"
+                      />
+                    </div>
+                  </div>
+                ))}
+
+                {(!singlePageForm.faqs || singlePageForm.faqs.length === 0) && (
+                  <div className="text-center py-8 bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+                    <p className="text-xs text-slate-500 font-medium">Belum ada pertanyaan FAQ yang ditambahkan.</p>
+                    <button
+                      type="button"
+                      onClick={() => setSinglePageForm(p => ({
+                        ...p,
+                        faqs: [{ question: '', answer: '' }]
+                      }))}
+                      className="mt-2 text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Tambah Pertanyaan Pertama
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 8: BAYAR & VOUCHER */}
           {activeBuilderTab === 'payment_voucher' && (
             <div className="space-y-4 animate-fadeIn">
+              <SectionToggleHeader
+                title="Section 8: Bayar & Voucher"
+                description="Formulir checkout data pembeli, pilihan metode bayar, dan aktivasi kode kupon promo."
+                enabled={singlePageForm.enable_payment ?? true}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_payment: val }))}
+              />
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
                 <span className="font-bold text-slate-800 block text-xs">
                   Opsi Metode Pembayaran di Checkout

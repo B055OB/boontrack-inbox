@@ -339,10 +339,19 @@ export function useTenantDashboard() {
   const [activeSinglePageProduct, setActiveSinglePageProduct] = useState<ProductItem | null>(null);
   const [singlePageForm, setSinglePageForm] = useState<SinglePageConfig>({
     slug: '',
+    enable_hero: true,
+    enable_client_logos: false,
+    enable_problem_solution: true,
+    enable_us_vs_them: true,
+    enable_testimonials: true,
+    enable_offer: true,
+    enable_faq: false,
+    enable_payment: true,
     headline: '',
     subheadline: '',
     banner_url: '',
     badge_text: 'Direct Access Offer',
+    client_logos: [],
     problem_title: 'Apakah Anda Sering Menghadapi Masalah Ini?',
     pain_points: [],
     problem_image_url: '',
@@ -350,7 +359,9 @@ export function useTenantDashboard() {
     solution_points: [],
     comparison_rows: [],
     testimonial_images: [],
+    testimonials: [],
     bonus_items: [],
+    faqs: [],
     enable_qris: true,
     enable_manual_transfer: true,
     discount_coupon: 'HEMAT50',
@@ -1491,10 +1502,19 @@ export function useTenantDashboard() {
 
     setSinglePageForm({
       slug: prodSlug,
+      enable_hero: cfg?.enable_hero ?? true,
+      enable_client_logos: cfg?.enable_client_logos ?? false,
+      enable_problem_solution: cfg?.enable_problem_solution ?? true,
+      enable_us_vs_them: cfg?.enable_us_vs_them ?? true,
+      enable_testimonials: cfg?.enable_testimonials ?? true,
+      enable_offer: cfg?.enable_offer ?? true,
+      enable_faq: cfg?.enable_faq ?? false,
+      enable_payment: cfg?.enable_payment ?? true,
       headline: cfg?.headline || prod.name,
       subheadline: cfg?.subheadline || prod.description,
       banner_url: cfg?.banner_url || prod.image,
       badge_text: cfg?.badge_text || (isPhysical ? 'Produk Fisik Kirim Langsung' : 'Direct Access Offer'),
+      client_logos: cfg?.client_logos && cfg.client_logos.length > 0 ? [...cfg.client_logos] : [],
       problem_title: cfg?.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
       pain_points:
         cfg?.pain_points && cfg.pain_points.length > 0
@@ -1527,6 +1547,10 @@ export function useTenantDashboard() {
         cfg?.testimonial_images && cfg.testimonial_images.length > 0
           ? [...cfg.testimonial_images]
           : [],
+      testimonials:
+        cfg?.testimonials && cfg.testimonials.length > 0
+          ? [...cfg.testimonials]
+          : [],
       bonus_items:
         cfg?.bonus_items && cfg.bonus_items.length > 0
           ? [...cfg.bonus_items]
@@ -1534,6 +1558,10 @@ export function useTenantDashboard() {
             { id: 'b1', title: 'Private Consultation & Community Access', value: 499000, description: 'Akses jaringan pebisnis & sesi tanya jawab' },
             { id: 'b2', title: 'Template SOP & Checklist Praktis', value: 299000, description: 'Dokumen kerja siap pakai langsung' },
           ],
+      faqs:
+        cfg?.faqs && cfg.faqs.length > 0
+          ? [...cfg.faqs]
+          : [],
       discount_coupon: defaultVoucher.code,
       voucher: defaultVoucher,
       enable_qris: cfg?.enable_qris ?? true,
