@@ -14,9 +14,9 @@ export const metadata: Metadata = {
     siteName: 'BoonTrack',
     images: [
       {
-        url: 'https://app.boontrack.com/app-brand/og-image.png',
-        width: 1200,
-        height: 630,
+        url: 'https://app.boontrack.com/app-brand/logo-master.png',
+        width: 1024,
+        height: 1024,
         alt: 'BoonTrack | Business Action Layer & Platform Orkestrasi',
       },
     ],
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     title: 'BoonTrack | Business Action Layer & Platform Orkestrasi',
     description:
       'Platform orkestrasi operasional, tracking, payment, dan transactional decision layer untuk WhatsApp Business & AI Agent.',
-    images: ['https://app.boontrack.com/app-brand/og-image.png'],
+    images: ['https://app.boontrack.com/app-brand/logo-master.png'],
   },
   icons: {
     icon: [
