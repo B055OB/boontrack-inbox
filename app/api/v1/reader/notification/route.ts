@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -386,6 +387,22 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`[BoonTrack Reader Webhook] SUCCESS: Order #${matchedOrder.id} status berhasil diubah ke PAID!`);
+
+    // Dispatch Affiliate & AM Commission Alert (Non-blocking)
+    sendOrderCommissionAlert({
+      orderId: String(matchedOrder.id),
+      tenantSlug: effectiveTenantSlug,
+      tenantId: matchedOrder.tenant_id,
+      productTitle: matchedOrder.product_title || matchedOrder.product_name || 'Pesanan Produk',
+      grossAmount: Number(matchedOrder.gross_amount) || 0,
+      customerName: matchedOrder.customer_name || matchedOrder.buyer_name,
+      customerPhone: matchedOrder.customer_phone || matchedOrder.phone,
+      customerEmail: matchedOrder.customer_email,
+      affiliateCode: matchedOrder.affiliate_code || matchedOrder.metadata?.affiliate_code || null,
+      directCommission: Number(matchedOrder.affiliate_commission) || undefined,
+    }).catch((notifErr) => {
+      console.warn('[BoonTrack Reader Webhook] Non-fatal affiliate commission alert error:', notifErr);
+    });
 
     return NextResponse.json({
       success: true,

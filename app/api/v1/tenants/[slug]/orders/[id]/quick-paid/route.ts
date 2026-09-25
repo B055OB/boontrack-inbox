@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { sendOrderPaidNotification } from '@/lib/whatsapp';
+import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 
 export async function POST(
   _req: NextRequest,
@@ -93,6 +94,22 @@ export async function POST(
         { status: 500 }
       );
     }
+
+    // Dispatch Affiliate & AM Commission Alert (Non-blocking)
+    sendOrderCommissionAlert({
+      orderId: String(orderId),
+      tenantSlug: slug,
+      tenantId: order.tenant_id,
+      productTitle: order.product_title || 'Pesanan Produk',
+      grossAmount: Number(order.gross_amount) || 0,
+      customerName: order.customer_name,
+      customerPhone: order.customer_phone,
+      customerEmail: order.customer_email,
+      affiliateCode: order.affiliate_code || order.metadata?.affiliate_code || null,
+      directCommission: Number(order.affiliate_commission) || undefined,
+    }).catch((notifErr) => {
+      console.warn('[Quick-Paid] Non-fatal affiliate commission alert error:', notifErr);
+    });
 
     // 2b. Update Langganan Tenant ke Tier 'CHECKOUT_LITE'
     try {

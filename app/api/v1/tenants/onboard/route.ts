@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { sendBoonPilotVerificationEmail } from '@/lib/boonpilot-email';
+import { sendNewStoreReferralNotification } from '@/lib/affiliate-notification-service';
 import { buildDefaultIndustryMenu } from '@/lib/zero-ai-engine';
 import crypto from 'crypto';
 
@@ -205,7 +206,7 @@ export async function POST(req: NextRequest) {
       try {
         const { data: affData } = await supabase
           .from('affiliates')
-          .select('id, name, referral_code')
+          .select('id, name, referral_code, email')
           .ilike('referral_code', cleanRef)
           .maybeSingle();
 
@@ -425,6 +426,25 @@ export async function POST(req: NextRequest) {
       } catch (attrErr) {
         console.warn('Attribution insert note:', attrErr);
       }
+    }
+
+    // 2b. Pemicu Notifikasi Email Jaringan Affiliate & AM (Non-blocking)
+    if (matchedAffiliateId || cleanRef) {
+      sendNewStoreReferralNotification({
+        storeName,
+        slug: generatedSlug,
+        merchantName,
+        merchantPhone: formattedWa,
+        merchantEmail: customerEmail || undefined,
+        planTier: canonicalPlanTier,
+        selectedPlan: isTrial ? 'Ads Performance Trial 7 Hari' : canonicalPlanTier,
+        isTrial,
+        referralCode: cleanRef,
+        affiliateId: matchedAffiliateId,
+        tenantId: effectiveTenantId,
+      }).catch((notifErr) => {
+        console.warn('[Onboard] Non-fatal affiliate network email alert error:', notifErr);
+      });
     }
 
     // Meta WhatsApp Sandbox Bot Number

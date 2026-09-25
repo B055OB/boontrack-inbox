@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { PartnerItem, isValidSlugFormat } from '@/lib/partner-service';
 import { getSupabase } from '@/lib/supabaseClient';
+import { sendNewAffiliateRegistrationNotification } from '@/lib/affiliate-notification-service';
 
 export async function GET() {
   try {
@@ -100,6 +101,19 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) {
       console.warn('Supabase insert partner note:', e);
+    }
+
+    // Trigger Notifikasi Email ke AM Pembina (Non-blocking)
+    if (newPartner.role === 'AFFILIATE' && newPartner.am_pembina) {
+      sendNewAffiliateRegistrationNotification({
+        affiliateName: newPartner.name,
+        affiliateEmail: newPartner.email || '',
+        affiliatePhone: newPartner.phone,
+        affiliateCode: newPartner.referral_code,
+        amCodeOrId: newPartner.am_pembina,
+      }).catch((notifErr) => {
+        console.warn('[ManagerPartners] Non-fatal new affiliate alert note:', notifErr);
+      });
     }
 
     return NextResponse.json({

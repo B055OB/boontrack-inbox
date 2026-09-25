@@ -276,13 +276,8 @@ function AffiliateRegisterContent() {
     };
 
     try {
-      const coreBase =
-        process.env.NEXT_PUBLIC_CORE_API_URL ||
-        process.env.NEXT_PUBLIC_API_URL ||
-        'https://api.boontrack.com';
-
-      // Submit direct to backend core endpoint
-      const res = await fetch(`${coreBase.replace(/\/$/, '')}/api/v1/auth/affiliate/register`, {
+      // Submit ke Next.js API Gateway resmi (relative path menghindari CORS & timeout)
+      const res = await fetch('/api/v1/auth/affiliate/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -297,6 +292,7 @@ function AffiliateRegisterContent() {
         const errorDetail =
           data?.detail ||
           data?.message ||
+          data?.error ||
           'Terjadi kendala saat memproses pendaftaran. Silakan cek data Anda kembali.';
         throw new Error(errorDetail);
       }
@@ -334,7 +330,15 @@ function AffiliateRegisterContent() {
         router.push('/affiliate/dashboard');
       }, 2000);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Gagal menghubungi server pendaftaran.';
+      let msg = 'Gagal menghubungi server pendaftaran. Silakan periksa koneksi internet Anda dan coba beberapa saat lagi.';
+      if (err instanceof Error) {
+        const raw = err.message || '';
+        if (raw.toLowerCase().includes('failed to fetch') || raw.includes('NetworkError') || raw.includes('Load failed')) {
+          msg = 'Koneksi ke server pendaftaran terputus. Pastikan perangkat Anda terhubung ke internet dan coba kembali.';
+        } else {
+          msg = raw;
+        }
+      }
       setErrorMessage(msg);
     } finally {
       setLoading(false);

@@ -6,6 +6,7 @@ import { dispatchMetaCAPI } from '@/lib/capi.service';
 import { readerAdapter } from '@/lib/payment/adapters/reader-adapter';
 import { paymentEventService } from '@/lib/payment/payment-event-service';
 import { checkTrialQuota } from '@/lib/entitlements/trial-guard';
+import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 
 // In-memory diagnostic logs ring buffer (stores up to 50 latest webhook calls)
 export interface WebhookLogEntry {
@@ -579,6 +580,22 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       console.warn(`[Webhook Reader ${logId}] Error checking CAPI:`, capiCheckErr);
     }
   }
+
+  // DISPATCH AFFILIATE & AM COMMISSION NOTIFICATION (Non-blocking)
+  sendOrderCommissionAlert({
+    orderId: String(orderId),
+    tenantSlug: targetTenantSlug,
+    tenantId: matchedOrder.tenant_id,
+    productTitle: itemsSummary,
+    grossAmount: totalAmount,
+    customerName,
+    customerPhone: customerPhone || undefined,
+    customerEmail: matchedOrder.customer_email || undefined,
+    affiliateCode: matchedOrder.affiliate_code || matchedOrder.metadata?.affiliate_code || null,
+    directCommission: Number(matchedOrder.affiliate_commission) || undefined,
+  }).catch((notifErr) => {
+    console.warn(`[Webhook Reader ${logId}] Non-fatal: affiliate commission alert error:`, notifErr);
+  });
 
   const successRes = {
     success: true,
