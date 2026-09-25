@@ -1376,12 +1376,12 @@ export default function RegisterShopPage() {
           <Link href="/" className="flex items-center gap-3 mb-6 group cursor-pointer">
             <div className="w-11 h-11 rounded-2xl overflow-hidden shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform duration-200 shrink-0 border border-slate-200/80 bg-white">
               <Image
-                src="/logo-master.jpg"
+                src="/icon-shop.png"
                 alt="BoonTrack Shop"
                 width={44}
                 height={44}
                 priority
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               />
             </div>
             <div>

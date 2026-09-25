@@ -1024,11 +1024,11 @@ export default function DashboardSidebar({
         <div className="flex items-center gap-2.5 px-1.5 py-1">
           <div className="w-8 h-8 rounded-xl overflow-hidden border border-slate-200 shrink-0 bg-white shadow-xs">
             <Image
-              src="/logo-master.jpg"
+              src="/icon-shop.png"
               alt="BoonTrack Shop"
               width={32}
               height={32}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
             />
           </div>
           <div className="min-w-0 flex-1">

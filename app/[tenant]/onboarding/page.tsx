@@ -38,12 +38,12 @@ export default function TenantOnboardingPage() {
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl overflow-hidden shadow-xs border border-slate-200 shrink-0 bg-white">
               <Image
-                src="/logo-master.jpg"
+                src="/icon-shop.png"
                 alt="BoonTrack Shop"
                 width={36}
                 height={36}
                 priority
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               />
             </div>
             <div>

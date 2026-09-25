@@ -199,12 +199,12 @@ export default function MerchantLoginPage() {
           <Link href="/" className="inline-flex items-center gap-3 group cursor-pointer">
             <div className="w-11 h-11 rounded-2xl overflow-hidden shadow-lg shadow-blue-500/20 border border-slate-700/80 bg-slate-900 shrink-0 group-hover:scale-105 transition-transform">
               <Image
-                src="/logo-master.jpg"
+                src="/icon-shop.png"
                 alt="BoonTrack Shop"
                 width={44}
                 height={44}
                 priority
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               />
             </div>
             <div className="text-left">

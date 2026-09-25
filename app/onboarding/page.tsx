@@ -12,12 +12,12 @@ export default function OnboardingHubPage() {
           <Link href="/" className="flex items-center gap-3 group cursor-pointer">
             <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 bg-white shrink-0 group-hover:scale-105 transition-transform">
               <Image
-                src="/logo-master.jpg"
+                src="/icon-shop.png"
                 alt="BoonTrack Shop"
                 width={40}
                 height={40}
                 priority
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               />
             </div>
             <div>

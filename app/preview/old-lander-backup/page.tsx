@@ -167,7 +167,7 @@ export default function ShopLandingPage() {
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2.5 group">
             <img
-              src="/logo.png"
+              src="/icon-shop.png"
               alt="BoonTrack Shop"
               className="w-9 h-9 rounded-xl object-contain shadow-sm group-hover:scale-105 transition-transform"
             />

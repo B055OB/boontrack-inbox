@@ -36,11 +36,11 @@ export default function TopNavBar({
         <div className="hidden lg:flex items-center gap-2 pr-3 border-r border-slate-200 shrink-0">
           <div className="w-7 h-7 rounded-lg overflow-hidden border border-slate-200 bg-white shrink-0">
             <Image
-              src="/logo-master.jpg"
+              src="/icon-shop.png"
               alt="BoonTrack Shop"
               width={28}
               height={28}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
             />
           </div>
           <div>
