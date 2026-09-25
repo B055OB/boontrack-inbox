@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ShieldCheck, MapPin, Mail } from 'lucide-react';
 
 interface FooterProps {
@@ -16,9 +17,11 @@ export default function Footer({ referralCode }: FooterProps) {
           {/* Brand Col with Official Transparent Logo */}
           <div className="space-y-3 md:col-span-2">
             <Link href="/" className="inline-flex items-center gap-2.5 group cursor-pointer">
-              <img
-                src="/logo.png"
+              <Image
+                src="/icon-shop.png"
                 alt="BoonTrack Shop"
+                width={36}
+                height={36}
                 className="w-9 h-9 rounded-xl object-contain shadow-sm group-hover:scale-105 transition-transform"
               />
               <div>

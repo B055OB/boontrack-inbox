@@ -875,9 +875,9 @@ export default function TenantStorefrontPage() {
     tenantMetadata?.avatar_url ||
     tenant?.logo_url ||
     tenant?.avatar_url ||
-    "/logo.png";
+    "/icon-shop.png";
   const sanitizedActiveLogo = sanitizeImageUrl(activeLogo) || activeLogo;
-  const storeLogoUrl = sanitizedActiveLogo === "/logo.png" ? "" : sanitizedActiveLogo;
+  const storeLogoUrl = sanitizedActiveLogo === "/icon-shop.png" || sanitizedActiveLogo === "/logo.png" ? "" : sanitizedActiveLogo;
   const displayAvatar = sanitizedActiveLogo;
 
   // ── RESERVED SYSTEM SLUGS CHECK ──
@@ -1105,7 +1105,7 @@ export default function TenantStorefrontPage() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {displayAvatar && displayAvatar !== "/logo.png" ? (
+            {displayAvatar && displayAvatar !== "/icon-shop.png" && displayAvatar !== "/logo.png" ? (
               <img
                 src={displayAvatar}
                 alt={storeName || displayName}
@@ -1113,7 +1113,7 @@ export default function TenantStorefrontPage() {
               />
             ) : (
               <img
-                src="/logo.png"
+                src="/icon-shop.png"
                 alt="BoonTrack Shop"
                 className="w-9 h-9 rounded-xl object-contain shadow-sm"
               />
@@ -1697,7 +1697,7 @@ export default function TenantStorefrontPage() {
                 {/* Drawer Header */}
                 <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/90 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2.5">
-                    {displayAvatar && displayAvatar !== "/logo.png" ? (
+                    {displayAvatar && displayAvatar !== "/icon-shop.png" && displayAvatar !== "/logo.png" ? (
                       <img
                         src={displayAvatar}
                         alt={storeName || displayName}
@@ -1705,7 +1705,7 @@ export default function TenantStorefrontPage() {
                       />
                     ) : (
                       <img
-                        src="/logo.png"
+                        src="/icon-shop.png"
                         alt="BoonTrack Shop"
                         className="w-8 h-8 rounded-xl object-contain shadow-xs"
                       />

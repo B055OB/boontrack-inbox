@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowRight, Menu, X, Sparkles } from 'lucide-react';
 
 interface NavbarProps {
@@ -30,10 +31,13 @@ export default function Navbar({ referralCode, onOpenDemo }: NavbarProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
           {/* Logo Resmi BoonTrack Shop */}
           <Link href="/" className="flex items-center gap-2.5 group cursor-pointer">
-            <img
-              src="/logo.png"
+            <Image
+              src="/icon-shop.png"
               alt="BoonTrack Shop"
+              width={36}
+              height={36}
               className="w-9 h-9 rounded-xl object-contain shadow-sm group-hover:scale-105 transition-transform"
+              priority
             />
             <div>
               <span className="font-black text-lg tracking-tight text-slate-900 block leading-tight">

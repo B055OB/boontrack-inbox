@@ -37,9 +37,9 @@ export const metadata: Metadata = {
     siteName: "BoonTrack Shop",
     images: [
       {
-        url: '/images/logo-master.jpg',
-        width: 1200,
-        height: 630,
+        url: '/icon-shop.png',
+        width: 512,
+        height: 512,
         alt: 'BoonTrack Shop',
       },
     ],
@@ -47,10 +47,10 @@ export const metadata: Metadata = {
     type: 'website',
   },
   twitter: {
-    card: 'summary_large_image',
+    card: 'summary',
     title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
     description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
-    images: ['/images/logo-master.jpg'],
+    images: ['/icon-shop.png'],
   },
   appleWebApp: {
     capable: true,
