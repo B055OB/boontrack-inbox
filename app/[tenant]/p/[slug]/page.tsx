@@ -281,16 +281,16 @@ function SingleProductContent() {
               banner_url: hero.banner_url || cfg.banner_url || match.image || '',
               badge_text: hero.badge || cfg.badge_text || match.promo || 'Penawaran Spesial',
               enable_hero: cfg.enable_hero ?? true,
-              enable_client_logos: cfg.enable_client_logos ?? false,
+              enable_client_logos: cfg.enable_client_logos ?? (Boolean(cfg.client_logos?.length) || Boolean(builder.client_logos?.length) || false),
               enable_problem_solution: cfg.enable_problem_solution ?? true,
               enable_us_vs_them: cfg.enable_us_vs_them ?? true,
               enable_testimonials: cfg.enable_testimonials ?? true,
               enable_offer: cfg.enable_offer ?? true,
               enable_faq: cfg.enable_faq ?? false,
               enable_payment: cfg.enable_payment ?? true,
-              client_logos: cfg.client_logos || [],
+              client_logos: cfg.client_logos || builder.client_logos || match.client_logos || [],
               faqs: cfg.faqs || [],
-              problem_title: ps.title || cfg.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
+              problem_title: ps.title || ps.problem_title || cfg.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
               pain_points: ps.pain_points || cfg.pain_points || [],
               solution_title: ps.solution_title || cfg.solution_title || 'Materi & Fasilitas Utama',
               solution_points: resolvedSolutionPoints,
@@ -301,7 +301,7 @@ function SingleProductContent() {
               discount_coupon: cfg.discount_coupon || cfg.voucher?.code || '',
               voucher: cfg.voucher || null,
               enable_qris: pm.enable_qris ?? cfg.enable_qris ?? true,
-              enable_manual_transfer: Boolean((pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? false) && hasTenantBankAccounts(tenantRow)),
+              enable_manual_transfer: Boolean(pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? true),
               affiliate_commission_rate: cfg.affiliate_commission_rate || 0,
               whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || tenantRow?.metadata?.whatsapp_number || getTenantWhatsApp(tenant),
               cta_label: hero.cta_label || cfg.cta_label || match.cta_label || undefined,
@@ -318,6 +318,8 @@ function SingleProductContent() {
               product_type: match.product_type || (match.category?.toLowerCase() === 'fisik' || match.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (match.category?.toLowerCase() === 'jasa' || match.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
               price: rawPrice,
               promo_price: rawPromoPrice,
+              original_price: match.original_price || match.originalPrice || (sqlProd as any)?.original_price || (sqlProd as any)?.originalPrice || undefined,
+              originalPrice: match.original_price || match.originalPrice || (sqlProd as any)?.original_price || (sqlProd as any)?.originalPrice || undefined,
               variants: match.variants || 'Format Digital • Akses Instan',
               promo: dynamicConfig.badge_text,
               description: dynamicConfig.subheadline,
@@ -592,7 +594,11 @@ function SingleProductContent() {
   const basePrice = (product.promo_price !== undefined && product.promo_price !== null && product.promo_price >= 0 && (product.price === undefined || product.promo_price < product.price))
     ? product.promo_price
     : (product.price !== undefined && product.price !== null ? product.price : 0);
-  const promoPrice = (product.price && product.price > basePrice)
+  const promoPrice = (product.original_price && product.original_price > basePrice)
+    ? product.original_price
+    : ((product as any).originalPrice && (product as any).originalPrice > basePrice)
+    ? (product as any).originalPrice
+    : (product.price && product.price > basePrice)
     ? product.price
     : (product.promo_price && product.promo_price > 0 ? Math.round(basePrice * 1.5) : basePrice);
 

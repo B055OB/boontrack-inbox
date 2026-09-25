@@ -189,6 +189,8 @@ export interface ProductItem {
   custom_badge?: string;
   price: number;
   promo_price?: number;
+  original_price?: number;
+  originalPrice?: number;
   variants?: string;
   promo?: string;
   description: string;
