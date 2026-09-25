@@ -998,6 +998,19 @@ export default function CheckoutPage({ params }: Props) {
             <span className="text-slate-200">Rp {basePrice.toLocaleString('id-ID')}</span>
           </div>
 
+          {/* Add-ons Order Bump (Kondisional Murni) */}
+          {(order?.order_bumps || order?.fulfillment_metadata?.order_bumps) && (
+            (order.order_bumps || order.fulfillment_metadata.order_bumps).map((bump: any, idx: number) => (
+              <div key={bump.id || idx} className="flex justify-between items-center text-amber-300 font-medium bg-amber-950/30 px-2.5 py-1.5 rounded-lg border border-amber-800/40">
+                <span className="flex items-center gap-1.5 truncate max-w-[240px]">
+                  <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                  <span className="truncate">Add-on: {bump.name || bump.product_title}</span>
+                </span>
+                <span className="font-bold text-slate-100 shrink-0">+Rp {(Number(bump.price) || 0).toLocaleString('id-ID')}</span>
+              </div>
+            ))
+          )}
+
           {productDiscount > 0 && (
             <div className="flex justify-between text-indigo-400 font-medium">
               <span>Diskon Voucher {voucherCode ? `(${voucherCode})` : ''}</span>

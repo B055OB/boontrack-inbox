@@ -37,6 +37,36 @@ export interface ClientLogoItem {
   category?: string;
 }
 
+export interface OrderBumpItem {
+  id: string;
+  name: string;
+  price: number;
+  original_price?: number;
+  badge_text?: string;
+  description?: string;
+  image?: string;
+  is_active: boolean;
+  product_id?: string;
+}
+
+export interface OrderBumpConfig {
+  enabled: boolean;
+  items: OrderBumpItem[];
+}
+
+export function resolveActiveOrderBumps(product: any): OrderBumpItem[] {
+  if (!product) return [];
+  const raw = product.order_bumps || product.metadata?.order_bumps || product.fulfillment_metadata?.order_bumps;
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return raw.filter((item: any) => item && typeof item === 'object' && item.is_active !== false && item.name && typeof item.price === 'number');
+  }
+  if (typeof raw === 'object' && raw.enabled && Array.isArray(raw.items)) {
+    return raw.items.filter((item: any) => item && typeof item === 'object' && item.is_active !== false && item.name && typeof item.price === 'number');
+  }
+  return [];
+}
+
 export interface FaqItem {
   question: string;
   answer: string;
@@ -213,6 +243,7 @@ export interface ProductItem {
   button_text?: string;
   meta_pixel_id_override?: string;
   tiktok_pixel_id_override?: string;
+  order_bumps?: OrderBumpConfig | OrderBumpItem[];
   metadata?: Record<string, any>;
 }
 

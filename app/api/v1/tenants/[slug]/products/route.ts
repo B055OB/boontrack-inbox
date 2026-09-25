@@ -26,6 +26,8 @@ export interface ProductItem {
   weight_grams?: number;
   fulfillment_metadata?: any;
   single_page_config?: any;
+  order_bumps?: any;
+  metadata?: any;
   created_at?: string;
   updated_at?: string;
 }
@@ -191,7 +193,10 @@ export async function POST(
             asset_reference: `product:${finalSlug}`,
             license_status: 'UNVERIFIED',
             product_type: 'DIGITAL_FILE',
-            fulfillment_metadata: body.fulfillment_metadata || {},
+            fulfillment_metadata: {
+              ...(body.fulfillment_metadata || {}),
+              ...(body.order_bumps || body.metadata?.order_bumps ? { order_bumps: body.order_bumps || body.metadata?.order_bumps } : {}),
+            },
           };
 
           const { data: existingSql } = await supabase

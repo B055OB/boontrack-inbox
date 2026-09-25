@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink, Sparkles } from 'lucide-react';
+import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink, Sparkles, Zap, Plus, Trash2 } from 'lucide-react';
 import BoonPilotPitchModal from './BoonPilotPitchModal';
 import ImageUpload from '@/components/ImageUpload';
 import {
@@ -10,9 +10,12 @@ import {
   resolveFulfillmentRequirements,
   FulfillmentMetadata,
   slugify,
+  OrderBumpItem,
+  OrderBumpConfig,
 } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { ModularProductFormDispatcher, resolveDomainVertical } from './modules';
+import { getSupabase } from '@/lib/supabaseClient';
 
 export type BoonVerticalOption =
   | 'retail_physical'
@@ -274,6 +277,126 @@ export default function ProductFormModal({
         },
       };
     });
+  };
+
+  // ── ORDER BUMP / CROSS-SELLING STATE & HANDLERS ──
+  const [orderBumpsEnabled, setOrderBumpsEnabled] = useState(false);
+  const [orderBumpItems, setOrderBumpItems] = useState<OrderBumpItem[]>([]);
+  const [availableStoreProducts, setAvailableStoreProducts] = useState<Array<{ id: string | number; name: string; price: number; promo_price?: number; description?: string }>>([]);
+
+  // Fetch available store products for optional prefill
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchStoreProducts() {
+      if (!isOpen || !tenantSlug) return;
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data } = await supabase
+            .from('tenants')
+            .select('metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle();
+          const prods = data?.metadata?.products;
+          if (Array.isArray(prods) && isMounted) {
+            setAvailableStoreProducts(
+              prods.filter((p: any) => p && String(p.id) !== String(editingProductId))
+            );
+          }
+        }
+      } catch {}
+    }
+    fetchStoreProducts();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, tenantSlug, editingProductId]);
+
+  // Sync order bumps from productForm when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      const raw = productForm.order_bumps || productForm.metadata?.order_bumps || productForm.fulfillment_metadata?.order_bumps;
+      if (!raw) {
+        setOrderBumpsEnabled(false);
+        setOrderBumpItems([]);
+      } else if (Array.isArray(raw)) {
+        setOrderBumpsEnabled(raw.length > 0 && raw.some((i: any) => i.is_active !== false));
+        setOrderBumpItems(raw as OrderBumpItem[]);
+      } else if (typeof raw === 'object') {
+        const isEnabled = Boolean(raw.enabled);
+        const items = Array.isArray(raw.items) ? (raw.items as OrderBumpItem[]) : [];
+        setOrderBumpsEnabled(isEnabled);
+        setOrderBumpItems(items);
+      }
+    }
+  }, [isOpen, editingProductId]);
+
+  const syncBumpConfigToForm = (enabled: boolean, items: OrderBumpItem[]) => {
+    const config: OrderBumpConfig = {
+      enabled,
+      items,
+    };
+    setProductForm((prev) => ({
+      ...prev,
+      order_bumps: config,
+      metadata: {
+        ...(prev.metadata || {}),
+        order_bumps: config,
+      },
+      fulfillment_metadata: {
+        ...(prev.fulfillment_metadata || {}),
+        order_bumps: config,
+      },
+    }));
+  };
+
+  const handleToggleMasterOrderBumps = (enabled: boolean) => {
+    setOrderBumpsEnabled(enabled);
+    let items = [...orderBumpItems];
+    if (enabled && items.length === 0) {
+      items = [
+        {
+          id: `bump_${Date.now()}`,
+          name: '',
+          price: 0,
+          original_price: undefined,
+          badge_text: 'Penawaran Spesial',
+          description: '',
+          is_active: true,
+        },
+      ];
+      setOrderBumpItems(items);
+    }
+    syncBumpConfigToForm(enabled, items);
+  };
+
+  const handleAddBumpItem = () => {
+    const newItem: OrderBumpItem = {
+      id: `bump_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      name: '',
+      price: 0,
+      original_price: undefined,
+      badge_text: 'Penawaran Spesial',
+      description: '',
+      is_active: true,
+    };
+    const updated = [...orderBumpItems, newItem];
+    setOrderBumpItems(updated);
+    syncBumpConfigToForm(orderBumpsEnabled, updated);
+  };
+
+  const handleUpdateBumpItem = (index: number, patch: Partial<OrderBumpItem>) => {
+    const updated = orderBumpItems.map((item, i) => (i === index ? { ...item, ...patch } : item));
+    setOrderBumpItems(updated);
+    syncBumpConfigToForm(orderBumpsEnabled, updated);
+  };
+
+  const handleRemoveBumpItem = (index: number) => {
+    const updated = orderBumpItems.filter((_, i) => i !== index);
+    setOrderBumpItems(updated);
+    const newEnabled = updated.length > 0 ? orderBumpsEnabled : false;
+    if (updated.length === 0) setOrderBumpsEnabled(false);
+    syncBumpConfigToForm(newEnabled, updated);
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -699,6 +822,194 @@ export default function ProductFormModal({
               placeholder="Contoh:&#10;Akses Selamanya Video Tutorial HD&#10;Template Notion &amp; Spreadsheet Siap Pakai&#10;Grup Diskusi &amp; Support Eksklusif&#10;Gratis Update Modul Materi Berikutnya"
               className="w-full px-3.5 py-2.5 bg-white border border-emerald-300/80 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/20 font-medium leading-relaxed"
             />
+          </div>
+
+          {/* 11. Penawaran Tambahan (Order Bump / Cross-Selling) - 100% Opsional */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                  <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                  <span>Penawaran Tambahan (Order Bump / Cross-Selling)</span>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full">
+                    Opsional
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  Tawarkan produk pendukung / add-on di halaman checkout dengan 1x klik centang sebelum pembeli membayar.
+                </p>
+              </div>
+
+              {/* Master Toggle */}
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={orderBumpsEnabled}
+                  onChange={(e) => handleToggleMasterOrderBumps(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
+            </div>
+
+            {/* Form Penawaran - HANYA TAMPIL JIKA MASTER TOGGLE AKTIF */}
+            {orderBumpsEnabled && (
+              <div className="space-y-3 pt-2 border-t border-slate-200/80">
+                {orderBumpItems.map((bump, index) => (
+                  <div
+                    key={bump.id || index}
+                    className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs relative"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black flex items-center justify-center">
+                          {index + 1}
+                        </span>
+                        <span>Item Add-on #{index + 1}</span>
+                      </span>
+
+                      <div className="flex items-center gap-3">
+                        {/* Toggle Aktif/Nonaktif per Item */}
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={bump.is_active}
+                            onChange={(e) => handleUpdateBumpItem(index, { is_active: e.target.checked })}
+                            className="rounded text-amber-500 focus:ring-amber-400 h-3.5 w-3.5"
+                          />
+                          <span>{bump.is_active ? 'Aktif' : 'Nonaktif'}</span>
+                        </label>
+
+                        {/* Hapus Item */}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBumpItem(index)}
+                          className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
+                          title="Hapus penawaran add-on ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Select dari Produk Toko (Jika ada) */}
+                    {availableStoreProducts.length > 0 && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                          Pilih Dari Produk Toko (Opsional untuk isi otomatis)
+                        </label>
+                        <select
+                          className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:outline-none focus:border-amber-500"
+                          onChange={(e) => {
+                            const sel = availableStoreProducts.find((p) => String(p.id) === e.target.value);
+                            if (sel) {
+                              handleUpdateBumpItem(index, {
+                                name: sel.name,
+                                original_price: sel.price,
+                                price: sel.promo_price && sel.promo_price < sel.price ? sel.promo_price : Math.round(sel.price * 0.7),
+                                description: sel.description || `Dapatkan tambahan bundling ${sel.name} dengan harga hemat!`,
+                                product_id: String(sel.id),
+                              });
+                            }
+                          }}
+                          defaultValue=""
+                        >
+                          <option value="" disabled>-- Pilih produk toko atau isi manual di bawah --</option>
+                          {availableStoreProducts.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} (Rp {p.price.toLocaleString('id-ID')})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* 1. Nama Add-on */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Nama Produk / Layanan Add-on *
+                      </label>
+                      <input
+                        type="text"
+                        required={orderBumpsEnabled}
+                        value={bump.name}
+                        onChange={(e) => handleUpdateBumpItem(index, { name: e.target.value })}
+                        placeholder="Contoh: Checklist & Template Copywriting Siap Pakai"
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    {/* 2. Harga Normal & Promo Bundling */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Harga Normal (Rp)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={bump.original_price ?? ''}
+                          onChange={(e) => handleUpdateBumpItem(index, { original_price: e.target.value ? Number(e.target.value) : undefined })}
+                          placeholder="Coret (mis: 150000)"
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Harga Promo Bundling (Rp) *
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          required={orderBumpsEnabled}
+                          value={bump.price !== undefined && bump.price !== null ? bump.price : ''}
+                          onChange={(e) => handleUpdateBumpItem(index, { price: Number(e.target.value) })}
+                          placeholder="Bayar (mis: 49000)"
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-bold focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 3. Teks Badge / Callout Opsional */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Teks Badge / Callout (Opsional)
+                      </label>
+                      <input
+                        type="text"
+                        value={bump.badge_text || ''}
+                        onChange={(e) => handleUpdateBumpItem(index, { badge_text: e.target.value })}
+                        placeholder="Contoh: Penawaran Spesial 1x Klik / Hemat 70%"
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    {/* 4. Deskripsi Singkat Penawaran */}
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Deskripsi Singkat Penawaran
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={bump.description || ''}
+                        onChange={(e) => handleUpdateBumpItem(index, { description: e.target.value })}
+                        placeholder="Penjelasan singkat benefit add-on ini..."
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={handleAddBumpItem}
+                  className="w-full py-2 bg-amber-50 hover:bg-amber-100/80 border border-dashed border-amber-300 rounded-xl text-xs font-bold text-amber-900 flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Penawaran Add-on Lainnya</span>
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="pt-2">

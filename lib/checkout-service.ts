@@ -2,6 +2,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
+import { resolveActiveOrderBumps, OrderBumpItem } from "@/lib/product-catalog";
 
 export interface CreateOrderPayload {
   tenantSlug: string;
@@ -29,6 +30,11 @@ export interface CreateOrderPayload {
   shippingCourier?: string;
   productType?: string;
   fulfillmentMetadata?: any;
+  selectedOrderBumps?: Array<{
+    id: string;
+    name?: string;
+    price?: number;
+  }>;
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
@@ -37,10 +43,73 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   const orderId = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
+  // Resolusi data tenant awal untuk validasi harga backend & snapshot
+  let resolvedTenantId: string | null = null;
+  let tenantRowData: any = null;
+  try {
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('slug', payload.tenantSlug)
+      .maybeSingle();
+    tenantRowData = tenantRow;
+    resolvedTenantId = tenantRow?.id || null;
+  } catch (tenantResolveErr) {
+    console.warn('[Checkout Service] Gagal resolve tenant_id dari slug:', tenantResolveErr);
+  }
+
+  // Backend Price Snapshot Verification for Order Bumps (Zero-Trust Architecture)
+  let verifiedOrderBumps: OrderBumpItem[] = [];
+  let orderBumpsTotal = 0;
+
+  if (payload.selectedOrderBumps && payload.selectedOrderBumps.length > 0) {
+    try {
+      const products = Array.isArray(tenantRowData?.metadata?.products) ? tenantRowData.metadata.products : [];
+      const prodIdStr = String(payload.productId || '').trim();
+      const prodTitleStr = String(payload.productTitle || '').trim().toLowerCase();
+
+      let matchedProd = products.find((p: any) => {
+        if (!p) return false;
+        if (prodIdStr && (String(p.id) === prodIdStr || String(p.slug) === prodIdStr || String(p.sku) === prodIdStr)) return true;
+        if (prodTitleStr && p.name && p.name.trim().toLowerCase() === prodTitleStr) return true;
+        return false;
+      });
+
+      if (!matchedProd && resolvedTenantId) {
+        const { data: sqlProd } = await supabase
+          .from('products')
+          .select('*')
+          .eq('tenant_id', resolvedTenantId)
+          .or(`slug.eq.${payload.productId},id.eq.${payload.productId}`)
+          .maybeSingle();
+        if (sqlProd) {
+          matchedProd = {
+            ...sqlProd,
+            name: sqlProd.title,
+            order_bumps: sqlProd.fulfillment_metadata?.order_bumps,
+          };
+        }
+      }
+
+      if (matchedProd) {
+        const availableBumps = resolveActiveOrderBumps(matchedProd);
+        const requestedIds = payload.selectedOrderBumps.map((b) => String(b.id || ''));
+
+        // Backend Price Snapshot: Hanya gunakan harga snapshot dari backend (abaikan payload harga klien)
+        verifiedOrderBumps = availableBumps.filter((b) => requestedIds.includes(String(b.id)));
+        orderBumpsTotal = verifiedOrderBumps.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
+      }
+    } catch (bumpErr) {
+      console.warn('[Checkout Service] Order bump verification note:', bumpErr);
+    }
+  }
+
   const paymentMethod = payload.paymentMethod || 'qris';
   const basePrice = payload.basePrice ?? payload.amount;
   const productDiscount = payload.productDiscount ?? 0;
-  const netProductPrice = payload.netProductPrice ?? Math.max(0, basePrice - productDiscount);
+  const netProductPrice = (payload.netProductPrice !== undefined && verifiedOrderBumps.length === 0)
+    ? payload.netProductPrice
+    : Math.max(0, basePrice - productDiscount) + orderBumpsTotal;
 
   // Kunci pengamanan: vertikal non-shipping (jasa, digital, dsb.) dipaksa 0 ongkir & tanpa kurir
   const normType = (payload.productType || '').toUpperCase().trim();
@@ -71,7 +140,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     : Math.floor(1 + Math.random() * 999);
 
   let grossAmount = payload.amount;
-  if (!grossAmount) {
+  if (!grossAmount || verifiedOrderBumps.length > 0) {
     if (paymentMethod === 'qris') {
       grossAmount = Math.max(1000, (netProductPrice + netShippingCost) - uniqueCode);
     } else {
@@ -83,6 +152,11 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   // Komisi affiliate produk ritel toko dinonaktifkan sementara (transaksi berjalan direct store 100% ke seller)
   const affiliateCommission = payload.affiliateCommission ?? 0;
+
+  const orderFulfillmentMeta = {
+    ...(payload.fulfillmentMetadata || {}),
+    ...(verifiedOrderBumps.length > 0 ? { order_bumps: verifiedOrderBumps } : {}),
+  };
 
   const orderData = {
     id: orderId,
@@ -100,7 +174,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     shipping_address: payload.shippingAddress || null,
     shipping_courier: shippingCourier,
     product_type: payload.productType || null,
-    fulfillment_metadata: payload.fulfillmentMetadata || null,
+    fulfillment_metadata: orderFulfillmentMeta,
+    order_bumps: verifiedOrderBumps.length > 0 ? verifiedOrderBumps : undefined,
     admin_fee: adminFee,
     unique_code: uniqueCode,
     payment_method: paymentMethod,
@@ -135,16 +210,17 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
   // Resolusi tenant_id (UUID) dari tabel tenants menggunakan tenant_slug
   // WAJIB diisi untuk memastikan identitas ganda tenant_id + tenant_slug tidak NULL
-  let resolvedTenantId: string | null = null;
-  try {
-    const { data: tenantRow } = await supabase
-      .from('tenants')
-      .select('id')
-      .eq('slug', payload.tenantSlug)
-      .maybeSingle();
-    resolvedTenantId = tenantRow?.id || null;
-  } catch (tenantResolveErr) {
-    console.warn('[Checkout Service] Gagal resolve tenant_id dari slug:', tenantResolveErr);
+  if (!resolvedTenantId) {
+    try {
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('slug', payload.tenantSlug)
+        .maybeSingle();
+      resolvedTenantId = tenantRow?.id || null;
+    } catch (tenantResolveErr) {
+      console.warn('[Checkout Service] Gagal resolve tenant_id dari slug:', tenantResolveErr);
+    }
   }
 
   if (!resolvedTenantId) {
@@ -202,6 +278,52 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     console.error("[Checkout Service] Supabase Order Insert Error:", orderError);
   }
 
+  // 1b. Catat line item utama dan add-on ke tabel order_items (Hanya jika ada add-on)
+  if (verifiedOrderBumps.length > 0) {
+    try {
+      const lineItems = [
+        {
+          order_id: orderId,
+          tenant_id: resolvedTenantId,
+          tenant_slug: payload.tenantSlug,
+          product_id: resolvedProductId,
+          product_title: payload.productTitle,
+          item_type: 'main',
+          price: Math.max(0, netProductPrice - orderBumpsTotal),
+          original_price: basePrice,
+          quantity: 1,
+          metadata: {
+            product_discount: productDiscount,
+            voucher_code: payload.voucherCode || null,
+          },
+        },
+        ...verifiedOrderBumps.map((b) => ({
+          order_id: orderId,
+          tenant_id: resolvedTenantId,
+          tenant_slug: payload.tenantSlug,
+          product_id: b.product_id || b.id,
+          product_title: b.name,
+          item_type: 'order_bump',
+          price: b.price,
+          original_price: b.original_price || null,
+          quantity: 1,
+          metadata: {
+            bump_id: b.id,
+            badge_text: b.badge_text || null,
+            description: b.description || null,
+          },
+        })),
+      ];
+
+      const { error: itemsErr } = await supabase.from('order_items').insert(lineItems);
+      if (itemsErr) {
+        console.warn('[Checkout Service] Order items insert note:', itemsErr);
+      }
+    } catch (orderItemsCatch) {
+      console.warn('[Checkout Service] Order items exception:', orderItemsCatch);
+    }
+  }
+
   // 2. Request pembuatan QRIS / Invoice ke Backend API (jika QRIS)
   let qrString = "";
   let qrCodeUrl = "";
@@ -236,6 +358,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         admin_fee: adminFee,
         unique_code: uniqueCode,
         affiliate_commission: affiliateCommission,
+        order_bumps: verifiedOrderBumps.length > 0 ? verifiedOrderBumps : undefined,
         tracking: payload.tracking || {}
       }
     });

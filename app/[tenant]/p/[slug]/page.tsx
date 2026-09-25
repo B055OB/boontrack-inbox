@@ -64,7 +64,9 @@ import {
   slugify,
   resolveFulfillmentRequirements,
   ProductType,
-  FulfillmentMetadata
+  FulfillmentMetadata,
+  resolveActiveOrderBumps,
+  OrderBumpItem
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts } from '@/lib/bank-accounts';
@@ -336,6 +338,7 @@ function SingleProductContent() {
               cta_label: match.cta_label || match.metadata?.cta_label || '',
               meta_pixel_id_override: match.meta_pixel_id_override || match.metadata?.meta_pixel_id_override || (sqlProd as any)?.meta_pixel_id_override || '',
               tiktok_pixel_id_override: match.tiktok_pixel_id_override || match.metadata?.tiktok_pixel_id_override || (sqlProd as any)?.tiktok_pixel_id_override || '',
+              order_bumps: match.order_bumps || match.metadata?.order_bumps || match.fulfillment_metadata?.order_bumps,
               metadata: match.metadata,
             };
 
@@ -355,6 +358,28 @@ function SingleProductContent() {
 
   const product = resolvedData.product;
   const config = resolvedData.config;
+
+  // Resolusi aktif Order Bumps / Cross-Selling Add-on (Kondisional Murni)
+  const activeOrderBumps = useMemo(() => {
+    return resolveActiveOrderBumps(product);
+  }, [product]);
+
+  // State pilihan add-on (Default: tidak dicentang / [] )
+  const [selectedBumpIds, setSelectedBumpIds] = useState<string[]>([]);
+
+  const handleToggleBump = (bumpId: string) => {
+    setSelectedBumpIds((prev) =>
+      prev.includes(bumpId) ? prev.filter((id) => id !== bumpId) : [...prev, bumpId]
+    );
+  };
+
+  const selectedBumpItems = useMemo(() => {
+    return activeOrderBumps.filter((b) => selectedBumpIds.includes(b.id));
+  }, [activeOrderBumps, selectedBumpIds]);
+
+  const orderBumpsTotal = useMemo(() => {
+    return selectedBumpItems.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
+  }, [selectedBumpItems]);
 
   const isAffiliateProduct = Boolean(
     product.checkout_type === 'external' ||
@@ -675,7 +700,7 @@ function SingleProductContent() {
     }
   }
   productDiscount = Math.min(productDiscount, Math.max(0, basePrice - 1000));
-  const netProductPrice = Math.max(0, basePrice - (appliedVoucher ? productDiscount : 0));
+  const netProductPrice = Math.max(0, basePrice - (appliedVoucher ? productDiscount : 0)) + orderBumpsTotal;
 
   // 2. Ongkos Kirim & Subsidi (Khusus Produk Fisik / requiresShipping)
   const selectedShipping = availableShippingOptions.find(s => s.id === selectedShippingId) || availableShippingOptions[0];
@@ -865,7 +890,13 @@ function SingleProductContent() {
         fulfillmentMetadata: {
           ...(product.fulfillment_metadata || {}),
           selected_variant: selectedVariant || undefined,
+          ...(selectedBumpItems.length > 0 ? { order_bumps: selectedBumpItems } : {}),
         },
+        selectedOrderBumps: selectedBumpItems.map((b) => ({
+          id: b.id,
+          name: b.name,
+          price: b.price,
+        })),
         voucherCode: appliedVoucher?.code || undefined,
         adminFee: 0,
         uniqueCode: currentUniqueCode,
@@ -1310,6 +1341,77 @@ function SingleProductContent() {
         </div>
       )}
 
+      {/* ── FITUR ORDER BUMP / CROSS-SELLING ADD-ON (Kondisional Murni) ── */}
+      {activeOrderBumps.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+            <Zap className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />
+            <span>Penawaran Khusus Tambahan (Order Bump)</span>
+          </div>
+
+          {activeOrderBumps.map((bump) => {
+            const isSelected = selectedBumpIds.includes(bump.id);
+            return (
+              <div
+                key={bump.id}
+                onClick={() => handleToggleBump(bump.id)}
+                className={`border-2 border-dashed rounded-2xl p-4 transition-all duration-200 cursor-pointer select-none relative overflow-hidden ${
+                  isSelected
+                    ? 'bg-amber-50/90 border-amber-500 ring-2 ring-amber-500/20 shadow-md'
+                    : 'bg-gradient-to-r from-amber-50/40 via-amber-50/15 to-white border-amber-300 hover:border-amber-400 hover:bg-amber-50/60'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="pt-0.5 shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {}} // handled by parent onClick
+                      className="w-5 h-5 rounded-md text-amber-600 focus:ring-amber-500 cursor-pointer border-slate-300"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500 text-white font-black text-[10px] uppercase tracking-wider shadow-2xs">
+                        <Zap className="w-3 h-3 fill-white" />
+                        <span>{bump.badge_text || 'Penawaran Spesial'}</span>
+                      </span>
+                      {bump.original_price && bump.original_price > bump.price && (
+                        <span className="text-[11px] line-through text-slate-400 font-semibold">
+                          Rp {bump.original_price.toLocaleString('id-ID')}
+                        </span>
+                      )}
+                      <span className="text-xs font-black text-amber-950 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200/80">
+                        +Rp {bump.price.toLocaleString('id-ID')}
+                      </span>
+                    </div>
+
+                    <div className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                      {bump.name}
+                    </div>
+
+                    {bump.description && (
+                      <p className="text-[11px] text-slate-600 leading-relaxed font-normal">
+                        {bump.description}
+                      </p>
+                    )}
+
+                    <div className="pt-0.5">
+                      <span className={`text-[10px] font-bold inline-flex items-center gap-1 ${
+                        isSelected ? 'text-amber-800' : 'text-slate-500'
+                      }`}>
+                        {isSelected ? '✓ Ditambahkan ke pesanan' : '+ Klik untuk menambahkan ke pesanan'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Input Kode Voucher Promo Fleksibel */}
       <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-2.5">
         <div className="flex items-center justify-between">
@@ -1372,6 +1474,16 @@ function SingleProductContent() {
           <span>Harga Dasar Produk</span>
           <span className="font-semibold text-slate-900">Rp {basePrice.toLocaleString('id-ID')}</span>
         </div>
+
+        {selectedBumpItems.map((bump) => (
+          <div key={bump.id} className="flex justify-between items-center text-amber-900 font-medium bg-amber-50/80 px-2.5 py-1.5 rounded-xl border border-amber-200/70">
+            <span className="flex items-center gap-1.5 truncate max-w-[240px]">
+              <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+              <span className="truncate">Add-on: {bump.name}</span>
+            </span>
+            <span className="font-bold text-slate-900 shrink-0">+Rp {bump.price.toLocaleString('id-ID')}</span>
+          </div>
+        ))}
 
         {productDiscount > 0 && (
           <div className="flex justify-between text-indigo-600 font-semibold">
