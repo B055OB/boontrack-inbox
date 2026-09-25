@@ -196,6 +196,28 @@ export async function get7DaySlotsAvailability(
           });
         }
       }
+
+      // 1c. Dari tabel booking_slots (Single Source of Truth untuk Booking Engine)
+      const { data: dbSlots } = await sb
+        .from('booking_slots')
+        .select('*')
+        .eq('tenant_slug', cleanSlug);
+
+      if (Array.isArray(dbSlots)) {
+        for (const bs of dbSlots) {
+          if (bs.status === 'BOOKED' || bs.status === 'BLOCKED') {
+            const timeStr = bs.start_time ? bs.start_time.substring(0, 5) : '';
+            activeBookings.push({
+              id: bs.id,
+              customerName: bs.customer_name || 'Pelanggan',
+              phone: bs.customer_phone || '-',
+              date: bs.slot_date ? String(bs.slot_date) : '',
+              timeSlot: timeStr,
+              status: bs.status,
+            });
+          }
+        }
+      }
     } catch (err) {
       console.warn('[Schedule Service] Error fetching active bookings:', err);
     }
@@ -330,3 +352,82 @@ export function formatAvailableSlotsForWhatsApp(
     `Ketik *angka pilihan (1-${selectedOptions.length})* atau sebutkan hari & jam yang kakak mau ya! 😊`
   );
 }
+
+export async function bookSlotInDatabase(params: {
+  tenantSlug: string;
+  slotDate: string;
+  startTime: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail?: string;
+  businessTopic?: string;
+  serviceTitle?: string;
+  orderId?: string;
+  idempotencyKey?: string;
+  supabaseClient?: any;
+}): Promise<{ success: boolean; slot?: any; error?: string }> {
+  const sb = params.supabaseClient || getSupabaseAdmin();
+  if (!sb) return { success: false, error: 'Database client tidak tersedia.' };
+
+  const cleanSlug = (params.tenantSlug || '').toLowerCase().trim();
+  const rawTime = (params.startTime || '').replace(/ WIB| WITA| WIT/i, '').trim();
+  const startTime = rawTime.length === 5 ? `${rawTime}:00` : rawTime;
+
+  try {
+    // 1. Idempotency Check: if already booked with idempotency_key or order_id
+    if (params.idempotencyKey || params.orderId) {
+      let q = sb.from('booking_slots').select('*').eq('tenant_slug', cleanSlug);
+      if (params.idempotencyKey && params.orderId) {
+        q = q.or(`idempotency_key.eq.${params.idempotencyKey},order_id.eq.${params.orderId}`);
+      } else if (params.idempotencyKey) {
+        q = q.eq('idempotency_key', params.idempotencyKey);
+      } else if (params.orderId) {
+        q = q.eq('order_id', params.orderId);
+      }
+      const { data: existing } = await q.maybeSingle();
+      if (existing && existing.status === 'BOOKED') {
+        return { success: true, slot: existing };
+      }
+    }
+
+    // 2. Atomic Concurrency Lock: UPDATE ... WHERE status = 'AVAILABLE'
+    const updatePayload: Record<string, any> = {
+      status: 'BOOKED',
+      booked_count: 1,
+      customer_name: params.customerName,
+      customer_phone: params.customerPhone,
+      customer_email: params.customerEmail || null,
+      business_topic: params.businessTopic || null,
+      service_title: params.serviceTitle || null,
+      order_id: params.orderId || null,
+      idempotency_key: params.idempotencyKey || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: updated, error } = await sb
+      .from('booking_slots')
+      .update(updatePayload)
+      .eq('tenant_slug', cleanSlug)
+      .eq('slot_date', params.slotDate)
+      .eq('start_time', startTime)
+      .eq('status', 'AVAILABLE')
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (!updated) {
+      return {
+        success: false,
+        error: `Slot jadwal ${params.slotDate} jam ${params.startTime} sudah penuh atau tidak tersedia lagi.`,
+      };
+    }
+
+    return { success: true, slot: updated };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error booking slot' };
+  }
+}
+

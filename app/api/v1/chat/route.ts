@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
     let tenantDomainInfo = { slug, custom_domain: null as string | null };
     let tenantMetadata: any = {};
 
+    let botProfileRow: any = null;
     try {
       const supabase = getSupabase();
       if (supabase) {
@@ -64,6 +65,15 @@ export async function POST(req: NextRequest) {
           if (t.category || t.business_type) {
             category = t.category || t.business_type;
           }
+        }
+
+        const { data: bp } = await supabase
+          .from('bot_profiles')
+          .select('*')
+          .eq('tenant_slug', slug)
+          .maybeSingle();
+        if (bp) {
+          botProfileRow = bp;
         }
       }
     } catch {}
@@ -277,7 +287,20 @@ export async function POST(req: NextRequest) {
         }
 
         const menuSummary = formatInteractiveMenusSummary(interactiveMenus);
-        const systemPrompt = `Anda adalah asisten AI customer service resmi untuk toko "${storeName}" (Kategori: ${category}).
+
+        const botPersona = botProfileRow?.persona_name || tenantMetadata?.bot_profile?.persona_name || `Asisten AI Resmi ${storeName}`;
+        const botTone = botProfileRow?.tone || tenantMetadata?.bot_profile?.tone || 'Ramah, profesional, solutif';
+        const customPrompt = botProfileRow?.system_prompt || tenantMetadata?.bot_profile?.system_prompt || '';
+        const guards = Array.isArray(botProfileRow?.strict_guardrails)
+          ? botProfileRow.strict_guardrails.join('\n- ')
+          : (Array.isArray(tenantMetadata?.bot_profile?.strict_guardrails)
+            ? tenantMetadata.bot_profile.strict_guardrails.join('\n- ')
+            : '');
+
+        const systemPrompt = `Anda adalah "${botPersona}", representasi customer service resmi untuk "${storeName}" (Kategori: ${category}).
+Gaya Komunikasi / Tone: ${botTone}.
+${customPrompt ? `\nPanduan Persona Tambahan:\n${customPrompt}\n` : ''}
+${guards ? `\nStrict Guardrails (ATURAN MUTLAK):\n- ${guards}\n` : ''}
 
 INFORMASI RESMI TOKO & TAUTAN WEB:
 - Website Toko Resmi: https://shop.boontrack.com/${slug}

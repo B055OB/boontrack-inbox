@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck } from "lucide-react";
+import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
@@ -30,6 +30,12 @@ interface CheckoutModalProps {
     cta_label?: string;
     meta_pixel_id_override?: string;
     tiktok_pixel_id_override?: string;
+    slot?: {
+      slotDate: string;
+      startTime: string;
+      displayLabel: string;
+      businessTopic: string;
+    };
   } | null;
 }
 
@@ -72,9 +78,10 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [tenantStaticQris, setTenantStaticQris] = useState<string>("");
   const [tenantQrisImageUrl, setTenantQrisImageUrl] = useState<string>("");
 
-  // Resolver Context Fulfillment Digital vs Fisik
+  // Resolver Context Fulfillment Digital vs Fisik vs Booking/Service
   const rawProductType = (product?.product_type || product?.type || (product?.category === 'fisik' || product?.category === 'physical' ? 'physical' : 'digital')).toLowerCase();
   const isPhysical = rawProductType === 'physical' || rawProductType === 'fisik';
+  const isBookingOrService = rawProductType === 'service' || rawProductType === 'booking' || rawProductType === 'consultation' || Boolean(product?.slot);
   const isDigital = !isPhysical;
 
   const handleCopy = (text: string, field: string) => {
@@ -355,7 +362,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     setErrorMessage("");
 
     const trackingParams = getTrackingData();
-    const resolvedProductType = isPhysical ? 'PHYSICAL' : 'DIGITAL';
+    const resolvedProductType = isBookingOrService
+      ? (product?.product_type || 'SERVICE')
+      : (isPhysical ? 'PHYSICAL' : 'DIGITAL');
 
     const resolvedAccessUrl =
       product.download_url ||
@@ -363,6 +372,32 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
       product.delivery_url ||
       product.fulfillment_metadata?.access_url ||
       '';
+
+    const resolvedFulfillmentMetadata = product?.slot
+      ? {
+          ...(product.fulfillment_metadata || {}),
+          delivery_type: 'CONSULTATION_SESSION',
+          slot: product.slot,
+          scheduled_at: product.slot.slotDate,
+          time_slot: product.slot.startTime,
+          business_topic: product.slot.businessTopic,
+          display_label: product.slot.displayLabel,
+          instructions: 'Sesi konsultasi Anda telah dijadwalkan secara resmi.',
+        }
+      : (product.fulfillment_metadata || (resolvedAccessUrl ? {
+          delivery_type: 'DOWNLOAD_LINK',
+          access_url: resolvedAccessUrl,
+          instructions: 'Akses materi digital Anda telah aktif secara instan.'
+        } : undefined));
+
+    const trackingWithSlot = {
+      ...trackingParams,
+      ...(product?.slot ? {
+        scheduled_at: product.slot.slotDate,
+        time_slot: product.slot.startTime,
+        business_topic: product.slot.businessTopic,
+      } : {}),
+    };
 
     try {
       const result = await createOrderAndInvoice({
@@ -383,19 +418,34 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         shippingCost: isPhysical ? shippingCost : 0,
         netShippingCost: isPhysical ? shippingCost : 0,
         affiliateCode: undefined, // Murni direct store ke toko merchant
-        tracking: trackingParams,
+        tracking: trackingWithSlot,
         productType: resolvedProductType,
-        fulfillmentMetadata: product.fulfillment_metadata || (resolvedAccessUrl ? {
-          delivery_type: 'DOWNLOAD_LINK',
-          access_url: resolvedAccessUrl,
-          instructions: 'Akses materi digital Anda telah aktif secara instan.'
-        } : undefined),
+        fulfillmentMetadata: resolvedFulfillmentMetadata,
       });
 
       // Trigger Client-side Purchase Event & Browser Pixel
       if (result?.orderId) {
         trackClientPurchase(result.orderId, totalAmount, product.title);
         trackLeadFormSubmission(totalAmount);
+
+        // Kunci atomic booking slot jika produk merupakan sesi booking jadwal
+        if (product?.slot) {
+          fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/book-slot`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              slot_date: product.slot.slotDate,
+              start_time: product.slot.startTime,
+              customer_name: customerName,
+              customer_phone: customerPhone,
+              customer_email: customerEmail,
+              business_topic: product.slot.businessTopic,
+              service_title: product.title,
+              order_id: result.orderId,
+              idempotency_key: `IDEMP-${result.orderId}`,
+            }),
+          }).catch((err) => console.warn('[Checkout] Booking slot reservation warning:', err));
+        }
 
         if (typeof window !== "undefined") {
           const win = window as any;
@@ -505,12 +555,39 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 <span className="inline-block px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold rounded-full mb-1">
                   Pembayaran Terverifikasi (Lunas)
                 </span>
-                <h4 className="font-black text-white text-base">Akses Produk Digital Siap!</h4>
+                <h4 className="font-black text-white text-base">
+                  {isBookingOrService ? 'Sesi Konsultasi Berhasil Terjadwal!' : 'Akses Produk Digital Siap!'}
+                </h4>
                 <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: {paymentData.orderId}</p>
               </div>
 
               <div className="bg-slate-950 border border-emerald-500/30 rounded-2xl p-4 text-left space-y-3 shadow-inner">
-                {orderFulfillment?.access_url ? (
+                {isBookingOrService ? (
+                  <div className="space-y-2.5">
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Selamat! Pembayaran untuk <strong>{product.title}</strong> telah terkonfirmasi. Jadwal sesi konsultasi privat Anda resmi dikunci:
+                    </p>
+                    <div className="p-3.5 bg-emerald-950/50 border border-emerald-500/40 rounded-xl space-y-1">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>{product.slot?.displayLabel || 'Sesi Terjadwal 1-on-1'}</span>
+                      </div>
+                      {product.slot?.businessTopic && (
+                        <p className="text-[11px] text-slate-300">
+                          Topik: <span className="text-white font-medium">{product.slot.businessTopic}</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-center space-y-1">
+                      <p className="text-xs font-bold text-indigo-300">
+                        Link Room &amp; Kalender Sesi
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Tautan Google Meet / Zoom dan reminder kalender otomatis dikirimkan ke WhatsApp Anda (<strong>{customerPhone}</strong>).
+                      </p>
+                    </div>
+                  </div>
+                ) : orderFulfillment?.access_url ? (
                   <>
                     <p className="text-xs text-slate-300 leading-relaxed">
                       Selamat! Pembayaran untuk <strong>{product.title}</strong> telah selesai. Anda dapat langsung membuka akses materi sekarang:
@@ -719,6 +796,24 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 </div>
               )}
             </div>
+
+            {/* Slot Booking Card jika checkout membawa slot jadwal */}
+            {product.slot && (
+              <div className="bg-indigo-950/80 border border-indigo-500/40 rounded-2xl p-3.5 space-y-1 shadow-inner">
+                <div className="flex items-center gap-1.5 text-indigo-300 text-xs font-bold">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Jadwal Sesi Terpilih:</span>
+                </div>
+                <p className="text-white font-black text-sm">
+                  {product.slot.displayLabel}
+                </p>
+                {product.slot.businessTopic && (
+                  <p className="text-[11px] text-slate-300">
+                    Topik: <span className="text-indigo-200 font-medium">{product.slot.businessTopic}</span>
+                  </p>
+                )}
+              </div>
+            )}
 
             {errorMessage && (
               <div className="p-3 bg-rose-950/50 border border-rose-800/60 rounded-xl text-rose-300 text-[11px]">

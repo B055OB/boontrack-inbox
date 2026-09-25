@@ -322,6 +322,12 @@ export default function TenantStorefrontPage() {
     type?: string;
     product_type?: string;
     fulfillment_metadata?: any;
+    slot?: {
+      slotDate: string;
+      startTime: string;
+      displayLabel: string;
+      businessTopic: string;
+    };
   } | null>(null);
   const [cart, setCart] = useState<{ product: Product; qty: number }[]>([]);
   const [showCartModal, setShowCartModal] = useState(false);

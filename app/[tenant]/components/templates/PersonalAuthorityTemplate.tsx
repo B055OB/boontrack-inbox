@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
+import ScheduleBookingWidget from '../ScheduleBookingWidget';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
 
@@ -36,7 +37,18 @@ interface PersonalAuthorityTemplateProps {
   storeProducts: Product[];
   dynamicQuickReplies: string[];
   chatEnabled: boolean;
-  onInitiateCheckout: (product: { id: string; title: string; price: number }) => void;
+  onInitiateCheckout: (product: {
+    id: string;
+    title: string;
+    price: number;
+    product_type?: string;
+    slot?: {
+      slotDate: string;
+      startTime: string;
+      displayLabel: string;
+      businessTopic: string;
+    };
+  }) => void;
   onOpenConsultation?: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onOutboundClick: (url: string, label: string) => void;
@@ -101,6 +113,11 @@ export default function PersonalAuthorityTemplate({
   const mainProduct = storeProducts && storeProducts.length > 0 ? storeProducts[0] : null;
 
   const handleCtaPrimary = () => {
+    const bookingEl = typeof document !== 'undefined' ? document.getElementById('booking-section') : null;
+    if (bookingEl) {
+      bookingEl.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
     if (mainProduct) {
       onInitiateCheckout({
         id: String(mainProduct.id),
@@ -193,16 +210,22 @@ export default function PersonalAuthorityTemplate({
           </div>
 
           <div className="flex items-center gap-2.5">
-            {whatsappConsultationUrl ? (
-              <button
-                type="button"
-                onClick={() => onOutboundClick(whatsappConsultationUrl, 'whatsapp_nav_cta')}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs shadow-purple-600/20 active:scale-95 flex items-center gap-1.5"
-              >
-                <span>{headerCtaText}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                const bookingEl = typeof document !== 'undefined' ? document.getElementById('booking-section') : null;
+                if (bookingEl) {
+                  bookingEl.scrollIntoView({ behavior: 'smooth' });
+                } else if (whatsappConsultationUrl) {
+                  onOutboundClick(whatsappConsultationUrl, 'whatsapp_nav_cta');
+                }
+              }}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs shadow-purple-600/20 active:scale-95 flex items-center gap-1.5"
+            >
+              <Calendar className="w-3.5 h-3.5 text-purple-200" />
+              <span>{headerCtaText}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </header>
@@ -624,6 +647,28 @@ export default function PersonalAuthorityTemplate({
           </div>
         </section>
       )}
+
+      {/* INTERACTIVE SCHEDULE BOOKING SECTION */}
+      <section className="py-16 px-4 sm:px-6 bg-slate-900 border-t border-slate-800">
+        <div className="max-w-5xl mx-auto">
+          <ScheduleBookingWidget
+            tenantSlug={tenantSlug}
+            storeName={activeName}
+            whatsappNumber={whatsappNumber}
+            consultingProducts={storeProducts}
+            onSelectSlotAndCheckout={({ product, slot }) => {
+              onInitiateCheckout({
+                id: product.id,
+                title: product.title,
+                price: product.price,
+                product_type: product.product_type,
+                slot,
+              });
+            }}
+            onOutboundClick={onOutboundClick}
+          />
+        </div>
+      </section>
 
       {/* SECTION TESTIMONIAL */}
       {dynamicTestimonials.length > 0 && (
