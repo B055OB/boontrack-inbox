@@ -43,7 +43,7 @@ export default function AppPortalPage() {
                     <div className="flex items-center gap-3">
                         <a href="#" className="flex items-center gap-3 group transition-all">
                             <img
-                                src="/app-brand/logo-master.png"
+                                src="/app-portal/logo-master.png"
                                 alt="BoonTrack"
                                 className="h-8 sm:h-9 w-auto object-contain group-hover:drop-shadow-[0_0_12px_rgba(249,115,22,0.35)] transition-all"
                             />

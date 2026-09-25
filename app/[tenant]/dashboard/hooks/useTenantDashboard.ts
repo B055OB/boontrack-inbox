@@ -1314,7 +1314,7 @@ export function useTenantDashboard() {
     const isPhysicalStock = storeCategory === 'PHYSICAL' || storeCategory === 'RETAIL' || storeCategory === 'FOOD';
     const isExternalCheckout = productForm.checkout_type === 'external' || Boolean(productForm.external_url?.trim());
     const cleanExternalUrl = (productForm.external_url || '').trim();
-    const cleanCtaLabel = (productForm.cta_label || '').trim();
+    const cleanCtaLabel = (productForm.metadata?.cta_text || productForm.cta_label || '').trim();
 
     const updatedProductItem: ProductItem = {
       ...productForm,
@@ -1333,6 +1333,9 @@ export function useTenantDashboard() {
         checkout_type: isExternalCheckout ? 'external' : 'internal',
         external_url: isExternalCheckout ? cleanExternalUrl : undefined,
         cta_label: cleanCtaLabel || undefined,
+        cta_text: cleanCtaLabel || undefined,
+        voucher_config: productForm.metadata?.voucher_config,
+        payment_methods: productForm.metadata?.payment_methods,
       },
       single_page_config: productForm.single_page_config
         ? {
@@ -1579,15 +1582,23 @@ export function useTenantDashboard() {
     const updatedConfig: SinglePageConfig = {
       ...singlePageForm,
       slug: prodSlug,
-      discount_coupon: singlePageForm.voucher?.code || singlePageForm.discount_coupon || 'HEMAT50',
+      discount_coupon: singlePageForm.voucher?.code || singlePageForm.discount_coupon || '',
     };
 
     const updatedProducts = products.map(p => {
       if (p.id === activeSinglePageProduct.id) {
+        const ctaText = (singlePageForm.cta_label || p.metadata?.cta_text || p.cta_label || '').trim();
         return {
           ...p,
           slug: prodSlug,
+          cta_label: ctaText || undefined,
           single_page_config: updatedConfig,
+          metadata: {
+            ...(p.metadata || {}),
+            cta_text: ctaText || undefined,
+            cta_label: ctaText || undefined,
+            voucher_config: updatedConfig.voucher,
+          },
         };
       }
       return p;

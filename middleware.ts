@@ -511,6 +511,14 @@ export async function middleware(req: NextRequest) {
   // ── 3. KHUSUS APP.BOONTRACK.COM (Isolasi ke /app-portal) ──
   if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
     const url = req.nextUrl.clone();
+    if (pathname === '/favicon.ico') {
+      url.pathname = '/app-portal/favicon.ico';
+      return NextResponse.rewrite(url);
+    }
+    if (pathname === '/apple-touch-icon.png' || pathname === '/apple-icon.png') {
+      url.pathname = '/app-portal/apple-icon.png';
+      return NextResponse.rewrite(url);
+    }
     if (pathname === '/' || pathname === '') {
       url.pathname = '/app-portal';
       return NextResponse.rewrite(url);
@@ -775,6 +783,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image).*)',
   ],
 };
