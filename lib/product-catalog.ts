@@ -5,6 +5,17 @@ export interface VoucherConfig {
   shipping_discount_type?: 'none' | 'flat' | 'free'; // Khusus produk fisik
   shipping_discount_value?: number; // Subsidi ongkir (Rp) jika tipe 'flat'
   min_spend?: number; // Batas minimal belanja (opsional, Rp)
+  is_enabled?: boolean; // Dedicated toggle flag (Universal Decoupling)
+}
+
+export interface ProductVoucherConfig {
+  is_enabled: boolean;
+  code: string;
+  discount_type: 'nominal' | 'percentage';
+  discount_value: number;
+  min_spend?: number;
+  shipping_discount_type?: 'none' | 'flat' | 'free';
+  shipping_discount_value?: number;
 }
 
 export interface ComparisonItem {
@@ -897,30 +908,125 @@ export function resolveProductExternalUrl(item: any): string | null {
 }
 
 /**
- * Resolves CTA button label for a product.
- * If external, checks cta_label or provides contextual labels:
- * "Ikut Kelas" for courses, "Akses Sekarang" for free items, "Beli Sekarang" for paid items.
+ * Resolves default smart CTA button text based on product vertical.
+ * If digital/course -> "Daftar Sekarang", if service -> "Pesan Sekarang", if physical -> "Beli Sekarang".
  */
-export function resolveProductCtaLabel(item: any, isExternal: boolean): string {
-  if (item?.cta_label && typeof item.cta_label === 'string' && item.cta_label.trim()) {
-    return item.cta_label.trim();
+export function resolveProductDefaultCta(item: any): string {
+  const normType = String(item?.product_type || item?.type || item?.category || '').toLowerCase();
+  const nameLower = String(item?.name || item?.title || '').toLowerCase();
+
+  if (
+    normType.includes('digital') ||
+    normType.includes('course') ||
+    normType.includes('ecourse') ||
+    normType.includes('kelas') ||
+    nameLower.includes('kelas') ||
+    nameLower.includes('belajar') ||
+    nameLower.includes('ecourse')
+  ) {
+    return 'Daftar Sekarang';
   }
-  if (item?.metadata?.cta_label && typeof item.metadata.cta_label === 'string' && item.metadata.cta_label.trim()) {
-    return item.metadata.cta_label.trim();
+
+  if (
+    normType.includes('service') ||
+    normType.includes('jasa') ||
+    normType.includes('konsultasi') ||
+    normType.includes('agency')
+  ) {
+    return 'Pesan Sekarang';
   }
+
+  return 'Beli Sekarang';
+}
+
+/**
+ * Resolves CTA button label for a product.
+ * Checks metadata.cta_text first (Universal Merchant Config), then cta_label, then contextual smart fallback.
+ */
+export function resolveProductCtaLabel(item: any, isExternal?: boolean): string {
+  const directCta = item?.metadata?.cta_text || item?.cta_text || item?.cta_label || item?.metadata?.cta_label || item?.button_text;
+  if (directCta && typeof directCta === 'string' && directCta.trim()) {
+    return directCta.trim();
+  }
+
+  const price = Number(item?.price ?? item?.promo_price ?? 0);
+  if (price === 0) {
+    return 'Klaim Akses Gratis Sekarang';
+  }
+
   if (isExternal) {
-    const nameLower = String(item?.name || item?.title || '').toLowerCase();
-    const catLower = String(item?.category || '').toLowerCase();
-    if (
-      catLower.includes('kelas') ||
-      catLower.includes('course') ||
-      catLower.includes('ecourse') ||
-      nameLower.includes('kelas') ||
-      nameLower.includes('belajar')
-    ) {
-      return 'Ikut Belajar';
-    }
-    return Number(item?.price) === 0 ? 'Akses Sekarang' : 'Beli Sekarang';
+    const defaultLabel = resolveProductDefaultCta(item);
+    return defaultLabel === 'Daftar Sekarang' ? 'Ikut Belajar' : defaultLabel;
   }
-  return 'Tambah Keranjang';
+
+  return resolveProductDefaultCta(item);
+}
+
+/**
+ * Universal check whether product voucher is active and enabled.
+ * If is_enabled === false, voucher is completely disabled.
+ */
+export function isProductVoucherActive(product: any, config?: SinglePageConfig | null): boolean {
+  if (!product && !config) return false;
+  const prodVoucher = product?.metadata?.voucher_config || product?.voucher_config;
+  const cfgVoucher = config?.voucher;
+
+  // Strict check: if explicit is_enabled is false on either level, voucher is disabled
+  if (prodVoucher && prodVoucher.is_enabled === false) return false;
+  if (cfgVoucher && cfgVoucher.is_enabled === false) return false;
+
+  // If explicit is_enabled is true and has code
+  if (prodVoucher?.is_enabled === true && Boolean(prodVoucher.code?.trim())) return true;
+  if (cfgVoucher?.is_enabled === true && Boolean(cfgVoucher.code?.trim())) return true;
+
+  // Fallback for legacy configs without is_enabled: check if code exists and is_enabled is not false
+  if (prodVoucher?.code?.trim() && prodVoucher.is_enabled !== false) return true;
+  if (cfgVoucher?.code?.trim() && cfgVoucher.is_enabled !== false) return true;
+  if (config?.discount_coupon?.trim() && cfgVoucher?.is_enabled !== false) return true;
+
+  return false;
+}
+
+/**
+ * Resolves active voucher configuration if enabled.
+ * Returns null if voucher is turned off.
+ */
+export function getProductActiveVoucher(product: any, config?: SinglePageConfig | null): VoucherConfig | null {
+  if (!isProductVoucherActive(product, config)) return null;
+  const prodVoucher = product?.metadata?.voucher_config || product?.voucher_config;
+  const cfgVoucher = config?.voucher;
+
+  if (prodVoucher && prodVoucher.is_enabled !== false && prodVoucher.code?.trim()) {
+    return {
+      code: prodVoucher.code.trim().toUpperCase(),
+      discount_type: prodVoucher.discount_type || 'nominal',
+      discount_value: Number(prodVoucher.discount_value) || 0,
+      min_spend: Number(prodVoucher.min_spend) || 0,
+      shipping_discount_type: prodVoucher.shipping_discount_type || 'none',
+      shipping_discount_value: Number(prodVoucher.shipping_discount_value) || 0,
+      is_enabled: true,
+    };
+  }
+
+  if (cfgVoucher && cfgVoucher.is_enabled !== false && cfgVoucher.code?.trim()) {
+    return {
+      ...cfgVoucher,
+      code: cfgVoucher.code.trim().toUpperCase(),
+      is_enabled: true,
+    };
+  }
+
+  if (config?.discount_coupon?.trim() && cfgVoucher?.is_enabled !== false) {
+    return {
+      code: config.discount_coupon.trim().toUpperCase(),
+      discount_type: 'nominal',
+      discount_value: 20000,
+      shipping_discount_type: 'none',
+      shipping_discount_value: 0,
+      min_spend: 0,
+      is_enabled: true,
+    };
+  }
+
+  return null;
 }

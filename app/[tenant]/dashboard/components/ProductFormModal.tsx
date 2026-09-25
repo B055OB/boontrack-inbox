@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink, Sparkles, Zap, Plus, Trash2 } from 'lucide-react';
+import { Package, X, Save, Link as LinkIcon, RefreshCw, ExternalLink, Sparkles, Zap, Plus, Trash2, Tag, CreditCard } from 'lucide-react';
 import BoonPilotPitchModal from './BoonPilotPitchModal';
 import ImageUpload from '@/components/ImageUpload';
 import {
@@ -12,6 +12,8 @@ import {
   slugify,
   OrderBumpItem,
   OrderBumpConfig,
+  ProductVoucherConfig,
+  resolveProductDefaultCta,
 } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { ModularProductFormDispatcher, resolveDomainVertical } from './modules';
@@ -399,6 +401,131 @@ export default function ProductFormModal({
     syncBumpConfigToForm(newEnabled, updated);
   };
 
+  // ── UNIVERSAL CTA BUTTON TEXT RESOLUTION & HANDLER ──
+  const smartDefaultCta = resolveProductDefaultCta({
+    product_type: currentType,
+    type: activeVerticalMeta.backendType,
+    category: productForm.category,
+    name: productForm.name,
+  });
+
+  const ctaTextValue = productForm.metadata?.cta_text || productForm.cta_label || '';
+
+  const handleCtaTextChange = (val: string) => {
+    setProductForm((prev) => {
+      const currentMeta = prev.metadata || {};
+      const currentSpc = prev.single_page_config || ({} as any);
+      return {
+        ...prev,
+        cta_label: val,
+        button_text: val,
+        single_page_config: {
+          ...currentSpc,
+          cta_label: val,
+        },
+        metadata: {
+          ...currentMeta,
+          cta_text: val,
+          cta_label: val,
+        },
+      };
+    });
+  };
+
+  // ── DECOUPLED VOUCHER & PAYMENT METHODS STATE & HANDLERS ──
+  const [voucherEnabled, setVoucherEnabled] = useState(false);
+  const [voucherForm, setVoucherForm] = useState<ProductVoucherConfig>({
+    is_enabled: false,
+    code: '',
+    discount_type: 'nominal',
+    discount_value: 20000,
+    min_spend: 0,
+    shipping_discount_type: 'none',
+    shipping_discount_value: 0,
+  });
+
+  const [paymentMethods, setPaymentMethods] = useState({
+    enable_qris: true,
+    enable_manual_transfer: true,
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+      const rawV = productForm.metadata?.voucher_config || productForm.single_page_config?.voucher;
+      const enabled = Boolean(
+        productForm.metadata?.voucher_config?.is_enabled ??
+        productForm.single_page_config?.voucher?.is_enabled ??
+        (rawV && rawV.code && rawV.discount_value > 0)
+      );
+      setVoucherEnabled(enabled);
+      setVoucherForm({
+        is_enabled: enabled,
+        code: rawV?.code || productForm.single_page_config?.discount_coupon || '',
+        discount_type: rawV?.discount_type || 'nominal',
+        discount_value: rawV?.discount_value ?? 20000,
+        min_spend: rawV?.min_spend ?? 0,
+        shipping_discount_type: rawV?.shipping_discount_type || 'none',
+        shipping_discount_value: rawV?.shipping_discount_value ?? 0,
+      });
+
+      const pm = productForm.metadata?.payment_methods;
+      setPaymentMethods({
+        enable_qris: productForm.single_page_config?.enable_qris ?? pm?.enable_qris ?? true,
+        enable_manual_transfer: productForm.single_page_config?.enable_manual_transfer ?? pm?.enable_manual_transfer ?? true,
+      });
+    }
+  }, [isOpen, editingProductId]);
+
+  const syncVoucherToProductForm = (enabled: boolean, vCfg: ProductVoucherConfig) => {
+    const updatedVoucher: ProductVoucherConfig = {
+      ...vCfg,
+      is_enabled: enabled,
+    };
+    setProductForm((prev) => {
+      const currentMeta = prev.metadata || {};
+      const currentSpc = prev.single_page_config || ({} as any);
+      return {
+        ...prev,
+        metadata: {
+          ...currentMeta,
+          voucher_config: updatedVoucher,
+        },
+        single_page_config: {
+          ...currentSpc,
+          discount_coupon: enabled ? updatedVoucher.code : '',
+          voucher: {
+            code: updatedVoucher.code,
+            discount_type: updatedVoucher.discount_type,
+            discount_value: updatedVoucher.discount_value,
+            shipping_discount_type: updatedVoucher.shipping_discount_type,
+            shipping_discount_value: updatedVoucher.shipping_discount_value,
+            min_spend: updatedVoucher.min_spend,
+            is_enabled: enabled,
+          },
+        },
+      };
+    });
+  };
+
+  const syncPaymentMethodsToProductForm = (pm: { enable_qris: boolean; enable_manual_transfer: boolean }) => {
+    setProductForm((prev) => {
+      const currentMeta = prev.metadata || {};
+      const currentSpc = prev.single_page_config || ({} as any);
+      return {
+        ...prev,
+        metadata: {
+          ...currentMeta,
+          payment_methods: pm,
+        },
+        single_page_config: {
+          ...currentSpc,
+          enable_qris: pm.enable_qris,
+          enable_manual_transfer: pm.enable_manual_transfer,
+        },
+      };
+    });
+  };
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const isAffiliate = productForm.checkout_type === 'external';
@@ -687,24 +814,31 @@ export default function ProductFormModal({
                     Produk Affiliate / Mitra Luar (Shopee, TikTok, Mayar, Sejoli, dll). Pembeli yang menekan tombol beli akan langsung dialihkan ke URL ini.
                   </p>
                 </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-800 block mb-1">
-                    Label Tombol CTA (Opsional)
-                  </label>
-                  <input
-                    type="text"
-                    value={productForm.cta_label || ''}
-                    onChange={(e) => setProductForm((p) => ({ ...p, cta_label: e.target.value }))}
-                    placeholder="Contoh: Beli di Shopee, Beli di TikTok, Daftar di Web Resmi (Default: Beli Sekarang)"
-                    className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-blue-600"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Label tombol yang akan dilihat pembeli di katalog etalase & salespage.
-                  </p>
-                </div>
               </div>
             )}
+          </div>
+
+          {/* 3c. Teks Tombol Aksi / CTA Label (Universal untuk Semua Tipe Produk) */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                <span>Teks Tombol Aksi / CTA Label</span>
+              </label>
+              <span className="text-[10px] text-slate-500 font-medium">
+                Default: <strong className="text-blue-600 font-bold">"{smartDefaultCta}"</strong>
+              </span>
+            </div>
+            <input
+              type="text"
+              value={ctaTextValue}
+              onChange={(e) => handleCtaTextChange(e.target.value)}
+              placeholder={`Contoh: ${smartDefaultCta} / Beli Sekarang / Daftar Kelas Sekarang / Pesan Sekarang`}
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-blue-600 shadow-xs"
+            />
+            <p className="text-[10px] text-slate-400">
+              Label tombol aksi pembeli di etalase &amp; landing page. Jika dikosongkan, otomatis menggunakan default cerdas: "{smartDefaultCta}".
+            </p>
           </div>
 
           {/* 4. Promo Label & SKU */}
@@ -776,6 +910,285 @@ export default function ProductFormModal({
             tenantSlug={tenantSlug}
             onMetadataChange={handleMetadataChange}
           />
+
+          {/* METODE PEMBAYARAN & VOUCHER PROMO (DECOUPLED & MANDIRI) */}
+          {productForm.checkout_type !== 'external' && (
+            <div className="space-y-3.5">
+              {/* A. Metode Pembayaran Checkout (Selalu Mandiri & Aktif) */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                      <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Metode Pembayaran Checkout</span>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        Fee Rp0
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Metode bayar aktif mandiri tanpa bergantung pada status voucher promo.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-emerald-400 transition">
+                    <input
+                      type="checkbox"
+                      checked={paymentMethods.enable_qris}
+                      onChange={(e) => {
+                        const updated = { ...paymentMethods, enable_qris: e.target.checked };
+                        setPaymentMethods(updated);
+                        syncPaymentMethodsToProductForm(updated);
+                      }}
+                      className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-900 block text-xs">QRIS Instan Otomatis</span>
+                      <span className="text-[10px] text-slate-500">Bebas biaya admin (Fee Rp0) &amp; verifikasi kilat.</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-blue-400 transition">
+                    <input
+                      type="checkbox"
+                      checked={paymentMethods.enable_manual_transfer}
+                      onChange={(e) => {
+                        const updated = { ...paymentMethods, enable_manual_transfer: e.target.checked };
+                        setPaymentMethods(updated);
+                        syncPaymentMethodsToProductForm(updated);
+                      }}
+                      className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-900 block text-xs">Transfer Bank Manual</span>
+                      <span className="text-[10px] text-slate-500">BCA / Mandiri dengan kode unik verifikasi acak.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* B. Pengaturan Voucher Promo (Toggle Switch Mandiri) */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                      <Tag className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Pengaturan Voucher Promo</span>
+                      {voucherEnabled && (
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full uppercase">
+                          {voucherForm.code || 'AKTIF'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Aktifkan kupon diskon atau potongan harga khusus untuk pembeli produk ini.
+                    </p>
+                  </div>
+
+                  {/* Master Toggle Voucher */}
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={voucherEnabled}
+                      onChange={(e) => {
+                        const enabled = e.target.checked;
+                        setVoucherEnabled(enabled);
+                        const updatedVoucher = {
+                          ...voucherForm,
+                          code: voucherForm.code || 'DISKON20K',
+                          is_enabled: enabled,
+                        };
+                        setVoucherForm(updatedVoucher);
+                        syncVoucherToProductForm(enabled, updatedVoucher);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+
+                {/* Form Voucher: HANYA MUNCUL JIKA TOGGLE VOUCHER AKTIF */}
+                {voucherEnabled ? (
+                  <div className="space-y-3 pt-2.5 border-t border-slate-200/80">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Kode Voucher Promo *
+                        </label>
+                        <input
+                          type="text"
+                          required={voucherEnabled}
+                          value={voucherForm.code}
+                          onChange={(e) => {
+                            const code = e.target.value.toUpperCase().replace(/\s+/g, '');
+                            const updated = { ...voucherForm, code };
+                            setVoucherForm(updated);
+                            syncVoucherToProductForm(true, updated);
+                          }}
+                          placeholder="Contoh: HEMAT50, PROMO2026"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold uppercase focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Minimal Belanja (Opsional, Rp)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1000}
+                          value={voucherForm.min_spend || ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? Number(e.target.value) : 0;
+                            const updated = { ...voucherForm, min_spend: val };
+                            setVoucherForm(updated);
+                            syncVoucherToProductForm(true, updated);
+                          }}
+                          placeholder="0 (Tanpa minimum)"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Pilihan Tipe Diskon Produk */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                      <label className="text-[11px] font-bold text-slate-700 block">
+                        Tipe Diskon Produk
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated: ProductVoucherConfig = {
+                              ...voucherForm,
+                              discount_type: 'nominal',
+                              discount_value: voucherForm.discount_type === 'percentage' ? 20000 : voucherForm.discount_value,
+                            };
+                            setVoucherForm(updated);
+                            syncVoucherToProductForm(true, updated);
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                            voucherForm.discount_type === 'nominal'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          Diskon Nominal (Rp)
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated: ProductVoucherConfig = {
+                              ...voucherForm,
+                              discount_type: 'percentage',
+                              discount_value: voucherForm.discount_type === 'nominal' ? 10 : voucherForm.discount_value,
+                            };
+                            setVoucherForm(updated);
+                            syncVoucherToProductForm(true, updated);
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                            voucherForm.discount_type === 'percentage'
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          Diskon Persentase (%)
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] text-slate-500 font-semibold block mb-1">
+                          {voucherForm.discount_type === 'percentage' ? 'Besaran Diskon Persen (%)' : 'Besaran Diskon Flat (Rp)'}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min={0}
+                            max={voucherForm.discount_type === 'percentage' ? 100 : undefined}
+                            value={voucherForm.discount_value || ''}
+                            onChange={(e) => {
+                              const val = e.target.value ? Number(e.target.value) : 0;
+                              const updated = { ...voucherForm, discount_value: val };
+                              setVoucherForm(updated);
+                              syncVoucherToProductForm(true, updated);
+                            }}
+                            placeholder={voucherForm.discount_type === 'percentage' ? '10' : '20000'}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-10"
+                          />
+                          <span className="absolute right-3 top-2 text-xs font-bold text-slate-400">
+                            {voucherForm.discount_type === 'percentage' ? '%' : 'Rp'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Subsidi Ongkir jika produk fisik */}
+                    {isPhysicalStockVertical && (
+                      <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                        <label className="text-[11px] font-bold text-slate-700 block">
+                          Diskon Ongkir Ekspedisi (Produk Fisik)
+                        </label>
+                        <div className="grid grid-cols-3 gap-1.5 text-xs">
+                          {[
+                            { id: 'none', label: 'Tanpa Subsidi' },
+                            { id: 'flat', label: 'Subsidi Flat (Rp)' },
+                            { id: 'free', label: 'Gratis Ongkir' },
+                          ].map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                const updated: ProductVoucherConfig = {
+                                  ...voucherForm,
+                                  shipping_discount_type: item.id as any,
+                                };
+                                setVoucherForm(updated);
+                                syncVoucherToProductForm(true, updated);
+                              }}
+                              className={`py-1.5 px-2 rounded-lg text-center font-bold text-[10px] transition cursor-pointer ${
+                                (voucherForm.shipping_discount_type || 'none') === item.id
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {voucherForm.shipping_discount_type === 'flat' && (
+                          <div className="relative pt-1">
+                            <input
+                              type="number"
+                              min={0}
+                              step={1000}
+                              value={voucherForm.shipping_discount_value || ''}
+                              onChange={(e) => {
+                                const val = e.target.value ? Number(e.target.value) : 0;
+                                const updated = { ...voucherForm, shipping_discount_value: val };
+                                setVoucherForm(updated);
+                                syncVoucherToProductForm(true, updated);
+                              }}
+                              placeholder="Nominal subsidi (mis: 10000)"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-10"
+                            />
+                            <span className="absolute right-3 top-3 text-xs font-bold text-slate-400">Rp</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 italic bg-white p-2.5 rounded-xl border border-dashed border-slate-200">
+                    Voucher promo dinonaktifkan. Kotak input voucher tidak akan muncul di halaman checkout pembeli.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* 8. Foto Produk */}
           <div>

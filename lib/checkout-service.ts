@@ -2,7 +2,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
-import { resolveActiveOrderBumps, OrderBumpItem } from "@/lib/product-catalog";
+import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher } from "@/lib/product-catalog";
 
 export interface CreateOrderPayload {
   tenantSlug: string;
@@ -58,58 +58,81 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     console.warn('[Checkout Service] Gagal resolve tenant_id dari slug:', tenantResolveErr);
   }
 
-  // Backend Price Snapshot Verification for Order Bumps (Zero-Trust Architecture)
+  // Backend Verification for Order Bumps & Vouchers (Zero Client Financial Authority)
   let verifiedOrderBumps: OrderBumpItem[] = [];
   let orderBumpsTotal = 0;
+  let matchedProd: any = null;
 
-  if (payload.selectedOrderBumps && payload.selectedOrderBumps.length > 0) {
-    try {
-      const products = Array.isArray(tenantRowData?.metadata?.products) ? tenantRowData.metadata.products : [];
-      const prodIdStr = String(payload.productId || '').trim();
-      const prodTitleStr = String(payload.productTitle || '').trim().toLowerCase();
+  try {
+    const products = Array.isArray(tenantRowData?.metadata?.products) ? tenantRowData.metadata.products : [];
+    const prodIdStr = String(payload.productId || '').trim();
+    const prodTitleStr = String(payload.productTitle || '').trim().toLowerCase();
 
-      let matchedProd = products.find((p: any) => {
-        if (!p) return false;
-        if (prodIdStr && (String(p.id) === prodIdStr || String(p.slug) === prodIdStr || String(p.sku) === prodIdStr)) return true;
-        if (prodTitleStr && p.name && p.name.trim().toLowerCase() === prodTitleStr) return true;
-        return false;
-      });
+    matchedProd = products.find((p: any) => {
+      if (!p) return false;
+      if (prodIdStr && (String(p.id) === prodIdStr || String(p.slug) === prodIdStr || String(p.sku) === prodIdStr)) return true;
+      if (prodTitleStr && p.name && p.name.trim().toLowerCase() === prodTitleStr) return true;
+      return false;
+    });
 
-      if (!matchedProd && resolvedTenantId) {
-        const { data: sqlProd } = await supabase
-          .from('products')
-          .select('*')
-          .eq('tenant_id', resolvedTenantId)
-          .or(`slug.eq.${payload.productId},id.eq.${payload.productId}`)
-          .maybeSingle();
-        if (sqlProd) {
-          matchedProd = {
-            ...sqlProd,
-            name: sqlProd.title,
-            order_bumps: sqlProd.fulfillment_metadata?.order_bumps,
-          };
-        }
+    if (!matchedProd && resolvedTenantId) {
+      const { data: sqlProd } = await supabase
+        .from('products')
+        .select('*')
+        .eq('tenant_id', resolvedTenantId)
+        .or(`slug.eq.${payload.productId},id.eq.${payload.productId}`)
+        .maybeSingle();
+      if (sqlProd) {
+        matchedProd = {
+          ...sqlProd,
+          name: sqlProd.title,
+          order_bumps: sqlProd.fulfillment_metadata?.order_bumps,
+        };
       }
-
-      if (matchedProd) {
-        const availableBumps = resolveActiveOrderBumps(matchedProd);
-        const requestedIds = payload.selectedOrderBumps.map((b) => String(b.id || ''));
-
-        // Backend Price Snapshot: Hanya gunakan harga snapshot dari backend (abaikan payload harga klien)
-        verifiedOrderBumps = availableBumps.filter((b) => requestedIds.includes(String(b.id)));
-        orderBumpsTotal = verifiedOrderBumps.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
-      }
-    } catch (bumpErr) {
-      console.warn('[Checkout Service] Order bump verification note:', bumpErr);
     }
+
+    if (matchedProd && payload.selectedOrderBumps && payload.selectedOrderBumps.length > 0) {
+      const availableBumps = resolveActiveOrderBumps(matchedProd);
+      const requestedIds = payload.selectedOrderBumps.map((b) => String(b.id || ''));
+
+      // Backend Price Snapshot: Hanya gunakan harga snapshot dari backend (abaikan payload harga klien)
+      verifiedOrderBumps = availableBumps.filter((b) => requestedIds.includes(String(b.id)));
+      orderBumpsTotal = verifiedOrderBumps.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
+    }
+  } catch (lookupErr) {
+    console.warn('[Checkout Service] Product verification lookup note:', lookupErr);
   }
 
   const paymentMethod = payload.paymentMethod || 'qris';
   const basePrice = payload.basePrice ?? payload.amount;
-  const productDiscount = payload.productDiscount ?? 0;
-  const netProductPrice = (payload.netProductPrice !== undefined && verifiedOrderBumps.length === 0)
-    ? payload.netProductPrice
-    : Math.max(0, basePrice - productDiscount) + orderBumpsTotal;
+
+  // Validasi Voucher Snapshot (Server-Side)
+  let verifiedProductDiscount = payload.productDiscount ?? 0;
+  let verifiedVoucherCode = payload.voucherCode || null;
+
+  if (matchedProd && (payload.voucherCode || verifiedProductDiscount > 0)) {
+    const activeVoucher = getProductActiveVoucher(matchedProd, matchedProd.single_page_config);
+    if (!activeVoucher) {
+      // Seller mematikan voucher / voucher tidak aktif: diskon direset ke 0
+      verifiedProductDiscount = 0;
+      verifiedVoucherCode = null;
+    } else if (payload.voucherCode && payload.voucherCode.trim().toUpperCase() === activeVoucher.code.toUpperCase()) {
+      if (activeVoucher.min_spend && basePrice < activeVoucher.min_spend) {
+        verifiedProductDiscount = 0;
+        verifiedVoucherCode = null;
+      } else if (activeVoucher.discount_type === 'percentage') {
+        verifiedProductDiscount = Math.round(basePrice * ((activeVoucher.discount_value || 0) / 100));
+      } else {
+        verifiedProductDiscount = activeVoucher.discount_value || 0;
+      }
+    } else if (!payload.voucherCode) {
+      // Tidak ada kode voucher namun ada klaim diskon klien
+      verifiedProductDiscount = 0;
+    }
+  }
+
+  const productDiscount = verifiedProductDiscount;
+  const netProductPrice = Math.max(0, basePrice - productDiscount) + orderBumpsTotal;
 
   // Kunci pengamanan: vertikal non-shipping (jasa, digital, dsb.) dipaksa 0 ongkir & tanpa kurir
   const normType = (payload.productType || '').toUpperCase().trim();
@@ -170,7 +193,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     shipping_cost: shippingCost,
     shipping_subsidy: shippingSubsidy,
     net_shipping_cost: netShippingCost,
-    voucher_code: payload.voucherCode || null,
+    voucher_code: verifiedVoucherCode,
     shipping_address: payload.shippingAddress || null,
     shipping_courier: shippingCourier,
     product_type: payload.productType || null,

@@ -66,7 +66,11 @@ import {
   ProductType,
   FulfillmentMetadata,
   resolveActiveOrderBumps,
-  OrderBumpItem
+  OrderBumpItem,
+  isProductVoucherActive,
+  getProductActiveVoucher,
+  resolveProductDefaultCta,
+  resolveProductCtaLabel
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts } from '@/lib/bank-accounts';
@@ -602,17 +606,25 @@ function SingleProductContent() {
     return () => clearTimeout(timer);
   }, [requiresShipping, shippingCity, shippingAddress]);
 
-  // Sinkronisasi voucher otomatis jika disediakan di config
+  // Cek keaktifan voucher seller secara universal (Metadata-First & Zero Hardcoding)
+  const isVoucherActive = isProductVoucherActive(product, config);
+  const activeSellerVoucher = getProductActiveVoucher(product, config);
+
+  // Dynamic CTA Button Label Resolution (Universal untuk Semua Template)
+  const defaultCtaLabel = resolveProductDefaultCta(product);
+  const dynamicCtaPrefix = (product.metadata?.cta_text || config.cta_label || product.cta_label || defaultCtaLabel).trim();
+
+  // Sinkronisasi voucher otomatis HANYA jika seller mengaktifkan voucher promo
   useEffect(() => {
-    if (config.voucher && config.voucher.discount_value > 0 && !appliedVoucher) {
-      setVoucherInput(config.voucher.code || '');
-      setAppliedVoucher(config.voucher);
+    if (isVoucherActive && activeSellerVoucher && activeSellerVoucher.discount_value > 0 && !appliedVoucher) {
+      setVoucherInput(activeSellerVoucher.code || '');
+      setAppliedVoucher(activeSellerVoucher);
       setVoucherMsg({
         type: 'success',
-        text: `Voucher ${config.voucher.code} berhasil diterapkan otomatis!`
+        text: `Voucher ${activeSellerVoucher.code} berhasil diterapkan otomatis!`
       });
     }
-  }, [config.voucher, appliedVoucher]);
+  }, [isVoucherActive, activeSellerVoucher, appliedVoucher]);
 
   // Perhitungan Finansial Presisi (Mendukung Harga Rp0 / Freebie)
   const isFreebie = product.price === 0 || product.promo_price === 0;
@@ -629,6 +641,12 @@ function SingleProductContent() {
 
   const handleApplyVoucher = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!isVoucherActive || !activeSellerVoucher) {
+      setVoucherMsg({ type: 'error', text: 'Voucher promo tidak tersedia untuk produk ini.' });
+      setAppliedVoucher(null);
+      return;
+    }
+
     const code = voucherInput.trim().toUpperCase();
     if (!code) {
       setVoucherMsg({ type: 'error', text: 'Silakan masukkan kode voucher.' });
@@ -637,50 +655,27 @@ function SingleProductContent() {
 
     const currentBasePrice = basePrice;
 
-    // Cek kecocokan kode voucher
-    const targetVoucher: VoucherConfig | null = 
-      (config.voucher && config.voucher.code.toUpperCase() === code)
-        ? config.voucher
-        : (config.discount_coupon && config.discount_coupon.toUpperCase() === code)
-        ? {
-            code: config.discount_coupon.toUpperCase(),
-            discount_type: 'nominal',
-            discount_value: 20000,
-            shipping_discount_type: requiresShipping ? 'free' : 'none',
-            shipping_discount_value: 0,
-            min_spend: 0
-          }
-        : (code === 'HEMAT50' || code === 'DISKON20K' || code === 'FREESHIP' || code === 'BOONPROMO50')
-        ? {
-            code,
-            discount_type: code === 'DISKON20K' ? 'percentage' : 'nominal',
-            discount_value: code === 'DISKON20K' ? 20 : 50000,
-            shipping_discount_type: code === 'FREESHIP' ? (requiresShipping ? 'free' : 'none') : 'none',
-            shipping_discount_value: 0,
-            min_spend: 0
-          }
-        : null;
-
-    if (!targetVoucher) {
+    // Cek kecocokan kode voucher dengan konfigurasi resmi seller (Zero hardcoding)
+    if (activeSellerVoucher.code.toUpperCase() !== code) {
       setVoucherMsg({ type: 'error', text: `Voucher "${code}" tidak valid atau telah kedaluwarsa.` });
       setAppliedVoucher(null);
       return;
     }
 
     // Validasi minimal belanja
-    if (targetVoucher.min_spend && currentBasePrice < targetVoucher.min_spend) {
+    if (activeSellerVoucher.min_spend && currentBasePrice < activeSellerVoucher.min_spend) {
       setVoucherMsg({
         type: 'error',
-        text: `Minimal belanja Rp ${targetVoucher.min_spend.toLocaleString('id-ID')} untuk menggunakan voucher ini.`
+        text: `Minimal belanja Rp ${activeSellerVoucher.min_spend.toLocaleString('id-ID')} untuk menggunakan voucher ini.`
       });
       setAppliedVoucher(null);
       return;
     }
 
-    setAppliedVoucher(targetVoucher);
+    setAppliedVoucher(activeSellerVoucher);
     setVoucherMsg({
       type: 'success',
-      text: `Voucher ${targetVoucher.code} berhasil digunakan!`
+      text: `Voucher ${activeSellerVoucher.code} berhasil digunakan!`
     });
   };
 
@@ -1412,61 +1407,63 @@ function SingleProductContent() {
         </div>
       )}
 
-      {/* Input Kode Voucher Promo Fleksibel */}
-      <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 font-bold text-slate-900">
-            <Tag className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Punya Kode Voucher?</span>
+      {/* Input Kode Voucher Promo Fleksibel (HANYA DITAMPILKAN JIKA SELLER MENGAKTIFKAN TOGGLE VOUCHER) */}
+      {isVoucherActive && (
+        <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+              <Tag className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Punya Kode Voucher?</span>
+            </div>
+            {appliedVoucher && (
+              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                {appliedVoucher.code} Aktif
+              </span>
+            )}
           </div>
-          {appliedVoucher && (
-            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" />
-              {appliedVoucher.code} Aktif
-            </span>
-          )}
-        </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={voucherInput}
-            onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
-            placeholder="Masukkan kode voucher (mis: HEMAT50)"
-            className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 focus:outline-none focus:border-indigo-600"
-          />
-          <button
-            type="button"
-            onClick={() => handleApplyVoucher()}
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
-          >
-            Terapkan
-          </button>
-          {appliedVoucher && (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={voucherInput}
+              onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
+              placeholder="Masukkan kode voucher promo"
+              className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold uppercase text-slate-900 focus:outline-none focus:border-indigo-600"
+            />
             <button
               type="button"
-              onClick={handleRemoveVoucher}
-              title="Hapus Voucher"
-              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+              onClick={() => handleApplyVoucher()}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
             >
-              <Trash2 className="w-4 h-4" />
+              Terapkan
             </button>
+            {appliedVoucher && (
+              <button
+                type="button"
+                onClick={handleRemoveVoucher}
+                title="Hapus Voucher"
+                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {voucherMsg && (
+            <div className={`text-[11px] font-semibold flex items-center gap-1.5 ${
+              voucherMsg.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
+            }`}>
+              {voucherMsg.type === 'success' ? (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>{voucherMsg.text}</span>
+            </div>
           )}
         </div>
-
-        {voucherMsg && (
-          <div className={`text-[11px] font-semibold flex items-center gap-1.5 ${
-            voucherMsg.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
-          }`}>
-            {voucherMsg.type === 'success' ? (
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-            ) : (
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            )}
-            <span>{voucherMsg.text}</span>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Rincian Kalkulasi Pembayaran Presisi */}
       <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
@@ -1562,7 +1559,11 @@ function SingleProductContent() {
         ) : (
           <>
             <Lock className="w-4 h-4" />
-            <span>Bayar Sekarang (Rp {totalAmount.toLocaleString('id-ID')})</span>
+            <span>
+              {totalAmount === 0
+                ? (product.metadata?.cta_text || 'Akses Gratis Sekarang')
+                : `${dynamicCtaPrefix} - Rp ${totalAmount.toLocaleString('id-ID')}`}
+            </span>
             <ArrowRight className="w-4 h-4" />
           </>
         )}
@@ -1693,8 +1694,8 @@ function SingleProductContent() {
                   >
                     <span>
                       {basePrice === 0
-                        ? 'Klaim Akses Gratis Sekarang'
-                        : (config.cta_label || product.cta_label || `Daftar Kelas Sekarang - Rp ${basePrice.toLocaleString('id-ID')}`)}
+                        ? (product.metadata?.cta_text || 'Klaim Akses Gratis Sekarang')
+                        : `${dynamicCtaPrefix} - Rp ${basePrice.toLocaleString('id-ID')}`}
                     </span>
                     <ArrowDown className="w-4 h-4" />
                   </button>
@@ -2058,7 +2059,11 @@ function SingleProductContent() {
                 onClick={handleOpenCheckout}
                 className="flex-1 max-w-xs py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition cursor-pointer"
               >
-                <span>{totalAmount === 0 ? 'Klaim Sekarang (Gratis)' : 'Daftar & Bayar Instan'}</span>
+                <span>
+                  {totalAmount === 0 
+                    ? (product.metadata?.cta_text || 'Klaim Sekarang (Gratis)') 
+                    : `${dynamicCtaPrefix} - Rp ${totalAmount.toLocaleString('id-ID')}`}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}

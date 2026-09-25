@@ -976,8 +976,8 @@ export default function SinglePageBuilderModal({
           {activeBuilderTab === 'payment_voucher' && (
             <div className="space-y-4 animate-fadeIn">
               <SectionToggleHeader
-                title="Section 8: Bayar & Voucher"
-                description="Formulir checkout data pembeli, pilihan metode bayar, dan aktivasi kode kupon promo."
+                title="Section 8: Formulir Checkout & Pembayaran"
+                description="Formulir checkout data pembeli, pilihan metode bayar mandiri, dan aktivasi kupon promo."
                 enabled={singlePageForm.enable_payment ?? true}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_payment: val }))}
               />
@@ -1024,211 +1024,83 @@ export default function SinglePageBuilderModal({
                       <p className="text-[10px] text-slate-500">Konfigurasi potongan harga produk dan/atau subsidi ongkir khusus landing page ini.</p>
                     </div>
                   </div>
-                  <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full uppercase">
-                    {singlePageForm.voucher?.code || 'NO-CODE'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-slate-700 block text-xs mb-1">Kode Voucher</label>
-                    <input
-                      type="text"
-                      value={singlePageForm.voucher?.code || ''}
-                      onChange={(e) => {
-                        const code = e.target.value.toUpperCase().replace(/\s+/g, '');
-                        setSinglePageForm(p => ({
-                          ...p,
-                          discount_coupon: code,
-                          voucher: {
-                            ...(p.voucher || {
-                              code,
-                              discount_type: 'nominal',
-                              discount_value: 20000,
-                              shipping_discount_type: 'none',
-                              shipping_discount_value: 0,
-                              min_spend: 0
-                            }),
-                            code
-                          }
-                        }));
-                      }}
-                      placeholder="Contoh: HEMAT50, DISKON20K, FREESHIP"
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold uppercase focus:outline-none focus:border-indigo-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-slate-700 block text-xs mb-1">Minimal Belanja (Opsional, Rp)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step={1000}
-                      value={singlePageForm.voucher?.min_spend || 0}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setSinglePageForm(p => ({
-                          ...p,
-                          voucher: {
-                            ...(p.voucher || {
-                              code: p.discount_coupon || 'HEMAT50',
-                              discount_type: 'nominal',
-                              discount_value: 20000,
-                              shipping_discount_type: 'none',
-                              shipping_discount_value: 0,
-                              min_spend: val
-                            }),
-                            min_spend: val
-                          }
-                        }));
-                      }}
-                      placeholder="0 (Tanpa minimum)"
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
-                  <label className="font-bold text-slate-800 block text-xs">Pilihan Tipe Diskon Produk</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSinglePageForm(p => ({
-                        ...p,
-                        voucher: {
-                          ...(p.voucher || {
-                            code: p.discount_coupon || 'HEMAT50',
-                            discount_type: 'nominal',
-                            discount_value: 20000,
-                            shipping_discount_type: 'none',
-                            shipping_discount_value: 0
-                          }),
-                          discount_type: 'nominal',
-                          discount_value: (p.voucher?.discount_value && p.voucher.discount_type === 'percentage') ? 20000 : (p.voucher?.discount_value || 20000)
-                        }
-                      }))}
-                      className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                        singlePageForm.voucher?.discount_type === 'nominal'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      <span>Diskon Nominal (Rp)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSinglePageForm(p => ({
-                        ...p,
-                        voucher: {
-                          ...(p.voucher || {
-                            code: p.discount_coupon || 'HEMAT50',
-                            discount_type: 'percentage',
-                            discount_value: 10,
-                            shipping_discount_type: 'none',
-                            shipping_discount_value: 0
-                          }),
-                          discount_type: 'percentage',
-                          discount_value: (p.voucher?.discount_value && p.voucher.discount_type === 'nominal') ? 10 : (p.voucher?.discount_value || 10)
-                        }
-                      }))}
-                      className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                        singlePageForm.voucher?.discount_type === 'percentage'
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      <span>Diskon Persentase (%)</span>
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] text-slate-500 font-semibold block mb-1">
-                      {singlePageForm.voucher?.discount_type === 'percentage' ? 'Besaran Diskon Persen (%)' : 'Besaran Diskon Flat (Rp)'}
-                    </label>
-                    <div className="relative">
+                  <div className="flex items-center gap-2">
+                    {singlePageForm.voucher?.is_enabled !== false && (
+                      <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full uppercase">
+                        {singlePageForm.voucher?.code || 'NO-CODE'}
+                      </span>
+                    )}
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
                       <input
-                        type="number"
-                        min={0}
-                        max={singlePageForm.voucher?.discount_type === 'percentage' ? 100 : activeProduct.price}
-                        value={singlePageForm.voucher?.discount_value || 0}
+                        type="checkbox"
+                        checked={singlePageForm.voucher?.is_enabled !== false}
                         onChange={(e) => {
-                          const val = Number(e.target.value);
+                          const isEnabled = e.target.checked;
                           setSinglePageForm(p => ({
                             ...p,
                             voucher: {
                               ...(p.voucher || {
                                 code: p.discount_coupon || 'HEMAT50',
                                 discount_type: 'nominal',
-                                discount_value: val,
+                                discount_value: 20000,
                                 shipping_discount_type: 'none',
-                                shipping_discount_value: 0
+                                shipping_discount_value: 0,
+                                min_spend: 0
                               }),
-                              discount_value: val
+                              is_enabled: isEnabled
                             }
                           }));
                         }}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="sr-only peer"
                       />
-                      <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">
-                        {singlePageForm.voucher?.discount_type === 'percentage' ? '%' : 'Rp'}
-                      </span>
-                    </div>
+                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
                   </div>
                 </div>
 
-                <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-slate-800 block text-xs">Pilihan Diskon Ongkir (Khusus Produk Fisik)</label>
-                    {activeProduct.category === 'fisik' && (
-                      <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
-                        📦 Produk Fisik
-                      </span>
-                    )}
-                  </div>
+                {singlePageForm.voucher?.is_enabled === false ? (
+                  <p className="text-[11px] text-slate-500 italic bg-white p-3 rounded-xl border border-dashed border-indigo-200">
+                    Voucher promo dinonaktifkan. Kotak input kupon tidak akan muncul di halaman checkout pembeli.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="font-bold text-slate-700 block text-xs mb-1">Kode Voucher</label>
+                        <input
+                          type="text"
+                          value={singlePageForm.voucher?.code || ''}
+                          onChange={(e) => {
+                            const code = e.target.value.toUpperCase().replace(/\s+/g, '');
+                            setSinglePageForm(p => ({
+                              ...p,
+                              discount_coupon: code,
+                              voucher: {
+                                ...(p.voucher || {
+                                  code,
+                                  discount_type: 'nominal',
+                                  discount_value: 20000,
+                                  shipping_discount_type: 'none',
+                                  shipping_discount_value: 0,
+                                  min_spend: 0
+                                }),
+                                code,
+                                is_enabled: true
+                              }
+                            }));
+                          }}
+                          placeholder="Contoh: HEMAT50, DISKON20K, FREESHIP"
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold uppercase focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    {[
-                      { id: 'none', label: 'Tanpa Subsidi' },
-                      { id: 'flat', label: 'Subsidi Flat (Rp)' },
-                      { id: 'free', label: 'Gratis Ongkir (100%)' }
-                    ].map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setSinglePageForm(p => ({
-                          ...p,
-                          voucher: {
-                            ...(p.voucher || {
-                              code: p.discount_coupon || 'HEMAT50',
-                              discount_type: 'nominal',
-                              discount_value: 0,
-                              shipping_discount_type: 'none',
-                              shipping_discount_value: 0
-                            }),
-                            shipping_discount_type: item.id as any
-                          }
-                        }))}
-                        className={`py-2 px-2 rounded-lg text-center font-bold text-[11px] transition cursor-pointer ${
-                          (singlePageForm.voucher?.shipping_discount_type || 'none') === item.id
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {singlePageForm.voucher?.shipping_discount_type === 'flat' && (
-                    <div>
-                      <label className="text-[11px] text-slate-500 font-semibold block mb-1">Nominal Subsidi Ongkir (Rp)</label>
-                      <div className="relative">
+                      <div>
+                        <label className="font-bold text-slate-700 block text-xs mb-1">Minimal Belanja (Opsional, Rp)</label>
                         <input
                           type="number"
                           min={0}
                           step={1000}
-                          value={singlePageForm.voucher?.shipping_discount_value || 0}
+                          value={singlePageForm.voucher?.min_spend || 0}
                           onChange={(e) => {
                             const val = Number(e.target.value);
                             setSinglePageForm(p => ({
@@ -1237,21 +1109,215 @@ export default function SinglePageBuilderModal({
                                 ...(p.voucher || {
                                   code: p.discount_coupon || 'HEMAT50',
                                   discount_type: 'nominal',
-                                  discount_value: 0,
-                                  shipping_discount_type: 'flat',
-                                  shipping_discount_value: val
+                                  discount_value: 20000,
+                                  shipping_discount_type: 'none',
+                                  shipping_discount_value: 0,
+                                  min_spend: val
                                 }),
-                                shipping_discount_value: val
+                                min_spend: val,
+                                is_enabled: true
                               }
                             }));
                           }}
-                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          placeholder="0 (Tanpa minimum)"
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
-                        <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">Rp</span>
                       </div>
                     </div>
-                  )}
+
+                    <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
+                      <label className="font-bold text-slate-800 block text-xs">Pilihan Tipe Diskon Produk</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSinglePageForm(p => ({
+                            ...p,
+                            voucher: {
+                              ...(p.voucher || {
+                                code: p.discount_coupon || 'HEMAT50',
+                                discount_type: 'nominal',
+                                discount_value: 20000,
+                                shipping_discount_type: 'none',
+                                shipping_discount_value: 0
+                              }),
+                              discount_type: 'nominal',
+                              discount_value: (p.voucher?.discount_value && p.voucher.discount_type === 'percentage') ? 20000 : (p.voucher?.discount_value || 20000),
+                              is_enabled: true
+                            }
+                          }))}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                            singlePageForm.voucher?.discount_type === 'nominal'
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          <span>Diskon Nominal (Rp)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSinglePageForm(p => ({
+                            ...p,
+                            voucher: {
+                              ...(p.voucher || {
+                                code: p.discount_coupon || 'HEMAT50',
+                                discount_type: 'percentage',
+                                discount_value: 10,
+                                shipping_discount_type: 'none',
+                                shipping_discount_value: 0
+                              }),
+                              discount_type: 'percentage',
+                              discount_value: (p.voucher?.discount_value && p.voucher.discount_type === 'nominal') ? 10 : (p.voucher?.discount_value || 10),
+                              is_enabled: true
+                            }
+                          }))}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                            singlePageForm.voucher?.discount_type === 'percentage'
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          <span>Diskon Persentase (%)</span>
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] text-slate-500 font-semibold block mb-1">
+                          {singlePageForm.voucher?.discount_type === 'percentage' ? 'Besaran Diskon Persen (%)' : 'Besaran Diskon Flat (Rp)'}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min={0}
+                            max={singlePageForm.voucher?.discount_type === 'percentage' ? 100 : activeProduct.price}
+                            value={singlePageForm.voucher?.discount_value || 0}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setSinglePageForm(p => ({
+                                ...p,
+                                voucher: {
+                                  ...(p.voucher || {
+                                    code: p.discount_coupon || 'HEMAT50',
+                                    discount_type: 'nominal',
+                                    discount_value: val,
+                                    shipping_discount_type: 'none',
+                                    shipping_discount_value: 0
+                                  }),
+                                  discount_value: val,
+                                  is_enabled: true
+                                }
+                              }));
+                            }}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">
+                            {singlePageForm.voucher?.discount_type === 'percentage' ? '%' : 'Rp'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-3.5 rounded-xl border border-indigo-100 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="font-bold text-slate-800 block text-xs">Pilihan Diskon Ongkir (Khusus Produk Fisik)</label>
+                        {activeProduct.category === 'fisik' && (
+                          <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
+                            📦 Produk Fisik
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {[
+                          { id: 'none', label: 'Tanpa Subsidi' },
+                          { id: 'flat', label: 'Subsidi Flat (Rp)' },
+                          { id: 'free', label: 'Gratis Ongkir (100%)' }
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setSinglePageForm(p => ({
+                              ...p,
+                              voucher: {
+                                ...(p.voucher || {
+                                  code: p.discount_coupon || 'HEMAT50',
+                                  discount_type: 'nominal',
+                                  discount_value: 0,
+                                  shipping_discount_type: 'none',
+                                  shipping_discount_value: 0
+                                }),
+                                shipping_discount_type: item.id as any,
+                                is_enabled: true
+                              }
+                            }))}
+                            className={`py-2 px-2 rounded-lg text-center font-bold text-[11px] transition cursor-pointer ${
+                              (singlePageForm.voucher?.shipping_discount_type || 'none') === item.id
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {singlePageForm.voucher?.shipping_discount_type === 'flat' && (
+                        <div>
+                          <label className="text-[11px] text-slate-500 font-semibold block mb-1">Nominal Subsidi Ongkir (Rp)</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min={0}
+                              step={1000}
+                              value={singlePageForm.voucher?.shipping_discount_value || 0}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setSinglePageForm(p => ({
+                                  ...p,
+                                  voucher: {
+                                    ...(p.voucher || {
+                                      code: p.discount_coupon || 'HEMAT50',
+                                      discount_type: 'nominal',
+                                      discount_value: 0,
+                                      shipping_discount_type: 'flat',
+                                      shipping_discount_value: val
+                                    }),
+                                    shipping_discount_value: val,
+                                    is_enabled: true
+                                  }
+                                }));
+                              }}
+                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-indigo-600 pr-12 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">Rp</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* C. Dynamic CTA Button Text Input */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 block text-xs">
+                    Teks Tombol Aksi / CTA Label
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    Default: <strong className="text-blue-600 font-bold">"{activeProduct.category === 'fisik' ? 'Beli Sekarang' : 'Daftar Kelas Sekarang'}"</strong>
+                  </span>
                 </div>
+                <input
+                  type="text"
+                  value={singlePageForm.cta_label || ''}
+                  onChange={(e) => setSinglePageForm(p => ({ ...p, cta_label: e.target.value }))}
+                  placeholder={`Contoh: ${activeProduct.category === 'fisik' ? 'Beli Sekarang' : 'Daftar Kelas Sekarang'} / Pesan Sekarang`}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-indigo-600"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Label tombol aksi pembeli di landing page &amp; formulir checkout.
+                </p>
               </div>
 
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
