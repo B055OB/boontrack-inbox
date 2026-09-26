@@ -335,35 +335,73 @@ export default function AdsTrackingPro({
     setSaving(true);
     setFeedback(null);
 
-    const configPayload = {
-      is_enabled: isEnabled,
-      meta_pixel_id: metaPixelId,
-      meta_capi_token: metaCapiToken,
-      meta_test_code: metaTestCode,
-      tiktok_pixel_id: tiktokPixelId,
-      tiktok_access_token: tiktokAccessToken,
-      gtm_id: gtmId,
-      enable_wa_utm: enableWaUtm,
-      auto_deduplication: autoDeduplication,
-      updated_at: new Date().toISOString(),
-    };
+    // Untuk tier Checkout Lite / Starter: hanya simpan field Pixel ID browser
+    // (CAPI token, GTM, dsb. dikunci — tidak boleh ditimpa dengan nilai kosong)
+    const isBasicPixelOnlyTier = isCheckoutLite;
+
+    const configPayload = isBasicPixelOnlyTier
+      ? {
+          // Hanya field yang diizinkan untuk tier Basic Browser Pixel
+          meta_pixel_id: metaPixelId,
+          tiktok_pixel_id: tiktokPixelId,
+          is_enabled: isEnabled,
+          enable_wa_utm: enableWaUtm,
+          updated_at: new Date().toISOString(),
+        }
+      : {
+          is_enabled: isEnabled,
+          meta_pixel_id: metaPixelId,
+          meta_capi_token: metaCapiToken,
+          meta_test_code: metaTestCode,
+          tiktok_pixel_id: tiktokPixelId,
+          tiktok_access_token: tiktokAccessToken,
+          gtm_id: gtmId,
+          enable_wa_utm: enableWaUtm,
+          auto_deduplication: autoDeduplication,
+          updated_at: new Date().toISOString(),
+        };
 
     try {
       const supabase = getSupabase();
       if (supabase) {
-        // 1. Simpan ke tenant_settings (ads_tracking_config)
-        await supabase
-          .from('tenant_settings')
-          .upsert(
-            {
-              tenant_slug: tenantSlug,
-              ads_tracking_config: configPayload,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'tenant_slug' }
-          );
+        // 1. Simpan ke tenant_settings.ads_tracking_config
+        //    Untuk Basic Pixel tier: merge dengan config existing agar field CAPI tidak tertimpa
+        if (isBasicPixelOnlyTier) {
+          const { data: existingSettings } = await supabase
+            .from('tenant_settings')
+            .select('ads_tracking_config')
+            .eq('tenant_slug', tenantSlug)
+            .maybeSingle();
 
-        // 2. Sinkronkan ke tenants.metadata.tracking (Single Source of Truth)
+          const mergedConfig = {
+            ...(existingSettings?.ads_tracking_config || {}),
+            ...configPayload,
+          };
+
+          await supabase
+            .from('tenant_settings')
+            .upsert(
+              {
+                tenant_slug: tenantSlug,
+                ads_tracking_config: mergedConfig,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'tenant_slug' }
+            );
+        } else {
+          await supabase
+            .from('tenant_settings')
+            .upsert(
+              {
+                tenant_slug: tenantSlug,
+                ads_tracking_config: configPayload,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'tenant_slug' }
+            );
+        }
+
+        // 2. Sinkronkan ke tenants.metadata (Single Source of Truth)
         try {
           const { data: tenantData } = await supabase
             .from('tenants')
@@ -372,25 +410,39 @@ export default function AdsTrackingPro({
             .maybeSingle();
 
           const currentMeta = (tenantData?.metadata as Record<string, any>) || {};
-          const updatedTracking = {
-            ...(currentMeta.tracking || {}),
-            facebook_pixel_id: metaPixelId,
-            meta_pixel_id: metaPixelId,
-            meta_capi_token: metaCapiToken,
-            meta_test_code: metaTestCode,
-            tiktok_pixel_id: tiktokPixelId,
-            tiktok_access_token: tiktokAccessToken,
-            gtm_id: gtmId,
-            enable_wa_utm: enableWaUtm,
-            auto_deduplication: autoDeduplication,
-            is_enabled: isEnabled,
-          };
+
+          // Merge tracking: untuk Basic Pixel tier, hanya perbarui field Pixel ID
+          const existingTracking = currentMeta.tracking || {};
+          const updatedTracking = isBasicPixelOnlyTier
+            ? {
+                ...existingTracking,
+                facebook_pixel_id: metaPixelId,
+                meta_pixel_id: metaPixelId,
+                tiktok_pixel_id: tiktokPixelId,
+                is_enabled: isEnabled,
+                enable_wa_utm: enableWaUtm,
+              }
+            : {
+                ...existingTracking,
+                facebook_pixel_id: metaPixelId,
+                meta_pixel_id: metaPixelId,
+                meta_capi_token: metaCapiToken,
+                meta_test_code: metaTestCode,
+                tiktok_pixel_id: tiktokPixelId,
+                tiktok_access_token: tiktokAccessToken,
+                gtm_id: gtmId,
+                enable_wa_utm: enableWaUtm,
+                auto_deduplication: autoDeduplication,
+                is_enabled: isEnabled,
+              };
 
           await supabase
             .from('tenants')
             .update({
               metadata: {
                 ...currentMeta,
+                // Field top-level untuk kompatibilitas backward (ARCHITECTURE §5.1)
+                pixel_id: metaPixelId || currentMeta.pixel_id || null,
                 tracking: updatedTracking,
               },
             })
@@ -400,8 +452,11 @@ export default function AdsTrackingPro({
         }
       }
 
-      setFeedback('✅ Konfigurasi Ads Tracking Pro & CAPI berhasil disimpan!');
-      if (onSaved) onSaved('✅ Konfigurasi Ads Tracking Pro & CAPI berhasil disimpan!');
+      const successMsg = isBasicPixelOnlyTier
+        ? '✅ Meta Pixel ID & TikTok Pixel ID berhasil disimpan!'
+        : '✅ Konfigurasi Ads Tracking Pro & CAPI berhasil disimpan!';
+      setFeedback(successMsg);
+      if (onSaved) onSaved(successMsg);
       setTimeout(() => setFeedback(null), 4000);
     } catch (err) {
       setFeedback('✅ Pengaturan berhasil diperbarui di memori lokal.');

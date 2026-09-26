@@ -6,7 +6,17 @@ import AdsTrackingPro from '../AdsTrackingPro';
 
 export interface AdsTrackingTabProps {
   isAdsTrackingUnlocked: boolean;
+  /**
+   * true bila tier adalah CHECKOUT_LITE (Rp 59k) — berhak atas Basic Browser Pixel.
+   * Sesuai ARCHITECTURE.md §3.1 & §5.1.
+   */
   isCheckoutLite?: boolean;
+  /**
+   * true bila tier adalah STARTER / SOLO / SOLO_TRIAL — juga berhak atas Basic Browser Pixel
+   * (Meta & TikTok Pixel ID browser-side), tapi bukan CAPI / GTM.
+   * Sesuai ARCHITECTURE.md §3.1.
+   */
+  isSoloOrTrial?: boolean;
   tenantSlug: string;
   displayName: string;
   onSaved?: (msg: string) => void;
@@ -23,21 +33,29 @@ export interface AdsTrackingTabProps {
 export default function AdsTrackingTab({
   isAdsTrackingUnlocked,
   isCheckoutLite = false,
+  isSoloOrTrial = false,
   tenantSlug,
   displayName,
   onSaved,
   onUpgradeTier,
   renderLockedFeatureCard,
 }: AdsTrackingTabProps) {
-  // Hanya kunci total bila merchant bukan Ads Performance/Enterprise DAN bukan Checkout Lite
-  if (!isAdsTrackingUnlocked && !isCheckoutLite) {
+  // Tier yang berhak atas Basic Browser Pixel (Meta & TikTok Pixel ID):
+  // - Ads Performance / Team Scale / Enterprise (isAdsTrackingUnlocked = true) → akses penuh
+  // - CHECKOUT_LITE (Rp 59k) → Basic Pixel saja
+  // - STARTER / SOLO (isSoloOrTrial) → Basic Pixel saja
+  // Ref: ARCHITECTURE.md §3.1 & §5.1
+  const hasBasicPixelAccess = isAdsTrackingUnlocked || isCheckoutLite || isSoloOrTrial;
+
+  // Kunci TOTAL hanya bila tidak punya akses sama sekali
+  if (!hasBasicPixelAccess) {
     if (renderLockedFeatureCard) {
       return (
         <>
           {renderLockedFeatureCard({
-            title: "Server-Side CAPI & Ads Tracking Pro",
-            badge: "Fitur Eksklusif Ads Performance (Rp 299k)",
-            description: "Fitur Server-Side CAPI & Ads Tracking Pro eksklusif untuk paket Ads Performance (Rp 299k). Aktifkan sinyal konversi Meta Pixel anti-adblocker iOS 14+ dan pelacakan ROAS iklan riil secara akurat.",
+            title: "Ads Tracking & Basic Pixel",
+            badge: "Tersedia mulai paket Checkout Lite (Rp 59k)",
+            description: "Aktifkan pelacakan Meta Pixel & TikTok Pixel untuk toko Anda. Server-Side CAPI, GTM Container, dan Advanced ROAS tersedia di paket Ads Performance (Rp 299k).",
             targetTier: 'ads_performance',
             targetTierLabel: 'Ads Performance (Rp 299k)',
           })}
@@ -53,13 +71,14 @@ export default function AdsTrackingTab({
           </div>
           <div>
             <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 inline-block mb-2">
-              Fitur Eksklusif Ads Performance (Rp 299k)
+              Tersedia mulai Checkout Lite (Rp 59k)
             </span>
             <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">
-              Server-Side CAPI & Ads Tracking Pro
+              Ads Tracking & Basic Pixel
             </h2>
             <p className="text-slate-500 text-xs sm:text-sm max-w-md mx-auto leading-relaxed">
-              Fitur Server-Side CAPI & Ads Tracking Pro eksklusif untuk paket Ads Performance (Rp 299k). Aktifkan sinyal konversi Meta Pixel anti-adblocker iOS 14+ dan pelacakan ROAS iklan riil secara akurat.
+              Aktifkan pelacakan <strong>Meta Pixel</strong> & <strong>TikTok Pixel</strong> browser-side untuk toko Anda.
+              Server-Side CAPI, GTM Container, dan Advanced ROAS tersedia eksklusif di paket Ads Performance (Rp 299k).
             </p>
           </div>
 
@@ -78,12 +97,16 @@ export default function AdsTrackingTab({
     );
   }
 
+  // isCheckoutLite prop diteruskan ke AdsTrackingPro untuk mengunci seksi CAPI/GTM
+  // Tier STARTER (isSoloOrTrial) diperlakukan sama seperti Checkout Lite di dalam AdsTrackingPro
+  const isBasicPixelOnly = !isAdsTrackingUnlocked;
+
   return (
     <AdsTrackingPro
       tenantSlug={tenantSlug}
       displayName={displayName}
       onSaved={onSaved}
-      isCheckoutLite={isCheckoutLite}
+      isCheckoutLite={isBasicPixelOnly}
       onUpgradeTier={onUpgradeTier}
     />
   );
