@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
+import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
-import { sendOrderPaidNotification } from '@/lib/whatsapp';
+import { sendOrderPaidNotification, sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
 
@@ -21,7 +21,7 @@ export async function POST(
       );
     }
 
-    const supabase = getSupabase();
+    const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
       return NextResponse.json(
         { success: false, error: 'Database client unreachable' },
@@ -30,13 +30,22 @@ export async function POST(
     }
 
     // 1. Fetch current order
-    const { data: order, error: fetchErr } = await supabase
+    let { data: order, error: fetchErr } = await supabase
       .from('orders')
       .select('*')
       .eq('id', orderId)
       .maybeSingle();
 
-    if (fetchErr || !order) {
+    if (!order) {
+      const { data: altOrder } = await supabase
+        .from('orders')
+        .select('*')
+        .or(`id.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+        .maybeSingle();
+      if (altOrder) order = altOrder;
+    }
+
+    if (!order) {
       return NextResponse.json(
         { success: false, error: 'Order not found' },
         { status: 404 }
@@ -73,18 +82,19 @@ export async function POST(
       }
     }
 
-    // 2. Update order to PAID
+    // 2. Update order to PAID & COMPLETED
     const { data: updatedOrder, error: updateErr } = await supabase
       .from('orders')
       .update({
         status: 'PAID',
         payment_status: 'PAID',
+        order_status: 'COMPLETED',
         paid_at: paidAt,
         fulfillment_metadata: fulfillmentMeta,
         download_url: fulfillmentMeta.access_url || order.download_url || null,
         updated_at: paidAt,
       })
-      .eq('id', orderId)
+      .eq('id', order.id)
       .select('*')
       .single();
 
@@ -160,16 +170,20 @@ export async function POST(
       });
     } catch {}
 
-    // 4. Kirim notifikasi WhatsApp resmi via Meta Utility Template (order_notification_v1)
+    // 4. Kirim notifikasi WhatsApp akses produk ke customer_phone
     const customerPhone = order.customer_phone || order.phone || order.whatsapp_number;
     if (customerPhone) {
-      sendOrderPaidNotification({
+      sendOrderFulfillmentNotification({
         phone: customerPhone,
         customerName: order.customer_name || order.buyer_name || 'Pelanggan Setia',
         orderId: String(orderId),
         itemsSummary: order.product_title || order.product_name || 'Produk Pesanan',
         totalAmount: Number(order.gross_amount || order.total_amount || order.amount || 0),
-      }).catch((waErr) => console.warn('[WhatsApp WABA] Order notification dispatch note:', waErr));
+        productType: order.product_type || (order.shipping_address ? 'PHYSICAL' : 'DIGITAL'),
+        accessUrl: accessUrl || undefined,
+        instructions: fulfillmentMeta.instructions || undefined,
+        tenantId: slug || 'platform',
+      }).catch((waErr) => console.warn('[WhatsApp WABA] Order fulfillment dispatch note:', waErr));
     }
 
     return NextResponse.json({

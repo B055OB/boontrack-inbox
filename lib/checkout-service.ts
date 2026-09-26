@@ -291,6 +291,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     product_id: resolvedProductId,             // Wajib NOT NULL di skema PostgreSQL
     product_title: payload.productTitle,
     gross_amount: grossAmount,
+    total_amount: grossAmount,
+    amount: grossAmount,
+    unique_code: uniqueCode,
+    payment_method: paymentMethod === 'qris' ? 'QRIS' : paymentMethod,
+    payment_status: 'PENDING',
+    order_status: 'PENDING',
     customer_name: payload.customerName,
     customer_phone: payload.customerPhone,
     customer_email: payload.customerEmail || "",
@@ -390,11 +396,20 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
     const requestBody = JSON.stringify({
       external_id: orderId,
+      order_id: orderId,
       amount: grossAmount,
+      total_amount: grossAmount,
+      unique_code: uniqueCode,
       tenant_slug: payload.tenantSlug,
+      tenant_id: resolvedTenantId,
       customer_phone: payload.customerPhone,
       customer_name: payload.customerName,
+      customer_email: payload.customerEmail || "",
+      product_id: resolvedProductId,
       product_name: payload.productTitle,
+      payment_method: 'QRIS',
+      payment_status: 'PENDING',
+      order_status: 'PENDING',
       metadata: {
         customer_email: payload.customerEmail || null,
         affiliate_code: payload.affiliateCode || null,

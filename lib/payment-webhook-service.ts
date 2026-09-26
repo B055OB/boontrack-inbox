@@ -459,7 +459,7 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     .update({
       status: 'PAID',
       payment_status: 'PAID',
-      order_status: 'PAID',
+      order_status: 'COMPLETED',
       paid_at: paidAt,
       updated_at: paidAt,
     })

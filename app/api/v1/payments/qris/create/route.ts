@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getBackendApiUrl } from '@/lib/api-config';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 
 export async function POST(req: NextRequest) {
@@ -10,46 +10,100 @@ export async function POST(req: NextRequest) {
     const {
       external_id,
       amount,
+      total_amount,
       tenant_slug,
+      tenant_id,
       customer_phone,
       customer_name,
+      customer_email,
       product_name,
+      product_id,
       metadata
     } = body;
 
-    const orderId = external_id || `ORD-${Date.now()}`;
-    const numAmount = Number(amount) || 0;
-    const cleanSlug = (tenant_slug || '').trim().toLowerCase();
+    const orderId = String(
+      external_id ||
+      body.order_id ||
+      body.orderId ||
+      body.id ||
+      `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`
+    ).trim();
+
+    const cleanSlug = String(tenant_slug || body.tenantSlug || body.slug || '').trim().toLowerCase();
+
+    // a. Hitung total transfer (Harga Produk + Kode Unik 3 digit)
+    const uniqueCode = Number(
+      body.unique_code ??
+      body.uniqueCode ??
+      metadata?.unique_code ??
+      Math.floor(100 + Math.random() * 900)
+    );
+
+    let numAmount = Number(total_amount ?? amount ?? body.gross_amount ?? 0);
+    if (!numAmount && (body.base_price || metadata?.base_price)) {
+      const base = Number(body.base_price || metadata?.base_price);
+      numAmount = Math.max(1000, base - uniqueCode);
+    }
+    if (!numAmount) {
+      numAmount = 1000;
+    }
+
+    const supabase = getSupabaseAdmin() || getSupabase();
+    let resolvedTenantId: string | null = tenant_id || metadata?.tenant_id || null;
+    let targetTenantSlug = cleanSlug;
+
+    // Resolusi data tenant & tenant_id dari Supabase
+    if (supabase && cleanSlug) {
+      try {
+        const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+        let tQuery = supabase.from('tenants').select('id, slug, metadata');
+        if (isUuid(cleanSlug)) {
+          tQuery = tQuery.or(`slug.eq.${cleanSlug},id.eq.${cleanSlug}`);
+        } else {
+          tQuery = tQuery.eq('slug', cleanSlug);
+        }
+        const { data: tenantData } = await tQuery.maybeSingle();
+        if (tenantData) {
+          resolvedTenantId = tenantData.id || resolvedTenantId;
+          targetTenantSlug = tenantData.slug || targetTenantSlug;
+        }
+      } catch (tErr) {
+        console.warn('[Payments API] Supabase tenant resolution note:', tErr);
+      }
+    }
 
     // 1. Coba delegasikan ke Backend Core Railway / Production jika aktif
+    let qrString = '';
+    let qrCodeUrl = '';
+
     try {
       const coreEndpoint = getBackendApiUrl('/api/v1/payments/qris/create');
       const coreRes = await fetch(coreEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Tenant-ID': cleanSlug || 'default'
+          'X-Tenant-ID': targetTenantSlug || 'default'
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          external_id: orderId,
+          order_id: orderId,
+          amount: numAmount,
+          total_amount: numAmount,
+          unique_code: uniqueCode,
+          tenant_slug: targetTenantSlug,
+          tenant_id: resolvedTenantId,
+        }),
         cache: 'no-store'
       });
 
       if (coreRes.ok) {
         const coreData = await coreRes.json();
-        const qrString = coreData.qr_string || coreData.qr_content || '';
+        const candidateQr = coreData.qr_string || coreData.qr_content || '';
         // Hindari mock LinkAja dari gateway sandbox eksternal
-        if (qrString && !qrString.includes('ID.LINKAJA.WWW')) {
-          const qrCodeUrl = coreData.qr_code_url || (qrString ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=600&margin=4&ecLevel=M` : '');
-          return NextResponse.json({
-            success: true,
-            external_id: orderId,
-            amount: numAmount,
-            qr_string: qrString,
-            qr_code_url: qrCodeUrl,
-            invoice_url: coreData.invoice_url || `/checkout/${orderId}`,
-            payment_url: coreData.payment_url || coreData.invoice_url || `/checkout/${orderId}`,
-            source: 'core_backend'
-          });
+        if (candidateQr && !candidateQr.includes('ID.LINKAJA.WWW')) {
+          qrString = candidateQr;
+          qrCodeUrl = coreData.qr_code_url || (qrString ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=600&margin=4&ecLevel=M` : '');
         }
       }
     } catch (coreErr) {
@@ -57,20 +111,15 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Dynamic EMVCo QRIS Payload Generator dari Merchant Supabase (Single Source of Truth)
-    // Sesuai ARCHITECTURE.md Bagian 14:
-    // - Ambil string QRIS mentah ASLI dari database: tenants.metadata.payment_settings.qris_raw
-    // - Dilarang keras pakai template mock LinkAja!
-    // - Wajib pertahankan Tag 62 bawaan acquirer merchant apa adanya (tanpa menimpa / menyisipkan INV-xxx).
-    let qrString = '';
-    try {
-      const supabase = getSupabase();
-      if (supabase && cleanSlug) {
+    // Sesuai ARCHITECTURE.md Bagian 14
+    if (!qrString && supabase && targetTenantSlug) {
+      try {
         const isUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
         let tQuery = supabase.from('tenants').select('*');
-        if (isUuid(cleanSlug)) {
-          tQuery = tQuery.or(`slug.eq.${cleanSlug},id.eq.${cleanSlug}`);
+        if (isUuid(targetTenantSlug)) {
+          tQuery = tQuery.or(`slug.eq.${targetTenantSlug},id.eq.${targetTenantSlug}`);
         } else {
-          tQuery = tQuery.eq('slug', cleanSlug);
+          tQuery = tQuery.eq('slug', targetTenantSlug);
         }
         const { data: tenantData } = await tQuery.maybeSingle();
 
@@ -111,9 +160,9 @@ export async function POST(req: NextRequest) {
             qrString = tenantQrisImageUrl;
           }
         }
+      } catch (dbErr) {
+        console.warn('[Payments API] Supabase tenant QRIS resolution note:', dbErr);
       }
-    } catch (dbErr) {
-      console.warn('[Payments API] Supabase tenant QRIS resolution note:', dbErr);
     }
 
     if (!qrString) {
@@ -126,15 +175,116 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const qrCodeUrl = qrString.startsWith('000201')
-      ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=600&margin=4&ecLevel=M`
-      : qrString;
+    if (!qrCodeUrl) {
+      qrCodeUrl = qrString.startsWith('000201')
+        ? `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=600&margin=4&ecLevel=M`
+        : qrString;
+    }
 
+    // b. Lakukan INSERT / PRE-CREATION ke tabel orders Supabase/Postgres dengan status PENDING
+    const now = new Date().toISOString();
+    const finalCustomerName = String(customer_name || body.customerName || 'Pelanggan').trim();
+    const finalCustomerPhone = String(customer_phone || body.customerPhone || '').trim();
+    const finalCustomerEmail = String(customer_email || body.customerEmail || metadata?.customer_email || '').trim();
+    const finalProductId = String(product_id || body.productId || metadata?.product_id || 'prod_default');
+    const finalProductTitle = String(product_name || body.productTitle || metadata?.product_name || 'Pesanan Produk');
+
+    if (supabase) {
+      try {
+        const { data: existingOrder } = await supabase
+          .from('orders')
+          .select('id, payment_status, status, order_status')
+          .eq('id', orderId)
+          .maybeSingle();
+
+        const isAlreadyPaid = existingOrder && ['PAID', 'SETTLED', 'COMPLETED'].includes(
+          String(existingOrder.payment_status || existingOrder.status || existingOrder.order_status || '').toUpperCase()
+        );
+
+        if (existingOrder) {
+          if (!isAlreadyPaid) {
+            await supabase
+              .from('orders')
+              .update({
+                qr_string: qrString || null,
+                qr_code_url: qrCodeUrl || null,
+                gross_amount: numAmount,
+                total_amount: numAmount,
+                unique_code: uniqueCode,
+                payment_method: 'QRIS',
+                payment_status: 'PENDING',
+                order_status: 'PENDING',
+                status: 'PENDING',
+                updated_at: now,
+              })
+              .eq('id', orderId);
+          }
+        } else {
+          const insertPayload: any = {
+            id: orderId,
+            tenant_id: resolvedTenantId,
+            tenant_slug: targetTenantSlug,
+            product_id: finalProductId,
+            product_title: finalProductTitle,
+            customer_name: finalCustomerName,
+            customer_phone: finalCustomerPhone,
+            customer_email: finalCustomerEmail,
+            total_amount: numAmount,
+            gross_amount: numAmount,
+            amount: numAmount,
+            unique_code: uniqueCode,
+            payment_method: 'QRIS',
+            payment_status: 'PENDING',
+            order_status: 'PENDING',
+            status: 'PENDING',
+            qr_string: qrString || null,
+            qr_code_url: qrCodeUrl || null,
+            metadata: {
+              ...(metadata || {}),
+              tracking_context: metadata?.tracking_context || {},
+              source: 'qris_pre_creation',
+            },
+            created_at: now,
+            updated_at: now,
+          };
+
+          let { error: insertErr } = await supabase.from('orders').insert(insertPayload);
+          if (insertErr && (insertErr.code === '42703' || insertErr.message?.includes('amount') || insertErr.message?.includes('order_status'))) {
+            const { amount: _a, order_status: _os, total_amount: _ta, ...cleanPayload } = insertPayload;
+            const retryRes = await supabase.from('orders').insert({
+              ...cleanPayload,
+              gross_amount: numAmount,
+              payment_status: 'PENDING',
+              status: 'PENDING',
+            });
+            insertErr = retryRes.error;
+          }
+
+          if (insertErr) {
+            console.error('[Payments API] Pre-creation order insert error:', insertErr);
+          } else {
+            console.log(`[Payments API] Pre-created PENDING order #${orderId} for tenant '${targetTenantSlug}' (Rp ${numAmount})`);
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[Payments API] DB pre-creation order exception:', dbErr);
+      }
+    }
+
+    // c. Ambil order.id yang baru dibuat dan kembalikan ke frontend bersama string/payload QRIS
     return NextResponse.json({
       success: true,
+      order_id: orderId,
       external_id: orderId,
+      id: orderId,
       amount: numAmount,
-      tenant_slug: cleanSlug,
+      total_amount: numAmount,
+      unique_code: uniqueCode,
+      payment_method: 'QRIS',
+      payment_status: 'PENDING',
+      order_status: 'PENDING',
+      tenant_slug: targetTenantSlug,
+      tenant_id: resolvedTenantId,
       qr_string: qrString,
       qr_code_url: qrCodeUrl,
       invoice_url: `/checkout/${orderId}`,

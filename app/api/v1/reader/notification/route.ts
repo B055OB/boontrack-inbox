@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
+import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
+import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
 
 export const dynamic = 'force-dynamic';
 
@@ -336,13 +338,13 @@ export async function POST(req: NextRequest) {
 
     console.log(`[BoonTrack Reader Webhook] MATCH FOUND: Order #${matchedOrder.id} (${matchedOrder.customer_name || 'Customer'}) Rp ${matchedOrder.gross_amount} via ${matchStrategy}${isMultiTenantMatch ? ` [→ toko: ${matchedOrder.tenant_slug}]` : ''}. Mengupdate ke PAID...`);
 
-    // 3. Update kolom status = 'PAID', payment_status = 'PAID', order_status = 'PAID', paid_at
+    // 3. Update kolom status = 'PAID', payment_status = 'PAID', order_status = 'COMPLETED', paid_at
     const { error: updateErr } = await supabase
       .from('orders')
       .update({
         status: 'PAID',
         payment_status: 'PAID',
-        order_status: 'PAID',
+        order_status: 'COMPLETED',
         paid_at: paidAt,
         updated_at: paidAt,
       })
@@ -386,7 +388,89 @@ export async function POST(req: NextRequest) {
       console.debug('[BoonTrack Reader Webhook] Heartbeat note:', heartbeatErr);
     }
 
-    console.log(`[BoonTrack Reader Webhook] SUCCESS: Order #${matchedOrder.id} status berhasil diubah ke PAID!`);
+    console.log(`[BoonTrack Reader Webhook] SUCCESS: Order #${matchedOrder.id} status berhasil diubah ke PAID (order_status: COMPLETED)!`);
+
+    // 4. Trigger notifikasi WhatsApp ke pembeli (kirim link akses materi/Telegram) setelah status berubah menjadi PAID
+    const customerPhone =
+      matchedOrder.customer_phone ||
+      matchedOrder.phone ||
+      matchedOrder.whatsapp_number;
+
+    const customerName =
+      matchedOrder.customer_name ||
+      matchedOrder.buyer_name ||
+      'Pelanggan Setia';
+
+    const itemsSummary =
+      matchedOrder.product_title ||
+      matchedOrder.product_name ||
+      'Pesanan Produk';
+
+    const totalAmount = Number(
+      matchedOrder.gross_amount ||
+      matchedOrder.total_amount ||
+      parsedAmount ||
+      0
+    );
+
+    const resolvedProductType =
+      matchedOrder.product_type ||
+      (matchedOrder.shipping_address ? 'PHYSICAL' : 'DIGITAL');
+
+    let resolvedAccessUrl =
+      matchedOrder.fulfillment_metadata?.access_url ||
+      matchedOrder.download_url ||
+      matchedOrder.delivery_url ||
+      '';
+
+    let resolvedInstructions =
+      matchedOrder.fulfillment_metadata?.instructions || '';
+
+    if (!resolvedAccessUrl && matchedOrder.product_id) {
+      try {
+        const { data: prod } = await supabase
+          .from('products')
+          .select('link_digital, asset_reference, fulfillment_metadata')
+          .eq('id', matchedOrder.product_id)
+          .maybeSingle();
+
+        resolvedAccessUrl =
+          prod?.fulfillment_metadata?.access_url ||
+          prod?.link_digital ||
+          prod?.asset_reference ||
+          '';
+
+        if (prod?.fulfillment_metadata?.instructions) {
+          resolvedInstructions = prod.fulfillment_metadata.instructions;
+        }
+      } catch (_) {}
+    }
+
+    if (customerPhone) {
+      console.log(`[BoonTrack Reader Webhook] Mengirim WhatsApp fulfillment (${resolvedProductType}) ke ${customerPhone}`);
+      sendOrderFulfillmentNotification({
+        phone: customerPhone,
+        customerName,
+        orderId: String(matchedOrder.id),
+        itemsSummary,
+        totalAmount,
+        productType: resolvedProductType,
+        accessUrl: resolvedAccessUrl,
+        instructions: resolvedInstructions,
+        tenantId: effectiveTenantSlug || 'platform',
+      }).catch((waErr) => {
+        console.warn('[BoonTrack Reader Webhook] Non-fatal WhatsApp fulfillment error:', waErr);
+      });
+    }
+
+    // Dispatch Meta CAPI Purchase (EMQ Optimization)
+    dispatchMetaCAPIPurchaseForOrder(String(matchedOrder.id), supabase)
+      .then((capiRes) => {
+        if (capiRes.success) {
+          console.log(`[BoonTrack Reader Webhook] Meta CAPI Purchase dispatched for order #${matchedOrder.id}`);
+        }
+      })
+      .catch((capiErr) => console.warn('[BoonTrack Reader Webhook] CAPI dispatch note:', capiErr));
 
     // Dispatch Affiliate & AM Commission Alert (Non-blocking)
     sendOrderCommissionAlert({
@@ -411,6 +495,8 @@ export async function POST(req: NextRequest) {
       gross_amount: matchedOrder.gross_amount,
       tenant_slug: effectiveTenantSlug,
       paid_at: paidAt,
+      payment_status: 'PAID',
+      order_status: 'COMPLETED',
       match_strategy: matchStrategy,
     });
   } catch (err: unknown) {

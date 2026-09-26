@@ -211,6 +211,46 @@ export async function POST(req: NextRequest) {
           tracking_context: trackingContext,
           message: 'Tracking context successfully recorded to order metadata',
         });
+      } else if (body.tenant_slug || body.customer_name || body.total_amount || body.amount) {
+        const gross = Number(body.total_amount || body.amount || body.gross_amount || 0);
+        const unique = Number(body.unique_code || body.uniqueCode || 0);
+        const now = new Date().toISOString();
+
+        await supabase.from('orders').insert({
+          id: orderId,
+          tenant_slug: body.tenant_slug || '',
+          tenant_id: body.tenant_id || null,
+          product_id: body.product_id || 'prod_default',
+          product_title: body.product_title || body.product_name || 'Pesanan Produk',
+          customer_name: body.customer_name || 'Pelanggan Toko',
+          customer_phone: body.customer_phone || '',
+          customer_email: body.customer_email || '',
+          total_amount: gross,
+          gross_amount: gross,
+          amount: gross,
+          unique_code: unique,
+          payment_method: body.payment_method || 'QRIS',
+          payment_status: 'PENDING',
+          order_status: 'PENDING',
+          status: 'PENDING',
+          metadata: {
+            ...(body.metadata || {}),
+            tracking_context: trackingContext,
+            source: 'orders_post_pre_creation',
+          },
+          created_at: now,
+          updated_at: now,
+        });
+
+        return NextResponse.json({
+          success: true,
+          order_id: orderId,
+          status: 'PENDING',
+          payment_status: 'PENDING',
+          order_status: 'PENDING',
+          tracking_context: trackingContext,
+          message: 'Order pre-created with PENDING status and tracking context',
+        });
       }
     }
 
