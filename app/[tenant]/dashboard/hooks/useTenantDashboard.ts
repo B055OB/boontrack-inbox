@@ -187,15 +187,9 @@ export function useTenantDashboard() {
 
   const isBroadcastUnlocked = !isCheckoutLite && isTeamScale;
 
-  const isAiBotAllowed = !isCheckoutLite && Boolean(
-    isGrant ||
-    isAdsPerformance ||
-    isTeamScale ||
-    tenantFeatureFlags.tier === 'PRO_SCALE' ||
-    tenantFeatureFlags.tier === 'ADS_PERFORMANCE' ||
-    tenantFeatureFlags.tier === 'ENTERPRISE' ||
-    tenantFeatureFlags.tier === 'TEAM_SCALE'
-  );
+  const isAiBotAllowed =
+    String(tenantFeatureFlags.tier || '').toUpperCase() !== 'CHECKOUT_LITE' &&
+    !isCheckoutLite;
 
   const isTrialActive = !isGrant && Boolean(
     trialEndsAt ||
@@ -214,15 +208,15 @@ export function useTenantDashboard() {
         ? 'Ads Performance • Special Grant'
         : isCheckoutLite
         ? 'Checkout Lite • Special Grant'
-        : 'Solo • Special Grant')
+        : 'Starter • Special Grant')
     : (selectedPlan ||
       (isCheckoutLite
-        ? 'Paket Checkout'
+        ? 'Paket Checkout Lite'
         : isTeamScale
         ? 'Team Scale'
         : isAdsPerformance
         ? (isTrialActive || trialDaysLeft !== null ? 'Ads Performance Trial' : 'Ads Performance')
-        : 'Paket Solo'));
+        : 'Paket Starter'));
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [targetUpgradeTier, setTargetUpgradeTier] = useState<'ads_performance' | 'team_scale' | 'solo' | 'checkout_lite'>('ads_performance');

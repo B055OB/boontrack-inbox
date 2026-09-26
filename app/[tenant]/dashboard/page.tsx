@@ -202,6 +202,10 @@ export default function TenantDashboardPage() {
     handleProcessWithdraw,
   } = useTenantDashboard();
 
+  const tenant = React.useMemo(() => ({
+    tier: tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'ADS_PERFORMANCE' : isTeamScale ? 'TEAM_SCALE' : 'STARTER'),
+  }), [tenantFeatureFlags?.tier, isCheckoutLite, isSoloOrTrial, isAdsPerformance, isTeamScale]);
+
   const renderLockedFeatureCard = (cardProps: {
     title: string;
     badge: string;
@@ -372,6 +376,7 @@ export default function TenantDashboardPage() {
             </div>
             <DashboardSidebar
               className="w-full h-full border-r-0 static"
+              tenant={tenant}
               tenantSlug={tenantSlug}
               displayName={displayName}
               storeDisplayName={storeDisplayName}
@@ -417,6 +422,7 @@ export default function TenantDashboardPage() {
       {/* KOLOM 1: SIDEBAR KIRI STATIS DESKTOP (hidden lg:flex) */}
       <DashboardSidebar
         className="hidden lg:flex"
+        tenant={tenant}
         tenantSlug={tenantSlug}
         displayName={displayName}
         storeDisplayName={storeDisplayName}
@@ -1089,9 +1095,9 @@ export default function TenantDashboardPage() {
         productsCount={products.length}
         botConnected={waStatus === 'CONNECTED' || !!connectedPhone}
         isQrisUploaded={!!storeQrisUrl}
-        subscriptionPlan={tenantFeatureFlags.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'SOLO_TRIAL' : 'GROWTH')}
-        isAiBotAllowed={isAiBotAllowed}
-        isCheckoutLite={isCheckoutLite}
+        subscriptionPlan={tenant.tier}
+        isAiBotAllowed={tenant.tier?.toUpperCase() !== 'CHECKOUT_LITE'}
+        isCheckoutLite={tenant.tier?.toUpperCase() === 'CHECKOUT_LITE'}
         onUpgrade={(tier) => handleUpgradeTier((tier as any) || 'starter')}
       />
 

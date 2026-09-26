@@ -228,6 +228,7 @@ function getVerticalOperationalMenuConfig(
 }
 
 interface DashboardSidebarProps {
+  tenant?: { tier?: string; [key: string]: any } | null;
   tenantSlug: string;
   displayName: string;
   storeDisplayName?: string;
@@ -264,6 +265,7 @@ interface DashboardSidebarProps {
 }
 
 export default function DashboardSidebar({
+  tenant,
   tenantSlug,
   displayName,
   storeDisplayName,
@@ -274,7 +276,7 @@ export default function DashboardSidebar({
   isAdsPerformance = false,
   isAdsTrackingUnlocked = false,
   isSoloOrTrial = false,
-  isCheckoutLite = false,
+  isCheckoutLite: isCheckoutLiteProp = false,
   isTrialActive = false,
   isGrant = false,
   grantDaysLeft = null,
@@ -293,6 +295,9 @@ export default function DashboardSidebar({
   onCloseMobileDrawer,
   className = '',
 }: DashboardSidebarProps) {
+  const currentTier = String(tenant?.tier || '').toUpperCase();
+  const isStarter = currentTier === 'STARTER' || currentTier === 'SOLO';
+  const isCheckoutLite = currentTier === 'CHECKOUT_LITE' || currentTier === 'LITE' || Boolean(isCheckoutLiteProp);
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
@@ -407,16 +412,17 @@ export default function DashboardSidebar({
                     <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
                   )}
                   <span>
-                    {tierLabel ||
-                      (isCheckoutLite
-                        ? 'Paket Checkout'
+                    {(tierLabel && tierLabel !== 'Paket Solo' && tierLabel !== 'Paket Checkout')
+                      ? tierLabel
+                      : (isCheckoutLite
+                        ? 'Paket Checkout Lite'
                         : isTeamScale
                         ? 'Team Scale'
                         : isAdsPerformance
                         ? isTrialActive || trialDaysLeft !== null
                           ? 'Ads Performance Trial'
                           : 'Ads Performance'
-                        : 'Paket Solo')}
+                        : 'Paket Starter')}
                   </span>
                 </span>
 

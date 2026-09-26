@@ -264,11 +264,14 @@ export default function BoonPilotWidget({
     ? tenantSlug[0]
     : tenantSlug || '';
 
-  const isLocked = Boolean(
+  const currentTier = String(subscriptionPlan || '').toUpperCase();
+  const isStarterOrAbove = ['STARTER', 'SOLO', 'ADS_PERFORMANCE', 'PRO_SCALE', 'ENTERPRISE'].includes(currentTier);
+
+  const isLocked = !isStarterOrAbove && Boolean(
     isCheckoutLite ||
     isAiBotAllowed === false ||
-    String(subscriptionPlan || '').toUpperCase() === 'CHECKOUT_LITE' ||
-    String(subscriptionPlan || '').toUpperCase() === 'LITE'
+    currentTier === 'CHECKOUT_LITE' ||
+    currentTier === 'LITE'
   );
 
   const [isOpen, setIsOpen] = useState(false);
@@ -761,7 +764,7 @@ export default function BoonPilotWidget({
                   className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold transition shadow-md shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span>Upgrade ke Starter (Rp 149k/bln)</span>
+                  <span>Upgrade ke Starter (Rp 199k/bln)</span>
                 </button>
                 <button
                   type="button"
