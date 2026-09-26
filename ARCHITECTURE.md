@@ -1682,19 +1682,18 @@ Sebagai pemandu navigasi operasional bagi merchant, BoonPilot Copilot mengacu pa
 7. **Tab Iklan & Pelacakan (`ads` / `tracking`)**: Integrasi Ads Tracking Pro, Meta Pixel ID, Meta CAPI Access Token, TikTok Pixel ID, dan Google Tag Manager (GTM).
 8. **Tab Pengaturan (`settings`)**: Pengaturan profil toko (nama, logo, deskripsi, nomor WA admin, kustomisasi salam pembuka), domain kustom, tema storefront, dan manajemen akun tim.
 
-### 27.4 Integrasi WhatsApp Gateway Zona 2 (Production Verified Contract)
-Integrasi WhatsApp Gateway Zona 2 (Multi-Tenant Gateway Cluster) telah aktif dan terverifikasi di level produksi:
-- **Gateway Endpoint**: `https://gateway.boontrack.com` (Railway CNAME: `ilny5xoz.up.railway.app`)
-- **Instance Name**: `boontrack-app-shop`
-- **Connected Phone**: `081215567168`
-- **Status Koneksi**: `Linked / Open` (Production Verified)
-- **Webhook Events Active**: `MESSAGES_UPSERT`, `CONNECTION_UPDATE`
+### 27.4 Internal App Shop Infrastructure & Multi-Tenant Mapping
+- **Tenant ID**: `52967979-4760-4cea-b686-cdbdb389c0e1`
+- **Tenant Display Name**: BoonTrack Official Shop
+- **Tenant Slug**: `boon`
+- **Storefront Public URL**: `https://shop.boontrack.com/boon`
+- **Gateway Endpoint**: `https://gateway.boontrack.com`
+- **WhatsApp Instance Name**: `boontrack-app-shop`
+- **Connected Phone**: `081215567168` (Zona 2)
+- **Status**: Production Verified / Linked
+- **Webhook Events**: `MESSAGES_UPSERT`, `CONNECTION_UPDATE`
+- **Webhook Endpoint**: `https://api.boontrack.com/api/v1/whatsapp/webhook/evolution/boontrack-app-shop`
 - **Tujuan Arsitektur**:
   - Mengelola sesi interaksi inbound/outbound pesan WhatsApp untuk storefront dan merchant notification cluster.
-  - Penyelarasan skema tabel Supabase `whatsapp_connections` dengan kolom `is_connected: true`.
+  - Penyelarasan skema tabel Supabase `whatsapp_connections` dengan kolom `is_connected: true` dan pemetaan `tenant_id: 52967979-4760-4cea-b686-cdbdb389c0e1` / `tenant_slug: boon`.
   - Sinkronisasi real-time status koneksi via event `CONNECTION_UPDATE` tanpa latency loop.
-
-
-
-
-
