@@ -4,6 +4,7 @@ import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { sendOrderPaidNotification } from '@/lib/whatsapp';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
+import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
 
 export async function POST(
   _req: NextRequest,
@@ -110,6 +111,15 @@ export async function POST(
     }).catch((notifErr) => {
       console.warn('[Quick-Paid] Non-fatal affiliate commission alert error:', notifErr);
     });
+
+    // Dispatch Meta CAPI Purchase (EMQ Optimization 8.0+)
+    dispatchMetaCAPIPurchaseForOrder(String(orderId), supabase)
+      .then((capiRes) => {
+        if (capiRes.success) {
+          console.log(`[Quick-Paid] Meta CAPI Purchase successfully dispatched for order #${orderId}`);
+        }
+      })
+      .catch((capiErr) => console.warn('[Quick-Paid] CAPI purchase dispatch note:', capiErr));
 
     // 2b. Update Langganan Tenant ke Tier 'CHECKOUT_LITE'
     try {

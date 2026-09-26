@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
-import { dispatchMetaCAPI } from '@/lib/capi.service';
+import { dispatchMetaCAPI, dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
 import { readerAdapter } from '@/lib/payment/adapters/reader-adapter';
 import { paymentEventService } from '@/lib/payment/payment-event-service';
 import { checkTrialQuota } from '@/lib/entitlements/trial-guard';
@@ -543,42 +543,19 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     });
   }
 
-  // META CAPI DISPATCH
-  if (targetTenantSlug) {
-    try {
-      const { data: tenantData } = await supabase
-        .from('tenants')
-        .select('id, slug, tier, plan, metadata')
-        .eq('slug', targetTenantSlug)
-        .maybeSingle();
-
-      const tenantTier = (tenantData?.tier || tenantData?.plan || '').toUpperCase();
-      if (tenantTier === 'PRO_SCALE' || tenantTier === 'ADS_PERFORMANCE' || tenantTier === 'ENTERPRISE' || tenantTier === 'TEAM_SCALE') {
-        const metaPixelId = tenantData?.metadata?.pixel_config?.meta_pixel_id || tenantData?.metadata?.meta_pixel_id;
-        const metaAccessToken = tenantData?.metadata?.pixel_config?.meta_access_token || tenantData?.metadata?.meta_access_token;
-        if (metaPixelId && metaAccessToken) {
-          // Ambil test_event_code dari metadata tenant (via onboarding dashboard)
-          // atau fallback ke env global META_CAPI_TEST_EVENT_CODE (staging).
-          // Jika keduanya kosong → live event (production normal).
-          const testEventCode =
-            tenantData?.metadata?.pixel_config?.meta_test_event_code ||
-            tenantData?.metadata?.meta_test_event_code ||
-            process.env.META_CAPI_TEST_EVENT_CODE ||
-            undefined;
-
-          dispatchMetaCAPI(metaPixelId, metaAccessToken, {
-            orderId: String(orderId),
-            tenantId: tenantData.id || tenantData.slug,
-            grossAmount: totalAmount,
-            customerPhone,
-            customerName,
-            testEventCode,
-          }).catch((capiErr) => console.warn(`[Webhook Reader ${logId}] Error dispatching Meta CAPI:`, capiErr));
+  // META CAPI DISPATCH (Event Match Quality EMQ 8.0+ Optimization)
+  if (orderId) {
+    dispatchMetaCAPIPurchaseForOrder(String(orderId), supabase)
+      .then((capiRes) => {
+        if (capiRes.success) {
+          console.log(`[Webhook Reader ${logId}] Meta CAPI Purchase successfully dispatched for order #${orderId}`);
+        } else if (capiRes.skipped) {
+          console.log(`[Webhook Reader ${logId}] Meta CAPI Purchase skipped: ${capiRes.reason}`);
         }
-      }
-    } catch (capiCheckErr) {
-      console.warn(`[Webhook Reader ${logId}] Error checking CAPI:`, capiCheckErr);
-    }
+      })
+      .catch((capiErr) => {
+        console.warn(`[Webhook Reader ${logId}] Error dispatching Meta CAPI Purchase:`, capiErr?.message || capiErr);
+      });
   }
 
   // DISPATCH AFFILIATE & AM COMMISSION NOTIFICATION (Non-blocking)

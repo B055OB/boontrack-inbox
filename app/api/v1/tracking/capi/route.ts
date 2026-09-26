@@ -92,11 +92,15 @@ export async function POST(req: NextRequest) {
     }
 
     const pixelConfig = tenant.metadata?.pixel_config || {};
+    const trackingMeta = tenant.metadata?.tracking || {};
     const metaPixelId =
+      trackingMeta.meta_pixel_id ||
       pixelConfig.meta_pixel_id ||
       tenant.metadata?.meta_pixel_id ||
+      tenant.metadata?.pixel_id ||
       tenant.metadata?.facebook_pixel_id;
     const metaAccessToken =
+      trackingMeta.meta_access_token ||
       pixelConfig.meta_access_token ||
       tenant.metadata?.meta_access_token ||
       tenant.metadata?.facebook_access_token;
@@ -111,16 +115,78 @@ export async function POST(req: NextRequest) {
 
     const finalTestEventCode =
       testEventCode ||
+      trackingMeta.test_event_code ||
+      trackingMeta.meta_test_event_code ||
+      tenant.metadata?.capi_test_event_code ||
       pixelConfig.meta_test_event_code ||
+      pixelConfig.test_event_code ||
       tenant.metadata?.meta_test_event_code ||
       process.env.META_CAPI_TEST_EVENT_CODE ||
       undefined;
 
     const resolvedCtwaClid = ctwa_clid || ctwaClid || null;
-    const resolvedEventId =
-      eventId ||
-      orderId ||
-      `${resolvedEventName.toUpperCase()}_${cleanSlug}_${Date.now()}`;
+
+    // Deduplication Key: Event Purchase WAJIB identik dengan browser pixel: PURCHASE_${orderId}
+    let resolvedEventId = eventId;
+    if (!resolvedEventId) {
+      if (resolvedEventName === 'Purchase' && orderId) {
+        resolvedEventId = `PURCHASE_${orderId}`;
+      } else if (orderId) {
+        resolvedEventId = `${resolvedEventName.toUpperCase()}_${orderId}`;
+      } else {
+        resolvedEventId = `${resolvedEventName.toUpperCase()}_${cleanSlug}_${Date.now()}`;
+      }
+    }
+
+    // Resolusi data order & tracking_context dari Supabase jika orderId tersedia
+    let resolvedFbp = fbp;
+    let resolvedFbc = fbc;
+    let resolvedIp = ipAddress;
+    let resolvedUserAgent = userAgent;
+    let resolvedPhone = customerPhone;
+    let resolvedEmail = customerEmail;
+    let resolvedName = customerName;
+    let resolvedAmount = amount;
+
+    if (orderId) {
+      try {
+        const { data: dbOrder } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('id', orderId)
+          .maybeSingle();
+
+        if (dbOrder) {
+          const tContext = dbOrder.metadata?.tracking_context || {};
+          resolvedFbp = resolvedFbp || tContext.fbp || dbOrder.metadata?.fbp;
+          resolvedFbc =
+            resolvedFbc ||
+            tContext.fbc ||
+            dbOrder.metadata?.fbc ||
+            (dbOrder.fbclid ? `fb.1.${Date.now()}.${dbOrder.fbclid}` : undefined);
+          resolvedIp =
+            resolvedIp ||
+            tContext.client_ip_address ||
+            dbOrder.metadata?.client_ip_address;
+          resolvedUserAgent =
+            resolvedUserAgent ||
+            tContext.client_user_agent ||
+            dbOrder.metadata?.client_user_agent;
+          resolvedPhone = resolvedPhone || dbOrder.customer_phone || dbOrder.phone;
+          resolvedEmail = resolvedEmail || dbOrder.customer_email;
+          resolvedName = resolvedName || dbOrder.customer_name || dbOrder.buyer_name;
+          resolvedAmount = resolvedAmount !== undefined ? resolvedAmount : dbOrder.gross_amount;
+        }
+      } catch (orderLookupErr) {
+        console.warn('[CAPI Route] Order lookup note:', orderLookupErr);
+      }
+    }
+
+    const clientIpFromHeaders =
+      req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+      req.headers.get('x-real-ip') ||
+      req.headers.get('cf-connecting-ip') ||
+      undefined;
 
     // 3. Dispatch Event via CAPI Service
     const capiResult = await dispatchMetaCAPIEvent(metaPixelId, metaAccessToken, {
@@ -128,19 +194,16 @@ export async function POST(req: NextRequest) {
       eventId: resolvedEventId,
       orderId: orderId || undefined,
       tenantId: tenant.id || cleanSlug,
-      grossAmount: amount !== undefined ? Number(amount) : undefined,
+      grossAmount: resolvedAmount !== undefined ? Number(resolvedAmount) : undefined,
       currency: currency || 'IDR',
-      customerPhone,
-      customerName,
-      customerEmail,
-      fbc: fbc || null,
-      fbp: fbp || null,
+      customerPhone: resolvedPhone,
+      customerName: resolvedName,
+      customerEmail: resolvedEmail,
+      fbc: resolvedFbc || null,
+      fbp: resolvedFbp || null,
       ctwaClid: resolvedCtwaClid,
-      userAgent: userAgent || req.headers.get('user-agent') || undefined,
-      ipAddress:
-        ipAddress ||
-        req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-        undefined,
+      userAgent: resolvedUserAgent || req.headers.get('user-agent') || undefined,
+      ipAddress: resolvedIp || clientIpFromHeaders,
       contentName,
       contentIds,
       contentType,

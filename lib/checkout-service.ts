@@ -21,6 +21,14 @@ export interface CreateOrderPayload {
   managerId?: string;
   ctwa_clid?: string;
   tracking?: Record<string, any>;
+  tracking_context?: {
+    fbp?: string;
+    fbc?: string;
+    client_user_agent?: string;
+    client_ip_address?: string;
+    source_url?: string;
+    [key: string]: unknown;
+  };
   voucherCode?: string;
   productDiscount?: number;
   netProductPrice?: number;
@@ -271,7 +279,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     }
   }
 
-  const dbOrderData = {
+  const resolvedTrackingContext = payload.tracking_context || {
+    ...(payload.tracking?.fbp ? { fbp: payload.tracking.fbp } : {}),
+    ...(payload.tracking?.fbc ? { fbc: payload.tracking.fbc } : {}),
+  };
+
+  const dbOrderData: any = {
     id: orderId,
     tenant_slug: payload.tenantSlug,           // Selalu diisi: slug string toko
     tenant_id: resolvedTenantId,               // Selalu diisi: UUID toko (tidak boleh NULL)
@@ -291,63 +304,75 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     fbclid: payload.tracking?.fbclid || null,
     ttclid: payload.tracking?.ttclid || null,
     ctwa_clid: payload.ctwa_clid || payload.tracking?.ctwa_clid || null,
+    metadata: {
+      tracking_context: resolvedTrackingContext,
+      product_type: payload.productType || null,
+      fulfillment_metadata: orderFulfillmentMeta,
+    },
     status: "PENDING",
     created_at: orderData.created_at,
     updated_at: orderData.created_at,
   };
 
-  const { error: orderError } = await supabase
+  let { error: orderError } = await supabase
     .from("orders")
     .insert(dbOrderData);
+
+  // Fallback graceful: jika kolom metadata belum ada di tabel orders, retry tanpa kolom metadata
+  if (orderError && (orderError.code === '42703' || orderError.message?.includes('metadata'))) {
+    console.warn("[Checkout Service] orders.metadata column not present yet, retrying insert without metadata column.");
+    const { metadata: _omittedMeta, ...fallbackOrderData } = dbOrderData;
+    const retryRes = await supabase.from("orders").insert(fallbackOrderData);
+    orderError = retryRes.error;
+  }
 
   if (orderError) {
     console.error("[Checkout Service] Supabase Order Insert Error:", orderError);
   }
 
-  // 1b. Catat line item utama dan add-on ke tabel order_items (Hanya jika ada add-on)
-  if (verifiedOrderBumps.length > 0) {
-    try {
-      const lineItems = [
-        {
-          order_id: orderId,
-          tenant_id: resolvedTenantId,
-          tenant_slug: payload.tenantSlug,
-          product_id: resolvedProductId,
-          product_title: payload.productTitle,
-          item_type: 'main',
-          price: Math.max(0, netProductPrice - orderBumpsTotal),
-          original_price: basePrice,
-          quantity: 1,
-          metadata: {
-            product_discount: productDiscount,
-            voucher_code: payload.voucherCode || null,
-          },
+  // 1b. Catat line item utama dan add-on ke tabel order_items (menyimpan snapshot item & tracking_context)
+  try {
+    const lineItems = [
+      {
+        order_id: orderId,
+        tenant_id: resolvedTenantId,
+        tenant_slug: payload.tenantSlug,
+        product_id: resolvedProductId,
+        product_title: payload.productTitle,
+        item_type: 'main',
+        price: Math.max(0, netProductPrice - orderBumpsTotal),
+        original_price: basePrice,
+        quantity: 1,
+        metadata: {
+          product_discount: productDiscount,
+          voucher_code: payload.voucherCode || null,
+          tracking_context: resolvedTrackingContext,
         },
-        ...verifiedOrderBumps.map((b) => ({
-          order_id: orderId,
-          tenant_id: resolvedTenantId,
-          tenant_slug: payload.tenantSlug,
-          product_id: b.product_id || b.id,
-          product_title: b.name,
-          item_type: 'order_bump',
-          price: b.price,
-          original_price: b.original_price || null,
-          quantity: 1,
-          metadata: {
-            bump_id: b.id,
-            badge_text: b.badge_text || null,
-            description: b.description || null,
-          },
-        })),
-      ];
+      },
+      ...verifiedOrderBumps.map((b) => ({
+        order_id: orderId,
+        tenant_id: resolvedTenantId,
+        tenant_slug: payload.tenantSlug,
+        product_id: b.product_id || b.id,
+        product_title: b.name,
+        item_type: 'order_bump',
+        price: b.price,
+        original_price: b.original_price || null,
+        quantity: 1,
+        metadata: {
+          bump_id: b.id,
+          badge_text: b.badge_text || null,
+          description: b.description || null,
+        },
+      })),
+    ];
 
-      const { error: itemsErr } = await supabase.from('order_items').insert(lineItems);
-      if (itemsErr) {
-        console.warn('[Checkout Service] Order items insert note:', itemsErr);
-      }
-    } catch (orderItemsCatch) {
-      console.warn('[Checkout Service] Order items exception:', orderItemsCatch);
+    const { error: itemsErr } = await supabase.from('order_items').insert(lineItems);
+    if (itemsErr) {
+      console.warn('[Checkout Service] Order items insert note:', itemsErr);
     }
+  } catch (orderItemsCatch) {
+    console.warn('[Checkout Service] Order items exception:', orderItemsCatch);
   }
 
   // 2. Request pembuatan QRIS / Invoice ke Backend API (jika QRIS)
@@ -385,7 +410,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         unique_code: uniqueCode,
         affiliate_commission: affiliateCommission,
         order_bumps: verifiedOrderBumps.length > 0 ? verifiedOrderBumps : undefined,
-        tracking: payload.tracking || {}
+        tracking: payload.tracking || {},
+        tracking_context: resolvedTrackingContext
       }
     });
 

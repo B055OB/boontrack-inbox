@@ -94,6 +94,69 @@ export function getTrackingParams(): TrackingParams {
 
 export const getTrackingData = getTrackingParams;
 
+export interface ClientTrackingContext {
+  fbp?: string;
+  fbc?: string;
+  client_user_agent?: string;
+  source_url?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Ekstraksi Cookie Meta (_fbp, _fbc), User-Agent, & Context Sesi Browser
+ * Sesuai ARCHITECTURE.md §20, §21.5, dan §27.1 untuk EMQ Optimization (Target 8.0+)
+ */
+export function getClientTrackingContext(): ClientTrackingContext {
+  if (typeof window === "undefined") return {};
+
+  const context: ClientTrackingContext = {};
+
+  try {
+    // 1. Ekstrak _fbp dari document.cookie
+    const fbpMatch = document.cookie.match(/(?:^|;\s*)_fbp=([^;]+)/);
+    if (fbpMatch && fbpMatch[1]) {
+      context.fbp = decodeURIComponent(fbpMatch[1].trim());
+    }
+
+    // 2. Ekstrak _fbc dari document.cookie.
+    // Jika tidak ditemukan di cookie, periksa query parameter fbclid / storage lalu bentuk fb.1.${Date.now()}.${fbclid}
+    const fbcMatch = document.cookie.match(/(?:^|;\s*)_fbc=([^;]+)/);
+    if (fbcMatch && fbcMatch[1]) {
+      context.fbc = decodeURIComponent(fbcMatch[1].trim());
+    } else {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fbclid =
+        urlParams.get("fbclid") ||
+        sessionStorage.getItem("boontrack_fbclid") ||
+        localStorage.getItem("boontrack_fbclid");
+
+      if (fbclid && fbclid.trim()) {
+        const cleanFbclid = fbclid.trim();
+        const generatedFbc = `fb.1.${Date.now()}.${cleanFbclid}`;
+        context.fbc = generatedFbc;
+
+        // Tulis kembali ke cookie browser dengan retensi 90 hari agar stabil di seluruh funnel
+        try {
+          document.cookie = `_fbc=${encodeURIComponent(generatedFbc)}; path=/; max-age=7776000; SameSite=Lax`;
+          sessionStorage.setItem("boontrack__fbc", generatedFbc);
+        } catch {}
+      }
+    }
+
+    // 3. Tangkap User-Agent asli pembeli
+    if (typeof navigator !== "undefined" && navigator.userAgent) {
+      context.client_user_agent = navigator.userAgent;
+    }
+
+    // 4. Tangkap URL halaman saat ini (storefront / checkout)
+    context.source_url = window.location.href;
+  } catch (err) {
+    console.warn("[Tracking] Error extracting client tracking context:", err);
+  }
+
+  return context;
+}
+
 export function initMetaPixel(pixelId: string): void {
   if (typeof window === "undefined" || !pixelId) return;
   const win = window as unknown as Record<string, any>;

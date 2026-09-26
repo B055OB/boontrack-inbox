@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
-import { getActiveAffiliateCode, getTrackingData, trackLead, trackInitiateCheckout, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
+import { getActiveAffiliateCode, getTrackingData, getClientTrackingContext, trackLead, trackInitiateCheckout, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
@@ -336,8 +336,33 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
             instructions: instructions,
           });
 
-          // Trigger Event Purchase saat order terkonfirmasi PAID
+          // Trigger Event Purchase saat order terkonfirmasi PAID (Browser Pixel + Server CAPI)
           trackClientPurchase(paymentData.orderId, totalAmount, product?.title);
+
+          try {
+            const clientTracking = getClientTrackingContext();
+            fetch('/api/v1/tracking/capi', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tenantSlug,
+                eventName: 'Purchase',
+                orderId: paymentData.orderId,
+                eventId: `PURCHASE_${paymentData.orderId}`,
+                amount: totalAmount,
+                currency: 'IDR',
+                customerPhone: customerPhone || undefined,
+                customerName: customerName || undefined,
+                customerEmail: customerEmail || undefined,
+                fbp: clientTracking.fbp,
+                fbc: clientTracking.fbc,
+                userAgent: clientTracking.client_user_agent,
+                contentName: product?.title || 'Pesanan Produk',
+                contentIds: product?.id ? [String(product.id)] : undefined,
+                contentType: 'product',
+              }),
+            }).catch(() => {});
+          } catch (_) {}
         }
       } catch {}
     };
@@ -406,6 +431,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
       } : {}),
     };
 
+    const clientTrackingContext = getClientTrackingContext();
+
     try {
       const result = await createOrderAndInvoice({
         tenantSlug,
@@ -426,14 +453,49 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         netShippingCost: isPhysical ? shippingCost : 0,
         affiliateCode: undefined, // Murni direct store ke toko merchant
         tracking: trackingWithSlot,
+        tracking_context: clientTrackingContext,
         productType: resolvedProductType,
         fulfillmentMetadata: resolvedFulfillmentMetadata,
       });
 
-      // Trigger Event InitiateCheckout saat QRIS PT atau payment link diterbitkan
+      // Simpan IP Address dan context tracking sesi ke server backend Next.js
       if (result?.orderId) {
+        fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            order_id: result.orderId,
+            tracking_context: {
+              ...clientTrackingContext,
+              source_url: typeof window !== 'undefined' ? window.location.href : undefined,
+            },
+          }),
+        }).catch(() => {});
+
+        // Trigger Event InitiateCheckout saat QRIS PT atau payment link diterbitkan
         trackInitiateCheckout(product.title, totalAmount, `INITIATE_CHECKOUT_${result.orderId}`);
         trackLeadFormSubmission(totalAmount);
+
+        // Dispatch Server-Side CAPI InitiateCheckout
+        fetch('/api/v1/tracking/capi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenantSlug,
+            eventName: 'InitiateCheckout',
+            eventId: `INITIATE_CHECKOUT_${result.orderId}`,
+            orderId: result.orderId,
+            amount: totalAmount,
+            currency: 'IDR',
+            customerPhone: customerPhone || undefined,
+            customerName: customerName || undefined,
+            customerEmail: customerEmail || undefined,
+            fbp: clientTrackingContext.fbp,
+            fbc: clientTrackingContext.fbc,
+            userAgent: clientTrackingContext.client_user_agent,
+            contentName: product.title,
+          }),
+        }).catch(() => {});
 
         // Kunci atomic booking slot jika produk merupakan sesi booking jadwal
         if (product?.slot) {
