@@ -52,7 +52,6 @@ import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
 import OrdersTab from './components/tabs/OrdersTab';
 import {
   ModularVerticalTabDispatcher,
-  ModularAiKnowledgeDispatcher,
   resolveDomainVertical,
 } from './components/modules';
 import { useTenantDashboard } from './hooks/useTenantDashboard';
@@ -145,6 +144,10 @@ export default function TenantDashboardPage() {
 
     aiForm,
     setAiForm,
+    greetingMessage,
+    setGreetingMessage,
+    salesPolicy,
+    setSalesPolicy,
     faqs,
     setFaqs,
     interactiveMenus,
@@ -213,15 +216,6 @@ export default function TenantDashboardPage() {
     targetTier: 'ads_performance' | 'team_scale';
     targetTierLabel: string;
   }) => <LockedFeatureCard {...cardProps} onUpgrade={handleUpgradeTier} />;
-
-  const renderVerticalModule = () => {
-    const vKey = resolveDomainVertical(storeCategory);
-    return (
-      <div className="mb-6 animate-in fade-in duration-200">
-        <ModularAiKnowledgeDispatcher verticalKey={vKey} tenantSlug={tenantSlug} />
-      </div>
-    );
-  };
 
   const [activeVisualTheme, setActiveVisualTheme] = React.useState<VisualThemeType>('aurora_gradient');
   const [livePreviewButtons, setLivePreviewButtons] = React.useState<any[]>([]);
@@ -755,26 +749,26 @@ export default function TenantDashboardPage() {
       {activeTab === 'ai_knowledge' && (
         <AiKnowledgeTab
           tenantSlug={tenantSlug}
+          tenant={tenant}
           aiForm={aiForm}
           setAiForm={setAiForm}
+          greetingMessage={greetingMessage}
+          setGreetingMessage={setGreetingMessage}
+          salesPolicy={salesPolicy}
+          setSalesPolicy={setSalesPolicy}
           faqs={faqs}
           setFaqs={setFaqs}
           interactiveMenus={interactiveMenus}
           setInteractiveMenus={setInteractiveMenus}
-          botStrategy={botStrategy}
-          setBotStrategy={setBotStrategy}
           botMode={botMode}
           setBotMode={setBotMode}
           handleSaveAiKnowledge={handleSaveAiKnowledge}
-          handleSaveBotStrategy={handleSaveBotStrategy}
           isSavingAi={isSavingAi}
           isLoadingAi={isLoadingAi}
-          isSavingStrategy={isSavingStrategy}
-          strategyFeedback={strategyFeedback}
           isSimulatorOpen={isSimulatorOpen}
           setIsSimulatorOpen={setIsSimulatorOpen}
           storeCategory={storeCategory}
-          renderVerticalModule={renderVerticalModule}
+          saveFeedback={saveFeedback}
         />
       )}
 

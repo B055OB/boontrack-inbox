@@ -389,6 +389,17 @@ export function useTenantDashboard() {
     tone: 'casual',
     system_prompt: `Anda adalah asisten resmi untuk toko ${(displayName || 'TOKO').toUpperCase()}. Bantu pelanggan mengenai katalog produk, materi, dan transaksi pembayaran QRIS otomatis.`,
   });
+  const [greetingMessage, setGreetingMessage] = useState<string>(
+    `Halo Kak! Selamat datang di ${(displayName || 'Toko Kami')}. Ada yang bisa kami bantu seputar produk atau pesanan Anda hari ini? 😊`
+  );
+  const [salesPolicy, setSalesPolicy] = useState({
+    price_objection: 'Jelaskan nilai, kualitas bahan, dan garansi resmi tanpa terkesan defensif. Tawarkan bonus atau promo aktif jika tersedia.',
+    closing_hook: 'Informasikan batas jam pengiriman hari ini dan kuota promo terbatas untuk memicu transfer / checkout segera.',
+    discount_limit: 0,
+    handover_trigger: 'hubungi cs, komplain pesanan, bicara dengan admin manusia',
+    handover_phone: '',
+    custom_do_and_donts: 'Dilarang memberikan nomor kontak pribadi selain nomor resmi toko. Selalu pastikan konfirmasi data penerima sebelum checkout.',
+  });
   const [faqs, setFaqs] = useState<Array<{ id: string; question: string; answer: string }>>([]);
   const [interactiveMenus, setInteractiveMenus] = useState<InteractiveMenu[]>([]);
   const [isSavingAi, setIsSavingAi] = useState(false);
@@ -1019,6 +1030,19 @@ export function useTenantDashboard() {
               system_prompt: aiK.system_prompt || prev.system_prompt,
               tone: aiK.tone || prev.tone,
             }));
+            const loadedGreeting = s.greeting_message || s.custom_greeting_message || s.metadata?.greeting_message || s.metadata?.custom_greeting_message;
+            if (loadedGreeting) setGreetingMessage(loadedGreeting);
+
+            const pol = s.sales_policy || s.playbook || s.metadata?.sales_policy || s.metadata?.playbook || {};
+            setSalesPolicy(prev => ({
+              price_objection: pol.price_objection || pol.scenarios?.priceObjection || prev.price_objection,
+              closing_hook: pol.closing_hook || pol.scenarios?.closingHook || prev.closing_hook,
+              discount_limit: Number(pol.discount_limit ?? prev.discount_limit),
+              handover_trigger: pol.handover_trigger || prev.handover_trigger,
+              handover_phone: pol.handover_phone || s.whatsapp_number || s.whatsapp || prev.handover_phone,
+              custom_do_and_donts: pol.custom_do_and_donts || pol.customDoAndDonts || prev.custom_do_and_donts,
+            }));
+
             if (Array.isArray(s.faqs) && s.faqs.length > 0) setFaqs(s.faqs);
 
             // Fallback membaca interactive_menu dari metadata tenant
@@ -1974,6 +1998,11 @@ export function useTenantDashboard() {
         name: displayName,
         assistant_name: aiForm.ai_name,
         system_prompt: aiForm.system_prompt,
+        tone: aiForm.tone,
+        greeting_message: greetingMessage,
+        custom_greeting_message: greetingMessage,
+        sales_policy: salesPolicy,
+        playbook: salesPolicy,
         bot_strategy: botStrategy,
         bot_mode: botMode,
         is_bot_active: isBotActive,
@@ -1986,11 +2015,13 @@ export function useTenantDashboard() {
         },
         ai_knowledge: {
           ...aiForm,
-          bot_strategy: botStrategy,
+          greeting_message: greetingMessage,
+          sales_policy: salesPolicy,
         },
         persona: {
           ...aiForm,
-          bot_strategy: botStrategy,
+          greeting_message: greetingMessage,
+          sales_policy: salesPolicy,
         },
       };
 
@@ -2229,6 +2260,10 @@ export function useTenantDashboard() {
     // AI Knowledge & Strategy
     aiForm,
     setAiForm,
+    greetingMessage,
+    setGreetingMessage,
+    salesPolicy,
+    setSalesPolicy,
     faqs,
     setFaqs,
     interactiveMenus,

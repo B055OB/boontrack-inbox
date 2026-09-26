@@ -92,6 +92,17 @@ export async function POST(req: NextRequest) {
     const interactiveMenus: InteractiveMenu[] = Array.isArray(tenantMetadata.interactive_menus)
       ? tenantMetadata.interactive_menus
       : [];
+    const tenantFaqs: any[] = Array.isArray(tenantMetadata.faqs)
+      ? tenantMetadata.faqs
+      : (Array.isArray(tenantMetadata.boonpilot_proposal?.knowledge)
+          ? tenantMetadata.boonpilot_proposal.knowledge
+              .filter((k: any) => k.category === 'FAQ')
+              .map((k: any) => ({
+                id: k.id,
+                question: k.title,
+                answer: k.content,
+              }))
+          : []);
     const botMode: 'STATIC' | 'HYBRID' | 'AI' = String(tenantMetadata.bot_mode || 'HYBRID').toUpperCase() as any;
     const channel = body.channel || 'WAHA';
     const defaultQuickActions = getIndustryQuickReplies(category, tenantMetadata);
@@ -208,6 +219,27 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // --- INBOUND FAST-PATH 4: EXACT / CLOSE FAQ MATCH (ZERO-TOKEN GROUND TRUTH) ---
+    if (tenantFaqs.length > 0 && message) {
+      const normalizedMsg = message.trim().toLowerCase();
+      const matchedFaq = tenantFaqs.find((f: any) => {
+        if (!f.question || !f.answer) return false;
+        const q = String(f.question).trim().toLowerCase();
+        return q === normalizedMsg || normalizedMsg.includes(q) || (q.length > 8 && q.includes(normalizedMsg));
+      });
+      if (matchedFaq) {
+        return NextResponse.json({
+          success: true,
+          reply: matchedFaq.answer,
+          tenant_id: slug,
+          tenant_slug: slug,
+          checkout_url: checkoutUrl,
+          type: 'FAQ_MATCH',
+          quick_actions: defaultQuickActions,
+        });
+      }
+    }
+
     let reply = '';
 
     // 1. Try calling BoonTrack Core Backend on Railway
@@ -288,9 +320,28 @@ export async function POST(req: NextRequest) {
 
         const menuSummary = formatInteractiveMenusSummary(interactiveMenus);
 
-        const botPersona = botProfileRow?.persona_name || tenantMetadata?.bot_profile?.persona_name || `Asisten AI Resmi ${storeName}`;
-        const botTone = botProfileRow?.tone || tenantMetadata?.bot_profile?.tone || 'Ramah, profesional, solutif';
-        const customPrompt = botProfileRow?.system_prompt || tenantMetadata?.bot_profile?.system_prompt || '';
+        // Build FAQ ground truth text for system instruction
+        let faqsText = '';
+        if (tenantFaqs.length > 0) {
+          faqsText = tenantFaqs
+            .filter((f: any) => f.question && f.answer)
+            .map((f: any, idx: number) => `TANYA #${idx + 1}: ${f.question}\nJAWABAN RESMI: ${f.answer}`)
+            .join('\n\n');
+        }
+
+        // Build Sales Policy and Handover rules
+        const salesPolicy = tenantMetadata.sales_policy || tenantMetadata.playbook || tenantMetadata.seller_playbook || {};
+        const priceObjection = salesPolicy.price_objection || salesPolicy.scenarios?.priceObjection || '';
+        const closingHook = salesPolicy.closing_hook || salesPolicy.scenarios?.closingHook || '';
+        const discountLimit = Number(salesPolicy.discount_limit ?? 0);
+        const handoverTrigger = salesPolicy.handover_trigger || '';
+        const handoverPhone = salesPolicy.handover_phone || tenantMetadata.whatsapp_number || '';
+        const customDoAndDonts = salesPolicy.custom_do_and_donts || salesPolicy.customDoAndDonts || '';
+        const greetingMessage = tenantMetadata.greeting_message || tenantMetadata.custom_greeting_message || '';
+
+        const botPersona = botProfileRow?.persona_name || tenantMetadata?.bot_profile?.persona_name || tenantMetadata?.ai_knowledge?.ai_name || `Asisten AI Resmi ${storeName}`;
+        const botTone = botProfileRow?.tone || tenantMetadata?.bot_profile?.tone || tenantMetadata?.ai_knowledge?.tone || 'Ramah, profesional, solutif';
+        const customPrompt = botProfileRow?.system_prompt || tenantMetadata?.bot_profile?.system_prompt || tenantMetadata?.ai_knowledge?.system_prompt || '';
         const guards = Array.isArray(botProfileRow?.strict_guardrails)
           ? botProfileRow.strict_guardrails.join('\n- ')
           : (Array.isArray(tenantMetadata?.bot_profile?.strict_guardrails)
@@ -301,6 +352,7 @@ export async function POST(req: NextRequest) {
 Gaya Komunikasi / Tone: ${botTone}.
 ${customPrompt ? `\nPanduan Persona Tambahan:\n${customPrompt}\n` : ''}
 ${guards ? `\nStrict Guardrails (ATURAN MUTLAK):\n- ${guards}\n` : ''}
+${greetingMessage ? `\nSalam Pembuka Standar Toko: "${greetingMessage}"\n` : ''}
 
 INFORMASI RESMI TOKO & TAUTAN WEB:
 - Website Toko Resmi: https://shop.boontrack.com/${slug}
@@ -317,6 +369,14 @@ Detail Produk Utama:
 - Tipe: ${product.type || 'Fisik / Digital'}
 - Link Checkout Resmi: ${checkoutUrl}
 ${menuSummary ? `\nMenu Navigasi & Pilihan Cepat Toko:\n${menuSummary}\n` : ''}
+${faqsText ? `\nDAFTAR TANYA JAWAB RESMI TOKO (FAQ GROUND TRUTH - JADIKAN RUJUKAN UTAMA):\n${faqsText}\nATURAN FAQ: Jika pelanggan menanyakan hal serupa dengan pertanyaan di atas, WAJIB memberikan jawaban persis sesuai jawaban resmi di atas.\n` : ''}
+ATURAN PENJUALAN & KEBIJAKAN TOKO (SALES POLICY):
+- Penanganan Tawar / Komplain Harga: ${priceObjection || 'Jelaskan nilai, kualitas produk, dan garansi resmi tanpa defensif. Jangan turunkan harga sembarangan.'}
+- Pemicu Urgensi Closing: ${closingHook || 'Sampaikan kuota promo terbatas atau batas jam pengiriman hari ini.'}
+- Batas Diskon Maksimal: ${discountLimit > 0 ? `Maksimal ${discountLimit}% jika pembeli ragu` : 'Harga Pas (Dilarang memberi diskon tanpa voucher resmi)'}
+${handoverTrigger ? `- Eskalasi ke CS Manusia: Jika pembeli menyebut "${handoverTrigger}" atau masalah tidak dapat diselesaikan, arahkan ke CS manusia${handoverPhone ? ` di WhatsApp ${handoverPhone}` : ''}.` : ''}
+${customDoAndDonts ? `- Larangan & Kepatuhan Khusus Toko: ${customDoAndDonts}` : ''}
+
 ATURAN MUTLAK KEAMANAN TAUTAN & ZERO-HALLUCINATION:
 1. DILARANG KERAS mengarang, memodifikasi, atau membagikan link/URL eksternal fiktif (seperti domain sendiri .com fiktif, blog fiktif, linktree, atau landing page palsu seperti ${slug}.com atau domain eksternal lain).
 2. HANYA gunakan tautan resmi yang tertera di katalog di atas (format wajib: https://shop.boontrack.com/${slug}/p/... atau https://shop.boontrack.com/${slug}).

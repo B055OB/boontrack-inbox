@@ -6,32 +6,26 @@ import { ProductItem, FulfillmentMetadata } from '@/lib/product-catalog';
 // 1. Field Service (Jasa Teknisi & Lapangan)
 import FieldServiceProductForm from './field-service/ProductForm';
 import FieldServiceBookingTab from './field-service/BookingTab';
-import FieldServiceAiKnowledge from './field-service/AiKnowledge';
 
 // 2. Digital Product (File & E-Course)
 import DigitalProductForm from './digital-product/ProductForm';
 import DigitalDeliveryTab from './digital-product/DeliveryTab';
-import DigitalProductAiKnowledge from './digital-product/AiKnowledge';
 
 // 3. Professional Service (Konsultasi & Sesi Privat)
 import ProServiceProductForm from './pro-service/ProductForm';
 import ProServiceCalendarTab from './pro-service/CalendarTab';
-import ProServiceAiKnowledge from './pro-service/AiKnowledge';
 
 // 4. Creator & Agency (Live Streaming & Campaign)
 import CreatorAgencyProductForm from './creator-agency/ProductForm';
 import CreatorAgencyCampaignTab from './creator-agency/CampaignTab';
-import CreatorAgencyAiKnowledge from './creator-agency/AiKnowledge';
 
 // 5. Physical Retail (Barang Fisik & Kurir)
 import PhysicalRetailProductForm from './physical-retail/ProductForm';
 import PhysicalRetailShippingTab from './physical-retail/ShippingTab';
-import PhysicalRetailAiKnowledge from './physical-retail/AiKnowledge';
 
 // 6. FnB & Culinary (Kuliner & Kurir Instan)
 import FnbCulinaryProductForm from './fnb-culinary/ProductForm';
 import FnbInstantCourier from './fnb-culinary/InstantCourier';
-import FnbCulinaryAiKnowledge from './fnb-culinary/AiKnowledge';
 
 export type DomainVerticalKey =
   | 'field-service'
@@ -118,44 +112,17 @@ export function ModularVerticalTabDispatcher({ verticalKey, tenantSlug }: Modula
   }
 }
 
-// ---------------------------------------------------------------------------
-// DISPATCHER: Ai Knowledge Module
-// ---------------------------------------------------------------------------
-export function ModularAiKnowledgeDispatcher({ verticalKey, tenantSlug }: ModularTabDispatcherProps) {
-  switch (verticalKey) {
-    case 'field-service':
-      return <FieldServiceAiKnowledge tenantSlug={tenantSlug} />;
-    case 'digital-product':
-      return <DigitalProductAiKnowledge tenantSlug={tenantSlug} />;
-    case 'pro-service':
-      return <ProServiceAiKnowledge tenantSlug={tenantSlug} />;
-    case 'creator-agency':
-      return <CreatorAgencyAiKnowledge tenantSlug={tenantSlug} />;
-    case 'fnb-culinary':
-      return <FnbCulinaryAiKnowledge tenantSlug={tenantSlug} />;
-    case 'physical-retail':
-    default:
-      return <PhysicalRetailAiKnowledge tenantSlug={tenantSlug} />;
-  }
-}
-
 export {
   FieldServiceProductForm,
   FieldServiceBookingTab,
-  FieldServiceAiKnowledge,
   DigitalProductForm,
   DigitalDeliveryTab,
-  DigitalProductAiKnowledge,
   ProServiceProductForm,
   ProServiceCalendarTab,
-  ProServiceAiKnowledge,
   CreatorAgencyProductForm,
   CreatorAgencyCampaignTab,
-  CreatorAgencyAiKnowledge,
   PhysicalRetailProductForm,
   PhysicalRetailShippingTab,
-  PhysicalRetailAiKnowledge,
   FnbCulinaryProductForm,
   FnbInstantCourier,
-  FnbCulinaryAiKnowledge,
 };

@@ -202,6 +202,27 @@ export class ConversationEngine {
       };
     }
 
+    // --- INBOUND FAST-PATH 3: FAQ GROUND TRUTH MATCH ---
+    const tenantFaqs: any[] = Array.isArray(metadata.faqs) ? metadata.faqs : [];
+    if (tenantFaqs.length > 0 && cleanMsg) {
+      const normalizedMsg = cleanMsg.toLowerCase();
+      const matchedFaq = tenantFaqs.find((f: any) => {
+        if (!f.question || !f.answer) return false;
+        const q = String(f.question).trim().toLowerCase();
+        return q === normalizedMsg || normalizedMsg.includes(q) || (q.length > 8 && q.includes(normalizedMsg));
+      });
+      if (matchedFaq) {
+        trace.push('FAQ_GROUND_TRUTH_MATCH');
+        return {
+          reply: matchedFaq.answer,
+          next_state: session.current_state,
+          state_trace: trace,
+          entities,
+          is_booking_ready: false,
+        };
+      }
+    }
+
     // --- MODE STATIC ON GREETING: Kirim Menu Interaktif Awal ---
     if (botMode === 'STATIC' && session.current_state === 'GREETING' && interactiveMenus.length > 0) {
       const primaryMenu = interactiveMenus[0];

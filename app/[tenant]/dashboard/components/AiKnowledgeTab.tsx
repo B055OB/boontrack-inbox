@@ -9,16 +9,16 @@ import {
   Bot,
   ShieldCheck,
   CheckCircle2,
-  BookOpen,
-  Check,
-  RotateCcw,
   HelpCircle,
   Plus,
   Trash2,
   ListOrdered,
+  Layers,
+  PhoneCall,
+  Percent,
 } from 'lucide-react';
 import BotSimulatorModal from './BotSimulatorModal';
-import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
+import AiSessionQuotaMeter from './AiSessionQuotaMeter';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm, mapProposalToPlaybook } from '@/lib/boonpilotMapper';
 import type { InteractiveMenu, InteractiveMenuOption } from '@/lib/whatsappFormatter';
@@ -61,121 +61,192 @@ export interface AiKnowledgeForm {
   system_prompt: string;
 }
 
-export type BotStrategy = 'trust_builder' | 'balanced' | 'hard_selling';
-
 export interface FaqItem {
   id: string;
   question: string;
   answer: string;
 }
 
-export interface SellerConversationPlaybook {
-  persona: {
-    greetingStyle: string; // contoh: "Sapaan ramah, panggil 'Kak', gaya santai bersahabat"
-    tone: 'casual' | 'semi-formal' | 'formal';
-  };
-  scenarios: {
-    priceObjection: string;   // Arahan saat pembeli menawar/komplain mahal
-    closingHook: string;      // Pemicu urgensi agar segera transfer/checkout
-    outOfStockHandling: string; // Solusi jika produk/varian habis
-  };
-  customDoAndDonts: string;  // Larangan atau instruksi khusus seller
+export interface SalesPolicyData {
+  price_objection: string;
+  closing_hook: string;
+  discount_limit: number;
+  handover_trigger: string;
+  handover_phone: string;
+  custom_do_and_donts: string;
 }
 
-export const DEFAULT_SELLER_PLAYBOOK: SellerConversationPlaybook = {
-  persona: {
-    greetingStyle: "Sapaan ramah, panggil 'Kak', gaya santai bersahabat",
-    tone: 'casual',
-  },
-  scenarios: {
-    priceObjection: 'Jelaskan nilai, kualitas bahan, dan garansi resmi tanpa terkesan defensif. Tawarkan bonus atau promo aktif jika tersedia.',
-    closingHook: 'Informasikan batas jam pengiriman hari ini dan kuota promo terbatas untuk memicu transfer / checkout segera.',
-    outOfStockHandling: 'Sampaikan permohonan maaf dengan tulus, tawarkan varian/produk alternatif terbaik yang serupa, atau opsi pre-order.',
-  },
-  customDoAndDonts: 'Dilarang memberikan nomor kontak pribadi selain nomor resmi toko. Selalu pastikan konfirmasi data penerima sebelum checkout.',
+export const DEFAULT_SALES_POLICY: SalesPolicyData = {
+  price_objection: 'Jelaskan nilai, kualitas bahan, dan garansi resmi tanpa terkesan defensif. Tawarkan bonus atau promo aktif jika tersedia.',
+  closing_hook: 'Informasikan batas jam pengiriman hari ini dan kuota promo terbatas untuk memicu transfer / checkout segera.',
+  discount_limit: 0,
+  handover_trigger: 'hubungi cs, komplain pesanan, bicara dengan admin manusia',
+  handover_phone: '',
+  custom_do_and_donts: 'Dilarang memberikan nomor kontak pribadi selain nomor resmi toko. Selalu pastikan konfirmasi data penerima sebelum checkout.',
 };
 
 export interface AiKnowledgeTabProps {
   tenantSlug: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tenant?: any;
   aiForm: AiKnowledgeForm;
   setAiForm: React.Dispatch<React.SetStateAction<AiKnowledgeForm>>;
+  greetingMessage?: string;
+  setGreetingMessage?: React.Dispatch<React.SetStateAction<string>> | ((msg: string) => void);
+  salesPolicy?: SalesPolicyData;
+  setSalesPolicy?: React.Dispatch<React.SetStateAction<SalesPolicyData>>;
   faqs?: FaqItem[];
   setFaqs?: React.Dispatch<React.SetStateAction<FaqItem[]>>;
   interactiveMenus?: InteractiveMenu[];
   setInteractiveMenus?: React.Dispatch<React.SetStateAction<InteractiveMenu[]>>;
   botMode?: 'STATIC' | 'HYBRID' | 'AI';
   setBotMode?: React.Dispatch<React.SetStateAction<'STATIC' | 'HYBRID' | 'AI'>>;
-  botStrategy?: BotStrategy;
-  setBotStrategy?: React.Dispatch<React.SetStateAction<BotStrategy>>;
   handleSaveAiKnowledge: (e?: React.FormEvent) => void | Promise<void>;
-  handleSaveBotStrategy?: (strategyOverride?: BotStrategy) => void | Promise<void>;
   isSavingAi: boolean;
   isLoadingAi: boolean;
-  isSavingStrategy?: boolean;
-  strategyFeedback?: string | null;
   isSimulatorOpen?: boolean;
   setIsSimulatorOpen?: React.Dispatch<React.SetStateAction<boolean>>;
   storeCategory?: string;
+  saveFeedback?: string | null;
+  // Backward compatibility props (optional & deprecated)
+  botStrategy?: any;
+  setBotStrategy?: any;
+  handleSaveBotStrategy?: any;
+  isSavingStrategy?: boolean;
+  strategyFeedback?: string | null;
   renderVerticalModule?: () => React.ReactNode;
-  playbook?: SellerConversationPlaybook;
-  setPlaybook?: React.Dispatch<React.SetStateAction<SellerConversationPlaybook>>;
-  onSavePlaybook?: (playbook: SellerConversationPlaybook) => void | Promise<void>;
+  playbook?: any;
+  setPlaybook?: any;
+  onSavePlaybook?: any;
 }
+
+type TabKey = 'profile' | 'policy' | 'faq_knowledge';
 
 export default function AiKnowledgeTab({
   tenantSlug,
   tenant: propTenant,
   aiForm,
   setAiForm,
+  greetingMessage: propGreetingMessage,
+  setGreetingMessage: propSetGreetingMessage,
+  salesPolicy: propSalesPolicy,
+  setSalesPolicy: propSetSalesPolicy,
   faqs: propFaqs,
   setFaqs: propSetFaqs,
   interactiveMenus: propInteractiveMenus,
   setInteractiveMenus: propSetInteractiveMenus,
   botMode: propBotMode,
   setBotMode: propSetBotMode,
-  botStrategy,
-  setBotStrategy,
   handleSaveAiKnowledge,
-  handleSaveBotStrategy,
   isSavingAi,
   isLoadingAi,
-  isSavingStrategy,
-  strategyFeedback,
   isSimulatorOpen,
   setIsSimulatorOpen,
   storeCategory,
-  renderVerticalModule,
+  saveFeedback,
+  // Backward compatibility fallback
   playbook: propPlaybook,
   setPlaybook: propSetPlaybook,
-  onSavePlaybook,
 }: AiKnowledgeTabProps) {
+  const [activeTab, setActiveTab] = useState<TabKey>('profile');
   const [internalSimulatorOpen, setInternalSimulatorOpen] = useState(false);
   const simulatorOpen = isSimulatorOpen !== undefined ? isSimulatorOpen : internalSimulatorOpen;
   const setSimulatorOpen = setIsSimulatorOpen || setInternalSimulatorOpen;
 
-  // FAQ Knowledge Base State
-  const [internalFaqs, setInternalFaqs] = useState<FaqItem[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const currentSlug = (tenantSlug || '').trim().toLowerCase();
-        const saved =
-          localStorage.getItem(`bt_faqs_${currentSlug}`) ||
-          localStorage.getItem(`bt_faqs_${tenantSlug}`) ||
-          (currentSlug === 'sandbox' ? localStorage.getItem('bt_faqs_sandbox') : null);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return parsed;
-        }
-      } catch {}
-    }
-    return [];
-  });
+  // Local state fallbacks if not provided by parent hook
+  const [internalGreeting, setInternalGreeting] = useState<string>(
+    'Halo Kak! Selamat datang di toko kami. Ada yang bisa kami bantu seputar produk atau pesanan Anda hari ini? 😊'
+  );
+  const greetingMessage = propGreetingMessage ?? internalGreeting;
+  const setGreetingMessage = propSetGreetingMessage ?? setInternalGreeting;
 
+  const [internalSalesPolicy, setInternalSalesPolicy] = useState<SalesPolicyData>(() => {
+    if (propPlaybook) {
+      return {
+        price_objection: propPlaybook.scenarios?.priceObjection || DEFAULT_SALES_POLICY.price_objection,
+        closing_hook: propPlaybook.scenarios?.closingHook || DEFAULT_SALES_POLICY.closing_hook,
+        discount_limit: 0,
+        handover_trigger: DEFAULT_SALES_POLICY.handover_trigger,
+        handover_phone: '',
+        custom_do_and_donts: propPlaybook.customDoAndDonts || DEFAULT_SALES_POLICY.custom_do_and_donts,
+      };
+    }
+    return DEFAULT_SALES_POLICY;
+  });
+  const salesPolicy = propSalesPolicy ?? internalSalesPolicy;
+  const setSalesPolicy = propSetSalesPolicy ?? setInternalSalesPolicy;
+
+  const [internalFaqs, setInternalFaqs] = useState<FaqItem[]>([]);
   const currentFaqs = propFaqs ?? internalFaqs;
   const updateFaqs = propSetFaqs ?? setInternalFaqs;
 
+  const [internalInteractiveMenus, setInternalInteractiveMenus] = useState<InteractiveMenu[]>([]);
+  const currentInteractiveMenus = propInteractiveMenus ?? internalInteractiveMenus;
+  const updateInteractiveMenus = propSetInteractiveMenus ?? setInternalInteractiveMenus;
+
+  const [internalBotMode, setInternalBotMode] = useState<'STATIC' | 'HYBRID' | 'AI'>('HYBRID');
+  const currentBotMode = propBotMode ?? internalBotMode;
+  const updateBotMode = propSetBotMode ?? setInternalBotMode;
+
+  const [activeProposal, setActiveProposal] = useState<BusinessConfigurationProposal | null>(null);
+  const [localFeedback, setLocalFeedback] = useState<string | null>(null);
+
+  // BoonPilot Real-time event listener
+  useEffect(() => {
+    const handleProposalPublished = (e: Event) => {
+      const customEvt = e as CustomEvent<{ proposal: BusinessConfigurationProposal; tenantSlug: string }>;
+      const proposal = customEvt.detail?.proposal;
+      if (!proposal) return;
+      const targetSlug = (customEvt.detail.tenantSlug || '').trim().toLowerCase();
+      const currentSlug = (tenantSlug || '').trim().toLowerCase();
+      if (targetSlug && targetSlug !== currentSlug) return;
+
+      setActiveProposal(proposal);
+
+      // Hydrate AI Form
+      const mappedAi = mapProposalToAiForm(proposal);
+      setAiForm((prev) => ({
+        ...prev,
+        ai_name: mappedAi.ai_name,
+        tone: mappedAi.tone,
+        system_prompt: mappedAi.system_prompt,
+      }));
+
+      // Hydrate Playbook & Sales Policy
+      const mappedPlaybook = mapProposalToPlaybook(proposal);
+      setSalesPolicy((prev) => ({
+        ...prev,
+        price_objection: mappedPlaybook.scenarios.priceObjection,
+        closing_hook: mappedPlaybook.scenarios.closingHook,
+        custom_do_and_donts: mappedPlaybook.customDoAndDonts,
+      }));
+
+      if (propSetPlaybook) {
+        propSetPlaybook(mappedPlaybook);
+      }
+
+      // Hydrate FAQs from knowledge
+      if (proposal.knowledge) {
+        const faqKnowledge = proposal.knowledge
+          .filter((k: any) => k.category === 'FAQ')
+          .map((k: any, idx: number) => ({
+            id: k.id || `faq_${idx}`,
+            question: k.title,
+            answer: k.content,
+          }));
+        if (faqKnowledge.length > 0) {
+          updateFaqs(faqKnowledge);
+        }
+      }
+
+      setLocalFeedback('✨ Data profil bot & FAQ berhasil diperbarui dari proposal BoonPilot!');
+      setTimeout(() => setLocalFeedback(null), 4000);
+    };
+
+    window.addEventListener('boonpilot-proposal-published', handleProposalPublished);
+    return () => window.removeEventListener('boonpilot-proposal-published', handleProposalPublished);
+  }, [tenantSlug, setAiForm, setSalesPolicy, updateFaqs, propSetPlaybook]);
+
+  // Handle FAQ item actions
   const handleAddFaq = () => {
     const newFaq: FaqItem = {
       id: `faq_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -195,71 +266,7 @@ export default function AiKnowledgeTab({
     updateFaqs((prev) => prev.filter((faq) => faq.id !== id));
   };
 
-  // Sync FAQs to localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const currentSlug = (tenantSlug || '').trim().toLowerCase();
-        localStorage.setItem(`bt_faqs_${currentSlug}`, JSON.stringify(currentFaqs));
-      } catch {}
-    }
-  }, [currentFaqs, tenantSlug]);
-
-  // Interactive Menus State & Handlers
-  const [internalInteractiveMenus, setInternalInteractiveMenus] = useState<InteractiveMenu[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const currentSlug = (tenantSlug || '').trim().toLowerCase();
-        const saved =
-          localStorage.getItem(`bt_interactive_menus_${currentSlug}`) ||
-          localStorage.getItem(`bt_interactive_menus_${tenantSlug}`) ||
-          (currentSlug === 'sandbox' ? localStorage.getItem('bt_interactive_menus_sandbox') : null);
-        const savedCat = localStorage.getItem(`bt_interactive_menus_category_${currentSlug}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            // Jika storeCategory terdeteksi dan berbeda dari kategori yang tersimpan di cache, buang cache lama
-            if (storeCategory && savedCat && savedCat.toUpperCase() !== storeCategory.toUpperCase()) {
-              localStorage.removeItem(`bt_interactive_menus_${currentSlug}`);
-              return [];
-            }
-            // Sanitize: Jika storeCategory adalah PROFESSIONAL_SERVICE namun tersimpan teks servis/teknisi, buang cache
-            if (storeCategory && storeCategory.toUpperCase() === 'PROFESSIONAL_SERVICE') {
-              const hasService = parsed.some((m: any) => /servis|teknisi|toren|bengkel/i.test(m.title || ''));
-              if (hasService) {
-                localStorage.removeItem(`bt_interactive_menus_${currentSlug}`);
-                return [];
-              }
-            }
-            return parsed;
-          }
-        }
-      } catch {}
-    }
-    return [];
-  });
-
-  const currentInteractiveMenus =
-    (propInteractiveMenus && propInteractiveMenus.length > 0)
-      ? propInteractiveMenus
-      : internalInteractiveMenus;
-
-  const updateInteractiveMenus = (updater: React.SetStateAction<InteractiveMenu[]>) => {
-    if (propSetInteractiveMenus) {
-      propSetInteractiveMenus(updater);
-    }
-    setInternalInteractiveMenus(updater);
-  };
-
-  const [internalBotMode, setInternalBotMode] = useState<'STATIC' | 'HYBRID' | 'AI'>('STATIC');
-  const currentBotMode = propBotMode ?? internalBotMode;
-  const updateBotMode = (updater: React.SetStateAction<'STATIC' | 'HYBRID' | 'AI'>) => {
-    if (propSetBotMode) {
-      propSetBotMode(updater);
-    }
-    setInternalBotMode(updater);
-  };
-
+  // Handle Interactive Menu actions
   const handleAddMenu = () => {
     const newMenu: InteractiveMenu = {
       id: `menu_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -341,369 +348,17 @@ export default function AiKnowledgeTab({
     );
   };
 
-  // Sync Interactive Menus to localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const currentSlug = (tenantSlug || '').trim().toLowerCase();
-        localStorage.setItem(`bt_interactive_menus_${currentSlug}`, JSON.stringify(currentInteractiveMenus));
-      } catch {}
-    }
-  }, [currentInteractiveMenus, tenantSlug]);
-
-  // Auto-populate & sinkronkan default quick menus berdasarkan storeCategory terkini
-  useEffect(() => {
-    if (!storeCategory) return;
-
-    type QuickMenuItem = { trigger: string; title: string; description: string };
-    const VERTICAL_QUICK_MENUS: Record<string, QuickMenuItem[]> = {
-      FIELD_SERVICE: [
-        { trigger: 'jadwal servis', title: '📅 Jadwalkan Servis/Teknisi', description: 'Pilih jadwal kunjungan teknisi ke lokasi Anda.' },
-        { trigger: 'tarif layanan', title: '💰 Tarif & Area Layanan', description: 'Cek daftar harga dan cakupan area servis kami.' },
-        { trigger: 'hubungi cs', title: '🛠️ Hubungi Live CS', description: 'Terhubung langsung dengan tim customer service.' },
-      ],
-      PHYSICAL: [
-        { trigger: 'lihat katalog', title: '📦 Cek Katalog & Promo', description: 'Lihat semua produk terbaru dan promo aktif kami.' },
-        { trigger: 'ongkir resi', title: '🚚 Cek Ongkir & Lacak Resi', description: 'Hitung ongkos kirim atau lacak paket Anda.' },
-        { trigger: 'hubungi cs', title: '💬 Hubungi Live CS', description: 'Terhubung langsung dengan tim customer service.' },
-      ],
-      FOOD: [
-        { trigger: 'pesan antar', title: '🛵 Pesan Antar (Delivery)', description: 'Pesan makanan diantar ke lokasi Anda sekarang.' },
-        { trigger: 'ambil di toko', title: '🥡 Ambil di Toko (Takeaway)', description: 'Pesan dan ambil sendiri — lebih cepat & hemat.' },
-        { trigger: 'lokasi toko', title: '📍 Lokasi & Jam Buka', description: 'Temukan alamat dan jam operasional kami.' },
-      ],
-      PROFESSIONAL_SERVICE: [
-        { trigger: 'jadwal konsultasi', title: '📅 Jadwalkan Konsultasi', description: 'Buat jadwal konsultasi atau audit profesional dengan tim kami.' },
-        { trigger: 'paket tarif', title: '💼 Paket & Tarif Layanan', description: 'Rincian paket layanan profesional dan tarif resmi kami.' },
-        { trigger: 'portofolio brief', title: '📋 Portofolio / Brief', description: 'Lihat studi kasus hasil kerja klien dan kirimkan brief proyek.' },
-        { trigger: 'hubungi konsultan', title: '💬 Hubungi Konsultan', description: 'Terhubung langsung dengan tim konsultan kami.' },
-      ],
-      DIGITAL: [
-        { trigger: 'beli produk', title: '🔑 Beli & Unduh Produk', description: 'Akses produk digital Anda setelah pembayaran.' },
-        { trigger: 'cek lisensi', title: '📜 Cek Lisensi & Akses', description: 'Verifikasi lisensi atau perpanjang akses Anda.' },
-        { trigger: 'hubungi cs', title: '💬 Hubungi Support', description: 'Butuh bantuan teknis? CS kami siap membantu.' },
-      ],
-      CREATOR_AGENCY: [
-        { trigger: 'paket konten', title: '🎨 Paket Konten & Tarif', description: 'Lihat pilihan paket kreatif dan harga terbaik kami.' },
-        { trigger: 'portofolio', title: '🖼️ Portofolio Karya', description: 'Eksplorasi hasil karya dan proyek unggulan kami.' },
-        { trigger: 'hubungi cs', title: '💬 Diskusi Proyek', description: 'Konsultasikan ide proyek kreatif Anda bersama kami.' },
-      ],
-    };
-
-    const cat = (storeCategory || '').toUpperCase();
-    const defaultMenus = VERTICAL_QUICK_MENUS[cat];
-    if (!defaultMenus) return;
-
-    // Deteksi apakah list menu saat ini tidak sesuai dengan category aktif
-    const isCategoryMismatched = currentInteractiveMenus.some((m) => {
-      const title = (m.title || '').toLowerCase();
-      if (cat === 'PROFESSIONAL_SERVICE') {
-        return title.includes('servis') || title.includes('teknisi') || title.includes('toren') || title.includes('bengkel');
-      }
-      if (cat === 'FIELD_SERVICE') {
-        return title.includes('konsultan') || title.includes('brief') || title.includes('portofolio');
-      }
-      return false;
-    });
-
-    if (currentInteractiveMenus.length === 0 || isCategoryMismatched) {
-      const menus: InteractiveMenu[] = defaultMenus.map((item, idx) => ({
-        id: `menu_default_${cat.toLowerCase()}_${idx}`,
-        trigger: item.trigger,
-        title: item.title,
-        description: item.description,
-        options: [],
-      }));
-
-      updateInteractiveMenus(menus);
-      if (typeof window !== 'undefined') {
-        try {
-          const currentSlug = (tenantSlug || '').trim().toLowerCase();
-          localStorage.setItem(`bt_interactive_menus_${currentSlug}`, JSON.stringify(menus));
-          localStorage.setItem(`bt_interactive_menus_category_${currentSlug}`, cat);
-        } catch {}
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeCategory, currentInteractiveMenus.length]);
-
-  // Seller Conversation Playbook State
-  const [internalPlaybook, setInternalPlaybook] = useState<SellerConversationPlaybook>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem(`bt_seller_playbook_${tenantSlug}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed?.persona && parsed?.scenarios) return parsed;
-        }
-      } catch (err) {
-        console.warn('Gagal membaca playbook dari storage:', err);
-      }
-    }
-    return DEFAULT_SELLER_PLAYBOOK;
-  });
-
-  const currentPlaybook = propPlaybook ?? internalPlaybook;
-  const updatePlaybook = propSetPlaybook ?? setInternalPlaybook;
-
-  const [isSavingPlaybook, setIsSavingPlaybook] = useState(false);
-  const [playbookFeedback, setPlaybookFeedback] = useState<string | null>(null);
-  const [appliedToPrompt, setAppliedToPrompt] = useState(false);
-  const [activeProposal, setActiveProposal] = useState<BusinessConfigurationProposal | null>(null);
-
-  // 1. Sync to localStorage if using internal state
-  useEffect(() => {
-    if (!propPlaybook && typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(`bt_seller_playbook_${tenantSlug}`, JSON.stringify(internalPlaybook));
-      } catch (err) {
-        console.warn('Gagal menyimpan playbook ke storage:', err);
-      }
-    }
-  }, [internalPlaybook, propPlaybook, tenantSlug]);
-
-  // 2. Real-time listener for BoonPilot proposal published event
-  useEffect(() => {
-    const handleProposalPublished = (e: Event) => {
-      const customEvt = e as CustomEvent<{ proposal: BusinessConfigurationProposal; tenantSlug: string }>;
-      const proposal = customEvt.detail?.proposal;
-      if (!proposal) return;
-      const targetSlug = (customEvt.detail.tenantSlug || '').trim().toLowerCase();
-      const currentSlug = (tenantSlug || '').trim().toLowerCase();
-      if (targetSlug && targetSlug !== currentSlug) return;
-
-      setActiveProposal(proposal);
-
-      // Hydrate AI Form
-      const mappedAi = mapProposalToAiForm(proposal);
-      setAiForm((prev) => ({
-        ...prev,
-        ai_name: mappedAi.ai_name,
-        tone: mappedAi.tone,
-        system_prompt: mappedAi.system_prompt,
-      }));
-
-      // Hydrate Playbook
-      const mappedPlaybook = mapProposalToPlaybook(proposal);
-      updatePlaybook(mappedPlaybook);
-
-      // Hydrate FAQs from knowledge
-      if (proposal.knowledge) {
-        const faqKnowledge = proposal.knowledge
-          .filter((k: any) => k.category === 'FAQ')
-          .map((k: any, idx: number) => ({
-            id: k.id || `faq_${idx}`,
-            question: k.title,
-            answer: k.content,
-          }));
-        if (faqKnowledge.length > 0) {
-          updateFaqs(faqKnowledge);
-        }
-      }
-
-      // Persist to local storage
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem(`bt_seller_playbook_${currentSlug}`, JSON.stringify(mappedPlaybook));
-          localStorage.setItem(`bt_boonpilot_published_proposal_${currentSlug}`, JSON.stringify(proposal));
-        } catch (err) {
-          console.warn('Gagal menyimpan playbook terpetakan:', err);
-        }
-      }
-
-      setPlaybookFeedback('✨ Form AI Knowledge, Persona, & Playbook berhasil diperbarui otomatis dari BoonPilot Proposal!');
-      setTimeout(() => setPlaybookFeedback(null), 5000);
-    };
-
-    window.addEventListener('boonpilot-proposal-published', handleProposalPublished);
-    return () => window.removeEventListener('boonpilot-proposal-published', handleProposalPublished);
-  }, [tenantSlug, setAiForm, updatePlaybook, updateFaqs]);
-
-  // 3. Hydrate from storage or settings API on mount
-  useEffect(() => {
-    if (!tenantSlug) return;
-    let isMounted = true;
-    const currentSlug = (tenantSlug || '').trim().toLowerCase();
-
-    const loadProposalFromStorageOrApi = async () => {
-      let loadedProposal: BusinessConfigurationProposal | null = null;
-      if (typeof window !== 'undefined') {
-        try {
-          const cached =
-            localStorage.getItem(`bt_boonpilot_published_proposal_${currentSlug}`) ||
-            localStorage.getItem(`bt_boonpilot_published_proposal_${tenantSlug}`) ||
-            (currentSlug === 'sandbox' ? localStorage.getItem('bt_boonpilot_published_proposal_sandbox') : null);
-          if (cached) {
-            loadedProposal = JSON.parse(cached);
-          }
-        } catch {}
-      }
-
-      // Query settings API & tenant config for proposal, faqs, and interactive menu
-      try {
-        let tenantData: any = null;
-        try {
-          const configRes = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(currentSlug)}/config`);
-          if (configRes.ok) {
-            const cfg = await configRes.json();
-            tenantData = cfg.tenant || cfg;
-          }
-        } catch {}
-
-        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(currentSlug)}/settings`);
-        if (res.ok) {
-          const data = await res.json();
-          const s = data.settings || {};
-          const tenant = propTenant || tenantData || data.tenant || { metadata: s.metadata || s };
-
-          if (!loadedProposal) {
-            loadedProposal = s.boonpilot_proposal || s.boonpilot_configuration || tenant?.metadata?.boonpilot_proposal || null;
-          }
-          if (Array.isArray(s.faqs) && s.faqs.length > 0) {
-            updateFaqs(s.faqs);
-          } else if (Array.isArray(tenant?.metadata?.faqs) && tenant.metadata.faqs.length > 0) {
-            updateFaqs(tenant.metadata.faqs);
-          }
-
-          // Fallback cerdas membaca list menu interaktif dari metadata tenant
-          const menuItems =
-            tenant?.metadata?.interactive_menus ||
-            tenant?.metadata?.interactive_menu?.items ||
-            tenant?.metadata?.interactive_menu ||
-            tenant?.metadata?.bot_config?.quick_actions ||
-            s.interactive_menus ||
-            s.interactive_menu?.items ||
-            s.interactive_menu ||
-            [];
-
-          const menuMode =
-            tenant?.metadata?.interactive_menu?.mode ||
-            s.interactive_menu?.mode ||
-            tenant?.metadata?.bot_mode ||
-            s.bot_mode ||
-            'HYBRID';
-
-          if (Array.isArray(menuItems) && menuItems.length > 0) {
-            const normalized = menuItems.map(normalizeInteractiveMenuItem);
-            updateInteractiveMenus(normalized);
-            setInternalInteractiveMenus(normalized);
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.setItem(`bt_interactive_menus_${currentSlug}`, JSON.stringify(normalized));
-              } catch {}
-            }
-          }
-
-          if (menuMode) {
-            updateBotMode(menuMode as 'STATIC' | 'HYBRID' | 'AI');
-            setInternalBotMode(menuMode as 'STATIC' | 'HYBRID' | 'AI');
-          }
-        }
-      } catch {}
-
-      if (loadedProposal && isMounted) {
-        setActiveProposal(loadedProposal);
-        const mappedAi = mapProposalToAiForm(loadedProposal);
-        const mappedPlaybook = mapProposalToPlaybook(loadedProposal);
-
-        setAiForm((prev) => ({
-          ...prev,
-          ai_name: mappedAi.ai_name || prev.ai_name,
-          tone: mappedAi.tone || prev.tone,
-          system_prompt: mappedAi.system_prompt || prev.system_prompt,
-        }));
-
-        updatePlaybook(mappedPlaybook);
-
-        if (loadedProposal.knowledge) {
-          const faqKnowledge = loadedProposal.knowledge
-            .filter((k: any) => k.category === 'FAQ')
-            .map((k: any, idx: number) => ({
-              id: k.id || `faq_${idx}`,
-              question: k.title,
-              answer: k.content,
-            }));
-          if (faqKnowledge.length > 0) {
-            updateFaqs((prev) => (prev.length === 0 ? faqKnowledge : prev));
-          }
-        }
-
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem(`bt_seller_playbook_${currentSlug}`, JSON.stringify(mappedPlaybook));
-            localStorage.setItem(`bt_boonpilot_published_proposal_${currentSlug}`, JSON.stringify(loadedProposal));
-          } catch {}
-        }
-      }
-    };
-
-    loadProposalFromStorageOrApi();
-    return () => {
-      isMounted = false;
-    };
-  }, [tenantSlug, setAiForm, updatePlaybook, updateFaqs]);
-
-  const handleSavePlaybook = async () => {
-    setIsSavingPlaybook(true);
-    try {
-      if (onSavePlaybook) {
-        await onSavePlaybook(currentPlaybook);
-      } else if (typeof window !== 'undefined') {
-        localStorage.setItem(`bt_seller_playbook_${tenantSlug}`, JSON.stringify(currentPlaybook));
-      }
-      setPlaybookFeedback('✅ Playbook skema percakapan seller berhasil disimpan!');
-      setTimeout(() => setPlaybookFeedback(null), 3500);
-    } catch (err) {
-      console.error('Gagal menyimpan playbook:', err);
-    } finally {
-      setIsSavingPlaybook(false);
-    }
-  };
-
-  const handleApplyPlaybookToPrompt = () => {
-    const playbookSnippet = `\n\n[PLAYBOOK PERCAKAPAN SELLER - UNIFIED NATURAL ENGINE]
-• Gaya Persona: ${currentPlaybook.persona.greetingStyle} (Tone: ${currentPlaybook.persona.tone})
-• Skenario Tawar/Komplain Harga: ${currentPlaybook.scenarios.priceObjection}
-• Pemicu Urgensi Closing/Checkout: ${currentPlaybook.scenarios.closingHook}
-• Skenario Produk/Varian Habis: ${currentPlaybook.scenarios.outOfStockHandling}
-• Larangan & Instruksi Khusus: ${currentPlaybook.customDoAndDonts}`;
-
-    setAiForm((prev) => {
-      // If already contains previous playbook snippet, replace it; otherwise append
-      let cleanPrompt = prev.system_prompt;
-      const marker = '[PLAYBOOK PERCAKAPAN SELLER - UNIFIED NATURAL ENGINE]';
-      if (cleanPrompt.includes(marker)) {
-        const parts = cleanPrompt.split(marker);
-        cleanPrompt = parts[0].trim();
-      }
-      return {
-        ...prev,
-        system_prompt: cleanPrompt ? `${cleanPrompt}${playbookSnippet}` : playbookSnippet.trim(),
-      };
-    });
-
-    setAppliedToPrompt(true);
-    setTimeout(() => setAppliedToPrompt(false), 3000);
-  };
-
-  const verticalContent = renderVerticalModule 
-    ? renderVerticalModule() 
-    : storeCategory === 'LOCAL_SERVICE' ? (
-        <div className="mb-6 animate-in fade-in duration-200">
-          <LocalServiceConfigForm tenantSlug={tenantSlug} />
-        </div>
-      ) : null;
-
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-5xl mx-auto w-full space-y-6">
+      {/* HEADER SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
           <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
             <Brain className="w-5 h-5 text-blue-600" />
-            <span>AI Knowledge & Bot Persona</span>
+            <span>AI Knowledge &amp; Bot Assistant</span>
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Atur identitas asisten, gaya komunikasi, playbook percakapan seller, FAQ knowledge base, dan instruksi sistem (system prompt) yang digunakan model LLM saat membalas pesan WhatsApp.
+            Konfigurasi identitas asisten, aturan penjualan, eskalasi CS, dan ground truth FAQ toko yang terintegrasi langsung ke WhatsApp Runtime.
           </p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
@@ -725,7 +380,7 @@ export default function AiKnowledgeTab({
             ) : (
               <Save className="w-4 h-4 text-white" />
             )}
-            <span>{isSavingAi ? 'Menyimpan...' : 'Simpan Persona AI'}</span>
+            <span>{isSavingAi ? 'Menyimpan...' : 'Simpan Pengaturan AI'}</span>
           </button>
         </div>
       </div>
@@ -736,7 +391,21 @@ export default function AiKnowledgeTab({
         onClose={() => setSimulatorOpen(false)}
       />
 
-      {/* BOONPILOT ACTIVE PROPOSAL BANNER */}
+      {/* 1. VISUAL AI SESSION QUOTA METER (TOP POSITION) */}
+      <AiSessionQuotaMeter
+        tenantSlug={tenantSlug}
+        tierName={propTenant?.tier}
+      />
+
+      {/* FEEDBACK BANNERS */}
+      {(saveFeedback || localFeedback) && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{saveFeedback || localFeedback}</span>
+        </div>
+      )}
+
+      {/* BOONPILOT PROPOSAL BANNER (IF ACTIVE) */}
       {activeProposal && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50 via-blue-50 to-emerald-50 border border-indigo-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in">
           <div className="flex items-center gap-3">
@@ -753,767 +422,733 @@ export default function AiKnowledgeTab({
                 </span>
               </div>
               <p className="text-[11px] text-slate-600 mt-0.5">
-                Profil Toko: <strong>{activeProposal.business_profile.store_name}</strong> • Sapaan, gaya bahasa, penanganan tawar harga, dan SOP booking telah disinkronkan.
+                Profil Toko: <strong>{activeProposal.business_profile.store_name}</strong> • Sapaan, gaya bahasa, penanganan tawar harga, dan SOP telah disinkronkan.
               </p>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              const mappedAi = mapProposalToAiForm(activeProposal);
-              const mappedPlaybook = mapProposalToPlaybook(activeProposal);
-              setAiForm((prev) => ({
-                ...prev,
-                ai_name: mappedAi.ai_name,
-                tone: mappedAi.tone,
-                system_prompt: mappedAi.system_prompt,
-              }));
-              updatePlaybook(mappedPlaybook);
-              if (typeof window !== 'undefined') {
-                try {
-                  localStorage.setItem(`bt_seller_playbook_${tenantSlug}`, JSON.stringify(mappedPlaybook));
-                } catch {}
-              }
-              setPlaybookFeedback('✨ Nilai form berhasil disinkronkan ulang dari proposal BoonPilot!');
-              setTimeout(() => setPlaybookFeedback(null), 3500);
-            }}
-            className="px-3.5 py-2 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs self-start sm:self-auto cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Terapkan Ulang Proposal</span>
-          </button>
         </div>
       )}
-
-      {/* DYNAMIC VERTICAL MODULE (Hanya dirender jika kategori LOCAL_SERVICE) */}
-      {verticalContent}
 
       {isLoadingAi && (
         <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 animate-pulse">
           <Loader2 className="w-4 h-4 animate-spin" />
-          <span>Memuat konfigurasi AI dari server...</span>
+          <span>Memuat konfigurasi AI dari server Supabase...</span>
         </div>
       )}
 
-      {/* KARTU PLAYBOOK SKEMA PERCAKAPAN SELLER (UNIFIED NATURAL ENGINE) */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-6 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-sm sm:text-base font-black text-slate-900">
-                Playbook Skema Percakapan Seller (Unified Natural Engine)
-              </h3>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                Natural Flow Engine
-              </span>
-            </div>
-            <p className="text-xs text-slate-500">
-              Standarisasi skenario interaksi CS otomatis: gaya sapaan, penanganan tawar-menawar harga, pemicu closing, dan batasan do&apos;s & don&apos;ts toko.
-            </p>
-          </div>
+      {/* 2. CONSOLIDATED 3-TAB NAVIGATION */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab('profile')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
+            activeTab === 'profile'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Bot className="w-4 h-4" />
+          <span>Tab 1: Profil Bot</span>
+        </button>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <button
-              type="button"
-              onClick={handleApplyPlaybookToPrompt}
-              className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-              title="Kompilasi dan sinkronkan aturan playbook ini ke kolom System Prompt"
-            >
-              {appliedToPrompt ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-emerald-700">Tersinkron ke Prompt!</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Terapkan ke System Prompt</span>
-                </>
-              )}
-            </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('policy')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
+            activeTab === 'policy'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>Tab 2: Aturan Jual &amp; Policy</span>
+        </button>
 
-            <button
-              type="button"
-              onClick={handleSavePlaybook}
-              disabled={isSavingPlaybook}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-            >
-              {isSavingPlaybook ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-              ) : (
-                <Save className="w-3.5 h-3.5 text-white" />
-              )}
-              <span>{isSavingPlaybook ? 'Menyimpan...' : 'Simpan Playbook'}</span>
-            </button>
-          </div>
-        </div>
-
-        {playbookFeedback && (
-          <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{playbookFeedback}</span>
-          </div>
-        )}
-
-        {/* 1. Persona & Gaya Sapaan */}
-        <div className="space-y-3">
-          <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-indigo-600" />
-            <span>1. Persona & Gaya Sapaan</span>
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-2">
-              <label className="text-xs font-bold text-slate-700 block mb-1">
-                Panduan Sapaan & Panggilan (Greeting Style)
-              </label>
-              <input
-                type="text"
-                value={currentPlaybook.persona.greetingStyle}
-                onChange={(e) =>
-                  updatePlaybook((prev) => ({
-                    ...prev,
-                    persona: { ...prev.persona, greetingStyle: e.target.value },
-                  }))
-                }
-                placeholder="Contoh: Sapaan ramah, panggil 'Kak', gaya santai bersahabat"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
-              />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Cara bot menyapa pembeli di awal obrolan (contoh: &quot;Halo Kak, ada yang bisa kami bantu?&quot;).
-              </p>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">
-                Gaya Bahasa (Tone)
-              </label>
-              <select
-                value={currentPlaybook.persona.tone}
-                onChange={(e) =>
-                  updatePlaybook((prev) => ({
-                    ...prev,
-                    persona: {
-                      ...prev.persona,
-                      tone: e.target.value as 'casual' | 'semi-formal' | 'formal',
-                    },
-                  }))
-                }
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition cursor-pointer"
-              >
-                <option value="casual">Santai & Bersahabat (Casual)</option>
-                <option value="semi-formal">Sopan & Seimbang (Semi-Formal)</option>
-                <option value="formal">Resmi & Baku (Formal)</option>
-              </select>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Menentukan level formalitas tata bahasa bot.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Skenario Penanganan Pembeli */}
-        <div className="space-y-3 pt-4 border-t border-slate-100">
-          <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-600" />
-            <span>2. Skenario Penanganan Pembeli (Handling Scenarios)</span>
-          </h4>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Price Objection */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-              <label className="text-xs font-bold text-slate-800 block">
-                Penanganan Tawar/Harga Mahal (Price Objection)
-              </label>
-              <textarea
-                rows={3}
-                value={currentPlaybook.scenarios.priceObjection}
-                onChange={(e) =>
-                  updatePlaybook((prev) => ({
-                    ...prev,
-                    scenarios: { ...prev.scenarios, priceObjection: e.target.value },
-                  }))
-                }
-                placeholder="Arahan saat pembeli menawar atau mengeluh harga mahal..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 leading-relaxed"
-              />
-              <p className="text-[10px] text-slate-400">
-                Fokus pada nilai, kualitas, dan keuntungan produk tanpa menurunkan harga sembarangan.
-              </p>
-            </div>
-
-            {/* Closing Hook */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-              <label className="text-xs font-bold text-slate-800 block">
-                Pemicu Urgensi Closing (Closing Hook)
-              </label>
-              <textarea
-                rows={3}
-                value={currentPlaybook.scenarios.closingHook}
-                onChange={(e) =>
-                  updatePlaybook((prev) => ({
-                    ...prev,
-                    scenarios: { ...prev.scenarios, closingHook: e.target.value },
-                  }))
-                }
-                placeholder="Pemicu urgensi agar pembeli segera menyelesaikan pembayaran..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 leading-relaxed"
-              />
-              <p className="text-[10px] text-slate-400">
-                Pemicu psikologis seperti sisa kuota, batas jam pengiriman, atau bonus berbatas waktu.
-              </p>
-            </div>
-
-            {/* Out of Stock Handling */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-              <label className="text-xs font-bold text-slate-800 block">
-                Penanganan Stok Habis (Out of Stock)
-              </label>
-              <textarea
-                rows={3}
-                value={currentPlaybook.scenarios.outOfStockHandling}
-                onChange={(e) =>
-                  updatePlaybook((prev) => ({
-                    ...prev,
-                    scenarios: { ...prev.scenarios, outOfStockHandling: e.target.value },
-                  }))
-                }
-                placeholder="Arahan respon jika produk atau varian yang dicari sedang kosong..."
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 leading-relaxed"
-              />
-              <p className="text-[10px] text-slate-400">
-                Tawarkan varian terdekat, produk alternatif sekelas, atau daftar antrean pre-order.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. Do's & Don'ts */}
-        <div className="space-y-2 pt-4 border-t border-slate-100">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>3. Batasan & Larangan Seller (Custom Do&apos;s & Don&apos;ts)</span>
-            </h4>
-            <span className="text-[10px] text-slate-400">Instruksi Kepatuhan Bot</span>
-          </div>
-
-          <textarea
-            rows={2}
-            value={currentPlaybook.customDoAndDonts}
-            onChange={(e) =>
-              updatePlaybook((prev) => ({
-                ...prev,
-                customDoAndDonts: e.target.value,
-              }))
-            }
-            placeholder="Contoh: Dilarang menjanjikan diskon selain voucher resmi. Selalu konfirmasi alamat lengkap sebelum checkout."
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition leading-relaxed"
-          />
-          <p className="text-[11px] text-slate-400">
-            Instruksi ketat yang WAJIB ditaati bot saat berdialog dengan pembeli.
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('faq_knowledge')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl transition cursor-pointer ${
+            activeTab === 'faq_knowledge'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <HelpCircle className="w-4 h-4" />
+          <span>Tab 3: FAQ &amp; Pengetahuan Toko</span>
+          {currentFaqs.length > 0 && (
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+              activeTab === 'faq_knowledge' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {currentFaqs.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* KARTU FAQ KNOWLEDGE BASE (TANYA JAWAB PELANGGAN) */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-              <HelpCircle className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black text-slate-800 tracking-tight">
-                  FAQ Knowledge Base (Tanya Jawab Pelanggan)
-                </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-                  {currentFaqs.length} Item
-                </span>
-              </div>
+      {/* TAB 1: PROFIL BOT */}
+      {activeTab === 'profile' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <Bot className="w-4 h-4 text-blue-600" />
+                <span>Identitas &amp; Gaya Bahasa Asisten</span>
+              </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Daftar pertanyaan umum & jawaban standar agar bot AI merespon dengan cepat, konsisten, dan akurat.
+                Tentukan nama representasi bot, gaya komunikasi terpadu, dan sapaan pembuka kepada calon pembeli.
               </p>
             </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={handleAddFaq}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-xl text-xs transition border border-indigo-200/80 shadow-2xs cursor-pointer active:scale-95 shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Tambah Tanya Jawab</span>
-          </button>
-        </div>
-
-        {currentFaqs.length === 0 ? (
-          <div className="text-center py-8 px-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
-            <HelpCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs font-semibold text-slate-600">Belum ada daftar Tanya Jawab (FAQ)</p>
-            <p className="text-[11px] text-slate-400 max-w-md mx-auto mt-1 mb-4">
-              Tambahkan pertanyaan yang paling sering diajukan pelanggan seperti garansi, waktu respon, jangkauan servis, atau pengiriman.
-            </p>
-            <button
-              type="button"
-              onClick={handleAddFaq}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs transition shadow-xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Tambah Tanya Jawab Pertama</span>
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {currentFaqs.map((faq, index) => (
-              <div
-                key={faq.id || `faq-${index}`}
-                className="p-4 bg-slate-50/80 hover:bg-slate-50 rounded-2xl border border-slate-200 transition space-y-3 relative group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                    <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
-                      {index + 1}
-                    </span>
-                    <span>Tanya Jawab #{index + 1}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteFaq(faq.id)}
-                    className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer text-xs flex items-center gap-1"
-                    title="Hapus Tanya Jawab"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span className="text-[11px] font-medium hidden group-hover:inline">Hapus</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      Pertanyaan Pelanggan
-                    </label>
-                    <input
-                      type="text"
-                      value={faq.question}
-                      onChange={(e) => handleUpdateFaq(faq.id, "question", e.target.value)}
-                      placeholder="Contoh: Apakah melayani perbaikan di hari libur / weekend?"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      Jawaban Bot
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={faq.answer}
-                      onChange={(e) => handleUpdateFaq(faq.id, "answer", e.target.value)}
-                      placeholder="Contoh: Ya Kak, kami tetap melayani di hari Sabtu dan Minggu tanpa biaya tambahan."
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition leading-relaxed"
-                    />
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Nama Asisten AI
+                </label>
+                <input
+                  type="text"
+                  value={aiForm.ai_name}
+                  onChange={(e) => setAiForm((a) => ({ ...a, ai_name: e.target.value }))}
+                  placeholder="Contoh: Maya - Asisten Resmi Toko"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Digunakan bot saat memperkenalkan diri di awal percakapan WhatsApp.
+                </p>
               </div>
-            ))}
 
-            <div className="pt-1 flex justify-start">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Gaya Bahasa &amp; Nada Bicara (Tone Terpadu)
+                </label>
+                <select
+                  value={aiForm.tone}
+                  onChange={(e) => setAiForm((a) => ({ ...a, tone: e.target.value }))}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-semibold focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
+                >
+                  <option value="casual">Santai, Luwes &amp; Ramah (Casual Human-like)</option>
+                  <option value="professional">Formal, Sopan &amp; Profesional (Corporate Standard)</option>
+                  <option value="persuasive">High-Conversion Sales Closer (Proaktif &amp; Solutif)</option>
+                  <option value="friendly">Edukatif, Lembut &amp; Sabar (Customer Support)</option>
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Mengarahkan pemilihan diksi bahasa dan tingkat formalitas respon bot.
+                </p>
+              </div>
+            </div>
+
+            {/* Salam Pembuka (Greeting Message) */}
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                Salam Pembuka Otomatis (Greeting Message)
+              </label>
+              <textarea
+                rows={2}
+                value={greetingMessage}
+                onChange={(e) => setGreetingMessage(e.target.value)}
+                placeholder="Contoh: Halo Kak! Selamat datang di toko kami. Ada yang bisa kami bantu seputar produk atau pesanan Anda hari ini? 😊"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition leading-relaxed"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Pesan sapaan ramah yang dikirim pertama kali saat pelanggan baru memulai chat WhatsApp.
+              </p>
+            </div>
+
+            {/* System Prompt */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-700 block">
+                  Instruksi Khusus Toko (System Prompt Utama)
+                </label>
+                <span className="text-[11px] font-medium text-slate-400">
+                  {aiForm.system_prompt.length} karakter
+                </span>
+              </div>
+              <textarea
+                rows={7}
+                value={aiForm.system_prompt}
+                onChange={(e) => setAiForm((a) => ({ ...a, system_prompt: e.target.value }))}
+                placeholder="Tuliskan instruksi sistem, persona bisnis, aturan penawaran, atau instruksi khusus untuk asisten AI..."
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+              />
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                Instruksi ini akan diinjeksikan langsung sebagai <span className="font-semibold text-slate-600">system instruction</span> ke model LLM pada setiap pesan WhatsApp masuk.
+              </p>
+            </div>
+
+            <div className="pt-2 flex justify-end">
               <button
                 type="button"
-                onClick={handleAddFaq}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition border border-transparent hover:border-indigo-200 cursor-pointer"
+                onClick={() => handleSaveAiKnowledge()}
+                disabled={isSavingAi}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Tambah Pertanyaan Lainnya</span>
+                {isSavingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>Simpan Profil Bot</span>
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* KARTU MENU NAVIGASI BOT & PILIHAN CEPAT (INTERACTIVE MENU) */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
-              <ListOrdered className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black text-slate-800 tracking-tight">
-                  Menu Navigasi Bot & Pilihan Cepat (Interactive Menu)
-                </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                  {currentInteractiveMenus.length} Menu
-                </span>
-              </div>
+      {/* TAB 2: ATURAN JUAL & POLICY */}
+      {activeTab === 'policy' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Mode Operasional Bot */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4 shadow-xs">
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-indigo-600" />
+                <span>Mode Operasional Bot WhatsApp</span>
+              </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Kelola menu navigasi atau daftar pilihan interaktif (seperti materi Mood Booster atau ukuran toren) yang otomatis disesuaikan dengan gateway WhatsApp Anda.
+                Tentukan apakah bot aktif secara cerdas dengan LLM (Hybrid) atau murni berbasis pilihan menu tetap (Statis).
               </p>
             </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={handleAddMenu}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-xl text-xs transition border border-emerald-200/80 shadow-2xs cursor-pointer active:scale-95 shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Tambah Menu Baru</span>
-          </button>
-        </div>
-
-        {/* Adapter Format Banner */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-xs">
-          <div className="flex items-start gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-            <div>
-              <span className="font-bold text-slate-700">WABA (Cloud API):</span>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Diformat otomatis menjadi <strong className="text-slate-700">Interactive Buttons</strong> jika ≤ 3 opsi, atau <strong className="text-slate-700">Interactive Section List</strong> jika &gt; 3 opsi.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 shrink-0" />
-            <div>
-              <span className="font-bold text-slate-700">BoonTrack WhatsApp Engine:</span>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Diformat otomatis menjadi <strong className="text-slate-700">Menu Pilihan Berpenomoran (1, 2, 3...)</strong> yang ramah dibaca dan diproses oleh bot.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Mode Operasional Bot Selector */}
-        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
-          <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
-            <span>Mode Operasional Bot WhatsApp:</span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${currentBotMode === 'STATIC' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
-              {currentBotMode === 'STATIC' ? 'Mode Statis / Deterministik' : 'Mode Hybrid (AI + Interactive Menu)'}
-            </span>
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            <button
-              type="button"
-              onClick={() => updateBotMode('HYBRID')}
-              className={`p-3 rounded-xl border text-left transition cursor-pointer ${currentBotMode === 'HYBRID' ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs' : 'bg-white/60 border-slate-200 hover:bg-white'}`}
-            >
-              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span>HYBRID (AI + Menu Cepat)</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                Percakapan fleksibel dengan AI sekaligus menyajikan menu pilihan cepat (Hemat token + Respons cerdas).
-              </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => updateBotMode('STATIC')}
-              className={`p-3 rounded-xl border text-left transition cursor-pointer ${currentBotMode === 'STATIC' ? 'bg-white border-amber-500 ring-2 ring-amber-500/20 shadow-xs' : 'bg-white/60 border-slate-200 hover:bg-white'}`}
-            >
-              <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>STATIC (Deterministik Penuh)</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                Murni berbasis pilihan menu &amp; booking tanpa pemanggilan LLM (Hemat token 100% &amp; Anti halusinasi).
-              </p>
-            </button>
-          </div>
-        </div>
-
-        {currentInteractiveMenus.length === 0 ? (
-          <div className="text-center py-8 px-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
-            <ListOrdered className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs font-semibold text-slate-600">Belum ada Menu Navigasi Interaktif</p>
-            <p className="text-[11px] text-slate-400 max-w-md mx-auto mt-1 mb-4">
-              Buat menu interaktif untuk mempermudah pembeli memilih materi atau produk cepat tanpa mengetik manual.
-            </p>
-            <button
-              type="button"
-              onClick={handleAddMenu}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition shadow-xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Buat Menu Navigasi Pertama</span>
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {currentInteractiveMenus.map((menu, menuIdx) => (
-              <div
-                key={menu.id || `menu-${menuIdx}`}
-                className="p-5 bg-slate-50/70 hover:bg-slate-50 rounded-2xl border border-slate-200 transition space-y-4"
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => updateBotMode('HYBRID')}
+                className={`p-4 rounded-2xl border text-left transition cursor-pointer ${
+                  currentBotMode === 'HYBRID'
+                    ? 'bg-blue-50/50 border-blue-600 ring-2 ring-blue-500/20 shadow-xs'
+                    : 'bg-white border-slate-200 hover:bg-slate-50'
+                }`}
               >
-                {/* Menu Header / Trigger Bar */}
-                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold">
-                      {menuIdx + 1}
+                <div className="flex items-center gap-2 font-black text-xs text-slate-900">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+                  <span>HYBRID (AI + Menu Cepat)</span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-blue-100 text-blue-800 ml-auto">
+                    Rekomendasi
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                  Percakapan natural dengan AI sekaligus menyajikan menu navigasi interaktif. Menjawab pertanyaan bebas pelanggan dengan cerdas.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => updateBotMode('STATIC')}
+                className={`p-4 rounded-2xl border text-left transition cursor-pointer ${
+                  currentBotMode === 'STATIC'
+                    ? 'bg-amber-50/50 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                    : 'bg-white border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-black text-xs text-slate-900">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span>STATIC (Deterministik Penuh)</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                  Murni berbasis opsi menu pilihan berpenomoran (1, 2, 3) tanpa pemanggilan LLM. Hemat kuota sesi 100% dan bebas halusinasi.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Aturan Penjualan & Keberatan Harga */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>Aturan Penjualan &amp; Negosiasi Harga (Sales Policy)</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Panduan tegas bagi bot saat menghadapi pelanggan yang menawar harga, menunda bayar, atau komplain mahal.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800 block">
+                  Penanganan Tawar / Harga Mahal (Price Objection)
+                </label>
+                <textarea
+                  rows={3}
+                  value={salesPolicy.price_objection}
+                  onChange={(e) =>
+                    setSalesPolicy((prev) => ({ ...prev, price_objection: e.target.value }))
+                  }
+                  placeholder="Contoh: Jelaskan keunggulan kualitas dan garansi resmi. Jangan beri diskon sembarangan..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-blue-500 leading-relaxed"
+                />
+                <p className="text-[11px] text-slate-400">
+                  Fokus pada nilai produk dan bonus tanpa merusak margin toko.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800 block">
+                  Pemicu Urgensi Closing (Closing Hook)
+                </label>
+                <textarea
+                  rows={3}
+                  value={salesPolicy.closing_hook}
+                  onChange={(e) =>
+                    setSalesPolicy((prev) => ({ ...prev, closing_hook: e.target.value }))
+                  }
+                  placeholder="Contoh: Informasikan batas jam pengiriman hari ini atau sisa promo terbatas..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-blue-500 leading-relaxed"
+                />
+                <p className="text-[11px] text-slate-400">
+                  Memicu calon pembeli agar segera menyelesaikan transfer pembayaran QRIS.
+                </p>
+              </div>
+            </div>
+
+            {/* Batas Diskon Maksimal */}
+            <div>
+              <label className="text-xs font-bold text-slate-800 block mb-1">
+                Batas Toleransi Diskon Maksimal
+              </label>
+              <div className="flex items-center gap-3">
+                <div className="relative w-36">
+                  <input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={salesPolicy.discount_limit}
+                    onChange={(e) =>
+                      setSalesPolicy((prev) => ({
+                        ...prev,
+                        discount_limit: Math.max(0, parseInt(e.target.value, 10) || 0),
+                      }))
+                    }
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 pr-8"
+                  />
+                  <Percent className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-2.5" />
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {salesPolicy.discount_limit === 0
+                    ? 'Harga Pas (Bot dilarang memberikan potongan harga sama sekali).'
+                    : `Bot diizinkan menawarkan diskon maksimal hingga ${salesPolicy.discount_limit}% jika pembeli ragu.`}
+                </p>
+              </div>
+            </div>
+
+            {/* Eskalasi ke CS Manusia (Handover) */}
+            <div className="pt-3 border-t border-slate-100 space-y-3">
+              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                <PhoneCall className="w-3.5 h-3.5 text-blue-600" />
+                <span>Eskalasi ke CS Manusia (Handover to Human)</span>
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Kata Kunci / Kondisi Eskalasi
+                  </label>
+                  <input
+                    type="text"
+                    value={salesPolicy.handover_trigger}
+                    onChange={(e) =>
+                      setSalesPolicy((prev) => ({ ...prev, handover_trigger: e.target.value }))
+                    }
+                    placeholder="Contoh: hubungi cs, komplain, bicara dengan staf manusia"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-blue-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Saat pelanggan menyebut kata di atas, bot akan mengalihkan ke nomor CS manusia.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Nomor WhatsApp CS Tujuan Eskalasi
+                  </label>
+                  <input
+                    type="text"
+                    value={salesPolicy.handover_phone}
+                    onChange={(e) =>
+                      setSalesPolicy((prev) => ({ ...prev, handover_phone: e.target.value }))
+                    }
+                    placeholder="Contoh: 6281234567890"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-blue-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Nomor kontak WhatsApp staf untuk menerima limpahan obrolan pelanggan.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Do's and Don'ts */}
+            <div className="pt-3 border-t border-slate-100 space-y-1.5">
+              <label className="text-xs font-bold text-slate-800 block">
+                Batasan &amp; Larangan Ketat Toko (Custom Do&apos;s &amp; Don&apos;ts)
+              </label>
+              <textarea
+                rows={2}
+                value={salesPolicy.custom_do_and_donts}
+                onChange={(e) =>
+                  setSalesPolicy((prev) => ({ ...prev, custom_do_and_donts: e.target.value }))
+                }
+                placeholder="Contoh: Dilarang menjanjikan pengiriman instan di hari Minggu. Wajib minta foto kerusakan sebelum retur."
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-blue-500 leading-relaxed"
+              />
+              <p className="text-[11px] text-slate-400">
+                Instruksi kepatuhan absolut yang ditaati bot saat berinteraksi dengan pelanggan.
+              </p>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => handleSaveAiKnowledge()}
+                disabled={isSavingAi}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+              >
+                {isSavingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>Simpan Aturan Jual &amp; Policy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: FAQ & PENGETAHUAN TOKO */}
+      {activeTab === 'faq_knowledge' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* FAQ KNOWLEDGE BASE FORM */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                  <HelpCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-black text-slate-900 tracking-tight">
+                      FAQ Knowledge Base (Ground Truth AI)
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      {currentFaqs.length} Item
                     </span>
-                    <h4 className="text-xs font-bold text-slate-800">
-                      Menu #{menuIdx + 1}: {menu.trigger || (menu as any).title || 'Menu Baru'}
-                    </h4>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteMenu(menu.id)}
-                    className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer text-xs flex items-center gap-1"
-                    title="Hapus Menu Ini"
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Daftar Tanya-Jawab resmi yang diinjeksikan langsung ke runtime LLM sebagai referensi kebenaran utama bot WhatsApp.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddFaq}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs transition border border-indigo-200 shadow-2xs cursor-pointer active:scale-95 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Tanya Jawab</span>
+              </button>
+            </div>
+
+            {/* Explanatory Info Card */}
+            <div className="p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-2xl text-xs text-blue-900 flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+              <p>
+                <strong>AI Context Grounding:</strong> Setiap pertanyaan pelanggan yang cocok dengan daftar FAQ di bawah ini akan dijawab secara presisi sesuai jawaban resmi toko, tanpa halusinasi informasi.
+              </p>
+            </div>
+
+            {currentFaqs.length === 0 ? (
+              <div className="text-center py-8 px-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                <HelpCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-xs font-bold text-slate-700">Belum ada daftar Tanya Jawab (FAQ)</p>
+                <p className="text-[11px] text-slate-400 max-w-md mx-auto mt-1 mb-4">
+                  Tambahkan pertanyaan yang sering diajukan pelanggan seperti garansi, jam operasional, cara retur, atau pengiriman.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAddFaq}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Tambah Tanya Jawab Pertama</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3.5">
+                {currentFaqs.map((faq, index) => (
+                  <div
+                    key={faq.id || `faq-${index}`}
+                    className="p-4 bg-slate-50 hover:bg-slate-100/60 rounded-2xl border border-slate-200 transition space-y-3 relative group"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span className="text-[11px] font-medium">Hapus Menu</span>
-                  </button>
-                </div>
-
-                {/* Input Trigger & Deskripsi */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      Header / Trigger Menu <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={menu.trigger || (menu as any).title || ''}
-                      onChange={(e) => handleUpdateMenuField(menu.id, 'trigger', e.target.value)}
-                      placeholder="Contoh: Pilih Informasi Mood Booster / Pilih Kapasitas Toren"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Header pesan atau topik utama yang ditampilkan saat bot menyajikan menu ini.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                      Petunjuk Pengantar (Opsional)
-                    </label>
-                    <input
-                      type="text"
-                      value={menu.description || (menu as any).reply_content || ''}
-                      onChange={(e) => handleUpdateMenuField(menu.id, 'description', e.target.value)}
-                      placeholder="Contoh: Silakan pilih salah satu opsi di bawah ini:"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Teks instruksi singkat untuk pelanggan sebelum memilih opsi.
-                    </p>
-                  </div>
-                </div>
-
-                {/* List Dinamis Pilihan Menu */}
-                <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-700">
-                        Daftar Pilihan ({menu.options?.length || 0} Opsi)
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                          {index + 1}
+                        </span>
+                        <span>Tanya Jawab #{index + 1}</span>
                       </span>
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-200/70 text-slate-600">
-                        {(menu.options?.length || 0) <= 3 ? 'WABA: Buttons' : 'WABA: Section List'}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleAddMenuOption(menu.id)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition border border-emerald-200/60 cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>+ Tambah Opsi</span>
-                    </button>
-                  </div>
-
-                  {(!menu.options || menu.options.length === 0) ? (
-                    <div className="text-center py-5 px-3 rounded-xl border border-dashed border-slate-200 bg-white/70">
-                      <p className="text-xs text-slate-500">Belum ada opsi pada menu ini.</p>
                       <button
                         type="button"
-                        onClick={() => handleAddMenuOption(menu.id)}
-                        className="mt-2 text-xs font-bold text-emerald-600 hover:underline cursor-pointer"
+                        onClick={() => handleDeleteFaq(faq.id)}
+                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer text-xs flex items-center gap-1"
+                        title="Hapus Tanya Jawab"
                       >
-                        + Tambah Opsi Pertama
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="text-[11px] font-medium hidden group-hover:inline">Hapus</span>
                       </button>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {menu.options.map((opt, optIdx) => (
-                        <div
-                          key={opt.id || `opt-${optIdx}`}
-                          className="p-3.5 bg-white rounded-xl border border-slate-200/90 space-y-2.5 shadow-2xs group"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                              <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-[9px] font-bold">
-                                {optIdx + 1}
-                              </span>
-                              <span>Pilihan #{optIdx + 1}</span>
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteMenuOption(menu.id, opt.id)}
-                              className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer text-xs flex items-center gap-1"
-                              title="Hapus Opsi"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span className="text-[10px] hidden group-hover:inline">Hapus</span>
-                            </button>
-                          </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                            <div>
-                              <label className="text-[10px] font-bold text-slate-700 block mb-1">
-                                Judul Opsi (max 24 karakter) <span className="text-rose-500">*</span>
-                              </label>
-                              <input
-                                type="text"
-                                maxLength={24}
-                                value={opt.title}
-                                onChange={(e) =>
-                                  handleUpdateMenuOption(menu.id, opt.id, 'title', e.target.value)
-                                }
-                                placeholder="Contoh: Tentang Zoom Booster / Toren 250 - 500L"
-                                className="w-full px-3 py-1.5 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
-                              />
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Pertanyaan Pelanggan
+                        </label>
+                        <input
+                          type="text"
+                          value={faq.question}
+                          onChange={(e) => handleUpdateFaq(faq.id, 'question', e.target.value)}
+                          placeholder="Contoh: Apakah bisa kirim hari ini ke luar kota?"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                        />
+                      </div>
 
-                            <div>
-                              <label className="text-[10px] font-bold text-slate-700 block mb-1">
-                                Deskripsi Singkat / Harga (max 72 karakter)
-                              </label>
-                              <input
-                                type="text"
-                                maxLength={72}
-                                value={opt.description || ''}
-                                onChange={(e) =>
-                                  handleUpdateMenuOption(menu.id, opt.id, 'description', e.target.value)
-                                }
-                                placeholder="Contoh: Penjelasan materi & bedah energi / Rp150.000"
-                                className="w-full px-3 py-1.5 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition"
-                              />
-                            </div>
-                          </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Jawaban Resmi Toko
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={faq.answer}
+                          onChange={(e) => handleUpdateFaq(faq.id, 'answer', e.target.value)}
+                          placeholder="Contoh: Ya Kak, pesanan sebelum pukul 15.00 WIB dikirim di hari yang sama."
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition leading-relaxed"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
 
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-700 block mb-1">
-                              Teks Respons Bot saat opsi dipilih <span className="text-rose-500">*</span>
-                            </label>
-                            <textarea
-                              rows={2}
-                              value={opt.responseText}
-                              onChange={(e) =>
-                                handleUpdateMenuOption(menu.id, opt.id, 'responseText', e.target.value)
-                              }
-                              placeholder="Contoh: Sesi Zoom Booster diadakan setiap Sabtu pagi via Zoom. Materi mencakup pemetaan energi, tanya jawab live, dan rekaman materi seumur hidup."
-                              className="w-full px-3 py-1.5 bg-slate-50/50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition leading-relaxed"
-                            />
-                          </div>
-                        </div>
-                      ))}
+                <div className="pt-1 flex justify-start">
+                  <button
+                    type="button"
+                    onClick={handleAddFaq}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition border border-transparent hover:border-indigo-200 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Tambah Pertanyaan Lainnya</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
-                      <div className="pt-1 flex justify-start">
+          {/* MENU NAVIGASI INTERAKTIF & PILIHAN CEPAT */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                  <ListOrdered className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black text-slate-900 tracking-tight">
+                      Menu Navigasi Bot &amp; Pilihan Cepat (Interactive Menu)
+                    </h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {currentInteractiveMenus.length} Menu
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Menu pilihan cepat berpenomoran atau tombol interaktif WhatsApp agar pembeli dapat memilih produk/layanan tanpa mengetik.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddMenu}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl text-xs transition border border-emerald-200 shadow-2xs cursor-pointer active:scale-95 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Menu Baru</span>
+              </button>
+            </div>
+
+            {currentInteractiveMenus.length === 0 ? (
+              <div className="text-center py-8 px-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                <ListOrdered className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-xs font-bold text-slate-700">Belum ada Menu Navigasi Interaktif</p>
+                <p className="text-[11px] text-slate-400 max-w-md mx-auto mt-1 mb-4">
+                  Buat menu cepat agar pembeli dapat langsung memilih paket atau layanan yang diinginkan.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAddMenu}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Buat Menu Pertama</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {currentInteractiveMenus.map((menu, menuIdx) => (
+                  <div
+                    key={menu.id || `menu-${menuIdx}`}
+                    className="p-5 bg-slate-50/80 hover:bg-slate-50 rounded-2xl border border-slate-200 transition space-y-4"
+                  >
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold">
+                          {menuIdx + 1}
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-800">
+                          Menu #{menuIdx + 1}: {menu.trigger || (menu as any).title || 'Menu Baru'}
+                        </h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMenu(menu.id)}
+                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer text-xs flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="text-[11px]">Hapus Menu</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Header / Trigger Menu <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={menu.trigger || (menu as any).title || ''}
+                          onChange={(e) => handleUpdateMenuField(menu.id, 'trigger', e.target.value)}
+                          placeholder="Contoh: Pilih Pilihan Paket / Cek Ongkir"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-emerald-500 transition"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Petunjuk Pengantar
+                        </label>
+                        <input
+                          type="text"
+                          value={menu.description || (menu as any).reply_content || ''}
+                          onChange={(e) => handleUpdateMenuField(menu.id, 'description', e.target.value)}
+                          placeholder="Contoh: Silakan pilih salah satu opsi di bawah ini:"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:border-emerald-500 transition"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Options list */}
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">
+                          Daftar Pilihan ({menu.options?.length || 0} Opsi)
+                        </span>
                         <button
                           type="button"
                           onClick={() => handleAddMenuOption(menu.id)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 rounded-lg transition border border-transparent hover:border-emerald-200 cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition border border-emerald-200 cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
-                          <span>+ Tambah Opsi Lainnya</span>
+                          <span>+ Tambah Opsi</span>
                         </button>
                       </div>
+
+                      {(!menu.options || menu.options.length === 0) ? (
+                        <div className="text-center py-4 px-3 rounded-xl border border-dashed border-slate-200 bg-white">
+                          <p className="text-xs text-slate-500">Belum ada opsi pada menu ini.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {menu.options.map((opt, optIdx) => (
+                            <div
+                              key={opt.id || `opt-${optIdx}`}
+                              className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2.5 shadow-2xs group"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                  Pilihan #{optIdx + 1}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteMenuOption(menu.id, opt.id)}
+                                  className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                                    Judul Opsi (max 24 kar) <span className="text-rose-500">*</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    maxLength={24}
+                                    value={opt.title}
+                                    onChange={(e) =>
+                                      handleUpdateMenuOption(menu.id, opt.id, 'title', e.target.value)
+                                    }
+                                    placeholder="Contoh: Paket Reguler"
+                                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:border-emerald-500"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                                    Deskripsi Singkat / Harga (max 72 kar)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    maxLength={72}
+                                    value={opt.description || ''}
+                                    onChange={(e) =>
+                                      handleUpdateMenuOption(menu.id, opt.id, 'description', e.target.value)
+                                    }
+                                    placeholder="Contoh: Rp 150.000 / Layanan 1 Jam"
+                                    className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:border-emerald-500"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                                  Teks Balasan Bot Saat Opsi Dipilih <span className="text-rose-500">*</span>
+                                </label>
+                                <textarea
+                                  rows={2}
+                                  value={opt.responseText}
+                                  onChange={(e) =>
+                                    handleUpdateMenuOption(menu.id, opt.id, 'responseText', e.target.value)
+                                  }
+                                  placeholder="Contoh: Anda memilih Paket Reguler. Silakan klik link checkout berikut untuk menyelesaikan pembayaran..."
+                                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-hidden focus:border-emerald-500 leading-relaxed"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* FORM IDENTITAS AI & SYSTEM PROMPT */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-5 shadow-xs">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5">
-              Nama Asisten AI
-            </label>
-            <input
-              type="text"
-              value={aiForm.ai_name}
-              onChange={(e) => setAiForm((a) => ({ ...a, ai_name: e.target.value }))}
-              placeholder="Contoh: Maya - Asisten Resmi"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
-            />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Nama asisten akan digunakan bot saat memperkenalkan diri kepada pelanggan.
-            </p>
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5">
-              Gaya Komunikasi (Tone of Voice)
-            </label>
-            <select
-              value={aiForm.tone}
-              onChange={(e) => setAiForm((a) => ({ ...a, tone: e.target.value }))}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition cursor-pointer"
-            >
-              <option value="casual">Santai, Luwes & Ramah (Casual Human-like)</option>
-              <option value="professional">Formal, Sopan & Profesional (Corporate Standard)</option>
-              <option value="persuasive">High-Conversion Sales Closer (Proaktif & Solutif)</option>
-              <option value="friendly">Edukatif, Lembut & Sabar (Customer Support)</option>
-            </select>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Menentukan gaya bahasa dan pemilihan kosakata bot saat berinteraksi.
-            </p>
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-bold text-slate-700 block">
-              System Prompt (Instruksi Utama AI)
-            </label>
-            <span className="text-[11px] font-medium text-slate-400">
-              {aiForm.system_prompt.length} karakter
-            </span>
-          </div>
-          <textarea
-            rows={7}
-            value={aiForm.system_prompt}
-            onChange={(e) => setAiForm((a) => ({ ...a, system_prompt: e.target.value }))}
-            placeholder="Tuliskan instruksi sistem, persona bisnis, aturan penawaran, atau instruksi khusus untuk asisten AI..."
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
-          />
-          <p className="text-[11px] text-slate-400 mt-1.5">
-            Instruksi ini akan diinjeksikan langsung sebagai <span className="font-semibold text-slate-600">system instruction</span> ke model LLM pada setiap pesan WhatsApp masuk.
-          </p>
-        </div>
-
-        <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
-          <div className="flex items-center gap-2 text-[11px] text-slate-500">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Tersimpan otomatis ke database terenkripsi BoonTrack Secure Cloud Engine.</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => handleSaveAiKnowledge()}
-            disabled={isSavingAi || isLoadingAi}
-            className="w-full sm:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-          >
-            {isSavingAi ? (
-              <Loader2 className="w-4 h-4 animate-spin text-white" />
-            ) : (
-              <Save className="w-4 h-4 text-white" />
             )}
-            <span>{isSavingAi ? 'Menyimpan Pengaturan...' : 'Simpan Persona & System Prompt'}</span>
-          </button>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => handleSaveAiKnowledge()}
+                disabled={isSavingAi}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+              >
+                {isSavingAi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>Simpan FAQ &amp; Menu Interaktif</span>
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -123,7 +123,8 @@ export async function GET(
         },
         boonpilot_proposal: metadata.boonpilot_proposal || metadata.boonpilot_configuration || null,
         boonpilot_configuration: metadata.boonpilot_configuration || metadata.boonpilot_proposal || null,
-        playbook: metadata.playbook || metadata.seller_playbook || null,
+        sales_policy: metadata.sales_policy || metadata.playbook || metadata.seller_playbook || null,
+        playbook: metadata.playbook || metadata.seller_playbook || metadata.sales_policy || null,
         bank: metadata.bank || null,
         integration: metadata.integration || {
           whatsapp_status: 'DISCONNECTED',
@@ -205,6 +206,8 @@ export async function PUT(
       qris_static_string,
       greeting_message,
       custom_greeting_message,
+      sales_policy,
+      playbook,
     } = body;
 
     const supabase = getSupabase();
@@ -298,6 +301,7 @@ export async function PUT(
         greeting_message: greeting_message !== undefined ? greeting_message : custom_greeting_message,
         custom_greeting_message: custom_greeting_message !== undefined ? custom_greeting_message : greeting_message,
       } : {}),
+      ...(sales_policy !== undefined ? { sales_policy, playbook: sales_policy } : (playbook !== undefined ? { sales_policy: playbook, playbook } : {})),
       ...(microsite !== undefined ? { microsite } : {}),
       ...(rotator !== undefined ? { rotator } : {}),
     };
@@ -314,6 +318,31 @@ export async function PUT(
 
     if (updateError) {
       return NextResponse.json({ success: false, error: updateError.message }, { status: 500 });
+    }
+
+    // Sync ke bot_profiles table jika ada
+    try {
+      const pName = ai_knowledge?.ai_name || body.assistant_name;
+      const tVal = ai_knowledge?.tone;
+      const sPrompt = ai_knowledge?.system_prompt;
+      const effectivePolicy = sales_policy || playbook;
+      const guardrailsList = effectivePolicy?.custom_do_and_donts ? [effectivePolicy.custom_do_and_donts] : [];
+
+      if (pName || tVal || sPrompt || guardrailsList.length > 0) {
+        await supabase
+          .from('bot_profiles')
+          .upsert({
+            tenant_slug: slug,
+            persona_name: pName || `${existing.name} Assistant`,
+            tone: tVal || 'casual',
+            system_prompt: sPrompt || '',
+            strict_guardrails: guardrailsList,
+            knowledge_scope: effectivePolicy?.price_objection ? `Price Objection: ${effectivePolicy.price_objection}` : 'Default Scope',
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'tenant_slug' });
+      }
+    } catch {
+      // Non-fatal if bot_profiles table has different constraints
     }
 
     // Sync ke Core Backend jika diperlukan
