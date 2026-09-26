@@ -1839,7 +1839,8 @@ Untuk menghindari masalah inkonsistensi data antar-sistem (*dual-write hazard*),
 ## 29. (Section 8) AI Sales Representative Engine Architecture (SALES_REP_V1)
 
 > **Architectural Status**: 🔒 **PRODUCTION CONTRACT & SALES ENGINE SPECIFICATION §8**  
-> **Core Principle**: *"LLM Explains, Core Decides. Untrusted cognitive intelligence translates customer desires into verified commercial actions without hallucinating store truth."*
+> **Core Principle**: *"LLM Explains, Core Decides. Untrusted cognitive intelligence translates customer desires into verified commercial actions without hallucinating store truth."*  
+> **CTO & CFO Consensus**: *"Turn budget adalah cost & safety guardrail, BUKAN sales funnel controller. Unit economics sehat dengan target gross margin 85-90% ditegakkan melalui total-session metering, non-custodial direct billing WABA, dan transactional immunity."*
 
 ### 8.1 Paradigma "LLM Explains, Core Decides"
 Arsitektur engine tenaga penjual AI (`SALES_REP_V1`) memisahkan secara radikal antara **Fungsi Kognitif Bahasa (*Cognitive Language Layer*)** dan **Otoritas Kebenaran Komersial (*Commercial Truth Authority*)**:
@@ -1890,39 +1891,137 @@ Untuk menjaga kesinambungan percakapan tanpa mencampuradukkan data toko yang ber
     $$\text{Context Key} = \text{tenant\_id} + \text{conversation\_id} + \text{user\_id}$$
   - **Negative Invariant**: Dilarang keras membaca atau membagikan memori obrolan lintas tenant (`tenant_id_A != tenant_id_B`). Data pembeli Toko Fashion A tidak akan pernah bocor atau mempengaruhi rekomendasi Toko Gadget B.
 
-### 8.4 Multi-Tenant Standardization & Dogfood Reference Implementation
-Platform BoonTrack tidak membuat percabangan kode terpisah untuk kebutuhan internal platform:
-1. **Dogfood Reference Implementation**:
-   - Nomor WhatsApp resmi platform `+62 812-1556-7168` diposisikan sebagai **Reference Implementation** nyata:
-     * `tenant_slug: boontrack-shop`
-     * `template_code: SHOP_V1`
-     * `sales_mode: AI_SALES_REP`
-   - Implementasi ini membuktikan bahwa platform menggunakan pipeline multi-tenant yang sama persis (*eat our own dogfood*) tanpa hak istimewa (*zero hardcoded privilege*) di tingkat kode program.
-2. **Dynamic Storefront Binding**:
-   - Setiap tenant, baik toko referensi platform maupun merchant publik, terikat pada resolver identitas yang seragam:
-     `slug -> tenant_id -> TenantRuntimeContext -> sales_rep_profile`.
+### 8.4 Prinsip Utama & State Machine Lifecycle (CTO Directive)
+Arsitektur runtime percakapan menempatkan turn budget sebagai instrumen perlindungan biaya dan keselamatan sistem, bukan pemaksa transaksi.
 
-### 8.5 Tiering: Default Assistant vs. AI Sales Representative Workflow
-Kapabilitas asisten percakapan dibedakan secara tegas berdasarkan tier langganan tenant:
+```text
+                                 ┌─────────────────┐
+                                 │     ACTIVE      │
+                                 │ (Turn 1 - Turn 4│
+                                 └────────┬────────┘
+                                          │
+                  ┌───────────────────────┼───────────────────────┐
+                  │ (Turn 5-6 Warning)    │ (Inactivity Timeout)  │ (Checkout Triggered)
+                  ▼                       ▼                       ▼
+       ┌─────────────────────┐  ┌──────────────────┐  ┌─────────────────────────┐
+       │   EFFICIENCY_MODE   │  │     EXPIRED      │  │  TRANSACTIONAL IMMUNITY │
+       │ (Ringkas & Action)  │  │ (Context Cached) │  │  (Core Decides / QRIS)  │
+       └──────────┬──────────┘  └─────────┬────────┘  └────────────┬────────────┘
+                  │                       │ (Customer Returns)     │
+                  │ (Turn 7 Exhausted)    ▼                        │ (Payment Confirmed)
+                  ▼             ┌──────────────────┐               ▼
+       ┌─────────────────────┐  │  RESTORE CONTEXT │     ┌──────────────────┐
+       │  HANDOVER_PENDING   │  └──────────────────┘     │      CLOSED      │
+       │  (LLM Cut-Off 0 Tok)│                           │ (Fulfillment OK) │
+       └──────────┬──────────┘                           └──────────────────┘
+                  ▼
+       ┌─────────────────────┐
+       │ HANDOVER_TO_HUMAN   │
+       │ (Escalated to Staff)│
+       └─────────────────────┘
+```
 
-| Dimensi Fitur | Default Assistant (Starter / Solo) | AI Sales Representative (Pro / Enterprise) |
-| :--- | :--- | :--- |
-| **Fokus Utama** | Layanan Pelanggan Dasar & FAQ | Penjualan Proaktif & Konversi Transaksi |
-| **Sifat Respons** | Reaktif (menjawab hanya saat ditanya) | Proaktif & Konsultatif (mengarahkan ke closing) |
-| **Workflow Pipeline** | Jawaban FAQ statis & link storefront | **7-Step Consultative Sales Workflow**: |
-| | | 1. **Understand**: Eksplorasi kebutuhan & masalah pembeli. |
-| | | 2. **Recommend**: Rekomendasi solusi & produk paling tepat. |
-| | | 3. **Validate**: Validasi stok riil & ketersediaan ke Core. |
-| | | 4. **Objection Handling**: Menepis ragu harga/kualitas/pengiriman. |
-| | | 5. **Closing**: Teknik penutupan penjualan persuasif. |
-| | | 6. **Checkout**: Terbitkan invoice QRIS langsung di balon chat. |
-| | | 7. **Follow-up**: Retensi & pesan pengingat tagihan belum bayar. |
-| **Integrasi Checkout** | Memberikan tautan web storefront | Penerbitan QRIS instan di dalam percakapan WhatsApp |
+1. **Filosofi Turn Budget**:
+   - *"Turn budget adalah cost & safety guardrail, BUKAN sales funnel controller. Sistem dilarang memaksa closing secara agresif hanya karena batas turn mendekat."*
+   - Turn budget dirancang mencegah infinite conversation loop dan mengamankan unit economics merchant. AI dilarang melakukan hard-selling liar yang merusak citra toko.
+2. **Transactional Immunity (Kekebalan Alur Transaksi)**:
+   - Jika calon pembeli telah memasuki alur checkout (pemilihan produk terkonfirmasi, pengisian data pengiriman, atau penerbitan QRIS dinamis), alur transaksi bisnis **KEBAL MUTLAK** dari pemutusan turn budget AI.
+   - Core State Machine mengambil alih kontrol secara penuh (*Core Decides*). Transaksi tidak boleh dihentikan atau di-drop hanya karena batas token obrolan tercapai.
+3. **State Machine Lifecycle & Transisi Status**:
+   - `ACTIVE → Inactivity Timeout → EXPIRED`: Jika pelanggan tidak merespons dalam durasi jendela sesi (misal 24 jam), sesi berpindah ke `EXPIRED`. Konteks penting di-cache dan dipulihkan secara elegan (*restore context*) saat pembeli menyapa kembali.
+   - `ACTIVE → Budget Warning (Turn 5-6) → EFFICIENCY_MODE`: Saat mencapai turn 5-6, prompt AI secara otomatis beradaptasi menjadi padat, ringkas, solutif, dan berorientasi aksi (*action-oriented*) mengarahkan ke link checkout resmi.
+   - `ACTIVE / EFFICIENCY_MODE → Budget Exhausted (Turn 7) → HANDOVER_PENDING → HANDOVER_TO_HUMAN`: Pada turn 7, pemanggilan LLM dikunci seketika (**0 token burn lanjutan**). Bot mengirimkan pesan eskalasi penutup yang sopan dan menyerahkan penanganan langsung ke staf CS manusia toko.
+   - `ACTIVE → Purchase Completed → CLOSED`: Saat pesanan berhasil dilunasi (`PAID`), sesi transaksi ditutup sukses, memicu webhook fulfillment produk.
+4. **P0 Concurrency Guardrail (Atomic Turn Reservation)**:
+   - **DILARANG KERAS** menggunakan mutasi naif `turn_count += 1` di memori aplikasi atau mekanisme *read-modify-write* tanpa proteksi.
+   - Sistem wajib menggunakan **Atomic Turn Reservation** di tingkat database/Redis:
+     ```sql
+     UPDATE conversation_sessions
+     SET turn_count = turn_count + 1, updated_at = NOW()
+     WHERE id = :session_id AND turn_count < :max_turns
+     RETURNING turn_count;
+     ```
+   - Pola ini mengeliminasi *race condition* jika pelanggan mengirimkan rentetan pesan paralel secara bersamaan (*multi-message burst*).
 
-### 8.6 Configuration-Driven Provisioning (`sales_rep_profiles`)
+---
+
+### 8.5 Struktur Tiering Resmi, Session Budgeting & Quota Metering (CFO Sign-Off)
+Unit economics platform dipagari secara matematis untuk menjamin profitabilitas dan kesinambungan bisnis tanpa bakar uang:
+
+| Parameter Evaluasi | Solo / Starter Plan | Pro Scale Plan | Team Scale Plan | Add-On Overage |
+| :--- | :--- | :--- | :--- | :--- |
+| **Harga Langganan** | **Rp 199.000** / bulan | **Rp 299.000** / bulan | **Rp 499.000** / bulan | **Rp 49.000** per blok |
+| **Cakupan AI Engine** | Full SALES_REP_V1 | Full SALES_REP_V1 + Custom Policy | Full SALES_REP_V1 + Multi-CS Routing | Tambahan Kuota Instan |
+| **Kuota Sesi Aktif** | **150 sesi** / bulan | **300 sesi** / bulan | **600 sesi** / bulan | **+100 sesi** / pembelian |
+| **Estimasi COGS AI** | Rp 16.000 - Rp 19.500 (~8-10%) | Rp 32.000 - Rp 39.000 (~10-13%) | Rp 64.000 - Rp 78.000 (~12-15%) | Rp 13.000 (~26%) |
+| **Target Gross Margin** | **~90%** | **~87%** | **~85%** | **~74%** |
+| **Metode Pembelian** | Langganan Bulanan QRIS | Langganan Bulanan QRIS | Langganan Bulanan QRIS | Self-Service via Dynamic QRIS |
+
+1. **Prinsip Total-Session Metering**:
+   - Kuota sesi berkurang untuk **SETIAP percakapan AI yang aktif** (termasuk *ghosting leads*, pelanggan yang hanya bertanya lalu menghilang, maupun pembeli yang sukses transaksi).
+   - Pengurangan kuota **BUKAN** hanya dihitung saat sesi berhasil closing. Mengingat beban komputasi LLM dan infrastruktur server tetap terjadi pada setiap interaksi, prinsip akuntansi konservatif CFO mewajibkan *total-session deduction*.
+2. **Definisi Sesi Percakapan**:
+   - Satu sesi percakapan didefinisikan sebagai interaksi dua arah antara satu nomor pelanggan unik dengan bot toko dalam jendela bergulir (*rolling 24-hour conversational session*).
+3. **Akumulasi & Overage**:
+   - Kuota overage yang dibeli via top-up bersifat akumulatif, tidak pernah hangus di akhir siklus penagihan bulanan, dan otomatis dikonsumsi setelah kuota dasar paket habis.
+
+---
+
+### 8.6 Kepatuhan Infrastruktur WhatsApp & Multi-Provider Resilience
+Infrastruktur perpesanan dan model bahasa mematuhi standar enterprise dan efisiensi biaya:
+
+1. **100% Meta Cloud API Resmi (WABA)**:
+   - Seluruh tenant berbayar di lingkungan produksi wajib beroperasi di atas WhatsApp Cloud API resmi (WABA) yang terverifikasi.
+2. **Strict Non-Custodial Direct Billing**:
+   - Biaya percakapan Meta (*WABA Conversation Fees* berbasis template/marketing/utility) dibayar langsung oleh kartu kredit merchant ke Meta Business Manager / Meta Payment Account masing-masing.
+   - **Beban Biaya WhatsApp di Buku Keuangan BoonTrack = Rp 0**. BoonTrack tidak memungut, menalangi, ataupun menjadi perantara keuangan untuk tagihan Meta, menghilangkan risiko piutang (*zero custodial credit risk*).
+3. **Deprecated Web Gateways & Production Guardrail**:
+   - Guardrail `WA_PROVIDER=META_CLOUD_API` dengan mekanisme *fail-to-start* aktif di production; penggunaan library scan QR web scraper (Baileys/wwebjs) **DILARANG KERAS** untuk melayani percakapan pelanggan di production.
+4. **Reference Dogfood Node Testing**:
+   - Nomor WhatsApp `+62 812-1556-7168` dikonfirmasi sebagai internal testing & reference dogfood node tim (`tenant_slug: boontrack-shop`), bukan tenant publik komersial.
+5. **Multi-Provider LLM Resilience & Arbitrage**:
+   - **Kalkulasi Biaya Konservatif**: Menggunakan baseline biaya Gemini Flash pasca-promo (~Rp 130 per sesi percakapan lengkap 5-7 turn @ 1k token context).
+   - **Failover ke Open-Weights**: Jika terjadi lonjakan tarif API komersial, engine mendukung failover instan ke model *open-weights* efisien (seperti Llama 3.3 70B via Groq/OpenRouter di kisaran ~$0.65/1M token atau ~Rp 26 per sesi percakapan), mempertahankan margin kotor platform di atas 85%.
+
+---
+
+### 8.7 Spesifikasi UI Dashboard Tenant (BoonPilot Manager)
+Antarmuka menu **"AI Knowledge & Bot"** (`AiKnowledgeTab.tsx`) direstrukturisasi mengikuti hasil audit arsitektur menyeluruh:
+
+1. **Komponen Visual Kuota Sesi (`AiSessionQuotaMeter`)**:
+   - Diposisikan di bagian paling atas tab untuk visibilitas langsung sisa kuota bulanan.
+   - Menyajikan bilah progres visual: Sisa Kuota Sesi (150 Solo, 300 Pro Scale, 600 Team Scale) + Tambahan Overage.
+   - Indikator visual dinamis:
+     * *Healthy* (>20%): Bilah hijau emerald.
+     * *Low Warning* (≤20%): Bilah oranye amber dengan tanda peringatan kuota menipis.
+     * *Depleted* (0): Bilah rose merah dengan status **Fallback Assistant Mode (Menu Statis Aktif)** yang mengamankan komunikasi agar bot tetap melayani menggunakan menu interaktif tanpa LLM.
+   - Tombol CTA `+ Top-Up Kuota` membuka modal instan untuk pembelian paket +100 sesi (Rp 49.000) atau +250 sesi (Rp 99.000).
+2. **Konsolidasi 3 Tab Sederhana**:
+   - **Tab 1 [Profil Bot]**:
+     * Nama Asisten AI (`ai_name`).
+     * Gaya Bahasa / Nada Bicara Terpadu (`tone`: casual, professional, persuasive, friendly).
+     * Salam Pembuka Otomatis (*Greeting Message*).
+     * Instruksi Khusus Toko (*System Prompt Utama*).
+   - **Tab 2 [Aturan Jual & Policy]**:
+     * Mode Operasional Bot: Pilihan kartu visual **HYBRID** (AI Cerdas + Menu Cepat) vs **STATIC** (Deterministik Penuh 0-Token).
+     * Aturan Penanganan Tawar / Harga Mahal (*Price Objection*).
+     * Pemicu Urgensi Closing (*Closing Hook*).
+     * Batas Toleransi Diskon Maksimal (`discount_limit` 0% - 20%).
+     * Eskalasi ke CS Manusia (*Handover to Human*): Trigger kata kunci & nomor WhatsApp CS staf.
+     * Batasan & Larangan Seller (*Custom Do's & Don'ts*).
+   - **Tab 3 [FAQ & Pengetahuan Toko]**:
+     * Form Tanya-Jawab Toko (*FAQ Knowledge Base*) dengan badge *AI Context Grounding* yang terhubung langsung ke pipeline runtime LLM dan fast-path matching.
+     * Pengelolaan Menu Navigasi Interaktif & Pilihan Cepat WhatsApp (*Interactive Menus*).
+3. **Pembersihan Modul Mock & Eliminasi `localStorage`**:
+   - Menghapus ketergantungan pada 6 modul mock vertikal (`components/modules/*/AiKnowledge.tsx`) dan `ModularAiKnowledgeDispatcher`.
+   - Menghentikan penyimpanan data ke `localStorage`. Seluruh input form disimpan langsung ke database Supabase (`tenants.metadata` dan tabel relasional `bot_profiles` / `sales_rep_profiles`) sebagai *Single Source of Truth*.
+
+---
+
+### 8.8 Configuration-Driven Provisioning (`sales_rep_profiles` & `bot_profiles`)
 Peningkatan kapasitas tenant dari asisten standar menjadi AI Sales Representative **TIDAK MEMERLUKAN pembuatan backend baru ataupun deployment instance server tambahan**.
 
-Proses upgrade dilakukan murni melalui **Provisioning Konfigurasi** pada tabel `sales_rep_profiles`:
+Proses aktivasi dilakukan murni melalui **Provisioning Konfigurasi** pada tabel database:
 ```sql
 CREATE TABLE IF NOT EXISTS sales_rep_profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1954,4 +2053,5 @@ CREATE TABLE IF NOT EXISTS sales_rep_profiles (
 - **Manfaat**:
   - *Zero Downtime Deployment*: Merchant yang meng-upgrade paket langsung menikmati tenaga penjual AI dalam hitungan milidetik setelah mutasi pembayaran langganan terverifikasi.
   - *Customizable per Merchant*: Merchant dapat menyesuaikan gaya closing, persona, dan cara menjawab keberatan harga melalui dashboard tanpa perlu menulis kode sebaris pun.
+
 
