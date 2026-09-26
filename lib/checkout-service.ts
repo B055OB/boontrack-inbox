@@ -19,6 +19,7 @@ export interface CreateOrderPayload {
   customerEmail?: string;
   affiliateCode?: string;
   managerId?: string;
+  ctwa_clid?: string;
   tracking?: Record<string, any>;
   voucherCode?: string;
   productDiscount?: number;
@@ -215,6 +216,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     utm_term: payload.tracking?.utm_term || null,
     fbclid: payload.tracking?.fbclid || null,
     ttclid: payload.tracking?.ttclid || null,
+    ctwa_clid: payload.ctwa_clid || payload.tracking?.ctwa_clid || null,
     status: "WAITING_PAYMENT",
     created_at: new Date().toISOString()
   };
@@ -288,6 +290,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     utm_term: payload.tracking?.utm_term || null,
     fbclid: payload.tracking?.fbclid || null,
     ttclid: payload.tracking?.ttclid || null,
+    ctwa_clid: payload.ctwa_clid || payload.tracking?.ctwa_clid || null,
     status: "PENDING",
     created_at: orderData.created_at,
     updated_at: orderData.created_at,
@@ -495,6 +498,29 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       }).eq("id", orderId);
     } catch {}
   }
+
+  // Trigger CAPI InitiateCheckout (Non-blocking) saat QRIS PT atau payment link diterbitkan
+  try {
+    const trackingCtwa = payload.ctwa_clid || payload.tracking?.ctwa_clid || null;
+    fetch('/api/v1/tracking/capi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tenantSlug: payload.tenantSlug,
+        eventName: 'InitiateCheckout',
+        eventId: `INITIATE_CHECKOUT_${orderId}`,
+        orderId,
+        amount: grossAmount,
+        currency: 'IDR',
+        productTitle: payload.productTitle,
+        customerName: payload.customerName,
+        customerPhone: payload.customerPhone,
+        customerEmail: payload.customerEmail,
+        ctwa_clid: trackingCtwa,
+        fbc: payload.tracking?.fbclid ? `fb.1.${Date.now()}.${payload.tracking.fbclid}` : undefined,
+      }),
+    }).catch((err) => console.warn('[Checkout Service] CAPI InitiateCheckout warning:', err));
+  } catch (_) {}
 
   return {
     orderId,

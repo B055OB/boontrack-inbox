@@ -11,10 +11,11 @@ export interface TrackingParams {
   utm_term?: string;
   fbclid?: string;
   ttclid?: string;
+  ctwa_clid?: string;
   affiliate_code?: string;
 }
 
-// 1. Ekstraksi dan Penyimpanan Parameter URL (UTM & Click IDs)
+// 1. Ekstraksi dan Penyimpanan Parameter URL (UTM & Click IDs Termasuk CTWA)
 export function captureAffiliateReferral(): void {
   if (typeof window === "undefined") return;
 
@@ -35,7 +36,8 @@ export function captureAffiliateReferral(): void {
       "utm_content",
       "utm_term",
       "fbclid",
-      "ttclid"
+      "ttclid",
+      "ctwa_clid"
     ];
 
     const captured: Record<string, string> = {};
@@ -52,6 +54,9 @@ export function captureAffiliateReferral(): void {
     if (Object.keys(captured).length > 0) {
       try {
         sessionStorage.setItem("boontrack_tracking_session", JSON.stringify(captured));
+        if (captured.ctwa_clid) {
+          sessionStorage.setItem("boontrack_ctwa_clid", captured.ctwa_clid);
+        }
       } catch {}
     }
   } catch (err) {
@@ -82,6 +87,7 @@ export function getTrackingParams(): TrackingParams {
     utm_term: getParam("utm_term"),
     fbclid: getParam("fbclid"),
     ttclid: getParam("ttclid"),
+    ctwa_clid: getParam("ctwa_clid") || (typeof window !== "undefined" ? sessionStorage.getItem("boontrack_ctwa_clid") || undefined : undefined),
     affiliate_code: getActiveAffiliateCode() || undefined
   };
 }
@@ -338,9 +344,37 @@ export function trackWhatsAppConsultation(product: { name: string; price: number
   }
 }
 
+// 3a. Event Lead: Saat user pertama kali memicu tombol paket / memilih opsi produk
+export function trackLead(
+  contentName: string = "Package Selection",
+  value: number = 0,
+  eventId?: string
+): void {
+  if (typeof window === "undefined") return;
+  const win = window as unknown as Record<string, any>;
+
+  if (win.fbq) {
+    win.fbq("track", "Lead", {
+      content_name: contentName,
+      value: value,
+      currency: "IDR"
+    }, eventId ? { eventID: eventId } : undefined);
+  }
+
+  if (win.ttq) {
+    win.ttq.track("SubmitForm", {
+      content_name: contentName,
+      value: value,
+      currency: "IDR"
+    }, eventId ? { event_id: eventId } : undefined);
+  }
+}
+
+// 3b. Event InitiateCheckout: Saat QRIS atau Payment Link diterbitkan
 export function trackInitiateCheckout(
   productOrTitle: string | { name?: string; title?: string; price: number; id?: number | string },
-  amount?: number
+  amount?: number,
+  eventId?: string
 ): void {
   if (typeof window === "undefined") return;
   const win = window as unknown as Record<string, any>;
@@ -355,7 +389,7 @@ export function trackInitiateCheckout(
       content_name: title,
       value: value,
       currency: "IDR"
-    });
+    }, eventId ? { eventID: eventId } : undefined);
   }
 
   if (win.ttq) {
@@ -363,7 +397,7 @@ export function trackInitiateCheckout(
       content_name: title,
       value: value,
       currency: "IDR"
-    });
+    }, eventId ? { event_id: eventId } : undefined);
   }
 }
 
@@ -414,7 +448,7 @@ export function formatIndonesianWhatsAppNumber(phone: string): string {
   return clean;
 }
 
-// 4. WhatsApp Inbound Link Builder dengan Embedding Tag & Event Contact
+// 4. WhatsApp Inbound Link Builder dengan Embedding Tag & Event Contact (Mendukung CTWA CLID)
 export function buildTrackedWhatsAppUrl(
   phoneNumber: string,
   baseText: string,
@@ -430,6 +464,7 @@ export function buildTrackedWhatsAppUrl(
     tracking.utm_source ? `src:${tracking.utm_source}` : "",
     tracking.fbclid ? `fb:${tracking.fbclid}` : "",
     tracking.ttclid ? `tt:${tracking.ttclid}` : "",
+    tracking.ctwa_clid ? `ctwa:${tracking.ctwa_clid}` : "",
     extraPayload?.productName ? `p:${extraPayload.productName.slice(0, 20)}` : ""
   ].filter(Boolean).join(";");
 

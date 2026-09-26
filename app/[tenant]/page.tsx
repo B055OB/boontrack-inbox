@@ -100,6 +100,7 @@ export interface Product {
   single_page_config?: any;
   single_page_enabled?: boolean;
   metadata?: Record<string, any>;
+  is_active?: boolean;
 }
 
 export interface StoreChatMessage {
@@ -291,6 +292,7 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     cta_label: ctaLabel,
     checkout_type: isExternal ? 'external' : (p.checkout_type || 'standard'),
     metadata: p.metadata || {},
+    is_active: p.is_active !== undefined ? Boolean(p.is_active) : (p.status !== "draft" && p.status !== "inactive"),
   };
 }
 
@@ -408,14 +410,16 @@ export default function TenantStorefrontPage() {
 
   const uniqueCategories = useMemo(() => {
     const set = new Set<string>();
-    (storeProducts || []).forEach((p) => {
-      if (p && p.category) {
-        const badge = formatCategoryBadge(String(p.category), typeof p.type === 'string' ? p.type : undefined);
-        if (badge && typeof badge === 'string' && badge.trim()) {
-          set.add(badge.trim());
+    (storeProducts || [])
+      .filter((p) => p && p.is_active !== false)
+      .forEach((p) => {
+        if (p && p.category) {
+          const badge = formatCategoryBadge(String(p.category), typeof p.type === 'string' ? p.type : undefined);
+          if (badge && typeof badge === 'string' && badge.trim()) {
+            set.add(badge.trim());
+          }
         }
-      }
-    });
+      });
     return Array.from(set);
   }, [storeProducts]);
 
@@ -440,6 +444,15 @@ export default function TenantStorefrontPage() {
           captured_at: new Date().toISOString(),
         };
         sessionStorage.setItem("boontrack_utm", JSON.stringify(utmData));
+      }
+
+      // Tangkap parameter atribusi ctwa_clid (Click-to-WhatsApp)
+      const ctwa_clid = urlParams.get("ctwa_clid");
+      if (ctwa_clid) {
+        sessionStorage.setItem("boontrack_ctwa_clid", ctwa_clid.trim());
+        try {
+          localStorage.setItem("boontrack_ctwa_clid", ctwa_clid.trim());
+        } catch {}
       }
     } catch (err) {
       console.warn("[Tracking] UTM capture error:", err);
@@ -506,7 +519,13 @@ export default function TenantStorefrontPage() {
                   setTenantMetadata(fbData.settings.metadata || fbData.settings);
                   const rawProds = fbData.settings.products;
                   const prods = Array.isArray(rawProds) ? rawProds : [];
-                  setStoreProducts(prods.filter(Boolean).map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx)));
+                  // Filter ketat storefront: Hanya render produk jika product.is_active !== false
+                  setStoreProducts(
+                    prods
+                      .filter(Boolean)
+                      .map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx))
+                      .filter((p: Product) => p.is_active !== false)
+                  );
                   setStoreStatus("active");
                 }
                 return;
@@ -569,7 +588,12 @@ export default function TenantStorefrontPage() {
                 ? [tenantRow.metadata.product]
                 : []);
 
-          setStoreProducts(prodsList.map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx)));
+          // Filter ketat storefront: Hanya render produk jika product.is_active !== false
+          setStoreProducts(
+            prodsList
+              .map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx))
+              .filter((p: Product) => p.is_active !== false)
+          );
           setStoreStatus("active");
         }
       } catch (err) {
@@ -685,9 +709,13 @@ export default function TenantStorefrontPage() {
     }
   };
 
+  const visibleProducts = useMemo(() => {
+    return (storeProducts || []).filter((p) => p && p.is_active !== false);
+  }, [storeProducts]);
+
   const filteredProducts = activeCategory === "all"
-    ? (storeProducts || [])
-    : (storeProducts || []).filter((p) => {
+    ? visibleProducts
+    : visibleProducts.filter((p) => {
         if (!p) return false;
         const cat = String(p.category || "").toLowerCase();
         const badge = String(p.badge || "").toLowerCase();

@@ -1295,6 +1295,49 @@ export function useTenantDashboard() {
     }
   };
 
+  const handleToggleProductActive = async (productId: number | string, newStatus?: boolean) => {
+    let updatedProducts: ProductItem[] = [];
+    const currentProd = products.find(p => String(p.id) === String(productId));
+    if (!currentProd) return;
+
+    const targetNewActive = newStatus !== undefined ? newStatus : !(currentProd.is_active !== false);
+
+    // If activating, verify Checkout Lite quota (maksimal 3 produk aktif)
+    if (isCheckoutLite && targetNewActive) {
+      const otherActiveCount = products.filter(p => String(p.id) !== String(productId) && p.is_active !== false).length;
+      if (otherActiveCount >= 3) {
+        const quotaMsg = 'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.';
+        if (typeof window !== 'undefined') {
+          alert(quotaMsg);
+        }
+        return;
+      }
+    }
+
+    setProducts(prev => {
+      updatedProducts = prev.map(p => {
+        if (String(p.id) === String(productId)) {
+          return { ...p, is_active: targetNewActive };
+        }
+        return p;
+      });
+      return updatedProducts;
+    });
+
+    const changedProduct = updatedProducts.find(p => String(p.id) === String(productId));
+    if (changedProduct && tenantSlug) {
+      try {
+        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(changedProduct),
+        });
+      } catch (err) {
+        console.warn('[Dashboard] Error persisting product is_active status:', err);
+      }
+    }
+  };
+
   const handleSaveProductForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!productForm.name || !tenantSlug) return;
@@ -2172,6 +2215,7 @@ export function useTenantDashboard() {
     openNewProductModal,
     openEditProductModal,
     handleQuickStockChange,
+    handleToggleProductActive,
     handleSaveProductForm,
     handleDeleteProduct,
 

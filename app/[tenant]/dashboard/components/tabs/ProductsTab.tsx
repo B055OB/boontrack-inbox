@@ -52,6 +52,7 @@ export interface ProductsTabProps {
   openEditProductModal: (p: ProductItem) => void;
   handleDeleteProduct: (id: number | string) => void;
   handleQuickStockChange: (id: number | string, delta: number) => void;
+  handleToggleProductActive?: (id: number | string, newStatus?: boolean) => void;
   openSinglePageBuilder: (p: ProductItem) => void;
   onOpenBulkImport: () => void;
   storeCategory?: string;
@@ -66,6 +67,7 @@ export default function ProductsTab({
   openEditProductModal,
   handleDeleteProduct,
   handleQuickStockChange,
+  handleToggleProductActive,
   openSinglePageBuilder,
   onOpenBulkImport,
   storeCategory,
@@ -342,9 +344,40 @@ export default function ProductsTab({
                     <div className="flex items-start gap-4">
                       <ProductCardImage src={(p as any).image_url || p.image} alt={p.name} />
                       <div className="flex-1 min-w-0">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase tracking-wider">
-                          {p.category}
-                        </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 uppercase tracking-wider">
+                            {p.category}
+                          </span>
+
+                          {/* Quick Toggle Switch: Ubah status aktif/sembunyi tanpa modal */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (handleToggleProductActive) {
+                                handleToggleProductActive(p.id, !(p.is_active !== false));
+                              }
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
+                              p.is_active !== false
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                            }`}
+                            title={
+                              p.is_active !== false
+                                ? 'Status: Aktif (Klik untuk sembunyikan dari storefront publik)'
+                                : 'Status: Draft/Sembunyi (Klik untuk tampilkan di storefront publik)'
+                            }
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full transition-colors ${
+                                p.is_active !== false ? 'bg-emerald-500' : 'bg-slate-400'
+                              }`}
+                            />
+                            <span>{p.is_active !== false ? 'Aktif' : 'Draft / Sembunyi'}</span>
+                          </button>
+                        </div>
+
                         <h3 className="font-bold text-slate-900 text-sm mt-1 line-clamp-1">
                           {p.name}
                         </h3>

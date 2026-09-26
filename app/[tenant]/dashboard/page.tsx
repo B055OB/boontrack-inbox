@@ -128,6 +128,7 @@ export default function TenantDashboardPage() {
     openNewProductModal,
     openEditProductModal,
     handleQuickStockChange,
+    handleToggleProductActive,
     handleSaveProductForm,
     handleDeleteProduct,
 
@@ -690,6 +691,7 @@ export default function TenantDashboardPage() {
           openEditProductModal={openEditProductModal}
           handleDeleteProduct={handleDeleteProduct}
           handleQuickStockChange={handleQuickStockChange}
+          handleToggleProductActive={handleToggleProductActive}
           openSinglePageBuilder={openSinglePageBuilder}
           onOpenBulkImport={() => setIsBulkImportModalOpen(true)}
           storeCategory={storeCategory}

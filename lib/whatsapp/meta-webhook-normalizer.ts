@@ -61,6 +61,20 @@ export interface NormalizedMetaMessage {
   };
   raw: any;
   fromMe: boolean;
+  ctwa_clid?: string;
+  referral?: {
+    source_url?: string;
+    source_type?: string;
+    source_id?: string;
+    headline?: string;
+    body?: string;
+    media_type?: string;
+    image_url?: string;
+    video_url?: string;
+    thumbnail_url?: string;
+    ctwa_clid?: string;
+    click_id?: string;
+  };
 }
 
 export interface NormalizedMetaStatus {
@@ -286,6 +300,11 @@ export function parseMetaWebhookPayload(body: any): NormalizedMetaWebhookEvent {
       text = `[Pesan ${msg.type || 'WhatsApp'}]`;
     }
 
+    const rawReferral = msg.referral;
+    const refCtwaClid = rawReferral?.ctwa_clid || rawReferral?.click_id;
+    const textCtwaMatch = typeof text === 'string' ? text.match(/ctwa:([A-Za-z0-9_-]+)/i) : null;
+    const resolvedCtwaClid = refCtwaClid || (textCtwaMatch ? textCtwaMatch[1] : undefined);
+
     normalizedMessages.push({
       id: msg.id || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       from: rawFrom,
@@ -300,6 +319,8 @@ export function parseMetaWebhookPayload(body: any): NormalizedMetaWebhookEvent {
       location,
       raw: msg,
       fromMe,
+      ctwa_clid: resolvedCtwaClid,
+      referral: rawReferral,
     });
   }
 
@@ -555,23 +576,34 @@ export async function processNormalizedMetaEvent(
 
         if (existingConv?.id) {
           convId = existingConv.id;
+          const updateData: Record<string, any> = {
+            last_message: textContent,
+            updated_at: msg.isoTimestamp,
+          };
+          if (msg.ctwa_clid) {
+            updateData.metadata = {
+              ...((existingConv as any)?.metadata || {}),
+              ctwa_clid: msg.ctwa_clid,
+            };
+          }
           await (convTable as any)
-            .update({
-              last_message: textContent,
-              updated_at: msg.isoTimestamp,
-            })
+            .update(updateData)
             .eq('id', convId);
         } else {
+          const insertData: Record<string, any> = {
+            tenant_slug: tenantId,
+            tenant_id: tenantId,
+            phone_number: senderPhone,
+            contact_name: msg.senderName || 'Pelanggan WhatsApp',
+            last_message: textContent,
+            updated_at: msg.isoTimestamp,
+            status: 'online',
+          };
+          if (msg.ctwa_clid) {
+            insertData.metadata = { ctwa_clid: msg.ctwa_clid };
+          }
           const { data: newConv } = await (convTable as any)
-            .insert({
-              tenant_slug: tenantId,
-              tenant_id: tenantId,
-              phone_number: senderPhone,
-              contact_name: msg.senderName || 'Pelanggan WhatsApp',
-              last_message: textContent,
-              updated_at: msg.isoTimestamp,
-              status: 'online',
-            })
+            .insert(insertData)
             .select('id')
             .single();
           if (newConv?.id) convId = newConv.id;
@@ -594,6 +626,8 @@ export async function processNormalizedMetaEvent(
             type: msg.type,
             media: msg.media,
             interactive: msg.interactiveReply,
+            ...(msg.ctwa_clid ? { ctwa_clid: msg.ctwa_clid } : {}),
+            ...(msg.referral ? { referral: msg.referral } : {}),
           },
         });
       }

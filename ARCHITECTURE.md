@@ -1634,5 +1634,54 @@ LLM tidak memiliki akses jaringan atau database secara bebas. LLM hanya diperbol
      - Maksimal 40 pesan per hari per nomor telepon.
    - Global Daily Budget Cap: Batas biaya token harian $50/hari. Jika tercapai, sistem beralih otomatis ke *Graceful Degradation* (mode tombol interaktif statis tanpa pemanggilan LLM).
 
+---
+
+## 27. Internal Commerce Flow, Attribution & Navigation Standards (Sprint Contract)
+
+### 27.1 Click-to-WhatsApp Attribution (`ctwa_clid`) & Meta CAPI Event Lifecycle
+- **Atribusi CTWA Click ID (`ctwa_clid`)**:
+  - Parameter `ctwa_clid` (Click-to-WhatsApp Click ID) berasal dari Meta Ads saat calon pembeli mengklik iklan berformat Click-to-WhatsApp.
+  - Parameter ini ditangkap pada:
+    1. **Storefront Router & URL Parser**: Ditangkap dari query string URL storefront (`?ctwa_clid=...`) oleh `captureAffiliateReferral()` dan disimpan ke `sessionStorage['boontrack_ctwa_clid']` serta `localStorage['boontrack_ctwa_clid']`.
+    2. **WhatsApp Inbound Link Builder**: Saat calon pembeli mengklik tombol WhatsApp di storefront, `buildTrackedWhatsAppUrl` menyisipkan tag `ctwa:${ctwa_clid}` ke dalam payload teks `[REF:...]`.
+    3. **Webhook Intake Lead**: Webhook Meta Cloud API (`/api/webhook/whatsapp` & `meta-webhook-normalizer.ts`) menangkap objek `message.referral.ctwa_clid` atau pola regex teks `ctwa:...`.
+  - **Aturan Pemisahan State**: `ctwa_clid` disimpan ke dalam metadata sesi/lead store (`metadata.ctwa_clid`), dan **DILARANG KERAS** mencampuradukkan atau menimpa identifier transaksi (`session_id`, `order_id`, atau `event_id`).
+- **Meta Conversions API (CAPI) Multi-Stage Conversion Lifecycle**:
+  Sistem tracking CAPI membagi funnel konversi menjadi 3 tahapan terpisah dengan deduplikasi berbasis `event_id`:
+  1. **Event `Lead`**:
+     - *Trigger*: Dipicu saat user pertama kali memicu tombol paket / membuka modal pemesanan paket produk.
+     - *Client Signal*: `fbq('track', 'Lead', { content_name, value, currency }, { eventID: leadEventId })`.
+     - *Server CAPI*: Endpoint `/api/v1/tracking/capi` mengeksekusi `dispatchMetaCAPILead()` dengan `event_name: 'Lead'`.
+  2. **Event `InitiateCheckout`**:
+     - *Trigger*: Dipicu saat QRIS PT atau invoice payment link resmi berhasil diterbitkan oleh `createOrderAndInvoice`.
+     - *Client Signal*: `trackInitiateCheckout()` memicu `fbq('track', 'InitiateCheckout', ...)` dengan `eventID: INITIATE_CHECKOUT_${orderId}`.
+     - *Server CAPI*: `dispatchMetaCAPIInitiateCheckout()` dieksekusi dengan `event_name: 'InitiateCheckout'` dan menyertakan `ctwa_clid` jika tersedia.
+  3. **Event `Purchase`**:
+     - *Trigger*: Dipicu **HANYA** saat transaksi terkonfirmasi `PAID` (status lunas).
+     - *Server CAPI*: Dipicu oleh `payment-webhook-service.ts` saat callback payment gateway (Xendit/Duitku/QRIS) menerima status pelunasan.
+     - *Client Signal*: Dipicu oleh polling order `CheckoutModal.tsx` atau halaman sukses saat status terverifikasi `PAID`, dengan deduplikasi `PURCHASE_${orderId}`.
+
+### 27.2 Storefront Product Visibility Standard (`is_active` rule on public storefront)
+- **Prinsip Visibilitas Publik**:
+  - Storefront publik (`app/[tenant]/page.tsx` dan sub-template `PersonalAuthorityTemplate`, `MicrositeBioTemplate`) menerapkan filter ketat:
+    **Hanya render produk jika `product.is_active !== false`**.
+  - Produk dengan status draft, disembunyikan, atau `is_active === false` **DILARANG** ditampilkan ke calon pembeli di etalase publik, kategori filter, maupun rekomendasi bot chat.
+- **Dashboard Quick Toggle (Zero-Modal Editing)**:
+  - Pada `ProductsTab.tsx`, setiap kartu produk dilengkapi tombol *quick toggle switch* (`handleToggleProductActive`).
+  - Merchant dapat langsung mengaktifkan atau menyembunyikan produk secara instan dari dashboard tanpa perlu membuka modal full edit.
+  - Penegakan kuota tier (seperti limit 3 produk aktif pada `CHECKOUT_LITE`) tervalidasi secara deterministik saat merchant mencoba mengaktifkan produk tambahan.
+
+### 27.3 UI Navigation Tree BoonPilot (Referensi 8 Tab Utama Dashboard)
+Sebagai pemandu navigasi operasional bagi merchant, BoonPilot Copilot mengacu pada peta hierarki antarmuka resmi 8 tab dashboard:
+1. **Tab Ringkasan (`overview`)**: Kartu ringkasan omset penjualan, total pesanan, grafik tren performa toko, dan panduan quick start checklist.
+2. **Tab Katalog (`products`)**: Manajemen produk/layanan (tambah, edit, toggle `is_active`, quick stock update, import massal Excel/CSV, dan salespage single-page checkout).
+3. **Tab Pesanan (`orders`)**: Daftar seluruh transaksi pesanan masuk, status pelunasan (QRIS Dinamis/Transfer Bank), data pembeli, dan pembaruan nomor resi logistik.
+4. **Tab WhatsApp (`whatsapp`)**: Status koneksi WhatsApp Gateway, scan QR Code, kustomisasi Pesan Sapaan Otomatis (Greeting Message), dan auto-reply AI.
+5. **Tab Pengiriman (`shipping`)**: Pengaturan integrasi logistik Biteship / kurir toko, penetapan titik jemput gudang (origin address), dan tarif ongkos kirim otomatis.
+6. **Tab Pembayaran (`payments`)**: Integrasi QRIS Otomatis (0% MDR via Xendit/Midtrans), rekening pencairan hasil penjualan toko, dan metode transfer manual.
+7. **Tab Iklan & Pelacakan (`ads` / `tracking`)**: Integrasi Ads Tracking Pro, Meta Pixel ID, Meta CAPI Access Token, TikTok Pixel ID, dan Google Tag Manager (GTM).
+8. **Tab Pengaturan (`settings`)**: Pengaturan profil toko (nama, logo, deskripsi, nomor WA admin, kustomisasi salam pembuka), domain kustom, tema storefront, dan manajemen akun tim.
+
+
 
 

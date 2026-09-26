@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
-import { getActiveAffiliateCode, getTrackingData, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
+import { getActiveAffiliateCode, getTrackingData, trackLead, trackInitiateCheckout, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
@@ -241,7 +241,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     }
   }, [isOpen, tenantSlug]);
 
-  // Inisialisasi Browser Pixel: prioritaskan meta_pixel_id_override di produk, fallback ke tenant pixel
+  // Inisialisasi Browser Pixel & Trigger CAPI Event Lead saat user pertama kali memicu tombol paket
   useEffect(() => {
     if (isOpen && product) {
       const activeMetaId = product.meta_pixel_id_override || tenantMetaPixel;
@@ -252,8 +252,31 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
       if (activeTTId) {
         initTikTokPixel(activeTTId);
       }
+
+      // Event Lead: Saat user pertama kali memicu tombol paket / membuka modal pemesanan
+      const leadEventId = `LEAD_${tenantSlug}_${product.id}_${Date.now()}`;
+      trackLead(product.title, product.price || 0, leadEventId);
+
+      // Trigger CAPI Lead (Non-blocking)
+      try {
+        const tracking = getTrackingData();
+        fetch('/api/v1/tracking/capi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenantSlug,
+            eventName: 'Lead',
+            eventId: leadEventId,
+            amount: product.price || 0,
+            currency: 'IDR',
+            contentName: product.title,
+            ctwa_clid: tracking.ctwa_clid,
+            fbc: tracking.fbclid ? `fb.1.${Date.now()}.${tracking.fbclid}` : undefined,
+          }),
+        }).catch(() => {});
+      } catch (_) {}
     }
-  }, [isOpen, product, tenantMetaPixel, tenantTTPixel]);
+  }, [isOpen, product, tenantMetaPixel, tenantTTPixel, tenantSlug]);
 
   // Real-time polling to detect when order is paid & fire browser purchase events
   useEffect(() => {
@@ -313,24 +336,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
             instructions: instructions,
           });
 
-          // Fire standard browser pixel events on paid verification
-          if (typeof window !== "undefined") {
-            const win = window as any;
-            if (typeof win.fbq === "function") {
-              win.fbq("track", "Purchase", {
-                content_name: product?.title || 'Order Checkout',
-                value: totalAmount,
-                currency: "IDR",
-              });
-            }
-            if (typeof win.ttq === "object" && typeof win.ttq.track === "function") {
-              win.ttq.track("CompletePayment", {
-                content_name: product?.title || 'Order Checkout',
-                value: totalAmount,
-                currency: "IDR",
-              });
-            }
-          }
+          // Trigger Event Purchase saat order terkonfirmasi PAID
+          trackClientPurchase(paymentData.orderId, totalAmount, product?.title);
         }
       } catch {}
     };
@@ -423,9 +430,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         fulfillmentMetadata: resolvedFulfillmentMetadata,
       });
 
-      // Trigger Client-side Purchase Event & Browser Pixel
+      // Trigger Event InitiateCheckout saat QRIS PT atau payment link diterbitkan
       if (result?.orderId) {
-        trackClientPurchase(result.orderId, totalAmount, product.title);
+        trackInitiateCheckout(product.title, totalAmount, `INITIATE_CHECKOUT_${result.orderId}`);
         trackLeadFormSubmission(totalAmount);
 
         // Kunci atomic booking slot jika produk merupakan sesi booking jadwal
@@ -445,24 +452,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               idempotency_key: `IDEMP-${result.orderId}`,
             }),
           }).catch((err) => console.warn('[Checkout] Booking slot reservation warning:', err));
-        }
-
-        if (typeof window !== "undefined") {
-          const win = window as any;
-          if (typeof win.fbq === "function") {
-            win.fbq("track", "Purchase", {
-              content_name: product.title,
-              value: totalAmount,
-              currency: "IDR",
-            });
-          }
-          if (typeof win.ttq === "object" && typeof win.ttq.track === "function") {
-            win.ttq.track("CompletePayment", {
-              content_name: product.title,
-              value: totalAmount,
-              currency: "IDR",
-            });
-          }
         }
       }
 

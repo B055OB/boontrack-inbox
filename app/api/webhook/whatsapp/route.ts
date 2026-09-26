@@ -128,8 +128,15 @@ export async function POST(req: NextRequest) {
             resolvedPlanLabel.includes('Trial')
           );
 
+          // Tangkap atribusi ctwa_clid (Click-to-WhatsApp) jika ada
+          const rawReferral = (message as any).referral;
+          const refCtwaClid = rawReferral?.ctwa_clid || rawReferral?.click_id;
+          const textCtwaMatch = textBody.match(/ctwa:([A-Za-z0-9_-]+)/i);
+          const ctwaClid = refCtwaClid || (textCtwaMatch ? textCtwaMatch[1] : undefined);
+
           const updatedMetadata = {
             ...currentMeta,
+            ...(ctwaClid ? { last_ctwa_clid: ctwaClid } : {}),
             wa_verification_status: 'verified',
             wa_verified_at: verifiedAt,
             wa_verified_phone: senderPhone,
