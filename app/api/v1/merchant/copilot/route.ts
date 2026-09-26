@@ -101,7 +101,46 @@ Jika Anda memiliki file export langsung dari Tokopedia atau Shopee, sistem akan 
     };
   }
 
-  // 3. Intent: WhatsApp / Bot / Omnichannel
+  // 3. Intent: Teks Sapaan Otomatis (Greeting Message) WhatsApp
+  if (
+    q.includes('greeting') ||
+    q.includes('sapaan') ||
+    q.includes('ucapan') ||
+    q.includes('pesan pembuka') ||
+    q.includes('ubah salam') ||
+    q.includes('ganti salam') ||
+    q.includes('teks wa') ||
+    q.includes('ganti sapaan') ||
+    (q.includes('ganti') && (q.includes('teks') || q.includes('pesan')))
+  ) {
+    return {
+      status: 'success',
+      type: 'TEXT',
+      reply: `Untuk mengubah pesan sapaan otomatis (greeting message) WhatsApp toko Anda:
+
+1. **Buka Tab WhatsApp di Dashboard:**
+   - Klik menu/tab **WhatsApp** pada navigasi dashboard merchant Anda.
+   - Gulir ke bawah hingga menemukan kartu **Pesan Sapaan Otomatis (Greeting Message)**.
+2. **Kustomisasi Teks Sapaan:**
+   - Tuliskan sapaan ramah sesuai karakter toko Anda di kotak textarea yang tersedia.
+   - Gunakan variabel \`[nama_toko]\` untuk menyebut nama toko secara otomatis.
+   - Anda juga dapat mengeklik link *"Gunakan Format Bawaan"* jika ingin menggunakan format rekomendasi.
+3. **Simpan Pengaturan:**
+   - Klik tombol **Simpan Pesan Sapaan**.
+   - Bot WhatsApp toko Anda akan langsung aktif menggunakan pesan sapaan baru ini untuk menyapa pelanggan berikutnya!
+
+*(Tips: Anda juga dapat mengubahnya melalui tab **Pengaturan** > sub-menu **WhatsApp**).*`,
+      quick_actions: [
+        'Buka Tab WhatsApp',
+        'Cek Status Koneksi WhatsApp',
+        'Lihat Riwayat Chat di Inbox',
+      ],
+      session_id: sessionId,
+      tenant_id: tenantSlug,
+    };
+  }
+
+  // 4. Intent: WhatsApp / Bot / Omnichannel
   if (
     q.includes('whatsapp') ||
     q.includes('wa') ||
@@ -113,18 +152,19 @@ Jika Anda memiliki file export langsung dari Tokopedia atau Shopee, sistem akan 
     return {
       status: 'success',
       type: 'TEXT',
-      reply: `BoonTrack menyediakan integrasi WhatsApp mutakhir untuk toko Anda:
+      reply: `Berikut panduan navigasi menu WhatsApp di Dashboard Toko Anda:
 
-1. **BoonTrack Direct Connect (Engine Mandiri):**
+1. **Hubungkan WhatsApp (Tab 'WhatsApp'):**
    - Buka tab **WhatsApp** di dashboard.
-   - Scan QR Code langsung menggunakan WhatsApp di ponsel Anda via **Perangkat Tertaut**.
-   - Bot AI akan langsung aktif membalas pertanyaan pembeli, konfirmasi stok, dan kirim tagihan QRIS 24/7 tanpa biaya per pesan.
-2. **Persona AI Bot:** Anda dapat memilih mode *Toko Baru (Trust Builder)*, *Mode Seimbang*, atau *Mode Penjualan Cepat*.
-3. **BoonTrack Inbox:** Pantau obrolan masuk dan lakukan intervensi percakapan oleh CS manusia secara real-time.`,
+   - Klik tombol **Muat Ulang Sesi & QR Code**, lalu buka WhatsApp di HP Anda > **Perangkat Tertaut** > Scan barcode QR.
+2. **Atur Pesan Sapaan Otomatis (Tab 'WhatsApp'):**
+   - Di kartu **Pesan Sapaan Otomatis**, sesuaikan teks ucapan selamat datang untuk calon pembeli baru, lalu klik **Simpan Pesan Sapaan**.
+3. **Pantau & Balas Chat (Tab 'Inbox Console'):**
+   - Buka tab **Inbox Console** untuk membaca chat pelanggan secara real-time dan mengambil alih obrolan secara manual kapan saja.`,
       quick_actions: [
-        'Hubungkan WhatsApp Bot',
-        'Cek Live Chat di BoonTrack Inbox',
-        'Ganti Persona Bot WhatsApp',
+        'Buka Tab WhatsApp',
+        'Cara Ganti Pesan Sapaan',
+        'Buka Inbox Console',
       ],
       session_id: sessionId,
       tenant_id: tenantSlug,

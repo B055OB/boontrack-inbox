@@ -152,6 +152,8 @@ export async function GET(
         interactive_menus: Array.isArray(metadata.interactive_menu?.items)
           ? metadata.interactive_menu.items
           : (Array.isArray(metadata.interactive_menus) ? metadata.interactive_menus : []),
+        greeting_message: metadata.greeting_message || metadata.custom_greeting_message || null,
+        custom_greeting_message: metadata.greeting_message || metadata.custom_greeting_message || null,
         metadata: metadata,
         theme: metadata.theme || { template: 'default', chat_enabled: true, chat_position: 'bottom-right' },
         microsite: metadata.microsite || { buttons: [] },
@@ -201,6 +203,8 @@ export async function PUT(
       rotator,
       qris_payload,
       qris_static_string,
+      greeting_message,
+      custom_greeting_message,
     } = body;
 
     const supabase = getSupabase();
@@ -290,6 +294,10 @@ export async function PUT(
       ...(bio !== undefined ? { bio } : {}),
       ...(whatsapp !== undefined ? { whatsapp_number: whatsapp, whatsapp } : {}),
       ...(whatsapp_number !== undefined ? { whatsapp_number, whatsapp: whatsapp_number } : {}),
+      ...(greeting_message !== undefined || custom_greeting_message !== undefined ? {
+        greeting_message: greeting_message !== undefined ? greeting_message : custom_greeting_message,
+        custom_greeting_message: custom_greeting_message !== undefined ? custom_greeting_message : greeting_message,
+      } : {}),
       ...(microsite !== undefined ? { microsite } : {}),
       ...(rotator !== undefined ? { rotator } : {}),
     };

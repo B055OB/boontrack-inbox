@@ -28,6 +28,32 @@ export interface KnowledgeItem {
 
 export const PLATFORM_KNOWLEDGE_BASE: KnowledgeItem[] = [
   {
+    id: 'ganti_greeting_wa',
+    category: 'ONBOARDING_GUIDE',
+    keywords: [
+      'ganti teks greeting',
+      'ubah sapaan',
+      'greeting',
+      'pesan pembuka',
+      'custom greeting',
+      'sapaan wa',
+      'teks sapaan',
+      'ubah greeting',
+      'ganti greeting',
+      'cara ganti teks greeting',
+      'cara ubah sapaan',
+      'edit greeting',
+      'atur sapaan',
+    ],
+    title: '💬 Cara Mengubah Pesan Sapaan Otomatis WhatsApp',
+    text: `💬 **Panduan Mengubah Pesan Sapaan Otomatis WhatsApp:**\n\n1. **Buka Tab WhatsApp:** Klik menu/tab **WhatsApp** pada navigasi dashboard merchant Anda.\n2. **Pesan Sapaan Otomatis:** Gulir ke bagian **Pesan Sapaan Otomatis (Greeting Message)**.\n3. **Tuliskan Sapaan Toko:** Ketik teks sambutan yang ramah untuk calon pembeli. Anda dapat menyisipkan \`[nama_toko]\` agar nama toko muncul dinamis.\n4. **Simpan:** Klik tombol **Simpan Pesan Sapaan**. Bot WhatsApp toko Anda akan langsung menggunakan sapaan baru ini saat calon pembeli pertama kali mengirim chat! 🚀\n\n*(Catatan: Anda juga bisa mengaturnya melalui tab **Pengaturan** > sub-menu **WhatsApp**).*`,
+    quick_actions: [
+      'Buka Tab WhatsApp',
+      'SOP 3 Langkah Aktivasi Toko',
+      '5 Checklist Wajib Siap Jual',
+    ],
+  },
+  {
     id: 'sop_onboarding',
     category: 'SOP_ONBOARDING',
     keywords: [

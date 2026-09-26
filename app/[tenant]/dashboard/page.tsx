@@ -172,6 +172,10 @@ export default function TenantDashboardPage() {
     connectedPhone,
     setConnectedPhone,
     handleConnectGrowthSession,
+    storeGreetingMessage,
+    setStoreGreetingMessage,
+    handleSaveGreetingMessage,
+    isSavingGreeting,
 
     conversations,
     activeConversationId,
@@ -807,6 +811,8 @@ export default function TenantDashboardPage() {
           setStoreBio={setStoreBio}
           storeWhatsapp={storeWhatsapp}
           setStoreWhatsapp={setStoreWhatsapp}
+          storeGreetingMessage={storeGreetingMessage}
+          setStoreGreetingMessage={setStoreGreetingMessage}
           storeQrisUrl={storeQrisUrl}
           storeQrisPayload={storeQrisPayload}
           setStoreQrisPayload={setStoreQrisPayload}
@@ -909,6 +915,10 @@ export default function TenantDashboardPage() {
               isProScale={isProScale}
               renderLockedFeatureCard={renderLockedFeatureCard}
               setSaveFeedback={setSaveFeedback}
+              greetingMessage={storeGreetingMessage}
+              setGreetingMessage={setStoreGreetingMessage}
+              handleSaveGreetingMessage={handleSaveGreetingMessage}
+              isSavingGreeting={isSavingGreeting}
             />
           )}
 
@@ -1129,6 +1139,8 @@ export default function TenantDashboardPage() {
           setStoreBio={setStoreBio}
           storeWhatsapp={storeWhatsapp}
           setStoreWhatsapp={setStoreWhatsapp}
+          storeGreetingMessage={storeGreetingMessage}
+          setStoreGreetingMessage={setStoreGreetingMessage}
           storeQrisUrl={storeQrisUrl}
           storeQrisPayload={storeQrisPayload}
           setStoreQrisPayload={setStoreQrisPayload}

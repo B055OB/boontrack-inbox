@@ -18,6 +18,7 @@ import {
   Truck,
   MapPin,
   AlertCircle,
+  MessageSquare,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import ReaderIntegrationCard from '../settings/ReaderIntegrationCard';
@@ -40,6 +41,8 @@ export interface SettingsTabProps {
   isUploadingLogo?: boolean;
   nameError: string | null;
   setNameError: (err: string | null) => void;
+  storeGreetingMessage?: string;
+  setStoreGreetingMessage?: (msg: string) => void;
   isTeamScale?: boolean;
   isCheckoutLite?: boolean;
   isModal?: boolean;
@@ -66,6 +69,8 @@ export default function SettingsTab({
   isUploadingLogo = false,
   nameError,
   setNameError,
+  storeGreetingMessage,
+  setStoreGreetingMessage,
   isTeamScale = false,
   isCheckoutLite = false,
   isModal = false,
@@ -76,6 +81,13 @@ export default function SettingsTab({
   const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping'>('profile');
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [localQrisPayload, setLocalQrisPayload] = useState(storeQrisPayload || '');
+  const [localGreeting, setLocalGreeting] = useState<string>(storeGreetingMessage || '');
+
+  useEffect(() => {
+    if (storeGreetingMessage !== undefined) {
+      setLocalGreeting(storeGreetingMessage);
+    }
+  }, [storeGreetingMessage]);
 
   useEffect(() => {
     if (storeQrisPayload) {
@@ -160,6 +172,8 @@ export default function SettingsTab({
               bio: storeBio,
               whatsapp_number: storeWhatsapp,
               whatsapp: storeWhatsapp,
+              greeting_message: localGreeting,
+              custom_greeting_message: localGreeting,
               basic_shipping: {
                 origin_city: originCity,
                 origin_address: originAddress,
@@ -221,6 +235,8 @@ export default function SettingsTab({
           bio: storeBio,
           whatsapp: storeWhatsapp,
           whatsapp_number: storeWhatsapp,
+          greeting_message: localGreeting,
+          custom_greeting_message: localGreeting,
           qris_image_url: storeQrisUrl || undefined,
           qris_url: storeQrisUrl || undefined,
           qris_image: storeQrisUrl || undefined,
@@ -415,6 +431,39 @@ export default function SettingsTab({
         </div>
         <p className="text-[10px] text-slate-400 mt-1">
           Gunakan kode negara (misal <strong>628xxx</strong> bukan 08xxx) agar tautan chat langsung dapat dibuka di HP pelanggan.
+        </p>
+      </div>
+
+      <div className="pt-3 border-t border-slate-200/60 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="font-semibold text-slate-700 flex items-center gap-1.5">
+            <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Pesan Sapaan Otomatis (Greeting Message)</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              const defaultMsg = `Halo! Selamat datang di [nama_toko] 👋\n\nTerima kasih telah menghubungi kami. Ada yang bisa kami bantu seputar produk atau pesanan hari ini?`;
+              setLocalGreeting(defaultMsg);
+              if (setStoreGreetingMessage) setStoreGreetingMessage(defaultMsg);
+            }}
+            className="text-[10px] font-semibold text-blue-600 hover:text-blue-700 underline cursor-pointer"
+          >
+            Format Bawaan
+          </button>
+        </div>
+        <textarea
+          rows={4}
+          value={localGreeting}
+          onChange={(e) => {
+            setLocalGreeting(e.target.value);
+            if (setStoreGreetingMessage) setStoreGreetingMessage(e.target.value);
+          }}
+          placeholder="Halo! Selamat datang di [nama_toko] 👋 Ada yang bisa kami bantu hari ini?"
+          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-emerald-600 leading-relaxed font-sans"
+        />
+        <p className="text-[10px] text-slate-400">
+          Pesan ini dikirimkan otomatis oleh Bot saat calon pembeli pertama kali mengirim chat. Gunakan variabel <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono">[nama_toko]</code> untuk memuat nama toko dinamis.
         </p>
       </div>
     </div>

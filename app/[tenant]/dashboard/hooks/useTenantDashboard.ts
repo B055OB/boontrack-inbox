@@ -241,6 +241,8 @@ export function useTenantDashboard() {
   const [storeDisplayName, setStoreDisplayName] = useState(displayName || '');
   const [storeBio, setStoreBio] = useState('');
   const [storeWhatsapp, setStoreWhatsapp] = useState('');
+  const [storeGreetingMessage, setStoreGreetingMessage] = useState<string>('');
+  const [isSavingGreeting, setIsSavingGreeting] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [isCheckingName, setIsCheckingName] = useState(false);
   const [isSavingStore, setIsSavingStore] = useState(false);
@@ -971,6 +973,9 @@ export function useTenantDashboard() {
           }
           setIsBotActive(tenant?.metadata?.is_bot_active !== false);
           setBotPaused(Boolean(tenant?.metadata?.bot_paused === true));
+          if (tenant?.metadata?.greeting_message || tenant?.metadata?.custom_greeting_message) {
+            setStoreGreetingMessage(tenant.metadata.greeting_message || tenant.metadata.custom_greeting_message);
+          }
         }
       } catch (err) {
         console.error('Gagal memuat data tenant:', err);
@@ -996,6 +1001,9 @@ export function useTenantDashboard() {
           }
           if (s.logo_url) setStoreLogoUrl(s.logo_url);
           if (s.bio) setStoreBio(s.bio);
+          if (s.greeting_message || s.custom_greeting_message || s.metadata?.greeting_message || s.metadata?.custom_greeting_message) {
+            setStoreGreetingMessage(s.greeting_message || s.custom_greeting_message || s.metadata?.greeting_message || s.metadata?.custom_greeting_message);
+          }
           if (s.metadata?.total_omzet || s.total_omzet) {
             setTenantMetaOmzet(Number(s.metadata?.total_omzet || s.total_omzet || 0));
           }
@@ -1679,6 +1687,51 @@ export function useTenantDashboard() {
     }
   };
 
+  const handleSaveGreetingMessage = async (customMsg?: string) => {
+    if (!tenantSlug) return;
+    const textToSave = customMsg !== undefined ? customMsg : storeGreetingMessage;
+    setIsSavingGreeting(true);
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data: tRow } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+        const meta = tRow?.metadata || {};
+        meta.greeting_message = textToSave;
+        meta.custom_greeting_message = textToSave;
+        await supabase
+          .from('tenants')
+          .update({
+            metadata: meta,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('slug', tenantSlug);
+      }
+
+      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          greeting_message: textToSave,
+          custom_greeting_message: textToSave,
+        }),
+      });
+
+      setStoreGreetingMessage(textToSave);
+      setSaveFeedback('✅ Pesan sapaan otomatis WhatsApp berhasil disimpan!');
+      setTimeout(() => setSaveFeedback(null), 4000);
+    } catch (err: any) {
+      console.error('Error saving greeting message:', err);
+      setSaveFeedback('⚠️ Gagal menyimpan pesan sapaan WhatsApp.');
+      setTimeout(() => setSaveFeedback(null), 4000);
+    } finally {
+      setIsSavingGreeting(false);
+    }
+  };
+
   // 7a. Fetch messages for selected conversation from Supabase
   useEffect(() => {
     // Guard UUID syntax: only query messages if activeConversationId is a valid UUID
@@ -2173,6 +2226,10 @@ export function useTenantDashboard() {
     connectedPhone,
     setConnectedPhone,
     handleConnectGrowthSession,
+    storeGreetingMessage,
+    setStoreGreetingMessage,
+    handleSaveGreetingMessage,
+    isSavingGreeting,
 
     // Live Chat Conversations
     conversations,

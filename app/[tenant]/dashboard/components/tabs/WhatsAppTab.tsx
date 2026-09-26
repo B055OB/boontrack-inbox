@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   RefreshCw,
   ArrowRight,
+  Save,
 } from 'lucide-react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 
@@ -47,6 +48,10 @@ interface WhatsAppTabProps {
     targetTierLabel: string;
   }) => React.ReactNode;
   setSaveFeedback: (msg: string | null) => void;
+  greetingMessage?: string;
+  setGreetingMessage?: (msg: string) => void;
+  handleSaveGreetingMessage?: (msg?: string) => Promise<void>;
+  isSavingGreeting?: boolean;
 }
 
 
@@ -90,7 +95,50 @@ export default function WhatsAppTab({
   isProScale,
   renderLockedFeatureCard,
   setSaveFeedback,
+  greetingMessage,
+  setGreetingMessage,
+  handleSaveGreetingMessage,
+  isSavingGreeting,
 }: WhatsAppTabProps) {
+  const [localGreeting, setLocalGreeting] = useState<string>(greetingMessage || '');
+  const [isSavingLocal, setIsSavingLocal] = useState(false);
+
+  React.useEffect(() => {
+    if (greetingMessage !== undefined) {
+      setLocalGreeting(greetingMessage);
+    }
+  }, [greetingMessage]);
+
+  const handleSaveLocalGreeting = async () => {
+    setIsSavingLocal(true);
+    try {
+      if (handleSaveGreetingMessage) {
+        await handleSaveGreetingMessage(localGreeting);
+      } else {
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            greeting_message: localGreeting,
+            custom_greeting_message: localGreeting,
+          }),
+        });
+        if (res.ok) {
+          if (setGreetingMessage) setGreetingMessage(localGreeting);
+          setSaveFeedback('✅ Pesan sapaan otomatis WhatsApp berhasil disimpan!');
+          setTimeout(() => setSaveFeedback(null), 4000);
+        } else {
+          throw new Error('Gagal menyimpan sapaan');
+        }
+      }
+    } catch (err: any) {
+      console.error('Error saving greeting in tab:', err);
+      setSaveFeedback('⚠️ Gagal menyimpan pesan sapaan.');
+      setTimeout(() => setSaveFeedback(null), 4000);
+    } finally {
+      setIsSavingLocal(false);
+    }
+  };
   // Pastikan nomor Platform WABA (+62 851-8183-0080) TIDAK MUNCUL sebagai koneksi toko merchant
   const isMerchantConnected =
     waStatus === 'CONNECTED' &&
@@ -359,6 +407,81 @@ export default function WhatsAppTab({
           </div>
         )
       )}
+
+      {/* KUSTOMISASI TEKS SAPAAN WHATSAPP (GREETING MESSAGE) */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
+              <MessageSquare className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-slate-900">Pesan Sapaan Otomatis (Greeting Message)</h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  ● Respon Pertama
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Teks sapaan yang otomatis dikirim bot saat calon pembeli pertama kali mengirim pesan ke WhatsApp toko.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <label className="font-bold text-slate-700">Teks Sapaan Toko</label>
+            <button
+              type="button"
+              onClick={() => {
+                const defaultMsg = `Halo! Selamat datang di [nama_toko] 👋\n\nTerima kasih telah menghubungi kami. Tim kami siap melayani pesanan dan pertanyaan Kakak.\n\n🛍️ Katalog Produk: https://shop.boontrack.com/${tenantSlug}\n\nAda yang bisa kami bantu seputar produk atau pesanan hari ini?`;
+                setLocalGreeting(defaultMsg);
+                if (setGreetingMessage) setGreetingMessage(defaultMsg);
+              }}
+              className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 underline cursor-pointer"
+            >
+              Gunakan Format Bawaan
+            </button>
+          </div>
+
+          <textarea
+            rows={5}
+            value={localGreeting}
+            onChange={(e) => {
+              setLocalGreeting(e.target.value);
+              if (setGreetingMessage) setGreetingMessage(e.target.value);
+            }}
+            placeholder={`Halo! Selamat datang di [nama_toko] 👋\n\nAda yang bisa kami bantu seputar produk atau pesanan hari ini?`}
+            className="w-full p-3.5 border border-slate-200 rounded-2xl text-xs text-slate-800 font-sans focus:outline-hidden focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500/20 leading-relaxed transition"
+          />
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+            <p className="text-[11px] text-slate-400">
+              💡 Gunakan variabel <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono">[nama_toko]</code> atau <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono">{'{nama_toko}'}</code> untuk menyebut nama toko Anda secara otomatis.
+            </p>
+
+            <button
+              type="button"
+              disabled={isSavingLocal || isSavingGreeting}
+              onClick={handleSaveLocalGreeting}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              {isSavingLocal || isSavingGreeting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Simpan Pesan Sapaan</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
