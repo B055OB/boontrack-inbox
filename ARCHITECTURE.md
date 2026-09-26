@@ -1697,3 +1697,261 @@ Sebagai pemandu navigasi operasional bagi merchant, BoonPilot Copilot mengacu pa
   - Mengelola sesi interaksi inbound/outbound pesan WhatsApp untuk storefront dan merchant notification cluster.
   - Penyelarasan skema tabel Supabase `whatsapp_connections` dengan kolom `is_connected: true` dan pemetaan `tenant_id: 52967979-4760-4cea-b686-cdbdb389c0e1` / `tenant_slug: boon`.
   - Sinkronisasi real-time status koneksi via event `CONNECTION_UPDATE` tanpa latency loop.
+
+---
+
+## 28. (Section 7) Order Lifecycle, Payment Resiliency & Outbox Boundary
+
+> **Architectural Status**: 🔒 **CORE CONTRACT & SPRINT SPECIFICATION §7**  
+> **Core Principle**: *"Order Existence != Payment Confirmation. Pending-First capture guarantees zero lost transactions; Transactional Outbox guarantees zero dual-write anomalies."*
+
+### 7.1 Konsep Pending-First: Order Existence != Payment Confirmation
+Arsitektur transaksi BoonTrack secara ketat menegakkan pemisahan antara **Keberadaan Pesanan (*Order Existence*)** dan **Konfirmasi Pembayaran (*Payment Confirmation*)**:
+- **Anti-Pattern Lama (Post-Payment Creation)**:
+  - Pada sistem konvensional lama yang rentan, record pesanan baru dibuat atau disinkronkan ke database *hanya setelah* notifikasi mutasi berhasil ditangkap oleh APK Reader atau webhook payment gateway.
+  - *Dampak Kegagalan Fatal*: Jika koneksi HP reader terputus, seller mengganti device, paket data reader habis, atau webhook gateway mengalami timeout, transaksi hilang tanpa jejak. Merchant melihat dashboard kosong, calon pembeli komplain uang terpotong namun pesanan tidak tercatat, dan tombol pelunasan manual (*Quick-Paid*) tidak dapat digunakan karena entitas order tidak pernah eksis di database.
+- **Paradigma Pending-First (Pre-Creation Pattern)**:
+  - Setiap niat beli (*buyer checkout intent*) yang mencapai tahap penerbitan metode bayar (misal: generate QRIS Dinamis) **WAJIB LANGSUNG membuat record di tabel `orders` dengan status `PENDING`**.
+  - `Order Existence` tercipta seketika saat formulir checkout disubmit, terlepas dari apakah pembeli nantinya membayar atau mengabaikan tagihan tersebut.
+  - **Manfaat Arsitektural**:
+    1. *Zero Lost Transaction*: Setiap transaksi terekam utuh sejak detik pertama di dashboard merchant.
+    2. *Resilient Manual Recovery*: Jika otomatisasi reader offline, merchant dapat langsung mencocokkan mutasi manual di aplikasi perbankan dan menekan tombol *Quick-Paid* langsung pada baris order yang sudah ada.
+    3. *Lead & Funnel Visibility*: Toko memiliki visibilitas penuh atas tingkat konversi, checkout terbengkalai (*abandoned checkouts*), dan dapat memicu automated follow-up.
+
+### 7.2 Flow Pre-Creation Saat Generate QRIS
+Alur teknis pembentukan pesanan pre-creation saat pembeli memilih pembayaran QRIS Dinamis:
+
+```text
+Pembeli (Storefront / Chat)           Checkout API (Core Gateway)               PostgreSQL (Supabase)
+          │                                        │                                       │
+          ├─── 1. Submit Checkout (Items, Telp) ──►│                                       │
+          │                                        ├─── 2. Alokasi 3-Digit Unique Code ───►│
+          │                                        │       (Rentang 1 s/d 999 unik)        │
+          │                                        │                                       │
+          │                                        ├─── 3. INSERT INTO orders ────────────►│
+          │                                        │       (status: 'PENDING',             │
+          │                                        │        amount: subtotal + ongkir      │
+          │                                        │                - diskon + unik,       │
+          │                                        │        metadata: {ip, ua, _fbp...})   │
+          │                                        │                                       │
+          │                                        ├─── 4. Generate Dynamic QRIS Payload ──┤
+          │                                        │       (Exact Total Payable Amount)    │
+          │                                        │                                       │
+          │◄── 5. Render QRIS + Nominal Unik ──────┤                                       │
+          │                                        │                                       │
+          ▼                                        ▼                                       ▼
+    [PENDING ORDER AKTIF]               [SIAP DICOCOKKAN READER]               [DASHBOARD UPDATE REALTIME]
+```
+
+1. **Alokasi Kode Unik 3-Digit (`unique_code`)**:
+   - Sistem mengambil kode acak integer 3 digit (1 - 999) yang belum terpakai oleh tenant pada jendela waktu pembayaran aktif (TTL 30 - 60 menit).
+   - Nominal final tagihan dihitung deterministik: `final_amount = subtotal + shipping_fee - discount + unique_code`.
+2. **Penyimpanan Record Pre-Creation ke Tabel `orders`**:
+   - Kolom `status`: Ditetapkan ke nilai `'PENDING'`.
+   - Kolom `payment_status`: Ditetapkan ke nilai `'PENDING'`.
+   - Kolom `unique_code`: Menyimpan nilai integer kode unik 3 digit.
+   - Kolom `metadata`: Menyimpan snapshot kontekstual sesi (`ip_address`, `user_agent`, `_fbp`, `_fbc`, `ctwa_clid`, query ref, serta kanal transaksi).
+3. **Penerbitan Payload QRIS**:
+   - String QRIS dinamis di-generate dengan nominal presisi mencakup kode unik untuk mencegah kesalahan transfer dari pembeli.
+4. **Pencocokan Otomatis (*Matching*) Saat Mutasi Masuk**:
+   - Saat Android APK Reader mengirimkan payload mutasi via webhook (`/api/v1/reader/notification`), sistem mencocokkan `tenant_id`, `amount`, dan `unique_code`.
+   - Record `orders` yang berstatus `PENDING` ditemukan secara instan dan ditransisikan ke status `PAID` & `COMPLETED` tanpa membuat baris pesanan baru.
+
+### 7.3 Guardrails Ketat Tombol Manual Quick-Paid & Immutable Audit Trail
+Tombol "Tandai Lunas / Quick-Paid" di dashboard merchant (`/api/v1/tenants/[slug]/orders/[id]/quick-paid`) adalah fitur operasional berkekuatan tinggi untuk mengatasi keterbatasan reader mutasi. Demi mencegah kecurangan, kolusi internal staf toko, atau manipulasi data keuangan, tombol ini dipagari secara ketat:
+
+1. **Wajib Role-Based Access Control (RBAC) & Tenant Scoping**:
+   - Eksekusi endpoint wajib memvalidasi sesi autentikasi (`auth.uid()`).
+   - Role aktor pengeksekusi wajib berstatus `ADMIN` atau `OWNER` pada tenant terkait.
+   - **Strict Tenant Isolation**: `orders.tenant_id` wajib identik 100% dengan `session.tenant_id`. Permintaan lintas tenant (*cross-tenant tampering*) wajib ditolak dengan HTTP `403 Forbidden`.
+2. **Anti-Spoofing Source Identification**:
+   - Transisi status manual **DILARANG KERAS MENYAMAR** sebagai pembayaran gateway otomatis (`GATEWAY_AUTOMATED`, `XENDIT`, atau `READER_MUTATION`).
+   - Sistem wajib mencatat sumber pelunasan secara eksplisit:
+     `payment_source = 'MANUAL_CONFIRMATION'` atau `metadata.payment_confirmation_source = 'MANUAL_CONFIRMATION'`.
+   - Rekonsiliasi akuntansi dapat membedakan mana dana yang masuk lewat gateway/reader otomatis dan mana yang dilunasi manual oleh operator manusia.
+3. **Pencatatan Audit Trail Wajib & Tak Dapat Diubah (*Immutable Audit Log*)**:
+   - Setiap kali Quick-Paid dieksekusi, sistem secara atomik menuliskan satu baris log ke tabel audit (`order_audit_logs` / `audit_trail`):
+     * `actor_id`: UUID user admin yang mengklik tombol.
+     * `tenant_id`: UUID tenant pemilik order.
+     * `order_id`: UUID pesanan yang dilunasi.
+     * `previous_status`: Status sebelum tindakan (`PENDING`).
+     * `new_status`: Status baru (`PAID`).
+     * `reason`: Alasan konfirmasi (contoh: "Bukti transfer m-banking diverifikasi manual").
+     * `ip_address` & `user_agent`: Jejak digital perangkat operator.
+     * `timestamp`: Waktu pencatatan presisi ISO-8601 UTC.
+   - Tabel audit log diberi proteksi RLS `INSERT ONLY` (dilarang ada operasi `UPDATE` atau `DELETE` pada tabel audit).
+
+### 7.4 Transactional Outbox Pattern & Event Boundary Atomicity
+Untuk menghindari masalah inkonsistensi data antar-sistem (*dual-write hazard*), seluruh aksi pasca-transaksi diatur oleh pola **Transactional Outbox**:
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 SINGLE DATABASE TRANSACTION (BEGIN ... COMMIT)              │
+│                                                                             │
+│  1. UPDATE orders SET status = 'PAID' WHERE id = :id AND status = 'PENDING' │
+│  2. INSERT INTO transactional_outbox (event_type: 'PAYMENT_CONFIRMED', ...) │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼ (Asynchronous Reliable Relay)
+                    ┌───────────────────────────────────┐
+                    │       OUTBOX RELAY WORKER         │
+                    │   (SELECT FOR UPDATE SKIP LOCKED) │
+                    └───────────────────────────────────┘
+                                      │
+          ┌───────────────────────────┼───────────────────────────┐
+          ▼                           ▼                           ▼
+[Kirim Akses / File Digital]    [Meta CAPI Purchase Event]    [Kalkulasi Komisi Afiliasi]
+  (WhatsApp / Email Notif)      (Event Deduplication ID)      (Ledger Afiliasi & Payout)
+```
+
+1. **Pemisahan Tegas Domain Event**:
+   - `ORDER_CREATED`:
+     * Terbit saat pesanan pre-creation disimpan dengan status `PENDING`.
+     * *Scope Side-Effects*: Lead capture, analitik keranjang, inisialisasi timer expired checkout.
+     * **Negative Invariant**: DILARANG KERAS memicu pengiriman akses digital, pemotongan stok permanen, maupun pengiriman event Meta CAPI `Purchase`.
+   - `PAYMENT_CONFIRMED`:
+     * Terbit saat status pesanan beralih ke `PAID` (baik via Reader Webhook otomatis maupun manual Quick-Paid).
+     * *Scope Side-Effects*: Pemicu tunggal downstream actions: pengiriman tautan produk digital / lisensi ke WhatsApp pembeli, pemotongan inventaris permanen, dispatch event Meta CAPI `Purchase` (dengan matching `event_id`), dan kalkulasi komisi afiliasi.
+2. **Prinsip Atomisitas Transaksional (Atomic Boundary)**:
+   - Pembaruan status pesanan ke `PAID` dan penyisipan domain event ke tabel outbox **WAJIB berada dalam 1 blok transaksi database yang sama**:
+     ```sql
+     BEGIN;
+     -- 1. Mutasi status order
+     UPDATE orders
+     SET status = 'PAID', payment_status = 'PAID', updated_at = NOW()
+     WHERE id = :order_id AND tenant_id = :tenant_id AND status = 'PENDING';
+
+     -- 2. Rekam event ke transactional outbox
+     INSERT INTO transactional_outbox (
+       id, tenant_id, aggregate_type, aggregate_id, event_type, payload, status, created_at
+     ) VALUES (
+       gen_random_uuid(), :tenant_id, 'ORDER', :order_id, 'PAYMENT_CONFIRMED', :event_payload, 'PENDING', NOW()
+     );
+     COMMIT;
+     ```
+   - *Garansi*: Kegagalan pada outbox otomatis membatalkan status `PAID` pesanan (Rollback), dan sebaliknya. Tidak akan pernah terjadi pesanan berstatus `PAID` yang luput mengirimkan produk digital kepada pembeli.
+3. **Idempotent Outbox Relay Execution**:
+   - Outbox worker memproses antrean menggunakan mekanisme `SELECT ... FOR UPDATE SKIP LOCKED` untuk menjamin konsumsi event secara *at-least-once* dan terbebas dari *race condition* multi-worker.
+   - Setiap downstream handler wajib idempotent dengan memeriksa `event_id` sebelum mengirimkan pesan atau memanggil API pihak ketiga.
+
+---
+
+## 29. (Section 8) AI Sales Representative Engine Architecture (SALES_REP_V1)
+
+> **Architectural Status**: 🔒 **PRODUCTION CONTRACT & SALES ENGINE SPECIFICATION §8**  
+> **Core Principle**: *"LLM Explains, Core Decides. Untrusted cognitive intelligence translates customer desires into verified commercial actions without hallucinating store truth."*
+
+### 8.1 Paradigma "LLM Explains, Core Decides"
+Arsitektur engine tenaga penjual AI (`SALES_REP_V1`) memisahkan secara radikal antara **Fungsi Kognitif Bahasa (*Cognitive Language Layer*)** dan **Otoritas Kebenaran Komersial (*Commercial Truth Authority*)**:
+- **LLM sebagai Untrusted Cognitive Layer**:
+  - LLM bertindak sebagai representasi tenaga penjual: membangun keakraban (*rapport*), memahami bahasa gaul, mengekstrak kebutuhan pelanggan secara empatik, menjawab keraguan, dan menyusun penawaran persuasif.
+  - LLM bersifat probabilistik sehingga **TIDAK DIIZINKAN** menetapkan harga produk, mengonfirmasi stok barang, memvalidasi kupon promo, ataupun membuat status transaksi baru secara sepihak.
+- **Core Engine sebagai Single Source of Truth**:
+  - Seluruh verifikasi harga, perhitungan subtotal/diskon, alokasi inventaris, validasi pembayaran, dan penegakan batas tier langganan tenant dieksekusi secara deterministik oleh backend database Supabase.
+  - Formula Kerja Baku:
+    $$\text{Customer Message} \longrightarrow \text{LLM Extracted Intent} \overset{\text{Validasi Ketat}}{\longrightarrow} \text{Core Deterministic Decision} \longrightarrow \text{LLM Natural Synthesis}$$
+
+### 8.2 Anti-Hallucination Guardrails & Ground-Truth Guidance
+Sistem menerapkan perlindungan multi-lapis terhadap halusinasi informasi toko:
+1. **Catalog Ground-Truth Injection**:
+   - LLM hanya dibekali ringkasan katalog produk resmi yang berstatus `is_active: true` dari tabel `products` milik tenant yang bersangkutan.
+   - LLM dilarang berspekulasi atau menawarkan varian yang tidak tertera di data katalog.
+2. **Explicit Capability Boundary**:
+   - Jika suatu kapabilitas bisnis belum aktif pada tenant terkait (contoh: ekspedisi instan belum diatur, pembayaran kartu kredit belum aktif, atau produk kehabisan stok), bot **DILARANG MENGARANG FAKTA ATAU MENJANJIKAN HAL YANG TIDAK DIDUKUNG**.
+   - Bot wajib mengarahkan pembeli secara transparan dan eksplisit:
+     * *Contoh Stok Habis*: "Mohon maaf kak, untuk varian Merah ukuran L saat ini sedang habis terjual. Varian yang ready saat ini ukuran M atau varian Biru ukuran L. Mau kami bantu amankan yang M kak?"
+     * *Contoh Fitur Non-Aktif*: "Untuk toko kami saat ini pengiriman reguler dilayani via J&T dan SiCepat kak. Layanan kurir instan belum tersedia."
+3. **Graceful Human Handover**:
+   - Jika pertanyaan pembeli menyentuh ranah negosiasi khusus, komplain kompleks, atau hal di luar ground-truth, bot secara elegan mengarahkan pembeli ke admin manusia (`HANDOVER_REQUESTED`).
+
+### 8.3 Hierarchical Context Retention & Strict Tenant Isolation
+Untuk menjaga kesinambungan percakapan tanpa mencampuradukkan data toko yang berbeda, engine percakapan mengelola konteks melalui partisi 4 lapis hierarkis:
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   HIERARCHICAL CONTEXT RETENTION PARTITION                  │
+├─────────────────────────┬───────────────────────────────────────────────────┤
+│ LAYER 1: HISTORY        │ Sliding window 6-10 pesan mentah terakhir         │
+│ (Conversational Flow)   │ Menjaga alur obrolan natural jangka pendek        │
+├─────────────────────────┼───────────────────────────────────────────────────┤
+│ LAYER 2: SESSION        │ State aktif: State Machine Stage, Cart, Address   │
+│ (Transaction Machine)   │ Memandu alur dari eksplorasi menuju closing       │
+├─────────────────────────┼───────────────────────────────────────────────────┤
+│ LAYER 3: FACTS          │ Profil toko, katalog produk aktif, kebijakan retur│
+│ (Business Ground Truth) │ Diambil langsung dari PostgreSQL per tenant_id    │
+├─────────────────────────┼───────────────────────────────────────────────────┤
+│ LAYER 4: SIGNALS        │ Preferensi pembeli (kategori minat, price intent) │
+│ (Customer Intelligence) │ Diperbarui adaptif selama sesi berlangsung        │
+└─────────────────────────┴───────────────────────────────────────────────────┘
+```
+
+- **Isolasi Mutlak Multi-Tenant**:
+  - Kunci partisi konteks di memori (Redis) maupun tabel database **WAJIB** terikat pada kombinasi komposit:
+    $$\text{Context Key} = \text{tenant\_id} + \text{conversation\_id} + \text{user\_id}$$
+  - **Negative Invariant**: Dilarang keras membaca atau membagikan memori obrolan lintas tenant (`tenant_id_A != tenant_id_B`). Data pembeli Toko Fashion A tidak akan pernah bocor atau mempengaruhi rekomendasi Toko Gadget B.
+
+### 8.4 Multi-Tenant Standardization & Dogfood Reference Implementation
+Platform BoonTrack tidak membuat percabangan kode terpisah untuk kebutuhan internal platform:
+1. **Dogfood Reference Implementation**:
+   - Nomor WhatsApp resmi platform `+62 812-1556-7168` diposisikan sebagai **Reference Implementation** nyata:
+     * `tenant_slug: boontrack-shop`
+     * `template_code: SHOP_V1`
+     * `sales_mode: AI_SALES_REP`
+   - Implementasi ini membuktikan bahwa platform menggunakan pipeline multi-tenant yang sama persis (*eat our own dogfood*) tanpa hak istimewa (*zero hardcoded privilege*) di tingkat kode program.
+2. **Dynamic Storefront Binding**:
+   - Setiap tenant, baik toko referensi platform maupun merchant publik, terikat pada resolver identitas yang seragam:
+     `slug -> tenant_id -> TenantRuntimeContext -> sales_rep_profile`.
+
+### 8.5 Tiering: Default Assistant vs. AI Sales Representative Workflow
+Kapabilitas asisten percakapan dibedakan secara tegas berdasarkan tier langganan tenant:
+
+| Dimensi Fitur | Default Assistant (Starter / Solo) | AI Sales Representative (Pro / Enterprise) |
+| :--- | :--- | :--- |
+| **Fokus Utama** | Layanan Pelanggan Dasar & FAQ | Penjualan Proaktif & Konversi Transaksi |
+| **Sifat Respons** | Reaktif (menjawab hanya saat ditanya) | Proaktif & Konsultatif (mengarahkan ke closing) |
+| **Workflow Pipeline** | Jawaban FAQ statis & link storefront | **7-Step Consultative Sales Workflow**: |
+| | | 1. **Understand**: Eksplorasi kebutuhan & masalah pembeli. |
+| | | 2. **Recommend**: Rekomendasi solusi & produk paling tepat. |
+| | | 3. **Validate**: Validasi stok riil & ketersediaan ke Core. |
+| | | 4. **Objection Handling**: Menepis ragu harga/kualitas/pengiriman. |
+| | | 5. **Closing**: Teknik penutupan penjualan persuasif. |
+| | | 6. **Checkout**: Terbitkan invoice QRIS langsung di balon chat. |
+| | | 7. **Follow-up**: Retensi & pesan pengingat tagihan belum bayar. |
+| **Integrasi Checkout** | Memberikan tautan web storefront | Penerbitan QRIS instan di dalam percakapan WhatsApp |
+
+### 8.6 Configuration-Driven Provisioning (`sales_rep_profiles`)
+Peningkatan kapasitas tenant dari asisten standar menjadi AI Sales Representative **TIDAK MEMERLUKAN pembuatan backend baru ataupun deployment instance server tambahan**.
+
+Proses upgrade dilakukan murni melalui **Provisioning Konfigurasi** pada tabel `sales_rep_profiles`:
+```sql
+CREATE TABLE IF NOT EXISTS sales_rep_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  profile_name VARCHAR(100) NOT NULL DEFAULT 'Sales Expert',
+  sales_mode VARCHAR(50) NOT NULL DEFAULT 'AI_SALES_REP', -- 'DEFAULT_ASSISTANT' | 'AI_SALES_REP'
+  persona_tone VARCHAR(50) NOT NULL DEFAULT 'FRIENDLY_CONSULTATIVE',
+  consultative_framework VARCHAR(50) NOT NULL DEFAULT 'CONSULTATIVE_7_STEP',
+  objection_handling_rules JSONB NOT NULL DEFAULT '[]'::jsonb,
+  closing_intensity VARCHAR(30) NOT NULL DEFAULT 'BALANCED', -- 'SOFT' | 'BALANCED' | 'ASSERTIVE'
+  catalog_scope JSONB DEFAULT '{"all_active": true}'::jsonb,
+  guardrail_rules JSONB DEFAULT '{"allow_discounts": false, "enforce_stock": true}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT uq_sales_rep_tenant UNIQUE(tenant_id)
+);
+```
+
+- **Runtime Execution**:
+  Saat pesan WhatsApp masuk, Core Engine mengambil profil aktif tenant:
+  ```typescript
+  const profile = await getSalesRepProfile(tenantId);
+  if (profile.sales_mode === 'AI_SALES_REP' && isProOrAbove(tenant.tier)) {
+    return await executeConsultativeSalesPipeline(message, profile, tenantContext);
+  } else {
+    return await executeDefaultFaqAssistant(message, tenantContext);
+  }
+  ```
+- **Manfaat**:
+  - *Zero Downtime Deployment*: Merchant yang meng-upgrade paket langsung menikmati tenaga penjual AI dalam hitungan milidetik setelah mutasi pembayaran langganan terverifikasi.
+  - *Customizable per Merchant*: Merchant dapat menyesuaikan gaya closing, persona, dan cara menjawab keberatan harga melalui dashboard tanpa perlu menulis kode sebaris pun.
+
