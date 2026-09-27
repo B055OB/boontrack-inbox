@@ -24,6 +24,7 @@ export default function BotSimulatorModal({ tenantSlug, isOpen, onClose }: BotSi
   const [sessionId, setSessionId] = useState<string>(() => `sim-${Date.now()}`);
   const [loading, setLoading] = useState(false);
   const [collectedEntities, setCollectedEntities] = useState<Record<string, any>>({});
+  const [activeEngine, setActiveEngine] = useState<string>('SALES_REP_V1');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -73,7 +74,10 @@ export default function BotSimulatorModal({ tenantSlug, isOpen, onClose }: BotSi
 
       const json = await res.json();
       if (json.success && json.data) {
-        const { reply, next_state, state_trace, entities } = json.data;
+        const { reply, next_state, state_trace, entities, active_engine } = json.data;
+        if (active_engine) {
+          setActiveEngine(active_engine);
+        }
 
         setMessages((prev) => [
           ...prev,
@@ -135,7 +139,7 @@ export default function BotSimulatorModal({ tenantSlug, isOpen, onClose }: BotSi
               </div>
               <div>
                 <h4 className="text-xs font-black text-slate-900">Bot WhatsApp Simulator</h4>
-                <p className="text-[10px] text-emerald-600 font-bold">● Active Engine: LOCAL_SERVICE_V1</p>
+                <p className="text-[10px] text-emerald-600 font-bold font-mono">● Active Engine: {activeEngine}</p>
               </div>
             </div>
 
@@ -189,27 +193,62 @@ export default function BotSimulatorModal({ tenantSlug, isOpen, onClose }: BotSi
           {/* Quick Questions & Input Box */}
           <div className="p-3 bg-white border-t border-slate-200 space-y-2">
             <div className="flex gap-1.5 overflow-x-auto pb-1 text-[10px]">
-              <button
-                type="button"
-                onClick={() => handleSendMessage('Toren saya 520 liter')}
-                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-medium whitespace-nowrap"
-              >
-                &ldquo;Toren saya 520 liter&rdquo;
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage('Aman nggak buat air minum?')}
-                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-amber-800 font-medium whitespace-nowrap"
-              >
-                &ldquo;Aman nggak buat air minum?&rdquo; (Side Question)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage('Ada garansi gak?')}
-                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-amber-800 font-medium whitespace-nowrap"
-              >
-                &ldquo;Ada garansi gak?&rdquo;
-              </button>
+              {activeEngine === 'LOCAL_SERVICE_V1' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Toren saya 520 liter')}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-medium whitespace-nowrap"
+                  >
+                    &ldquo;Toren saya 520 liter&rdquo;
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Aman nggak buat air minum?')}
+                    className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-amber-800 font-medium whitespace-nowrap"
+                  >
+                    &ldquo;Aman nggak buat air minum?&rdquo; (Side Question)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Ada garansi gak?')}
+                    className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-amber-800 font-medium whitespace-nowrap"
+                  >
+                    &ldquo;Ada garansi gak?&rdquo;
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Apa saja program/produk yang tersedia?')}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-medium whitespace-nowrap"
+                  >
+                    &ldquo;Katalog & Produk&rdquo;
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Gimana cara daftarnya?')}
+                    className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-emerald-800 font-medium whitespace-nowrap"
+                  >
+                    &ldquo;Cara Daftar / Checkout&rdquo;
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Setelah bayar dapatnya apa dan lewat apa?')}
+                    className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-blue-800 font-medium whitespace-nowrap"
+                  >
+                    &ldquo;FAQ Akses Materi&rdquo;
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendMessage('Harganya bisa nego atau ada diskon?')}
+                    className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-amber-800 font-medium whitespace-nowrap"
+                  >
+                    &ldquo;Tawar Harga (Objection)&rdquo;
+                  </button>
+                </>
+              )}
             </div>
 
             <form
@@ -276,21 +315,44 @@ export default function BotSimulatorModal({ tenantSlug, isOpen, onClose }: BotSi
             <div className="space-y-2 pt-2 border-t border-slate-800">
               <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Extracted Entities:</span>
               <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 text-[11px] font-mono space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Capacity:</span>
-                  <span className="text-emerald-400 font-bold">{collectedEntities.capacity ? `${collectedEntities.capacity} L` : 'null'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Price:</span>
-                  <span className="text-emerald-400 font-bold">{collectedEntities.price ? `Rp ${collectedEntities.price.toLocaleString('id-ID')}` : 'null'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Address:</span>
-                  <span className="text-slate-300 truncate max-w-[130px]">{collectedEntities.address || 'null'}</span>
-                </div>
+                {activeEngine === 'LOCAL_SERVICE_V1' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Capacity:</span>
+                      <span className="text-emerald-400 font-bold">{collectedEntities.capacity ? `${collectedEntities.capacity} L` : 'null'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Price:</span>
+                      <span className="text-emerald-400 font-bold">{collectedEntities.price ? `Rp ${Number(collectedEntities.price).toLocaleString('id-ID')}` : 'null'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Address:</span>
+                      <span className="text-slate-300 truncate max-w-[130px]">{collectedEntities.address || 'null'}</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Product:</span>
+                      <span className="text-emerald-400 font-bold truncate max-w-[140px]">{collectedEntities.product_name || collectedEntities.service_name || 'null'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Price:</span>
+                      <span className="text-emerald-400 font-bold">{collectedEntities.price ? `Rp ${Number(collectedEntities.price).toLocaleString('id-ID')}` : 'null'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Checkout:</span>
+                      <span className="text-blue-400 truncate max-w-[130px]">{collectedEntities.checkout_url ? 'Link Ready' : 'null'}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between">
                   <span className="text-slate-500">Status:</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${collectedEntities.status === 'BOOKING_READY' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                    collectedEntities.status === 'BOOKING_READY' || collectedEntities.status === 'CHECKOUT_OFFERED'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}>
                     {collectedEntities.status || 'IN_PROGRESS'}
                   </span>
                 </div>

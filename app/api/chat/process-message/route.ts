@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
             custom_data: {
               currency: 'IDR',
               value: funnelRes.bookingData?.total_price || 0,
-              content_name: funnelRes.bookingData?.service_item || 'Jasa Kuras Toren',
+              content_name: funnelRes.bookingData?.service_item || 'Layanan / Produk',
             },
           }),
         }).catch((err) => console.warn('[CAPI Trigger Warning]:', err));
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
           state_trace: ['FUNNEL_CLOSING_STEP'],
           entities: funnelRes.bookingData || {},
           is_booking_ready: !!funnelRes.isBookingCreated,
+          active_engine: 'SALES_REP_V1',
         },
       });
     }

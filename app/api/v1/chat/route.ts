@@ -107,6 +107,29 @@ export async function POST(req: NextRequest) {
     const channel = body.channel || 'WAHA';
     const defaultQuickActions = getIndustryQuickReplies(category, tenantMetadata);
 
+    const rawVertical = String(
+      tenantMetadata.vertical_category ||
+      tenantMetadata.vertical_type ||
+      tenantMetadata.category ||
+      category ||
+      ''
+    ).toLowerCase().trim();
+
+    const explicitEngine = String(
+      tenantMetadata.active_engine ||
+      tenantMetadata.ai_engine ||
+      tenantMetadata.engine_mode ||
+      ''
+    ).toUpperCase().trim();
+
+    const isFieldService = (
+      rawVertical === 'field_service' ||
+      rawVertical === 'local_service' ||
+      explicitEngine === 'LOCAL_SERVICE_V1'
+    ) && explicitEngine !== 'SALES_REP_V1';
+
+    const activeEngine = isFieldService ? 'LOCAL_SERVICE_V1' : 'SALES_REP_V1';
+
     // --- CLOSING-SIGNAL FUNNEL INTERCEPTOR & BOOKING AUTO-EXTRACTION ---
     const senderPhone = body.sender_phone || body.phone_number || body.from || body.user_identifier || '';
     const funnelRes = await processFunnelBookingMessage({
@@ -126,6 +149,7 @@ export async function POST(req: NextRequest) {
         type: funnelRes.isBookingCreated ? 'BOOKING_CONFIRMED' : 'TEXT',
         booking: funnelRes.bookingData,
         quick_actions: defaultQuickActions,
+        active_engine: activeEngine,
       });
     }
 
@@ -162,6 +186,7 @@ export async function POST(req: NextRequest) {
           intent_key: zeroAiRes.intent_key,
           interactive_payload: zeroAiRes.interactive_payload,
           quick_actions: zeroAiRes.quick_actions || defaultQuickActions,
+          active_engine: activeEngine,
         });
       }
     }
@@ -236,6 +261,7 @@ export async function POST(req: NextRequest) {
           checkout_url: checkoutUrl,
           type: 'FAQ_MATCH',
           quick_actions: defaultQuickActions,
+          active_engine: activeEngine,
         });
       }
     }
@@ -550,6 +576,7 @@ Instruksi Lainnya:
       tenant_slug: slug,
       checkout_url: checkoutUrl,
       quick_actions: defaultQuickActions,
+      active_engine: activeEngine,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Chat error';

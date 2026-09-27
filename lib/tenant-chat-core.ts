@@ -46,12 +46,19 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
   // 1. Ambil data tenant termasuk metadata
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("id, slug, name, category, metadata")
+    .select("id, slug, name, category, business_type, metadata")
     .eq("slug", cleanSlug)
     .maybeSingle();
 
   const storeName = tenant?.name || cleanSlug.replace(/[-_]/g, " ").toUpperCase();
-  const isService = tenant?.category === "service" || tenant?.category === "LOCAL_SERVICE" || cleanSlug.includes("kuras");
+  const rawVertical = String(
+    tenant?.metadata?.vertical_category ||
+    tenant?.metadata?.vertical_type ||
+    tenant?.category ||
+    tenant?.business_type ||
+    ""
+  ).toLowerCase().trim();
+  const isService = rawVertical === "field_service" || rawVertical === "local_service" || rawVertical === "service";
 
   const tenantDomainInfo = {
     slug: tenant?.slug || cleanSlug,

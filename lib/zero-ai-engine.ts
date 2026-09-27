@@ -1,4 +1,5 @@
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { isValidUuid } from '@/lib/uuid-guard';
 import { getTenantCheckoutUrl, getTenantActionUrl, getTenantBaseUrl } from '@/lib/checkout-link';
 import {
   InteractiveMenu,
@@ -707,10 +708,14 @@ export async function processZeroAiMessage(
     let productLines: string[] = [];
 
     // Query tabel products resmi
+    const tenantFilter = isValidUuid(tenant.id)
+      ? `tenant_id.eq.${tenant.id}`
+      : `tenant_id.eq.${tenant.slug}`;
+
     const { data: dbProducts } = await supabase
       .from('products')
       .select('*')
-      .or(`tenant_id.eq.${tenant.id},tenant_id.eq.${tenant.slug}`)
+      .or(isValidUuid(tenant.id) && isValidUuid(tenant.slug) ? `tenant_id.eq.${tenant.id},tenant_id.eq.${tenant.slug}` : tenantFilter)
       .eq('is_available', true)
       .order('price', { ascending: true })
       .limit(10);

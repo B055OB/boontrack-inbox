@@ -40,6 +40,7 @@ export interface EngineResult {
   is_booking_ready: boolean;
   interactive_payload?: any;
   quick_actions?: string[];
+  active_engine?: string;
 }
 
 interface ServiceConfigItem {
@@ -58,7 +59,7 @@ export class ConversationEngine {
     // 0. Ambil Data Tenant & Konfigurasi Interactive Menu / Bot Mode
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('id, slug, name, category, metadata')
+      .select('id, slug, name, category, business_type, metadata')
       .eq('slug', tenant_id)
       .maybeSingle();
 
@@ -68,6 +69,32 @@ export class ConversationEngine {
       : [];
     const botMode: 'STATIC' | 'HYBRID' | 'AI' = String(metadata.bot_mode || 'HYBRID').toUpperCase() as any;
     const channelType: 'WABA' | 'WAHA' = payload.channel_type || (payload.channel === 'WHATSAPP' ? 'WABA' : 'WAHA');
+
+    // Identifikasi Active Engine: SALES_REP_V1 sebagai Global Default
+    const rawVertical = String(
+      metadata.vertical_category ||
+      metadata.vertical_type ||
+      metadata.category ||
+      tenant?.category ||
+      tenant?.business_type ||
+      ''
+    ).toLowerCase().trim();
+
+    const explicitEngine = String(
+      metadata.active_engine ||
+      metadata.ai_engine ||
+      metadata.engine_mode ||
+      ''
+    ).toUpperCase().trim();
+
+    // LOCAL_SERVICE_V1 HANYA aktif jika kategori lapangan/field service atau eksplisit diset
+    const isFieldService = (
+      rawVertical === 'field_service' ||
+      rawVertical === 'local_service' ||
+      explicitEngine === 'LOCAL_SERVICE_V1'
+    ) && explicitEngine !== 'SALES_REP_V1';
+
+    const activeEngine = isFieldService ? 'LOCAL_SERVICE_V1' : 'SALES_REP_V1';
 
     // Bot aktif secara default sejak awal akun dibuat tanpa mewajibkan toggle manual
     const isBotActive = metadata.is_bot_active !== false;
@@ -80,6 +107,7 @@ export class ConversationEngine {
         state_trace: trace,
         entities: {},
         is_booking_ready: false,
+        active_engine: activeEngine,
       };
     }
 
@@ -93,7 +121,7 @@ export class ConversationEngine {
     });
 
     if (zeroAiRes.handled) {
-      trace.push(`ZERO_AI_${zeroAiRes.type}`);
+      trace.push(activeEngine, `ZERO_AI_${zeroAiRes.type}`);
       if (zeroAiRes.silent) {
         return {
           reply: '',
@@ -101,6 +129,7 @@ export class ConversationEngine {
           state_trace: trace,
           entities: {},
           is_booking_ready: false,
+          active_engine: activeEngine,
         };
       }
 
@@ -113,6 +142,7 @@ export class ConversationEngine {
           is_booking_ready: false,
           interactive_payload: zeroAiRes.interactive_payload,
           quick_actions: zeroAiRes.quick_actions,
+          active_engine: activeEngine,
         };
       }
     }
@@ -139,10 +169,7 @@ export class ConversationEngine {
         .single();
       session = newSession || { current_state: 'GREETING' };
     } else if (session.current_state === 'GREETING') {
-      // BUG FIX: Sesi SUDAH ADA di DB (bukan sesi baru) tapi state masih 'GREETING'.
-      // Ini terjadi ketika pesan sambutan sudah terkirim di invocation sebelumnya
-      // tapi state tidak pernah di-persist ke 'ACTIVE' (stuck loop).
-      // Advance ke ACTIVE agar pesan lanjutan dirouting ke ZeroAI/LLM, bukan re-render greeting.
+      // Advance ke ACTIVE agar pesan lanjutan dirouting ke Sales Rep / Engine, bukan looping greeting
       await supabase
         .from('conversation_sessions')
         .update({ current_state: 'ACTIVE' })
@@ -151,7 +178,7 @@ export class ConversationEngine {
       trace.push('AUTO_ADVANCE_GREETING_TO_ACTIVE');
     }
 
-    trace.push(session.current_state);
+    trace.push(activeEngine, session.current_state);
 
     // 2. Ambil Entity Terkumpul
     let { data: entities } = await supabase
@@ -166,10 +193,10 @@ export class ConversationEngine {
         tenant_id,
         capacity: null,
         price: null,
+        product_name: null,
         customer_name: null,
         address: null,
-        scheduled_date: null,
-        scheduled_time: null
+        status: 'IN_PROGRESS',
       };
     }
 
@@ -184,7 +211,8 @@ export class ConversationEngine {
         state_trace: trace,
         entities,
         is_booking_ready: false,
-        interactive_payload: channelType === 'WABA' ? formatInteractiveMenu(menuMatch.menu, 'WABA') : undefined
+        interactive_payload: channelType === 'WABA' ? formatInteractiveMenu(menuMatch.menu, 'WABA') : undefined,
+        active_engine: activeEngine,
       };
     }
 
@@ -198,12 +226,24 @@ export class ConversationEngine {
         state_trace: trace,
         entities,
         is_booking_ready: false,
-        interactive_payload: channelType === 'WABA' ? formatInteractiveMenu(triggerMatch, 'WABA') : undefined
+        interactive_payload: channelType === 'WABA' ? formatInteractiveMenu(triggerMatch, 'WABA') : undefined,
+        active_engine: activeEngine,
       };
     }
 
     // --- INBOUND FAST-PATH 3: FAQ GROUND TRUTH MATCH ---
-    const tenantFaqs: any[] = Array.isArray(metadata.faqs) ? metadata.faqs : [];
+    const tenantFaqs: any[] = Array.isArray(metadata.faqs)
+      ? metadata.faqs
+      : (Array.isArray(metadata.boonpilot_proposal?.knowledge)
+          ? metadata.boonpilot_proposal.knowledge
+              .filter((k: any) => k.category === 'FAQ')
+              .map((k: any) => ({
+                id: k.id,
+                question: k.title,
+                answer: k.content,
+              }))
+          : []);
+
     if (tenantFaqs.length > 0 && cleanMsg) {
       const normalizedMsg = cleanMsg.toLowerCase();
       const matchedFaq = tenantFaqs.find((f: any) => {
@@ -219,6 +259,7 @@ export class ConversationEngine {
           state_trace: trace,
           entities,
           is_booking_ready: false,
+          active_engine: activeEngine,
         };
       }
     }
@@ -233,10 +274,236 @@ export class ConversationEngine {
         state_trace: trace,
         entities,
         is_booking_ready: false,
-        interactive_payload: channelType === 'WABA' ? formatInteractiveMenu(primaryMenu, 'WABA') : undefined
+        interactive_payload: channelType === 'WABA' ? formatInteractiveMenu(primaryMenu, 'WABA') : undefined,
+        active_engine: activeEngine,
       };
     }
 
+    // =========================================================================
+    // ROUTE 1: SALES_REP_V1 (GLOBAL DEFAULT CONVERSATIONAL SALES AGENT)
+    // =========================================================================
+    if (activeEngine === 'SALES_REP_V1') {
+      const storeName = tenant?.name || metadata.store_name || tenant_id;
+      const tenantDomainInfo = {
+        slug: tenant?.slug || tenant_id,
+        custom_domain: metadata.custom_domain || null,
+        category: rawVertical || 'digital',
+      };
+      const products: any[] = Array.isArray(metadata.products) ? metadata.products : [];
+      const aiKnowledge = metadata.ai_knowledge || {};
+      const salesPolicy = metadata.sales_policy || metadata.playbook || {};
+
+      // 1. GREETING STATE (Sapaan Awal Ramah & Consultative)
+      if (session.current_state === 'GREETING') {
+        const greetingMsg =
+          aiKnowledge.greeting_message ||
+          metadata.greeting_message ||
+          metadata.custom_greeting_message ||
+          metadata.bot_greeting ||
+          `Halo! Selamat datang di *${storeName}* ✨\n\nAda yang bisa kami bantu? Silakan tanyakan produk, paket, atau info lainnya.`;
+
+        await supabase
+          .from('conversation_sessions')
+          .update({ current_state: 'ACTIVE' })
+          .eq('session_id', session_id);
+
+        trace.push('GREETING', 'ADVANCE_TO_ACTIVE');
+        return {
+          reply: greetingMsg,
+          next_state: 'ACTIVE',
+          state_trace: trace,
+          entities: { ...entities, status: 'ENGAGED' },
+          is_booking_ready: false,
+          active_engine: 'SALES_REP_V1',
+        };
+      }
+
+      // 2. HANDOVER ESCALATION (Eskalasi Komplain / Bicara dengan Tim Manusia)
+      const handoverTrigger = salesPolicy.handover_trigger || '';
+      const handoverPhone = salesPolicy.handover_phone || metadata.whatsapp_number || '';
+      const handoverKeywords = handoverTrigger
+        ? handoverTrigger
+            .toLowerCase()
+            .split(/[,]+/)
+            .map((k: string) => k.trim())
+            .filter((k: string) => k.length > 2)
+        : [];
+      const isHandoverMatch =
+        (handoverKeywords.length > 0 &&
+          handoverKeywords.some((k: string) => cleanMsg.toLowerCase().includes(k))) ||
+        /(hubungi cs|bicara dengan admin|bicara orang|komplain pesanan|human cs|bantuan admin)/i.test(cleanMsg);
+
+      if (isHandoverMatch) {
+        trace.push('HANDOVER_REQUESTED');
+        const phoneFormatted = handoverPhone.replace(/[^0-9]/g, '');
+        const handoverReply = `Baik Kak, pesan Kakak segera kami sambungkan ke Tim Admin Customer Service kami${
+          phoneFormatted ? ` di WhatsApp resmi: https://wa.me/${phoneFormatted}` : ''
+        }. Staf kami akan segera merespons pertanyaan Kakak. Terima kasih! 🙏`;
+
+        return {
+          reply: handoverReply,
+          next_state: 'HANDOVER_TO_HUMAN',
+          state_trace: trace,
+          entities: { ...entities, status: 'HANDOVER' },
+          is_booking_ready: false,
+          active_engine: 'SALES_REP_V1',
+        };
+      }
+
+      // 3. PRICE OBJECTION HANDLING (Tawar Harga / Keberatan Biaya)
+      const isPriceObjection = /(mahal|diskon|kurang|potongan|tawar|nego|bisa nego|harga pas)/i.test(cleanMsg);
+      if (isPriceObjection) {
+        trace.push('PRICE_OBJECTION_HANDLING');
+        const objectionText =
+          salesPolicy.price_objection ||
+          `Harga produk di *${storeName}* sudah merupakan harga resmi terbaik dengan jaminan materi langsung pakai dan pembaruan akses Kak.`;
+        const closingHook = salesPolicy.closing_hook || 'Silakan amankan promonya sekarang sebelum kuota habis Kak!';
+
+        return {
+          reply: `${objectionText}\n\n👉 *${closingHook}*`,
+          next_state: session.current_state,
+          state_trace: trace,
+          entities,
+          is_booking_ready: false,
+          active_engine: 'SALES_REP_V1',
+        };
+      }
+
+      // 4. BUY INTENT & CLOSING HOOK (Daftar / Beli / Checkout / QRIS)
+      const isBuyIntent = /(beli|order|pesan|checkout|daftar|ikut|ambil|bayar|qris)/i.test(cleanMsg);
+      if (isBuyIntent) {
+        let matchedProd = products.find((p: any) => {
+          const pName = String(p.name || p.title || '').toLowerCase();
+          return (
+            pName &&
+            (cleanMsg.toLowerCase().includes(pName) ||
+              pName.split(/\s+/).some((w: string) => w.length > 4 && cleanMsg.toLowerCase().includes(w)))
+          );
+        });
+
+        if (!matchedProd && products.length > 0) {
+          matchedProd = products[0];
+        }
+
+        if (matchedProd) {
+          trace.push('BUY_INTENT', 'CLOSING_HOOK');
+          const prodName = matchedProd.name || matchedProd.title || 'Produk Unggulan';
+          const prodPrice = Number(matchedProd.promo_price || matchedProd.price || 0);
+          const prodCheckoutUrl = getTenantCheckoutUrl(tenantDomainInfo, {
+            id: matchedProd.id,
+            slug: matchedProd.slug,
+          });
+          const closingHook =
+            salesPolicy.closing_hook ||
+            'Akses materi/produk dikirimkan seketika setelah pembayaran QRIS diverifikasi otomatis oleh sistem!';
+
+          const replyText = `Siap Kak! Untuk pendaftaran/pemesanan *${prodName}*${
+            prodPrice > 0 ? ` (*Rp ${prodPrice.toLocaleString('id-ID')}*)` : ''
+          }:\n\n${closingHook}\n\n👉 *Link Checkout Resmi & Pembayaran QRIS:*\n${prodCheckoutUrl}\n\nPembayaran diproses otomatis via QRIS (BCA, Mandiri, BRI, DANA, GoPay, OVO, ShopeePay) langsung aktif 24 jam.`;
+
+          const updatedEntities = {
+            ...entities,
+            product_name: prodName,
+            price: prodPrice,
+            checkout_url: prodCheckoutUrl,
+            status: 'CHECKOUT_OFFERED',
+          };
+          await supabase.from('conversation_entities').upsert(updatedEntities);
+
+          return {
+            reply: replyText,
+            next_state: 'CHECKOUT_OFFERED',
+            state_trace: trace,
+            entities: updatedEntities,
+            is_booking_ready: false,
+            active_engine: 'SALES_REP_V1',
+          };
+        }
+      }
+
+      // 5. CATALOG & PROGRAM LISTING (Katalog / Daftar Paket / Biaya)
+      const isCatalogInquiry = /(katalog|produk|daftar|paket|kelas|kursus|materi|ada apa saja|harga|biaya|tarif)/i.test(cleanMsg);
+      if (isCatalogInquiry && products.length > 0) {
+        trace.push('SHOW_CATALOG');
+        const productListText = products
+          .slice(0, 5)
+          .map((p: any, i: number) => {
+            const pName = p.name || p.title || `Program ${i + 1}`;
+            const pPrice = Number(p.promo_price || p.price || 0);
+            const pUrl = getTenantCheckoutUrl(tenantDomainInfo, { id: p.id, slug: p.slug });
+            const desc = p.description
+              ? `\n   _${p.description.slice(0, 85)}${p.description.length > 85 ? '...' : ''}_`
+              : '';
+            return `${i + 1}️⃣ *${pName}* : Rp ${pPrice.toLocaleString('id-ID')}${desc}\n   🔗 Link: ${pUrl}`;
+          })
+          .join('\n\n');
+
+        return {
+          reply: `Berikut adalah pilihan produk/program resmi di *${storeName}*:\n\n${productListText}\n\nKakak tertarik dengan program yang mana nih? Silakan tanyakan atau klik link di atas untuk pendaftaran langsung ya! ✨`,
+          next_state: 'CATALOG_VIEWED',
+          state_trace: trace,
+          entities,
+          is_booking_ready: false,
+          active_engine: 'SALES_REP_V1',
+        };
+      }
+
+      // 6. SPECIFIC PRODUCT DETAIL (Rincian Produk yang Disebut Pelanggan)
+      const mentionedProd = products.find((p: any) => {
+        const pName = String(p.name || p.title || '').toLowerCase();
+        return (
+          pName &&
+          (cleanMsg.toLowerCase().includes(pName) ||
+            pName.split(/\s+/).some((w: string) => w.length > 4 && cleanMsg.toLowerCase().includes(w)))
+        );
+      });
+
+      if (mentionedProd) {
+        trace.push('PRODUCT_DETAIL');
+        const pName = mentionedProd.name || mentionedProd.title;
+        const pPrice = Number(mentionedProd.promo_price || mentionedProd.price || 0);
+        const pUrl = getTenantCheckoutUrl(tenantDomainInfo, { id: mentionedProd.id, slug: mentionedProd.slug });
+        return {
+          reply: `✨ *${pName}*\n• Biaya: *Rp ${pPrice.toLocaleString('id-ID')}*\n${
+            mentionedProd.description ? `• Info: ${mentionedProd.description}\n` : ''
+          }\n🔗 *Link Pendaftaran & Detail:*\n${pUrl}\n\nAda yang ingin ditanyakan seputar silabus materi atau pembayarannya Kak?`,
+          next_state: session.current_state,
+          state_trace: trace,
+          entities: { ...entities, product_name: pName, price: pPrice, checkout_url: pUrl },
+          is_booking_ready: false,
+          active_engine: 'SALES_REP_V1',
+        };
+      }
+
+      // 7. CONSULTATIVE RECOMMENDATION FALLBACK (Sales Rep Penasihat Solutif)
+      trace.push('CONSULTATIVE_RECOMMEND');
+      let fallbackText = '';
+      if (products.length > 0) {
+        const prodSummary = products
+          .slice(0, 3)
+          .map(
+            (p: any) =>
+              `• *${p.name || p.title}* (Rp ${Number(p.promo_price || p.price || 0).toLocaleString('id-ID')})`
+          )
+          .join('\n');
+        fallbackText = `Terima kasih sudah menghubungi *${storeName}*! 🙏\n\nKami memiliki beberapa program/produk unggulan yang siap membantu Kakak:\n${prodSummary}\n\nKira-kira Kakak sedang fokus di bidang apa nih biar kami bantu rekomendasikan yang paling cocok? 😊`;
+      } else {
+        fallbackText = `Halo! Terima kasih sudah menghubungi *${storeName}*. Ada yang bisa kami bantu seputar produk atau info toko kami? Silakan tanyakan apa saja ya Kak! ✨`;
+      }
+
+      return {
+        reply: fallbackText,
+        next_state: session.current_state,
+        state_trace: trace,
+        entities,
+        is_booking_ready: false,
+        active_engine: 'SALES_REP_V1',
+      };
+    }
+
+    // =========================================================================
+    // ROUTE 2: LOCAL_SERVICE_V1 (HANYA UNTUK FIELD SERVICE / JASA LAPANGAN)
+    // =========================================================================
     // 3. Ambil Daftar Harga Resmi Deterministic
     const { data: serviceList } = await supabase
       .from('tenant_service_configs')
@@ -246,18 +513,16 @@ export class ConversationEngine {
 
     const services: ServiceConfigItem[] = (serviceList as ServiceConfigItem[]) || [];
 
-    // --- STEP A: DETERMINISTIC ROUTER (ON-TRACK FLOW) ---
-    
-    // GREETING -> Tampilkan Opsi Kapasitas (hanya untuk toko FIELD_SERVICE dengan service config)
+    // GREETING -> Tampilkan Opsi Kapasitas
     if (session.current_state === 'GREETING') {
-      const optionsText = services.length > 0
-        ? services
-            .map((s: ServiceConfigItem) => `• *${s.capacity} Liter* : Rp ${Number(s.price).toLocaleString('id-ID')}`)
-            .join('\n')
-        : null;
+      const optionsText =
+        services.length > 0
+          ? services
+              .map((s: ServiceConfigItem) => `• *${s.capacity} Liter* : Rp ${Number(s.price).toLocaleString('id-ID')}`)
+              .join('\n')
+          : null;
 
       if (optionsText) {
-        // Toko FIELD_SERVICE dengan kapasitas: gunakan flow kapasitas
         await supabase
           .from('conversation_sessions')
           .update({ current_state: 'ASK_CAPACITY' })
@@ -269,16 +534,15 @@ export class ConversationEngine {
           next_state: 'ASK_CAPACITY',
           state_trace: trace,
           entities,
-          is_booking_ready: false
+          is_booking_ready: false,
+          active_engine: 'LOCAL_SERVICE_V1',
         };
       }
 
-      // Toko GENERIC (tanpa service config, misal: Plasa Kreatif, toko retail, dll):
-      // Kirim greeting umum, langsung advance state ke ACTIVE agar
-      // pesan lanjutan tidak terjebak infinite greeting loop.
-      const greetingMsg = metadata.bot_greeting ||
+      const greetingMsg =
+        metadata.bot_greeting ||
         metadata.greeting_message ||
-        `Halo! Selamat datang di *${tenant?.name || tenant_id}* ✨\n\nAda yang bisa kami bantu? Silakan tanyakan produk, harga, atau info lainnya.`;
+        `Halo! Selamat datang di *${tenant?.name || tenant_id}* ✨\n\nAda yang bisa kami bantu seputar layanan kami?`;
 
       await supabase
         .from('conversation_sessions')
@@ -291,7 +555,8 @@ export class ConversationEngine {
         next_state: 'ACTIVE',
         state_trace: trace,
         entities,
-        is_booking_ready: false
+        is_booking_ready: false,
+        active_engine: 'LOCAL_SERVICE_V1',
       };
     }
 
@@ -314,37 +579,13 @@ export class ConversationEngine {
         next_state: 'COLLECT_BOOKING',
         state_trace: trace,
         entities,
-        is_booking_ready: false
+        is_booking_ready: false,
+        active_engine: 'LOCAL_SERVICE_V1',
       };
     }
 
-    // --- STEP B: SMART AI INTERCEPTOR (OFF-TRACK / SIDE QUESTION) ---
-    // Context Injection Mode HYBRID: Jika user bertanya tentang topik yang ada di menu (jadwal, harga, paket)
-    if (botMode === 'HYBRID' && interactiveMenus.length > 0) {
-      const lowerClean = cleanMsg.toLowerCase();
-      const allOptions = interactiveMenus.flatMap((m) => m.options || []);
-      const matchedOpt = allOptions.find((opt) => {
-        const t = (opt.title || '').toLowerCase();
-        return t.length > 3 && (lowerClean.includes(t) || t.includes(lowerClean));
-      });
-
-      if (matchedOpt) {
-        trace.push('HYBRID_MENU_CONTEXT_INJECTION');
-        return {
-          reply: `${matchedOpt.responseText}\n\n👉 *Ketik angka atau nama pilihan untuk detail pemesanan.*`,
-          next_state: session.current_state,
-          state_trace: trace,
-          entities,
-          is_booking_ready: false,
-        };
-      }
-    }
-
+    // Side questions untuk local service
     const isQuestion = cleanMsg.includes('?') || cleanMsg.length > 25 || /(aman|kimia|garansi|kotor|bau|lumut|berapa lama|sabun|kuras)/i.test(cleanMsg);
-
-    // BUG FIX: Hapus kondisi `session.current_state !== 'GREETING'` yang memblokir
-    // pertanyaan spesifik pada sesi ACTIVE. Sesi ACTIVE yang melanjutkan pertanyaan
-    // wajib dirouting ke ZeroAI / side-answer handler, bukan dipantulkan ke greeting.
     if (isQuestion) {
       trace.push('SIDE_QUESTION', 'PULLBACK');
 
@@ -366,11 +607,12 @@ export class ConversationEngine {
         next_state: session.current_state,
         state_trace: trace,
         entities,
-        is_booking_ready: false
+        is_booking_ready: false,
+        active_engine: 'LOCAL_SERVICE_V1',
       };
     }
 
-    // --- STEP C: PARSING BOOKING DATA & STRICT BOUNDARY CHECK ---
+    // STEP C: PARSING BOOKING DATA & STRICT BOUNDARY CHECK
     if (session.current_state === 'COLLECT_BOOKING') {
       if (!entities.customer_name && cleanMsg.length > 3) {
         entities.address = cleanMsg;
@@ -383,16 +625,10 @@ export class ConversationEngine {
         trace.push('VALIDATE_BOOKING', 'BOOKING_READY');
         entities.status = 'BOOKING_READY';
 
-        const { data: tenant } = await supabase
-          .from('tenants')
-          .select('slug, category, business_type, metadata')
-          .eq('slug', tenant_id)
-          .maybeSingle();
-
         const checkoutUrl = getTenantActionUrl(
           {
             slug: tenant_id,
-            custom_domain: tenant?.metadata?.custom_domain || null,
+            custom_domain: metadata.custom_domain || null,
             category: tenant?.category || 'FIELD_SERVICE',
             business_type: tenant?.business_type,
           },
@@ -408,25 +644,10 @@ export class ConversationEngine {
           next_state: 'BOOKING_READY',
           state_trace: trace,
           entities,
-          is_booking_ready: true
+          is_booking_ready: true,
+          active_engine: 'LOCAL_SERVICE_V1',
         };
       }
-    }
-
-    // Fallback response
-    if (botMode === 'STATIC') {
-      trace.push('STATIC_FALLBACK');
-      const primaryMenu = interactiveMenus[0];
-      return {
-        reply: primaryMenu
-          ? `${formatInteractiveMenu(primaryMenu, 'WAHA')}\n\nSilakan pilih menu di atas atau hubungi Admin kami.`
-          : 'Silakan pilih menu di atas atau hubungi Admin kami.',
-        next_state: session.current_state,
-        state_trace: trace,
-        entities,
-        is_booking_ready: false,
-        interactive_payload: primaryMenu && channelType === 'WABA' ? formatInteractiveMenu(primaryMenu, 'WABA') : undefined,
-      };
     }
 
     return {
@@ -434,7 +655,8 @@ export class ConversationEngine {
       next_state: session.current_state,
       state_trace: trace,
       entities,
-      is_booking_ready: false
+      is_booking_ready: false,
+      active_engine: 'LOCAL_SERVICE_V1',
     };
   }
 }
