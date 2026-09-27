@@ -396,7 +396,7 @@ export type ProcessingReport =
 export async function processNormalizedMetaEvent(
   event: NormalizedMetaWebhookEvent
 ): Promise<ProcessingReport> {
-  const { phoneNumberId, messages, statuses } = event;
+  const { phoneNumberId, displayPhoneNumber, messages, statuses } = event;
 
   if (!phoneNumberId) {
     console.warn('[SECURITY_WABA_INGRESS_DROP] Missing phone_number_id in webhook payload. Dropping immediately.');
@@ -515,6 +515,47 @@ export async function processNormalizedMetaEvent(
 
     const textContent = msg.text.trim();
     if (!textContent) continue;
+
+    // 1.1 GROUP MENTION GUARD:
+    // Rule Chat Grup (remoteJid / rawFrom mengandung '@g.us'):
+    // - Cek ID / Nomor Instance Gateway yang menerima pesan:
+    //   * JIKA instance nomor BUKAN official support ('+6281215567168' / instance 'boontrack-shop' / internal node):
+    //     SEGERA DROP / RETURN. Jangan proses pesan, jangan panggil LLM, dan jangan kirim pesan keluar ke grup.
+    //   * HANYA nomor official +6281215567168 yang diizinkan memproses mention @boon di dalam grup.
+    // Rule Chat Personal / Direct Message (remoteJid mengandung '@s.whatsapp.net'):
+    // - Semua akun toko merchant (seperti buzzerukm) HANYA boleh aktif membalas di jalur Personal Chat (DM 1-on-1).
+    const rawFrom = String(msg.from || msg.raw?.key?.remoteJid || '');
+    const isGroup = rawFrom.includes('@g.us') || Boolean(msg.raw?.key?.remoteJid?.includes('@g.us'));
+
+    if (isGroup) {
+      const cleanDisplayPhone = (displayPhoneNumber || '').replace(/\D/g, '');
+      const cleanConnPhone = (connection?.phone_number || connection?.phone || '').replace(/\D/g, '');
+      const isOfficialSupport =
+        tenantId === 'boon' ||
+        tenantId === '52967979-4760-4cea-b686-cdbdb389c0e1' ||
+        connection?.instance_name === 'boontrack-shop' ||
+        connection?.instance_name === 'boontrack-app-shop' ||
+        cleanDisplayPhone === '6281215567168' ||
+        cleanConnPhone === '6281215567168' ||
+        connection?.phone_number_id === '6281215567168';
+
+      if (!isOfficialSupport) {
+        console.warn(
+          `[GROUP_MENTION_GUARD_DROP] Non-official merchant tenant '${tenantId}' received group message in '${rawFrom}'. Merchant accounts are strictly limited to 1-on-1 personal DM chats (@s.whatsapp.net). Dropping immediately.`
+        );
+        continue;
+      }
+
+      // HANYA nomor official +6281215567168 yang diizinkan memproses mention @boon di dalam grup
+      const hasBoonMention =
+        /@boon\b/i.test(textContent) ||
+        /@boontrack\b/i.test(textContent) ||
+        /@081215567168\b/i.test(textContent);
+      if (!hasBoonMention) {
+        console.info(`[GROUP_GUARD] Official support ignoring general group chatter in '${rawFrom}' (no @boon mention).`);
+        continue;
+      }
+    }
 
     // 2. Deteksi pola aktivasi platform (AKTIVASI BT-XXXX)
     const activationMatch = textContent.match(/AKTIVASI\s+([A-Za-z0-9_-]+)/i);

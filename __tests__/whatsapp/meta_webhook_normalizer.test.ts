@@ -25,6 +25,15 @@ const mockConnections: Record<string, any> = {
     phone_number_id: 'phone_tenant_active',
     provider: 'META',
   },
+  '6281215567168': {
+    tenant_id: 'boon',
+    ownership_domain: 'TENANT',
+    status: 'CONNECTED',
+    credential_ref: 'cred_ref_official',
+    phone_number_id: '6281215567168',
+    provider: 'META',
+    instance_name: 'boontrack-app-shop',
+  },
 };
 
 const mockConversationEngineProcess = jest.fn().mockImplementation(async (params: any) => ({
@@ -538,6 +547,114 @@ describe('Meta Webhook Normalizer & Handshake', () => {
       expect(res.status).toBe(401);
       const json = await res.json();
       expect(json.error).toBe('Invalid signature');
+    });
+
+    it('POST: drops group message (@g.us) for non-official merchant tenant without calling ConversationEngine', async () => {
+      delete process.env.META_APP_SECRET;
+      mockConversationEngineProcess.mockClear();
+
+      const bodyObj = {
+        object: 'whatsapp_business_account',
+        entry: [
+          {
+            id: 'WABA_ENTRY_1',
+            changes: [
+              {
+                field: 'messages',
+                value: {
+                  messaging_product: 'whatsapp',
+                  metadata: {
+                    phone_number_id: 'phone_tenant_active', // maps to tenant-test (merchant)
+                    display_phone_number: '628999999999',
+                  },
+                  messages: [
+                    {
+                      from: '1203630248292839@g.us', // Group JID
+                      id: 'wamid.GROUP_MSG_001',
+                      timestamp: '1710000000',
+                      type: 'text',
+                      text: { body: '@boon tolong bantu cek promo toko' },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      };
+
+      const req = new Request(
+        'https://inbox.boontrack.com/api/v1/webhooks/whatsapp/meta',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyObj),
+        }
+      );
+
+      const res = await metaPost(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.status).toBe('processed');
+      expect(json.processed_messages).toBe(0); // Dropped by group mention guard
+      expect(mockConversationEngineProcess).not.toHaveBeenCalled();
+    });
+
+    it('POST: processes group message (@g.us) for official support when @boon mention is present', async () => {
+      delete process.env.META_APP_SECRET;
+      mockConversationEngineProcess.mockClear();
+
+      const bodyObj = {
+        object: 'whatsapp_business_account',
+        entry: [
+          {
+            id: 'WABA_ENTRY_OFFICIAL',
+            changes: [
+              {
+                field: 'messages',
+                value: {
+                  messaging_product: 'whatsapp',
+                  metadata: {
+                    phone_number_id: '6281215567168',
+                    display_phone_number: '6281215567168',
+                  },
+                  messages: [
+                    {
+                      from: '1203630248292839@g.us',
+                      id: 'wamid.OFFICIAL_GROUP_001',
+                      timestamp: '1710000000',
+                      type: 'text',
+                      text: { body: '@boon cara daftar paket starter gimana?' },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      };
+
+      const req = new Request(
+        'https://inbox.boontrack.com/api/v1/webhooks/whatsapp/meta',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyObj),
+        }
+      );
+
+      const res = await metaPost(req);
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.status).toBe('processed');
+      expect(json.processed_messages).toBe(1);
+      expect(mockConversationEngineProcess).toHaveBeenCalledTimes(1);
+      expect(mockConversationEngineProcess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenant_id: 'boon',
+          message: '@boon cara daftar paket starter gimana?',
+        })
+      );
     });
   });
 });
