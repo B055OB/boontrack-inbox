@@ -41,6 +41,7 @@ export interface EngineResult {
   interactive_payload?: any;
   quick_actions?: string[];
   active_engine?: string;
+  bot_paused?: boolean;
 }
 
 interface ServiceConfigItem {
@@ -168,14 +169,35 @@ export class ConversationEngine {
         .select()
         .single();
       session = newSession || { current_state: 'GREETING' };
-    } else if (session.current_state === 'GREETING') {
-      // Advance ke ACTIVE agar pesan lanjutan dirouting ke Sales Rep / Engine, bukan looping greeting
-      await supabase
-        .from('conversation_sessions')
-        .update({ current_state: 'ACTIVE' })
-        .eq('session_id', session_id);
-      session = { ...session, current_state: 'ACTIVE' };
-      trace.push('AUTO_ADVANCE_GREETING_TO_ACTIVE');
+    } else {
+      // Inbound Message Drop saat Paused / Handover to Human
+      const isPausedState = session.current_state === 'HANDOVER_TO_HUMAN' || session.current_state === 'PAUSED';
+      const isPausedFlag = Boolean(session.is_paused);
+      const pausedUntil = session.paused_until ? new Date(session.paused_until).getTime() : null;
+      const isStillPaused = (isPausedState || isPausedFlag) && (!pausedUntil || pausedUntil > Date.now());
+
+      if (isStillPaused) {
+        trace.push('SESSION_PAUSED_DROP');
+        return {
+          reply: '',
+          next_state: 'HANDOVER_TO_HUMAN',
+          state_trace: trace,
+          entities: { session_id, tenant_id },
+          is_booking_ready: false,
+          active_engine: activeEngine,
+          bot_paused: true,
+        };
+      }
+
+      if (session.current_state === 'GREETING') {
+        // Advance ke ACTIVE agar pesan lanjutan dirouting ke Sales Rep / Engine, bukan looping greeting
+        await supabase
+          .from('conversation_sessions')
+          .update({ current_state: 'ACTIVE' })
+          .eq('session_id', session_id);
+        session = { ...session, current_state: 'ACTIVE' };
+        trace.push('AUTO_ADVANCE_GREETING_TO_ACTIVE');
+      }
     }
 
     trace.push(activeEngine, session.current_state);
@@ -318,7 +340,7 @@ export class ConversationEngine {
         };
       }
 
-      // 2. HANDOVER ESCALATION (Eskalasi Komplain / Bicara dengan Tim Manusia)
+      // 2. HANDOVER ESCALATION (Eskalasi Komplain / Bicara dengan Tim Manusia / Owner)
       const handoverTrigger = salesPolicy.handover_trigger || '';
       const handoverPhone = salesPolicy.handover_phone || metadata.whatsapp_number || '';
       const handoverKeywords = handoverTrigger
@@ -328,17 +350,46 @@ export class ConversationEngine {
             .map((k: string) => k.trim())
             .filter((k: string) => k.length > 2)
         : [];
+      const cleanLower = cleanMsg.toLowerCase().trim();
       const isHandoverMatch =
+        cleanLower === '2' ||
+        cleanLower === '2.' ||
+        cleanLower === '#2' ||
+        cleanLower === 'opsi 2' ||
+        cleanLower === 'pilihan 2' ||
+        cleanLower === 'chat langsung' ||
+        cleanLower.startsWith('2 ') ||
         (handoverKeywords.length > 0 &&
-          handoverKeywords.some((k: string) => cleanMsg.toLowerCase().includes(k))) ||
-        /(hubungi cs|bicara dengan admin|bicara orang|komplain pesanan|human cs|bantuan admin)/i.test(cleanMsg);
+          handoverKeywords.some((k: string) => cleanLower.includes(k))) ||
+        /(hubungi cs|bicara dengan admin|bicara orang|komplain pesanan|human cs|bantuan admin|ngobrol dengan|bicara dengan|chat dengan|kontak owner|owner|kang sakti|admin|live cs|chat cs|manusia)/i.test(cleanLower);
 
       if (isHandoverMatch) {
         trace.push('HANDOVER_REQUESTED');
         const phoneFormatted = handoverPhone.replace(/[^0-9]/g, '');
-        const handoverReply = `Baik Kak, pesan Kakak segera kami sambungkan ke Tim Admin Customer Service kami${
-          phoneFormatted ? ` di WhatsApp resmi: https://wa.me/${phoneFormatted}` : ''
-        }. Staf kami akan segera merespons pertanyaan Kakak. Terima kasih! 🙏`;
+        let handoverReply = '';
+        if (cleanLower.includes('kang sakti') || tenant_id === 'buzzerukm') {
+          handoverReply = `Baik Kak, pesan Kakak sudah kami teruskan langsung ke Kang Sakti. Asisten bot kami jeda sejenak agar Kang Sakti dapat langsung membalas chat Kakak secara manual ya. Terima kasih! 🙏`;
+        } else {
+          handoverReply = `Baik Kak, pesan Kakak segera kami teruskan ke tim admin / owner toko${
+            phoneFormatted ? ` di WhatsApp resmi: https://wa.me/${phoneFormatted}` : ''
+          }. Bot kami jeda agar staf kami dapat langsung merespons pertanyaan Kakak secara manual. Terima kasih! 🙏`;
+        }
+
+        const pausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        await supabase
+          .from('conversation_sessions')
+          .update({
+            current_state: 'HANDOVER_TO_HUMAN',
+            is_paused: true,
+            paused_until: pausedUntil,
+            updated_at: new Date().toISOString(),
+            metadata: {
+              paused_reason: 'HUMAN_HANDOVER',
+              paused_at: new Date().toISOString(),
+              trigger_message: cleanMsg.slice(0, 100),
+            },
+          })
+          .eq('session_id', session_id);
 
         return {
           reply: handoverReply,
@@ -347,6 +398,7 @@ export class ConversationEngine {
           entities: { ...entities, status: 'HANDOVER' },
           is_booking_ready: false,
           active_engine: 'SALES_REP_V1',
+          bot_paused: true,
         };
       }
 
