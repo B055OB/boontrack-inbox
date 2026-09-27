@@ -3,6 +3,7 @@ import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
 import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher } from "@/lib/product-catalog";
+import { sanitizeOrderPayload } from "@/lib/order-sanitizer";
 
 export interface CreateOrderPayload {
   tenantSlug: string;
@@ -284,22 +285,16 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     ...(payload.tracking?.fbc ? { fbc: payload.tracking.fbc } : {}),
   };
 
-  const dbOrderData: any = {
+  const rawOrderData: any = {
     id: orderId,
     tenant_slug: payload.tenantSlug,           // Selalu diisi: slug string toko
     tenant_id: resolvedTenantId,               // Selalu diisi: UUID toko (tidak boleh NULL)
     product_id: resolvedProductId,             // Wajib NOT NULL di skema PostgreSQL
     product_title: payload.productTitle,
     gross_amount: grossAmount,
-    total_amount: grossAmount,
-    amount: grossAmount,
-    unique_code: uniqueCode,
-    payment_method: paymentMethod === 'qris' ? 'QRIS' : paymentMethod,
-    payment_status: 'PENDING',
-    order_status: 'PENDING',
     customer_name: payload.customerName,
     customer_phone: payload.customerPhone,
-    customer_email: payload.customerEmail || "",
+    customer_email: payload.customerEmail || null,
     affiliate_code: payload.affiliateCode || null,
     manager_id: payload.managerId || null,
     utm_source: payload.tracking?.utm_source || null,
@@ -309,26 +304,36 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     utm_term: payload.tracking?.utm_term || null,
     fbclid: payload.tracking?.fbclid || null,
     ttclid: payload.tracking?.ttclid || null,
-    ctwa_clid: payload.ctwa_clid || payload.tracking?.ctwa_clid || null,
-    metadata: {
-      tracking_context: resolvedTrackingContext,
-      product_type: payload.productType || null,
-      fulfillment_metadata: orderFulfillmentMeta,
-    },
     status: "PENDING",
+    payment_status: "PENDING",
+    order_status: "PENDING",
     created_at: orderData.created_at,
     updated_at: orderData.created_at,
   };
+
+  const dbOrderData = sanitizeOrderPayload(rawOrderData);
 
   let { error: orderError } = await supabase
     .from("orders")
     .insert(dbOrderData);
 
-  // Fallback graceful: jika kolom metadata belum ada di tabel orders, retry tanpa kolom metadata
-  if (orderError && (orderError.code === '42703' || orderError.message?.includes('metadata'))) {
-    console.warn("[Checkout Service] orders.metadata column not present yet, retrying insert without metadata column.");
-    const { metadata: _omittedMeta, ...fallbackOrderData } = dbOrderData;
-    const retryRes = await supabase.from("orders").insert(fallbackOrderData);
+  // Fallback graceful: jika terjadi error schema cache atau kolom tak dikenal, retry dengan kolom inti minimal
+  if (orderError) {
+    console.warn("[Checkout Service] Primary orders insert error, retrying with core fields:", orderError);
+    const coreOrderData = {
+      id: orderId,
+      tenant_slug: payload.tenantSlug,
+      tenant_id: resolvedTenantId,
+      product_id: resolvedProductId,
+      product_title: payload.productTitle,
+      gross_amount: grossAmount,
+      customer_name: payload.customerName,
+      customer_phone: payload.customerPhone,
+      status: "PENDING",
+      created_at: orderData.created_at,
+      updated_at: orderData.created_at,
+    };
+    const retryRes = await supabase.from("orders").insert(coreOrderData);
     orderError = retryRes.error;
   }
 

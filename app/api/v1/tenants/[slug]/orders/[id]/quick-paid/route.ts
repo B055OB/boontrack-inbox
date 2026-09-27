@@ -5,6 +5,7 @@ import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { sendOrderPaidNotification, sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
+import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 
 export async function POST(
   _req: NextRequest,
@@ -185,6 +186,23 @@ export async function POST(
         tenantId: slug || 'platform',
       }).catch((waErr) => console.warn('[WhatsApp WABA] Order fulfillment dispatch note:', waErr));
     }
+
+    // 5. Dual Email Confirmation & Invoice Dispatch (Buyer Invoice + Merchant Alert)
+    sendOrderFulfillmentEmails({
+      orderId: String(orderId),
+      tenantSlug: slug,
+      tenantId: order.tenant_id,
+      customerName: order.customer_name || order.buyer_name || 'Pelanggan Setia',
+      customerEmail: order.customer_email || null,
+      customerPhone: customerPhone || null,
+      productTitle: order.product_title || order.product_name || 'Pesanan Produk',
+      grossAmount: Number(order.gross_amount || order.total_amount || order.amount || 0),
+      paymentMethod: order.payment_method || 'QRIS Dinamis (Otomatis)',
+      paidAt,
+      accessUrl: accessUrl || undefined,
+      instructions: fulfillmentMeta.instructions || undefined,
+      productType: order.product_type || (order.shipping_address ? 'PHYSICAL' : 'DIGITAL'),
+    }).catch((emailErr) => console.warn('[EmailService] Order fulfillment email dispatch note:', emailErr));
 
     return NextResponse.json({
       success: true,

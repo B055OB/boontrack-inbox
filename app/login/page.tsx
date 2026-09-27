@@ -126,6 +126,12 @@ export default function MerchantLoginPage() {
       setTimeout(() => {
         let dest = `/${cleanSlug}/dashboard`;
         if (typeof window !== 'undefined') {
+          const isDashboardHost =
+            window.location.hostname === 'dashboard.boontrack.com' ||
+            window.location.hostname.startsWith('dashboard.');
+          if (isDashboardHost) {
+            dest = `/${cleanSlug}`;
+          }
           const params = new URLSearchParams(window.location.search);
           const redirectParam = params.get('redirectTo');
           if (redirectParam && redirectParam.startsWith('/')) {

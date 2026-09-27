@@ -7,6 +7,7 @@ import { readerAdapter } from '@/lib/payment/adapters/reader-adapter';
 import { paymentEventService } from '@/lib/payment/payment-event-service';
 import { checkTrialQuota } from '@/lib/entitlements/trial-guard';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
+import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 
 // In-memory diagnostic logs ring buffer (stores up to 50 latest webhook calls)
 export interface WebhookLogEntry {
@@ -542,6 +543,25 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       console.warn(`[Webhook Reader ${logId}] Error dispatching WhatsApp fulfillment (non-fatal):`, waErr);
     });
   }
+
+  // DUAL EMAIL FULFILLMENT DISPATCH (Buyer Invoice + Merchant Alert)
+  sendOrderFulfillmentEmails({
+    orderId: String(orderId),
+    tenantSlug: String(targetTenantSlug || ''),
+    tenantId: matchedOrder.tenant_id,
+    customerName,
+    customerEmail: matchedOrder.customer_email || null,
+    customerPhone: customerPhone || null,
+    productTitle: itemsSummary,
+    grossAmount: totalAmount,
+    paymentMethod: matchedOrder.payment_method || 'QRIS Dinamis (Otomatis)',
+    paidAt,
+    accessUrl: resolvedAccessUrl || undefined,
+    instructions: resolvedInstructions || undefined,
+    productType: resolvedProductType,
+  }).catch((emailErr) => {
+    console.warn(`[Webhook Reader ${logId}] Non-fatal email fulfillment dispatch error:`, emailErr);
+  });
 
   // META CAPI DISPATCH (Event Match Quality EMQ 8.0+ Optimization)
   if (orderId) {

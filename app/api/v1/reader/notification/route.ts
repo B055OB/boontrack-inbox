@@ -4,6 +4,7 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
+import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -462,6 +463,25 @@ export async function POST(req: NextRequest) {
         console.warn('[BoonTrack Reader Webhook] Non-fatal WhatsApp fulfillment error:', waErr);
       });
     }
+
+    // Dual Email Confirmation & Invoice Dispatch (Buyer Invoice + Merchant Alert)
+    sendOrderFulfillmentEmails({
+      orderId: String(matchedOrder.id),
+      tenantSlug: effectiveTenantSlug,
+      tenantId: matchedOrder.tenant_id,
+      customerName,
+      customerEmail: matchedOrder.customer_email || null,
+      customerPhone: customerPhone || null,
+      productTitle: itemsSummary,
+      grossAmount: totalAmount,
+      paymentMethod: matchedOrder.payment_method || 'QRIS Dinamis (Otomatis)',
+      paidAt,
+      accessUrl: resolvedAccessUrl || undefined,
+      instructions: resolvedInstructions || undefined,
+      productType: resolvedProductType,
+    }).catch((emailErr) => {
+      console.warn('[BoonTrack Reader Webhook] Non-fatal email fulfillment dispatch error:', emailErr);
+    });
 
     // Dispatch Meta CAPI Purchase (EMQ Optimization)
     dispatchMetaCAPIPurchaseForOrder(String(matchedOrder.id), supabase)

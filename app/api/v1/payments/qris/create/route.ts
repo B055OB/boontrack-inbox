@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
+import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
 
 export async function POST(req: NextRequest) {
   try {
@@ -203,20 +204,17 @@ export async function POST(req: NextRequest) {
 
         if (existingOrder) {
           if (!isAlreadyPaid) {
+            const updatePayload = sanitizeOrderPayload({
+              qr_code_url: qrCodeUrl || null,
+              gross_amount: numAmount,
+              payment_status: 'PENDING',
+              order_status: 'PENDING',
+              status: 'PENDING',
+              updated_at: now,
+            });
             await supabase
               .from('orders')
-              .update({
-                qr_string: qrString || null,
-                qr_code_url: qrCodeUrl || null,
-                gross_amount: numAmount,
-                total_amount: numAmount,
-                unique_code: uniqueCode,
-                payment_method: 'QRIS',
-                payment_status: 'PENDING',
-                order_status: 'PENDING',
-                status: 'PENDING',
-                updated_at: now,
-              })
+              .update(updatePayload)
               .eq('id', orderId);
           }
         } else {
@@ -228,35 +226,22 @@ export async function POST(req: NextRequest) {
             product_title: finalProductTitle,
             customer_name: finalCustomerName,
             customer_phone: finalCustomerPhone,
-            customer_email: finalCustomerEmail,
-            total_amount: numAmount,
+            customer_email: finalCustomerEmail || null,
             gross_amount: numAmount,
-            amount: numAmount,
             unique_code: uniqueCode,
-            payment_method: 'QRIS',
             payment_status: 'PENDING',
             order_status: 'PENDING',
             status: 'PENDING',
-            qr_string: qrString || null,
             qr_code_url: qrCodeUrl || null,
-            metadata: {
-              ...(metadata || {}),
-              tracking_context: metadata?.tracking_context || {},
-              source: 'qris_pre_creation',
-            },
             created_at: now,
             updated_at: now,
           };
 
           let { error: insertErr } = await supabase.from('orders').insert(insertPayload);
-          if (insertErr && (insertErr.code === '42703' || insertErr.message?.includes('amount') || insertErr.message?.includes('order_status'))) {
-            const { amount: _a, order_status: _os, total_amount: _ta, ...cleanPayload } = insertPayload;
-            const retryRes = await supabase.from('orders').insert({
-              ...cleanPayload,
-              gross_amount: numAmount,
-              payment_status: 'PENDING',
-              status: 'PENDING',
-            });
+          if (insertErr) {
+            console.warn('[Payments API] Primary insert failed, retrying with sanitized fields:', insertErr);
+            const sanitizedPayload = sanitizeOrderPayload(insertPayload);
+            const retryRes = await supabase.from('orders').insert(sanitizedPayload);
             insertErr = retryRes.error;
           }
 

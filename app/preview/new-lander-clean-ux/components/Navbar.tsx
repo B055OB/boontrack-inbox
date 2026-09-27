@@ -78,12 +78,12 @@ export default function Navbar({ referralCode, onOpenDemo }: NavbarProps) {
 
           {/* Action CTAs */}
           <div className="hidden sm:flex items-center gap-3">
-            <Link
-              href="/login"
+            <a
+              href="https://dashboard.boontrack.com"
               className="px-4 py-2.5 text-xs font-bold text-slate-700 hover:text-slate-950 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer"
             >
               Masuk Dashboard
-            </Link>
+            </a>
             <Link
               href={registerHref}
               className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold text-xs shadow-lg shadow-blue-500/25 transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5 cursor-pointer"
@@ -163,12 +163,12 @@ export default function Navbar({ referralCode, onOpenDemo }: NavbarProps) {
               >
                 Buka Toko Gratis Sekarang
               </Link>
-              <Link
-                href="/login"
+              <a
+                href="https://dashboard.boontrack.com"
                 className="w-full py-2.5 text-center rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold"
               >
                 Masuk ke Dashboard Toko
-              </Link>
+              </a>
             </div>
           </div>
         )}

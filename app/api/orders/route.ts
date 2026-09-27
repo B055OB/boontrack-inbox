@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
+import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,21 +26,31 @@ export async function GET(req: NextRequest) {
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 50, 500) : 100;
 
     let targetSlug = tenantSlug || tenantParam.trim();
+    let tenantUuid: string | null = null;
 
-    // Jika tenantParam berbentuk UUID, selesaikan ke tenant_slug dari tabel tenants
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetSlug);
-    if (isUuid) {
-      const { data: tenantRow } = await supabase
-        .from('tenants')
-        .select('slug')
-        .eq('id', targetSlug)
-        .maybeSingle();
-      if (tenantRow?.slug) {
-        targetSlug = tenantRow.slug;
+
+    // Resolve BOTH tenant_slug and tenant_id (UUID) from Supabase tenants table
+    try {
+      let tenantQuery = supabase.from('tenants').select('id, slug');
+      if (isUuid) {
+        tenantQuery = tenantQuery.eq('id', targetSlug);
+      } else {
+        tenantQuery = tenantQuery.eq('slug', targetSlug);
       }
+      const { data: tenantRow } = await tenantQuery.maybeSingle();
+
+      if (tenantRow) {
+        targetSlug = tenantRow.slug || targetSlug;
+        tenantUuid = tenantRow.id || null;
+      } else if (isUuid) {
+        tenantUuid = targetSlug;
+      }
+    } catch (resolveErr) {
+      console.warn('[Orders API] Tenant resolution note:', resolveErr);
     }
 
-    if (!targetSlug) {
+    if (!targetSlug && !tenantUuid) {
       return NextResponse.json({ success: true, orders: [], count: 0 });
     }
 
@@ -47,10 +58,16 @@ export async function GET(req: NextRequest) {
     const endDate = searchParams.get('end_date') || searchParams.get('endDate');
 
     // QUERY LANGSUNG KE TABEL orders (SINGLE SOURCE OF TRUTH)
-    let query = supabase
-      .from('orders')
-      .select('*')
-      .eq('tenant_slug', targetSlug);
+    // Mencakup pencocokan ganda: tenant_slug ATAU tenant_id (UUID)
+    let query = supabase.from('orders').select('*');
+
+    if (targetSlug && tenantUuid) {
+      query = query.or(`tenant_slug.eq.${targetSlug},tenant_id.eq.${tenantUuid}`);
+    } else if (targetSlug) {
+      query = query.eq('tenant_slug', targetSlug);
+    } else if (tenantUuid) {
+      query = query.eq('tenant_id', tenantUuid);
+    }
 
     if (startDate) {
       query = query.gte('created_at', startDate);
@@ -213,10 +230,9 @@ export async function POST(req: NextRequest) {
         });
       } else if (body.tenant_slug || body.customer_name || body.total_amount || body.amount) {
         const gross = Number(body.total_amount || body.amount || body.gross_amount || 0);
-        const unique = Number(body.unique_code || body.uniqueCode || 0);
         const now = new Date().toISOString();
 
-        await supabase.from('orders').insert({
+        const insertPayload = sanitizeOrderPayload({
           id: orderId,
           tenant_slug: body.tenant_slug || '',
           tenant_id: body.tenant_id || null,
@@ -224,23 +240,33 @@ export async function POST(req: NextRequest) {
           product_title: body.product_title || body.product_name || 'Pesanan Produk',
           customer_name: body.customer_name || 'Pelanggan Toko',
           customer_phone: body.customer_phone || '',
-          customer_email: body.customer_email || '',
-          total_amount: gross,
+          customer_email: body.customer_email || null,
           gross_amount: gross,
-          amount: gross,
-          unique_code: unique,
-          payment_method: body.payment_method || 'QRIS',
           payment_status: 'PENDING',
           order_status: 'PENDING',
           status: 'PENDING',
-          metadata: {
-            ...(body.metadata || {}),
-            tracking_context: trackingContext,
-            source: 'orders_post_pre_creation',
-          },
           created_at: now,
           updated_at: now,
         });
+
+        let { error: insertErr } = await supabase.from('orders').insert(insertPayload);
+        if (insertErr) {
+          console.warn('[Orders API POST] Primary insert failed, retrying with core fields:', insertErr);
+          const corePayload = {
+            id: orderId,
+            tenant_slug: body.tenant_slug || '',
+            tenant_id: body.tenant_id || null,
+            product_id: body.product_id || 'prod_default',
+            product_title: body.product_title || body.product_name || 'Pesanan Produk',
+            gross_amount: gross,
+            customer_name: body.customer_name || 'Pelanggan Toko',
+            customer_phone: body.customer_phone || '',
+            status: 'PENDING',
+            created_at: now,
+            updated_at: now,
+          };
+          await supabase.from('orders').insert(corePayload);
+        }
 
         return NextResponse.json({
           success: true,

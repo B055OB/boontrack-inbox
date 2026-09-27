@@ -19,16 +19,26 @@ export async function GET(
     }
 
     let targetSlug = slug;
+    let tenantUuid: string | null = null;
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
-    if (isUuid) {
-      const { data: tenantRow } = await supabase
-        .from('tenants')
-        .select('slug')
-        .eq('id', slug)
-        .maybeSingle();
-      if (tenantRow?.slug) {
-        targetSlug = tenantRow.slug;
+
+    try {
+      let tenantQuery = supabase.from('tenants').select('id, slug');
+      if (isUuid) {
+        tenantQuery = tenantQuery.eq('id', slug);
+      } else {
+        tenantQuery = tenantQuery.eq('slug', slug);
       }
+      const { data: tenantRow } = await tenantQuery.maybeSingle();
+
+      if (tenantRow) {
+        targetSlug = tenantRow.slug || targetSlug;
+        tenantUuid = tenantRow.id || null;
+      } else if (isUuid) {
+        tenantUuid = slug;
+      }
+    } catch (resolveErr) {
+      console.warn('[Tenant Orders API] Tenant resolution note:', resolveErr);
     }
 
     const { searchParams } = new URL(_req.url);
@@ -38,10 +48,16 @@ export async function GET(
     const endDate = searchParams.get('end_date') || searchParams.get('endDate');
 
     // QUERY LANGSUNG KE TABEL orders (SINGLE SOURCE OF TRUTH)
-    let query = supabase
-      .from('orders')
-      .select('*')
-      .eq('tenant_slug', targetSlug);
+    // Mencakup pencocokan ganda: tenant_slug ATAU tenant_id (UUID)
+    let query = supabase.from('orders').select('*');
+
+    if (targetSlug && tenantUuid) {
+      query = query.or(`tenant_slug.eq.${targetSlug},tenant_id.eq.${tenantUuid}`);
+    } else if (targetSlug) {
+      query = query.eq('tenant_slug', targetSlug);
+    } else if (tenantUuid) {
+      query = query.eq('tenant_id', tenantUuid);
+    }
 
     if (startDate) {
       query = query.gte('created_at', startDate);

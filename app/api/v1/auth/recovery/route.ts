@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
                       </span>
                     </div>
                   </div>
-                  <a href="https://shop.boontrack.com/${storeSlug}/dashboard" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 10px 18px; border-radius: 10px;">
+                  <a href="https://dashboard.boontrack.com/${storeSlug}" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; font-size: 13px; font-weight: 700; padding: 10px 18px; border-radius: 10px;">
                     Masuk ke Dashboard Toko &rarr;
                   </a>
                 </div>

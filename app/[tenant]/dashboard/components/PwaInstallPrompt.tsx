@@ -149,13 +149,53 @@ export default function PwaInstallPrompt({
       setNotificationPermission(perm);
 
       if (perm === 'granted') {
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          const reg = await navigator.serviceWorker.ready;
-          reg.showNotification('🎉 Notifikasi BoonTrack Aktif!', {
-            body: `Notifikasi pesanan & transaksi untuk toko ${tenantSlug} berhasil diaktifkan.`,
-            icon: '/logo.png',
-            badge: '/logo.png',
-          });
+        if ('serviceWorker' in navigator) {
+          try {
+            const reg = await navigator.serviceWorker.ready;
+            let sub = await reg.pushManager.getSubscription();
+            if (!sub) {
+              const vapidKeyRes = await fetch('/api/v1/push/subscribe').catch(() => null);
+              const vapidKeyData = vapidKeyRes?.ok ? await vapidKeyRes.json().catch(() => null) : null;
+              const publicKey = vapidKeyData?.public_key;
+              if (publicKey) {
+                const padding = '='.repeat((4 - (publicKey.length % 4)) % 4);
+                const base64 = (publicKey + padding).replace(/-/g, '+').replace(/_/g, '/');
+                const rawData = window.atob(base64);
+                const outputArray = new Uint8Array(rawData.length);
+                for (let i = 0; i < rawData.length; ++i) {
+                  outputArray[i] = rawData.charCodeAt(i);
+                }
+                sub = await reg.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: outputArray,
+                });
+              }
+            }
+
+            if (sub) {
+              await fetch('/api/v1/push/subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  tenant_slug: tenantSlug,
+                  subscription: sub.toJSON ? sub.toJSON() : sub,
+                  origin: window.location.origin,
+                }),
+              });
+            }
+
+            reg.showNotification('🎉 Notifikasi BoonTrack Aktif!', {
+              body: `Notifikasi pesanan & transaksi untuk toko ${tenantSlug} berhasil diaktifkan.`,
+              icon: '/logo.png',
+              badge: '/logo.png',
+            });
+          } catch (swErr) {
+            console.warn('[PWA] Push registration / subscription note:', swErr);
+            new Notification('🎉 Notifikasi BoonTrack Aktif!', {
+              body: `Notifikasi pesanan & transaksi untuk toko ${tenantSlug} berhasil diaktifkan.`,
+              icon: '/logo.png',
+            });
+          }
         } else {
           new Notification('🎉 Notifikasi BoonTrack Aktif!', {
             body: `Notifikasi pesanan & transaksi untuk toko ${tenantSlug} berhasil diaktifkan.`,

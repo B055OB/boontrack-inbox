@@ -273,11 +273,19 @@ export async function middleware(req: NextRequest) {
   const host = req.headers.get('host') || '';
   const hostClean = host.split(':')[0].toLowerCase().trim();
 
-  // ── ROUTING KHUSUS FAVICON.ICO PER-DOMAIN ──
-  // app.boontrack.com diarahkan ke favicon korporat di /app-brand/favicon.ico
-  // Domain lainnya (termasuk shop.boontrack.com) memuat default /favicon.ico milik shop
-  if (pathname === '/favicon.ico') {
-    if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
+  // ── 0. BYPASS API & STATIC LANGSUNG (/_next, /favicon.ico, /images, dll.) ──
+  if (
+    pathname.startsWith('/api/') ||
+    pathname === '/api' ||
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/static') ||
+    pathname.startsWith('/images') ||
+    pathname === '/favicon.ico' ||
+    pathname === '/apple-touch-icon.png' ||
+    pathname === '/404-store-not-found' ||
+    pathname.includes('.')
+  ) {
+    if (pathname === '/favicon.ico' && (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.'))) {
       const url = req.nextUrl.clone();
       url.pathname = '/app-brand/favicon.ico';
       return NextResponse.rewrite(url);
@@ -285,16 +293,45 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 1. BYPASS API & STATIC LANGSUNG TANPA SENTUH SUBDOMAIN/KV REWRITE
-  if (
-    pathname.startsWith('/api/') ||
-    pathname === '/api' ||
-    pathname.startsWith('/_next/') ||
-    pathname.startsWith('/static') ||
-    pathname === '/apple-touch-icon.png' ||
-    pathname === '/404-store-not-found' ||
-    pathname.includes('.')
-  ) {
+  // ===========================================================================
+  // 1. DASHBOARD SUBDOMAIN ROUTING (dashboard.boontrack.com) - URUTAN PALING ATAS
+  // ===========================================================================
+  const isDashboardDomain =
+    host.startsWith('dashboard.boontrack.com') ||
+    hostClean === 'dashboard.boontrack.com' ||
+    host.startsWith('dashboard.localhost') ||
+    hostClean === 'dashboard.localhost' ||
+    host.startsWith('dashboard.');
+
+  if (isDashboardDomain) {
+    // A. Root frontpage (/) atau (/login) -> Internal rewrite langsung ke /login (URL browser tetap dashboard.boontrack.com)
+    if (pathname === '/' || pathname === '' || pathname === '/login' || pathname.startsWith('/login/')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.rewrite(url);
+    }
+
+    // B. Parse tenant slug dan subpaths untuk internal rewrite ke /[tenant]/dashboard/...
+    const segments = pathname.split('/').filter(Boolean);
+    const tenantSlug = segments[0];
+
+    if (tenantSlug) {
+      const url = req.nextUrl.clone();
+      if (segments.length === 1) {
+        // e.g. /buzzerukm -> /buzzerukm/dashboard
+        url.pathname = `/${tenantSlug}/dashboard`;
+      } else if (segments[1] === 'dashboard') {
+        // e.g. /buzzerukm/dashboard atau /buzzerukm/dashboard/settings -> pertahankan
+        url.pathname = `/${segments.join('/')}`;
+      } else {
+        // e.g. /buzzerukm/settings -> /buzzerukm/dashboard/settings
+        // e.g. /buzzerukm/orders/123 -> /buzzerukm/dashboard/orders/123
+        const subPath = segments.slice(1).join('/');
+        url.pathname = `/${tenantSlug}/dashboard/${subPath}`;
+      }
+      return NextResponse.rewrite(url);
+    }
+
     return NextResponse.next();
   }
 
