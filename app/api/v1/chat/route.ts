@@ -550,7 +550,17 @@ Instruksi Lainnya:
       else if (product.name) {
         reply = `Halo! Kami dari ${storeName}. Produk unggulan kami saat ini adalah ${product.name} (Rp ${Number(product.price || 0).toLocaleString('id-ID')}). Apakah ada yang ingin Anda tanyakan seputar silabus materi atau cara pemesanan?`;
       } else {
-        reply = `Halo! Terima kasih telah menghubungi ${storeName}. Ada yang bisa kami bantu seputar produk atau layanan kami? Silakan tanyakan atau pilih opsi di katalog samping.`;
+        const rawGreeting =
+          tenantMetadata?.ai_knowledge?.greeting_message ||
+          tenantMetadata?.greeting_message ||
+          tenantMetadata?.custom_greeting_message ||
+          tenantMetadata?.whatsapp_settings?.greeting_message;
+        reply = rawGreeting
+          ? rawGreeting
+              .replace(/\[nama_toko\]/gi, storeName)
+              .replace(/\{nama_toko\}/gi, storeName)
+              .replace(/\{store_name\}/gi, storeName)
+          : `Halo! Selamat datang di ${storeName} 👋 Ada yang bisa kami bantu seputar produk atau layanan kami? Silakan tanyakan atau pilih opsi di katalog samping.`;
       }
     }
 
