@@ -37,7 +37,6 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { syncAttributionSession } from '@/lib/attribution';
-import { getTenantWhatsApp } from '@/lib/tenant-config';
 import { 
   initMetaPixel, 
   initTikTokPixel, 
@@ -77,20 +76,52 @@ import {
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts } from '@/lib/bank-accounts';
 
-// Nomor Resmi WABA BoonTrack: 6285181830080 (Baku & Terverifikasi)
-export const WABA_OFFICIAL_NUMBER = '6285181830080';
+// Nomor Resmi WABA Holding BoonTrack: 6285181830080 (Khusus Platform Concierge / Enterprise)
+export const WABA_HOLDING_NUMBER = '6285181830080';
+// Alias untuk backward compatibility
+export const WABA_OFFICIAL_NUMBER = WABA_HOLDING_NUMBER;
+
+export function normalizeStorefrontWhatsAppNumber(rawPhone?: string | null): string {
+  if (!rawPhone || typeof rawPhone !== 'string') return '';
+  let clean = rawPhone.replace(/\D/g, '');
+  if (!clean) return '';
+
+  // Normalisasi nomor Indonesia ke format internasional E.164 (628...)
+  if (clean.startsWith('0')) {
+    clean = '62' + clean.slice(1);
+  } else if (clean.startsWith('8')) {
+    clean = '62' + clean;
+  }
+
+  // KEBIJAKAN ISOLASI: Dilarang keras fallback ke nomor WABA holding BoonTrack (085181830080 / 6285181830080)
+  if (clean === WABA_HOLDING_NUMBER || clean === '085181830080') {
+    return '';
+  }
+
+  return clean;
+}
 
 export function buildWabaStorefrontConsultationUrl(params: {
   productName: string;
-  storeName: string;
+  storeName?: string;
   tenantSlug: string;
   productSlug: string;
-  botNumber?: string;
+  tenantWhatsApp?: string | null;
+  botNumber?: string | null;
 }): { text: string; url: string; number: string } {
-  const num =
-    (params.botNumber || process.env.NEXT_PUBLIC_META_BOT_NUMBER || WABA_OFFICIAL_NUMBER).replace(/\D/g, '') ||
-    WABA_OFFICIAL_NUMBER;
-  const text = `Halo BoonTrack, saya tertarik dengan ${params.productName} di ${params.storeName}.\n(Ref: ${params.tenantSlug}#${params.productSlug})`;
+  const rawNumber = params.tenantWhatsApp || params.botNumber || '';
+  const num = normalizeStorefrontWhatsAppNumber(rawNumber);
+  const pName = params.productName || 'Produk';
+  const tSlug = params.tenantSlug || '';
+  const pSlug = params.productSlug || '';
+
+  // Format standar: "Halo Kak, saya tertarik dengan [NAMA_PRODUK]. Boleh minta info lebih detail? (Ref: [tenant_slug]#[product_slug])"
+  const text = `Halo Kak, saya tertarik dengan ${pName}. Boleh minta info lebih detail? (Ref: ${tSlug}#${pSlug})`;
+
+  if (!num) {
+    return { text, url: '', number: '' };
+  }
+
   const url = `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
   return { text, url, number: num };
 }
@@ -346,7 +377,7 @@ function SingleProductContent() {
               enable_qris: pm.enable_qris ?? cfg.enable_qris ?? true,
               enable_manual_transfer: Boolean(pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? true),
               affiliate_commission_rate: 0, // Audit: komisi kemitraan dinonaktifkan
-              whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || tenantRow?.metadata?.whatsapp_number || getTenantWhatsApp(tenant),
+              whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || (tenantRow as any)?.whatsapp_number || (tenantRow as any)?.phone || tenantRow?.metadata?.whatsapp_number || tenantRow?.metadata?.phone || (tenantRow?.metadata as any)?.store_profile?.whatsapp || (tenantRow?.metadata as any)?.store_profile?.phone || (tenantRow?.metadata as any)?.contact_phone || (tenantRow?.metadata as any)?.contact_whatsapp || '',
               cta_label: hero.cta_label || cfg.cta_label || match.cta_label || undefined,
             };
 
@@ -1036,16 +1067,32 @@ function SingleProductContent() {
     }
   };
 
-  // Kunci Target Nomor Resmi WABA BoonTrack: 6285181830080 (Baku & Terverifikasi)
+  // Dynamic Target Number dari Tenant Data (Isolasi Nomor Toko, Tanpa Fallback ke WABA Holding)
   const storeName = tenantData?.name || tenantData?.title || (tenant ? tenant.charAt(0).toUpperCase() + tenant.slice(1) : 'Store');
-  const { text: wabaPrefilledMessage, url: wabaConsultationUrl } = buildWabaStorefrontConsultationUrl({
+  const rawStoreWhatsApp =
+    config.whatsapp_number ||
+    (tenantData as any)?.whatsapp_number ||
+    (tenantData as any)?.phone ||
+    tenantData?.metadata?.whatsapp_number ||
+    tenantData?.metadata?.phone ||
+    (tenantData?.metadata as any)?.store_profile?.whatsapp ||
+    (tenantData?.metadata as any)?.store_profile?.phone ||
+    (tenantData?.metadata as any)?.contact_phone ||
+    (tenantData?.metadata as any)?.contact_whatsapp ||
+    (product as any)?.whatsapp_number ||
+    (product as any)?.metadata?.whatsapp_number ||
+    '';
+
+  const { text: wabaPrefilledMessage, url: wabaConsultationUrl, number: tenantWhatsAppNumber } = buildWabaStorefrontConsultationUrl({
     productName: product.name,
     storeName,
     tenantSlug: tenant,
     productSlug: product.slug || slug,
+    tenantWhatsApp: rawStoreWhatsApp,
   });
 
   const handleWhatsAppConsultation = () => {
+    if (!wabaConsultationUrl) return;
     trackWhatsAppConsultation({
       name: product.name,
       price: basePrice
@@ -2015,22 +2062,24 @@ function SingleProductContent() {
       </button>
 
       {/* ── CTA KONSULTASI WHATSAPP SEKUNDER (Jalur Chat-to-Close) ── */}
-      <a
-        href={wabaConsultationUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={() => {
-          trackWhatsAppConsultation({
-            name: product.name,
-            price: basePrice
-          });
-          trackContactEvent('WhatsApp Consultation');
-        }}
-        className="w-full py-3 px-4 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-[0.99] no-underline"
-      >
-        <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-        <span>💬 Masih ragu atau ingin tanya dulu? Hubungi Asisten WhatsApp</span>
-      </a>
+      {wabaConsultationUrl ? (
+        <a
+          href={wabaConsultationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => {
+            trackWhatsAppConsultation({
+              name: product.name,
+              price: basePrice
+            });
+            trackContactEvent('WhatsApp Consultation');
+          }}
+          className="w-full py-3 px-4 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-[0.99] no-underline"
+        >
+          <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>💬 Masih ragu atau ingin tanya dulu? Hubungi Asisten WhatsApp</span>
+        </a>
+      ) : null}
 
       <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400 pt-1">
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
@@ -2547,31 +2596,33 @@ function SingleProductContent() {
       )}
 
       {/* ── FLOATING WHATSAPP BUTTON (POJOK KANAN BAWAH) ── */}
-      <div className="fixed bottom-24 sm:bottom-20 right-4 sm:right-6 z-40">
-        <a
-          href={wabaConsultationUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => {
-            trackWhatsAppConsultation({
-              name: product.name,
-              price: basePrice
-            });
-            trackContactEvent('WhatsApp Consultation');
-          }}
-          title="Tanya Asisten WhatsApp"
-          className="group relative flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-full shadow-2xl shadow-emerald-600/40 border border-emerald-400/40 transition-all hover:scale-105 active:scale-95 cursor-pointer no-underline"
-        >
-          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-300"></span>
-          </span>
-          <MessageCircle className="w-5 h-5 text-white shrink-0" />
-          <span className="text-xs font-bold whitespace-nowrap hidden sm:inline">
-            Tanya Asisten WhatsApp
-          </span>
-        </a>
-      </div>
+      {wabaConsultationUrl ? (
+        <div className="fixed bottom-24 sm:bottom-20 right-4 sm:right-6 z-40">
+          <a
+            href={wabaConsultationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => {
+              trackWhatsAppConsultation({
+                name: product.name,
+                price: basePrice
+              });
+              trackContactEvent('WhatsApp Consultation');
+            }}
+            title="Tanya Asisten WhatsApp"
+            className="group relative flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-full shadow-2xl shadow-emerald-600/40 border border-emerald-400/40 transition-all hover:scale-105 active:scale-95 cursor-pointer no-underline"
+          >
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-300"></span>
+            </span>
+            <MessageCircle className="w-5 h-5 text-white shrink-0" />
+            <span className="text-xs font-bold whitespace-nowrap hidden sm:inline">
+              Tanya Asisten WhatsApp
+            </span>
+          </a>
+        </div>
+      ) : null}
     </div>
   );
 }
