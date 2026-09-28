@@ -234,9 +234,11 @@ function SingleProductContent() {
             })
           : null;
 
-        // Fallback: Gunakan sqlProd hasil query paralel jika belum ada di metadata.products
-        if (!match && sqlProd) {
+        // PERBAIKAN: Jika sqlProd ada, selalu gabungkan dan prioritaskan data tabel products (single source of truth)
+        if (sqlProd) {
+          const freshImage = (sqlProd as any).image_url || sqlProd.image;
           match = {
+            ...(match || {}),
             id: sqlProd.id,
             name: sqlProd.title,
             title: sqlProd.title,
@@ -246,13 +248,18 @@ function SingleProductContent() {
             category: sqlProd.category,
             product_type: sqlProd.product_type,
             description: sqlProd.description,
-            image: sqlProd.image,
+            image: freshImage || match?.image,
+            image_url: freshImage || match?.image_url || match?.image,
             stock: sqlProd.stock,
             is_unlimited: sqlProd.is_unlimited_stock,
-            download_url: sqlProd.link_digital || sqlProd.asset_reference || sqlProd.fulfillment_metadata?.access_url || '',
-            fulfillment_metadata: sqlProd.fulfillment_metadata,
+            download_url: sqlProd.link_digital || sqlProd.asset_reference || sqlProd.fulfillment_metadata?.access_url || match?.download_url || '',
+            fulfillment_metadata: sqlProd.fulfillment_metadata || match?.fulfillment_metadata,
             ...(sqlProd.fulfillment_metadata?.single_page_config || {}),
-            single_page_config: sqlProd.fulfillment_metadata?.single_page_config || {}
+            single_page_config: {
+              ...(match?.single_page_config || {}),
+              ...(sqlProd.fulfillment_metadata?.single_page_config || {}),
+              banner_url: freshImage || match?.single_page_config?.banner_url || match?.image
+            }
           };
         }
 
@@ -280,11 +287,21 @@ function SingleProductContent() {
               ? rawSolutionPoints.split(/\r?\n/).map((s: string) => s.trim()).filter(Boolean)
               : [];
 
+            // Pastikan gambar produk aktual (dari SQL / Form Edit) meng-override banner_url builder lama
+            const resolvedBannerImage = 
+              (sqlProd as any)?.image_url || 
+              sqlProd?.image || 
+              match.image_url || 
+              match.image || 
+              hero.banner_url || 
+              cfg.banner_url || 
+              '';
+
             const dynamicConfig: SinglePageConfig = {
               slug: match.slug || slug,
               headline: hero.headline || cfg.headline || match.title || match.name || 'Produk Eksklusif',
               subheadline: hero.subheadline || cfg.subheadline || match.description || '',
-              banner_url: hero.banner_url || cfg.banner_url || match.image || '',
+              banner_url: resolvedBannerImage,
               badge_text: hero.badge || cfg.badge_text || match.promo || 'Penawaran Spesial',
               enable_hero: cfg.enable_hero ?? true,
               enable_client_logos: cfg.enable_client_logos ?? (Boolean(cfg.client_logos?.length) || Boolean(builder.client_logos?.length) || false),
@@ -308,7 +325,7 @@ function SingleProductContent() {
               voucher: cfg.voucher || null,
               enable_qris: pm.enable_qris ?? cfg.enable_qris ?? true,
               enable_manual_transfer: Boolean(pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? true),
-              affiliate_commission_rate: cfg.affiliate_commission_rate || 0,
+              affiliate_commission_rate: 0, // Audit: komisi kemitraan dinonaktifkan
               whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || tenantRow?.metadata?.whatsapp_number || getTenantWhatsApp(tenant),
               cta_label: hero.cta_label || cfg.cta_label || match.cta_label || undefined,
             };
@@ -330,7 +347,7 @@ function SingleProductContent() {
               promo: dynamicConfig.badge_text,
               description: dynamicConfig.subheadline,
               download_url: match.download_url || match.link_digital || match.delivery_url || match.fulfillment_metadata?.access_url || '',
-              image: dynamicConfig.banner_url,
+              image: resolvedBannerImage,
               stock: match.stock || 999,
               sku: match.sku || '',
               is_unlimited: match.is_unlimited ?? true,
@@ -720,12 +737,6 @@ function SingleProductContent() {
     ? Math.max(1000, netProductPrice + netShippingCost - currentUniqueCode)
     : netProductPrice + netShippingCost + currentUniqueCode;
 
-  // 5. Komisi Affiliate (Fitur affiliate produk retail toko dinonaktifkan sementara: murni direct store ke merchant)
-  const commissionRate = 0;
-  const affiliateCommission = 0;
-
-  // 6. Total Nilai Bonus Eksklusif (dideklarasikan di bagian atas komponen)
-
   useEffect(() => {
     // 1. Rekam jejak atribusi referral & parameter UTM/Click ID
     syncAttributionSession(tenant, searchParams);
@@ -742,9 +753,6 @@ function SingleProductContent() {
       price: basePrice
     });
 
-    // FIX: Baca affiliate code dari URL sesi ini (searchParams sudah tersedia via useSearchParams).
-    // Jangan fallback ke localStorage tanpa validasi URL — mencegah sisa kode referral
-    // dari sesi pengujian sebelumnya (misal 'buzzerukm') bocor ke toko tenant lain.
     const refFromUrl = searchParams.get('ref') || searchParams.get('aff');
     if (refFromUrl) {
       setAffiliateCode(refFromUrl.trim());
@@ -864,7 +872,6 @@ function SingleProductContent() {
     setLoading(true);
     setErrorMessage('');
 
-    const currentRef = affiliateCode || getActiveAffiliateCode() || undefined;
     const trackingParams = getTrackingData();
 
     try {
@@ -1361,7 +1368,7 @@ function SingleProductContent() {
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => {}} // handled by parent onClick
+                      onChange={() => {}}
                       className="w-5 h-5 rounded-md text-amber-600 focus:ring-amber-500 cursor-pointer border-slate-300"
                     />
                   </div>
@@ -1710,13 +1717,13 @@ function SingleProductContent() {
           <ClientLogosSection logos={config.client_logos} />
         )}
 
-        {/* 3 to 7. Copywriting Narrative Sections (Kondisional Murni — Zero Margin/Padding Gap jika Kosong atau mode Direct Checkout Only) */}
+        {/* 3 to 7. Copywriting Narrative Sections */}
         {!isDirectCheckoutOnly && (
           <>
             {/* 3. Problem & Solution Section */}
             {config.enable_problem_solution !== false && (
               <>
-                {/* 3a. Problem Section (Pain Points + Ilustrasi) */}
+                {/* 3a. Problem Section */}
                 {Boolean((config.pain_points && config.pain_points.length > 0) || (config.problem_title && config.problem_title.trim())) ? (
                   <section className="bg-rose-50/70 border border-rose-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
@@ -1744,7 +1751,7 @@ function SingleProductContent() {
                   </section>
                 ) : null}
 
-                {/* 3b. Agitation Section (Dampak Masalah Jika Dibiarkan) */}
+                {/* 3b. Agitation Section */}
                 {Boolean((config.agitation_points && config.agitation_points.length > 0) || (config.agitation_title && config.agitation_title.trim())) ? (
                   <section className="bg-amber-50/70 border border-amber-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
@@ -1763,7 +1770,7 @@ function SingleProductContent() {
                   </section>
                 ) : null}
 
-                {/* 3c. Solution Section (Fitur Unggulan) */}
+                {/* 3c. Solution Section */}
                 {Boolean(config.solution_points && config.solution_points.length > 0) ? (
                   <section className="bg-emerald-50/60 border border-emerald-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
@@ -1946,7 +1953,7 @@ function SingleProductContent() {
               </section>
             ) : null}
 
-            {/* 7. FAQ Section (Pertanyaan yang Sering Diajukan) */}
+            {/* 7. FAQ Section */}
             {config.enable_faq && Boolean(config.faqs && config.faqs.length > 0) ? (
               <section className="bg-slate-50 border border-slate-200 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
                 <div className="flex items-center gap-2">
