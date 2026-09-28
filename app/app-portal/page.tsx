@@ -27,12 +27,12 @@ export default function AppPortalPage() {
             <div className="absolute bottom-10 left-1/4 w-80 h-80 bg-slate-100 rounded-full blur-2xl pointer-events-none -z-10"></div>
 
             {/* Top Banner */}
-            <div className="bg-[#070A11] text-slate-300 py-2.5 px-4 text-center text-xs font-medium border-b border-slate-800/80 flex items-center justify-center gap-2">
+            <div className="bg-[#070A11] text-slate-300 py-2.5 px-4 text-center text-xs font-medium border-b border-slate-800/80 flex items-center justify-center gap-2 flex-wrap">
                 <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
                 </span>
-                <span className="text-orange-400 font-bold">HARDWARE &amp; API OS:</span>
+                <span className="text-orange-400 font-bold">Official Meta WhatsApp Cloud API Ready • Zero-Friction Engine:</span>
                 Tanpa install app untuk pelanggan. Seluruh interaksi CRM &amp; Transaksi berjalan via Chat &amp; Hardware API.
             </div>
 
@@ -76,7 +76,7 @@ export default function AppPortalPage() {
                     {/* Header CTA Button */}
                     <div className="flex items-center gap-3">
                         <a
-                            href="https://boontrack.com/onboarding"
+                            href="https://wa.me/6285181830080?text=Halo%20BoonTrack%2C%20saya%20tertarik%20untuk%20konsultasi%20solusi%20Enterprise%20dan%20aktivasi%20platform."
                             target="_blank"
                             rel="noopener noreferrer"
                             className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-lg shadow-orange-500/20 transition-all hover:scale-[1.02]"
@@ -101,7 +101,7 @@ export default function AppPortalPage() {
                     {/* Eyebrow Badge */}
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-700/60 text-orange-400 text-xs mb-8 shadow-sm">
                         <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                        <span>Outcome As A Service — Enterprise Custom App &amp; WhatsApp Orchestration</span>
+                        <span>Official Meta WhatsApp Cloud API Ready • Zero-Friction Engine</span>
                     </div>
 
                     {/* Headline Typography */}
@@ -114,13 +114,13 @@ export default function AppPortalPage() {
 
                     {/* Subheadline */}
                     <p className="mt-6 text-slate-400 text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
-                        Hilangkan friksi interaksi pelanggan. Orkestrasi transaksi menyeluruh dari WhatsApp Business API, POS kasir, IoT Smart Doorlock, verifikasi mutasi real-time, hingga otomasi backend kustom tanpa download aplikasi tambahan.
+                        Hilangkan friksi interaksi pelanggan. Orkestrasi transaksi menyeluruh dari Official Meta WhatsApp Cloud API, POS kasir, IoT Smart Doorlock, verifikasi mutasi real-time, hingga otomasi backend kustom tanpa download aplikasi tambahan.
                     </p>
 
                     {/* CTA Button Group */}
                     <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
                         <a
-                            href="https://boontrack.com/onboarding"
+                            href="https://wa.me/6285181830080?text=Halo%20BoonTrack%2C%20saya%20tertarik%20untuk%20konsultasi%20solusi%20Enterprise%20dan%20aktivasi%20platform."
                             target="_blank"
                             rel="noopener noreferrer"
                             className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold text-sm shadow-xl shadow-orange-500/25 transition-all text-center"
@@ -247,9 +247,13 @@ export default function AppPortalPage() {
                             Customer Anda berada di WhatsApp & Chat. Tanpa repot download aplikasi.
                         </h2>
                         <p className="mt-4 text-slate-600 text-base leading-relaxed">
-                            Database pelanggan, status pesanan, faktur, hingga notifikasi pengingat terkirim otomatis ke kanal pesan instan yang sudah terpasang di smartphone mereka.
+                            Database pelanggan, status pesanan, faktur, hingga notifikasi pengingat terkirim otomatis ke kanal pesan instan yang sudah terpasang di smartphone mereka. Integrasi resmi WhatsApp Cloud API (v20.0+) dengan enkripsi end-to-end Meta dan SLA pengiriman pesan instan.
                         </p>
                         <div className="mt-6 space-y-3">
+                            <div className="flex items-center gap-3 text-sm font-medium text-slate-700">
+                                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs font-bold">✓</span>
+                                <span>Integrasi resmi WhatsApp Cloud API (v20.0+) dengan enkripsi end-to-end Meta dan SLA pengiriman pesan instan</span>
+                            </div>
                             <div className="flex items-center gap-3 text-sm font-medium text-slate-700">
                                 <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold">✓</span>
                                 <span>Kirim invoice & QRIS dinamis langsung ke ruang chat</span>
@@ -303,7 +307,7 @@ export default function AppPortalPage() {
                         POS yang Berbicara Langsung dengan Perangkat Fisik
                     </h2>
                     <p className="mt-4 text-slate-600 text-sm sm:text-base">
-                        BoonTrack Apps menjembatani kasir Anda dengan perangkat keras di lapangan yang memiliki API atau koneksi jaringan.
+                        BoonTrack Apps menjembatani kasir Anda dengan perangkat keras di lapangan yang memiliki API atau koneksi jaringan. Integrasi resmi WhatsApp Cloud API (v20.0+) dengan enkripsi end-to-end Meta dan SLA pengiriman pesan instan.
                     </p>
                 </div>
 
@@ -339,23 +343,23 @@ export default function AppPortalPage() {
                 <div className="bg-gradient-to-r from-orange-600 to-slate-950 text-white p-10 sm:p-14 rounded-3xl shadow-2xl relative overflow-hidden">
                     <div className="absolute -right-10 -bottom-10 w-60 h-60 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
 
-                    <span className="text-xs font-bold uppercase tracking-wider text-orange-200 bg-white/20 px-3 py-1 rounded-full border border-white/20">
-                        7-Day Zero-Risk Pilot Implementation
+                    <span className="text-xs font-bold uppercase tracking-wider text-orange-200 bg-white/20 px-3.5 py-1.5 rounded-full border border-white/20 inline-block shadow-sm">
+                        7-DAY ZERO-RISK PILOT • INTEGRASI RESMI META WABA
                     </span>
                     <h2 className="text-3xl sm:text-4xl font-black mt-4">
                         Uji Coba di Cabang Anda Tanpa Risiko Finansial.
                     </h2>
                     <p className="mt-4 text-orange-100 text-sm leading-relaxed max-w-2xl mx-auto">
-                        Kami rekayasa arsitektur chat dan hardware di 1 cabang Anda selama 7 hari. Tanpa biaya langganan jika sistem gagal mengoptimalkan waktu operasional Anda.
+                        Kami rekayasa arsitektur chat WhatsApp Resmi (Meta WABA Cloud API) dan integrasi hardware di 1 cabang Anda selama 7 hari. Bebas risiko pemblokiran nomor, tanpa biaya langganan jika sistem gagal mengoptimalkan waktu operasional Anda.
                     </p>
                     <div className="mt-8 flex justify-center">
                         <a
-                            href="https://boontrack.com/onboarding"
+                            href="https://wa.me/6285181830080?text=Halo%20BoonTrack%2C%20saya%20tertarik%20klaim%20Pilot%20Resmi%207%20Hari%20Meta%20WABA."
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-8 py-4 rounded-xl bg-white text-orange-600 font-black text-sm hover:bg-orange-50 shadow-lg transition transform active:scale-95"
                         >
-                            Klaim Pilot 7 Hari Tanpa Risiko &rarr;
+                            Klaim Pilot Resmi 7 Hari Tanpa Risiko &rarr;
                         </a>
                     </div>
                 </div>
