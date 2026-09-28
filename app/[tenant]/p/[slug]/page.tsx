@@ -510,14 +510,27 @@ function SingleProductContent() {
   const statusParam = (searchParams.get('status') || searchParams.get('order_status') || '').toUpperCase();
   const isPaid = statusParam === 'PAID' || statusParam === 'SUCCESS' || statusParam === 'SETTLED' || statusParam === 'COMPLETED';
 
-  const BASE_SHIPPING_OPTIONS = [
-    { id: 'reg', name: 'J&T / SiCepat Regular', price: 20000, eta: '2-3 hari', type: 'regular', badge: 'Reguler' },
-    { id: 'exp', name: 'Kurir Express Next Day', price: 35000, eta: '1 hari', type: 'express', badge: 'Express' },
-    { id: 'cargo', name: 'Kargo Hemat', price: 15000, eta: '4-5 hari', type: 'cargo', badge: 'Kargo' }
-  ];
-  const [instantCouriers, setInstantCouriers] = useState<any[]>([]);
-  const [isLoadingInstant, setIsLoadingInstant] = useState(false);
-  const [selectedShippingId, setSelectedShippingId] = useState<string>('reg');
+  // Dynamic Shipping Rates State (Universal Real-Time Courier Engine)
+  interface ShippingRateOption {
+    id: string;
+    courier_name: string;
+    name?: string;
+    service: string;
+    price: number;
+    etd: string;
+    eta?: string;
+    type: 'instant' | 'regular' | 'cargo';
+    badge?: string;
+    provider?: string;
+    max_days?: number;
+    is_fnb_safe?: boolean;
+  }
+
+  const [dynamicShippingRates, setDynamicShippingRates] = useState<ShippingRateOption[]>([]);
+  const [isLoadingShippingRates, setIsLoadingShippingRates] = useState(false);
+  const [shippingNotice, setShippingNotice] = useState<string | null>(null);
+  const [isShippingFnbBlocked, setIsShippingFnbBlocked] = useState(false);
+  const [selectedShippingId, setSelectedShippingId] = useState<string>('');
   const [shippingAddress, setShippingAddress] = useState<string>('');
   const [shippingCity, setShippingCity] = useState<string>('');
   const [shippingDistrict, setShippingDistrict] = useState<string>('');
@@ -529,6 +542,41 @@ function SingleProductContent() {
   const [hasTrackedInitiateCheckout, setHasTrackedInitiateCheckout] = useState(false);
   const [hasTrackedPaymentInfo, setHasTrackedPaymentInfo] = useState(false);
   const [hasTrackedPaidPurchase, setHasTrackedPaidPurchase] = useState(false);
+
+  // Deteksi khusus jika produk adalah FnB / makanan segar mudah basi
+  const isFnbProduct = useMemo(() => {
+    const rawCat = String(product.category || '').toLowerCase();
+    const rawTyp = String(product.product_type || '').toLowerCase();
+    const rawNm = String(product.name || '').toLowerCase();
+    const meta = (product.metadata || {}) as Record<string, any>;
+    const fMeta = (product.fulfillment_metadata || {}) as Record<string, any>;
+
+    return Boolean(
+      isStoreFnb ||
+      rawCat.includes('fnb') ||
+      rawCat.includes('food') ||
+      rawCat.includes('kuliner') ||
+      rawCat.includes('makanan') ||
+      rawCat.includes('minuman') ||
+      rawTyp.includes('fnb') ||
+      rawTyp.includes('food') ||
+      meta.is_fnb ||
+      meta.is_perishable ||
+      meta.perishable ||
+      fMeta.is_fnb ||
+      fMeta.is_perishable ||
+      rawNm.includes('frozen') ||
+      rawNm.includes('dimsum') ||
+      rawNm.includes('baso') ||
+      rawNm.includes('bakso') ||
+      rawNm.includes('daging') ||
+      rawNm.includes('segar') ||
+      rawNm.includes('sayur') ||
+      rawNm.includes('buah') ||
+      rawNm.includes('kue') ||
+      rawNm.includes('roti')
+    );
+  }, [isStoreFnb, product.category, product.product_type, product.name, product.metadata, product.fulfillment_metadata]);
 
   // Mode Direct Checkout / Cartless Funnel
   const isDirectCheckoutOnly = Boolean(
@@ -564,15 +612,24 @@ function SingleProductContent() {
   const orderIdFromUrl = searchParams.get('order_id') || searchParams.get('orderId') || searchParams.get('order') || '';
 
   const availableShippingOptions = useMemo(() => {
-    return [...BASE_SHIPPING_OPTIONS, ...instantCouriers];
-  }, [instantCouriers]);
+    return dynamicShippingRates;
+  }, [dynamicShippingRates]);
+
+  const instantCouriers = useMemo(() => {
+    return dynamicShippingRates.filter((r) => r.type === 'instant');
+  }, [dynamicShippingRates]);
+
+  const regularCouriers = useMemo(() => {
+    return dynamicShippingRates.filter((r) => r.type === 'regular' || r.type === 'cargo');
+  }, [dynamicShippingRates]);
 
   const totalBonusValue = useMemo(() => {
     if (!config.bonus_items || config.bonus_items.length === 0) return 0;
     return config.bonus_items.reduce((acc, item) => acc + (item.value || 0), 0);
   }, [config.bonus_items]);
 
-  // Efek pemanggilan tarif instan Biteship saat pembeli memasukkan kota Bandung atau kode pos 40xxx (khusus bila requiresShipping)
+  // Efek pemanggilan tarif resmi real-time kurir (Biteship, Lincah & Kurir Reguler)
+  // Berjalan otomatis saat pembeli mengisi Kota/Kabupaten, Kecamatan, atau Kode Pos
   useEffect(() => {
     if (!requiresShipping) return;
 
@@ -581,28 +638,22 @@ function SingleProductContent() {
     const queryPostal = shippingPostalCode.trim();
     const queryAddress = shippingAddress.trim();
 
-    const combinedRegion = `${queryCity} ${queryDistrict} ${queryPostal} ${queryAddress}`.toLowerCase();
-
-    const hasBandungOrPostal = 
-      combinedRegion.includes('bandung') ||
-      /\b40\d{3}\b/.test(queryPostal) ||
-      /\b40\d{3}\b/.test(queryCity) ||
-      /\b40\d{3}\b/.test(queryAddress);
-
-    if (!hasBandungOrPostal) {
-      if (instantCouriers.length > 0) {
-        setInstantCouriers([]);
-        if (selectedShippingId.startsWith('biteship_')) {
-          setSelectedShippingId('reg');
-        }
-      }
+    // Butuh minimal kota (>=3 char) atau kode pos (>=5 digit)
+    if (queryCity.length < 3 && queryPostal.length < 5) {
+      setDynamicShippingRates([]);
+      setSelectedShippingId('');
+      setShippingNotice(null);
+      setIsShippingFnbBlocked(false);
       return;
     }
 
     const timer = setTimeout(async () => {
-      setIsLoadingInstant(true);
+      setIsLoadingShippingRates(true);
+      setShippingNotice(null);
+      setIsShippingFnbBlocked(false);
+
       try {
-        const res = await fetch('/api/v1/shipping/rates/instant', {
+        const res = await fetch('/api/v1/shipping/rates', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -611,26 +662,47 @@ function SingleProductContent() {
             destination_city: queryCity,
             destination_district: queryDistrict,
             destination_address: queryAddress,
-            destination_postal_code: queryPostal || (queryCity.match(/\b40\d{3}\b/) || queryAddress.match(/\b40\d{3}\b/) || [''])[0]
-          })
+            destination_postal_code: queryPostal,
+            weight_grams: (product as any).weight || (product as any).weight_grams || 1000,
+            is_fnb: isFnbProduct,
+          }),
         });
+
         if (res.ok) {
           const data = await res.json();
-          if (data.success && Array.isArray(data.couriers) && data.couriers.length > 0) {
-            setInstantCouriers(data.couriers);
+          if (data.success && Array.isArray(data.rates) && data.rates.length > 0) {
+            setDynamicShippingRates(data.rates);
+            setShippingNotice(data.fnb_warning || null);
+            setIsShippingFnbBlocked(false);
+
+            // Pilih otomatis opsi pertama jika belum terpilih
+            setSelectedShippingId((prev) => {
+              const exists = data.rates.some((r: any) => r.id === prev);
+              return exists ? prev : data.rates[0].id;
+            });
           } else {
-            setInstantCouriers([]);
+            setDynamicShippingRates([]);
+            setSelectedShippingId('');
+            if (isFnbProduct && data.fnb_safe === false) {
+              setIsShippingFnbBlocked(true);
+              setShippingNotice(
+                data.fnb_warning ||
+                `Pengiriman makanan segar ke ${queryCity} tidak tersedia karena estimasi lebih dari 2 hari yang berisiko membuat produk basi.`
+              );
+            } else {
+              setShippingNotice('Tidak ditemukan layanan kurir aktif untuk alamat tujuan ini.');
+            }
           }
         }
       } catch (err) {
-        console.warn('[Rates Instant Error]', err);
+        console.warn('[Rates API Fetch Error]', err);
       } finally {
-        setIsLoadingInstant(false);
+        setIsLoadingShippingRates(false);
       }
-    }, 350);
+    }, 380);
 
     return () => clearTimeout(timer);
-  }, [requiresShipping, shippingCity, shippingDistrict, shippingPostalCode, shippingAddress]);
+  }, [requiresShipping, shippingCity, shippingDistrict, shippingPostalCode, shippingAddress, tenant, product, isFnbProduct]);
 
   // Cek keaktifan voucher seller secara universal (Metadata-First & Zero Hardcoding)
   const isVoucherActive = isProductVoucherActive(product, config);
@@ -724,8 +796,8 @@ function SingleProductContent() {
   const netProductPrice = Math.max(0, basePrice - (appliedVoucher ? productDiscount : 0)) + orderBumpsTotal;
 
   // 2. Ongkos Kirim & Subsidi (Khusus Produk Fisik / requiresShipping)
-  const selectedShipping = availableShippingOptions.find(s => s.id === selectedShippingId) || availableShippingOptions[0];
-  const baseShippingCost = requiresShipping ? selectedShipping.price : 0;
+  const selectedShipping = availableShippingOptions.find(s => s.id === selectedShippingId) || availableShippingOptions[0] || null;
+  const baseShippingCost = (requiresShipping && selectedShipping) ? selectedShipping.price : 0;
   let shippingSubsidy = 0;
   if (requiresShipping && appliedVoucher) {
     if (appliedVoucher.shipping_discount_type === 'free') {
@@ -878,10 +950,24 @@ function SingleProductContent() {
       return;
     }
 
+    if (requiresShipping && isShippingFnbBlocked) {
+      setErrorMessage(shippingNotice || 'Tujuan pengiriman melebihi batas waktu aman pengiriman makanan segar (maksimal 2 hari).');
+      return;
+    }
+
+    if (requiresShipping && !selectedShipping) {
+      setErrorMessage('Silakan lengkapi alamat dan pilih layanan kurir pengiriman yang tersedia.');
+      return;
+    }
+
     setLoading(true);
     setErrorMessage('');
 
     const trackingParams = getTrackingData();
+
+    const courierLabel = selectedShipping ? (selectedShipping.courier_name || (selectedShipping as any).name) : '';
+    const courierEtd = selectedShipping ? (selectedShipping.etd || (selectedShipping as any).eta || '') : '';
+    const formattedCourier = courierEtd ? `${courierLabel} (${courierEtd})` : courierLabel;
 
     try {
       const result = await createOrderAndInvoice({
@@ -898,7 +984,7 @@ function SingleProductContent() {
         shippingAddress: requiresAddress
           ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
           : undefined,
-        shippingCourier: requiresShipping ? (selectedShipping.eta ? `${selectedShipping.name} (${selectedShipping.eta})` : selectedShipping.name) : undefined,
+        shippingCourier: requiresShipping && selectedShipping ? formattedCourier : undefined,
         productType,
         fulfillmentMetadata: {
           ...(product.fulfillment_metadata || {}),
@@ -1301,54 +1387,66 @@ function SingleProductContent() {
               />
               {requiresShipping && (
                 <span className="text-[10px] text-slate-500 mt-1 block">
-                  💡 Masukkan kota &quot;Bandung&quot; atau kode pos 40xxx untuk mengaktifkan opsi kurir instan (GoSend &amp; GrabExpress 1-2 Jam via Biteship).
+                  💡 Masukkan Kota &amp; Kode Pos untuk memuat tarif kurir resmi real-time (Biteship, JNE, SiCepat, J&amp;T).
                 </span>
               )}
             </div>
 
             {/* OPSI KURIR HANYA UNTUK PRODUK FISIK / REQUIRES_SHIPPING */}
             {requiresShipping && (
-              <div className="space-y-2 pt-1">
+              <div className="space-y-2.5 pt-1">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-slate-700 block text-xs">Pilih Layanan Kurir</label>
-                  {isLoadingInstant && (
+                  {isLoadingShippingRates && (
                     <span className="text-[10px] text-blue-600 flex items-center gap-1 font-semibold animate-pulse">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Menghitung tarif instan Biteship...
+                      <Loader2 className="w-3 h-3 animate-spin" /> Menghubungkan ke API Kurir...
                     </span>
                   )}
                 </div>
 
-                {/* 1. Kurir Reguler & Kargo */}
-                <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Kurir Reguler &amp; Kargo</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {BASE_SHIPPING_OPTIONS.map((opt) => (
-                      <div
-                        key={opt.id}
-                        onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
-                        className={`p-2.5 rounded-xl border cursor-pointer transition ${
-                          selectedShippingId === opt.id
-                            ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
-                            : 'bg-white border-slate-200 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="font-bold text-slate-900 text-[11px]">{opt.name}</div>
-                        <div className="text-[10px] text-slate-500">{opt.eta}</div>
-                        <div className="text-xs font-black text-blue-600 mt-1">
-                          Rp {opt.price.toLocaleString('id-ID')}
-                        </div>
-                      </div>
-                    ))}
+                {/* Proteksi Kesegaran Produk Makanan (FnB) */}
+                {isFnbProduct && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-start gap-2">
+                    <span className="text-base leading-none">🥗</span>
+                    <div>
+                      <span className="font-bold block">Proteksi Kesegaran Produk Makanan (FnB):</span>
+                      <span className="text-[10px] text-amber-800 block mt-0.5">
+                        {shippingNotice || 'Kurir berdurasi lebih dari 2 hari otomatis disaring agar produk tiba dalam kondisi segar dan tidak basi.'}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* 2. Opsi Kurir Instan Biteship (Muncul jika alamat / kota Bandung terdeteksi) */}
+                {/* Warning jika produk FnB terblokir karena rute > 2 hari */}
+                {isShippingFnbBlocked && (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Pengiriman Tidak Tersedia</p>
+                      <p className="text-[11px] text-rose-700 mt-0.5">
+                        {shippingNotice || 'Alamat tujuan melebihi batas waktu aman pengiriman makanan segar (maksimal 2 hari).'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Prompt jika kota / kode pos belum diisi */}
+                {!isLoadingShippingRates && dynamicShippingRates.length === 0 && !isShippingFnbBlocked && (
+                  <div className="p-3 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                    <p className="text-xs font-medium text-slate-600">🚚 Masukkan Kota &amp; Kode Pos tujuan di atas</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Tarif resmi kurir reguler (JNE, J&amp;T, SiCepat) dan kurir instan dihitung secara presisi sesuai kecamatan &amp; kota pembeli.
+                    </p>
+                  </div>
+                )}
+
+                {/* 1. Kurir Instan & Sameday Biteship (Jika Ada & Terjangkau) */}
                 {instantCouriers.length > 0 && (
-                  <div className="mt-2.5 pt-2 border-t border-amber-200/70 space-y-1.5">
+                  <div className="space-y-1.5 pt-0.5">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
                         <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
-                        Kurir Instan Biteship (Area Bandung)
+                        Kurir Instan Biteship
                       </span>
                       <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
                         Tiba Hari Ini (1-2 Jam)
@@ -1366,17 +1464,52 @@ function SingleProductContent() {
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-900 text-[11px]">{opt.name}</span>
+                            <span className="font-bold text-slate-900 text-[11px]">{opt.courier_name}</span>
                             <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                              {opt.eta}
+                              {opt.etd}
                             </span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 mt-0.5">
-                            {opt.name} - {opt.eta}: Rp {opt.price.toLocaleString('id-ID')}
                           </div>
                           <div className="text-xs font-black text-emerald-700 mt-1 flex items-center justify-between">
                             <span>Rp {opt.price.toLocaleString('id-ID')}</span>
                             <span className="text-[9px] text-emerald-600 font-semibold">{opt.badge || 'Instan'}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Kurir Reguler, Express & Kargo (Tarif Real-Time) */}
+                {regularCouriers.length > 0 && (
+                  <div className="space-y-1.5 pt-0.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Kurir Reguler &amp; Kargo (Tarif Real-Time)
+                      </span>
+                      {isFnbProduct && (
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                          ✓ Maksimal 2 Hari Aman
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {regularCouriers.map((opt) => (
+                        <div
+                          key={opt.id}
+                          onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
+                          className={`p-2.5 rounded-xl border cursor-pointer transition ${
+                            selectedShippingId === opt.id
+                              ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
+                              : 'bg-white border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="font-bold text-slate-900 text-[11px] truncate">{opt.courier_name}</div>
+                          <div className="text-[10px] text-slate-500">{opt.etd}</div>
+                          <div className="text-xs font-black text-blue-600 mt-1 flex items-center justify-between">
+                            <span>Rp {opt.price.toLocaleString('id-ID')}</span>
+                            {opt.badge && (
+                              <span className="text-[9px] text-slate-400 font-normal">{opt.badge}</span>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1551,7 +1684,7 @@ function SingleProductContent() {
 
         {requiresShipping && (
           <div className="flex justify-between text-slate-600">
-            <span>Ongkos Kirim ({selectedShipping.name})</span>
+            <span>Ongkos Kirim ({selectedShipping ? (selectedShipping.courier_name || selectedShipping.name) : 'Pilih Kurir'})</span>
             <span className="font-semibold text-slate-900">Rp {baseShippingCost.toLocaleString('id-ID')}</span>
           </div>
         )}

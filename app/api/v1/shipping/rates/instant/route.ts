@@ -120,32 +120,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fallback jika API Key offline atau belum diisi
-    if (availableRates.length === 0) {
-      availableRates.push(
-        {
-          id: 'instant_gosend',
-          courier_name: 'GoSend Instant',
-          service: 'Instant',
-          price: 20000,
-          etd: '1-2 Jam',
-          type: 'instant',
-        },
-        {
-          id: 'instant_grab',
-          courier_name: 'GrabExpress Instant',
-          service: 'Instant',
-          price: 22000,
-          etd: '1-2 Jam',
-          type: 'instant',
-        }
-      );
-    }
-
     return NextResponse.json({
       success: true,
-      coverage: true,
+      coverage: availableRates.length > 0,
       rates: availableRates,
+      couriers: availableRates,
+      message: availableRates.length === 0 ? 'Alamat tujuan berada di luar jangkauan kurir instan.' : undefined,
     });
   } catch (error: any) {
     console.error('[Rates Instant API] Fatal error:', error);
