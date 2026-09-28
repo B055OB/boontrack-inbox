@@ -1,4 +1,6 @@
 import { detectIndonesianZone, parseMaxEtdDays } from '@/app/api/v1/shipping/rates/route';
+import { GET as searchLocations } from '@/app/api/v1/shipping/locations/search/route';
+import { NextRequest } from 'next/server';
 
 describe('Logistics & Shipping Rates Engine', () => {
   describe('Anti Flat Fallback & Indonesian Regional Zone Engine', () => {
@@ -58,6 +60,32 @@ describe('Logistics & Shipping Rates Engine', () => {
       expect(parseMaxEtdDays('3 - 4 Hari', 'regular')).toBeGreaterThan(2);
       expect(parseMaxEtdDays('4-6 Hari', 'regular')).toBeGreaterThan(2);
       expect(parseMaxEtdDays('Kargo 5-7 Hari', 'cargo')).toBeGreaterThan(2);
+    });
+  });
+
+  describe('Location Autocomplete Search (Biteship & District DB)', () => {
+    it('should reject search with less than 3 characters', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/shipping/locations/search?input=Pe');
+      const res = await searchLocations(req);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.areas).toEqual([]);
+    });
+
+    it('should return location areas with postal_code and destination_area_id for valid query', async () => {
+      const req = new NextRequest('http://localhost:3000/api/v1/shipping/locations/search?input=Pekanbaru');
+      const res = await searchLocations(req);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+      expect(data.areas.length).toBeGreaterThan(0);
+
+      const first = data.areas[0];
+      expect(first).toHaveProperty('id');
+      expect(first).toHaveProperty('name');
+      expect(first).toHaveProperty('city');
+      expect(first).toHaveProperty('district');
+      expect(first).toHaveProperty('postal_code');
+      expect(first.id).toMatch(/^IDN/); // Official Biteship Area ID format
     });
   });
 });

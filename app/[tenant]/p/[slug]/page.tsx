@@ -20,6 +20,8 @@ import {
   Trash2,
   XCircle,
   AlertTriangle,
+  MapPin,
+  Search,
   Gift,
   Star,
   ArrowDown,
@@ -535,6 +537,79 @@ function SingleProductContent() {
   const [shippingCity, setShippingCity] = useState<string>('');
   const [shippingDistrict, setShippingDistrict] = useState<string>('');
   const [shippingPostalCode, setShippingPostalCode] = useState<string>('');
+
+  // Location Autocomplete State (Biteship Location Search & Anti-Typo Lock)
+  interface LocationAreaItem {
+    id: string;
+    name: string;
+    district: string;
+    city: string;
+    province: string;
+    postal_code: string;
+  }
+
+  const [locationQuery, setLocationQuery] = useState<string>('');
+  const [locationSuggestions, setLocationSuggestions] = useState<LocationAreaItem[]>([]);
+  const [isLoadingLocations, setIsLoadingLocations] = useState<boolean>(false);
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState<boolean>(false);
+  const [selectedAreaId, setSelectedAreaId] = useState<string>('');
+  const [selectedLocationObj, setSelectedLocationObj] = useState<LocationAreaItem | null>(null);
+  const locationDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Handler pencarian autocomplete lokasi saat pembeli mengetik minimal 3 huruf
+  useEffect(() => {
+    const q = locationQuery.trim();
+    if (q.length < 3 || (selectedLocationObj && locationQuery.includes(selectedLocationObj.district))) {
+      setLocationSuggestions([]);
+      setIsLoadingLocations(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsLoadingLocations(true);
+      try {
+        const res = await fetch(`/api/v1/shipping/locations/search?input=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.areas) && data.areas.length > 0) {
+            setLocationSuggestions(data.areas);
+            setIsLocationDropdownOpen(true);
+          } else {
+            setLocationSuggestions([]);
+          }
+        }
+      } catch (err) {
+        console.warn('[Location Autocomplete Error]:', err);
+      } finally {
+        setIsLoadingLocations(false);
+      }
+    }, 280);
+
+    return () => clearTimeout(timer);
+  }, [locationQuery, selectedLocationObj]);
+
+  // Handler saat pembeli memilih salah satu opsi lokasi dari dropdown
+  const handleSelectLocation = (area: LocationAreaItem) => {
+    setSelectedLocationObj(area);
+    setSelectedAreaId(area.id);
+    setShippingCity(area.city);
+    setShippingDistrict(area.district);
+    setShippingPostalCode(area.postal_code);
+    setLocationQuery(`Kec. ${area.district}, ${area.city}`);
+    setIsLocationDropdownOpen(false);
+  };
+
+  // Tutup dropdown saat user mengklik di luar area input/dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
+        setIsLocationDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const [voucherInput, setVoucherInput] = useState<string>('');
   const [appliedVoucher, setAppliedVoucher] = useState<VoucherConfig | null>(null);
   const [voucherMsg, setVoucherMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -659,6 +734,7 @@ function SingleProductContent() {
           body: JSON.stringify({
             slug: tenant,
             tenant_slug: tenant,
+            destination_area_id: selectedAreaId,
             destination_city: queryCity,
             destination_district: queryDistrict,
             destination_address: queryAddress,
@@ -702,7 +778,7 @@ function SingleProductContent() {
     }, 380);
 
     return () => clearTimeout(timer);
-  }, [requiresShipping, shippingCity, shippingDistrict, shippingPostalCode, shippingAddress, tenant, product, isFnbProduct]);
+  }, [requiresShipping, shippingCity, shippingDistrict, shippingPostalCode, shippingAddress, selectedAreaId, tenant, product, isFnbProduct]);
 
   // Cek keaktifan voucher seller secara universal (Metadata-First & Zero Hardcoding)
   const isVoucherActive = isProductVoucherActive(product, config);
@@ -990,6 +1066,7 @@ function SingleProductContent() {
           ...(product.fulfillment_metadata || {}),
           selected_variant: selectedVariant || undefined,
           ...(selectedBumpItems.length > 0 ? { order_bumps: selectedBumpItems } : {}),
+          ...(selectedAreaId ? { destination_area_id: selectedAreaId } : {}),
         },
         selectedOrderBumps: selectedBumpItems.map((b) => ({
           id: b.id,
@@ -1338,57 +1415,127 @@ function SingleProductContent() {
               />
             </div>
 
-            {/* Grid Kota / Kabupaten & Kecamatan */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {/* Location Autocomplete / Dropdown Selector Resmi Biteship (Anti-Typo) */}
+            <div className="space-y-2 relative" ref={locationDropdownRef}>
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  Kota / Kabupaten <span className="text-rose-500">*</span>
+                  Kecamatan &amp; Kota Tujuan <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  required={requiresAddress}
-                  placeholder={requiresShipping ? "Contoh: Kota Bandung" : "Contoh: Karawang"}
-                  value={shippingCity}
-                  onChange={(e) => setShippingCity(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
-                />
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                  </div>
+                  <input
+                    type="text"
+                    required={requiresAddress}
+                    placeholder="Ketik min. 3 huruf (cth: Marpoyan, Buahbatu, Kebayoran, Pati)..."
+                    value={locationQuery}
+                    onChange={(e) => {
+                      setLocationQuery(e.target.value);
+                      if (selectedLocationObj) {
+                        setSelectedLocationObj(null);
+                        setSelectedAreaId('');
+                      }
+                    }}
+                    onFocus={() => {
+                      if (locationSuggestions.length > 0) setIsLocationDropdownOpen(true);
+                    }}
+                    className={`w-full bg-white border rounded-xl pl-9 pr-8 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none text-xs transition shadow-xs ${
+                      selectedLocationObj
+                        ? 'border-emerald-500 bg-emerald-50/20 text-emerald-950 font-medium'
+                        : 'border-slate-200 focus:border-blue-600'
+                    }`}
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center">
+                    {isLoadingLocations ? (
+                      <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                    ) : selectedLocationObj ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedLocationObj(null);
+                          setSelectedAreaId('');
+                          setLocationQuery('');
+                          setShippingCity('');
+                          setShippingDistrict('');
+                          setShippingPostalCode('');
+                        }}
+                        className="text-slate-400 hover:text-rose-500 p-0.5 rounded-full"
+                        title="Hapus / Ubah Lokasi"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Dropdown Hasil Pencarian Lokasi Resmi Biteship / Distrik Indonesia */}
+                {isLocationDropdownOpen && locationSuggestions.length > 0 && (
+                  <div className="absolute z-50 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-2xl divide-y divide-slate-100">
+                    <div className="p-2 bg-slate-50 text-[10px] text-slate-500 font-semibold uppercase tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Search className="w-3 h-3 text-blue-600" />
+                        Pilih Lokasi Resmi (Biteship Database)
+                      </span>
+                      <span>{locationSuggestions.length} Opsi</span>
+                    </div>
+                    {locationSuggestions.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectLocation(item)}
+                        className="w-full text-left p-2.5 hover:bg-blue-50/80 transition flex items-center justify-between gap-2 text-xs group"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 group-hover:text-blue-700 truncate">
+                            Kec. {item.district}, {item.city}
+                          </p>
+                          <p className="text-[10px] text-slate-500 truncate">
+                            {item.province}
+                          </p>
+                        </div>
+                        <span className="shrink-0 font-mono text-[11px] font-bold bg-slate-100 group-hover:bg-blue-100 text-slate-700 group-hover:text-blue-800 px-2 py-0.5 rounded">
+                          {item.postal_code}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">
-                  Kecamatan <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required={requiresAddress}
-                  placeholder="Contoh: Coblong"
-                  value={shippingDistrict}
-                  onChange={(e) => setShippingDistrict(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Kode Pos */}
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">
-                Kode Pos (5 Digit) <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]{5}"
-                maxLength={5}
-                required={requiresAddress}
-                placeholder="Contoh: 40132"
-                value={shippingPostalCode}
-                onChange={(e) => setShippingPostalCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
-                className="w-full sm:w-1/2 bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs font-mono"
-              />
-              {requiresShipping && (
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  💡 Masukkan Kota &amp; Kode Pos untuk memuat tarif kurir resmi real-time (Biteship, JNE, SiCepat, J&amp;T).
-                </span>
+              {/* Status Lokasi Terkunci (Anti-Typo Confirmation) */}
+              {selectedLocationObj ? (
+                <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="font-bold text-[11px] text-emerald-950">
+                        Lokasi Terkunci: Kec. {shippingDistrict}, {shippingCity}
+                      </p>
+                      <p className="text-[10px] text-emerald-700">
+                        Kode Pos: <span className="font-mono font-bold">{shippingPostalCode}</span> • Area ID: <span className="font-mono">{selectedAreaId}</span> (Terverifikasi Resmi)
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedLocationObj(null);
+                      setSelectedAreaId('');
+                      setLocationQuery('');
+                      setShippingCity('');
+                      setShippingDistrict('');
+                      setShippingPostalCode('');
+                    }}
+                    className="text-[10px] text-emerald-700 underline font-semibold hover:text-emerald-900 shrink-0 ml-2"
+                  >
+                    Ubah
+                  </button>
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-500">
+                  💡 Ketik nama kecamatan atau kota pembeli di atas. Dropdown resmi akan otomatis mengunci kode pos &amp; area ID yang valid tanpa risiko typo.
+                </div>
               )}
             </div>
 

@@ -206,6 +206,7 @@ export async function POST(req: NextRequest) {
     const destinationCity = (body.destination_city || body.city || '').trim();
     const destinationDistrict = (body.destination_district || body.district || '').trim();
     const destinationPostalCode = (body.destination_postal_code || body.postal_code || '').trim();
+    const destinationAreaId = (body.destination_area_id || body.area_id || '').trim();
     const destinationDistrictCode = (body.destination_district_code || body.district_code || '32.04.10').trim();
     const weightInGrams = Math.max(100, Number(body.weight || body.weight_grams || 1000));
     const weightInKg = Math.ceil(weightInGrams / 1000);
@@ -355,12 +356,32 @@ export async function POST(req: NextRequest) {
 
     // 2. INTEGRASI BITESHIP: MENDUKUNG SELURUH KURIR (INSTAN, REGULER, KARGO)
     const biteshipKey = process.env.BITESHIP_API_KEY;
-    if (biteshipKey && effectiveDestPostal > 0) {
+    if (biteshipKey && (effectiveDestPostal > 0 || destinationAreaId)) {
       try {
         // Tentukan daftar kurir Biteship yang diminta sesuai jangkauan area
         const couriersToQuery = isInstantEligible
           ? 'gosend,grab,jne,sicepat,jnt,anteraja'
           : 'jne,sicepat,jnt,anteraja';
+
+        const biteshipPayload: any = {
+          origin_postal_code: effectiveOriginPostal,
+          couriers: couriersToQuery,
+          items: [
+            {
+              name: isFnb ? 'Makanan / Minuman' : 'Barang Pesanan',
+              value: 50000,
+              weight: weightInGrams,
+              quantity: 1,
+            },
+          ],
+        };
+
+        if (destinationAreaId) {
+          biteshipPayload.destination_area_id = destinationAreaId;
+        }
+        if (effectiveDestPostal > 0) {
+          biteshipPayload.destination_postal_code = effectiveDestPostal;
+        }
 
         const biteshipRes = await fetch(BITESHIP_API_URL, {
           method: 'POST',
@@ -368,19 +389,7 @@ export async function POST(req: NextRequest) {
             Authorization: `Bearer ${biteshipKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            origin_postal_code: effectiveOriginPostal,
-            destination_postal_code: effectiveDestPostal,
-            couriers: couriersToQuery,
-            items: [
-              {
-                name: isFnb ? 'Makanan / Minuman' : 'Barang Pesanan',
-                value: 50000,
-                weight: weightInGrams,
-                quantity: 1,
-              },
-            ],
-          }),
+          body: JSON.stringify(biteshipPayload),
         });
 
         if (biteshipRes.ok) {
@@ -645,6 +654,7 @@ export async function POST(req: NextRequest) {
         city: destinationCity,
         district: destinationDistrict,
         postal_code: destinationPostalCode,
+        area_id: destinationAreaId,
       },
       weight_grams: weightInGrams,
       instant_eligible: isInstantEligible,
