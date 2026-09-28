@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
+import { calculateDistanceKm, MAX_INSTANT_RADIUS_KM } from '@/app/api/v1/shipping/rates/instant/route';
+import { resolveAreaCoordinates } from '@/app/api/v1/shipping/locations/search/route';
 
 export interface RateOption {
   id: string;
@@ -211,6 +213,21 @@ export async function POST(req: NextRequest) {
     const weightInGrams = Math.max(100, Number(body.weight || body.weight_grams || 1000));
     const weightInKg = Math.ceil(weightInGrams / 1000);
 
+    // Ekstraksi parameter koordinat tujuan (latitude & longitude)
+    let destLat: number | null =
+      body.destination_latitude !== undefined && body.destination_latitude !== null && body.destination_latitude !== ''
+        ? Number(body.destination_latitude)
+        : body.latitude !== undefined && body.latitude !== null && body.latitude !== ''
+        ? Number(body.latitude)
+        : null;
+
+    let destLon: number | null =
+      body.destination_longitude !== undefined && body.destination_longitude !== null && body.destination_longitude !== ''
+        ? Number(body.destination_longitude)
+        : body.longitude !== undefined && body.longitude !== null && body.longitude !== ''
+        ? Number(body.longitude)
+        : null;
+
     // Deteksi apakah produk adalah FnB / makanan segar mudah basi
     const isFnb = Boolean(
       body.is_fnb ||
@@ -232,6 +249,14 @@ export async function POST(req: NextRequest) {
     let originPostalCode = (body.origin_postal_code || '').trim();
     let originSubdistrictId = (body.origin_subdistrict_id || body.origin_district_code || '').trim();
     let originAddress = (body.origin_address || '').trim();
+    let originLat: number | null =
+      body.origin_latitude !== undefined && body.origin_latitude !== null && body.origin_latitude !== ''
+        ? Number(body.origin_latitude)
+        : null;
+    let originLon: number | null =
+      body.origin_longitude !== undefined && body.origin_longitude !== null && body.origin_longitude !== ''
+        ? Number(body.origin_longitude)
+        : null;
 
     if (slug) {
       try {
@@ -311,6 +336,13 @@ export async function POST(req: NextRequest) {
             (typeof meta.warehouse_address === 'string' ? meta.warehouse_address : meta.warehouse_address?.address) ||
             '';
 
+          if (originObj.latitude !== undefined && originObj.latitude !== null && originObj.latitude !== '') {
+            originLat = Number(originObj.latitude);
+          }
+          if (originObj.longitude !== undefined && originObj.longitude !== null && originObj.longitude !== '') {
+            originLon = Number(originObj.longitude);
+          }
+
           if (!originPostalCode && typeof meta.warehouse_address === 'string') {
             const postalMatch = meta.warehouse_address.match(/\b\d{5}\b/);
             if (postalMatch) originPostalCode = postalMatch[0];
@@ -334,6 +366,27 @@ export async function POST(req: NextRequest) {
     const effectiveOriginPostal = Number(originPostalCode) || 40286;
     const effectiveDestPostal = Number(destinationPostalCode) || 0;
 
+    // Selesaikan titik koordinat origin toko
+    if (originLat == null || isNaN(originLat) || originLon == null || isNaN(originLon)) {
+      const originResolved = resolveAreaCoordinates(originCity || 'Kota Bandung', originDistrict || 'Buahbatu', String(effectiveOriginPostal));
+      originLat = originResolved.latitude;
+      originLon = originResolved.longitude;
+    }
+
+    // Selesaikan titik koordinat tujuan pembeli
+    if (destLat == null || isNaN(destLat) || destLon == null || isNaN(destLon)) {
+      if (destinationCity || destinationDistrict || destinationPostalCode) {
+        const destResolved = resolveAreaCoordinates(destinationCity, destinationDistrict, destinationPostalCode);
+        destLat = destResolved.latitude;
+        destLon = destResolved.longitude;
+      }
+    }
+    const finalDestLat = destLat ?? -6.9175;
+    const finalDestLon = destLon ?? 107.6191;
+
+    // Hitung jarak Haversine (KM) dari toko ke pembeli
+    const distanceKm = calculateDistanceKm(originLat, originLon, finalDestLat, finalDestLon);
+
     const cleanOriginCity = effectiveOriginCity.toLowerCase().replace(/^(kota|kabupaten|kab\.)\s*/, '').trim();
     const cleanDestCity = destinationCity.toLowerCase().replace(/^(kota|kabupaten|kab\.)\s*/, '').trim();
 
@@ -345,13 +398,14 @@ export async function POST(req: NextRequest) {
     const destPrefix = String(destinationPostalCode).slice(0, 2);
     const isSamePostalRegion = destPrefix.length >= 2 && originPrefix === destPrefix;
 
+    // Batas radius maksimal kurir instan: MAKSIMAL 30 KM!
+    // Jika jarak > 30 km, opsi GoSend/GrabExpress WAJIB disembunyikan dan hanya menampilkan kurir reguler
     const isInstantEligible =
-      isSameCity ||
-      isSamePostalRegion ||
-      (destinationCity.toLowerCase().includes('bandung') && cleanOriginCity.includes('bandung')) ||
-      (/^40\d{3}$/.test(destinationPostalCode) && /^40\d{3}$/.test(String(effectiveOriginPostal)));
+      distanceKm > 0
+        ? distanceKm <= MAX_INSTANT_RADIUS_KM
+        : isSameCity || isSamePostalRegion;
 
-    const availableRates: RateOption[] = [];
+    let availableRates: RateOption[] = [];
     let externalRatesLoaded = false;
 
     // 2. INTEGRASI BITESHIP: MENDUKUNG SELURUH KURIR (INSTAN, REGULER, KARGO)
@@ -375,6 +429,13 @@ export async function POST(req: NextRequest) {
             },
           ],
         };
+
+        if (isInstantEligible) {
+          biteshipPayload.origin_latitude = originLat;
+          biteshipPayload.origin_longitude = originLon;
+          biteshipPayload.destination_latitude = finalDestLat;
+          biteshipPayload.destination_longitude = finalDestLon;
+        }
 
         if (destinationAreaId) {
           biteshipPayload.destination_area_id = destinationAreaId;
@@ -512,8 +573,12 @@ export async function POST(req: NextRequest) {
     if (!externalRatesLoaded || availableRates.length === 0) {
       const zone = detectIndonesianZone(destinationCity, destinationDistrict, destinationPostalCode);
 
-      // A. Jika sama kota dan tercover instan, berikan opsi instan lokal
+      // A. Jika dalam radius instan (<= 30 km), berikan opsi instan lokal berbasis jarak riil
       if (isInstantEligible) {
+        const extraKm = Math.max(0, distanceKm - 4);
+        const gosendPrice = Math.max(20000, Math.round((20000 + extraKm * 2500) / 1000) * 1000);
+        const grabPrice = Math.max(18000, Math.round((18000 + extraKm * 2500) / 1000) * 1000);
+
         const allowGosend = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'gosend');
         const allowGrab = enabledCouriers.length === 0 || enabledCouriers.some((c) => c.id === 'grab');
 
@@ -522,10 +587,10 @@ export async function POST(req: NextRequest) {
             id: 'instant_gosend',
             courier_name: 'GoSend Instant',
             service: 'Instant',
-            price: 20000,
+            price: gosendPrice,
             etd: '1 - 2 Jam',
             type: 'instant',
-            badge: 'Tiba Hari Ini',
+            badge: 'Tiba Hari Ini (1-2 Jam)',
             provider: 'platform',
             max_days: 0.1,
             is_fnb_safe: true,
@@ -536,10 +601,10 @@ export async function POST(req: NextRequest) {
             id: 'instant_grab',
             courier_name: 'GrabExpress Instant',
             service: 'Instant',
-            price: 22000,
+            price: grabPrice,
             etd: '1 - 2 Jam',
             type: 'instant',
-            badge: 'Tiba Hari Ini',
+            badge: 'Tiba Hari Ini (1-2 Jam)',
             provider: 'platform',
             max_days: 0.1,
             is_fnb_safe: true,
@@ -614,8 +679,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 5. VALIDASI KHUSUS PRODUK F&B (MAKANAN SEGAR / MUDAH BASI)
-    // Sembunyikan kurir reguler/kargo yang estimasinya lebih dari 2 hari agar tidak terjadi komplain makanan basi
+    // 5. VALIDASI KHUSUS PRODUK F&B (MAKANAN SEGAR / MUDAH BASI) & FILTER RADIUS INSTAN
+    // Jika di luar radius 30 KM, pastikan seluruh opsi instan disembunyikan
+    if (!isInstantEligible) {
+      availableRates = availableRates.filter((r) => r.type !== 'instant');
+    }
+
     let finalRates = availableRates;
     let fnbWarning: string | undefined = undefined;
     let hasSafeFnbOption = true;
@@ -643,21 +712,27 @@ export async function POST(req: NextRequest) {
       fnb_safe: hasSafeFnbOption,
       fnb_warning: fnbWarning,
       is_fnb: isFnb,
+      distance_km: distanceKm,
+      max_radius_km: MAX_INSTANT_RADIUS_KM,
+      instant_eligible: isInstantEligible,
       origin: {
         address: originAddress,
         city: effectiveOriginCity,
         district: originDistrict,
         postal_code: String(effectiveOriginPostal),
         subdistrict_id: originSubdistrictId,
+        latitude: originLat,
+        longitude: originLon,
       },
       destination: {
         city: destinationCity,
         district: destinationDistrict,
         postal_code: destinationPostalCode,
         area_id: destinationAreaId,
+        latitude: finalDestLat,
+        longitude: finalDestLon,
       },
       weight_grams: weightInGrams,
-      instant_eligible: isInstantEligible,
     });
   } catch (error: any) {
     console.error('[API Shipping Rates] Fatal Error:', error);

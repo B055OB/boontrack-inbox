@@ -546,6 +546,8 @@ function SingleProductContent() {
     city: string;
     province: string;
     postal_code: string;
+    latitude?: number;
+    longitude?: number;
   }
 
   const [locationQuery, setLocationQuery] = useState<string>('');
@@ -554,6 +556,12 @@ function SingleProductContent() {
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState<boolean>(false);
   const [selectedAreaId, setSelectedAreaId] = useState<string>('');
   const [selectedLocationObj, setSelectedLocationObj] = useState<LocationAreaItem | null>(null);
+  const [destinationLatitude, setDestinationLatitude] = useState<number | null>(null);
+  const [destinationLongitude, setDestinationLongitude] = useState<number | null>(null);
+  const [isDetectingGps, setIsDetectingGps] = useState<boolean>(false);
+  const [gpsStatusNotice, setGpsStatusNotice] = useState<string | null>(null);
+  const [shippingDistanceKm, setShippingDistanceKm] = useState<number | null>(null);
+  const [isInstantEligible, setIsInstantEligible] = useState<boolean>(true);
   const locationDropdownRef = React.useRef<HTMLDivElement>(null);
 
   // Handler pencarian autocomplete lokasi saat pembeli mengetik minimal 3 huruf
@@ -595,8 +603,36 @@ function SingleProductContent() {
     setShippingCity(area.city);
     setShippingDistrict(area.district);
     setShippingPostalCode(area.postal_code);
+    setDestinationLatitude(area.latitude !== undefined && area.latitude !== null ? Number(area.latitude) : null);
+    setDestinationLongitude(area.longitude !== undefined && area.longitude !== null ? Number(area.longitude) : null);
+    setGpsStatusNotice(null);
     setLocationQuery(`Kec. ${area.district}, ${area.city}`);
     setIsLocationDropdownOpen(false);
+  };
+
+  // Handler pendeteksi GPS presisi peramban (Opsional untuk Presisi Kurir Instan GoSend/Grab)
+  const handleDetectGpsCoordinates = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setGpsStatusNotice('Browser Anda tidak mendukung deteksi GPS.');
+      return;
+    }
+    setIsDetectingGps(true);
+    setGpsStatusNotice(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lng = Number(pos.coords.longitude.toFixed(6));
+        setDestinationLatitude(lat);
+        setDestinationLongitude(lng);
+        setIsDetectingGps(false);
+        setGpsStatusNotice(`Titik GPS presisi terdeteksi: (${lat}, ${lng})`);
+      },
+      () => {
+        setIsDetectingGps(false);
+        setGpsStatusNotice('Gagal mendeteksi lokasi GPS. Pastikan izin lokasi aktif.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
   // Tutup dropdown saat user mengklik di luar area input/dropdown
@@ -739,6 +775,8 @@ function SingleProductContent() {
             destination_district: queryDistrict,
             destination_address: queryAddress,
             destination_postal_code: queryPostal,
+            destination_latitude: destinationLatitude,
+            destination_longitude: destinationLongitude,
             weight_grams: (product as any).weight || (product as any).weight_grams || 1000,
             is_fnb: isFnbProduct,
           }),
@@ -746,6 +784,13 @@ function SingleProductContent() {
 
         if (res.ok) {
           const data = await res.json();
+          if (data.distance_km !== undefined) {
+            setShippingDistanceKm(data.distance_km);
+          }
+          if (data.instant_eligible !== undefined) {
+            setIsInstantEligible(data.instant_eligible);
+          }
+
           if (data.success && Array.isArray(data.rates) && data.rates.length > 0) {
             setDynamicShippingRates(data.rates);
             setShippingNotice(data.fnb_warning || null);
@@ -778,7 +823,7 @@ function SingleProductContent() {
     }, 380);
 
     return () => clearTimeout(timer);
-  }, [requiresShipping, shippingCity, shippingDistrict, shippingPostalCode, shippingAddress, selectedAreaId, tenant, product, isFnbProduct]);
+  }, [requiresShipping, shippingCity, shippingDistrict, shippingPostalCode, shippingAddress, selectedAreaId, destinationLatitude, destinationLongitude, tenant, product, isFnbProduct]);
 
   // Cek keaktifan voucher seller secara universal (Metadata-First & Zero Hardcoding)
   const isVoucherActive = isProductVoucherActive(product, config);
@@ -1067,6 +1112,8 @@ function SingleProductContent() {
           selected_variant: selectedVariant || undefined,
           ...(selectedBumpItems.length > 0 ? { order_bumps: selectedBumpItems } : {}),
           ...(selectedAreaId ? { destination_area_id: selectedAreaId } : {}),
+          ...(destinationLatitude ? { destination_latitude: destinationLatitude } : {}),
+          ...(destinationLongitude ? { destination_longitude: destinationLongitude } : {}),
         },
         selectedOrderBumps: selectedBumpItems.map((b) => ({
           id: b.id,
@@ -1503,34 +1550,64 @@ function SingleProductContent() {
                 )}
               </div>
 
-              {/* Status Lokasi Terkunci (Anti-Typo Confirmation) */}
+              {/* Status Lokasi Terkunci (Anti-Typo Confirmation & Precision Coordinates) */}
               {selectedLocationObj ? (
-                <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <p className="font-bold text-[11px] text-emerald-950">
-                        Lokasi Terkunci: Kec. {shippingDistrict}, {shippingCity}
-                      </p>
-                      <p className="text-[10px] text-emerald-700">
-                        Kode Pos: <span className="font-mono font-bold">{shippingPostalCode}</span> • Area ID: <span className="font-mono">{selectedAreaId}</span> (Terverifikasi Resmi)
-                      </p>
+                <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <p className="font-bold text-[11px] text-emerald-950">
+                          Lokasi Terkunci: Kec. {shippingDistrict}, {shippingCity}
+                        </p>
+                        <p className="text-[10px] text-emerald-700">
+                          Kode Pos: <span className="font-mono font-bold">{shippingPostalCode}</span> • Area ID: <span className="font-mono">{selectedAreaId}</span> (Terverifikasi Resmi)
+                        </p>
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedLocationObj(null);
+                        setSelectedAreaId('');
+                        setLocationQuery('');
+                        setShippingCity('');
+                        setShippingDistrict('');
+                        setShippingPostalCode('');
+                        setDestinationLatitude(null);
+                        setDestinationLongitude(null);
+                        setGpsStatusNotice(null);
+                        setShippingDistanceKm(null);
+                      }}
+                      className="text-[10px] text-emerald-700 underline font-semibold hover:text-emerald-900 shrink-0 ml-2 cursor-pointer"
+                    >
+                      Ubah
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedLocationObj(null);
-                      setSelectedAreaId('');
-                      setLocationQuery('');
-                      setShippingCity('');
-                      setShippingDistrict('');
-                      setShippingPostalCode('');
-                    }}
-                    className="text-[10px] text-emerald-700 underline font-semibold hover:text-emerald-900 shrink-0 ml-2"
-                  >
-                    Ubah
-                  </button>
+
+                  {/* Koordinat Presisi untuk Driver Penjemput / Pengantar */}
+                  <div className="pt-1.5 border-t border-emerald-200/70 flex flex-wrap items-center justify-between gap-1.5 text-[10px]">
+                    <span className="text-emerald-800 flex items-center gap-1 font-mono">
+                      📍 Titik Antar: {destinationLatitude ? `${destinationLatitude.toFixed(4)}, ${destinationLongitude?.toFixed(4)}` : 'Sesuai Pusat Distrik'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleDetectGpsCoordinates}
+                      disabled={isDetectingGps}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[9px] transition cursor-pointer"
+                    >
+                      {isDetectingGps ? (
+                        <>
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Mendeteksi...
+                        </>
+                      ) : (
+                        '🎯 Gunakan GPS Presisi'
+                      )}
+                    </button>
+                  </div>
+                  {gpsStatusNotice && (
+                    <p className="text-[9px] text-emerald-700 font-medium italic">{gpsStatusNotice}</p>
+                  )}
                 </div>
               ) : (
                 <div className="text-[10px] text-slate-500">
@@ -1550,6 +1627,18 @@ function SingleProductContent() {
                     </span>
                   )}
                 </div>
+
+                {/* Notifikasi Batas Radius Kurir Instan (30 KM) */}
+                {shippingDistanceKm !== null && shippingDistanceKm > 30 && (
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs flex items-center justify-between">
+                    <span className="text-[11px]">
+                      📍 Jarak pengiriman: <span className="font-bold">{shippingDistanceKm} km</span> (Di luar radius kurir instan maks 30 km).
+                    </span>
+                    <span className="text-[10px] bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded-full">
+                      Tersedia Kurir Reguler &amp; Kargo
+                    </span>
+                  </div>
+                )}
 
                 {/* Proteksi Kesegaran Produk Makanan (FnB) */}
                 {isFnbProduct && (
