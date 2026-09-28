@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 
@@ -148,7 +148,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'AI_UNAVAILABLE', message: 'AI Engine tidak dikonfigurasi.' }, { status: 503 });
     }
 
-    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+    const aiModel = process.env.AI_MODEL_NAME || 'gemini-3.8-flash';
+    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiApiKey}`;
 
     const geminiResponse = await fetch(geminiEndpoint, {
       method: 'POST',

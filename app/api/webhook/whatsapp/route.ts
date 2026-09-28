@@ -44,6 +44,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
 
+    // Delegasi jika payload berasal dari Evolution API v2
+    if (body.event || body.instance || (body.data && !Array.isArray(body.entry))) {
+      const { processEvolutionWebhookEvent } = await import('@/lib/whatsapp/evolution-webhook-handler');
+      const evoResult = await processEvolutionWebhookEvent(body);
+      return NextResponse.json(evoResult, { status: 200 });
+    }
+
     // Cek apakah payload merupakan webhook WhatsApp Business Account
     const entries = Array.isArray(body.entry) ? body.entry : [];
     if (entries.length === 0) {

@@ -49,7 +49,7 @@ export default function StoreNotFoundPage() {
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
           <Link
-            href="https://boontrack.com"
+            href="https://shop.boontrack.com"
             className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs flex items-center justify-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />

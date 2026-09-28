@@ -56,6 +56,30 @@ export interface OrdersTabProps {
   orders?: OrderItem[];
   loading?: boolean;
   onRefresh?: () => void;
+  onOrderUpdated?: (order: OrderItem) => void;
+}
+
+export function mapRawOrder(o: any): OrderItem {
+  return {
+    id: String(o.order_id || o.id || o.invoice_no || ''),
+    invoice_no: String(o.order_id || o.invoice_no || o.invoice_number || o.id || ''),
+    customer_name: o.customer_name || 'Pelanggan Toko',
+    customer_phone: o.customer_phone || '',
+    customer_email: o.customer_email || '',
+    items_summary: o.items_summary || o.product_name || o.product_title || 'Pesanan Produk',
+    total_amount: Number(o.gross_amount ?? o.total_amount ?? o.total_price ?? 0),
+    payment_method: o.payment_method || 'QRIS Dinamis',
+    payment_status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
+    status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
+    shipping_status: o.shipping_status,
+    product_type: o.product_type,
+    shipping_address: o.shipping_address,
+    shipping_courier: o.shipping_courier,
+    tracking_number: o.tracking_number,
+    waybill: o.waybill,
+    fulfillment_metadata: o.fulfillment_metadata,
+    created_at: o.created_at || new Date().toISOString(),
+  };
 }
 
 export default function OrdersTab({
@@ -63,39 +87,26 @@ export default function OrdersTab({
   orders: propOrders,
   loading: propLoading,
   onRefresh: propOnRefresh,
+  onOrderUpdated,
 }: OrdersTabProps) {
-  const hasPropOrders = Array.isArray(propOrders) && propOrders.length > 0;
-  const [internalOrders, setInternalOrders] = useState<OrderItem[]>([]);
-  const [internalLoading, setInternalLoading] = useState(!hasPropOrders);
+  const [internalOrders, setInternalOrders] = useState<OrderItem[]>(() => {
+    return Array.isArray(propOrders) ? propOrders.map(mapRawOrder) : [];
+  });
+  const [internalLoading, setInternalLoading] = useState(!propOrders || propOrders.length === 0);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('all'));
 
-  const orders: OrderItem[] = React.useMemo(() => {
-    const raw = hasPropOrders ? propOrders : internalOrders;
-    return raw.map((o: any) => ({
-      id: String(o.order_id || o.id || o.invoice_no || ''),
-      invoice_no: String(o.order_id || o.invoice_no || o.invoice_number || o.id || ''),
-      customer_name: o.customer_name || 'Pelanggan Toko',
-      customer_phone: o.customer_phone || '',
-      customer_email: o.customer_email || '',
-      items_summary: o.items_summary || o.product_name || o.product_title || 'Pesanan Produk',
-      total_amount: Number(o.gross_amount ?? o.total_amount ?? o.total_price ?? 0),
-      payment_method: o.payment_method || 'QRIS Dinamis',
-      payment_status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
-      status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
-      shipping_status: o.shipping_status,
-      product_type: o.product_type,
-      shipping_address: o.shipping_address,
-      shipping_courier: o.shipping_courier,
-      tracking_number: o.tracking_number,
-      waybill: o.waybill,
-      fulfillment_metadata: o.fulfillment_metadata,
-      created_at: o.created_at || new Date().toISOString(),
-    }));
-  }, [propOrders, internalOrders, hasPropOrders]);
+  // Sync propOrders ke internalOrders secara reaktif
+  useEffect(() => {
+    if (Array.isArray(propOrders)) {
+      setInternalOrders(propOrders.map(mapRawOrder));
+      setInternalLoading(false);
+    }
+  }, [propOrders]);
 
-  const loading = hasPropOrders ? false : (propLoading ?? internalLoading);
+  const orders: OrderItem[] = internalOrders;
+  const loading = propLoading ?? internalLoading;
 
   // State untuk dialog konfirmasi pembayaran manual
   const [orderToConfirm, setOrderToConfirm] = useState<OrderItem | null>(null);
@@ -118,26 +129,7 @@ export default function OrdersTab({
       if (res.ok) {
         const data = await res.json();
         const rawList = Array.isArray(data) ? data : (data.orders || data.data || []);
-        const mappedList: OrderItem[] = rawList.map((o: any) => ({
-          id: String(o.order_id || o.id || o.invoice_no || ''),
-          invoice_no: String(o.order_id || o.invoice_no || o.invoice_number || o.id || ''),
-          customer_name: o.customer_name || 'Pelanggan Toko',
-          customer_phone: o.customer_phone || '',
-          customer_email: o.customer_email || '',
-          items_summary: o.items_summary || o.product_name || o.product_title || 'Pesanan Produk',
-          total_amount: Number(o.gross_amount ?? o.total_amount ?? o.total_price ?? 0),
-          payment_method: o.payment_method || 'QRIS Dinamis',
-          payment_status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
-          status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
-          shipping_status: o.shipping_status,
-          product_type: o.product_type,
-          shipping_address: o.shipping_address,
-          shipping_courier: o.shipping_courier,
-          tracking_number: o.tracking_number,
-          waybill: o.waybill,
-          fulfillment_metadata: o.fulfillment_metadata,
-          created_at: o.created_at || new Date().toISOString(),
-        }));
+        const mappedList: OrderItem[] = rawList.map(mapRawOrder);
         setInternalOrders(mappedList);
       }
     } catch (err) {
@@ -148,15 +140,19 @@ export default function OrdersTab({
   }, [tenantSlug, propOnRefresh, dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
-    if (!hasPropOrders) {
+    if (!propOrders || propOrders.length === 0) {
       fetchOrders();
     }
-  }, [fetchOrders, hasPropOrders]);
+  }, [fetchOrders, propOrders]);
 
   const handleOrderUpdated = (updatedOrder: OrderItem) => {
     setInternalOrders((prev) =>
-      prev.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o))
+      prev.map((o) => (o.id === updatedOrder.id || o.invoice_no === updatedOrder.invoice_no ? { ...o, ...updatedOrder } : o))
     );
+    if (selectedOrder?.id === updatedOrder.id || selectedOrder?.invoice_no === updatedOrder.invoice_no) {
+      setSelectedOrder((prev) => (prev ? { ...prev, ...updatedOrder } : null));
+    }
+    onOrderUpdated?.(updatedOrder);
   };
 
   // Helper identifikasi pesanan manual yang berstatus pending/waiting_payment
@@ -207,9 +203,14 @@ export default function OrdersTab({
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Aksi Konfirmasi Bayar Manual (Tandai Lunas)
-  const handleConfirmManualPayment = async (order: OrderItem) => {
+  const handleConfirmManualPayment = async (order: OrderItem, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setIsConfirmingPayment(true);
     try {
+      const nowIso = new Date().toISOString();
       // 1. Optimistic update ke state lokal tabel
       const updatedOrder: OrderItem = {
         ...order,
@@ -218,12 +219,14 @@ export default function OrdersTab({
       };
 
       setInternalOrders((prev) =>
-        prev.map((o) => (o.id === order.id ? updatedOrder : o))
+        prev.map((o) => (o.id === order.id || o.invoice_no === order.invoice_no ? updatedOrder : o))
       );
 
-      if (selectedOrder?.id === order.id) {
+      if (selectedOrder?.id === order.id || selectedOrder?.invoice_no === order.invoice_no) {
         setSelectedOrder((prev) => (prev ? { ...prev, payment_status: 'PAID', status: 'PAID' } : null));
       }
+
+      onOrderUpdated?.(updatedOrder);
 
       // 2. Request ke Next.js Quick-Paid API (memproses fulfillment & notifikasi WhatsApp)
       try {
@@ -245,24 +248,30 @@ export default function OrdersTab({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             status: 'LUNAS',
+            payment_status: 'PAID',
             notes: 'Konfirmasi manual oleh admin toko',
           }),
         });
       } catch {}
 
-      // 4. Update langsung ke database Supabase
+      // 4. Update langsung ke database Supabase dengan nilai enum valid
       const supabase = getSupabase();
       if (supabase) {
         try {
-          await supabase
+          const { error: sbErr } = await supabase
             .from('orders')
             .update({
               status: 'PAID',
               payment_status: 'PAID',
-              paid_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+              order_status: 'COMPLETED',
+              paid_at: nowIso,
+              updated_at: nowIso,
             })
             .eq('id', order.id);
+
+          if (sbErr) {
+            console.warn('[OrdersTab] Supabase update warning:', sbErr);
+          }
         } catch (sbErr) {
           console.warn('[OrdersTab] Supabase update note:', sbErr);
         }
@@ -290,30 +299,74 @@ export default function OrdersTab({
     }
   };
 
-  const togglePaymentStatus = async (order: OrderItem) => {
+  const togglePaymentStatus = async (order: OrderItem, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const currentIsPaid = order.payment_status === 'PAID' || order.status === 'PAID';
     const newStatus = currentIsPaid ? 'UNPAID' : 'PAID';
     setTogglingId(order.id);
     try {
+      const nowIso = new Date().toISOString();
+      const updatedOrder: OrderItem = {
+        ...order,
+        payment_status: newStatus,
+        status: newStatus,
+      };
+
       // 1. Optimistic update
-      const applyUpdate = (prev: OrderItem[]) =>
-        prev.map((o) => (o.id === order.id ? { ...o, payment_status: newStatus, status: newStatus } : o));
-      setInternalOrders((prev) => applyUpdate(prev));
-      if (selectedOrder?.id === order.id) {
+      setInternalOrders((prev) =>
+        prev.map((o) => (o.id === order.id || o.invoice_no === order.invoice_no ? updatedOrder : o))
+      );
+      if (selectedOrder?.id === order.id || selectedOrder?.invoice_no === order.invoice_no) {
         setSelectedOrder((prev) => prev ? { ...prev, payment_status: newStatus, status: newStatus } : null);
       }
+      onOrderUpdated?.(updatedOrder);
 
-      // 2. Persist ke Supabase
+      // 2. Persist ke Supabase dengan status enum valid
       const supabase = getSupabase();
       if (supabase) {
-        await supabase.from('orders').update({ payment_status: newStatus, status: newStatus }).eq('id', order.id);
+        const updatePayload: Record<string, any> = {
+          payment_status: newStatus,
+          status: newStatus,
+          updated_at: nowIso,
+        };
+        if (newStatus === 'PAID') {
+          updatePayload.paid_at = nowIso;
+          updatePayload.order_status = 'COMPLETED';
+        } else {
+          updatePayload.paid_at = null;
+          updatePayload.order_status = 'PENDING';
+        }
+        await supabase
+          .from('orders')
+          .update(updatePayload)
+          .eq('id', order.id);
+      }
+
+      // If newStatus is PAID, trigger quick-paid endpoint
+      if (newStatus === 'PAID') {
+        try {
+          await fetch(
+            `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(order.id)}/quick-paid`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        } catch (e) {
+          console.warn('[OrdersTab] quick-paid endpoint note:', e);
+        }
       } else {
-        // fallback: hit API
-        await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${order.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_status: newStatus, status: newStatus }),
-        });
+        // fallback API route for UNPAID
+        try {
+          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${order.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payment_status: newStatus, status: newStatus, paid_at: null }),
+          });
+        } catch {}
       }
 
       setToast({
@@ -323,6 +376,11 @@ export default function OrdersTab({
       setTimeout(() => setToast(null), 3000);
     } catch (err) {
       console.warn('[OrdersTab] Error toggling payment_status:', err);
+      setToast({
+        message: `Gagal mengubah status pesanan #${order.invoice_no}.`,
+        type: 'error',
+      });
+      setTimeout(() => setToast(null), 3000);
       await fetchOrders();
     } finally {
       setTogglingId(null);
@@ -428,7 +486,11 @@ export default function OrdersTab({
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
                         <button
                           type="button"
-                          onClick={() => setSelectedOrder(ord)}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedOrder(ord);
+                          }}
                           className="hover:text-blue-600 hover:underline cursor-pointer text-left"
                         >
                           {ord.invoice_no}
@@ -474,7 +536,11 @@ export default function OrdersTab({
                           {needsManualConfirm && (
                             <button
                               type="button"
-                              onClick={() => setOrderToConfirm(ord)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setOrderToConfirm(ord);
+                              }}
                               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl font-black text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs hover:shadow transition-all active:scale-95 cursor-pointer shrink-0"
                               title="Konfirmasi Pembayaran Manual / Tandai Lunas"
                             >
@@ -485,7 +551,11 @@ export default function OrdersTab({
 
                           <button
                             type="button"
-                            onClick={() => setSelectedOrder(ord)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setSelectedOrder(ord);
+                            }}
                             className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
                             title="Lihat Rincian Pesanan"
                           >
@@ -497,7 +567,11 @@ export default function OrdersTab({
                             type="button"
                             title={isPaid ? 'Tandai Unpaid' : 'Tandai Paid'}
                             disabled={togglingId === ord.id}
-                            onClick={() => togglePaymentStatus(ord)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              togglePaymentStatus(ord, e);
+                            }}
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] border transition cursor-pointer disabled:opacity-50 ${
                               isPaid
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
@@ -541,8 +615,18 @@ export default function OrdersTab({
         const needsManualConfirm = isManualPendingPayment(selectedOrder);
 
         return (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-            <div className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setSelectedOrder(null);
+            }}
+          >
+            <div
+              className="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700">
@@ -557,7 +641,11 @@ export default function OrdersTab({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSelectedOrder(null)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedOrder(null);
+                  }}
                   className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200 transition cursor-pointer"
                 >
                   <X className="w-4 h-4" />
@@ -717,7 +805,11 @@ export default function OrdersTab({
               <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-2 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => setSelectedOrder(null)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedOrder(null);
+                  }}
                   className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                 >
                   Tutup
@@ -727,7 +819,11 @@ export default function OrdersTab({
                   {needsManualConfirm && (
                     <button
                       type="button"
-                      onClick={() => setOrderToConfirm(selectedOrder)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setOrderToConfirm(selectedOrder);
+                      }}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md transition cursor-pointer"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -739,7 +835,11 @@ export default function OrdersTab({
                   <button
                     type="button"
                     disabled={togglingId === selectedOrder.id}
-                    onClick={() => togglePaymentStatus(selectedOrder)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      togglePaymentStatus(selectedOrder, e);
+                    }}
                     className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs border transition cursor-pointer disabled:opacity-50 ${
                       isOrderPaid
                         ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
@@ -774,8 +874,20 @@ export default function OrdersTab({
       {/* MODAL DIALOG KONFIRMASI PEMBAYARAN MANUAL                */}
       {/* ======================================================== */}
       {orderToConfirm && (
-        <div className="fixed inset-0 z-[120] bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200 text-slate-900">
+        <div
+          className="fixed inset-0 z-[120] bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (!isConfirmingPayment) {
+              e.preventDefault();
+              e.stopPropagation();
+              setOrderToConfirm(null);
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden p-6 space-y-4 animate-in zoom-in-95 duration-200 text-slate-900"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-xs">
@@ -789,7 +901,11 @@ export default function OrdersTab({
               <button
                 type="button"
                 disabled={isConfirmingPayment}
-                onClick={() => setOrderToConfirm(null)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOrderToConfirm(null);
+                }}
                 className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -834,7 +950,11 @@ export default function OrdersTab({
               <button
                 type="button"
                 disabled={isConfirmingPayment}
-                onClick={() => setOrderToConfirm(null)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOrderToConfirm(null);
+                }}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
               >
                 Batal
@@ -842,7 +962,7 @@ export default function OrdersTab({
               <button
                 type="button"
                 disabled={isConfirmingPayment}
-                onClick={() => handleConfirmManualPayment(orderToConfirm)}
+                onClick={(e) => handleConfirmManualPayment(orderToConfirm, e)}
                 className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isConfirmingPayment ? (

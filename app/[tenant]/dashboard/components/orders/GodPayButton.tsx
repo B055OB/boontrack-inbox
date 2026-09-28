@@ -23,7 +23,11 @@ export default function GodPayButton({ order, tenantSlug, onSuccess }: GodPayBut
   const [isLoading, setIsLoading] = useState(false);
   const [capiStatus, setCapiStatus] = useState<'idle' | 'dispatched' | 'failed'>('idle');
 
-  const handleInstantPay = async () => {
+  const handleInstantPay = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setIsLoading(true);
     setCapiStatus('idle');
     try {
@@ -51,7 +55,7 @@ export default function GodPayButton({ order, tenantSlug, onSuccess }: GodPayBut
   if (order.payment_status === 'PAID') {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-        <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
         Delivered / Lunas
       </span>
     );
@@ -61,7 +65,11 @@ export default function GodPayButton({ order, tenantSlug, onSuccess }: GodPayBut
     <>
       <button
         type="button"
-        onClick={() => setShowModal(true)}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setShowModal(true);
+        }}
         className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
         title="Setujui pesanan dan kirim akses produk digital secara otomatis"
       >
@@ -70,8 +78,20 @@ export default function GodPayButton({ order, tenantSlug, onSuccess }: GodPayBut
       </button>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 border border-slate-200 shadow-2xl space-y-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in"
+          onClick={(e) => {
+            if (!isLoading) {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowModal(false);
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-sm w-full p-5 border border-slate-200 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
                 <PackageCheck className="w-5 h-5" />
@@ -104,16 +124,20 @@ export default function GodPayButton({ order, tenantSlug, onSuccess }: GodPayBut
               <button
                 type="button"
                 disabled={isLoading}
-                onClick={() => setShowModal(false)}
-                className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowModal(false);
+                }}
+                className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer disabled:opacity-50"
               >
                 Batal
               </button>
               <button
                 type="button"
                 disabled={isLoading}
-                onClick={handleInstantPay}
-                className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                onClick={(e) => handleInstantPay(e)}
+                className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
               >
                 {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5" />}
                 <span>Approve & Kirim Akses</span>

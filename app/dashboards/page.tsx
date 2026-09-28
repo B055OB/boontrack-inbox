@@ -68,7 +68,7 @@ const STORE = {
   initial: 'B',
   tier: 'Paket Scale',
   tierBadge: 'Scale • Unlimited',
-  bioUrl: 'https://boontrack.com/buzzerukm',
+  bioUrl: 'https://shop.boontrack.com/buzzerukm',
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -279,7 +279,7 @@ function Sidebar({
           <div className="absolute top-full left-3 right-3 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150 z-50">
             <div className="px-3 py-2 border-b border-slate-100">
               <p className="text-xs font-black text-slate-900 truncate">{STORE.name}</p>
-              <p className="text-[10px] font-semibold text-slate-400 truncate">boontrack.com/{STORE.slug}</p>
+              <p className="text-[10px] font-semibold text-slate-400 truncate">shop.boontrack.com/{STORE.slug}</p>
             </div>
             {[
               { icon: User,  label: 'Akun & Profil Toko',   cls: 'text-slate-700 hover:bg-slate-50' },

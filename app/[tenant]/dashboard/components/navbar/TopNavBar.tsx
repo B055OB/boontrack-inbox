@@ -55,7 +55,7 @@ export default function TopNavBar({
         </div>
 
         <Link
-          href={`https://boontrack.com/${tenantSlug}`}
+          href={`https://shop.boontrack.com/${tenantSlug}`}
           target="_blank"
           className="text-xs font-bold text-slate-700 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl border border-slate-200 transition inline-flex items-center gap-1.5 shadow-xs shrink-0"
         >

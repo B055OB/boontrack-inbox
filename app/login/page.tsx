@@ -101,8 +101,13 @@ export default function MerchantLoginPage() {
         return;
       }
 
-      // 2. Validate PIN if configured on tenant and user provided input
-      if (expectedPin && accessKey.trim()) {
+      // 2. Validate PIN if configured on tenant
+      if (expectedPin) {
+        if (!accessKey.trim()) {
+          setErrorMessage('Toko ini dilindungi PIN. Silakan masukkan PIN / Password akses toko Anda.');
+          setLoading(false);
+          return;
+        }
         if (expectedPin !== accessKey.trim()) {
           setErrorMessage('PIN / Password akses yang Anda masukkan salah. Gunakan opsi "Lupa PIN" jika memerlukan bantuan.');
           setLoading(false);

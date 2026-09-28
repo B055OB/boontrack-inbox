@@ -513,8 +513,8 @@ export async function processNormalizedMetaEvent(
     const senderPhone = msg.senderPhone;
     if (!senderPhone) continue;
 
-    const textContent = msg.text.trim();
-    if (!textContent) continue;
+    const textContent = msg.text.trim() || (msg.type === 'image' ? 'Tolong analisa gambar ini sesuai konteks toko.' : '');
+    if (!textContent && msg.type !== 'image') continue;
 
     // 1.1 GROUP MENTION GUARD:
     // Rule Chat Grup (remoteJid / rawFrom mengandung '@g.us'):
@@ -678,12 +678,44 @@ export async function processNormalizedMetaEvent(
 
     // 4. Pass payload to internal ConversationEngine
     try {
+      let wabaBase64: string | undefined = undefined;
+      if (msg.type === 'image' && msg.media?.id) {
+        try {
+          const resolvedToken =
+            process.env[`META_TOKEN_${tenantId.toUpperCase()}`] ||
+            process.env.META_WA_TOKEN ||
+            process.env.WHATSAPP_API_TOKEN ||
+            (connection.credential_ref?.startsWith('ey') ? connection.credential_ref : '');
+          if (resolvedToken) {
+            const metaMediaRes = await fetch(`https://graph.facebook.com/v21.0/${msg.media.id}`, {
+              headers: { Authorization: `Bearer ${resolvedToken}` },
+            });
+            if (metaMediaRes.ok) {
+              const metaMediaData = await metaMediaRes.json();
+              if (metaMediaData.url) {
+                const imgRes = await fetch(metaMediaData.url, {
+                  headers: { Authorization: `Bearer ${resolvedToken}` },
+                });
+                if (imgRes.ok) {
+                  const arrBuf = await imgRes.arrayBuffer();
+                  wabaBase64 = Buffer.from(arrBuf).toString('base64');
+                }
+              }
+            }
+          }
+        } catch (mediaErr) {
+          console.warn('[Meta WABA Media Fetch Warning]:', mediaErr);
+        }
+      }
+
       const engineResult = await ConversationEngine.process({
         tenant_id: tenantId,
         channel: 'WHATSAPP',
         session_id: senderPhone,
         user_identifier: senderPhone,
         message: textContent,
+        image_base64: wabaBase64,
+        mime_type: msg.media?.mime_type || 'image/jpeg',
         interactive_reply: msg.interactiveReply,
         channel_type: 'WABA',
       });

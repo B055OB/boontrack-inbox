@@ -445,7 +445,7 @@ export default function DashboardSidebar({
             <div className="px-3 py-2 border-b border-slate-100">
               <p className="text-xs font-black text-slate-900 truncate">{nameToShow}</p>
               <p className="text-[10px] font-semibold text-slate-400 truncate">
-                boontrack.com/{tenantSlug}
+                shop.boontrack.com/{tenantSlug}
               </p>
             </div>
 
@@ -527,7 +527,7 @@ export default function DashboardSidebar({
         {/* Quick Action: Lihat Tampilan Toko */}
         <div className="mt-2">
           <Link
-            href={`https://boontrack.com/${tenantSlug}`}
+            href={`https://shop.boontrack.com/${tenantSlug}`}
             target="_blank"
             className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50/70 border border-slate-200/80 text-slate-600 hover:text-indigo-600 text-[11px] font-bold transition group shadow-2xs"
           >

@@ -220,7 +220,7 @@ export default function SuperAdminEconomicsPage() {
             </div>
 
             <p className="text-[11px] text-slate-400 mt-1">
-              Model Gemini 1.5 Flash ($0.30/1M blended). Rata-rata 650 tokens per percakapan customer.
+              Model Gemini 3.8 Flash ($0.30/1M blended). Rata-rata 650 tokens per percakapan customer.
             </p>
 
             <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-500">
@@ -319,7 +319,7 @@ export default function SuperAdminEconomicsPage() {
                 <tr className="hover:bg-slate-850/50">
                   <td className="px-4 py-3 font-semibold text-white flex items-center gap-2">
                     <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Gemini 1.5 Flash LLM (AI Bot CS)</span>
+                    <span>Gemini 3.8 Flash LLM (AI Bot CS)</span>
                   </td>
                   <td className="px-4 py-3">{geminiTokensMtd.toLocaleString('id-ID')} tokens</td>
                   <td className="px-4 py-3 font-mono text-[11px]">$0.30 / 1M token</td>

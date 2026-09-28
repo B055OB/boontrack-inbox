@@ -38,6 +38,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getStorefrontUrl } from '@/lib/storefront-urls';
 import DateRangePicker, { DateRangeState, getDateRangeFromPreset } from './DateRangePicker';
 
 interface AdsTrackingProProps {
@@ -103,7 +104,7 @@ export default function AdsTrackingPro({
   const [autoDeduplication, setAutoDeduplication] = useState(true);
 
   // UTM Campaign Generator state
-  const [utmBaseUrl, setUtmBaseUrl] = useState(`https://boontrack.com/${tenantSlug}`);
+  const [utmBaseUrl, setUtmBaseUrl] = useState(() => getStorefrontUrl(tenantSlug));
   const [utmSource, setUtmSource] = useState('meta');
   const [utmMedium, setUtmMedium] = useState('cpc');
   const [utmCampaign, setUtmCampaign] = useState('promo_launch');
@@ -125,8 +126,9 @@ export default function AdsTrackingPro({
   const [testLog, setTestLog] = useState<string[]>([]);
 
   const generatedUtmUrl = useMemo(() => {
+    const defaultBase = getStorefrontUrl(tenantSlug);
     try {
-      const base = utmBaseUrl.trim() || `https://boontrack.com/${tenantSlug}`;
+      const base = utmBaseUrl.trim() || defaultBase;
       const url = new URL(base.startsWith('http') ? base : `https://${base}`);
       if (utmSource.trim()) url.searchParams.set('utm_source', utmSource.trim());
       if (utmMedium.trim()) url.searchParams.set('utm_medium', utmMedium.trim());
@@ -139,7 +141,7 @@ export default function AdsTrackingPro({
       if (utmMedium.trim()) qs.push(`utm_medium=${encodeURIComponent(utmMedium.trim())}`);
       if (utmCampaign.trim()) qs.push(`utm_campaign=${encodeURIComponent(utmCampaign.trim())}`);
       if (utmContent.trim()) qs.push(`utm_content=${encodeURIComponent(utmContent.trim())}`);
-      return `${utmBaseUrl.trim() || `https://boontrack.com/${tenantSlug}`}${qs.length > 0 ? `?${qs.join('&')}` : ''}`;
+      return `${utmBaseUrl.trim() || defaultBase}${qs.length > 0 ? `?${qs.join('&')}` : ''}`;
     }
   }, [utmBaseUrl, utmSource, utmMedium, utmCampaign, utmContent, tenantSlug]);
 
@@ -472,7 +474,7 @@ export default function AdsTrackingPro({
     setTestLog((prev) => [newLog, ...prev.slice(0, 4)]);
   };
 
-  const embedScriptCode = `<script src="https://boontrack.com/ads-tracker.js" data-tenant="${tenantSlug}" async></script>`;
+  const embedScriptCode = `<script src="${process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com'}/ads-tracker.js" data-tenant="${tenantSlug}" async></script>`;
 
   const copyEmbedScript = () => {
     navigator.clipboard.writeText(embedScriptCode);

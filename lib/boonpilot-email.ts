@@ -229,7 +229,7 @@ export function buildBoonPilotVerificationText(options: BoonPilotEmailOptions): 
     `Salam hangat,`,
     `Boon Pilot 🚀`,
     `PT BOONTRACK INOVASI DIGITAL`,
-    `https://boontrack.com`,
+    `https://shop.boontrack.com`,
   ].filter(Boolean).join('\n');
 }
 

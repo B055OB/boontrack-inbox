@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Download, CheckCircle2, RefreshCw, ShieldCheck, Clock, AlertCircle } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getDigitalDeliveryUrl } from '@/lib/storefront-urls';
 
 export interface DigitalDeliveryItem {
   id: string;
@@ -86,7 +87,7 @@ export default function DigitalDeliveryTab({ tenantSlug }: { tenantSlug: string 
           o.fulfillment_metadata?.access_url ||
           o.download_url ||
           o.delivery_url ||
-          (o.id ? `https://boontrack.com/d/${o.id}` : '#');
+          (o.id ? getDigitalDeliveryUrl(o.id) : '#');
 
         const downloadCount = Number(
           o.fulfillment_metadata?.download_count ??

@@ -1333,14 +1333,15 @@ export default function SinglePageBuilderModal({
           )}
 
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
-            <Link
-              href={`/${tenantSlug}/p/${singlePageForm.slug || slugify(activeProduct.name)}`}
+            <a
+              href={`${process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com'}/${tenantSlug}/p/${singlePageForm.slug || slugify(activeProduct.name)}`}
               target="_blank"
+              rel="noopener noreferrer"
               className="px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 transition flex items-center gap-1.5"
             >
               <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
               <span>Preview Halaman</span>
-            </Link>
+            </a>
 
             <div className="flex items-center gap-2">
               <button

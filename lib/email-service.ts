@@ -217,7 +217,7 @@ export function buildBuyerReceiptHtml(data: {
       <div class="footer">
         <p>Butuh bantuan seputar pesanan Anda? Hubungi admin toko <strong>${data.storeName}</strong>.</p>
         <p style="margin-top: 12px;">© 2026 PT BOONTRACK INOVASI DIGITAL. Seluruh hak cipta dilindungi.</p>
-        <p><a href="https://boontrack.com">boontrack.com</a> &bull; Platform Otomasi Checkout &amp; WhatsApp Marketing</p>
+        <p><a href="https://shop.boontrack.com">shop.boontrack.com</a> &bull; Platform Otomasi Checkout &amp; WhatsApp Marketing</p>
       </div>
     </div>
   </div>

@@ -8,6 +8,7 @@ import {
   formatInteractiveMenusSummary,
 } from '@/lib/whatsappFormatter';
 import { processZeroAiMessage } from '@/lib/zero-ai-engine';
+import { processMultimodalChat } from '@/lib/ai/multimodal-chat';
 
 function getEngineSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
@@ -24,6 +25,8 @@ export interface ProcessMessagePayload {
   session_id: string;
   user_identifier: string;
   message: string;
+  image_base64?: string;
+  mime_type?: string;
   interactive_reply?: {
     id?: string;
     title?: string;
@@ -219,6 +222,31 @@ export class ConversationEngine {
         customer_name: null,
         address: null,
         status: 'IN_PROGRESS',
+      };
+    }
+
+    // --- MULTIMODAL INBOUND IMAGE PIPELINE (ADR § 30.2) ---
+    if (payload.image_base64) {
+      trace.push('MULTIMODAL_IMAGE_INGRESS');
+      const aiRes = await processMultimodalChat({
+        tenant_slug: tenant_id,
+        tenant_id,
+        message: cleanMsg || 'Tolong analisa gambar ini sesuai konteks toko.',
+        text: cleanMsg || 'Tolong analisa gambar ini sesuai konteks toko.',
+        image_base64: payload.image_base64,
+        mime_type: payload.mime_type || 'image/jpeg',
+        sender_phone: user_identifier || session_id,
+        user_identifier: user_identifier || session_id,
+        channel: payload.channel,
+      });
+
+      return {
+        reply: aiRes.reply,
+        next_state: 'ACTIVE',
+        state_trace: [...trace, 'MULTIMODAL_IMAGE_PROCESSED'],
+        entities: { ...entities, last_multimodal_reply: aiRes.reply },
+        is_booking_ready: false,
+        active_engine: activeEngine,
       };
     }
 

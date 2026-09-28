@@ -195,6 +195,7 @@ export default function TenantDashboardPage() {
     setBankForm,
     transactions,
     orders,
+    setOrders,
     totalOmzet,
     readyBalance,
     isWithdrawModalOpen,
@@ -680,7 +681,30 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: PESANAN / ORDERS */}
-      {activeTab === 'orders' && <OrdersTab tenantSlug={tenantSlug} orders={orders} />}
+      {activeTab === 'orders' && (
+        <OrdersTab
+          tenantSlug={tenantSlug}
+          orders={orders}
+          onOrderUpdated={(updated) => {
+            setOrders((prev: any[]) =>
+              Array.isArray(prev)
+                ? prev.map((o: any) => {
+                    const id = String(o.order_id || o.id || o.invoice_no || '');
+                    if (id === updated.id || o.invoice_no === updated.invoice_no) {
+                      return {
+                        ...o,
+                        ...updated,
+                        status: updated.status,
+                        payment_status: updated.payment_status,
+                      };
+                    }
+                    return o;
+                  })
+                : []
+            );
+          }}
+        />
+      )}
 
       {/* TAB 2: KATALOG MULTI-PRODUK */}
       {(activeTab === 'catalog' || activeTab === 'products') && (

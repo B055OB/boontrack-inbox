@@ -21,6 +21,7 @@ import {
   Info,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getRotatorUrl } from '@/lib/storefront-urls';
 
 export interface RotatorCS {
   id: string;
@@ -78,10 +79,7 @@ export default function WhatsAppRotatorManager({
     null
   );
 
-  const rotatorUrl =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/r/${tenantSlug}`
-      : `https://boontrack.com/r/${tenantSlug}`;
+  const rotatorUrl = getRotatorUrl(tenantSlug);
 
   // Format nomor WhatsApp: bersihkan karakter dan normalkan 08 -> 628
   const formatPhoneNumber = (val: string) => {

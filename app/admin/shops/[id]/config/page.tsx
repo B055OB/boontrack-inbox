@@ -518,7 +518,7 @@ export default function ShopConfigPage() {
 
           <div className="flex items-center gap-2.5">
             {tenant && (() => {
-              const publicStoreDomain = process.env.NEXT_PUBLIC_STORE_DOMAIN || 'https://boontrack.com';
+              const publicStoreDomain = process.env.NEXT_PUBLIC_STORE_DOMAIN || process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
               const storeSlug = tenant?.slug || shopId;
               const storefrontUrl = `${publicStoreDomain.replace(/\/$/, '')}/${storeSlug}`;
               return (

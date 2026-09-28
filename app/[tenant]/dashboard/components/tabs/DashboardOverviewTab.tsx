@@ -96,7 +96,8 @@ export default function DashboardOverviewTab({
   const [isUpdatingTemplate, setIsUpdatingTemplate] = useState(false);
 
   const activeStoreName = storeDisplayName || displayName;
-  const storePublicUrl = `https://boontrack.com/${tenantSlug}`;
+  const SHOP_BASE_URL = process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
+  const storePublicUrl = `${SHOP_BASE_URL}/${tenantSlug}`;
 
   // Time of day greeting
   const timeGreeting = useMemo(() => {
@@ -537,15 +538,16 @@ export default function DashboardOverviewTab({
               )}
             </button>
 
-            <Link
-              href={`/${tenantSlug}`}
+            <a
+              href={`${SHOP_BASE_URL}/${tenantSlug}`}
               target="_blank"
+              rel="noopener noreferrer"
               className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-md shadow-blue-500/20"
             >
               <Store className="w-3.5 h-3.5" />
               <span>Kunjungi Etalase</span>
               <ExternalLink className="w-3 h-3 opacity-80" />
-            </Link>
+            </a>
           </div>
         </div>
 

@@ -29,12 +29,25 @@
 ## 1. Backend Engine (Dual-Runner Python)
 - **Engine**: Menggunakan **aiohttp web runner via `main.py` + FastAPI** yang di-deploy di Railway.
 - **Aturan Wajib**: Setiap penambahan route, blueprint, atau middleware **WAJIB** didaftarkan di `aiohttp_app` runner. Mendaftarkan route hanya di FastAPI akan menyebabkan error `404 Not Found`.
-- **CORS**: Penanganan CORS reflection wajib diterapkan di tingkat runner.
+- **CORS Whitelist (Production)**: Penanganan CORS reflection wajib diterapkan di tingkat runner. Origins yang diizinkan secara eksplisit:
+  - `https://shop.boontrack.com` (Buyer Storefront)
+  - `https://dashboard.boontrack.com` (Merchant Dashboard — **ditambahkan ADR 2026-09-27**)
+  - `https://affiliate.boontrack.com` (Affiliate Portal)
+  - `https://bossob.boontrack.com` (Super Admin)
 
 ---
 
-## 2. Frontend & Modular Navigation (Next.js App Router)
-- **Domain Platform**: `shop.boontrack.com`
+## 2. Frontend & Modular Navigation (Next.js App Router — Dual Domain)
+
+### Pemisahan Domain Buyer vs Seller (ADR 2026-09-27)
+
+| Peran | Domain | Deskripsi |
+| :--- | :--- | :--- |
+| **Buyer (Pembeli)** | `shop.boontrack.com/{slug}` | Storefront publik, katalog produk, checkout, halaman sukses |
+| **Seller (Merchant)** | `dashboard.boontrack.com/{slug}` | Dashboard manajemen toko, pesanan, produk, pengaturan |
+
+Seluruh trafik dari `dashboard.boontrack.com` diproses oleh `middleware.ts` yang melakukan **internal rewrite** (bukan redirect publik) ke route `app/[tenant]/dashboard/...` di Next.js App Router. URL di browser merchant tetap berada di `dashboard.boontrack.com`.
+
 - **Routing API**: Memanfaatkan proxy internal `/api/v1/...` dengan base URL terarah ke `https://api.boontrack.com`.
 - **Adaptive Modular Registry (Progressive Disclosure)**:
   - Dilarang keras menggunakan pengecekan boolean kaku berbasis tier string lama.
@@ -57,6 +70,7 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
 | `shop.boontrack.com/register` | Merchant Self-Serve (UKM / Retail) | Vercel (Next.js) | Registrasi Toko Baru Langsung | `InitiateCheckout` (Trial), `Purchase` (Lunas) |
 | `shop.boontrack.com/affiliate/register` | Calon Mitra Afiliasi | Vercel (Next.js) | Registrasi Mandiri Program Afiliasi | `CompleteRegistration` |
 | `affiliate.boontrack.com` | Mitra Affiliate Aktif (role: 'affiliate') & Affiliate Manager (role: 'am' - Kang Sakti / buzzerukm) | Vercel (Next.js) | Dashboard Mandiri Mitra, serta Agregasi Metrik Jaringan Downline & Monitoring Payout khusus role AM. | - |
+| `dashboard.boontrack.com` | Merchant (Seller) — semua tier | Vercel (Next.js) via internal rewrite middleware | Login & Dashboard manajemen toko. Root `/` dan `/login` di-rewrite ke `/login`; path `/{slug}` di-rewrite ke `/[tenant]/dashboard`. URL tetap di bawah `dashboard.boontrack.com`. | - |
 | `bossob.boontrack.com/admin` | Super Admin Internal | Vercel (Next.js) | Control Plane, Leads Pipeline & Tenant Registry | - |
 
 > **Contract Rule**: Setiap domain baru yang ditambahkan ke ekosistem BoonTrack **WAJIB** didaftarkan di tabel ini beserta edge infra, funnel intent, dan Meta event trigger-nya sebelum dipublikasikan ke produksi.
@@ -561,9 +575,10 @@ Penamaan key/path di bucket Cloudflare R2 wajib seragam dan scoped per konteks/t
 2. **Strict Live Preview Isolation**:
    - Komponen `LivePhonePreview` HANYA di-render pada tab `themes` / `storefront` (Tampilan & Tema) dalam format split 2-kolom desktop (`lg:flex`).
    - Seluruh tab operasional lainnya (`dashboard`, `catalog`, `orders`, `whatsapp`, `inbox`, `tracking`, `finance`, serta menu vertikal spesifik) wajib berstatus 100% lebar penuh (`w-full`) tanpa frame ponsel.
-3. **Canonical Store URL**:
+3. **Canonical Store URL & Absolute Link Enforcement**:
    - Seluruh tombol dan aksi "Salin Tautan" wajib menyalin URL etalase kanonikal:
-     `https://boontrack.com/[tenantSlug]`
+     `https://shop.boontrack.com/[tenantSlug]`
+   - ⚠️ **Perubahan ADR 2026-09-27**: URL etalase publik yang benar adalah `https://shop.boontrack.com/[tenantSlug]`, **BUKAN** `https://boontrack.com/[tenantSlug]`. `boontrack.com` adalah landing page korporat — bukan storefront publik merchant.
 
 ### 11.2 Canonical Business Vertical Navigation Matrix
 Navigasi sidebar (`DashboardSidebar.tsx`) pada grup `STORE ENGINE` menyematkan Menu Dinamis (#3) yang beradaptasi secara ketat mengikuti `tenants.category`:
@@ -2053,5 +2068,271 @@ CREATE TABLE IF NOT EXISTS sales_rep_profiles (
 - **Manfaat**:
   - *Zero Downtime Deployment*: Merchant yang meng-upgrade paket langsung menikmati tenaga penjual AI dalam hitungan milidetik setelah mutasi pembayaran langganan terverifikasi.
   - *Customizable per Merchant*: Merchant dapat menyesuaikan gaya closing, persona, dan cara menjawab keberatan harga melalui dashboard tanpa perlu menulis kode sebaris pun.
+
+---
+
+## 21. Dashboard Subdomain Routing & Login Unification (ADR 2026-09-27)
+
+### 21.1 Arsitektur Internal Rewrite
+
+Seluruh trafik dari `dashboard.boontrack.com` diproses oleh `middleware.ts` **sebelum** logika custom domain atau tenant lainnya (diletakkan di urutan paling atas chain middleware).
+
+```
+Request: https://dashboard.boontrack.com/buzzerukm/settings
+         ↓
+    middleware.ts  (hostname check: isDashboardDomain)
+         ↓
+    Internal Rewrite (tidak terlihat oleh browser)
+         ↓
+    Next.js renders: /buzzerukm/dashboard/settings
+         ↓
+    Browser URL tetap: dashboard.boontrack.com/buzzerukm/settings
+```
+
+### 21.2 Rewrite Rules (middleware.ts)
+
+| Hostname | Incoming Path | Internal Rewrite | Catatan |
+| :--- | :--- | :--- | :--- |
+| `dashboard.boontrack.com` | `/` | `/login` | Login page merchant |
+| `dashboard.boontrack.com` | `/login` | `/login` | Login page merchant |
+| `dashboard.boontrack.com` | `/{slug}` | `/{slug}/dashboard` | Dashboard root tenant |
+| `dashboard.boontrack.com` | `/{slug}/path` | `/{slug}/dashboard/path` | Sub-route dashboard |
+| `dashboard.boontrack.com` | `/_next/**`, `/favicon.ico`, `/images/**` | *Bypass — tidak di-rewrite* | Aset statis |
+
+### 21.3 Post-Login Navigation Contract
+
+Setelah merchant berhasil login (`app/login/page.tsx`), navigasi diarahkan ke:
+- **Jika origin adalah `dashboard.boontrack.com`**: Redirect ke `https://dashboard.boontrack.com/{slug}`
+- **Jika origin lain** (misal `shop.boontrack.com`): Redirect ke `/{slug}/dashboard`
+
+### 21.4 Aturan Wajib
+- **Dilarang keras** menyisipkan redirect publik (HTTP 302/301) yang mengeluarkan merchant dari domain `dashboard.boontrack.com`.
+- **Seluruh aset statis** (`/_next/`, `/favicon.ico`, `/images/`) WAJIB di-bypass dari rewrite agar tidak mengganggu loading aplikasi.
+- Pencocokan hostname menggunakan `hostname.startsWith('dashboard.boontrack.com')` untuk toleransi port dev lokal.
+
+---
+
+## 22. PWA & Web Push Notification Architecture (ADR 2026-09-27)
+
+### 22.1 Tujuan
+Merchant dapat menginstal `dashboard.boontrack.com` sebagai Progressive Web App (PWA) di perangkat mobile, dan menerima notifikasi pesanan baru secara *real-time* melalui Web Push Notification bahkan saat browser tertutup.
+
+### 22.2 Manifest & Service Worker Binding
+
+| File | Konfigurasi Kunci |
+| :--- | :--- |
+| `public/manifest.json` | `start_url: "/"`, `scope: "/"`, `display: "standalone"` |
+| `public/manifest.webmanifest` | Identik dengan manifest.json |
+| `public/sw.js` | Menangani `push` event → tampilkan notifikasi; `notificationclick` → buka URL pesanan |
+
+### 22.3 Push Subscription Flow
+
+```
+Merchant buka dashboard.boontrack.com
+        ↓
+PwaInstallPrompt.tsx
+        ↓
+Notification.requestPermission() → 'granted'
+        ↓
+serviceWorkerRegistration.pushManager.subscribe({ applicationServerKey: VAPID_PUBLIC_KEY })
+        ↓
+POST /api/v1/push/subscribe
+        ↓
+Supabase: INSERT INTO push_subscriptions (tenant_slug, endpoint, keys, user_agent, ...)
+```
+
+### 22.4 Database: push_subscriptions
+
+```sql
+CREATE TABLE push_subscriptions (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_slug TEXT NOT NULL,
+  endpoint    TEXT NOT NULL UNIQUE,
+  keys        JSONB NOT NULL,  -- { p256dh, auth }
+  user_agent  TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### 22.5 Trigger Notifikasi
+Notifikasi push dikirimkan oleh backend (`boontrack-core`) saat:
+1. Order baru masuk dengan status `PENDING`.
+2. Status order berubah menjadi `PAID` (konfirmasi pembayaran otomatis).
+
+### 22.6 Aturan Wajib
+- VAPID keys wajib disimpan di environment variable (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`), tidak boleh di-hardcode.
+- Service Worker registration dibatasi hanya di origin `dashboard.boontrack.com` (dan `localhost` untuk dev).
+- Endpoint push subscription yang expired/invalid wajib dihapus otomatis (error 410 Gone dari Web Push server).
+
+---
+
+## 23. Dual Transactional Email Architecture (ADR 2026-09-27)
+
+### 23.1 Tujuan
+Saat order di-set menjadi `PAID` atau merchant menekan "Approve & Deliver" di dashboard, sistem mengirimkan **dua email transaksional simultan**:
+1. **Email Buyer (Invoice + Akses Digital)**: Konfirmasi resmi kepada pembeli.
+2. **Email Merchant (Alert Pesanan Baru)**: Notifikasi kepada pemilik toko.
+
+### 23.2 Provider & Konfigurasi
+
+| Variabel Env | Nilai | Keterangan |
+| :--- | :--- | :--- |
+| `RESEND_API_KEY` | `re_****` | API key Resend.com |
+| `RESEND_FROM` / `EMAIL_FROM` | `Boon Pilot <pilot@boontrack.com>` | Sender utama |
+| `RESEND_FROM_FALLBACK` | `Boon Pilot <affiliate@boontrack.com>` | Fallback sender |
+
+### 23.3 Email Template Structure
+
+**Buyer Invoice Email** berisi:
+- Header: Logo Toko / BoonTrack Official Receipt
+- Info Transaksi: Order ID, tanggal & waktu, status (LUNAS/BERHASIL), metode pembayaran
+- Rincian Item: nama produk, qty, total nominal
+- CTA Produk Digital: "Akses Materi / Gabung Grup" → `link_digital` dari produk
+- Footer: kontak bantuan toko
+
+**Merchant Alert Email** berisi:
+- Ringkasan order baru: nama pembeli, produk, nominal, waktu
+- Link langsung ke dashboard pesanan
+
+### 23.4 Trigger Point
+Implementasi di `lib/email-service.ts`. Dipanggil dari:
+- Webhook QRIS/payment gateway saat status → `PAID`
+- API endpoint `POST /api/v1/manager/orders/{id}/fulfill` (tombol "Approve & Deliver" dashboard)
+
+### 23.5 Aturan Wajib
+- Email buyer WAJIB dikirim dengan `link_digital` yang valid; jika null, email tetap dikirim tanpa tombol CTA digital.
+- Kegagalan pengiriman email **tidak boleh** mem-block alur perubahan status order.
+- Logging setiap attempt (success/failure) wajib disimpan atau dikirim ke monitoring.
+
+---
+
+## 24. Dual Finance Flow Architecture (ADR 2026-09-27)
+
+### 24.1 Dua Aliran Keuangan Terpisah
+
+Ekosistem BoonTrack memiliki **dua aliran keuangan yang berbeda dan tidak boleh dicampur**:
+
+| Tipe | Aliran | Mekanisme | Pencatatan |
+| :--- | :--- | :--- | :--- |
+| **SaaS Subscription Revenue** | Tenant → BoonTrack | Otomatis via Xendit/Duitku (QRIS, VA, CC) | `shop_subscriptions` + webhook konfirmasi otomatis |
+| **Professional Services Revenue** | Client → BoonTrack | Manual (Transfer bank / QRIS statis BoonTrack) | Invoice manual + konfirmasi oleh admin |
+
+### 24.2 SaaS Subscription Flow
+
+```
+Merchant pilih paket di shop.boontrack.com/register
+        ↓
+Xendit / Duitku payment gateway
+        ↓
+Webhook POST ke /api/v1/webhooks/payment
+        ↓
+Otomatis: UPDATE tenants.tier + INSERT shop_subscriptions
+        ↓
+Konfirmasi email otomatis ke merchant
+```
+
+### 24.3 Professional Services Flow (Jasa BoonTrack)
+
+Produk jasa BoonTrack (tenant slug: `boon`) dioperasikan **semi-manual**:
+
+| Produk | Harga | Slug |
+| :--- | :--- | :--- |
+| Jasa Update & Perapian Konten Toko | Rp 15.000 | `jasa-update-konten` |
+| Setup AI Sales Rep Siap Jualan | Rp 49.000 | `setup-ai-sales-rep` |
+| Paket Toko Terima Beres | Rp 149.000 | `paket-toko-terima-beres` |
+
+**Alur Fulfillment Manual**:
+1. Client checkout di `shop.boontrack.com/boon/{slug}`
+2. Pembayaran via QRIS dinamis BoonTrack
+3. Tim BoonTrack menerima notifikasi pesanan di `dashboard.boontrack.com/boon`
+4. Tim menghubungi client via WhatsApp dalam 1×24 jam
+5. Admin menekan "Approve & Deliver" → email konfirmasi dikirim ke client
+
+### 24.4 Aturan Wajib
+- Revenue SaaS dan revenue jasa DILARANG KERAS dicampur dalam satu laporan transaksi yang sama.
+- Gateway WhatsApp operasional (`081215567168`) DILARANG digunakan untuk keperluan di luar session WA aktif tenant yang bersangkutan. Komunikasi fulfillment jasa BoonTrack menggunakan nomor operasional terpisah.
+- Setiap produk jasa `boon` yang diinsert ke tabel `products` wajib menggunakan `product_type = 'SERVICE'` dan `asset_reference = 'service:{slug}'`.
+
+---
+
+## § 25. Absolute Storefront Link Enforcement Contract (ADR 2026-09-27)
+
+### 25.1 Domain Isolation Mandate
+
+Domain `dashboard.boontrack.com` adalah **area privat merchant eksklusif**. Domain ini melayani:
+- Halaman login merchant (`/login`)
+- Dashboard manajemen toko (`/[slug]` → rewrite ke `/[tenant]/dashboard`)
+
+Domain `dashboard.boontrack.com` **DILARANG** merender rute publik berikut:
+- `/[tenant]/p/[slug]` (Single Page Checkout / Salespage)
+- `/[tenant]` (Storefront publik / katalog)
+- Rute checkout, halaman sukses, atau halaman konfirmasi pembeli
+
+### 25.2 Absolute URL Mandatory Rule
+
+**Seluruh tautan keluar (external storefront links) di dalam UI `dashboard.boontrack.com` WAJIB menggunakan absolute URL terikat ke origin `https://shop.boontrack.com`.**
+
+| Konteks UI | ❌ DILARANG (Relative / Wrong Domain) | ✅ WAJIB (Absolute shop.boontrack.com) |
+| :--- | :--- | :--- |
+| Tombol "Buka Halaman" pada kartu produk | `href="/${tenantSlug}/p/${slug}"` | `href="https://shop.boontrack.com/${tenantSlug}/p/${slug}"` |
+| Tombol "Preview Halaman" di SinglePageBuilderModal | `href="/${tenantSlug}/p/${slug}"` | `href="https://shop.boontrack.com/${tenantSlug}/p/${slug}"` |
+| Tombol "Lihat Tampilan Toko" di header & sidebar | `href="https://boontrack.com/${tenantSlug}"` | `href="https://shop.boontrack.com/${tenantSlug}"` |
+| Tombol "Kunjungi Etalase" di DashboardOverviewTab | `href="/${tenantSlug}"` | `href="https://shop.boontrack.com/${tenantSlug}"` |
+| Tombol "Lihat Toko Publik" di MicrositeTab | `href="/${tenantSlug}"` | `href="https://shop.boontrack.com/${tenantSlug}"` |
+| Fungsi "Salin URL" pada kartu produk | Menyalin origin dashboard | Menyalin `https://shop.boontrack.com/${tenantSlug}/p/${slug}` |
+| Tautan Bio di StoreBioLinkWidget | `https://boontrack.com/${tenantSlug}` | `https://shop.boontrack.com/${tenantSlug}` |
+| QR Code toko di SettingsTab | Encode `https://boontrack.com/${tenantSlug}` | Encode `https://shop.boontrack.com/${tenantSlug}` |
+
+### 25.3 NEXT_PUBLIC_SHOP_URL & Centralized Helper Contract (`lib/storefront-urls.ts`)
+
+Seluruh komponen UI dashboard dan logic platform yang perlu membentuk URL storefront publik WAJIB menggunakan modul utilitas terpusat:
+
+```typescript
+// lib/storefront-urls.ts
+export function getStorefrontUrl(tenantSlug?: string, customDomain?: string | null): string;
+export function getProductPageUrl(tenantSlug: string, productSlug: string, customDomain?: string | null): string;
+export function getRotatorUrl(tenantSlug: string): string;
+export function getDigitalDeliveryUrl(orderId: string): string;
+```
+
+**Kontrak Resolusi Domain:**
+- Jika tenant memiliki `custom_domain` aktif, URL otomatis terselesaikan ke `https://{customDomain}`.
+- Jika tidak ada `custom_domain`, URL diselesaikan ke `${NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com'}/{tenantSlug}`.
+- Nilai default `'https://shop.boontrack.com'` adalah fallback sah untuk production.
+- Variable env `NEXT_PUBLIC_SHOP_URL` disediakan untuk fleksibilitas staging/preview deployment.
+- **DILARANG KERAS** menggunakan `window.location.origin` untuk membentuk URL storefront di komponen dashboard.
+
+### 25.4 Enforcement Scope
+
+Aturan ini berlaku untuk semua komponen di dalam direktori:
+- `app/[tenant]/dashboard/components/`
+- `app/[tenant]/dashboard/hooks/`
+- `app/dashboard/`
+- `lib/checkout-link.ts` (mengimpor `getStorefrontUrl`)
+
+Pelanggaran aturan ini akan menyebabkan 404 pada domain dashboard karena middleware tidak merouting rute storefront publik ke Next.js render.
+
+---
+
+## § 30. AI Engine Model Standard & WhatsApp Multimodal Contract (ADR 2026-09-28)
+
+### 30.1 Immutable AI Model Invariant
+- **Official Model ID**: `gemini-3.8-flash` (Google AI Studio API / Generative Language SDK).
+- **Core Status**: Terkunci secara permanen sebagai model utama untuk percakapan AI Sales Rep (`SALES_REP_V1`), BoonPilot Copilot, dan klasifikasi teks platform.
+- **Dilarang Keras**: Mengubah nama model ke versi legacy (seperti `gemini-1.5-flash` atau variasi mock lainnya) tanpa otorisasi tertulis.
+
+### 30.2 WhatsApp Inbound Multimodal (Vision & Image Processing)
+1. **Dukungan Media Input**:
+   - Webhook penerima WhatsApp (Evolution API v2 & Meta Cloud API) **WAJIB** mengekstrak pesan bertipe `image` (tangkapan layar / foto bukti transfer).
+2. **Buffer Stream & Base64 Payload**:
+   - Saat media gambar masuk, backend mengunduh binary stream ke memory buffer dan mengonversinya menjadi part multimodal inline (`types.Part.from_bytes` / base64 payload dengan MIME type `image/jpeg` / `image/png`).
+3. **Multimodal Query Dispatching**:
+   - Gambar dikirimkan ke model `gemini-3.8-flash` bersamaan dengan caption/teks pengirim.
+   - Jika pengguna mengirim gambar tanpa caption teks, gunakan context prompt default:
+     *"Analisis gambar ini secara mendalam dan jawab pertanyaan atau berikan bantuan operasional yang relevan sesuai konteks toko."*
+4. **Environment Variable**:
+   - `GEMINI_API_KEY`: API Key resmi terdaftar dari Google AI Studio.
+   - `AI_MODEL_NAME=gemini-3.8-flash`
 
 

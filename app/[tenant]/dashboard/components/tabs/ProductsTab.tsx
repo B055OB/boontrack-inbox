@@ -21,6 +21,8 @@ import {
 import { ProductItem, slugify, resolveFulfillmentRequirements } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 
+const SHOP_BASE_URL = process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
+
 function ProductCardImage({ src, alt }: { src?: string; alt: string }) {
   const [error, setError] = useState(false);
   const safeSrc = sanitizeImageUrl(src);
@@ -495,15 +497,16 @@ export default function ProductsTab({
                         )}
                       </button>
 
-                      <Link
-                        href={`/${tenantSlug}/p/${p.slug || slugify(p.name)}`}
+                      <a
+                        href={`${SHOP_BASE_URL}/${tenantSlug}/p/${p.slug || slugify(p.name)}`}
                         target="_blank"
+                        rel="noopener noreferrer"
                         className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-xs cursor-pointer"
-                        title="Buka Halaman Penawaran Publik"
+                        title="Buka Halaman Penawaran Publik di shop.boontrack.com"
                       >
                         <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
                         <span>Buka Halaman</span>
-                      </Link>
+                      </a>
                     </div>
                   </div>
 

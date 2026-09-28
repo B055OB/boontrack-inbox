@@ -381,16 +381,16 @@ export default function SettingsTab({
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://boontrack.com/${tenantSlug}`}
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://shop.boontrack.com/${tenantSlug}`}
             alt="QR Toko"
             className="w-16 h-16 rounded-xl border border-slate-200 bg-white p-1 shrink-0"
           />
           <div className="space-y-1 min-w-0">
             <p className="text-[11px] text-slate-500 truncate">
-              URL Toko: <span className="font-semibold text-indigo-600">boontrack.com/{tenantSlug}</span>
+              URL Toko: <span className="font-semibold text-indigo-600">shop.boontrack.com/{tenantSlug}</span>
             </p>
             <a
-              href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://boontrack.com/${tenantSlug}`}
+              href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https://shop.boontrack.com/${tenantSlug}`}
               download={`qr-${tenantSlug}.png`}
               target="_blank"
               rel="noopener noreferrer"

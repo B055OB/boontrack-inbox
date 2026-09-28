@@ -34,6 +34,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getStorefrontUrl } from '@/lib/storefront-urls';
 
 interface WhatsAppBroadcastManagerProps {
   tenantSlug: string;
@@ -86,7 +87,7 @@ export default function WhatsAppBroadcastManager({
     { id: 'p1', index: 1, name: 'Nama Pelanggan', variable: '{nama}', defaultValue: 'Kak' },
     { id: 'p2', index: 2, name: 'Nama Produk', variable: '{produk}', defaultValue: 'Masterclass Ads 2026' },
     { id: 'p3', index: 3, name: 'Kode Voucher Diskon', variable: '{voucher}', defaultValue: 'BOONPROMO50' },
-    { id: 'p4', index: 4, name: 'Link Checkout Instan', variable: '{link_toko}', defaultValue: `https://${tenantSlug}.boontrack.com` },
+    { id: 'p4', index: 4, name: 'Link Checkout Instan', variable: '{link_toko}', defaultValue: getStorefrontUrl(tenantSlug) },
   ]);
   const [isSendingMeta, setIsSendingMeta] = useState(false);
   const [metaResponseLog, setMetaResponseLog] = useState<string | null>(null);
@@ -228,7 +229,7 @@ export default function WhatsAppBroadcastManager({
     let text = messageTemplate;
     text = text.replace(/{nama}/g, contact.name);
     text = text.replace(/{produk}/g, contact.productInterest || 'Produk Kami');
-    text = text.replace(/{link_toko}/g, `https://${tenantSlug}.boontrack.com`);
+    text = text.replace(/{link_toko}/g, getStorefrontUrl(tenantSlug));
     text = text.replace(/{voucher}/g, voucherCode);
     text = text.replace(/{harga_promo}/g, 'Rp 149.000');
     return text;
@@ -381,7 +382,7 @@ export default function WhatsAppBroadcastManager({
           if (p.variable === '{nama}') return c.name;
           if (p.variable === '{produk}') return c.productInterest || p.defaultValue;
           if (p.variable === '{voucher}') return voucherCode || p.defaultValue;
-          if (p.variable === '{link_toko}') return `https://${tenantSlug}.boontrack.com`;
+          if (p.variable === '{link_toko}') return getStorefrontUrl(tenantSlug);
           return p.defaultValue;
         }),
       })),

@@ -231,7 +231,7 @@ export default function AppEntryRouter() {
                     {st.name || st.slug}
                   </p>
                   <p className="text-[10px] text-slate-400 truncate">
-                    boontrack.com/{st.slug}
+                    shop.boontrack.com/{st.slug}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">

@@ -1,3 +1,5 @@
+import { getStorefrontUrl } from './storefront-urls';
+
 export interface TenantDomainRecord {
   slug: string;
   custom_domain?: string | null;
@@ -14,25 +16,15 @@ export interface TenantActionRecord extends TenantDomainRecord {
 }
 
 /**
- * Dynamic Platform Domain & Canonical URL Resolver (ARCHITECTURE.md Section 11.1)
+ * Dynamic Platform Domain & Canonical URL Resolver (ARCHITECTURE.md Section 11.1 & Section 25)
  *
  * Rules:
  * 1. If tenant has an active custom_domain, use https://{custom_domain}
- * 2. Otherwise, use canonical platform domain https://boontrack.com/{tenant_slug}
+ * 2. Otherwise, use canonical platform domain https://shop.boontrack.com/{tenant_slug}
  * 3. Never use regex slicing or substring tricks that truncate the tenant slug.
  */
 export function getTenantBaseUrl(tenant: TenantDomainRecord): string {
-  const rawDomain = (tenant.custom_domain || '')
-    .trim()
-    .replace(/^https?:\/\//i, '')
-    .replace(/\/+$/, '');
-
-  if (rawDomain) {
-    return `https://${rawDomain}`;
-  }
-
-  const cleanSlug = (tenant.slug || '').trim().toLowerCase();
-  return cleanSlug ? `https://boontrack.com/${cleanSlug}` : 'https://boontrack.com';
+  return getStorefrontUrl(tenant.slug, tenant.custom_domain);
 }
 
 export function getTenantCanonicalUrl(tenant: TenantDomainRecord): string {
@@ -63,11 +55,11 @@ export function getTenantCheckoutUrl(
  * Universal Action Link Generator for 6 Canonical Verticals (ARCHITECTURE.md Sections 8.5 & 11.2)
  *
  * Strict Compliance:
- * - PROFESSIONAL_SERVICE: FORBIDDEN to checkout cart (/checkout). Points to consultation/service booking: https://boontrack.com/{slug} or /p/{slug}.
- * - FIELD_SERVICE: FORBIDDEN retail add-to-cart. Points to technician booking/schedule slot: https://boontrack.com/{slug} or /p/{slug}.
- * - CREATOR_AGENCY: Points to rate card & brief submission: https://boontrack.com/{slug} or /p/{slug}.
- * - FOOD: Points to restaurant menu / instant order: https://boontrack.com/{slug} or /p/{slug}.
- * - DIGITAL: Direct checkout/download: https://boontrack.com/{slug}/checkout or /p/{slug}.
+ * - PROFESSIONAL_SERVICE: FORBIDDEN to checkout cart (/checkout). Points to consultation/service booking: https://shop.boontrack.com/{slug} or /p/{slug}.
+ * - FIELD_SERVICE: FORBIDDEN retail add-to-cart. Points to technician booking/schedule slot: https://shop.boontrack.com/{slug} or /p/{slug}.
+ * - CREATOR_AGENCY: Points to rate card & brief submission: https://shop.boontrack.com/{slug} or /p/{slug}.
+ * - FOOD: Points to restaurant menu / instant order: https://shop.boontrack.com/{slug} or /p/{slug}.
+ * - DIGITAL: Direct checkout/download: https://shop.boontrack.com/{slug}/checkout or /p/{slug}.
  * - PHYSICAL: Retail product catalog / checkout with expedition shipping.
  */
 export function getTenantActionUrl(
