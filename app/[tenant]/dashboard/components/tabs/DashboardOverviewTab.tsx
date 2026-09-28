@@ -108,32 +108,88 @@ export default function DashboardOverviewTab({
     return 'Malam';
   }, []);
 
-  // Fetch active storefront template from Supabase
+  const [isLogisticsConfigured, setIsLogisticsConfigured] = useState(false);
+  const [isOperationalConfigured, setIsOperationalConfigured] = useState(false);
+
+  // Fetch active storefront template and operational/logistics config from Supabase
   useEffect(() => {
     let isMounted = true;
-    async function loadTemplate() {
+    async function loadTenantData() {
       try {
         const supabase = getSupabase();
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('metadata')
-          .eq('slug', tenantSlug)
-          .maybeSingle();
+        if (!supabase) return;
 
-        if (tenantRow?.metadata && isMounted) {
-          const meta = tenantRow.metadata;
-          const t = meta.selected_template || meta.storefront_template || meta.template || meta.theme?.template || 'default';
+        const [tenantRes, settingsRes] = await Promise.all([
+          supabase
+            .from('tenants')
+            .select('metadata')
+            .eq('slug', tenantSlug)
+            .maybeSingle(),
+          supabase
+            .from('tenant_settings')
+            .select('biteship_config')
+            .eq('tenant_slug', tenantSlug)
+            .maybeSingle(),
+        ]);
+
+        if (isMounted) {
+          const meta = tenantRes.data?.metadata || {};
+          const t =
+            meta.selected_template ||
+            meta.storefront_template ||
+            meta.template ||
+            meta.theme?.template ||
+            'default';
           if (t === 'microsite' || t === 'personal') {
             setActiveTemplate(t);
           } else {
             setActiveTemplate('default');
           }
+
+          // Evaluasi kelulusan konfigurasi logistik/pengiriman
+          const biteshipCfg = settingsRes.data?.biteship_config;
+          const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
+
+          // 1. Alamat Asal Toko / Gudang Terisi
+          const hasOriginAddress = Boolean(
+            (biteshipCfg?.origin?.address && String(biteshipCfg.origin.address).trim() !== '') ||
+            (biteshipCfg?.origin?.city && String(biteshipCfg.origin.city).trim() !== '') ||
+            (shippingOrigin?.address && String(shippingOrigin.address).trim() !== '') ||
+            (shippingOrigin?.city && String(shippingOrigin.city).trim() !== '') ||
+            (meta.shipping_config?.origin_address && String(meta.shipping_config.origin_address).trim() !== '') ||
+            (meta.shipping_config?.origin_city && String(meta.shipping_config.origin_city).trim() !== '') ||
+            (typeof meta.warehouse_address === 'string' && meta.warehouse_address.trim() !== '') ||
+            (typeof meta.warehouse_address === 'object' && meta.warehouse_address?.address) ||
+            (meta.origin_address && String(meta.origin_address).trim() !== '')
+          );
+
+          // 2. Ekspedisi Aktif / Terpilih
+          const hasActiveCourier = Boolean(
+            (Array.isArray(biteshipCfg?.couriers) && biteshipCfg.couriers.some((c: any) => c.enabled)) ||
+            (Array.isArray(meta.shipping_config?.regular_couriers) && meta.shipping_config.regular_couriers.length > 0) ||
+            (Array.isArray(meta.shipping_config?.instant_couriers) && meta.shipping_config.instant_couriers.length > 0) ||
+            (meta.shipping_config?.is_active === true) ||
+            (biteshipCfg?.is_enabled !== false && hasOriginAddress)
+          );
+
+          const isLogisticsDone = hasOriginAddress && hasActiveCourier;
+          setIsLogisticsConfigured(isLogisticsDone);
+
+          // Operational status untuk non-fisik
+          const hasOperationalConfig = Boolean(
+            meta.calendar_config ||
+            meta.booking_config ||
+            meta.service_coverage ||
+            meta.digital_delivery ||
+            meta.downloads_config
+          );
+          setIsOperationalConfigured(hasOperationalConfig);
         }
       } catch (err) {
-        console.warn('Gagal memuat template di dashboard:', err);
+        console.warn('Gagal memuat konfigurasi tenant di dashboard:', err);
       }
     }
-    loadTemplate();
+    loadTenantData();
     return () => {
       isMounted = false;
     };
@@ -279,7 +335,7 @@ export default function DashboardOverviewTab({
         id: 'operational',
         title: 'Atur Kalender & Jadwal Janji Temu',
         desc: 'Atur jam kerja, hari operasional, dan batas kuota booking sesi klien.',
-        isDone: false,
+        isDone: isOperationalConfigured || isProductAdded,
         actionLabel: 'Atur Kalender',
         onAction: () => onNavigateTab('booking'),
       }
@@ -288,7 +344,7 @@ export default function DashboardOverviewTab({
         id: 'operational',
         title: 'Atur Slot & Jadwal Kunjungan Teknisi',
         desc: 'Atur jam operasional tim lapangan dan kuota pemesanan harian.',
-        isDone: false,
+        isDone: isOperationalConfigured || isProductAdded,
         actionLabel: 'Atur Jadwal',
         onAction: () => onNavigateTab('booking'),
       }
@@ -297,7 +353,7 @@ export default function DashboardOverviewTab({
         id: 'operational',
         title: 'Atur Akses Unduh & Delivery Otomatis',
         desc: 'Pastikan file unduhan dan akses materi langsung terkirim setelah pembayaran lunas.',
-        isDone: false,
+        isDone: isOperationalConfigured || isProductAdded,
         actionLabel: 'Atur Akses',
         onAction: () => onNavigateTab('downloads'),
       }
@@ -306,7 +362,7 @@ export default function DashboardOverviewTab({
         id: 'operational',
         title: 'Atur Kampanye & Brief Klien',
         desc: 'Kelola formulir brief dan ketentuan kolaborasi bersama brand klien.',
-        isDone: false,
+        isDone: isOperationalConfigured || isProductAdded,
         actionLabel: 'Kelola Kampanye',
         onAction: () => onNavigateTab('campaigns'),
       }
@@ -316,8 +372,8 @@ export default function DashboardOverviewTab({
         desc: isCulinary
           ? 'Aktifkan kurir instan/same-day dengan radius kilometer lokasi dapur Anda.'
           : 'Tentukan titik jemput gudang agar ongkir kurir otomatis (JNE, J&T, SiCepat) aktif akurat.',
-        isDone: false,
-        actionLabel: isCulinary ? 'Atur Pengiriman' : 'Atur Ekspedisi',
+        isDone: isLogisticsConfigured,
+        actionLabel: isCulinary ? (isLogisticsConfigured ? 'Ubah Pengiriman' : 'Atur Pengiriman') : (isLogisticsConfigured ? 'Ubah Ekspedisi' : 'Atur Ekspedisi'),
         onAction: () => onNavigateTab('shipping'),
       };
 

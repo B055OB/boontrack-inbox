@@ -12,20 +12,49 @@ export async function POST(req: NextRequest) {
     const destinationPostalCode = (body.destination_postal_code || body.postal_code || '').trim();
     const weightInGrams = Math.max(100, Number(body.weight || body.weight_grams || 1000));
 
-    // 1. Validasi Coverage / Konfigurasi
+    // 1. Validasi Coverage / Konfigurasi & Ambil Dynamic Origin
     let isShippingActive = true;
+    let originPostalCode = (body.origin_postal_code || '').trim();
+
     if (slug) {
       try {
         const supabase = getSupabase();
         if (supabase) {
-          const { data } = await supabase
-            .from('tenant_settings')
-            .select('biteship_config')
-            .eq('tenant_slug', slug)
-            .maybeSingle();
+          const [settingsRes, tenantRes] = await Promise.all([
+            supabase
+              .from('tenant_settings')
+              .select('biteship_config')
+              .eq('tenant_slug', slug)
+              .maybeSingle(),
+            supabase
+              .from('tenants')
+              .select('metadata')
+              .eq('slug', slug)
+              .maybeSingle(),
+          ]);
 
-          if (data?.biteship_config) {
-            isShippingActive = data.biteship_config.is_enabled ?? true;
+          const biteshipCfg = settingsRes.data?.biteship_config;
+          const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
+          const meta = tenantRes.data?.metadata || {};
+          const metaShipping = meta.shipping_config;
+
+          if (biteshipCfg) {
+            isShippingActive = biteshipCfg.is_enabled ?? true;
+          }
+
+          const originObj = biteshipCfg?.origin || shippingOrigin || {};
+          originPostalCode =
+            originPostalCode ||
+            originObj.postal_code ||
+            originObj.origin_postal_code ||
+            metaShipping?.origin_postal_code ||
+            meta.origin_postal_code ||
+            meta.warehouse_address?.postal_code ||
+            '';
+
+          if (!originPostalCode && typeof meta.warehouse_address === 'string') {
+            const match = meta.warehouse_address.match(/\b\d{5}\b/);
+            if (match) originPostalCode = match[0];
           }
         }
       } catch (err) {
@@ -42,6 +71,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const effectiveOriginPostal = Number(originPostalCode) || 40286;
+    const effectiveDestPostal = Number(destinationPostalCode) || 40115;
+
     const biteshipKey = process.env.BITESHIP_API_KEY;
     const availableRates: any[] = [];
 
@@ -54,8 +86,8 @@ export async function POST(req: NextRequest) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            origin_postal_code: 40286,
-            destination_postal_code: Number(destinationPostalCode) || 40115,
+            origin_postal_code: effectiveOriginPostal,
+            destination_postal_code: effectiveDestPostal,
             couriers: 'gosend,grab',
             items: [
               {

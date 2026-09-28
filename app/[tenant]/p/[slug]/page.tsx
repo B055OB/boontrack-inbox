@@ -606,6 +606,8 @@ function SingleProductContent() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            slug: tenant,
+            tenant_slug: tenant,
             destination_city: queryCity,
             destination_district: queryDistrict,
             destination_address: queryAddress,

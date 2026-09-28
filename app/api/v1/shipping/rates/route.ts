@@ -28,26 +28,97 @@ export async function POST(req: NextRequest) {
     const weightInGrams = Math.max(100, Number(body.weight || body.weight_grams || 1000));
     const weightInKg = Math.ceil(weightInGrams / 1000);
 
-    // 1. Ambil Konfigurasi Kurir Tenant dari Supabase
+    // 1. Ambil Konfigurasi Kurir & Origin Toko Tenant dari Supabase
     let enabledCouriers: any[] = [];
     let isShippingActive = true;
+
+    let originCity = (body.origin_city || '').trim();
+    let originDistrict = (body.origin_district || '').trim();
+    let originPostalCode = (body.origin_postal_code || '').trim();
+    let originSubdistrictId = (body.origin_subdistrict_id || body.origin_district_code || '').trim();
+    let originAddress = (body.origin_address || '').trim();
 
     if (slug) {
       try {
         const supabase = getSupabase();
         if (supabase) {
-          const { data } = await supabase
-            .from('tenant_settings')
-            .select('biteship_config')
-            .eq('tenant_slug', slug)
-            .maybeSingle();
+          const [settingsRes, tenantRes] = await Promise.all([
+            supabase
+              .from('tenant_settings')
+              .select('biteship_config')
+              .eq('tenant_slug', slug)
+              .maybeSingle(),
+            supabase
+              .from('tenants')
+              .select('metadata')
+              .eq('slug', slug)
+              .maybeSingle(),
+          ]);
 
-          if (data?.biteship_config) {
-            const cfg = data.biteship_config;
-            isShippingActive = cfg.is_enabled ?? true;
-            if (Array.isArray(cfg.couriers)) {
-              enabledCouriers = cfg.couriers.filter((c: any) => c.enabled);
+          const biteshipCfg = settingsRes.data?.biteship_config;
+          const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
+          const meta = tenantRes.data?.metadata || {};
+          const metaShipping = meta.shipping_config;
+
+          if (biteshipCfg) {
+            isShippingActive = biteshipCfg.is_enabled ?? true;
+            if (Array.isArray(biteshipCfg.couriers)) {
+              enabledCouriers = biteshipCfg.couriers.filter((c: any) => c.enabled);
             }
+          }
+
+          // Prioritas data origin toko dinamis (biteship_config -> shipping_origin -> shipping_config -> warehouse_address)
+          const originObj = biteshipCfg?.origin || shippingOrigin || {};
+
+          originCity =
+            originCity ||
+            originObj.city ||
+            originObj.origin_city ||
+            metaShipping?.origin_city ||
+            meta.origin_city ||
+            meta.warehouse_address?.city ||
+            '';
+
+          originDistrict =
+            originDistrict ||
+            originObj.district ||
+            originObj.origin_district ||
+            metaShipping?.origin_district ||
+            meta.origin_district ||
+            meta.warehouse_address?.district ||
+            '';
+
+          originPostalCode =
+            originPostalCode ||
+            originObj.postal_code ||
+            originObj.origin_postal_code ||
+            metaShipping?.origin_postal_code ||
+            meta.origin_postal_code ||
+            meta.warehouse_address?.postal_code ||
+            '';
+
+          originSubdistrictId =
+            originSubdistrictId ||
+            originObj.subdistrict_id ||
+            originObj.origin_subdistrict_id ||
+            originObj.district_code ||
+            metaShipping?.origin_subdistrict_id ||
+            meta.origin_subdistrict_id ||
+            meta.warehouse_address?.subdistrict_id ||
+            '';
+
+          originAddress =
+            originAddress ||
+            originObj.address ||
+            originObj.origin_address ||
+            metaShipping?.origin_address ||
+            meta.origin_address ||
+            (typeof meta.warehouse_address === 'string' ? meta.warehouse_address : meta.warehouse_address?.address) ||
+            '';
+
+          if (!originPostalCode && typeof meta.warehouse_address === 'string') {
+            const postalMatch = meta.warehouse_address.match(/\b\d{5}\b/);
+            if (postalMatch) originPostalCode = postalMatch[0];
           }
         }
       } catch (err) {
@@ -70,11 +141,27 @@ export async function POST(req: NextRequest) {
     const hasInstantEnabled =
       enabledCouriers.length === 0 || enabledCouriers.some((c) => instantIds.includes(c.id));
 
-    const isBandungArea =
+    const cleanOriginCity = originCity.toLowerCase().replace(/^(kota|kabupaten|kab\.)\s*/, '').trim();
+    const cleanDestCity = destinationCity.toLowerCase().replace(/^(kota|kabupaten|kab\.)\s*/, '').trim();
+
+    const isSameCity = cleanOriginCity && cleanDestCity && (
+      cleanOriginCity.includes(cleanDestCity) || cleanDestCity.includes(cleanOriginCity)
+    );
+
+    const originPrefix = String(originPostalCode || '40286').slice(0, 2);
+    const destPrefix = String(destinationPostalCode).slice(0, 2);
+    const isSamePostalRegion = originPrefix === destPrefix;
+
+    const isInstantEligible =
+      isSameCity ||
+      isSamePostalRegion ||
       destinationCity.toLowerCase().includes('bandung') ||
       /^40\d{3}$/.test(destinationPostalCode);
 
-    if (hasInstantEnabled && isBandungArea) {
+    const effectiveOriginPostal = Number(originPostalCode) || 40286;
+    const effectiveDestPostal = Number(destinationPostalCode) || 40115;
+
+    if (hasInstantEnabled && isInstantEligible) {
       const biteshipKey = process.env.BITESHIP_API_KEY;
       let instantLoaded = false;
 
@@ -87,8 +174,8 @@ export async function POST(req: NextRequest) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              origin_postal_code: 40286,
-              destination_postal_code: Number(destinationPostalCode) || 40115,
+              origin_postal_code: effectiveOriginPostal,
+              destination_postal_code: effectiveDestPostal,
               couriers: 'gosend,grab',
               items: [
                 {
@@ -171,7 +258,7 @@ export async function POST(req: NextRequest) {
             weight: weightInGrams,
             packagePrice: 50000,
             origin: {
-              code: '32.73.06',
+              code: originSubdistrictId || '32.73.06',
               longitude: 107.6757,
               latitude: -6.9538,
             },
@@ -244,6 +331,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       rates: availableRates,
+      origin: {
+        address: originAddress,
+        city: originCity,
+        district: originDistrict,
+        postal_code: originPostalCode,
+        subdistrict_id: originSubdistrictId,
+      },
       destination: {
         city: destinationCity,
         district: destinationDistrict,

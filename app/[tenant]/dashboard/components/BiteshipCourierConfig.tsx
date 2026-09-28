@@ -202,11 +202,14 @@ export default function BiteshipCourierConfig({
   const handleSimulateShipping = async () => {
     setIsCalculating(true);
     try {
-      const res = await fetch(`/api/v1/${tenantSlug}/shipping/rates`, {
+      const res = await fetch('/api/v1/shipping/rates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          slug: tenantSlug,
+          tenant_slug: tenantSlug,
           city: calcDestCity,
+          destination_city: calcDestCity,
           weight_grams: calcWeight,
         }),
       });
