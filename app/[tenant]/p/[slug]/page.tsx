@@ -77,6 +77,24 @@ import {
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts } from '@/lib/bank-accounts';
 
+// Nomor Resmi WABA BoonTrack: 6285181830080 (Baku & Terverifikasi)
+export const WABA_OFFICIAL_NUMBER = '6285181830080';
+
+export function buildWabaStorefrontConsultationUrl(params: {
+  productName: string;
+  storeName: string;
+  tenantSlug: string;
+  productSlug: string;
+  botNumber?: string;
+}): { text: string; url: string; number: string } {
+  const num =
+    (params.botNumber || process.env.NEXT_PUBLIC_META_BOT_NUMBER || WABA_OFFICIAL_NUMBER).replace(/\D/g, '') ||
+    WABA_OFFICIAL_NUMBER;
+  const text = `Halo BoonTrack, saya tertarik dengan ${params.productName} di ${params.storeName}.\n(Ref: ${params.tenantSlug}#${params.productSlug})`;
+  const url = `https://wa.me/${num}?text=${encodeURIComponent(text)}`;
+  return { text, url, number: num };
+}
+
 function ClientLogosSection({ logos }: { logos: ClientLogoItem[] }) {
   if (!logos || logos.length === 0) return null;
 
@@ -1018,11 +1036,14 @@ function SingleProductContent() {
     }
   };
 
-  // Prefill Pesan WhatsApp: "Halo [Nama Toko], saya sedang melihat produk [Nama Produk] di website dan mau tanya detailnya."
-  const storeDisplayName = (tenant.charAt(0).toUpperCase() + tenant.slice(1));
-  const waConsultationMessage = `Halo ${storeDisplayName}, saya sedang melihat produk ${product.name} di website dan mau tanya detailnya.`;
-  const csWaNumber = formatIndonesianWhatsAppNumber(config.whatsapp_number || getTenantWhatsApp(tenant));
-  const waConsultationUrl = `https://wa.me/${csWaNumber}?text=${encodeURIComponent(waConsultationMessage)}`;
+  // Kunci Target Nomor Resmi WABA BoonTrack: 6285181830080 (Baku & Terverifikasi)
+  const storeName = tenantData?.name || tenantData?.title || (tenant ? tenant.charAt(0).toUpperCase() + tenant.slice(1) : 'Store');
+  const { text: wabaPrefilledMessage, url: wabaConsultationUrl } = buildWabaStorefrontConsultationUrl({
+    productName: product.name,
+    storeName,
+    tenantSlug: tenant,
+    productSlug: product.slug || slug,
+  });
 
   const handleWhatsAppConsultation = () => {
     trackWhatsAppConsultation({
@@ -1030,7 +1051,9 @@ function SingleProductContent() {
       price: basePrice
     });
     trackContactEvent('WhatsApp Consultation');
-    window.open(waConsultationUrl, '_blank', 'noopener,noreferrer');
+    if (typeof window !== 'undefined') {
+      window.open(wabaConsultationUrl, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const handleExternalProductClick = () => {
@@ -1992,14 +2015,22 @@ function SingleProductContent() {
       </button>
 
       {/* ── CTA KONSULTASI WHATSAPP SEKUNDER (Jalur Chat-to-Close) ── */}
-      <button
-        type="button"
-        onClick={handleWhatsAppConsultation}
-        className="w-full py-3 px-4 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-[0.99]"
+      <a
+        href={wabaConsultationUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={() => {
+          trackWhatsAppConsultation({
+            name: product.name,
+            price: basePrice
+          });
+          trackContactEvent('WhatsApp Consultation');
+        }}
+        className="w-full py-3 px-4 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-[0.99] no-underline"
       >
         <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
         <span>💬 Masih ragu atau ingin tanya dulu? Hubungi Asisten WhatsApp</span>
-      </button>
+      </a>
 
       <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400 pt-1">
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
@@ -2517,11 +2548,19 @@ function SingleProductContent() {
 
       {/* ── FLOATING WHATSAPP BUTTON (POJOK KANAN BAWAH) ── */}
       <div className="fixed bottom-24 sm:bottom-20 right-4 sm:right-6 z-40">
-        <button
-          type="button"
-          onClick={handleWhatsAppConsultation}
-          title="Hubungi Asisten WhatsApp"
-          className="group relative flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-full shadow-2xl shadow-emerald-600/40 border border-emerald-400/40 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+        <a
+          href={wabaConsultationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => {
+            trackWhatsAppConsultation({
+              name: product.name,
+              price: basePrice
+            });
+            trackContactEvent('WhatsApp Consultation');
+          }}
+          title="Tanya Asisten WhatsApp"
+          className="group relative flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-full shadow-2xl shadow-emerald-600/40 border border-emerald-400/40 transition-all hover:scale-105 active:scale-95 cursor-pointer no-underline"
         >
           <span className="absolute -top-1 -right-1 flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -2531,7 +2570,7 @@ function SingleProductContent() {
           <span className="text-xs font-bold whitespace-nowrap hidden sm:inline">
             Tanya Asisten WhatsApp
           </span>
-        </button>
+        </a>
       </div>
     </div>
   );
