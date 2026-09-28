@@ -520,6 +520,8 @@ function SingleProductContent() {
   const [selectedShippingId, setSelectedShippingId] = useState<string>('reg');
   const [shippingAddress, setShippingAddress] = useState<string>('');
   const [shippingCity, setShippingCity] = useState<string>('');
+  const [shippingDistrict, setShippingDistrict] = useState<string>('');
+  const [shippingPostalCode, setShippingPostalCode] = useState<string>('');
   const [voucherInput, setVoucherInput] = useState<string>('');
   const [appliedVoucher, setAppliedVoucher] = useState<VoucherConfig | null>(null);
   const [voucherMsg, setVoucherMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -575,11 +577,15 @@ function SingleProductContent() {
     if (!requiresShipping) return;
 
     const queryCity = shippingCity.trim();
+    const queryDistrict = shippingDistrict.trim();
+    const queryPostal = shippingPostalCode.trim();
     const queryAddress = shippingAddress.trim();
 
+    const combinedRegion = `${queryCity} ${queryDistrict} ${queryPostal} ${queryAddress}`.toLowerCase();
+
     const hasBandungOrPostal = 
-      queryCity.toLowerCase().includes('bandung') ||
-      queryAddress.toLowerCase().includes('bandung') ||
+      combinedRegion.includes('bandung') ||
+      /\b40\d{3}\b/.test(queryPostal) ||
       /\b40\d{3}\b/.test(queryCity) ||
       /\b40\d{3}\b/.test(queryAddress);
 
@@ -601,8 +607,9 @@ function SingleProductContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             destination_city: queryCity,
+            destination_district: queryDistrict,
             destination_address: queryAddress,
-            destination_postal_code: (queryCity.match(/\b40\d{3}\b/) || queryAddress.match(/\b40\d{3}\b/) || [''])[0]
+            destination_postal_code: queryPostal || (queryCity.match(/\b40\d{3}\b/) || queryAddress.match(/\b40\d{3}\b/) || [''])[0]
           })
         });
         if (res.ok) {
@@ -621,7 +628,7 @@ function SingleProductContent() {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [requiresShipping, shippingCity, shippingAddress]);
+  }, [requiresShipping, shippingCity, shippingDistrict, shippingPostalCode, shippingAddress]);
 
   // Cek keaktifan voucher seller secara universal (Metadata-First & Zero Hardcoding)
   const isVoucherActive = isProductVoucherActive(product, config);
@@ -864,8 +871,8 @@ function SingleProductContent() {
     e.preventDefault();
     if (loading) return;
 
-    if (requiresAddress && (!shippingAddress || !shippingCity)) {
-      setErrorMessage('Silakan lengkapi alamat dan kota pengiriman.');
+    if (requiresAddress && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
+      setErrorMessage('Silakan lengkapi alamat, kota/kabupaten, kecamatan, dan kode pos pengiriman.');
       return;
     }
 
@@ -886,7 +893,9 @@ function SingleProductContent() {
         shippingCost: requiresShipping ? baseShippingCost : 0,
         shippingSubsidy: requiresShipping ? shippingSubsidy : 0,
         netShippingCost: requiresShipping ? netShippingCost : 0,
-        shippingAddress: requiresAddress ? `${shippingAddress}, ${shippingCity}` : undefined,
+        shippingAddress: requiresAddress
+          ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
+          : undefined,
         shippingCourier: requiresShipping ? (selectedShipping.eta ? `${selectedShipping.name} (${selectedShipping.eta})` : selectedShipping.name) : undefined,
         productType,
         fulfillmentMetadata: {
@@ -1241,17 +1250,52 @@ function SingleProductContent() {
               />
             </div>
 
+            {/* Grid Kota / Kabupaten & Kecamatan */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Kota / Kabupaten <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required={requiresAddress}
+                  placeholder={requiresShipping ? "Contoh: Kota Bandung" : "Contoh: Karawang"}
+                  value={shippingCity}
+                  onChange={(e) => setShippingCity(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Kecamatan <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required={requiresAddress}
+                  placeholder="Contoh: Coblong"
+                  value={shippingDistrict}
+                  onChange={(e) => setShippingDistrict(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Kode Pos */}
             <div>
               <label className="font-bold text-slate-700 block mb-1">
-                Kota / Kabupaten &amp; Kode Pos <span className="text-rose-500">*</span>
+                Kode Pos (5 Digit) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
+                inputMode="numeric"
+                pattern="[0-9]{5}"
+                maxLength={5}
                 required={requiresAddress}
-                placeholder={requiresShipping ? "Contoh: Bandung, 40286" : "Contoh: Karawang Barat"}
-                value={shippingCity}
-                onChange={(e) => setShippingCity(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
+                placeholder="Contoh: 40132"
+                value={shippingPostalCode}
+                onChange={(e) => setShippingPostalCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                className="w-full sm:w-1/2 bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs font-mono"
               />
               {requiresShipping && (
                 <span className="text-[10px] text-slate-500 mt-1 block">
