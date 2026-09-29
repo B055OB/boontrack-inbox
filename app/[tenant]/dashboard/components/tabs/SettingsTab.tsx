@@ -19,6 +19,10 @@ import {
   MapPin,
   AlertCircle,
   MessageSquare,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Info,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import ReaderIntegrationCard from '../settings/ReaderIntegrationCard';
@@ -78,10 +82,20 @@ export default function SettingsTab({
   onClose,
   onSavedSuccess,
 }: SettingsTabProps) {
-  const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping'>('profile');
+  const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping' | 'security'>('profile');
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [localQrisPayload, setLocalQrisPayload] = useState(storeQrisPayload || '');
   const [localGreeting, setLocalGreeting] = useState<string>(storeGreetingMessage || '');
+
+  // Security & Akun state
+  const [securityEmail, setSecurityEmail] = useState('');
+  const [securityEmailConfirm, setSecurityEmailConfirm] = useState('');
+  const [securityPin, setSecurityPin] = useState('');
+  const [securityPinConfirm, setSecurityPinConfirm] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [isSavingPin, setIsSavingPin] = useState(false);
+  const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (storeGreetingMessage !== undefined) {
@@ -701,6 +715,208 @@ export default function SettingsTab({
     </div>
   );
 
+  // ─── 5. SUB-MENU: KEAMANAN & AKUN ────────────────────────────────────────────
+  const securitySubMenu = (
+    <div className="space-y-5 text-xs font-medium text-slate-600">
+
+      {/* ── Nomor WhatsApp Pendaftaran (READ-ONLY - Audit Trail CFO) ── */}
+      <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-3">
+        <div className="flex items-center gap-2 text-amber-900 font-bold">
+          <Lock className="w-4 h-4 text-amber-600" />
+          <span>Nomor WhatsApp Pendaftaran</span>
+          <span className="ml-auto text-[9px] font-black tracking-wide text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+            TERKUNCI PERMANEN
+          </span>
+        </div>
+        <p className="text-[11px] text-amber-800 leading-relaxed">
+          Nomor WhatsApp yang digunakan saat pendaftaran toko bersifat <strong>imutable</strong> dan tidak dapat diubah sendiri.
+          Perubahan hanya dapat dilakukan oleh Tim BoonTrack melalui proses verifikasi identitas resmi (±3 hari kerja) demi menjaga integritas audit trail keuangan.
+        </p>
+        <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-amber-200">
+          <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[10px] text-slate-400 mb-0.5">Nomor Registrasi (Tidak dapat diubah)</p>
+            <p className="font-mono font-bold text-slate-800 text-xs">{storeWhatsapp || '—'}</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-2 text-[10px] text-amber-700 bg-amber-100/60 rounded-lg px-3 py-2">
+          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>Perlu mengubah nomor? Hubungi <strong>support@boontrack.com</strong> dengan subjek: <em>Perubahan Nomor Registrasi — {tenantSlug}</em></span>
+        </div>
+      </div>
+
+      {/* ── Ganti Email Akun ── */}
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+        <div className="flex items-center gap-2 font-bold text-slate-800">
+          <ShieldCheck className="w-4 h-4 text-blue-600" />
+          <span>Ganti Email Akun</span>
+        </div>
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          Masukkan alamat email baru. Link verifikasi akan dikirim ke <strong>kedua alamat email</strong> (lama &amp; baru) untuk konfirmasi perubahan.
+        </p>
+        {securityMsg && (
+          <div className={`flex items-start gap-2 text-[11px] font-semibold px-3 py-2 rounded-lg ${
+            securityMsg.type === 'success'
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              : 'bg-red-50 text-red-600 border border-red-200'
+          }`}>
+            {securityMsg.type === 'success'
+              ? <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              : <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+            <span>{securityMsg.text}</span>
+          </div>
+        )}
+        <div className="space-y-2">
+          <div>
+            <label className="block mb-1 font-semibold text-slate-700">Email Baru</label>
+            <input
+              type="email"
+              value={securityEmail}
+              onChange={(e) => { setSecurityEmail(e.target.value); setSecurityMsg(null); }}
+              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-blue-600"
+              placeholder="email-baru@toko.com"
+              autoComplete="off"
+            />
+          </div>
+          <div>
+            <label className="block mb-1 font-semibold text-slate-700">Konfirmasi Email Baru</label>
+            <input
+              type="email"
+              value={securityEmailConfirm}
+              onChange={(e) => { setSecurityEmailConfirm(e.target.value); setSecurityMsg(null); }}
+              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-blue-600"
+              placeholder="ulangi-email-baru@toko.com"
+              autoComplete="off"
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isSavingEmail || !securityEmail || !securityEmailConfirm}
+          onClick={async () => {
+            setSecurityMsg(null);
+            if (!securityEmail.includes('@')) {
+              setSecurityMsg({ type: 'error', text: 'Format email tidak valid.' });
+              return;
+            }
+            if (securityEmail !== securityEmailConfirm) {
+              setSecurityMsg({ type: 'error', text: 'Email baru dan konfirmasi tidak cocok.' });
+              return;
+            }
+            setIsSavingEmail(true);
+            try {
+              const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/security/email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ new_email: securityEmail }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(data.error || data.message || 'Gagal mengirim link verifikasi.');
+              setSecurityMsg({ type: 'success', text: 'Link verifikasi email telah dikirim. Cek kotak masuk Anda.' });
+              setSecurityEmail('');
+              setSecurityEmailConfirm('');
+            } catch (err: any) {
+              setSecurityMsg({ type: 'error', text: err.message });
+            } finally {
+              setIsSavingEmail(false);
+            }
+          }}
+          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>{isSavingEmail ? 'Mengirim link verifikasi...' : 'Kirim Verifikasi Ganti Email'}</span>
+        </button>
+      </div>
+
+      {/* ── Atur / Ganti PIN 6-Digit ── */}
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+        <div className="flex items-center gap-2 font-bold text-slate-800">
+          <KeyRound className="w-4 h-4 text-violet-600" />
+          <span>PIN Keamanan 6-Digit</span>
+        </div>
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          PIN digunakan sebagai lapisan verifikasi tambahan untuk aksi sensitif di dashboard (penarikan saldo, konfirmasi settlement). Disimpan terenkripsi menggunakan Argon2id di server.
+        </p>
+        <div className="space-y-2">
+          <div>
+            <label className="block mb-1 font-semibold text-slate-700">PIN Baru (6 Digit)</label>
+            <div className="relative">
+              <input
+                type={showPin ? 'text' : 'password'}
+                inputMode="numeric"
+                maxLength={6}
+                value={securityPin}
+                onChange={(e) => { setSecurityPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setSecurityMsg(null); }}
+                className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-violet-600 font-mono tracking-widest pr-10"
+                placeholder="••••••"
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPin(!showPin)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block mb-1 font-semibold text-slate-700">Konfirmasi PIN Baru</label>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={securityPinConfirm}
+              onChange={(e) => { setSecurityPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 6)); setSecurityMsg(null); }}
+              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-violet-600 font-mono tracking-widest"
+              placeholder="••••••"
+              autoComplete="new-password"
+            />
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={isSavingPin || securityPin.length !== 6 || !securityPinConfirm}
+          onClick={async () => {
+            setSecurityMsg(null);
+            if (securityPin.length !== 6) {
+              setSecurityMsg({ type: 'error', text: 'PIN harus tepat 6 digit angka.' });
+              return;
+            }
+            if (securityPin !== securityPinConfirm) {
+              setSecurityMsg({ type: 'error', text: 'PIN dan konfirmasi tidak cocok.' });
+              return;
+            }
+            setIsSavingPin(true);
+            try {
+              const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/security/pin`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin: securityPin }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(data.error || data.message || 'Gagal menyimpan PIN.');
+              setSecurityMsg({ type: 'success', text: 'PIN berhasil diperbarui. Berlaku untuk sesi berikutnya.' });
+              setSecurityPin('');
+              setSecurityPinConfirm('');
+            } catch (err: any) {
+              setSecurityMsg({ type: 'error', text: err.message });
+            } finally {
+              setIsSavingPin(false);
+            }
+          }}
+          className="w-full py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <KeyRound className="w-3.5 h-3.5" />
+          <span>{isSavingPin ? 'Menyimpan PIN...' : 'Simpan PIN Baru'}</span>
+        </button>
+        <p className="text-[10px] text-slate-400 text-center">
+          PIN disimpan terenkripsi (Argon2id) dan tidak pernah disimpan dalam bentuk teks biasa.
+        </p>
+      </div>
+    </div>
+  );
+
   // Active Sub-Menu Content Switcher
   const renderActiveSubMenuContent = () => {
     switch (activeSubMenu) {
@@ -712,6 +928,8 @@ export default function SettingsTab({
         return paymentSubMenu;
       case 'shipping':
         return shippingSubMenu;
+      case 'security':
+        return securitySubMenu;
       default:
         return profileSubMenu;
     }
@@ -722,6 +940,7 @@ export default function SettingsTab({
     { id: 'whatsapp', label: '2. WhatsApp', icon: Phone },
     { id: 'payment', label: '3. Payment / QRIS', icon: QrCode },
     { id: 'shipping', label: '4. Basic Shipping', icon: Truck },
+    { id: 'security', label: '5. Keamanan & Akun', icon: KeyRound },
   ] as const;
 
   const subMenuNavigation = (
