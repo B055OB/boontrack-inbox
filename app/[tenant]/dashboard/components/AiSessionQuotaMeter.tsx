@@ -64,19 +64,23 @@ export default function AiSessionQuotaMeter({
     fetchQuota();
   }, [fetchQuota]);
 
+  const [createdInvoiceUrl, setCreatedInvoiceUrl] = useState<string | null>(null);
+
   const handleTopUpSubmit = async () => {
     if (!tenantSlug) return;
     setIsSubmitting(true);
     setTopUpFeedback(null);
+    setCreatedInvoiceUrl(null);
 
     const sessions = selectedPackage === 'topup_250' ? 250 : 100;
     const price = selectedPackage === 'topup_250' ? 99000 : 49000;
 
     try {
-      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/ai-quota`, {
+      const res = await fetch(`/api/v1/billing/topup-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tenant_slug: tenantSlug,
           sessions,
           price,
           package_id: selectedPackage,
@@ -84,7 +88,20 @@ export default function AiSessionQuotaMeter({
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.invoice_url) {
+        setCreatedInvoiceUrl(data.invoice_url);
+        setTopUpFeedback(`🎉 Invoice resmi Xendit berhasil diterbitkan! Membuka halaman pembayaran (QRIS & Virtual Account)...`);
+
+        // Buka tautan invoice resmi Xendit secara instan
+        try {
+          const opened = window.open(data.invoice_url, '_blank');
+          if (!opened) {
+            window.location.href = data.invoice_url;
+          }
+        } catch {
+          window.location.href = data.invoice_url;
+        }
+      } else if (data.success) {
         setQuota(data);
         setTopUpFeedback(`🎉 Berhasil! +${sessions} Kuota Sesi AI telah aktif.`);
         setTimeout(() => {
@@ -92,14 +109,15 @@ export default function AiSessionQuotaMeter({
           setTopUpFeedback(null);
         }, 2000);
       } else {
-        alert(data.error || 'Gagal memproses top-up kuota');
+        alert(data.error || 'Gagal menerbitkan invoice top-up kuota');
       }
     } catch {
-      alert('Terjadi kesalahan koneksi saat top-up kuota');
+      alert('Terjadi kesalahan koneksi saat memproses invoice top-up kuota');
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   const displayTier = tierName || quota?.tier || 'STARTER';
   const remaining = quota?.remaining_sessions ?? 150;
@@ -229,9 +247,24 @@ export default function AiSessionQuotaMeter({
             </div>
 
             {topUpFeedback ? (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2.5">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                <span>{topUpFeedback}</span>
+              <div className="space-y-3">
+                <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center gap-2.5">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <span>{topUpFeedback}</span>
+                </div>
+                {createdInvoiceUrl && (
+                  <div className="pt-2">
+                    <a
+                      href={createdInvoiceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-xs transition"
+                    >
+                      <span>Buka Pembayaran Xendit (QRIS &amp; VA)</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </a>
+                  </div>
+                )}
               </div>
             ) : (
               <>

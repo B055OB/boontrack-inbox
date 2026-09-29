@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import ReaderIntegrationCard from '../settings/ReaderIntegrationCard';
+import AiSessionQuotaMeter from '../AiSessionQuotaMeter';
 
 export interface SettingsTabProps {
   tenantSlug: string;
@@ -470,6 +471,9 @@ export default function SettingsTab({
   // 2. SUB-MENU: WHATSAPP
   const whatsappSubMenu = (
     <div className="space-y-4 text-xs font-medium text-slate-600">
+      {/* Visual Quota Sesi AI WhatsApp Meter */}
+      <AiSessionQuotaMeter tenantSlug={tenantSlug} />
+
       <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl space-y-2">
         <div className="flex items-center gap-2 text-emerald-900 font-bold">
           <Phone className="w-4 h-4 text-emerald-600" />

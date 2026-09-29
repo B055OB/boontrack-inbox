@@ -1,101 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
+import { getSupabase } from '@/lib/supabaseClient';
 
-export function resolveBaselineQuota(tier: string | undefined | null): number {
-  if (!tier) return 150;
-  const t = tier.toUpperCase();
-  if (t === 'ENTERPRISE' || t === 'TEAM_SCALE') return 600;
-  if (t === 'PRO_SCALE' || t === 'ADS_PERFORMANCE') return 300;
-  if (t === 'STARTER' || t === 'SOLO') return 150;
-  if (t === 'CHECKOUT_LITE' || t === 'LITE') return 50;
-  return 150;
-}
-
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
+export async function POST(req: NextRequest) {
   try {
-    const { slug: rawSlug } = await params;
-    const slug = normalizeTenantSlug(rawSlug || '');
-
-    const supabase = getSupabase();
-    const { data: tenant, error } = await supabase
-      .from('tenants')
-      .select('id, slug, name, tier, metadata')
-      .eq('slug', slug)
-      .maybeSingle();
-
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-    }
-
-    if (!tenant) {
-      return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
-    }
-
-    const metadata = tenant.metadata || {};
-    const tier = String(tenant.tier || metadata.plan_tier || 'STARTER').toUpperCase();
-    const baseQuota = resolveBaselineQuota(tier);
-    const overageQuota = Number(metadata.overage_sessions || 0);
-    const totalQuota = baseQuota + overageQuota;
-
-    // Single Source of Truth: Check live sessions_remaining from database
-    let remainingSessions: number;
-    let usedSessions: number;
-    if (typeof (tenant as any).sessions_remaining === 'number') {
-      remainingSessions = Math.max(0, (tenant as any).sessions_remaining);
-      usedSessions = Math.max(0, totalQuota - remainingSessions);
-    } else if (typeof metadata.sessions_remaining === 'number') {
-      remainingSessions = Math.max(0, metadata.sessions_remaining);
-      usedSessions = Math.max(0, totalQuota - remainingSessions);
-    } else {
-      usedSessions = Number(metadata.ai_sessions_used || 0);
-      remainingSessions = Math.max(0, totalQuota - usedSessions);
-    }
-
-    const percentage = totalQuota > 0 ? Math.min(100, Math.round((remainingSessions / totalQuota) * 100)) : 0;
-    const isLow = remainingSessions <= Math.ceil(totalQuota * 0.2);
-    const isDepleted = remainingSessions <= 0;
-
-    return NextResponse.json(
-      {
-        success: true,
-        tier,
-        base_quota: baseQuota,
-        overage_quota: overageQuota,
-        total_quota: totalQuota,
-        used_sessions: usedSessions,
-        remaining_sessions: remainingSessions,
-        percentage,
-        is_low: isLow,
-        is_depleted: isDepleted,
-        fallback_mode: isDepleted,
-      },
-      {
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          Pragma: 'no-cache',
-          Expires: '0',
-        },
-      }
-    );
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error resolving AI quota';
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
-  }
-}
-
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
-) {
-  try {
-    const { slug: rawSlug } = await params;
-    const slug = normalizeTenantSlug(rawSlug || '');
     const body = await req.json();
+    const rawSlug = body.tenant_slug || body.tenant_id || '';
+    const slug = normalizeTenantSlug(rawSlug);
 
     const selectedPackage = body.package_id || 'topup_100';
     const additionalSessions = Number(
@@ -105,8 +17,8 @@ export async function POST(
       body.price || (selectedPackage === 'topup_250' ? 99000 : 49000)
     );
 
-    if (isNaN(additionalSessions) || additionalSessions <= 0) {
-      return NextResponse.json({ success: false, error: 'Jumlah sesi tidak valid' }, { status: 400 });
+    if (!slug) {
+      return NextResponse.json({ success: false, error: 'Tenant slug wajib diisi' }, { status: 400 });
     }
 
     const supabase = getSupabase();
@@ -125,7 +37,7 @@ export async function POST(
     const customerPhone = body.customer_phone || metadata.whatsapp_number || metadata.phone;
     const customerEmail = body.customer_email || metadata.email;
 
-    // 1. Coba panggil Core Backend billing API jika tersedia
+    // 1. Coba teruskan ke backend Core FastAPI jika online
     const coreApiUrl = (
       process.env.CORE_BACKEND_URL ||
       process.env.NEXT_PUBLIC_CORE_API_URL ||
@@ -157,7 +69,7 @@ export async function POST(
       // Backend core unreachable, fallback to direct Xendit Invoice API
     }
 
-    // 2. Direct Official Xendit Invoice API Integration (PT BoonTrack Inovasi Digital)
+    // 2. Direct Xendit Invoice API Integration (PT BoonTrack Inovasi Digital)
     const xenditKey = (
       process.env.XENDIT_API_KEY ||
       process.env.XENDIT_SECRET_KEY ||
@@ -221,8 +133,7 @@ export async function POST(
       message: `Invoice Xendit untuk +${additionalSessions} sesi AI berhasil diterbitkan.`,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error processing AI quota topup';
+    const msg = err instanceof Error ? err.message : 'Error processing billing topup';
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
-

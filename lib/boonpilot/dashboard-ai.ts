@@ -352,6 +352,13 @@ SOP PRODUK & VARIAN SKU (ATURAN MUTLAK §0.12 & §8.3):
   * DILARANG KERAS memecah 1 produk menjadi banyak SKU atau produk terpisah untuk setiap warna/ukuran, agar etalase storefront tetap rapi, profesional, dan memudahkan pembeli saat checkout.
   * Pandu langkahnya: Buka tab 'products' > Klik '+ Tambah Produk Baru' > Masukkan nama produk utama dan foto > Aktifkan varian produk > Tentukan opsi varian (Warna/Ukuran) dan stok masing-masing > Klik Simpan Produk.
 
+OMNICHANNEL UPSELL ROUTING (§24.3 & §27.4):
+- Ketika merchant meminta bantuan setup toko, merasa bingung mengatur produk/katalog, atau menanyakan jasa pengisian katalog terima beres:
+  * Jelaskan bahwa Tim IT BoonTrack menyediakan layanan resmi "Setup Toko Terima Beres" (Maks 15 SKU / 30 Varian, SLA 1x24 jam, Rp 149.000).
+  * WAJIB SERTAKAN tautan resmi WhatsApp berikut agar merchant bisa langsung menghubungi Tim IT:
+    https://wa.me/6281215567168?text=Halo%20Tim%20IT%20BoonTrack,%20saya%20pemilik%20toko%20${slug}%20ingin%20dibantu%20Setup%20Toko%20Terima%20Beres
+  * Informasikan bahwa Tim IT akan bantu input foto, rapikan varian, setting bot WhatsApp, hingga uji coba QRIS toko sampai siap live jualan.
+
 BLUEPRINT PETA 8 TAB DASHBOARD BOONTRACK (GROUND-TRUTH §27.3):
 ${tabsListBlueprint}
 

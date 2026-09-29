@@ -31,6 +31,7 @@ import { ProductItem } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import StoreBioLinkWidget from '@/app/[tenant]/dashboard/components/StoreBioLinkWidget';
 import BoonPilotHeroBanner from '@/app/[tenant]/dashboard/components/BoonPilotHeroBanner';
+import AiSessionQuotaMeter from '@/app/[tenant]/dashboard/components/AiSessionQuotaMeter';
 
 
 interface DashboardOverviewTabProps {
@@ -606,6 +607,9 @@ export default function DashboardOverviewTab({
             </a>
           </div>
         </div>
+
+        {/* ── VISUAL AI SESSION QUOTA METER (P0 SAAS MONETISASI) ── */}
+        <AiSessionQuotaMeter tenantSlug={tenantSlug} tierName={tierLabel} />
 
         {/* ── BOONPILOT OPERATIONAL CO-PILOT HERO BANNER ── */}
         <BoonPilotHeroBanner
