@@ -102,6 +102,7 @@ export default function WhatsAppTab({
 }: WhatsAppTabProps) {
   const [localGreeting, setLocalGreeting] = useState<string>(greetingMessage || '');
   const [isSavingLocal, setIsSavingLocal] = useState(false);
+  const [runtimeMode, setRuntimeMode] = useState<'dedicated' | 'coexistence'>('dedicated');
 
   React.useEffect(() => {
     if (greetingMessage !== undefined) {
@@ -246,6 +247,75 @@ export default function WhatsAppTab({
               </div>
             </div>
           )}
+
+          {/* WHATSAPP RUNTIME NUMBER & COEXISTENCE SELECTION (§4.2, §8.4, §9.8) */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-blue-600" />
+                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">WhatsApp Runtime Number</h4>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Gunakan nomor khusus untuk WhatsApp Bot agar operasional AI tidak bercampur dengan WhatsApp pribadi Owner.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {/* Opsi Dedicated */}
+              <div
+                onClick={() => setRuntimeMode('dedicated')}
+                className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
+                  runtimeMode === 'dedicated'
+                    ? 'bg-white border-blue-500 ring-2 ring-blue-500/20 shadow-xs'
+                    : 'bg-white/60 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                      runtimeMode === 'dedicated' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300'
+                    }`}>
+                      {runtimeMode === 'dedicated' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                    <span className="text-xs font-bold text-slate-900">Recommended: Dedicated Bot Number</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
+                    SOP RESMI
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  (Nomor ini digunakan oleh BoonTrack Runtime untuk menerima pesan pelanggan dan menjalankan AI Sales Representative.)
+                </p>
+              </div>
+
+              {/* Opsi Coexistence */}
+              <div
+                onClick={() => setRuntimeMode('coexistence')}
+                className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
+                  runtimeMode === 'coexistence'
+                    ? 'bg-white border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
+                    : 'bg-white/60 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                      runtimeMode === 'coexistence' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'
+                    }`}>
+                      {runtimeMode === 'coexistence' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                    <span className="text-xs font-bold text-slate-900">Advanced: Gunakan nomor yang sama dengan WhatsApp pribadi Owner (Enable Coexistence Mode)</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-indigo-50 text-indigo-800 border border-indigo-200 shrink-0">
+                    COEXISTENCE
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Mode ini membutuhkan mekanisme identity filtering tambahan (Layer 2 Self-Echo Protection) agar pesan fisik Owner tidak memicu auto-reply berulang.
+                </p>
+              </div>
+            </div>
+          </div>
 
           {!isMerchantConnected && (
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
