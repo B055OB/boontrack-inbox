@@ -13,7 +13,7 @@ export default function Footer({ className = "" }: { className?: string }) {
               <img
                 src="/icon-shop.png"
                 alt="BoonTrack Shop"
-                className="w-8 h-8 rounded-xl object-contain shadow-sm"
+                className="w-8 h-8 object-contain"
               />
               <div>
                 <span className="font-extrabold text-base tracking-tight text-white block leading-tight">

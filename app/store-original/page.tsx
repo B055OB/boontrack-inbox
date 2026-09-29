@@ -49,7 +49,7 @@ export default function ShopLandingPage() {
           <img
             src="/icon-shop.png"
             alt="BoonTrack Shop"
-            className="w-8 h-8 rounded-xl object-contain shadow-sm"
+            className="w-8 h-8 object-contain"
           />
           <span className="font-extrabold text-lg tracking-tight text-slate-900">
             BoonTrack <span className="text-blue-600 font-medium text-sm">Shop</span>

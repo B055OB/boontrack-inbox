@@ -169,7 +169,7 @@ export default function ShopLandingPage() {
             <img
               src="/icon-shop.png"
               alt="BoonTrack Shop"
-              className="w-9 h-9 rounded-xl object-contain shadow-sm group-hover:scale-105 transition-transform"
+              className="w-9 h-9 object-contain group-hover:scale-105 transition-transform"
             />
             <div>
               <span className="font-black text-lg tracking-tight text-slate-900 block leading-tight">

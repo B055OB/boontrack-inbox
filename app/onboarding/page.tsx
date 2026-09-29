@@ -10,14 +10,14 @@ export default function OnboardingHubPage() {
       <header className="bg-white border-b border-slate-200/80 py-3.5 px-4 sm:px-6 sticky top-0 z-20 shadow-2xs">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3 group cursor-pointer">
-            <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-xs border border-slate-200/80 bg-white shrink-0 group-hover:scale-105 transition-transform">
+            <div className="w-10 h-10 shrink-0 group-hover:scale-105 transition-transform flex items-center justify-center">
               <Image
                 src="/icon-shop.png"
                 alt="BoonTrack Shop"
                 width={40}
                 height={40}
                 priority
-                className="w-full h-full object-contain"
+                className="w-full h-full object-contain drop-shadow-sm"
               />
             </div>
             <div>

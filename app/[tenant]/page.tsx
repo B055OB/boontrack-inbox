@@ -1143,7 +1143,7 @@ export default function TenantStorefrontPage() {
               <img
                 src="/icon-shop.png"
                 alt="BoonTrack Shop"
-                className="w-9 h-9 rounded-xl object-contain shadow-sm"
+                className="w-9 h-9 object-contain"
               />
             )}
             <div>
@@ -1735,7 +1735,7 @@ export default function TenantStorefrontPage() {
                       <img
                         src="/icon-shop.png"
                         alt="BoonTrack Shop"
-                        className="w-8 h-8 rounded-xl object-contain shadow-xs"
+                        className="w-8 h-8 object-contain"
                       />
                     )}
                     <div>

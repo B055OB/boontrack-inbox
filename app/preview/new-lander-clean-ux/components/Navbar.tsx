@@ -36,7 +36,7 @@ export default function Navbar({ referralCode, onOpenDemo }: NavbarProps) {
               alt="BoonTrack Shop"
               width={36}
               height={36}
-              className="w-9 h-9 rounded-xl object-contain shadow-sm group-hover:scale-105 transition-transform"
+              className="w-9 h-9 object-contain group-hover:scale-105 transition-transform"
               priority
             />
             <div>

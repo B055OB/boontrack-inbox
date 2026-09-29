@@ -36,7 +36,7 @@ export default function TenantOnboardingPage() {
       <header className="bg-white border-b border-slate-100 py-4 px-6 sticky top-0 z-10 shadow-sm">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl overflow-hidden shadow-xs border border-slate-200 shrink-0 bg-white">
+            <div className="w-9 h-9 shrink-0 flex items-center justify-center">
               <Image
                 src="/icon-shop.png"
                 alt="BoonTrack Shop"

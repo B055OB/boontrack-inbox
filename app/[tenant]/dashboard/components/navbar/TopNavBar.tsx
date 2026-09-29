@@ -34,7 +34,7 @@ export default function TopNavBar({
     <header className="px-4 sm:px-6 py-2.5 sm:py-3 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
       <div className="flex items-center gap-2 sm:gap-4 min-w-0">
         <div className="hidden lg:flex items-center gap-2 pr-3 border-r border-slate-200 shrink-0">
-          <div className="w-7 h-7 rounded-lg overflow-hidden border border-slate-200 bg-white shrink-0">
+          <div className="w-7 h-7 shrink-0 flex items-center justify-center">
             <Image
               src="/icon-shop.png"
               alt="BoonTrack Shop"

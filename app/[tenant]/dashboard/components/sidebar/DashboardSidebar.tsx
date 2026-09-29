@@ -1028,7 +1028,7 @@ export default function DashboardSidebar({
         />
 
         <div className="flex items-center gap-2.5 px-1.5 py-1">
-          <div className="w-8 h-8 rounded-xl overflow-hidden border border-slate-200 shrink-0 bg-white shadow-xs">
+          <div className="w-8 h-8 shrink-0 flex items-center justify-center">
             <Image
               src="/icon-shop.png"
               alt="BoonTrack Shop"
