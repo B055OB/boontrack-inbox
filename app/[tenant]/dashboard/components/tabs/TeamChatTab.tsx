@@ -230,20 +230,50 @@ export default function TeamChatTab({
   const handleToggleBot = () => {
     if (!currentConversation) return;
     const newBotState = !currentConversation.isBotActive;
+    const isPaused = !newBotState;
+    const nowIso = new Date().toISOString();
+    const pausedUntilIso = isPaused ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
+    const cleanPhone = (currentConversation.customerPhone || '').replace(/\D/g, '');
+    const cleanSlug = tenantSlug || 'boon';
 
-    // Sinkronisasi status bot ke Supabase conversations
+    // Sinkronisasi status bot ke Supabase conversations dan conversation_sessions
     try {
       const supabase = getSupabase();
-      if (supabase && currentConversation.id) {
-        supabase
-          .from('conversations')
-          .update({
-            bot_paused: !newBotState,
-            bot_mode: newBotState ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', currentConversation.id)
-          .then();
+      if (supabase) {
+        if (currentConversation.id) {
+          supabase
+            .from('conversations')
+            .update({
+              bot_paused: isPaused,
+              bot_mode: newBotState ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
+              updated_at: nowIso,
+            })
+            .eq('id', currentConversation.id)
+            .then();
+        }
+
+        if (cleanPhone) {
+          supabase
+            .from('conversation_sessions')
+            .upsert({
+              tenant_id: cleanSlug,
+              session_id: `wa_${cleanSlug}_${cleanPhone}`,
+              channel: 'WHATSAPP',
+              user_identifier: cleanPhone,
+              current_state: isPaused ? 'HANDOVER_TO_HUMAN' : 'ACTIVE',
+              is_paused: isPaused,
+              paused_at: isPaused ? nowIso : null,
+              paused_by: 'admin_command',
+              paused_until: pausedUntilIso,
+              metadata: {
+                manual_toggle: isPaused ? 'PAUSE' : 'RESUME',
+                paused_by: 'admin_command',
+                paused_at: isPaused ? nowIso : null,
+              },
+              updated_at: nowIso,
+            }, { onConflict: 'tenant_id,user_identifier' })
+            .then();
+        }
       }
     } catch (e) {
       console.debug('[TeamChat] Sync bot_paused error:', e);

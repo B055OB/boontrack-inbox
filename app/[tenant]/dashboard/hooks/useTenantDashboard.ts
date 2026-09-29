@@ -1875,7 +1875,7 @@ export function useTenantDashboard() {
             setConversations(prev =>
               prev.map(x =>
                 x.id === c.id
-                  ? { ...x, lastMessage: c.last_message || x.lastMessage, time: 'Baru saja', customerName: c.contact_name || x.customerName }
+                  ? { ...x, lastMessage: c.last_message || x.lastMessage, time: 'Baru saja', customerName: c.contact_name || x.customerName, isBotActive: c.bot_paused === true ? false : (c.bot_mode === 'HUMAN_ACTIVE' ? false : true) }
                   : x
               )
             );
