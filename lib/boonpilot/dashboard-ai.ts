@@ -341,6 +341,17 @@ Konteks Toko:
 - Hak Akses CAPI Server-Side: ${currentTier === 'PRO_SCALE' || currentTier === 'ENTERPRISE' ? 'AKTIF (Diizinkan)' : 'TIDAK TERSEDIA (Upgrade Required)'}
 - Hak Akses Multi-Seat CS: ${currentTier === 'ENTERPRISE' ? 'AKTIF' : 'TIDAK TERSEDIA (Khusus ENTERPRISE)'}
 
+STANDAR TONE OF VOICE & GAYA KOMUNIKASI (WAJIB DIPATUHI):
+1. Sapaan Ramah & Hangat: Selalu gunakan sapaan 'Kak' atau 'Kakak' kepada merchant. Hindari bahasa robotik/kaku atau birokratis.
+2. Format Jawaban Terstruktur (Step-by-Step): Sajikan panduan operasional dalam 3 hingga 5 langkah bernomor yang jelas, ringkas, dan mudah dieksekusi di layar dashboard.
+3. Penutup Solutif: Selalu akhiri respon dengan kalimat ramah menawarkan bantuan langkah berikutnya (misal: 'Ada yang ingin Kakak tanyakan lagi terkait setup varian atau pengaturan toko? Saya siap bantu, Kak!').
+
+SOP PRODUK & VARIAN SKU (ATURAN MUTLAK §0.12 & §8.3):
+- Jika merchant bertanya mengenai cara upload, input, atau pengelolaan produk bervarian (misalnya pakaian/sepatu yang memiliki variasi warna, ukuran, dsb):
+  * WAJIB JELASKAN: Cukup buat 1 SKU / 1 Produk Utama di tab 'products' (Katalog Produk), lalu masukkan seluruh variasi pada opsi/atribut varian.
+  * DILARANG KERAS memecah 1 produk menjadi banyak SKU atau produk terpisah untuk setiap warna/ukuran, agar etalase storefront tetap rapi, profesional, dan memudahkan pembeli saat checkout.
+  * Pandu langkahnya: Buka tab 'products' > Klik '+ Tambah Produk Baru' > Masukkan nama produk utama dan foto > Aktifkan varian produk > Tentukan opsi varian (Warna/Ukuran) dan stok masing-masing > Klik Simpan Produk.
+
 BLUEPRINT PETA 8 TAB DASHBOARD BOONTRACK (GROUND-TRUTH §27.3):
 ${tabsListBlueprint}
 
@@ -470,23 +481,52 @@ BATASAN HAK AKSES TIER (§3.1 & §5.1):
         `**2. Rekomendasi Teknis:**\n` +
         `- Lakukan variasi visual hook pada 3 detik pertama video iklan.\n` +
         `- Hubungkan token **Server-Side Conversion API (CAPI)** di tab **Ads & Tracking** untuk mengurangi data loss akibat pembatasan browser/iOS.`;
+    } else if (
+      userText.toLowerCase().includes('varian') ||
+      userText.toLowerCase().includes('variasi') ||
+      userText.toLowerCase().includes('warna') ||
+      userText.toLowerCase().includes('ukuran') ||
+      userText.toLowerCase().includes('size') ||
+      userText.toLowerCase().includes('sku')
+    ) {
+      // SOP Produk & Varian SKU Grounding Fallback (§0.12 & §8.3)
+      modelResponseText =
+        `Halo Kak! Untuk produk yang memiliki variasi (seperti pilihan warna atau ukuran) di toko **${tenantName}**, berikut panduan resminya:\n\n` +
+        `💡 **SOP Produk & Varian SKU:**\n` +
+        `Cukup buat **1 SKU / 1 Produk Utama** di tab **'products'** (Katalog Produk), lalu masukkan variasi pada atribut/opsi varian. ` +
+        `Dilarang memecah 1 produk menjadi banyak SKU terpisah agar etalase storefront tetap rapi, profesional, dan memudahkan pembeli saat checkout.\n\n` +
+        `**Langkah-langkah Praktis di Dashboard:**\n` +
+        `1. Buka tab **'products'** (Katalog Produk) pada navigasi dashboard sebelah kiri.\n` +
+        `2. Klik tombol **'+ Tambah Produk Baru'** (atau pilih produk yang ingin diedit).\n` +
+        `3. Masukkan 1 Produk Utama dengan nama produk umum (misal: 'Kemeja Linen Pria') dan tentukan 1 kode SKU utama.\n` +
+        `4. Aktifkan opsi varian produk, lalu tambahkan opsi varian seperti Warna (contoh: Hitam, Putih, Navy) dan Ukuran (contoh: S, M, L, XL) beserta stok masing-masing.\n` +
+        `5. Klik **'Simpan Produk'**. Seluruh varian akan otomatis tergabung rapi dalam 1 halaman checkout instan di storefront.\n\n` +
+        `Apakah ada kendala saat input varian produknya, Kak? Beritahu saya ya jika Kakak butuh bantuan langkah berikutnya!`;
     } else if (targetTab) {
       // 8-Tab Grounding Fallback
       const tabDef = DASHBOARD_8_TABS[targetTab];
       modelResponseText =
-        `Fitur yang Anda tanyakan berada di tab **${tabDef.label}** (Tab ID: \`${tabDef.key}\`).\n\n` +
+        `Halo Kak! Fitur yang Kakak tanyakan berada di tab **${tabDef.label}** (Tab ID: \`${tabDef.key}\`).\n\n` +
         `**Fungsi & Cakupan Menu:**\n` +
         `${tabDef.description}\n\n` +
-        `**Langkah Akses:**\n` +
+        `**Langkah Akses Praktis:**\n` +
         `1. Pada panel navigasi dashboard sebelah kiri, klik menu **${tabDef.label}**.\n` +
-        `2. Anda dapat langsung mengelola dan memperbarui data operasional toko secara real-time.`;
+        `2. Kakak dapat langsung mengelola dan memperbarui data operasional toko secara real-time.\n` +
+        `3. Simpan perubahan untuk langsung menerapkan konfigurasi ke storefront toko.\n\n` +
+        `Ada bagian tertentu di tab ini yang ingin Kakak tanyakan lebih detail? Saya siap bantu, Kak!`;
     } else {
       modelResponseText =
-        `Halo! Saya **BoonPilot**, AI Copilot resmi toko **${tenantName}** (Paket: **${currentTier}**).\n\n` +
-        `Saya siap membantu Anda dalam:\n` +
-        `• **Navigasi 8 Tab Dashboard**: Overview, Products, Orders, WhatsApp, Shipping, Payments, Ads/Tracking, dan Settings.\n` +
-        `• **Analisis Metrik Iklan**: Kirimkan screenshot dashboard Ads Manager Anda untuk evaluasi CPA, CTR, CPC, dan ROAS.\n` +
-        `• **Panduan Operasional**: Membantu konfigurasi QRIS, ongkir ekspedisi, dan katalog produk.`;
+        `Halo Kak! Saya **BoonPilot Copilot** resmi toko **${tenantName}** (Paket: **${currentTier}**).\n\n` +
+        `Saya siap membantu memandu operasional toko Kakak langkah demi langkah melalui 8 tab resmi dashboard:\n` +
+        `1. **Overview**: Ringkasan omset penjualan dan grafik performa toko.\n` +
+        `2. **Products**: Tambah produk, kelola 1 SKU untuk banyak varian warna/ukuran, dan atur stok.\n` +
+        `3. **Orders**: Pantau pesanan masuk, settlement pembayaran QRIS, dan input resi.\n` +
+        `4. **WhatsApp**: Kelola nomor CS, pesan sapaan otomatis, dan chat pelanggan via **BoonTrack Inbox**.\n` +
+        `5. **Shipping**: Atur titik jemput gudang pengiriman dan kurir aktif.\n` +
+        `6. **Payments**: Setup QRIS statis 0% MDR dan rekening pencairan.\n` +
+        `7. **Ads**: Pasang Meta Pixel, TikTok Pixel, dan Server-Side CAPI.\n` +
+        `8. **Settings**: Kelola profil toko, ganti email, dan PIN keamanan akun.\n\n` +
+        `Ada hal yang ingin Kakak tanyakan atau butuh bantuan langkah berikutnya? Saya siap bantu, Kak!`;
     }
   }
 

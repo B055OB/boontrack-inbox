@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getSupabase } from '@/lib/supabaseClient';
+import { handleDashboardAiChat } from '@/lib/boonpilot/dashboard-ai';
 
 export interface ActionProposal {
   id: string;
@@ -22,202 +23,6 @@ export interface MerchantCopilotResponse {
   quick_actions?: string[];
   session_id: string;
   tenant_id?: string;
-}
-
-function getSmartOnboardingFallback(
-  userMessage: string,
-  tenantSlug: string,
-  sessionId: string
-): MerchantCopilotResponse {
-  const q = (userMessage || '').toLowerCase();
-
-  // 1. Intent: Import massal / file Excel / CSV / spreadsheet / marketplace format
-  if (
-    q.includes('import') ||
-    q.includes('excel') ||
-    q.includes('csv') ||
-    q.includes('xlsx') ||
-    q.includes('spreadsheet') ||
-    q.includes('tokopedia') ||
-    q.includes('shopee') ||
-    q.includes('format')
-  ) {
-    return {
-      status: 'success',
-      type: 'TEXT',
-      reply: `Halo! Untuk mengunggah produk secara massal ke etalase toko Anda:
-
-1. **Format File yang Didukung:** Anda dapat menggunakan format spreadsheet **.xlsx**, **.xls**, atau **.csv**.
-2. **Struktur Kolom Rekomendasi:**
-   - \`name\` / \`nama_produk\` *(Wajib)*: Nama lengkap produk.
-   - \`price\` / \`harga\` *(Wajib)*: Angka harga jual tanpa titik/koma (contoh: \`150000\`).
-   - \`stock\` / \`stok\`: Jumlah ketersediaan barang (default: \`99\`).
-   - \`sku\`: Kode unik produk (otomatis dibuat jika kosong).
-   - \`category\` / \`kategori\`: Kategori produk (contoh: *digital*, *fashion*, dsb).
-   - \`description\` / \`deskripsi\`: Keterangan detail produk.
-3. **Langkah Eksekusi:**
-   - Klik tombol **'Import Massal (.xlsx / .csv)'** di tab **Katalog Produk**.
-   - Pilih file spreadsheet dari perangkat Anda, lalu klik **Upload & Import Produk**.
-   - Ratusan SKU produk akan langsung aktif di etalase dalam beberapa detik!
-
-Jika Anda memiliki file export langsung dari Tokopedia atau Shopee, sistem akan otomatis mendeteksi kolom nama dan harga tanpa perlu ubah format secara manual.`,
-      quick_actions: [
-        'Panduan Format Spreadsheet',
-        'Bagaimana cara import file Tokopedia/Shopee?',
-        'Bantu saya upload produk',
-      ],
-      session_id: sessionId,
-      tenant_id: tenantSlug,
-    };
-  }
-
-  // 2. Intent: Tambah produk manual / upload satuan
-  if (
-    q.includes('tambah') ||
-    q.includes('upload') ||
-    q.includes('buat produk') ||
-    q.includes('input') ||
-    q.includes('produk baru')
-  ) {
-    return {
-      status: 'success',
-      type: 'TEXT',
-      reply: `Untuk menambahkan produk baru secara manual ke katalog toko Anda:
-
-1. Buka tab **Katalog Produk** di dashboard.
-2. Klik tombol **'+ Tambah Produk Baru'** di bagian atas.
-3. Masukkan informasi produk:
-   - Nama produk & harga jual
-   - Unggah foto/gambar produk via form
-   - Kategori & jumlah stok
-4. Klik **Simpan Produk**. Produk akan langsung siap dipesan pembeli dengan checkout instan dan pembayaran Dynamic QRIS otomatis!`,
-      quick_actions: [
-        '+ Tambah Produk Baru',
-        'Import Massal (.xlsx / .csv)',
-        'Bagaimana cara pasang Dynamic QRIS?',
-      ],
-      session_id: sessionId,
-      tenant_id: tenantSlug,
-    };
-  }
-
-  // 3. Intent: Teks Sapaan Otomatis (Greeting Message) WhatsApp
-  if (
-    q.includes('greeting') ||
-    q.includes('sapaan') ||
-    q.includes('ucapan') ||
-    q.includes('pesan pembuka') ||
-    q.includes('ubah salam') ||
-    q.includes('ganti salam') ||
-    q.includes('teks wa') ||
-    q.includes('ganti sapaan') ||
-    (q.includes('ganti') && (q.includes('teks') || q.includes('pesan')))
-  ) {
-    return {
-      status: 'success',
-      type: 'TEXT',
-      reply: `Untuk mengubah pesan sapaan otomatis (greeting message) WhatsApp toko Anda:
-
-1. **Buka Tab WhatsApp di Dashboard:**
-   - Klik menu/tab **WhatsApp** pada navigasi dashboard merchant Anda.
-   - Gulir ke bawah hingga menemukan kartu **Pesan Sapaan Otomatis (Greeting Message)**.
-2. **Kustomisasi Teks Sapaan:**
-   - Tuliskan sapaan ramah sesuai karakter toko Anda di kotak textarea yang tersedia.
-   - Gunakan variabel \`[nama_toko]\` untuk menyebut nama toko secara otomatis.
-   - Anda juga dapat mengeklik link *"Gunakan Format Bawaan"* jika ingin menggunakan format rekomendasi.
-3. **Simpan Pengaturan:**
-   - Klik tombol **Simpan Pesan Sapaan**.
-   - Bot WhatsApp toko Anda akan langsung aktif menggunakan pesan sapaan baru ini untuk menyapa pelanggan berikutnya!
-
-*(Tips: Anda juga dapat mengubahnya melalui tab **Pengaturan** > sub-menu **WhatsApp**).*`,
-      quick_actions: [
-        'Buka Tab WhatsApp',
-        'Cek Status Koneksi WhatsApp',
-        'Lihat Riwayat Chat di Inbox',
-      ],
-      session_id: sessionId,
-      tenant_id: tenantSlug,
-    };
-  }
-
-  // 4. Intent: WhatsApp / Bot / Omnichannel
-  if (
-    q.includes('whatsapp') ||
-    q.includes('wa') ||
-    q.includes('bot') ||
-    q.includes('inbox') ||
-    q.includes('connect') ||
-    q.includes('scan')
-  ) {
-    return {
-      status: 'success',
-      type: 'TEXT',
-      reply: `Berikut panduan navigasi menu WhatsApp di Dashboard Toko Anda:
-
-1. **Hubungkan WhatsApp (Tab 'WhatsApp'):**
-   - Buka tab **WhatsApp** di dashboard.
-   - Klik tombol **Muat Ulang Sesi & QR Code**, lalu buka WhatsApp di HP Anda > **Perangkat Tertaut** > Scan barcode QR.
-2. **Atur Pesan Sapaan Otomatis (Tab 'WhatsApp'):**
-   - Di kartu **Pesan Sapaan Otomatis**, sesuaikan teks ucapan selamat datang untuk calon pembeli baru, lalu klik **Simpan Pesan Sapaan**.
-3. **Pantau & Balas Chat (Tab 'Inbox Console'):**
-   - Buka tab **Inbox Console** untuk membaca chat pelanggan secara real-time dan mengambil alih obrolan secara manual kapan saja.`,
-      quick_actions: [
-        'Buka Tab WhatsApp',
-        'Cara Ganti Pesan Sapaan',
-        'Buka Inbox Console',
-      ],
-      session_id: sessionId,
-      tenant_id: tenantSlug,
-    };
-  }
-
-  // 4. Intent: Performa penjualan / omset / stok toko
-  if (
-    q.includes('omset') ||
-    q.includes('penjualan') ||
-    q.includes('stok') ||
-    q.includes('performa') ||
-    q.includes('laporan')
-  ) {
-    return {
-      status: 'success',
-      type: 'TEXT',
-      reply: `Halo! Saat ini toko Anda berada pada tahap inisialisasi awal (*onboarding*).
-
-💡 **Langkah Prioritas untuk Memulai Penjualan:**
-1. **Lengkapi Etalase:** Isi katalog produk melalui tombol **'Import Massal (.xlsx / .csv)'** atau **'+ Tambah Produk Baru'**.
-2. **Sambungkan WhatsApp:** Hubungkan WhatsApp toko Anda via **BoonTrack Direct Connect** untuk melayani pelanggan otomatis.
-3. **Mulai Promosi:** Bagikan link etalase toko Anda ke media sosial atau iklan Meta Ads.
-
-Setelah transaksi pertama masuk, seluruh metrik omset, closing rate, dan ROAS akan terpantau otomatis di sini.`,
-      quick_actions: [
-        'Import Massal (.xlsx / .csv)',
-        'Panduan Format Spreadsheet',
-        'Hubungkan WhatsApp Bot',
-      ],
-      session_id: sessionId,
-      tenant_id: tenantSlug,
-    };
-  }
-
-  // 5. Default Warm Greeting & Guidance
-  return {
-    status: 'success',
-    type: 'TEXT',
-    reply: `Halo! Saya **BoonPilot Copilot**, AI asisten cerdas toko Anda. 🚀
-
-Saya siap memandu Anda mengelola toko, mulai dari import massal katalog spreadsheet (.xlsx/.csv), penambahan produk baru, hingga otomatisasi WhatsApp toko Anda.
-
-Silakan pilih topik bantuan cepat di bawah atau tanyakan langsung apa pun yang ingin Anda ketahui:`,
-    quick_actions: [
-      'Import Massal (.xlsx / .csv)',
-      'Panduan Format Spreadsheet',
-      'Bagaimana cara import file Tokopedia/Shopee?',
-      'Bantu saya upload produk',
-    ],
-    session_id: sessionId,
-    tenant_id: tenantSlug,
-  };
 }
 
 export async function POST(req: NextRequest) {
@@ -385,17 +190,49 @@ export async function POST(req: NextRequest) {
           tenant_id: slug,
         });
       } catch (parseErr) {
-        console.warn('[Merchant Copilot] Error parsing core response, falling back to smart onboarding:', parseErr);
+        console.warn('[Merchant Copilot] Error parsing core response:', parseErr);
       }
     }
 
-    // Smart Onboarding Fallback: Jika backend offline, 404, atau unreachable
-    const fallbackResponse = getSmartOnboardingFallback(message, slug, sessionId);
-    return NextResponse.json(fallbackResponse);
+    // ── FALLBACK KE NATIVE BOONPILOT DASHBOARD AI ENGINE SECARA DINAMIS (§0.12, §8.3) ──
+    const aiResult = await handleDashboardAiChat({
+      tenant_slug: slug,
+      message,
+      session_id: sessionId,
+      conversation_history: activeHistory,
+    });
+
+    return NextResponse.json({
+      status: 'success',
+      type: aiResult.action_proposal ? 'ACTION_PROPOSAL' : 'TEXT',
+      reply: aiResult.reply,
+      reply_text: aiResult.reply,
+      action_proposal: aiResult.action_proposal || null,
+      data: {
+        tenant_slug: slug,
+        target_tab: aiResult.target_tab,
+        entitlement_status: aiResult.entitlement_status,
+      },
+      quick_actions: aiResult.quick_actions || [
+        'Buka Tab Products',
+        'Cek Status WhatsApp',
+        'Lihat Laporan Penjualan',
+      ],
+      session_id: sessionId,
+      tenant_id: slug,
+    });
 
   } catch (error) {
     console.error('[BoonPilot Copilot] Fatal route error:', error);
-    const fallbackResponse = getSmartOnboardingFallback('', 'growth', `err_${Date.now()}`);
-    return NextResponse.json(fallbackResponse);
+    return NextResponse.json(
+      {
+        status: 'error',
+        type: 'TEXT',
+        reply: 'Halo Kak! Terjadi kendala saat memproses permintaan Kakak. Silakan coba tanyakan kembali ya, Kak.',
+        quick_actions: ['Buka Tab Products', 'Panduan Navigasi Dashboard', 'Hubungkan WhatsApp'],
+        session_id: `err_${Date.now()}`,
+      },
+      { status: 500 }
+    );
   }
 }
