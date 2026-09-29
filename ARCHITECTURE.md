@@ -1,4 +1,4 @@
-# 🏛️ BOONTRACK ENGINEERING CONSTITUTION & CORE ARCHITECTURE
+﻿# ðŸ›ï¸ BOONTRACK ENGINEERING CONSTITUTION & CORE ARCHITECTURE
 
 > **Golden Rule**: *"Implementation can change. Architecture contracts do not change without an explicit Architecture Decision Record (ADR)."*  
 > **Core Principle**: *"Natural conversation, deterministic commerce."*
@@ -31,13 +31,13 @@
 - **Aturan Wajib**: Setiap penambahan route, blueprint, atau middleware **WAJIB** didaftarkan di `aiohttp_app` runner. Mendaftarkan route hanya di FastAPI akan menyebabkan error `404 Not Found`.
 - **CORS Whitelist (Production)**: Penanganan CORS reflection wajib diterapkan di tingkat runner. Origins yang diizinkan secara eksplisit:
   - `https://shop.boontrack.com` (Buyer Storefront)
-  - `https://dashboard.boontrack.com` (Merchant Dashboard — **ditambahkan ADR 2026-09-27**)
+  - `https://dashboard.boontrack.com` (Merchant Dashboard â€” **ditambahkan ADR 2026-09-27**)
   - `https://affiliate.boontrack.com` (Affiliate Portal)
   - `https://bossob.boontrack.com` (Super Admin)
 
 ---
 
-## 2. Frontend & Modular Navigation (Next.js App Router — Dual Domain)
+## 2. Frontend & Modular Navigation (Next.js App Router â€” Dual Domain)
 
 ### Pemisahan Domain Buyer vs Seller (ADR 2026-09-27)
 
@@ -70,7 +70,7 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
 | `shop.boontrack.com/register` | Merchant Self-Serve (UKM / Retail) | Vercel (Next.js) | Registrasi Toko Baru Langsung | `InitiateCheckout` (Trial), `Purchase` (Lunas) |
 | `shop.boontrack.com/affiliate/register` | Calon Mitra Afiliasi | Vercel (Next.js) | Registrasi Mandiri Program Afiliasi | `CompleteRegistration` |
 | `affiliate.boontrack.com` | Mitra Affiliate Aktif (role: 'affiliate') & Affiliate Manager (role: 'am' - Kang Sakti / buzzerukm) | Vercel (Next.js) | Dashboard Mandiri Mitra, serta Agregasi Metrik Jaringan Downline & Monitoring Payout khusus role AM. | - |
-| `dashboard.boontrack.com` | Merchant (Seller) — semua tier | Vercel (Next.js) via internal rewrite middleware | Login & Dashboard manajemen toko. Root `/` dan `/login` di-rewrite ke `/login`; path `/{slug}` di-rewrite ke `/[tenant]/dashboard`. URL tetap di bawah `dashboard.boontrack.com`. | - |
+| `dashboard.boontrack.com` | Merchant (Seller) â€” semua tier | Vercel (Next.js) via internal rewrite middleware | Login & Dashboard manajemen toko. Root `/` dan `/login` di-rewrite ke `/login`; path `/{slug}` di-rewrite ke `/[tenant]/dashboard`. URL tetap di bawah `dashboard.boontrack.com`. | - |
 | `bossob.boontrack.com/admin` | Super Admin Internal | Vercel (Next.js) | Control Plane, Leads Pipeline & Tenant Registry | - |
 
 > **Contract Rule**: Setiap domain baru yang ditambahkan ke ekosistem BoonTrack **WAJIB** didaftarkan di tabel ini beserta edge infra, funnel intent, dan Meta event trigger-nya sebelum dipublikasikan ke produksi.
@@ -87,7 +87,7 @@ Seluruh domain, routing funnel, edge infrastructure, dan event tracking terikat 
 ---
 
 ## 3. Entitlement Engine & Security Guard
-- **Source of Truth**: Menggunakan skema relasional: `features` → `plans` → `plan_entitlements` → `tenant_entitlements` (bukan array string sederhana di tabel tenants).
+- **Source of Truth**: Menggunakan skema relasional: `features` â†’ `plans` â†’ `plan_entitlements` â†’ `tenant_entitlements` (bukan array string sederhana di tabel tenants).
 - **Pemisahan Konsep**: 
   - *Feature* = kapabilitas teknis sistem internal (contoh: `AI_BOT`, `META_CAPI`).
   - *Add-on* = paket komersial yang dibeli user.
@@ -213,28 +213,28 @@ Ekosistem BoonTrack (frontend registrasi, gateway onboarding, billing Xendit, da
 Sistem percakapan cerdas BoonTrack beroperasi di atas tiga pilar independen yang memiliki batasan wewenang tegas:
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       THREE-PILLAR HYBRID CORE                          │
-├──────────────────────────┬───────────────────────┬──────────────────────┤
-│  PILLAR 1: PERSONA LAYER │ PILLAR 2: CONV. LLM   │ PILLAR 3: STATE MACH.│
-│  (Presentation Policy)   │ (Intelligence Layer)  │ (System Authority)   │
-│  "HOW it speaks"         │ "HOW it understands"  │ "WHAT it can do"     │
-├──────────────────────────┼───────────────────────┼──────────────────────┤
-│ • Tone & Empathy Voice   │ • NLU & Slang Parser  │ • Catalog & Stock    │
-│ • Greeting & Closings    │ • Intent Extraction   │ • Cart & Total Bill  │
-│ • Objection Handling     │ • Entity Resolution   │ • Dynamic QRIS / Pay │
-│ • Do/Don't Directives    │ • Natural Synthesis   │ • Order Lifecycle    │
-│ [DILARANG TENTUKAN DATA] │ [UNTRUSTED PROPOSAL]  │ [SINGLE TRUTH AUTHORITY]
-└──────────────────────────┴───────────────────────┴──────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                       THREE-PILLAR HYBRID CORE                          â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚  PILLAR 1: PERSONA LAYER â”‚ PILLAR 2: CONV. LLM   â”‚ PILLAR 3: STATE MACH.â”‚
+â”‚  (Presentation Policy)   â”‚ (Intelligence Layer)  â”‚ (System Authority)   â”‚
+â”‚  "HOW it speaks"         â”‚ "HOW it understands"  â”‚ "WHAT it can do"     â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ â€¢ Tone & Empathy Voice   â”‚ â€¢ NLU & Slang Parser  â”‚ â€¢ Catalog & Stock    â”‚
+â”‚ â€¢ Greeting & Closings    â”‚ â€¢ Intent Extraction   â”‚ â€¢ Cart & Total Bill  â”‚
+â”‚ â€¢ Objection Handling     â”‚ â€¢ Entity Resolution   â”‚ â€¢ Dynamic QRIS / Pay â”‚
+â”‚ â€¢ Do/Don't Directives    â”‚ â€¢ Natural Synthesis   â”‚ â€¢ Order Lifecycle    â”‚
+â”‚ [DILARANG TENTUKAN DATA] â”‚ [UNTRUSTED PROPOSAL]  â”‚ [SINGLE TRUTH AUTHORITY]
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
-1. **Pillar 1 — Seller Persona Layer (Presentation Policy - HOW it speaks)**
+1. **Pillar 1 â€” Seller Persona Layer (Presentation Policy - HOW it speaks)**
    - Mengatur tone bahasa (santai, formal, ramah, konsultatif), greeting, objection handling, closing style, dan batasan kepribadian brand toko.
    - **Authority Boundary**: Persona DILARANG KERAS menentukan kebenaran data transaksional (harga produk, ketersediaan stok, validitas pesanan, status pembayaran).
-2. **Pillar 2 — Conversational LLM (Intelligence Layer - HOW it understands)**
+2. **Pillar 2 â€” Conversational LLM (Intelligence Layer - HOW it understands)**
    - Bertanggung jawab atas Natural Language Understanding (NLU), deteksi intent, ekstraksi entitas, normalisasi bahasa daerah/slang, dan perangkai respon natural.
    - **Authority Boundary**: Output LLM diperlakukan sebagai *untrusted proposal*. LLM DILARANG memutasi database pesanan/pembayaran, menghitung nominal final, atau membuat payload QRIS sendiri.
-3. **Pillar 3 — Deterministic State Machine & Business Graph (The System Authority - WHAT it can do)**
+3. **Pillar 3 â€” Deterministic State Machine & Business Graph (The System Authority - WHAT it can do)**
    - Otoritas tunggal untuk alur percakapan terstruktur, katalog, stok, validasi checkout, payload QRIS dinamis, aturan bisnis, dan CAPI events. Backend state selalu meng-override interpretasi LLM.
 
 ---
@@ -245,7 +245,7 @@ Arsitektur memisahkan secara tegas antara **Fase Konfigurasi (Setup & Tuning)** 
 1. **Fase Konfigurasi (BoonPilot - The Setup Architect)**:
    - BoonPilot bertindak sebagai konsultan bisnis pintar dan asisten konfigurasi bagi merchant.
    - Menghasilkan proposal terstruktur berbasis tipe `BusinessConfigurationProposal` (`types/boonpilot.ts`).
-   - Siklus hidup proposal: `DRAFT` → `VALIDATED` → `PUBLISHED` (atau `REJECTED`).
+   - Siklus hidup proposal: `DRAFT` â†’ `VALIDATED` â†’ `PUBLISHED` (atau `REJECTED`).
    - Proposal yang telah di-validasi dan di-publish oleh merchant tersimpan di database Supabase sebagai konfigurasi resmi toko.
 2. **Fase Runtime (Conversational Runtime Engine - The Real-Time Executor)**:
    - Engine runtime membaca konfigurasi toko yang berstatus `PUBLISHED` dari database Supabase sebagai parameter *read-only*.
@@ -254,12 +254,12 @@ Arsitektur memisahkan secara tegas antara **Fase Konfigurasi (Setup & Tuning)** 
 
 ---
 
-### 8.4 7-Layer Ingress Webhook Architecture & Pair Safety Budget
+### 8.4 8-Layer Ingress Webhook Architecture & Pair Safety Budget (dengan Gate C)
 
 > **Doktrin Resmi CTO Office #1**:
 > *"BoonTrack tidak berasumsi bahwa setiap inbound message berasal dari manusia. Setiap external conversational event diperlakukan sebagai untrusted input dan wajib melewati bounded safety, cost, and interaction controls sebelum dapat memicu AI inference atau outbound action."*
 
-Setiap pesan masuk dari seluruh gateway (BoonTrack WhatsApp Engine / Evolution API maupun Meta WABA Cloud API) wajib melalui evaluasi sekuensial 7 lapis pengamanan (*7-Layer Ingress Webhook Architecture V2*):
+Setiap pesan masuk dari seluruh gateway (BoonTrack WhatsApp Engine / BoonTrack Gateway maupun Meta WABA Cloud API) wajib melalui evaluasi sekuensial 8 lapis pengamanan (*8-Layer Ingress Webhook Architecture V2 dengan Gate C*):
 - **Layer 1: Normalization & Inbound Deduplication**
   Normalisasi `sender_phone`, sanitasi `tenant_slug`, ekstraksi `wa_message_id`, unwrapping pesan (ephemeral, viewOnce, button reply, list response), serta deduplikasi in-memory berbasis sliding window 120 detik.
 - **Layer 2: Self-Identity Protection & Coexistence Mode**
@@ -286,19 +286,19 @@ Setiap pesan masuk dari seluruh gateway (BoonTrack WhatsApp Engine / Evolution A
   * **Wajib**: Memanggil `safety_budget_service.reserve(loop_key, estimated_turn=1)` sebelum memanggil LLM provider.
   * **Fast DROP**: Jika alokasi kuota sesi turn habis, sistem langsung mengembalikan status HTTP 200 OK (`PRE_LLM_RESERVATION_BLOCKED`). Tidak ada inferensi Gemini yang dipanggil dan tidak ada pesan keluar (LLM = 0, Outbound = 0).
 - **Layer 7: Gemini AI Inference & Outbound Action**
-  * Inferensi LLM (Commerce AI Engine / Platform Assistant Engine) HANYA dijalankan bila lolos seluruh Layer 1–6 tanpa perkecualian.
+  * Inferensi LLM (Commerce AI Engine / Platform Assistant Engine) HANYA dijalankan bila lolos seluruh Layer 1â€“6 tanpa perkecualian.
   * Jika peer sedang berada dalam status verifikasi pemulihan `HALF_OPEN`, eksekusi sukses pada layer ini memicu `safety_budget_service.record_successful_turn(loop_key)` untuk memulihkan status ke `ACTIVE`.
 
 
 ### 8.4.1 Boundary & Role of BoonPilot
 - **Definisi Peran**: BoonPilot adalah *Merchant-Facing Configuration Consultant & Knowledge Architect*, BUKAN eksekutor transaksi runtime pembeli.
 - **Batas Wewenang BoonPilot**:
-  - ✅ **DIPERBOLEHKAN**:
+  - âœ… **DIPERBOLEHKAN**:
     - Mewawancarai merchant untuk menggali profil bisnis, keunggulan produk, dan gaya komunikasi.
     - Merekomendasikan template vertikal bisnis yang paling relevan.
     - Menyusun proposal konfigurasi toko (`BusinessConfigurationProposal`).
     - Menyediakan edukasi dan SOP penggunaan platform BoonTrack via `PlatformKnowledgeProvider` (`lib/boonpilotKnowledge.ts`).
-  - ❌ **DILARANG KERAS**:
+  - âŒ **DILARANG KERAS**:
     - Memutasi status pesanan pelanggan (`orders` table).
     - Menghitung nilai total tagihan, diskon, atau ongkir di transaksi live.
     - Mengubah saldo atau status mutasi rekening merchant.
@@ -339,35 +339,35 @@ Setiap pesan masuk dari pelanggan diproses melalui pipa sekuensial 4 tahap:
 
 ```text
 Inbound Message (WhatsApp / Web Widget)
-                ↓
-┌────────────────────────────────────────────────────────┐
-│ 1. RAW SIGNAL EXTRACTOR                                │
-│    • Normalisasi teks, slang, & typo                   │
-│    • Ekstraksi entitas (nama produk, qty, alamat)      │
-│    • Klasifikasi intent awal via Conversational LLM    │
-└────────────────────────────────────────────────────────┘
-                ↓
-┌────────────────────────────────────────────────────────┐
-│ 2. POLICY EVALUATION LAYER                             │
-│    • Penerapan Persona Toko (tone, boundaries)         │
-│    • Pengecekan aturan vertikal (PHYSICAL vs DIGITAL)  │
-│    • Pemeriksaan Do's & Don'ts konfigurasi tenant      │
-└────────────────────────────────────────────────────────┘
-                ↓
-┌────────────────────────────────────────────────────────┐
-│ 3. DETERMINISTIC STATE MACHINE TRANSITION              │
-│    • Validasi ketersediaan stok & jam operasional      │
-│    • Guard transisi state (mencegah loncat alur ilegal)│
-│    • Kalkulasi matematis tagihan & kode unik           │
-└────────────────────────────────────────────────────────┘
-                ↓
-┌────────────────────────────────────────────────────────┐
-│ 4. ACTION DISPATCH & RESPONSE SYNTHESIS                │
-│    • Eksekusi mutasi DB (create order / reserve stock) │
-│    • Generate QRIS dinamis 0% MDR                      │
-│    • Trigger Meta CAPI Event (InitiateCheckout, Lead)  │
-│    • Rangkai respon natural terarah ke call-to-action  │
-└────────────────────────────────────────────────────────┘
+                â†“
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 1. RAW SIGNAL EXTRACTOR                                â”‚
+â”‚    â€¢ Normalisasi teks, slang, & typo                   â”‚
+â”‚    â€¢ Ekstraksi entitas (nama produk, qty, alamat)      â”‚
+â”‚    â€¢ Klasifikasi intent awal via Conversational LLM    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                â†“
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 2. POLICY EVALUATION LAYER                             â”‚
+â”‚    â€¢ Penerapan Persona Toko (tone, boundaries)         â”‚
+â”‚    â€¢ Pengecekan aturan vertikal (PHYSICAL vs DIGITAL)  â”‚
+â”‚    â€¢ Pemeriksaan Do's & Don'ts konfigurasi tenant      â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                â†“
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 3. DETERMINISTIC STATE MACHINE TRANSITION              â”‚
+â”‚    â€¢ Validasi ketersediaan stok & jam operasional      â”‚
+â”‚    â€¢ Guard transisi state (mencegah loncat alur ilegal)â”‚
+â”‚    â€¢ Kalkulasi matematis tagihan & kode unik           â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                â†“
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 4. ACTION DISPATCH & RESPONSE SYNTHESIS                â”‚
+â”‚    â€¢ Eksekusi mutasi DB (create order / reserve stock) â”‚
+â”‚    â€¢ Generate QRIS dinamis 0% MDR                      â”‚
+â”‚    â€¢ Trigger Meta CAPI Event (InitiateCheckout, Lead)  â”‚
+â”‚    â€¢ Rangkai respon natural terarah ke call-to-action  â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -377,15 +377,15 @@ Engine percakapan memiliki kontrak mutlak untuk menangani interupsi pertanyaan d
 
 ```text
 [STATE: COLLECT_ADDRESS] (Sedang meminta alamat pengiriman)
-        ↓
+        â†“
 (Customer: "Eh kak, yang warna hitam bahannya panas gak?")
-        ↓
+        â†“
 [INTERRUPTION CAPTURED: PRODUCT_SPEC_QUERY]
-        ↓
+        â†“
 1. Simpan pointer state aktif (Stack: [COLLECT_ADDRESS]).
 2. Jawab pertanyaan produk secara presisi via Knowledge Base (Semantic Category: FACT).
 3. Sambungkan dengan bridging kembali ke state utama.
-        ↓
+        â†“
 [RESUME_ACTION: COLLECT_ADDRESS]
 (Bot: "Bahannya katun combed 30s premium kak, adem dan menyerap keringat. Boleh lanjut share kelurahan & kecamatannya kak agar ongkirnya bisa kami hitungkan?")
 ```
@@ -496,8 +496,8 @@ Platform menyediakan dua mekanisme penautan perangkat WhatsApp bagi tenant secar
 WhatsApp pada BoonTrack diperlakukan secara mutlak sebagai **bidirectional transport layer**, bukan business logic engine. BoonTrack Core tetap menjadi satu-satunya otak transaksional.
 
 1. **Pipeline Arsitektur Dua Arah**:
-   - **Inbound**: WhatsApp User → Evolution API v2 → Inbound Webhook → Signature & Payload Validation → Idempotency Check → Message Persistence → Inbound Queue → HTTP 200 OK → Background Worker → Conversation Engine (LLM / State Machine).
-   - **Outbound**: Business Logic / State Machine → Outbound Message Command → Outbound Queue → Worker Rate-Limiter & Deduplicator → WhatsApp Adapter → Evolution API v2 → WhatsApp User.
+   - **Inbound**: WhatsApp User â†’ Evolution API v2 â†’ Inbound Webhook â†’ Signature & Payload Validation â†’ Idempotency Check â†’ Message Persistence â†’ Inbound Queue â†’ HTTP 200 OK â†’ Background Worker â†’ Conversation Engine (LLM / State Machine).
+   - **Outbound**: Business Logic / State Machine â†’ Outbound Message Command â†’ Outbound Queue â†’ Worker Rate-Limiter & Deduplicator â†’ WhatsApp Adapter â†’ Evolution API v2 â†’ WhatsApp User.
 2. **Fast & Asynchronous Inbound Webhook**:
    - Webhook handler DILARANG memanggil LLM atau mengeksekusi mutasi bisnis berat secara sinkron.
    - Webhook wajib merespons `HTTP 200 OK` dalam waktu < 500ms setelah pesan divalidasi dan dimasukkan ke antrean (*queue*).
@@ -533,8 +533,8 @@ Sistem memisahkan secara ketat antara entitas **Conversation** (konteks percakap
 Pairing berhasil tidak sama dengan gateway yang beroperasi sehat. Sistem memantau status operasional secara terpisah:
 
 1. **Connection State Lifecycle**:
-   - `CREATED` → `PAIRING` → `CONNECTED` → `DISCONNECTED` → `RECONNECTING` → `ERROR` → `LOGGED_OUT`.
-   - Dashboard merchant wajib menampilkan visual status yang akurat (🟢 Connected, 🟡 Reconnecting, 🔴 Disconnected / Perlu Tindakan).
+   - `CREATED` â†’ `PAIRING` â†’ `CONNECTED` â†’ `DISCONNECTED` â†’ `RECONNECTING` â†’ `ERROR` â†’ `LOGGED_OUT`.
+   - Dashboard merchant wajib menampilkan visual status yang akurat (ðŸŸ¢ Connected, ðŸŸ¡ Reconnecting, ðŸ”´ Disconnected / Perlu Tindakan).
 2. **Decoupled Metric Health (IT & Telemetry Dashboard)**:
    - Status kesehatan dipisah per layer: *Connection Health*, *Inbound Webhook Health*, *Queue Lag*, *AI Processing Latency*, dan *Outbound Delivery Success Rate*.
 
@@ -550,7 +550,7 @@ Pairing berhasil tidak sama dengan gateway yang beroperasi sehat. Sistem memanta
    - **Tier 4 (Global Emergency Kill Switch)**: `GLOBAL_AI_OUTBOUND_ENABLED` sakelar darurat pamungkas tingkat platform (last-resort containment).
 
 2. **State Machine & Exponential Cooldown**:
-   - **Siklus State**: `ACTIVE` → `LOOP_SUSPECTED` → `CIRCUIT_OPEN` → `PEER_QUARANTINED` → `HALF_OPEN` → `ACTIVE`.
+   - **Siklus State**: `ACTIVE` â†’ `LOOP_SUSPECTED` â†’ `CIRCUIT_OPEN` â†’ `PEER_QUARANTINED` â†’ `HALF_OPEN` â†’ `ACTIVE`.
    - **Jadwal Exponential Cooldown**:
      * **Pelanggaran 1**: Cooldown 30 detik. Setelah durasi berakhir, status bertransisi ke `HALF_OPEN` untuk mengizinkan 1 probe turn. Jika probe berhasil, pulih ke `ACTIVE`.
      * **Pelanggaran 2**: Karantina 5 menit (300 detik).
@@ -568,11 +568,11 @@ Pairing berhasil tidak sama dengan gateway yang beroperasi sehat. Sistem memanta
 
 ### 9.8 Human Handoff & Business Graph Attribution
 1. **Human Handoff State**:
-   - Conversation memiliki status kontrol: `AI_ACTIVE` → `HANDOFF_REQUESTED` → `HUMAN_ACTIVE` → `AI_RESUMED`.
+   - Conversation memiliki status kontrol: `AI_ACTIVE` â†’ `HANDOFF_REQUESTED` â†’ `HUMAN_ACTIVE` â†’ `AI_RESUMED`.
    - Jika pelanggan meminta interaksi manusia atau terdeteksi eskalasi komplain kritis, bot AI seketika masuk status pause (*silent listener*) dan kendali penuh diserahkan ke CS/Merchant.
 2. **Outbound Business Graph Attribution**:
    - Setiap pesan outbound wajib merekam atribut pemicu (`trigger_source`: `ORDER_PAYMENT_PENDING`, `ABANDONED_CART_FOLLOWUP`, `AI_RECOMMENDATION`, `HUMAN_AGENT`).
-   - Memungkinkan analisis deterministik: percakapan mana yang secara langsung menghasilkan konversi transaksi dan omzet merchant (*Conversation → Decision → Transaction → Revenue*).
+   - Memungkinkan analisis deterministik: percakapan mana yang secara langsung menghasilkan konversi transaksi dan omzet merchant (*Conversation â†’ Decision â†’ Transaction â†’ Revenue*).
 
 ---
 
@@ -616,7 +616,7 @@ Pairing berhasil tidak sama dengan gateway yang beroperasi sehat. Sistem memanta
 
 ---
 
-## 🗄️ Media & Asset Storage Standard Pattern (Cloudflare R2 + Supabase)
+## ðŸ—„ï¸ Media & Asset Storage Standard Pattern (Cloudflare R2 + Supabase)
 
 ### 1. Separation of Concerns
 * **Cloudflare R2 (Object Storage / Binary Data)**:
@@ -651,7 +651,7 @@ Penamaan key/path di bucket Cloudflare R2 wajib seragam dan scoped per konteks/t
   * **DILARANG KERAS** menyertakan field otomatis seperti `updated_at` kecuali kolom tersebut sudah nyata terdaftar di schema tabel `tenants` Supabase.
   * Operasi pembaruan wajib menargetkan kolom `metadata` secara aman (JSONB merge) tanpa merusak struktur data yang telah ada.
 
-### 4. 📄 Career Resume & Document Pipeline Standard
+### 4. ðŸ“„ Career Resume & Document Pipeline Standard
 1. **Ingestion File Mentah**:
    - Sumber: Web upload atau WhatsApp incoming webhook.
    - Penanganan: File binary dibaca via in-memory stream (`io.BytesIO`), langsung dialirkan ke Cloudflare R2 dengan key:
@@ -682,7 +682,7 @@ Penamaan key/path di bucket Cloudflare R2 wajib seragam dan scoped per konteks/t
 3. **Canonical Store URL & Absolute Link Enforcement**:
    - Seluruh tombol dan aksi "Salin Tautan" wajib menyalin URL etalase kanonikal:
      `https://shop.boontrack.com/[tenantSlug]`
-   - ⚠️ **Perubahan ADR 2026-09-27**: URL etalase publik yang benar adalah `https://shop.boontrack.com/[tenantSlug]`, **BUKAN** `https://boontrack.com/[tenantSlug]`. `boontrack.com` adalah landing page korporat — bukan storefront publik merchant.
+   - âš ï¸ **Perubahan ADR 2026-09-27**: URL etalase publik yang benar adalah `https://shop.boontrack.com/[tenantSlug]`, **BUKAN** `https://boontrack.com/[tenantSlug]`. `boontrack.com` adalah landing page korporat â€” bukan storefront publik merchant.
 
 ### 11.2 Canonical Business Vertical Navigation Matrix
 Navigasi sidebar (`DashboardSidebar.tsx`) pada grup `STORE ENGINE` menyematkan Menu Dinamis (#3) yang beradaptasi secara ketat mengikuti `tenants.category`:
@@ -732,7 +732,7 @@ Navigasi sidebar (`DashboardSidebar.tsx`) pada grup `STORE ENGINE` menyematkan M
 ## WhatsApp Gateway & Multi-Tenant Connection Architecture
 
 ### 1. Core Principle (Mapping Authority)
-- **Tenant Identity ≠ Gateway Instance Identity**:
+- **Tenant Identity â‰  Gateway Instance Identity**:
   - `tenant_id` atau `tenant_slug` adalah entitas bisnis internal, bukan nama instans koneksi pada WhatsApp Gateway (Evolution API).
   - Frontend/Client **DILARANG KERAS** menebak, mengasumsikan, atau membuat nama instance Evolution API secara mandiri via slug toko (misal: dilarang mengasumsikan instance = `${tenant.slug}`).
   - Resolusi instans dan routing pesan WAJIB selalu melalui backend API resmi (`/api/v1/whatsapp/...`).
@@ -774,7 +774,7 @@ Pedoman keputusan arsitektur dan batasan teknis operasional infrastruktur WhatsA
 
 ## 13. Webhook Boundary Isolation, Idempotency & Distributed Tracing Standard (Production Contract)
 
-> **Architectural Status**: 🔒 **FROZEN & CERTIFIED (P0, P0.5, P1 E2E)**  
+> **Architectural Status**: ðŸ”’ **FROZEN & CERTIFIED (P0, P0.5, P1 E2E)**  
 > **Core Principle**: *"phone_number_id determines domain authority. Message text, tenant slug, and AI intents NEVER determine routing boundaries."*
 
 ### 13.1 Deterministic Traffic Splitter & Domain Isolation (P0 Contract)
@@ -782,24 +782,24 @@ Setiap webhook inbound dari Meta Cloud API disaring di layer gerbang terdepan (`
 
 ```text
                     META WEBHOOK INBOUND
-                             │
-                             ▼
+                             â”‚
+                             â–¼
                      TrafficSplitter
-                             │
+                             â”‚
                       phone_number_id
-                             │
-              ┌──────────────┴──────────────┐
-              ▼                             ▼
+                             â”‚
+              â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+              â–¼                             â–¼
      PLATFORM_PHONE_NUMBER_ID          TENANT PHONE
-              │                             │
-              ▼                             ▼
+              â”‚                             â”‚
+              â–¼                             â–¼
      PlatformWebhookRouter          TenantWebhookRouter
-              │                             │
-       ┌──────┼──────┐             ┌────────┼────────┐
-       ▼      ▼      ▼             ▼        ▼        ▼
+              â”‚                             â”‚
+       â”Œâ”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”             â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”
+       â–¼      â–¼      â–¼             â–¼        â–¼        â–¼
     Activation Payment Support   Catalog   Order     CS
-       │
-       ▼
+       â”‚
+       â–¼
     EARLY RETURN 200 OK
 ```
 
@@ -936,7 +936,7 @@ Worker & Service Restart Reconciliation: Event yang tertahan saat restart layana
 
 ## 14. ARCHITECTURAL STANDARD: TENANT STATIC-TO-DYNAMIC QRIS EMVCo TRANSFORMATION
 
-> **Architectural Status**: 🔒 **PRODUCTION STANDARD & COMPATIBILITY CERTIFIED (blu by BCA Digital, BCA Mobile, DANA 100%)**  
+> **Architectural Status**: ðŸ”’ **PRODUCTION STANDARD & COMPATIBILITY CERTIFIED (blu by BCA Digital, BCA Mobile, DANA 100%)**  
 > **Core Principle**: *"Never mutate acquirer identity tags (Tag 01 & Tag 62). Only perform precision injection of transaction amount (Tag 54) and recompute CRC16-CCITT."*
 
 ### 14.1 The 4 Immutable Rules of Dynamic QRIS Transformation
@@ -1088,9 +1088,9 @@ Ekosistem BoonTrack membagi beban komputasi secara tegas ke dalam 3 tier infrast
 
 | Tier Komputasi | Infrastruktur / Engine | Peran & Tanggung Jawab Utama | Alasan Arsitektural & SLA |
 | :--- | :--- | :--- | :--- |
-| **Edge & Presentation** | **Vercel** (Next.js 16 App Router) | • Storefront publik & landing page toko<br>• Client checkout & render QRIS dinamis<br>• Edge caching & SSR UI rendering<br>• Fast payment webhook ingestion (`/api/v1/reader/notification`)<br>• Client-side polling invoice status | **Latensi Ultra-Rendah (<100ms)**:<br>Serverless Edge menjamin penerimaan mutasi kasir instan tanpa cold-start lambat dan melayani ribuan pembeli checkout secara bersamaan tanpa scaling bottleneck. |
-| **State Store & Source of Truth** | **Supabase** (PostgreSQL 15+ Managed) | • Shared transactional ledger (`orders` table)<br>• Single source of truth seluruh transaksi platform<br>• Row Level Security (RLS) isolasi data antar toko<br>• Tenant registry, catalog, & user identity<br>• Elevated operations via `SUPABASE_SERVICE_ROLE_KEY` | **ACID Compliance & Integritas Finansial**:<br>Mencegah data race, menjamin konsistensi status order, dan menjadi titik temu independen antara frontend Next.js dan backend FastAPI. |
-| **Heavy Processing & AI Core** | **Railway** (FastAPI + aiohttp runner - `boontrack-core`) | • Heavy AI Reasoning (Gemini LLM & BoonPilot)<br>• Semantic vector search & RAG katalog<br>• Background workers & long-running scheduled tasks<br>• Integrasi WhatsApp WABA & Evolution API bridge<br>• Kalkulasi komisi afiliasi & audit entitlement | **Persistent Compute & Asynchronous Queue**:<br>Proses AI dan worker jangka panjang tidak cocok dijalankan di serverless function yang memiliki batas timeout eksekusi (Vercel max 15-60s). |
+| **Edge & Presentation** | **Vercel** (Next.js 16 App Router) | â€¢ Storefront publik & landing page toko<br>â€¢ Client checkout & render QRIS dinamis<br>â€¢ Edge caching & SSR UI rendering<br>â€¢ Fast payment webhook ingestion (`/api/v1/reader/notification`)<br>â€¢ Client-side polling invoice status | **Latensi Ultra-Rendah (<100ms)**:<br>Serverless Edge menjamin penerimaan mutasi kasir instan tanpa cold-start lambat dan melayani ribuan pembeli checkout secara bersamaan tanpa scaling bottleneck. |
+| **State Store & Source of Truth** | **Supabase** (PostgreSQL 15+ Managed) | â€¢ Shared transactional ledger (`orders` table)<br>â€¢ Single source of truth seluruh transaksi platform<br>â€¢ Row Level Security (RLS) isolasi data antar toko<br>â€¢ Tenant registry, catalog, & user identity<br>â€¢ Elevated operations via `SUPABASE_SERVICE_ROLE_KEY` | **ACID Compliance & Integritas Finansial**:<br>Mencegah data race, menjamin konsistensi status order, dan menjadi titik temu independen antara frontend Next.js dan backend FastAPI. |
+| **Heavy Processing & AI Core** | **Railway** (FastAPI + aiohttp runner - `boontrack-core`) | â€¢ Heavy AI Reasoning (Gemini LLM & BoonPilot)<br>â€¢ Semantic vector search & RAG katalog<br>â€¢ Background workers & long-running scheduled tasks<br>â€¢ Integrasi WhatsApp WABA & Evolution API bridge<br>â€¢ Kalkulasi komisi afiliasi & audit entitlement | **Persistent Compute & Asynchronous Queue**:<br>Proses AI dan worker jangka panjang tidak cocok dijalankan di serverless function yang memiliki batas timeout eksekusi (Vercel max 15-60s). |
 
 ---
 
@@ -1122,7 +1122,7 @@ Untuk menjamin kepatuhan penuh terhadap regulasi Bank Indonesia, OJK, dan undang
 
 ## 18. MODULAR PAYMENT DOMAIN BOUNDARY & VENDOR-AGNOSTIC EVENT AUDIT (P0)
 
-> **Architectural Status**: 🔒 **PRODUCTION STANDARD (TICKET 1.1 / BATCH 1)**  
+> **Architectural Status**: ðŸ”’ **PRODUCTION STANDARD (TICKET 1.1 / BATCH 1)**  
 > **Core Principle**: *"Payment gateways and reader adapters are replaceable infrastructure plugins. Business logic and order lifecycle must only depend on vendor-neutral domain contracts."*
 
 ### 18.1 Modular Provider Interfaces (Separation of Concerns)
@@ -1194,7 +1194,7 @@ Setiap event pembayaran yang diterima sistem dicatat terlebih dahulu ke dalam ta
 
 ## 19. RESOURCE HARDENING & CFO HARD-CAP TRIAL GUARDRAIL (P0)
 
-> **Architectural Status**: 🔒 **PRODUCTION STANDARD (TICKET 1.2 / BATCH 1)**  
+> **Architectural Status**: ðŸ”’ **PRODUCTION STANDARD (TICKET 1.2 / BATCH 1)**  
 > **Core Principle**: *"Free trial infrastructure cost must never exceed Rp 7.000 per tenant. Zero runaway compute, zero rogue WhatsApp broadcast on trial tier."*
 
 ### 19.1 Strict Trial Quota Enforcement (CFO Hard-Cap)
@@ -1239,7 +1239,7 @@ Merchant trial diberikan transparansi penuh terhadap sisa kuota sumber daya mela
 
 ## 20. GOOGLE TAG MANAGER (GTM) CONTAINER & SECURE TRACKING ENGINE (P1)
 
-> **Architectural Status**: 🔒 **PRODUCTION STANDARD (BATCH 2 / TICKET 2.1)**  
+> **Architectural Status**: ðŸ”’ **PRODUCTION STANDARD (BATCH 2 / TICKET 2.1)**  
 > **Core Principle**: *"External tracking scripts are privileged analytics tools exclusive to performance tiers. Client DataLayer must remain 100% PII-free in compliance with Google Privacy Regulations."*
 
 ### 20.1 Tier Entitlement Access Control (GTM Script Injection)
@@ -1263,9 +1263,9 @@ Pemuatan container pihak ketiga Google Tag Manager (`googletagmanager.com/gtm.js
 Tracking engine memancarkan event e-commerce yang kompatibel 100% dengan skema GA4 dan Meta Conversions API via GTM:
 
 ```
-[Storefront Browse]          ──→ pushViewItem()        ──→ event: "view_item"
-[Buka Form / Modal Pesan]    ──→ pushBeginCheckout()   ──→ event: "begin_checkout"
-[Halaman Sukses Pembayaran]  ──→ pushPurchase()        ──→ event: "purchase"
+[Storefront Browse]          â”€â”€â†’ pushViewItem()        â”€â”€â†’ event: "view_item"
+[Buka Form / Modal Pesan]    â”€â”€â†’ pushBeginCheckout()   â”€â”€â†’ event: "begin_checkout"
+[Halaman Sukses Pembayaran]  â”€â”€â†’ pushPurchase()        â”€â”€â†’ event: "purchase"
 ```
 
 1. **`view_item`**:
@@ -1331,14 +1331,14 @@ Sesuai dengan ketentuan layanan Google Analytics & Google Tag Manager (Terms of 
    Mesin sanitasi mengecualikan secara eksplisit atribut e-commerce standar GA4 (`item_name`, `item_brand`, `item_category`, `transaction_id`, `price`, `quantity`, `currency`, `value`, `coupon`) sehingga metrik performa katalog produk tetap utuh dan presisi.
 3. **Utilitas Masking Data**:
    Untuk kebutuhan log diagnostik internal non-PII, disediakan fungsi utilitas:
-   - `maskPhone('081234567890')` → `"0812***"`
-   - `maskEmail('buyer@gmail.com')` → `"b***@gmail.com"`
+   - `maskPhone('081234567890')` â†’ `"0812***"`
+   - `maskEmail('buyer@gmail.com')` â†’ `"b***@gmail.com"`
 
 ---
 
 ## 21. STANDAR TRANSAKSI WHATSAPP & CHECKOUT MULTI-TENANT (GLOBAL PLATFORM STANDARD)
 
-> **Architectural Status**: 🔒 **FROZEN & MANDATORY GLOBAL STANDARD (ALL TENANTS)**  
+> **Architectural Status**: ðŸ”’ **FROZEN & MANDATORY GLOBAL STANDARD (ALL TENANTS)**  
 > **Core Invariant**: Seluruh arsitektur transaksi WhatsApp, penangkapan lead (State Machine), Dynamic QRIS Downward, Universal Webhook, dan Meta CAPI adalah **STANDAR GLOBAL PLATFORM yang berlaku universal untuk SEMUA TENANT** (baik tenant existing seperti `buzzerukm` maupun seluruh tenant baru yang mendaftar). Dilarang keras membuat logika khusus berbasis hardcoded slug (`buzzerukm`, `onlineboost`, dsb.).
 
 ### 21.1 Invariant Grounding & Kebijakan Anti-Halusinasi Tautan (Zero URL Hallucination)
@@ -1356,7 +1356,7 @@ Sesuai dengan ketentuan layanan Google Analytics & Google Tag Manager (Terms of 
    - Ketika calon pembeli menyatakan ketertarikan kuat atau ingin mendaftar (contoh: "Mau ambil paket X kak, gimana cara daftarnya?", "Saya mau beli", "Bisa order sekarang?"), conversational engine mengarahkan percakapan ke alur **Lead Collection**.
 2. **Determinasi Pengambilan Data (Nama & Email Capture)**:
    - Bot meminta data pemesan secara terstruktur:
-     > "Boleh dibantu info *Nama Lengkap* dan *Alamat Email* aktif Kakak untuk kami siapkan data pendaftarannya ya Kak? 🙏"
+     > "Boleh dibantu info *Nama Lengkap* dan *Alamat Email* aktif Kakak untuk kami siapkan data pendaftarannya ya Kak? ðŸ™"
 3. **Robust Name Parsing (Zero Profile Hallucination)**:
    - Sistem wajib mengekstrak nama pembeli secara langsung dari pesan teks menggunakan pola: `Nama Lengkap: [Nama]`, `Nama Asli: [Nama]`, `Full Name: [Nama]`, atau `Nama: [Nama]`.
    - **Larangan Keras Bug Profil**: DILARANG menyapa pembeli menggunakan nama display/pushName WhatsApp acak seperti `"Hello hijau"` atau `"Kak hijau"`. Jika nama pembeli belum diberikan dan pushName WhatsApp tidak menyerupai nama orang (contoh: `"hijau"`, `"user"`, `"admin"`, nomor telepon), sistem wajib menggunakan sapaan sopan default: **"Kakak"**.
@@ -1473,24 +1473,24 @@ WhatsApp Gateway diposisikan murni sebagai **Transport Infrastructure**, bukan b
 ### 22.2 Connection Topology & Domain Separation
 ```text
                     BOONTRACK CORE
-                         │
+                         â”‚
                TenantRuntimeContext
-                         │
+                         â”‚
               WhatsAppConnectionResolver
-                         │
-             ┌───────────┴───────────┐
-             │                       │
+                         â”‚
+             â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+             â”‚                       â”‚
        PLATFORM DOMAIN         TENANT DOMAIN
-             │                       │
+             â”‚                       â”‚
       boontrack-gateway       tenant connection
-     (Transactional Only)            │
-                                     │
+     (Transactional Only)            â”‚
+                                     â”‚
                           WhatsAppProviderAdapter
-                                     │
-                        ┌────────────┴────────────┐
-                        │                         │
+                                     â”‚
+                        â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                        â”‚                         â”‚
                  EVOLUTION v2/BAILEYS         META WABA
-                        │                         │
+                        â”‚                         â”‚
                   instance_name            phone_number_id
 ```
 
@@ -1517,7 +1517,7 @@ WhatsApp Gateway diposisikan murni sebagai **Transport Infrastructure**, bukan b
 
 ### 22.4 Connection State Machine & Idempotency
 1. **Lifecycle States**:
-   `NONE` → `PROVISIONING` → `CREATED` → `PAIRING` → `CONNECTED` → `DISCONNECTED` → `RECONNECTING` → `LOGGED_OUT` → `PROVISIONING_FAILED`
+   `NONE` â†’ `PROVISIONING` â†’ `CREATED` â†’ `PAIRING` â†’ `CONNECTED` â†’ `DISCONNECTED` â†’ `RECONNECTING` â†’ `LOGGED_OUT` â†’ `PROVISIONING_FAILED`
 2. **Idempotent Provisioning**:
    - `ensure_connection(tenant_id)` kebal terhadap spam klik/refresh bersamaan.
 3. **Database Defense**:
@@ -1579,7 +1579,7 @@ Dokumentasi invarian arsitektur resmi hasil evaluasi dan persetujuan CTO Gate un
 
 ## 24. PILOT TENANT & DESIGN PARTNER PROVISIONING STANDARD (ZERO-TOUCH ENGINE CONTRACT)
 
-> **Architectural Status**: 🔒 **PRODUCTION CONTRACT & INVARIANT (P0 ARCHITECTURAL LOCK)**  
+> **Architectural Status**: ðŸ”’ **PRODUCTION CONTRACT & INVARIANT (P0 ARCHITECTURAL LOCK)**  
 > **Core Principle**: *"Pilot Tenants Are Configuration, Not Code. Build the capability once. Configure it for many tenants."*
 
 ### 24.1 The Golden Rule of Pilot Tenants & Design Partners
@@ -1597,15 +1597,15 @@ Pilot / Design Partner -> Tenant Record (DB) -> TenantRuntimeContext -> Vertical
 
 ### 24.3 Strict Negative Invariants (Larangan Keras)
 Dilarang keras meloloskan PR / commit yang memuat:
-- ❌ if tenant == "fahami" atau if slug == "mentor_x"
-- ❌ Modul / class service khusus untuk nama tenant tertentu
-- ❌ Membuat folder baru di bawah tenants/ atau app/tenants/*
-- ❌ Hardcode data produk di source code
-- ❌ Hardcode prompt AI di business logic untuk tenant tertentu
-- ❌ Default fallback ke tenant lain saat lookup gagal
-- ❌ Penamaan WhatsApp instance secara liar berdasarkan slug
-- ❌ Custom payment / fee logic eksklusif satu tenant
-- ❌ Bypass terhadap TenantRuntimeContext
+- âŒ if tenant == "fahami" atau if slug == "mentor_x"
+- âŒ Modul / class service khusus untuk nama tenant tertentu
+- âŒ Membuat folder baru di bawah tenants/ atau app/tenants/*
+- âŒ Hardcode data produk di source code
+- âŒ Hardcode prompt AI di business logic untuk tenant tertentu
+- âŒ Default fallback ke tenant lain saat lookup gagal
+- âŒ Penamaan WhatsApp instance secara liar berdasarkan slug
+- âŒ Custom payment / fee logic eksklusif satu tenant
+- âŒ Bypass terhadap TenantRuntimeContext
 
 ### 24.4 Stop Condition & Capability Gap Protocol
 Jika ditemukan kebutuhan operasional tenant percontohan yang belum didukung oleh Vertical Template aktif:
@@ -1635,7 +1635,7 @@ Wajib memenuhi 16 checklist sebelum status pilot dinyatakan selesai:
 
 ## 25. WHATSAPP MULTI-PROVIDER ABSTRACTION & META WABA OWNERSHIP CONTRACT
 
-> **Architectural Status**: 🔒 **PRODUCTION CONTRACT & INVARIANT (P0 ARCHITECTURAL LOCK)**  
+> **Architectural Status**: ðŸ”’ **PRODUCTION CONTRACT & INVARIANT (P0 ARCHITECTURAL LOCK)**  
 > **Core Principles**:  
 > 1. *"BoonTrack Core MUST NOT couple tenant business logic to a specific WhatsApp provider."*  
 > 2. *"Meta Onboarding Creates a Connection, Not Business Authority."*
@@ -1692,7 +1692,7 @@ Sebelum integrasi provider Meta Cloud API dinyatakan siap (*production-ready*) u
 
 ## 26. PLATFORM WABA OMNI-ASSISTANT & INBOUND MARKETING ENGINE CONTRACT
 
-> **Architectural Status**: 🔒 **PRODUCTION CONTRACT & INVARIANT (P0 ARCHITECTURAL LOCK)**  
+> **Architectural Status**: ðŸ”’ **PRODUCTION CONTRACT & INVARIANT (P0 ARCHITECTURAL LOCK)**  
 > **Core Principle**: *"Platform WABA is Platform Assistant + Transactional, NEVER Tenant Business Logic. LLM proposes intent; Tool Gateway enforces authority; Core executes mutation."*
 
 ### 26.1 Dual Role of Platform WABA
@@ -1716,7 +1716,7 @@ Platform Omni-Assistant mengadaptasi arsitektur teruji 3-Layer Conversation Engi
     - Distributed session lock (`lock:platform:waba:{phone}`, TTL: 15 detik) untuk mencegah double-reply saat user mengirim pesan bertubi-tubi.
     - Sliding-window rate limiter per nomor pengirim dan per kampanye iklan.
 - **Layer 2: Strategy & Persona Layer (AI Engine)**:
-  - *Persona*: "BoonPilot Platform Showroom Consultant" — berkarakter konsultan bisnis ramah, solutif, berbasis fakta resmi dokumentasi BoonTrack, dan proaktif mengidentifikasi kebutuhan calon merchant.
+  - *Persona*: "BoonPilot Platform Showroom Consultant" â€” berkarakter konsultan bisnis ramah, solutif, berbasis fakta resmi dokumentasi BoonTrack, dan proaktif mengidentifikasi kebutuhan calon merchant.
   - *Knowledge Base*: Embeddings dokumen fitur platform, paket langganan (SOLO, PRO_SCALE, ADS_PERFORMANCE, ENTERPRISE), daftar kurir & payment gateway resmi, dan syarat onboarding.
   - *Lead Qualifier Classifier*: Menilai profil calon merchant (kategori bisnis, perkiraan order harian, kebutuhan multi-user) untuk diteruskan ke tim sales.
 - **Layer 3: Response Formatter Layer**:
@@ -1741,7 +1741,7 @@ LLM tidak memiliki akses jaringan atau database secara bebas. LLM hanya diperbol
 ### 26.4 Strict Handover Protocol & Audit Logging
 1. **Handover State Machine**:
    Interaksi manusia diatur oleh 5 status terstandarisasi:
-   `NONE` ➔ `REQUESTED` ➔ `ASSIGNED` ➔ `IN_PROGRESS` ➔ `RESOLVED`
+   `NONE` âž” `REQUESTED` âž” `ASSIGNED` âž” `IN_PROGRESS` âž” `RESOLVED`
    - `NONE`: Interaksi dilayani penuh oleh AI Omni-Assistant.
    - `REQUESTED`: Terpicu saat pengguna meminta bicara dengan manusia atau terdeteksi prospek tier Enterprise. Tiket dibuat di antrean tim platform.
    - `IN_PROGRESS`: Agen manusia sedang membalas. **AI Omni-Assistant dinonaktifkan (silent mode)** agar tidak menimpa balasan staf manusia.
@@ -1821,7 +1821,7 @@ Sebagai pemandu navigasi operasional bagi merchant, BoonPilot Copilot mengacu pa
 
 ## 28. (Section 7) Order Lifecycle, Payment Resiliency & Outbox Boundary
 
-> **Architectural Status**: 🔒 **CORE CONTRACT & SPRINT SPECIFICATION §7**  
+> **Architectural Status**: ðŸ”’ **CORE CONTRACT & SPRINT SPECIFICATION Â§7**  
 > **Core Principle**: *"Order Existence != Payment Confirmation. Pending-First capture guarantees zero lost transactions; Transactional Outbox guarantees zero dual-write anomalies."*
 
 ### 7.1 Konsep Pending-First: Order Existence != Payment Confirmation
@@ -1842,23 +1842,23 @@ Alur teknis pembentukan pesanan pre-creation saat pembeli memilih pembayaran QRI
 
 ```text
 Pembeli (Storefront / Chat)           Checkout API (Core Gateway)               PostgreSQL (Supabase)
-          │                                        │                                       │
-          ├─── 1. Submit Checkout (Items, Telp) ──►│                                       │
-          │                                        ├─── 2. Alokasi 3-Digit Unique Code ───►│
-          │                                        │       (Rentang 1 s/d 999 unik)        │
-          │                                        │                                       │
-          │                                        ├─── 3. INSERT INTO orders ────────────►│
-          │                                        │       (status: 'PENDING',             │
-          │                                        │        amount: subtotal + ongkir      │
-          │                                        │                - diskon + unik,       │
-          │                                        │        metadata: {ip, ua, _fbp...})   │
-          │                                        │                                       │
-          │                                        ├─── 4. Generate Dynamic QRIS Payload ──┤
-          │                                        │       (Exact Total Payable Amount)    │
-          │                                        │                                       │
-          │◄── 5. Render QRIS + Nominal Unik ──────┤                                       │
-          │                                        │                                       │
-          ▼                                        ▼                                       ▼
+          â”‚                                        â”‚                                       â”‚
+          â”œâ”€â”€â”€ 1. Submit Checkout (Items, Telp) â”€â”€â–ºâ”‚                                       â”‚
+          â”‚                                        â”œâ”€â”€â”€ 2. Alokasi 3-Digit Unique Code â”€â”€â”€â–ºâ”‚
+          â”‚                                        â”‚       (Rentang 1 s/d 999 unik)        â”‚
+          â”‚                                        â”‚                                       â”‚
+          â”‚                                        â”œâ”€â”€â”€ 3. INSERT INTO orders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–ºâ”‚
+          â”‚                                        â”‚       (status: 'PENDING',             â”‚
+          â”‚                                        â”‚        amount: subtotal + ongkir      â”‚
+          â”‚                                        â”‚                - diskon + unik,       â”‚
+          â”‚                                        â”‚        metadata: {ip, ua, _fbp...})   â”‚
+          â”‚                                        â”‚                                       â”‚
+          â”‚                                        â”œâ”€â”€â”€ 4. Generate Dynamic QRIS Payload â”€â”€â”¤
+          â”‚                                        â”‚       (Exact Total Payable Amount)    â”‚
+          â”‚                                        â”‚                                       â”‚
+          â”‚â—„â”€â”€ 5. Render QRIS + Nominal Unik â”€â”€â”€â”€â”€â”€â”¤                                       â”‚
+          â”‚                                        â”‚                                       â”‚
+          â–¼                                        â–¼                                       â–¼
     [PENDING ORDER AKTIF]               [SIAP DICOCOKKAN READER]               [DASHBOARD UPDATE REALTIME]
 ```
 
@@ -1904,21 +1904,21 @@ Tombol "Tandai Lunas / Quick-Paid" di dashboard merchant (`/api/v1/tenants/[slug
 Untuk menghindari masalah inkonsistensi data antar-sistem (*dual-write hazard*), seluruh aksi pasca-transaksi diatur oleh pola **Transactional Outbox**:
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                 SINGLE DATABASE TRANSACTION (BEGIN ... COMMIT)              │
-│                                                                             │
-│  1. UPDATE orders SET status = 'PAID' WHERE id = :id AND status = 'PENDING' │
-│  2. INSERT INTO transactional_outbox (event_type: 'PAYMENT_CONFIRMED', ...) │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼ (Asynchronous Reliable Relay)
-                    ┌───────────────────────────────────┐
-                    │       OUTBOX RELAY WORKER         │
-                    │   (SELECT FOR UPDATE SKIP LOCKED) │
-                    └───────────────────────────────────┘
-                                      │
-          ┌───────────────────────────┼───────────────────────────┐
-          ▼                           ▼                           ▼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                 SINGLE DATABASE TRANSACTION (BEGIN ... COMMIT)              â”‚
+â”‚                                                                             â”‚
+â”‚  1. UPDATE orders SET status = 'PAID' WHERE id = :id AND status = 'PENDING' â”‚
+â”‚  2. INSERT INTO transactional_outbox (event_type: 'PAYMENT_CONFIRMED', ...) â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                      â”‚
+                                      â–¼ (Asynchronous Reliable Relay)
+                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                    â”‚       OUTBOX RELAY WORKER         â”‚
+                    â”‚   (SELECT FOR UPDATE SKIP LOCKED) â”‚
+                    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                      â”‚
+          â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+          â–¼                           â–¼                           â–¼
 [Kirim Akses / File Digital]    [Meta CAPI Purchase Event]    [Kalkulasi Komisi Afiliasi]
   (WhatsApp / Email Notif)      (Event Deduplication ID)      (Ledger Afiliasi & Payout)
 ```
@@ -1957,7 +1957,7 @@ Untuk menghindari masalah inkonsistensi data antar-sistem (*dual-write hazard*),
 
 ## 29. (Section 8) AI Sales Representative Engine Architecture (SALES_REP_V1)
 
-> **Architectural Status**: 🔒 **PRODUCTION CONTRACT & SALES ENGINE SPECIFICATION §8**  
+> **Architectural Status**: ðŸ”’ **PRODUCTION CONTRACT & SALES ENGINE SPECIFICATION Â§8**  
 > **Core Principle**: *"LLM Explains, Core Decides. Untrusted cognitive intelligence translates customer desires into verified commercial actions without hallucinating store truth."*  
 > **CTO & CFO Consensus**: *"Turn budget adalah cost & safety guardrail, BUKAN sales funnel controller. Unit economics sehat dengan target gross margin 85-90% ditegakkan melalui total-session metering, non-custodial direct billing WABA, dan transactional immunity."*
 
@@ -1988,21 +1988,21 @@ Sistem menerapkan perlindungan multi-lapis terhadap halusinasi informasi toko:
 Untuk menjaga kesinambungan percakapan tanpa mencampuradukkan data toko yang berbeda, engine percakapan mengelola konteks melalui partisi 4 lapis hierarkis:
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                   HIERARCHICAL CONTEXT RETENTION PARTITION                  │
-├─────────────────────────┬───────────────────────────────────────────────────┤
-│ LAYER 1: HISTORY        │ Sliding window 6-10 pesan mentah terakhir         │
-│ (Conversational Flow)   │ Menjaga alur obrolan natural jangka pendek        │
-├─────────────────────────┼───────────────────────────────────────────────────┤
-│ LAYER 2: SESSION        │ State aktif: State Machine Stage, Cart, Address   │
-│ (Transaction Machine)   │ Memandu alur dari eksplorasi menuju closing       │
-├─────────────────────────┼───────────────────────────────────────────────────┤
-│ LAYER 3: FACTS          │ Profil toko, katalog produk aktif, kebijakan retur│
-│ (Business Ground Truth) │ Diambil langsung dari PostgreSQL per tenant_id    │
-├─────────────────────────┼───────────────────────────────────────────────────┤
-│ LAYER 4: SIGNALS        │ Preferensi pembeli (kategori minat, price intent) │
-│ (Customer Intelligence) │ Diperbarui adaptif selama sesi berlangsung        │
-└─────────────────────────┴───────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                   HIERARCHICAL CONTEXT RETENTION PARTITION                  â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ LAYER 1: HISTORY        â”‚ Sliding window 6-10 pesan mentah terakhir         â”‚
+â”‚ (Conversational Flow)   â”‚ Menjaga alur obrolan natural jangka pendek        â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ LAYER 2: SESSION        â”‚ State aktif: State Machine Stage, Cart, Address   â”‚
+â”‚ (Transaction Machine)   â”‚ Memandu alur dari eksplorasi menuju closing       â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ LAYER 3: FACTS          â”‚ Profil toko, katalog produk aktif, kebijakan returâ”‚
+â”‚ (Business Ground Truth) â”‚ Diambil langsung dari PostgreSQL per tenant_id    â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ LAYER 4: SIGNALS        â”‚ Preferensi pembeli (kategori minat, price intent) â”‚
+â”‚ (Customer Intelligence) â”‚ Diperbarui adaptif selama sesi berlangsung        â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 - **Isolasi Mutlak Multi-Tenant**:
@@ -2014,30 +2014,30 @@ Untuk menjaga kesinambungan percakapan tanpa mencampuradukkan data toko yang ber
 Arsitektur runtime percakapan menempatkan turn budget sebagai instrumen perlindungan biaya dan keselamatan sistem, bukan pemaksa transaksi.
 
 ```text
-                                 ┌─────────────────┐
-                                 │     ACTIVE      │
-                                 │ (Turn 1 - Turn 4│
-                                 └────────┬────────┘
-                                          │
-                  ┌───────────────────────┼───────────────────────┐
-                  │ (Turn 5-6 Warning)    │ (Inactivity Timeout)  │ (Checkout Triggered)
-                  ▼                       ▼                       ▼
-       ┌─────────────────────┐  ┌──────────────────┐  ┌─────────────────────────┐
-       │   EFFICIENCY_MODE   │  │     EXPIRED      │  │  TRANSACTIONAL IMMUNITY │
-       │ (Ringkas & Action)  │  │ (Context Cached) │  │  (Core Decides / QRIS)  │
-       └──────────┬──────────┘  └─────────┬────────┘  └────────────┬────────────┘
-                  │                       │ (Customer Returns)     │
-                  │ (Turn 7 Exhausted)    ▼                        │ (Payment Confirmed)
-                  ▼             ┌──────────────────┐               ▼
-       ┌─────────────────────┐  │  RESTORE CONTEXT │     ┌──────────────────┐
-       │  HANDOVER_PENDING   │  └──────────────────┘     │      CLOSED      │
-       │  (LLM Cut-Off 0 Tok)│                           │ (Fulfillment OK) │
-       └──────────┬──────────┘                           └──────────────────┘
-                  ▼
-       ┌─────────────────────┐
-       │ HANDOVER_TO_HUMAN   │
-       │ (Escalated to Staff)│
-       └─────────────────────┘
+                                 â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                                 â”‚     ACTIVE      â”‚
+                                 â”‚ (Turn 1 - Turn 4â”‚
+                                 â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                          â”‚
+                  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                  â”‚ (Turn 5-6 Warning)    â”‚ (Inactivity Timeout)  â”‚ (Checkout Triggered)
+                  â–¼                       â–¼                       â–¼
+       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+       â”‚   EFFICIENCY_MODE   â”‚  â”‚     EXPIRED      â”‚  â”‚  TRANSACTIONAL IMMUNITY â”‚
+       â”‚ (Ringkas & Action)  â”‚  â”‚ (Context Cached) â”‚  â”‚  (Core Decides / QRIS)  â”‚
+       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                  â”‚                       â”‚ (Customer Returns)     â”‚
+                  â”‚ (Turn 7 Exhausted)    â–¼                        â”‚ (Payment Confirmed)
+                  â–¼             â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”               â–¼
+       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚  RESTORE CONTEXT â”‚     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+       â”‚  HANDOVER_PENDING   â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜     â”‚      CLOSED      â”‚
+       â”‚  (LLM Cut-Off 0 Tok)â”‚                           â”‚ (Fulfillment OK) â”‚
+       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                           â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                  â–¼
+       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+       â”‚ HANDOVER_TO_HUMAN   â”‚
+       â”‚ (Escalated to Staff)â”‚
+       â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 1. **Filosofi Turn Budget**:
@@ -2047,10 +2047,10 @@ Arsitektur runtime percakapan menempatkan turn budget sebagai instrumen perlindu
    - Jika calon pembeli telah memasuki alur checkout (pemilihan produk terkonfirmasi, pengisian data pengiriman, atau penerbitan QRIS dinamis), alur transaksi bisnis **KEBAL MUTLAK** dari pemutusan turn budget AI.
    - Core State Machine mengambil alih kontrol secara penuh (*Core Decides*). Transaksi tidak boleh dihentikan atau di-drop hanya karena batas token obrolan tercapai.
 3. **State Machine Lifecycle & Transisi Status**:
-   - `ACTIVE → Inactivity Timeout → EXPIRED`: Jika pelanggan tidak merespons dalam durasi jendela sesi (misal 24 jam), sesi berpindah ke `EXPIRED`. Konteks penting di-cache dan dipulihkan secara elegan (*restore context*) saat pembeli menyapa kembali.
-   - `ACTIVE → Budget Warning (Turn 5-6) → EFFICIENCY_MODE`: Saat mencapai turn 5-6, prompt AI secara otomatis beradaptasi menjadi padat, ringkas, solutif, dan berorientasi aksi (*action-oriented*) mengarahkan ke link checkout resmi.
-   - `ACTIVE / EFFICIENCY_MODE → Budget Exhausted (Turn 7) → HANDOVER_PENDING → HANDOVER_TO_HUMAN`: Pada turn 7, pemanggilan LLM dikunci seketika (**0 token burn lanjutan**). Bot mengirimkan pesan eskalasi penutup yang sopan dan menyerahkan penanganan langsung ke staf CS manusia toko.
-   - `ACTIVE → Purchase Completed → CLOSED`: Saat pesanan berhasil dilunasi (`PAID`), sesi transaksi ditutup sukses, memicu webhook fulfillment produk.
+   - `ACTIVE â†’ Inactivity Timeout â†’ EXPIRED`: Jika pelanggan tidak merespons dalam durasi jendela sesi (misal 24 jam), sesi berpindah ke `EXPIRED`. Konteks penting di-cache dan dipulihkan secara elegan (*restore context*) saat pembeli menyapa kembali.
+   - `ACTIVE â†’ Budget Warning (Turn 5-6) â†’ EFFICIENCY_MODE`: Saat mencapai turn 5-6, prompt AI secara otomatis beradaptasi menjadi padat, ringkas, solutif, dan berorientasi aksi (*action-oriented*) mengarahkan ke link checkout resmi.
+   - `ACTIVE / EFFICIENCY_MODE â†’ Budget Exhausted (Turn 7) â†’ HANDOVER_PENDING â†’ HANDOVER_TO_HUMAN`: Pada turn 7, pemanggilan LLM dikunci seketika (**0 token burn lanjutan**). Bot mengirimkan pesan eskalasi penutup yang sopan dan menyerahkan penanganan langsung ke staf CS manusia toko.
+   - `ACTIVE â†’ Purchase Completed â†’ CLOSED`: Saat pesanan berhasil dilunasi (`PAID`), sesi transaksi ditutup sukses, memicu webhook fulfillment produk.
 4. **P0 Concurrency Guardrail (Atomic Turn Reservation)**:
    - **DILARANG KERAS** menggunakan mutasi naif `turn_count += 1` di memori aplikasi atau mekanisme *read-modify-write* tanpa proteksi.
    - Sistem wajib menggunakan **Atomic Turn Reservation** di tingkat database/Redis:
@@ -2112,7 +2112,7 @@ Antarmuka menu **"AI Knowledge & Bot"** (`AiKnowledgeTab.tsx`) direstrukturisasi
    - Menyajikan bilah progres visual: Sisa Kuota Sesi (150 Solo, 300 Pro Scale, 600 Team Scale) + Tambahan Overage.
    - Indikator visual dinamis:
      * *Healthy* (>20%): Bilah hijau emerald.
-     * *Low Warning* (≤20%): Bilah oranye amber dengan tanda peringatan kuota menipis.
+     * *Low Warning* (â‰¤20%): Bilah oranye amber dengan tanda peringatan kuota menipis.
      * *Depleted* (0): Bilah rose merah dengan status **Fallback Assistant Mode (Menu Statis Aktif)** yang mengamankan komunikasi agar bot tetap melayani menggunakan menu interaktif tanpa LLM.
    - Tombol CTA `+ Top-Up Kuota` membuka modal instan untuk pembelian paket +100 sesi (Rp 49.000) atau +250 sesi (Rp 99.000).
 2. **Konsolidasi 3 Tab Sederhana**:
@@ -2183,13 +2183,13 @@ Seluruh trafik dari `dashboard.boontrack.com` diproses oleh `middleware.ts` **se
 
 ```
 Request: https://dashboard.boontrack.com/buzzerukm/settings
-         ↓
+         â†“
     middleware.ts  (hostname check: isDashboardDomain)
-         ↓
+         â†“
     Internal Rewrite (tidak terlihat oleh browser)
-         ↓
+         â†“
     Next.js renders: /buzzerukm/dashboard/settings
-         ↓
+         â†“
     Browser URL tetap: dashboard.boontrack.com/buzzerukm/settings
 ```
 
@@ -2201,7 +2201,7 @@ Request: https://dashboard.boontrack.com/buzzerukm/settings
 | `dashboard.boontrack.com` | `/login` | `/login` | Login page merchant |
 | `dashboard.boontrack.com` | `/{slug}` | `/{slug}/dashboard` | Dashboard root tenant |
 | `dashboard.boontrack.com` | `/{slug}/path` | `/{slug}/dashboard/path` | Sub-route dashboard |
-| `dashboard.boontrack.com` | `/_next/**`, `/favicon.ico`, `/images/**` | *Bypass — tidak di-rewrite* | Aset statis |
+| `dashboard.boontrack.com` | `/_next/**`, `/favicon.ico`, `/images/**` | *Bypass â€” tidak di-rewrite* | Aset statis |
 
 ### 21.3 Post-Login Navigation Contract
 
@@ -2227,21 +2227,21 @@ Merchant dapat menginstal `dashboard.boontrack.com` sebagai Progressive Web App 
 | :--- | :--- |
 | `public/manifest.json` | `start_url: "/"`, `scope: "/"`, `display: "standalone"` |
 | `public/manifest.webmanifest` | Identik dengan manifest.json |
-| `public/sw.js` | Menangani `push` event → tampilkan notifikasi; `notificationclick` → buka URL pesanan |
+| `public/sw.js` | Menangani `push` event â†’ tampilkan notifikasi; `notificationclick` â†’ buka URL pesanan |
 
 ### 22.3 Push Subscription Flow
 
 ```
 Merchant buka dashboard.boontrack.com
-        ↓
+        â†“
 PwaInstallPrompt.tsx
-        ↓
-Notification.requestPermission() → 'granted'
-        ↓
+        â†“
+Notification.requestPermission() â†’ 'granted'
+        â†“
 serviceWorkerRegistration.pushManager.subscribe({ applicationServerKey: VAPID_PUBLIC_KEY })
-        ↓
+        â†“
 POST /api/v1/push/subscribe
-        ↓
+        â†“
 Supabase: INSERT INTO push_subscriptions (tenant_slug, endpoint, keys, user_agent, ...)
 ```
 
@@ -2292,7 +2292,7 @@ Saat order di-set menjadi `PAID` atau merchant menekan "Approve & Deliver" di da
 - Header: Logo Toko / BoonTrack Official Receipt
 - Info Transaksi: Order ID, tanggal & waktu, status (LUNAS/BERHASIL), metode pembayaran
 - Rincian Item: nama produk, qty, total nominal
-- CTA Produk Digital: "Akses Materi / Gabung Grup" → `link_digital` dari produk
+- CTA Produk Digital: "Akses Materi / Gabung Grup" â†’ `link_digital` dari produk
 - Footer: kontak bantuan toko
 
 **Merchant Alert Email** berisi:
@@ -2301,7 +2301,7 @@ Saat order di-set menjadi `PAID` atau merchant menekan "Approve & Deliver" di da
 
 ### 23.4 Trigger Point
 Implementasi di `lib/email-service.ts`. Dipanggil dari:
-- Webhook QRIS/payment gateway saat status → `PAID`
+- Webhook QRIS/payment gateway saat status â†’ `PAID`
 - API endpoint `POST /api/v1/manager/orders/{id}/fulfill` (tombol "Approve & Deliver" dashboard)
 
 ### 23.5 Aturan Wajib
@@ -2319,20 +2319,20 @@ Ekosistem BoonTrack memiliki **dua aliran keuangan yang berbeda dan tidak boleh 
 
 | Tipe | Aliran | Mekanisme | Pencatatan |
 | :--- | :--- | :--- | :--- |
-| **SaaS Subscription Revenue** | Tenant → BoonTrack | Otomatis via Xendit/Duitku (QRIS, VA, CC) | `shop_subscriptions` + webhook konfirmasi otomatis |
-| **Professional Services Revenue** | Client → BoonTrack | Manual (Transfer bank / QRIS statis BoonTrack) | Invoice manual + konfirmasi oleh admin |
+| **SaaS Subscription Revenue** | Tenant â†’ BoonTrack | Otomatis via Xendit/Duitku (QRIS, VA, CC) | `shop_subscriptions` + webhook konfirmasi otomatis |
+| **Professional Services Revenue** | Client â†’ BoonTrack | Manual (Transfer bank / QRIS statis BoonTrack) | Invoice manual + konfirmasi oleh admin |
 
 ### 24.2 SaaS Subscription Flow
 
 ```
 Merchant pilih paket di shop.boontrack.com/register
-        ↓
+        â†“
 Xendit / Duitku payment gateway
-        ↓
+        â†“
 Webhook POST ke /api/v1/webhooks/payment
-        ↓
+        â†“
 Otomatis: UPDATE tenants.tier + INSERT shop_subscriptions
-        ↓
+        â†“
 Konfirmasi email otomatis ke merchant
 ```
 
@@ -2350,8 +2350,8 @@ Produk jasa BoonTrack (tenant slug: `boon`) dioperasikan **semi-manual**:
 1. Client checkout di `shop.boontrack.com/boon/{slug}`
 2. Pembayaran via QRIS dinamis BoonTrack
 3. Tim BoonTrack menerima notifikasi pesanan di `dashboard.boontrack.com/boon`
-4. Tim menghubungi client via WhatsApp dalam 1×24 jam
-5. Admin menekan "Approve & Deliver" → email konfirmasi dikirim ke client
+4. Tim menghubungi client via WhatsApp dalam 1Ã—24 jam
+5. Admin menekan "Approve & Deliver" â†’ email konfirmasi dikirim ke client
 
 ### 24.4 Aturan Wajib
 - Revenue SaaS dan revenue jasa DILARANG KERAS dicampur dalam satu laporan transaksi yang sama.
@@ -2360,13 +2360,13 @@ Produk jasa BoonTrack (tenant slug: `boon`) dioperasikan **semi-manual**:
 
 ---
 
-## § 25. Absolute Storefront Link Enforcement Contract (ADR 2026-09-27)
+## Â§ 25. Absolute Storefront Link Enforcement Contract (ADR 2026-09-27)
 
 ### 25.1 Domain Isolation Mandate
 
 Domain `dashboard.boontrack.com` adalah **area privat merchant eksklusif**. Domain ini melayani:
 - Halaman login merchant (`/login`)
-- Dashboard manajemen toko (`/[slug]` → rewrite ke `/[tenant]/dashboard`)
+- Dashboard manajemen toko (`/[slug]` â†’ rewrite ke `/[tenant]/dashboard`)
 
 Domain `dashboard.boontrack.com` **DILARANG** merender rute publik berikut:
 - `/[tenant]/p/[slug]` (Single Page Checkout / Salespage)
@@ -2377,7 +2377,7 @@ Domain `dashboard.boontrack.com` **DILARANG** merender rute publik berikut:
 
 **Seluruh tautan keluar (external storefront links) di dalam UI `dashboard.boontrack.com` WAJIB menggunakan absolute URL terikat ke origin `https://shop.boontrack.com`.**
 
-| Konteks UI | ❌ DILARANG (Relative / Wrong Domain) | ✅ WAJIB (Absolute shop.boontrack.com) |
+| Konteks UI | âŒ DILARANG (Relative / Wrong Domain) | âœ… WAJIB (Absolute shop.boontrack.com) |
 | :--- | :--- | :--- |
 | Tombol "Buka Halaman" pada kartu produk | `href="/${tenantSlug}/p/${slug}"` | `href="https://shop.boontrack.com/${tenantSlug}/p/${slug}"` |
 | Tombol "Preview Halaman" di SinglePageBuilderModal | `href="/${tenantSlug}/p/${slug}"` | `href="https://shop.boontrack.com/${tenantSlug}/p/${slug}"` |
@@ -2419,7 +2419,7 @@ Pelanggaran aturan ini akan menyebabkan 404 pada domain dashboard karena middlew
 
 ---
 
-## § 30. AI Engine Model Standard & WhatsApp Multimodal Contract (ADR 2026-09-28)
+## Â§ 30. AI Engine Model Standard & WhatsApp Multimodal Contract (ADR 2026-09-28)
 
 ### 30.1 Immutable AI Model Invariant
 - **Official Model ID**: `gemini-3.8-flash` (Google AI Studio API / Generative Language SDK).
@@ -2438,5 +2438,6 @@ Pelanggaran aturan ini akan menyebabkan 404 pada domain dashboard karena middlew
 4. **Environment Variable**:
    - `GEMINI_API_KEY`: API Key resmi terdaftar dari Google AI Studio.
    - `AI_MODEL_NAME=gemini-3.8-flash`
+
 
 
