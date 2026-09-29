@@ -386,6 +386,139 @@ export async function processEvolutionWebhookEvent(
       }
     }
 
+    // 6.1. Deteksi Perintah Eksplisit Manual Toggle: "PAUSE" & "RESUME" (Instance 081215567168 & Tenant)
+    const cleanCmd = textBody.trim().toUpperCase();
+    if (cleanCmd === 'PAUSE') {
+      const nowIso = new Date().toISOString();
+      const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      if (supabase) {
+        try {
+          await supabase.from('conversation_sessions').upsert({
+            tenant_id: tenantId,
+            session_id: `wa_${tenantId}_${senderPhone}`,
+            channel: 'WHATSAPP',
+            user_identifier: senderPhone,
+            current_state: 'HANDOVER_TO_HUMAN',
+            is_paused: true,
+            paused_until: pausedUntilIso,
+            metadata: { manual_toggle: 'PAUSE', paused_at: nowIso },
+            updated_at: nowIso,
+          }, { onConflict: 'tenant_id,user_identifier' });
+
+          if (convId) {
+            await supabase.from('conversations').update({ bot_paused: true, bot_mode: 'HUMAN_ACTIVE' }).eq('id', convId);
+          }
+        } catch (sErr) {
+          console.warn('[Evolution Webhook] Pause session save error:', sErr);
+        }
+      }
+
+      await sendEvolutionTextMessage(
+        instanceName,
+        senderPhone,
+        '⏸️ Sesi bot otomatis berhasil dijeda (PAUSED). Pesan masuk selanjutnya akan ditangani secara manual oleh admin / tim CS.',
+        resolvedApiKey
+      );
+      processedCount++;
+      continue;
+    }
+
+    if (cleanCmd === 'RESUME') {
+      const nowIso = new Date().toISOString();
+      if (supabase) {
+        try {
+          await supabase.from('conversation_sessions').upsert({
+            tenant_id: tenantId,
+            session_id: `wa_${tenantId}_${senderPhone}`,
+            channel: 'WHATSAPP',
+            user_identifier: senderPhone,
+            current_state: 'ACTIVE',
+            is_paused: false,
+            paused_until: null,
+            metadata: { manual_toggle: 'RESUME', resumed_at: nowIso },
+            updated_at: nowIso,
+          }, { onConflict: 'tenant_id,user_identifier' });
+
+          if (convId) {
+            await supabase.from('conversations').update({ bot_paused: false, bot_mode: 'AI_ACTIVE' }).eq('id', convId);
+          }
+        } catch (sErr) {
+          console.warn('[Evolution Webhook] Resume session save error:', sErr);
+        }
+      }
+
+      await sendEvolutionTextMessage(
+        instanceName,
+        senderPhone,
+        '▶️ Sesi bot otomatis telah diaktifkan kembali (RESUMED). Asisten siap melayani pelanggan kembali secara otomatis.',
+        resolvedApiKey
+      );
+      processedCount++;
+      continue;
+    }
+
+    // 6.2. Deteksi Intent Penolakan Bot & Handover ke Manusia (Kunci 24 Jam)
+    const isBotRejectionIntent = /(bicara dengan|admin|owner|manusia|cs manual)/i.test(textBody);
+    if (isBotRejectionIntent) {
+      const nowIso = new Date().toISOString();
+      const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      if (supabase) {
+        try {
+          await supabase.from('conversation_sessions').upsert({
+            tenant_id: tenantId,
+            session_id: `wa_${tenantId}_${senderPhone}`,
+            channel: 'WHATSAPP',
+            user_identifier: senderPhone,
+            current_state: 'HANDOVER_TO_HUMAN',
+            is_paused: true,
+            paused_until: pausedUntilIso,
+            metadata: { handover_reason: 'user_rejection_intent', triggered_at: nowIso, trigger_text: textBody.slice(0, 80) },
+            updated_at: nowIso,
+          }, { onConflict: 'tenant_id,user_identifier' });
+
+          if (convId) {
+            await supabase.from('conversations').update({ bot_paused: true, bot_mode: 'HUMAN_ACTIVE', status: 'unassigned' }).eq('id', convId);
+          }
+        } catch (sErr) {
+          console.warn('[Evolution Webhook] Handover session save error:', sErr);
+        }
+      }
+
+      await sendEvolutionTextMessage(
+        instanceName,
+        senderPhone,
+        'Baik Kak, pesan Kakak sudah kami teruskan ke tim admin / owner. Asisten bot dijeda sementara (24 jam) agar admin manusia dapat langsung membalas chat Kakak secara manual. Terima kasih! 🙏',
+        resolvedApiKey
+      );
+      processedCount++;
+      continue;
+    }
+
+    // 6.3. Guard Sesi Sedang Dijeda (Auto-Mute: Balasan Otomatis Ditahan)
+    if (supabase) {
+      try {
+        const { data: activeSession } = await supabase
+          .from('conversation_sessions')
+          .select('current_state, is_paused, paused_until')
+          .eq('tenant_id', tenantId)
+          .eq('user_identifier', senderPhone)
+          .maybeSingle();
+
+        const isStatePaused = activeSession?.current_state === 'HANDOVER_TO_HUMAN' || activeSession?.current_state === 'PAUSED';
+        const isFlagPaused = Boolean(activeSession?.is_paused);
+        const pUntil = activeSession?.paused_until ? new Date(activeSession.paused_until) : null;
+        const isLocked = (isStatePaused || isFlagPaused) && (!pUntil || pUntil.getTime() > Date.now());
+
+        if (isLocked) {
+          console.info(`[Evolution Webhook Muted] Sesi untuk '${senderPhone}' sedang dijeda (HANDOVER_TO_HUMAN/PAUSED). Balasan bot ditahan.`);
+          processedCount++;
+          continue;
+        }
+      } catch (checkErr) {
+        console.warn('[Evolution Webhook] Active pause check warning:', checkErr);
+      }
+    }
+
     // 7. Teruskan ke Engine Chat / Gemini Multimodal Pipeline
     const promptText = hasImage
       ? caption.trim() || 'Tolong analisa gambar ini sesuai konteks toko.'
