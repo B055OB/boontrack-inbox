@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Store,
   Image as ImageIcon,
@@ -23,6 +23,8 @@ import {
   Eye,
   EyeOff,
   Info,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import ReaderIntegrationCard from '../settings/ReaderIntegrationCard';
@@ -86,6 +88,52 @@ export default function SettingsTab({
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [localQrisPayload, setLocalQrisPayload] = useState(storeQrisPayload || '');
   const [localGreeting, setLocalGreeting] = useState<string>(storeGreetingMessage || '');
+
+  // Tab Navigation Slider & Wheel state
+  const tabContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkTabScroll = useCallback(() => {
+    const el = tabContainerRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollLeft(scrollLeft > 4);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = tabContainerRef.current;
+    if (!el) return;
+    checkTabScroll();
+    el.addEventListener('scroll', checkTabScroll, { passive: true });
+    window.addEventListener('resize', checkTabScroll);
+    return () => {
+      el.removeEventListener('scroll', checkTabScroll);
+      window.removeEventListener('resize', checkTabScroll);
+    };
+  }, [checkTabScroll]);
+
+  useEffect(() => {
+    // When activeSubMenu changes or modal opens, recheck scroll boundaries
+    const timer = setTimeout(checkTabScroll, 100);
+    return () => clearTimeout(timer);
+  }, [activeSubMenu, checkTabScroll, isOpen, isModal]);
+
+  const handleScrollLeft = () => {
+    tabContainerRef.current?.scrollBy({ left: -160, behavior: 'smooth' });
+  };
+
+  const handleScrollRight = () => {
+    tabContainerRef.current?.scrollBy({ left: 160, behavior: 'smooth' });
+  };
+
+  const handleTabWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (tabContainerRef.current && e.deltaY !== 0) {
+      e.preventDefault();
+      tabContainerRef.current.scrollBy({ left: e.deltaY, behavior: 'smooth' });
+    }
+  };
 
   // Security & Akun state
   const [securityEmail, setSecurityEmail] = useState('');
@@ -944,26 +992,69 @@ export default function SettingsTab({
   ] as const;
 
   const subMenuNavigation = (
-    <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar mb-4">
-      {subMenuTabs.map((tab) => {
-        const Icon = tab.icon;
-        const isActive = activeSubMenu === tab.id;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveSubMenu(tab.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-              isActive
-                ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-            }`}
-          >
-            <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
-            <span>{tab.label}</span>
-          </button>
-        );
-      })}
+    <div className="relative flex items-center mb-4 group select-none">
+      {/* Tombol Navigasi Panah Kiri (<) */}
+      {canScrollLeft && (
+        <button
+          type="button"
+          onClick={handleScrollLeft}
+          title="Geser tab ke kiri"
+          aria-label="Scroll tab ke kiri"
+          className="absolute -left-2.5 z-20 p-1.5 rounded-full bg-white text-slate-700 shadow-md border border-slate-200 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer flex items-center justify-center active:scale-90"
+        >
+          <ChevronLeft className="w-4 h-4 text-slate-700 stroke-[2.5]" />
+        </button>
+      )}
+
+      {/* Visual Fade / Shadow Indikator Kiri */}
+      {canScrollLeft && (
+        <div className="absolute left-0 top-0 bottom-0 w-8 pointer-events-none bg-gradient-to-r from-slate-200/90 via-slate-100/50 to-transparent rounded-l-2xl z-10" />
+      )}
+
+      {/* Container Tab Horizontal dengan onWheel dan Smooth Scroll */}
+      <div
+        ref={tabContainerRef}
+        onWheel={handleTabWheel}
+        className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar w-full scroll-smooth"
+      >
+        {subMenuTabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeSubMenu === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveSubMenu(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                isActive
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200/80'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+              }`}
+            >
+              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600' : 'text-slate-400'}`} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Visual Fade / Shadow Indikator Kanan */}
+      {canScrollRight && (
+        <div className="absolute right-0 top-0 bottom-0 w-10 pointer-events-none bg-gradient-to-l from-slate-200/90 via-slate-100/50 to-transparent rounded-r-2xl z-10" />
+      )}
+
+      {/* Tombol Navigasi Panah Kanan (>) */}
+      {canScrollRight && (
+        <button
+          type="button"
+          onClick={handleScrollRight}
+          title="Geser tab ke kanan"
+          aria-label="Scroll tab ke kanan"
+          className="absolute -right-2.5 z-20 p-1.5 rounded-full bg-white text-slate-700 shadow-md border border-slate-200 hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer flex items-center justify-center active:scale-90"
+        >
+          <ChevronRight className="w-4 h-4 text-slate-700 stroke-[2.5]" />
+        </button>
+      )}
     </div>
   );
 

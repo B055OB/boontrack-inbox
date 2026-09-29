@@ -1,5 +1,5 @@
 // BoonTrack Service Worker for PWA, Web Push & Affiliate Dashboard Caching
-const CACHE_NAME = 'boontrack-affiliate-v2';
+const CACHE_NAME = 'boontrack-pwa-v3.2';
 const CURRENT_CACHES = [CACHE_NAME];
 
 self.addEventListener('install', (event) => {
@@ -11,8 +11,11 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => !CURRENT_CACHES.includes(key))
-          .map((key) => caches.delete(key))
+          .filter((key) => key !== CACHE_NAME)
+          .map((key) => {
+            console.log('[SW] Flushing legacy cache:', key);
+            return caches.delete(key);
+          })
       )
     ).then(() => self.clients.claim())
   );
