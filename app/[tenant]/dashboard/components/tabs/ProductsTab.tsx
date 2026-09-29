@@ -218,9 +218,15 @@ export default function ProductsTab({
             <button
               type="button"
               onClick={handleBulkImportClick}
-              className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+              disabled={isSubscriptionExpired}
+              title={isSubscriptionExpired ? "Masa aktif paket/trial telah berakhir (Read-only)" : undefined}
+              className={`font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all ${
+                isSubscriptionExpired
+                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 active:scale-95 cursor-pointer'
+              }`}
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              {isSubscriptionExpired ? <Lock className="w-4 h-4 text-amber-500" /> : <FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
               <span>Import Massal (.xlsx / .csv)</span>
             </button>
           )}
@@ -228,9 +234,15 @@ export default function ProductsTab({
           <button
             type="button"
             onClick={handleAddProductClick}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
+            disabled={isSubscriptionExpired}
+            title={isSubscriptionExpired ? "Masa aktif paket/trial telah berakhir (Read-only)" : undefined}
+            className={`font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all ${
+              isSubscriptionExpired
+                ? 'bg-slate-200 text-slate-400 shadow-none cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 active:scale-95 cursor-pointer'
+            }`}
           >
-            <Plus className="w-4 h-4" />
+            {isSubscriptionExpired ? <Lock className="w-4 h-4 text-amber-500" /> : <Plus className="w-4 h-4" />}
             <span>{addBtnText}</span>
           </button>
         </div>
@@ -264,17 +276,27 @@ export default function ProductsTab({
                 <button
                   type="button"
                   onClick={handleBulkImportClick}
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-indigo-700 font-black px-5 py-3 rounded-2xl text-xs shadow-lg shadow-black/10 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  disabled={isSubscriptionExpired}
+                  className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 font-black px-5 py-3 rounded-2xl text-xs shadow-lg transition-all ${
+                    isSubscriptionExpired
+                      ? 'bg-white/50 text-slate-500 cursor-not-allowed'
+                      : 'bg-white hover:bg-slate-50 text-indigo-700 shadow-black/10 hover:scale-105 active:scale-95 cursor-pointer'
+                  }`}
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  {isSubscriptionExpired ? <Lock className="w-4 h-4 text-amber-500" /> : <FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
                   <span>Import Massal (.xlsx / .csv)</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleAddProductClick}
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-indigo-950/60 hover:bg-indigo-950 text-white font-black px-5 py-3 rounded-2xl text-xs border border-white/20 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  disabled={isSubscriptionExpired}
+                  className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 font-black px-5 py-3 rounded-2xl text-xs border border-white/20 backdrop-blur-md transition-all ${
+                    isSubscriptionExpired
+                      ? 'bg-indigo-950/40 text-slate-400 cursor-not-allowed'
+                      : 'bg-indigo-950/60 hover:bg-indigo-950 text-white hover:scale-105 active:scale-95 cursor-pointer'
+                  }`}
                 >
-                  <Plus className="w-4 h-4" />
+                  {isSubscriptionExpired ? <Lock className="w-4 h-4 text-amber-400" /> : <Plus className="w-4 h-4" />}
                   <span>+ Tambah Produk Baru</span>
                 </button>
               </div>
@@ -386,19 +408,29 @@ export default function ProductsTab({
                           {/* Quick Toggle Switch: Ubah status aktif/sembunyi tanpa modal */}
                           <button
                             type="button"
+                            disabled={isSubscriptionExpired}
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (isSubscriptionExpired) {
+                                alert('Masa aktif paket/trial telah berakhir. Dashboard dalam mode baca-saja. Silakan lakukan upgrade langganan.');
+                                if (onUpgrade) onUpgrade();
+                                return;
+                              }
                               if (handleToggleProductActive) {
                                 handleToggleProductActive(p.id, !(p.is_active !== false));
                               }
                             }}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold transition-all cursor-pointer border shadow-2xs ${
-                              p.is_active !== false
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold transition-all border shadow-2xs ${
+                              isSubscriptionExpired
+                                ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200'
+                                : p.is_active !== false
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 cursor-pointer'
+                                : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 cursor-pointer'
                             }`}
                             title={
-                              p.is_active !== false
+                              isSubscriptionExpired
+                                ? 'Masa trial telah habis (Read-only)'
+                                : p.is_active !== false
                                 ? 'Status: Aktif (Klik untuk sembunyikan dari storefront publik)'
                                 : 'Status: Draft/Sembunyi (Klik untuk tampilkan di storefront publik)'
                             }
@@ -473,18 +505,42 @@ export default function ProductsTab({
                         <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
                           <button
                             type="button"
-                            onClick={() => handleQuickStockChange(p.id, -1)}
-                            className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shadow-xs transition cursor-pointer"
-                            title="Kurangi Stok"
+                            disabled={isSubscriptionExpired}
+                            onClick={() => {
+                              if (isSubscriptionExpired) {
+                                alert('Masa aktif paket/trial telah berakhir. Dashboard dalam mode baca-saja. Silakan lakukan upgrade langganan.');
+                                if (onUpgrade) onUpgrade();
+                                return;
+                              }
+                              handleQuickStockChange(p.id, -1);
+                            }}
+                            className={`w-6 h-6 rounded-lg text-slate-700 font-black text-xs flex items-center justify-center transition ${
+                              isSubscriptionExpired
+                                ? 'opacity-40 cursor-not-allowed'
+                                : 'bg-white hover:bg-slate-200 shadow-xs cursor-pointer'
+                            }`}
+                            title={isSubscriptionExpired ? 'Masa trial telah habis' : 'Kurangi Stok'}
                           >
                             -
                           </button>
                           <span className="px-2 font-bold font-mono text-xs text-slate-900">{p.stock}</span>
                           <button
                             type="button"
-                            onClick={() => handleQuickStockChange(p.id, 1)}
-                            className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 text-slate-700 font-black text-xs flex items-center justify-center shadow-xs transition cursor-pointer"
-                            title="Tambah Stok"
+                            disabled={isSubscriptionExpired}
+                            onClick={() => {
+                              if (isSubscriptionExpired) {
+                                alert('Masa aktif paket/trial telah berakhir. Dashboard dalam mode baca-saja. Silakan lakukan upgrade langganan.');
+                                if (onUpgrade) onUpgrade();
+                                return;
+                              }
+                              handleQuickStockChange(p.id, 1);
+                            }}
+                            className={`w-6 h-6 rounded-lg text-slate-700 font-black text-xs flex items-center justify-center transition ${
+                              isSubscriptionExpired
+                                ? 'opacity-40 cursor-not-allowed'
+                                : 'bg-white hover:bg-slate-200 shadow-xs cursor-pointer'
+                            }`}
+                            title={isSubscriptionExpired ? 'Masa trial telah habis' : 'Tambah Stok'}
                           >
                             +
                           </button>
@@ -575,17 +631,41 @@ export default function ProductsTab({
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => openEditProductModal(p)}
-                        className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-                        title="Edit Produk"
+                        disabled={isSubscriptionExpired}
+                        onClick={() => {
+                          if (isSubscriptionExpired) {
+                            alert('Masa aktif paket/trial telah berakhir. Dashboard dalam mode baca-saja. Silakan lakukan upgrade langganan.');
+                            if (onUpgrade) onUpgrade();
+                            return;
+                          }
+                          openEditProductModal(p);
+                        }}
+                        className={`p-2 rounded-xl transition-colors ${
+                          isSubscriptionExpired
+                            ? 'text-slate-300 cursor-not-allowed'
+                            : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50 cursor-pointer'
+                        }`}
+                        title={isSubscriptionExpired ? "Masa trial telah habis (Read-only)" : "Edit Produk"}
                       >
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDeleteProduct(p.id)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title="Hapus Produk"
+                        disabled={isSubscriptionExpired}
+                        onClick={() => {
+                          if (isSubscriptionExpired) {
+                            alert('Masa aktif paket/trial telah berakhir. Dashboard dalam mode baca-saja. Silakan lakukan upgrade langganan.');
+                            if (onUpgrade) onUpgrade();
+                            return;
+                          }
+                          handleDeleteProduct(p.id);
+                        }}
+                        className={`p-2 rounded-xl transition-colors ${
+                          isSubscriptionExpired
+                            ? 'text-slate-300 cursor-not-allowed'
+                            : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer'
+                        }`}
+                        title={isSubscriptionExpired ? "Masa trial telah habis (Read-only)" : "Hapus Produk"}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

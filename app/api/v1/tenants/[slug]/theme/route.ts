@@ -199,7 +199,10 @@ export async function PUT(
     const updatedMetadata: Record<string, any> = {
       ...existingMetadata,
       template: newTemplate,
+      storefront_template: newTemplate,
+      selected_template: newTemplate,
       visual_theme: newVisualTheme,
+      theme_id: newVisualTheme,
       theme: standardizedTheme,
     };
 
@@ -235,7 +238,9 @@ export async function PUT(
     try {
       revalidatePath(`/${slug}`);
       revalidatePath(`/${slug}`, 'page');
+      revalidatePath(`/${slug}`, 'layout');
       revalidatePath('/[tenant]', 'page');
+      revalidatePath('/[tenant]', 'layout');
     } catch (revalErr) {
       console.debug('[Theme Route] Cache revalidation note:', revalErr);
     }

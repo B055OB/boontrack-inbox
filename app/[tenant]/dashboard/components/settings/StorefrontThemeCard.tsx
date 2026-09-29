@@ -612,7 +612,7 @@ export default function StorefrontThemeCard({
   // 2. Save theme change persistently to database & settings API
   const saveThemeConfig = async (newThemeId: VisualThemeType, newChatEnabled: boolean) => {
     if (isSubscriptionExpired) {
-      setErrorMessage('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+      setErrorMessage('Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.');
       if (onUpgrade) onUpgrade();
       else setShowUpgradeModal(true);
       return;
@@ -635,7 +635,6 @@ export default function StorefrontThemeCard({
           primary_color: sw.accent,
           bg_color: sw.bg,
           card_color: sw.card,
-          template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
           chat_enabled: newChatEnabled,
           chat_position: 'bottom-right',
           buttons: buttons,
@@ -648,7 +647,7 @@ export default function StorefrontThemeCard({
       if (!res.ok) {
         if (res.status === 403 || data.error === 'SUBSCRIPTION_REQUIRED') {
           setShowUpgradeModal(true);
-          throw new Error(data.message || 'Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+          throw new Error(data.message || 'Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.');
         }
         throw new Error(data.error || 'Gagal menyimpan tema visual toko.');
       }
@@ -687,9 +686,13 @@ export default function StorefrontThemeCard({
             .maybeSingle();
 
           if (tenantRow) {
+            const existingTmpl = tenantRow.metadata?.template || tenantRow.metadata?.storefront_template || 'default';
             const updatedMeta = {
               ...(tenantRow.metadata || {}),
               visual_theme: newThemeId,
+              theme_id: newThemeId,
+              template: existingTmpl,
+              storefront_template: existingTmpl,
               featured_product_ids: featuredProductIds,
               microsite_featured_product_ids: featuredProductIds,
               buttons: buttons,
@@ -705,7 +708,7 @@ export default function StorefrontThemeCard({
                 primary_color: sw.accent,
                 bg_color: sw.bg,
                 card_color: sw.card,
-                template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
+                template: existingTmpl,
                 chat_enabled: newChatEnabled,
                 chat_position: 'bottom-right',
                 updated_at: nowIso,
@@ -1383,18 +1386,19 @@ export default function StorefrontThemeCard({
               type="button"
               onClick={() => {
                 if (isSubscriptionExpired) {
-                  setErrorMessage('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+                  setErrorMessage('Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.');
                   if (onUpgrade) onUpgrade();
                   else setShowUpgradeModal(true);
                   return;
                 }
                 saveThemeConfig(selectedTheme, chatEnabled);
               }}
-              disabled={isSaving}
-              className={`w-full sm:w-auto px-5 py-2.5 text-white text-xs font-black rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer shrink-0 ${
+              disabled={isSaving || isSubscriptionExpired}
+              title={isSubscriptionExpired ? 'Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.' : 'Simpan Perubahan Tampilan'}
+              className={`w-full sm:w-auto px-5 py-2.5 text-white text-xs font-black rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 shrink-0 ${
                 isSubscriptionExpired
-                  ? 'bg-slate-400 hover:bg-slate-500 shadow-slate-400/20'
-                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'
+                  ? 'bg-slate-400 hover:bg-slate-500 shadow-slate-400/20 cursor-not-allowed opacity-80'
+                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20 cursor-pointer'
               }`}
             >
               {isSaving ? (

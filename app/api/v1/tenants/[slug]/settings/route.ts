@@ -1,6 +1,7 @@
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
@@ -101,6 +102,12 @@ export async function GET(
       multi_cs: Boolean(rawFeatures.multi_cs ?? (planTier === 'TEAM_SCALE')),
     };
 
+    const perm = await checkTenantMutationPermission(slug);
+    const isSuspended = !perm.allowed;
+    const resolvedSubStatus = isSuspended
+      ? 'expired'
+      : String(metadata.subscription_status || tenantRow.status || 'active').toLowerCase();
+
     // 4. Return data asli database tanpa data dummy
     return NextResponse.json({
       success: true,
@@ -111,6 +118,12 @@ export async function GET(
         category: tenantRow.category || 'retail',
         tier: tenantRow.tier,
         plan_tier: planTier,
+        is_suspended: isSuspended,
+        subscription_status: resolvedSubStatus,
+        suspension_reason: perm.reason || null,
+        trial_ends_at: tenantRow.trial_ends_at || metadata.trial_ends_at || null,
+        subscription_ends_at: tenantRow.subscription_ends_at || metadata.subscription_ends_at || null,
+        visual_theme: metadata.visual_theme || metadata.theme?.visual_theme || metadata.theme?.theme_id || 'clean_minimal',
         features,
         bot_strategy: metadata.bot_strategy || 'trust_builder',
         bot_mode: metadata.bot_mode || 'HYBRID',
@@ -266,9 +279,14 @@ export async function PUT(
       ...(integration ? { integration } : {}),
       ...(faqs !== undefined ? { faqs } : {}),
       ...(interactive_menus !== undefined ? { interactive_menus } : {}),
-      ...(template !== undefined ? { template } : {}),
+      ...(template !== undefined ? { template, storefront_template: template, selected_template: template } : {}),
       ...(theme !== undefined
-        ? { theme: { ...(existing.metadata?.theme || {}), ...theme, ...(template ? { template } : {}) } }
+        ? {
+            theme: { ...(existing.metadata?.theme || {}), ...theme, ...(template ? { template } : {}) },
+            visual_theme: theme.visual_theme || theme.theme_id || existing.metadata?.visual_theme || 'clean_minimal',
+            theme_id: theme.theme_id || theme.visual_theme || existing.metadata?.theme_id || 'clean_minimal',
+            ...(theme.template ? { template: theme.template, storefront_template: theme.template, selected_template: theme.template } : {}),
+          }
         : (template ? { theme: { ...(existing.metadata?.theme || {}), template } } : {})),
       ...(updatedProposal ? { boonpilot_proposal: updatedProposal, boonpilot_configuration: updatedProposal } : {}),
       ...(qris_image_url !== undefined ? {
@@ -363,7 +381,18 @@ export async function PUT(
         }
       );
     } catch {
-      // Abaikan jika core backend offline
+      // Non-fatal if backend is offline
+    }
+
+    // Revalidasi cache storefront publik seketika
+    try {
+      revalidatePath(`/${slug}`);
+      revalidatePath(`/${slug}`, 'page');
+      revalidatePath(`/${slug}`, 'layout');
+      revalidatePath('/[tenant]', 'page');
+      revalidatePath('/[tenant]', 'layout');
+    } catch (revalErr) {
+      console.debug('[Settings Route] Cache revalidation note:', revalErr);
     }
 
     return NextResponse.json({

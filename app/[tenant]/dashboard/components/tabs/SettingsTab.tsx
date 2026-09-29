@@ -56,6 +56,8 @@ export interface SettingsTabProps {
   isOpen?: boolean;
   onClose?: () => void;
   onSavedSuccess?: () => void;
+  isSubscriptionExpired?: boolean;
+  onUpgrade?: () => void;
 }
 
 export default function SettingsTab({
@@ -84,6 +86,8 @@ export default function SettingsTab({
   isOpen = true,
   onClose,
   onSavedSuccess,
+  isSubscriptionExpired = false,
+  onUpgrade,
 }: SettingsTabProps) {
   const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping' | 'security'>('profile');
   const [isSavingStore, setIsSavingStore] = useState(false);
@@ -208,6 +212,12 @@ export default function SettingsTab({
   }, [isOpen, isModal]);
 
   const handleSave = async () => {
+    if (isSubscriptionExpired) {
+      alert('Masa aktif paket/trial telah berakhir. Dashboard dalam mode baca-saja. Silakan lakukan upgrade langganan.');
+      if (onUpgrade) onUpgrade();
+      return;
+    }
+
     const trimmed = storeDisplayName.trim();
     if (!trimmed) {
       setNameError('Nama toko tidak boleh kosong.');
@@ -1102,11 +1112,18 @@ export default function SettingsTab({
               )}
               <button
                 type="button"
-                disabled={isSavingStore}
+                disabled={isSavingStore || isSubscriptionExpired}
                 onClick={handleSave}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                title={isSubscriptionExpired ? 'Masa aktif paket/trial telah berakhir (Read-only)' : undefined}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+                  isSubscriptionExpired
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : isSavingStore
+                    ? 'bg-blue-400 text-white cursor-wait'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95'
+                }`}
               >
-                <Save className="w-3.5 h-3.5" />
+                {isSubscriptionExpired ? <Lock className="w-3.5 h-3.5 text-amber-500" /> : <Save className="w-3.5 h-3.5" />}
                 <span>{isSavingStore ? 'Menyimpan...' : 'Simpan Pengaturan'}</span>
               </button>
             </div>
@@ -1135,6 +1152,24 @@ export default function SettingsTab({
         </p>
       </div>
 
+      {isSubscriptionExpired && (
+        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-4 text-amber-700 animate-fadeIn">
+          <div className="flex items-center gap-2.5 text-xs font-bold">
+            <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+            <span>Masa trial telah habis. Dashboard dalam mode baca-saja. Perubahan pengaturan toko dinonaktifkan.</span>
+          </div>
+          {onUpgrade && (
+            <button
+              type="button"
+              onClick={onUpgrade}
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shrink-0 transition shadow-xs cursor-pointer"
+            >
+              Upgrade Paket
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
         {subMenuNavigation}
         {renderActiveSubMenuContent()}
@@ -1142,11 +1177,18 @@ export default function SettingsTab({
         <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
           <button
             type="button"
-            disabled={isSavingStore}
+            disabled={isSavingStore || isSubscriptionExpired}
             onClick={handleSave}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+            title={isSubscriptionExpired ? 'Masa aktif paket/trial telah berakhir (Read-only)' : undefined}
+            className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+              isSubscriptionExpired
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                : isSavingStore
+                ? 'bg-blue-400 text-white cursor-wait'
+                : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95'
+            }`}
           >
-            <Save className="w-3.5 h-3.5" />
+            {isSubscriptionExpired ? <Lock className="w-3.5 h-3.5 text-amber-500" /> : <Save className="w-3.5 h-3.5" />}
             <span>{isSavingStore ? 'Menyimpan...' : 'Simpan Semua Pengaturan'}</span>
           </button>
         </div>

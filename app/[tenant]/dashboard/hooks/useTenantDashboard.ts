@@ -113,6 +113,7 @@ export function useTenantDashboard() {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null);
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [isSuspended, setIsSuspended] = useState<boolean>(false);
   const [tenantMetaOmzet, setTenantMetaOmzet] = useState<number>(0);
 
   // Subscription Special Grant State
@@ -193,6 +194,7 @@ export function useTenantDashboard() {
 
   const isSubscriptionExpired = Boolean(
     !isGrant && (
+      isSuspended ||
       subscriptionStatus === 'expired' ||
       subscriptionStatus === 'suspended' ||
       (trialEndsAt && new Date(trialEndsAt).getTime() <= Date.now()) ||
@@ -939,6 +941,13 @@ export function useTenantDashboard() {
             const finalSubStatus = rawSubStatus || (isTrialStore ? 'trial' : 'active');
             setSubscriptionStatus(finalSubStatus);
 
+            const isStatusExpired = tenant.status === 'expired' || tenant.status === 'suspended' || tenant.is_active === false;
+            const rawSubEnds = tenant.subscription_ends_at || tenant.metadata?.subscription_ends_at;
+            const now = Date.now();
+            const isSubExpired = rawSubEnds ? new Date(rawSubEnds).getTime() <= now : false;
+            const isTrialExpired = rawTrialEnds ? new Date(rawTrialEnds).getTime() <= now : false;
+            setIsSuspended(Boolean(isStatusExpired || isTrialExpired || (rawSubEnds ? isSubExpired : false)));
+
             if (isTrialStore || rawTrialEnds) {
               let finalTrialEnds = rawTrialEnds;
               if (!finalTrialEnds && tenant.created_at) {
@@ -1020,6 +1029,15 @@ export function useTenantDashboard() {
           }
           if (s.metadata?.total_omzet || s.total_omzet) {
             setTenantMetaOmzet(Number(s.metadata?.total_omzet || s.total_omzet || 0));
+          }
+          if (s.is_suspended !== undefined) {
+            setIsSuspended(Boolean(s.is_suspended));
+          }
+          if (s.subscription_status) {
+            setSubscriptionStatus(s.subscription_status);
+          }
+          if (s.trial_ends_at) {
+            setTrialEndsAt(s.trial_ends_at);
           }
           if (s.metadata?.selected_plan || s.metadata?.selectedPlan) {
             const planString = s.metadata?.selected_plan || s.metadata?.selectedPlan;
@@ -2341,6 +2359,7 @@ export function useTenantDashboard() {
     trialDaysLeft,
     trialEndsAt,
     subscriptionStatus,
+    isSuspended,
     isSubscriptionExpired,
     isGrant,
     grantValidUntil,

@@ -4,7 +4,7 @@ import { normalizeTenantSlug } from './tenant-config';
 
 export const SUBSCRIPTION_MUTATION_RESTRICTED_PAYLOAD = {
   error: 'SUBSCRIPTION_REQUIRED',
-  message: 'Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.',
+  message: 'Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.',
 };
 
 export interface MutationPermissionResult {
@@ -75,7 +75,9 @@ export async function checkTenantMutationPermission(
       tStatus === 'expired' ||
       tStatus === 'suspended' ||
       metaSubStatus === 'expired' ||
-      metaSubStatus === 'suspended'
+      metaSubStatus === 'suspended' ||
+      (tenant as Record<string, any>).is_suspended === true ||
+      meta.is_suspended === true
     ) {
       isExpired = true;
     } else if (!isActive) {

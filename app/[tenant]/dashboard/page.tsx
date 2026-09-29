@@ -861,6 +861,8 @@ export default function TenantDashboardPage() {
           isTeamScale={isTeamScale}
           isCheckoutLite={isCheckoutLite}
           isModal={false}
+          isSubscriptionExpired={isSubscriptionExpired}
+          onUpgrade={() => handleUpgradeTier('ads_performance')}
           onSavedSuccess={() => {
             setSaveFeedback('Profil toko berhasil disimpan.');
             setTimeout(() => setSaveFeedback(null), 3000);
@@ -1191,6 +1193,8 @@ export default function TenantDashboardPage() {
           isCheckoutLite={isCheckoutLite}
           isModal={true}
           isOpen={isStoreSettingsOpen}
+          isSubscriptionExpired={isSubscriptionExpired}
+          onUpgrade={() => handleUpgradeTier('ads_performance')}
           onClose={() => setIsStoreSettingsOpen(false)}
           onSavedSuccess={() => {
             setSaveFeedback('Profil toko berhasil disimpan.');
