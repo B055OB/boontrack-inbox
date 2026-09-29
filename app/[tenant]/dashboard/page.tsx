@@ -80,6 +80,7 @@ export default function TenantDashboardPage() {
     trialDaysLeft,
     trialEndsAt,
     subscriptionStatus,
+    isSubscriptionExpired,
     isGrant,
     grantValidUntil,
     grantDaysLeft,
@@ -598,6 +599,7 @@ export default function TenantDashboardPage() {
           daysLeft={trialDaysLeft}
           trialEndsAt={trialEndsAt}
           isGrant={isGrant}
+          isExpired={isSubscriptionExpired}
           tier={tenantFeatureFlags?.tier}
           onUpgrade={handleUpgradeTier}
         />
@@ -684,6 +686,9 @@ export default function TenantDashboardPage() {
       {activeTab === 'orders' && (
         <OrdersTab
           tenantSlug={tenantSlug}
+          storeDisplayName={storeDisplayName || displayName || tenantSlug}
+          storePhone={storeWhatsapp || undefined}
+          storeCity={undefined}
           orders={orders}
           onOrderUpdated={(updated) => {
             setOrders((prev: any[]) =>
@@ -711,6 +716,8 @@ export default function TenantDashboardPage() {
         <ProductsTab
           products={products}
           tenantSlug={tenantSlug}
+          isSubscriptionExpired={isSubscriptionExpired}
+          onUpgrade={() => handleUpgradeTier('ads_performance')}
           openNewProductModal={openNewProductModal}
           openEditProductModal={openEditProductModal}
           handleDeleteProduct={handleDeleteProduct}
@@ -752,6 +759,8 @@ export default function TenantDashboardPage() {
             tenantSlug={tenantSlug}
             isTeamScale={isTeamScale}
             isAdsPerformance={isAdsPerformance}
+            isSubscriptionExpired={isSubscriptionExpired}
+            onUpgrade={() => handleUpgradeTier('ads_performance')}
             currentVisualTheme={activeVisualTheme}
             products={products}
             initialButtons={livePreviewButtons}

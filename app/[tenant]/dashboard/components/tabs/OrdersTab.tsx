@@ -19,6 +19,7 @@ import {
   ToggleRight,
   Loader2,
   Check,
+  Printer,
 } from 'lucide-react';
 import DateRangePicker, { DateRangeState, getDateRangeFromPreset } from '../DateRangePicker';
 import GodPayButton, { OrderItem as GodPayOrderItem } from '../orders/GodPayButton';
@@ -28,7 +29,11 @@ import {
   FulfillmentMetadata 
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
-
+import {
+  printThermalShippingLabel,
+  printOrderInvoice,
+  exportOrdersToLincahCsv,
+} from '@/lib/utils/orderFulfillment';
 
 export interface OrderItem {
   id: string;
@@ -53,6 +58,9 @@ export interface OrderItem {
 
 export interface OrdersTabProps {
   tenantSlug: string;
+  storeDisplayName?: string;
+  storePhone?: string;
+  storeCity?: string;
   orders?: OrderItem[];
   loading?: boolean;
   onRefresh?: () => void;
@@ -84,6 +92,9 @@ export function mapRawOrder(o: any): OrderItem {
 
 export default function OrdersTab({
   tenantSlug,
+  storeDisplayName,
+  storePhone,
+  storeCity,
   orders: propOrders,
   loading: propLoading,
   onRefresh: propOnRefresh,
@@ -401,15 +412,41 @@ export default function OrdersTab({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={fetchOrders}
-          disabled={loading}
-          className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Segarkan Data</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* BULK EXPORT: Lincah.id Mass Upload CSV */}
+          <button
+            type="button"
+            id="orders-export-lincah-btn"
+            onClick={() =>
+              exportOrdersToLincahCsv(
+                filteredOrders.filter((o) => {
+                  const reqs = resolveFulfillmentRequirements(
+                    o.product_type || (o.shipping_address ? 'PHYSICAL' : 'DIGITAL')
+                  );
+                  return reqs.requiresShipping;
+                }),
+                tenantSlug
+              )
+            }
+            disabled={filteredOrders.length === 0}
+            className="bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+            title="Export pesanan fisik ke format CSV Lincah.id (Mass Upload)"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Ekspor Lincah CSV</span>
+          </button>
+
+          <button
+            type="button"
+            id="orders-refresh-btn"
+            onClick={fetchOrders}
+            disabled={loading}
+            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Segarkan Data</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar & Tabel Pesanan */}
@@ -586,6 +623,29 @@ export default function OrdersTab({
                               <><ToggleLeft className="w-3.5 h-3.5" /><span>UNPAID</span></>
                             )}
                           </button>
+
+                          {/* Quick Print Label Resi (hanya untuk pesanan fisik) */}
+                          {resolveFulfillmentRequirements(
+                            ord.product_type || (ord.shipping_address ? 'PHYSICAL' : 'DIGITAL')
+                          ).requiresShipping && (
+                            <button
+                              type="button"
+                              id={`orders-print-label-${ord.id}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                printThermalShippingLabel(ord, {
+                                  name: storeDisplayName || tenantSlug,
+                                  phone: storePhone,
+                                  city: storeCity,
+                                });
+                              }}
+                              className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
+                              title="Cetak Label Resi Thermal 10x15cm"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
                           <GodPayButton
                             order={ord as GodPayOrderItem}
@@ -853,6 +913,46 @@ export default function OrdersTab({
                     ) : (
                       <><ToggleLeft className="w-3.5 h-3.5" /><span>Tandai Paid ✓</span></>
                     )}
+                  </button>
+
+                  {/* Print Label Resi Thermal (hanya untuk pesanan fisik) */}
+                  {orderReqs.requiresShipping && (
+                    <button
+                      type="button"
+                      id={`orders-modal-print-label-${selectedOrder.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        printThermalShippingLabel(selectedOrder, {
+                          name: storeDisplayName || tenantSlug,
+                          phone: storePhone,
+                          city: storeCity,
+                        });
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Label Resi</span>
+                    </button>
+                  )}
+
+                  {/* Print Invoice (semua jenis pesanan) */}
+                  <button
+                    type="button"
+                    id={`orders-modal-print-invoice-${selectedOrder.id}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      printOrderInvoice(selectedOrder, {
+                        name: storeDisplayName || tenantSlug,
+                        phone: storePhone,
+                        address: storeCity,
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Cetak Invoice</span>
                   </button>
 
                   <GodPayButton

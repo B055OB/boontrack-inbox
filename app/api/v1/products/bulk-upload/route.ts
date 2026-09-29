@@ -1,3 +1,4 @@
+import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getBackendApiUrl } from '@/lib/api-config';
@@ -8,6 +9,11 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const rawSlug = searchParams.get('tenant_slug') || searchParams.get('tenant') || 'onlineboost';
     const slug = normalizeTenantSlug(rawSlug);
+
+    const perm = await checkTenantMutationPermission(slug);
+    if (!perm.allowed && perm.response) {
+      return perm.response;
+    }
 
     const formData = await req.formData();
     const file = formData.get('file');

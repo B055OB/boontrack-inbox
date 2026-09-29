@@ -15,13 +15,21 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
 
 // ─── Product image with graceful fallback ────────────────────────────────────
-function MicrositeItemImage({ src, alt }: { src?: string; alt: string }) {
+function MicrositeItemImage({
+  src,
+  alt,
+  placeholderClass = 'bg-white/10 border-white/20 text-white/40',
+}: {
+  src?: string;
+  alt: string;
+  placeholderClass?: string;
+}) {
   const [error, setError] = useState(false);
   const safeSrc = sanitizeImageUrl(src);
 
   if (!safeSrc || error) {
     return (
-      <div className="w-14 h-14 rounded-xl bg-white/10 border border-white/20 shrink-0 flex flex-col items-center justify-center text-white/40">
+      <div className={`w-14 h-14 rounded-xl shrink-0 flex flex-col items-center justify-center border ${placeholderClass}`}>
         <ShoppingBag className="w-5 h-5" />
       </div>
     );
@@ -32,9 +40,174 @@ function MicrositeItemImage({ src, alt }: { src?: string; alt: string }) {
       src={safeSrc}
       alt={alt}
       onError={() => setError(true)}
-      className="w-14 h-14 rounded-xl object-cover shrink-0 border border-white/20"
+      className="w-14 h-14 rounded-xl object-cover shrink-0 border border-black/10"
     />
   );
+}
+
+export type VisualThemeType =
+  | 'clean_minimal'
+  | 'aurora_gradient'
+  | 'midnight_luxe'
+  | 'warm_terra'
+  | 'bold_performance'
+  | 'slate_monochrome';
+
+export function getMicrositeThemeStyles(visualTheme: VisualThemeType | string) {
+  switch (visualTheme) {
+    case 'aurora_gradient':
+      return {
+        screenBg: 'bg-gradient-to-br from-[#00d2ff] via-[#4338ca] to-[#7c3aed] text-white',
+        radialOverlay: true,
+        avatarRing: 'ring-4 ring-white/30 shadow-xl bg-white/10',
+        avatarBg: 'bg-white/20 text-white font-black',
+        titleColor: 'text-white font-black drop-shadow-sm',
+        slugBadge: 'text-white/70 font-mono text-xs',
+        bioColor: 'text-white/85 text-xs sm:text-sm',
+        buttonStyle:
+          'rounded-full py-3.5 px-5 bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 text-white shadow-lg flex items-center justify-between transition-all active:scale-[0.98]',
+        buttonBadge:
+          'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+        buttonArrow: 'text-white/60',
+        productBox:
+          'rounded-2xl p-4 bg-white/15 backdrop-blur-md border border-white/20 text-white shadow-md space-y-2',
+        productCard:
+          'bg-white/15 backdrop-blur-md border border-white/20 rounded-2xl p-4 text-white flex items-center gap-3 transition-all hover:bg-white/25',
+        productTitle: 'text-white font-bold',
+        productPrice: 'text-cyan-200 font-bold',
+        productBadge:
+          'rounded-full px-4 py-2 bg-white/20 text-white text-xs font-bold border border-white/30',
+        productImagePlaceholder: 'bg-white/10 border-white/20 text-white/40',
+        footerText: 'text-white/60',
+        verifiedBadgeBg: 'bg-white text-[#4338ca]',
+      };
+    case 'midnight_luxe':
+      return {
+        screenBg: 'bg-gradient-to-b from-slate-950 via-zinc-950 to-neutral-900 text-amber-100',
+        radialOverlay: false,
+        avatarRing: 'ring-3 ring-amber-400/60 shadow-lg shadow-amber-950/60',
+        avatarBg: 'bg-zinc-900 text-amber-400 border border-amber-500/40 font-black',
+        titleColor: 'text-amber-200 font-black tracking-wide',
+        slugBadge: 'text-amber-400/70 font-mono text-xs',
+        bioColor: 'text-slate-300 text-xs sm:text-sm',
+        buttonStyle:
+          'rounded-full py-3.5 px-5 bg-zinc-900/90 hover:bg-zinc-900 text-amber-200 border border-amber-500/40 shadow-md shadow-amber-950/40 flex items-center justify-between transition-all active:scale-[0.98]',
+        buttonBadge:
+          'bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+        buttonArrow: 'text-amber-400/70',
+        productBox:
+          'rounded-2xl p-4 bg-zinc-900/90 border border-amber-500/30 text-amber-100 shadow-md space-y-2',
+        productCard:
+          'bg-zinc-900/90 border border-amber-500/30 rounded-2xl p-4 text-amber-100 flex items-center gap-3 transition-all hover:bg-zinc-800',
+        productTitle: 'text-amber-100 font-bold',
+        productPrice: 'text-amber-300 font-bold',
+        productBadge:
+          'rounded-full px-4 py-2 bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 text-xs font-bold',
+        productImagePlaceholder: 'bg-zinc-800 border-amber-500/30 text-amber-400/40',
+        footerText: 'text-amber-400/50',
+        verifiedBadgeBg: 'bg-amber-400 text-slate-950',
+      };
+    case 'warm_terra':
+      return {
+        screenBg: 'bg-gradient-to-b from-[#FFF7ED] via-[#FED7AA]/35 to-[#FFEDD5] text-stone-900',
+        radialOverlay: false,
+        avatarRing: 'ring-3 ring-orange-500/40 shadow-md shadow-orange-900/10',
+        avatarBg: 'bg-[#431407] text-[#FFEDD5] font-black',
+        titleColor: 'text-stone-900 font-black',
+        slugBadge: 'text-orange-800/80 font-mono text-xs',
+        bioColor: 'text-stone-600 text-xs sm:text-sm',
+        buttonStyle:
+          'rounded-full py-3.5 px-5 bg-[#431407] hover:bg-[#7C2D12] text-[#FFEDD5] border border-orange-950/20 shadow-xs flex items-center justify-between transition-all active:scale-[0.98]',
+        buttonBadge:
+          'bg-orange-400/20 text-orange-200 border border-orange-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+        buttonArrow: 'text-orange-300',
+        productBox:
+          'rounded-2xl p-4 bg-white/85 border border-orange-200 text-stone-900 shadow-xs space-y-2',
+        productCard:
+          'bg-white/85 border border-orange-200 rounded-2xl p-4 text-stone-900 flex items-center gap-3 transition-all hover:bg-white',
+        productTitle: 'text-stone-900 font-bold',
+        productPrice: 'text-orange-700 font-bold',
+        productBadge:
+          'rounded-full px-4 py-2 bg-[#EA580C] text-white text-xs font-bold',
+        productImagePlaceholder: 'bg-orange-100/50 border-orange-200 text-orange-400',
+        footerText: 'text-stone-500',
+        verifiedBadgeBg: 'bg-[#EA580C] text-white',
+      };
+    case 'bold_performance':
+      return {
+        screenBg: 'bg-slate-100 text-slate-950 font-sans',
+        radialOverlay: false,
+        avatarRing: 'ring-2 ring-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]',
+        avatarBg: 'bg-emerald-400 text-black border-2 border-black font-black',
+        titleColor: 'text-black font-black uppercase tracking-tight',
+        slugBadge: 'text-black font-bold text-xs bg-yellow-300 px-2 py-0.5 border border-black rounded',
+        bioColor: 'text-slate-800 text-xs sm:text-sm font-medium',
+        buttonStyle:
+          'rounded-xl py-3.5 px-5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] flex items-center justify-between transition-all active:translate-x-[1px] active:translate-y-[1px]',
+        buttonBadge: 'bg-black text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded',
+        buttonArrow: 'text-black',
+        productBox:
+          'rounded-xl p-4 bg-white border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-slate-950 space-y-2',
+        productCard:
+          'bg-white border-2 border-black rounded-xl p-4 text-slate-950 flex items-center gap-3 transition-all hover:bg-slate-50 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]',
+        productTitle: 'text-black font-black',
+        productPrice: 'text-emerald-700 font-black',
+        productBadge: 'rounded px-4 py-2 text-xs font-black bg-black text-emerald-400',
+        productImagePlaceholder: 'bg-slate-200 border-2 border-black text-black',
+        footerText: 'text-slate-700 font-bold',
+        verifiedBadgeBg: 'bg-yellow-400 text-black border border-black',
+      };
+    case 'slate_monochrome':
+      return {
+        screenBg: 'bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200 text-slate-900',
+        radialOverlay: false,
+        avatarRing: 'ring-3 ring-slate-400 shadow-md shadow-slate-900/10',
+        avatarBg: 'bg-slate-900 text-slate-100 font-black',
+        titleColor: 'text-slate-950 font-black tracking-tight',
+        slugBadge: 'text-slate-600 font-mono text-xs bg-slate-200/80 px-2 py-0.5 rounded',
+        bioColor: 'text-slate-600 text-xs sm:text-sm',
+        buttonStyle:
+          'rounded-full py-3.5 px-5 bg-slate-900 hover:bg-slate-800 text-white border border-slate-950 shadow-sm flex items-center justify-between transition-all active:scale-[0.98]',
+        buttonBadge: 'bg-slate-700 text-slate-200 text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+        buttonArrow: 'text-slate-300',
+        productBox:
+          'rounded-2xl p-4 bg-white border border-slate-300 text-slate-900 shadow-sm space-y-2',
+        productCard:
+          'bg-white border border-slate-300 rounded-2xl p-4 text-slate-900 flex items-center gap-3 transition-all hover:bg-slate-50',
+        productTitle: 'text-slate-950 font-bold',
+        productPrice: 'text-slate-900 font-bold',
+        productBadge: 'rounded-full px-4 py-2 bg-slate-900 text-white text-xs font-bold',
+        productImagePlaceholder: 'bg-slate-100 border-slate-300 text-slate-400',
+        footerText: 'text-slate-500',
+        verifiedBadgeBg: 'bg-slate-900 text-white',
+      };
+    case 'clean_minimal':
+    default:
+      return {
+        screenBg: 'bg-slate-50 text-slate-900',
+        radialOverlay: false,
+        avatarRing: 'ring-3 ring-slate-200 shadow-sm',
+        avatarBg: 'bg-gradient-to-br from-indigo-600 to-blue-600 text-white font-black',
+        titleColor: 'text-slate-900 font-black',
+        slugBadge: 'text-slate-500 font-mono text-xs',
+        bioColor: 'text-slate-600 text-xs sm:text-sm',
+        buttonStyle:
+          'rounded-full py-3.5 px-5 bg-white hover:bg-slate-100/90 text-slate-800 border border-slate-200/90 shadow-xs flex items-center justify-between transition-all active:scale-[0.98]',
+        buttonBadge:
+          'bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+        buttonArrow: 'text-slate-400',
+        productBox:
+          'rounded-2xl p-4 bg-white border border-slate-200/90 text-slate-900 shadow-xs space-y-2',
+        productCard:
+          'bg-white border border-slate-200/90 rounded-2xl p-4 text-slate-900 flex items-center gap-3 transition-all hover:bg-slate-50/80',
+        productTitle: 'text-slate-900 font-bold',
+        productPrice: 'text-emerald-600 font-bold',
+        productBadge: 'rounded-full px-4 py-2 bg-emerald-600 text-white text-xs font-bold',
+        productImagePlaceholder: 'bg-slate-100 border-slate-200 text-slate-400',
+        footerText: 'text-slate-400',
+        verifiedBadgeBg: 'bg-blue-600 text-white',
+      };
+  }
 }
 
 // ─── Brand SVG icons ─────────────────────────────────────────────────────────
@@ -149,6 +322,7 @@ interface MicrositeBioTemplateProps {
   tenant?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tenantMetadata: any;
+  visualTheme?: VisualThemeType | string;
   storeLogoUrl?: string;
   storeProducts: Product[];
   dynamicQuickReplies: string[];
@@ -177,6 +351,7 @@ export default function MicrositeBioTemplate({
   displayName,
   tenant,
   tenantMetadata,
+  visualTheme: propVisualTheme,
   storeLogoUrl,
   storeProducts,
   dynamicQuickReplies,
@@ -185,6 +360,20 @@ export default function MicrositeBioTemplate({
   onOutboundClick,
 }: MicrositeBioTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
+
+  // ── Deterministic Visual Theme Resolution ──
+  const activeVisualTheme: VisualThemeType = (
+    propVisualTheme ||
+    tenantMetadata?.theme?.theme_id ||
+    tenantMetadata?.theme?.visual_theme ||
+    tenantMetadata?.visual_theme ||
+    tenant?.metadata?.theme?.theme_id ||
+    tenant?.metadata?.theme?.visual_theme ||
+    tenant?.metadata?.visual_theme ||
+    'clean_minimal'
+  ) as VisualThemeType;
+
+  const themeStyles = getMicrositeThemeStyles(activeVisualTheme);
 
   // ── Avatar resolution ─────────────────────────────────────────────────────
   const rawLogo =
@@ -354,16 +543,18 @@ export default function MicrositeBioTemplate({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="bg-gradient-to-br from-[#00d2ff] via-[#4338ca] to-[#7c3aed] min-h-screen text-white antialiased">
-      {/* Radial overlay for depth */}
-      <div
-        aria-hidden="true"
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            'radial-gradient(ellipse at 15% 10%, rgba(255,255,255,0.07) 0%, transparent 55%), radial-gradient(ellipse at 85% 85%, rgba(124,58,237,0.28) 0%, transparent 55%)',
-        }}
-      />
+    <div className={`${themeStyles.screenBg} min-h-screen antialiased`}>
+      {/* Radial overlay for depth if enabled by theme */}
+      {themeStyles.radialOverlay && (
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 pointer-events-none"
+          style={{
+            backgroundImage:
+              'radial-gradient(ellipse at 15% 10%, rgba(255,255,255,0.07) 0%, transparent 55%), radial-gradient(ellipse at 85% 85%, rgba(124,58,237,0.28) 0%, transparent 55%)',
+          }}
+        />
+      )}
 
       <div className="relative max-w-md mx-auto px-4 py-8 flex flex-col items-center">
 
@@ -371,7 +562,7 @@ export default function MicrositeBioTemplate({
         <div className="flex flex-col items-center text-center space-y-3 pt-2 w-full">
           {/* Avatar */}
           <div className="relative">
-            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden ring-4 ring-white/30 shadow-xl bg-white/10 flex items-center justify-center">
+            <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden ${themeStyles.avatarRing} flex items-center justify-center`}>
               {displayAvatar && !avatarError ? (
                 <img
                   src={displayAvatar}
@@ -380,14 +571,14 @@ export default function MicrositeBioTemplate({
                   className="w-full h-full object-cover rounded-full"
                 />
               ) : (
-                <div className="w-full h-full rounded-full bg-white/20 flex items-center justify-center text-white text-3xl font-black">
+                <div className={`w-full h-full rounded-full ${themeStyles.avatarBg} flex items-center justify-center text-3xl`}>
                   {initials}
                 </div>
               )}
             </div>
             {/* Verified badge */}
-            <div className="absolute bottom-1 right-1 bg-white rounded-full p-1 shadow-lg">
-              <svg viewBox="0 0 20 20" className="w-4 h-4 text-[#4338ca]" fill="currentColor">
+            <div className={`absolute bottom-1 right-1 rounded-full p-1 shadow-lg ${themeStyles.verifiedBadgeBg}`}>
+              <svg viewBox="0 0 20 20" className="w-4 h-4" fill="currentColor">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
               </svg>
             </div>
@@ -395,13 +586,13 @@ export default function MicrositeBioTemplate({
 
           {/* Name & handle */}
           <div className="space-y-0.5">
-            <h1 className="text-xl font-bold tracking-tight text-white drop-shadow-sm">{activeName}</h1>
-            <p className="text-white/60 text-xs font-mono">@{tenantSlug.toLowerCase()}</p>
+            <h1 className={`text-xl font-bold tracking-tight ${themeStyles.titleColor}`}>{activeName}</h1>
+            <p className={themeStyles.slugBadge}>@{tenantSlug.toLowerCase()}</p>
           </div>
 
           {/* Bio */}
           {bioText ? (
-            <p className="text-white/80 text-xs sm:text-sm text-center mt-2 leading-relaxed max-w-xs">
+            <p className={`${themeStyles.bioColor} text-center mt-2 leading-relaxed max-w-xs`}>
               {bioText}
             </p>
           ) : null}
@@ -428,7 +619,7 @@ export default function MicrositeBioTemplate({
                     }
                     onOutboundClick(targetUrl, `microsite_${btn.id}`);
                   }}
-                  className="rounded-full py-3.5 px-5 bg-white/10 backdrop-blur-md border border-white/20 hover:bg-white/20 transition-all duration-200 active:scale-[0.98] shadow-lg flex items-center justify-between text-white w-full cursor-pointer"
+                  className={`${themeStyles.buttonStyle} w-full cursor-pointer`}
                 >
                   {/* Left: brand icon */}
                   <span className="w-6 h-6 shrink-0 flex items-center justify-center">
@@ -439,14 +630,14 @@ export default function MicrositeBioTemplate({
                   <span className="flex-1 font-medium text-sm sm:text-base text-center px-3">
                     {btn.label || btn.title}
                     {btn.badge && (
-                      <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                      <span className={`ml-2 ${themeStyles.buttonBadge}`}>
                         {btn.badge}
                       </span>
                     )}
                   </span>
 
                   {/* Right: arrow */}
-                  <ArrowUpRight className="w-4 h-4 text-white/50 shrink-0" />
+                  <ArrowUpRight className={`w-4 h-4 shrink-0 ${themeStyles.buttonArrow}`} />
                 </button>
               );
             })
@@ -545,21 +736,21 @@ export default function MicrositeBioTemplate({
                 <div
                   key={item.id}
                   onClick={dedicatedPageUrl || isExternal ? handleCardClick : undefined}
-                  className={`bg-white/15 backdrop-blur-md border border-white/20 rounded-2xl p-4 text-white flex items-center gap-3 transition-all ${
-                    dedicatedPageUrl || isExternal ? 'hover:bg-white/25 cursor-pointer active:scale-[0.99]' : ''
+                  className={`${themeStyles.productCard} ${
+                    dedicatedPageUrl || isExternal ? 'cursor-pointer active:scale-[0.99]' : ''
                   }`}
                 >
-                  <MicrositeItemImage src={item.image} alt={item.name} />
+                  <MicrositeItemImage src={item.image} alt={item.name} placeholderClass={themeStyles.productImagePlaceholder} />
 
                   <div className="flex-1 min-w-0 space-y-1">
-                    <h4 className="text-xs sm:text-sm font-semibold text-white truncate">{item.name}</h4>
+                    <h4 className={`text-xs sm:text-sm font-semibold truncate ${themeStyles.productTitle}`}>{item.name}</h4>
                     <div className="flex items-baseline gap-1 flex-wrap">
                       {item.originalPrice && item.originalPrice > item.price ? (
-                        <span className="line-through text-white/50 text-xs mr-1">
+                        <span className="line-through opacity-50 text-xs mr-1">
                           Rp {Number(item.originalPrice).toLocaleString('id-ID')}
                         </span>
                       ) : null}
-                      <span className="text-white font-bold text-sm">
+                      <span className={`font-bold text-sm ${themeStyles.productPrice}`}>
                         {Number(item.price) === 0 ? 'GRATIS' : `Rp ${Number(item.price).toLocaleString('id-ID')}`}
                       </span>
                     </div>
@@ -604,7 +795,7 @@ export default function MicrositeBioTemplate({
                           fulfillment_metadata: (item as any).fulfillment_metadata,
                         });
                       }}
-                      className="rounded-full px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/30 text-white text-[11px] font-bold transition active:scale-95 shrink-0 flex items-center gap-1.5 cursor-pointer"
+                      className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 ${themeStyles.productBadge}`}
                     >
                       {isDigitalCatalog ? <Download className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
                       <span>{Number(item.price) === 0 ? 'Klaim' : isDigitalCatalog ? 'Akses' : 'Pesan'}</span>
@@ -618,9 +809,9 @@ export default function MicrositeBioTemplate({
 
         {/* ── Footer ── */}
         <div className="mt-10 pb-8 text-center">
-          <p className="text-[11px] text-white/40">
+          <p className={`text-[11px] ${themeStyles.footerText}`}>
             &copy; {new Date().getFullYear()} {activeName} &bull; Powered by{' '}
-            <span className="font-bold text-white/60">BoonTrack</span>
+            <span className="font-bold">BoonTrack Official Platform</span>
           </p>
         </div>
       </div>

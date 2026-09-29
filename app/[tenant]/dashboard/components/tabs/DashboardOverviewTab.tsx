@@ -28,6 +28,7 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { ProductItem } from '@/lib/product-catalog';
+import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 import { getSupabase } from '@/lib/supabaseClient';
 import StoreBioLinkWidget from '@/app/[tenant]/dashboard/components/StoreBioLinkWidget';
 import BoonPilotHeroBanner from '@/app/[tenant]/dashboard/components/BoonPilotHeroBanner';
@@ -97,8 +98,7 @@ export default function DashboardOverviewTab({
   const [isUpdatingTemplate, setIsUpdatingTemplate] = useState(false);
 
   const activeStoreName = storeDisplayName || displayName;
-  const SHOP_BASE_URL = process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
-  const storePublicUrl = `${SHOP_BASE_URL}/${tenantSlug}`;
+  const storePublicUrl = getStorefrontUrl(tenantSlug);
 
   // Time of day greeting
   const timeGreeting = useMemo(() => {
@@ -596,7 +596,7 @@ export default function DashboardOverviewTab({
             </button>
 
             <a
-              href={`${SHOP_BASE_URL}/${tenantSlug}`}
+              href={getStorefrontUrl(tenantSlug)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-md shadow-blue-500/20"

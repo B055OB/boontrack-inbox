@@ -190,6 +190,8 @@ interface StorefrontThemeCardProps {
   tenantSlug: string;
   isTeamScale?: boolean;
   isAdsPerformance?: boolean;
+  isSubscriptionExpired?: boolean;
+  onUpgrade?: () => void;
   onThemeChange?: (themeId: VisualThemeType) => void;
   currentVisualTheme?: VisualThemeType;
   products?: ProductItem[];
@@ -204,6 +206,8 @@ export default function StorefrontThemeCard({
   tenantSlug,
   isTeamScale = false,
   isAdsPerformance = false,
+  isSubscriptionExpired = false,
+  onUpgrade,
   onThemeChange,
   currentVisualTheme,
   products = [],
@@ -607,26 +611,45 @@ export default function StorefrontThemeCard({
 
   // 2. Save theme change persistently to database & settings API
   const saveThemeConfig = async (newThemeId: VisualThemeType, newChatEnabled: boolean) => {
+    if (isSubscriptionExpired) {
+      setErrorMessage('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+      if (onUpgrade) onUpgrade();
+      else setShowUpgradeModal(true);
+      return;
+    }
     setIsSaving(true);
     setErrorMessage(null);
 
     try {
+      const targetOption = VISUAL_THEMES.find((t) => t.id === newThemeId);
+      const sw = targetOption?.swatches || { bg: '#FFFFFF', card: '#F8FAFC', accent: '#2563EB' };
+      const nowIso = new Date().toISOString();
+
       // Step A: Panggil endpoint theme API
       const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/theme`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           visual_theme: newThemeId,
+          theme_id: newThemeId,
+          primary_color: sw.accent,
+          bg_color: sw.bg,
+          card_color: sw.card,
           template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
           chat_enabled: newChatEnabled,
           chat_position: 'bottom-right',
           buttons: buttons,
+          featured_product_ids: featuredProductIds,
         }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
+        if (res.status === 403 || data.error === 'SUBSCRIPTION_REQUIRED') {
+          setShowUpgradeModal(true);
+          throw new Error(data.message || 'Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+        }
         throw new Error(data.error || 'Gagal menyimpan tema visual toko.');
       }
 
@@ -677,10 +700,15 @@ export default function StorefrontThemeCard({
               },
               theme: {
                 ...(tenantRow.metadata?.theme || {}),
+                theme_id: newThemeId,
                 visual_theme: newThemeId,
+                primary_color: sw.accent,
+                bg_color: sw.bg,
+                card_color: sw.card,
                 template: newThemeId === 'clean_minimal' ? 'default' : 'microsite',
                 chat_enabled: newChatEnabled,
                 chat_position: 'bottom-right',
+                updated_at: nowIso,
               },
             };
             await supabase
@@ -714,6 +742,12 @@ export default function StorefrontThemeCard({
   };
 
   const handleSelectTheme = (theme: VisualThemeOption) => {
+    if (isSubscriptionExpired) {
+      setErrorMessage('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+      if (onUpgrade) onUpgrade();
+      else setShowUpgradeModal(true);
+      return;
+    }
     if (isThemeLocked(theme)) {
       setTargetUpgradeTheme(theme);
       setShowUpgradeModal(true);
@@ -779,6 +813,25 @@ export default function StorefrontThemeCard({
           </span>
         )}
       </div>
+
+      {/* Expired Read-Only Warning Banner */}
+      {isSubscriptionExpired && (
+        <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-3 text-amber-700 animate-fadeIn">
+          <div className="flex items-center gap-2.5 text-xs font-bold">
+            <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+            <span>Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.</span>
+          </div>
+          {onUpgrade && (
+            <button
+              type="button"
+              onClick={onUpgrade}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shrink-0 transition shadow-xs cursor-pointer"
+            >
+              Upgrade Paket
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Notifications */}
       {toastMessage && (
@@ -1328,12 +1381,30 @@ export default function StorefrontThemeCard({
             </p>
             <button
               type="button"
-              onClick={() => saveThemeConfig(selectedTheme, chatEnabled)}
+              onClick={() => {
+                if (isSubscriptionExpired) {
+                  setErrorMessage('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+                  if (onUpgrade) onUpgrade();
+                  else setShowUpgradeModal(true);
+                  return;
+                }
+                saveThemeConfig(selectedTheme, chatEnabled);
+              }}
               disabled={isSaving}
-              className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-600/20 active:scale-95 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+              className={`w-full sm:w-auto px-5 py-2.5 text-white text-xs font-black rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer shrink-0 ${
+                isSubscriptionExpired
+                  ? 'bg-slate-400 hover:bg-slate-500 shadow-slate-400/20'
+                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'
+              }`}
             >
-              {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              <span>Simpan Perubahan Tampilan</span>
+              {isSaving ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : isSubscriptionExpired ? (
+                <Lock className="w-4 h-4" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              <span>{isSubscriptionExpired ? 'Mode Baca-Saja (Trial Habis)' : 'Simpan Perubahan Tampilan'}</span>
             </button>
           </div>
         </div>

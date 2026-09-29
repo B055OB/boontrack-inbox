@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
+import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 
 export type VisualThemeType =
   | 'clean_minimal'
@@ -12,16 +14,34 @@ export type VisualThemeType =
   | 'slate_monochrome';
 
 export interface StoreThemeConfig {
-  template: 'default' | 'personal' | 'microsite';
+  theme_id?: string;
   visual_theme?: VisualThemeType;
+  primary_color?: string;
+  bg_color?: string;
+  card_color?: string;
+  template: 'default' | 'personal' | 'microsite';
   chat_enabled: boolean;
   chat_position: 'bottom-right' | 'bottom-left';
+  updated_at?: string;
 }
+
+export const THEME_PALETTES: Record<VisualThemeType, { bg: string; card: string; accent: string }> = {
+  clean_minimal: { bg: '#FFFFFF', card: '#F8FAFC', accent: '#2563EB' },
+  aurora_gradient: { bg: '#FAF5FF', card: '#FFFFFF', accent: '#9333EA' },
+  midnight_luxe: { bg: '#0F172A', card: '#1E293B', accent: '#38BDF8' },
+  warm_terra: { bg: '#FFFBEB', card: '#FFFFFF', accent: '#D97706' },
+  bold_performance: { bg: '#F0FDF4', card: '#FFFFFF', accent: '#059669' },
+  slate_monochrome: { bg: '#F8FAFC', card: '#FFFFFF', accent: '#334155' },
+};
 
 function resolveDefaultTheme(): StoreThemeConfig {
   return {
-    template: 'default',
+    theme_id: 'clean_minimal',
     visual_theme: 'clean_minimal',
+    primary_color: '#2563EB',
+    bg_color: '#FFFFFF',
+    card_color: '#F8FAFC',
+    template: 'default',
     chat_enabled: true,
     chat_position: 'bottom-right',
   };
@@ -51,14 +71,23 @@ export async function GET(
 
     const metadata = tenantRow.metadata || {};
     const defaultTheme = resolveDefaultTheme();
+    const existingTheme = metadata.theme || {};
+    const resolvedVisual = (existingTheme.theme_id || existingTheme.visual_theme || metadata.visual_theme || defaultTheme.visual_theme) as VisualThemeType;
+    const palette = THEME_PALETTES[resolvedVisual] || THEME_PALETTES.clean_minimal;
+
     const theme: StoreThemeConfig = {
-      template: metadata.theme?.template || defaultTheme.template,
-      visual_theme: metadata.theme?.visual_theme || metadata.visual_theme || defaultTheme.visual_theme,
+      theme_id: resolvedVisual,
+      visual_theme: resolvedVisual,
+      primary_color: existingTheme.primary_color || palette.accent,
+      bg_color: existingTheme.bg_color || palette.bg,
+      card_color: existingTheme.card_color || palette.card,
+      template: existingTheme.template || defaultTheme.template,
       chat_enabled:
-        metadata.theme?.chat_enabled !== undefined
-          ? Boolean(metadata.theme.chat_enabled)
+        existingTheme.chat_enabled !== undefined
+          ? Boolean(existingTheme.chat_enabled)
           : defaultTheme.chat_enabled,
-      chat_position: metadata.theme?.chat_position || defaultTheme.chat_position,
+      chat_position: existingTheme.chat_position || defaultTheme.chat_position,
+      updated_at: existingTheme.updated_at,
     };
 
     const tierStr = (tenantRow.tier || metadata.plan_tier || '').toUpperCase();
@@ -95,9 +124,15 @@ export async function PUT(
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
-    const body = await req.json();
 
-    const { template, visual_theme, chat_enabled, chat_position, featured_product_ids } = body;
+    // 1. Enforce Subscription Mutation Guard (Read-only mode for expired trial)
+    const perm = await checkTenantMutationPermission(slug);
+    if (!perm.allowed && perm.response) {
+      return perm.response;
+    }
+
+    const body = await req.json();
+    const { template, visual_theme, theme_id, chat_enabled, chat_position, featured_product_ids } = body;
 
     const supabase = getSupabase();
     const { data: tenantRow, error: fetchErr } = await supabase
@@ -120,7 +155,7 @@ export async function PUT(
     const newTemplate =
       template && validTemplates.includes(template)
         ? template
-        : existingTheme.template;
+        : existingTheme.template || 'default';
 
     const validVisualThemes: VisualThemeType[] = [
       'clean_minimal',
@@ -130,9 +165,11 @@ export async function PUT(
       'bold_performance',
       'slate_monochrome',
     ];
+
+    const candidateTheme = visual_theme || theme_id;
     const newVisualTheme =
-      visual_theme && validVisualThemes.includes(visual_theme)
-        ? visual_theme
+      candidateTheme && validVisualThemes.includes(candidateTheme)
+        ? candidateTheme
         : existingTheme.visual_theme || existingMetadata.visual_theme || 'clean_minimal';
 
     const newChatEnabled =
@@ -143,18 +180,27 @@ export async function PUT(
         ? chat_position
         : existingTheme.chat_position || 'bottom-right';
 
-    const updatedTheme: StoreThemeConfig = {
+    const palette = THEME_PALETTES[newVisualTheme as VisualThemeType] || THEME_PALETTES.clean_minimal;
+    const nowIso = new Date().toISOString();
+
+    // Single Source of Truth Standard: tenants.metadata.theme
+    const standardizedTheme: StoreThemeConfig = {
+      theme_id: newVisualTheme,
+      visual_theme: newVisualTheme as VisualThemeType,
+      primary_color: body.primary_color || palette.accent,
+      bg_color: body.bg_color || palette.bg,
+      card_color: body.card_color || palette.card,
       template: newTemplate,
-      visual_theme: newVisualTheme,
       chat_enabled: newChatEnabled,
       chat_position: newChatPosition,
+      updated_at: nowIso,
     };
 
     const updatedMetadata: Record<string, any> = {
       ...existingMetadata,
       template: newTemplate,
       visual_theme: newVisualTheme,
-      theme: updatedTheme,
+      theme: standardizedTheme,
     };
 
     if (Array.isArray(body.buttons)) {
@@ -185,10 +231,19 @@ export async function PUT(
       );
     }
 
+    // Next.js Cache Revalidation: instant storefront update for visitors & incognito
+    try {
+      revalidatePath(`/${slug}`);
+      revalidatePath(`/${slug}`, 'page');
+      revalidatePath('/[tenant]', 'page');
+    } catch (revalErr) {
+      console.debug('[Theme Route] Cache revalidation note:', revalErr);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Template tampilan toko berhasil disimpan.',
-      theme: updatedTheme,
+      theme: standardizedTheme,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Gagal memperbarui tema toko';

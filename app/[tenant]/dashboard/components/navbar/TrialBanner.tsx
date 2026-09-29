@@ -8,6 +8,7 @@ interface TrialBannerProps {
   tier?: string;
   trialEndsAt?: string | null;
   isGrant?: boolean;
+  isExpired?: boolean;
   onUpgrade: (targetTier: 'ads_performance' | 'team_scale' | 'solo' | 'checkout_lite') => void;
 }
 
@@ -16,6 +17,7 @@ export default function TrialBanner({
   tier,
   trialEndsAt,
   isGrant = false,
+  isExpired: isExpiredProp,
   onUpgrade,
 }: TrialBannerProps) {
   // Never show trial banner for granted subscriptions
@@ -68,7 +70,7 @@ export default function TrialBanner({
   }
 
   const safeDays = calculatedDays !== null ? calculatedDays : 0;
-  const isExpired = safeDays === 0 && !showHours;
+  const isExpired = isExpiredProp !== undefined ? isExpiredProp : (safeDays === 0 && !showHours);
 
   // Teks sisa waktu: hari jika >= 1 hari, jam jika < 24 jam
   const timeLeftLabel = showHours
@@ -115,7 +117,7 @@ export default function TrialBanner({
           <p className="font-medium text-xs truncate">
             {isExpired ? (
               <span className="font-bold text-rose-700">
-                Masa Trial {planLabel} telah berakhir! Akses storefront &amp; fitur automasi dibatasi.
+                Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.
               </span>
             ) : (
               <span>

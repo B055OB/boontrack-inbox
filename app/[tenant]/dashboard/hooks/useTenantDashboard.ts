@@ -191,7 +191,16 @@ export function useTenantDashboard() {
     String(tenantFeatureFlags.tier || '').toUpperCase() !== 'CHECKOUT_LITE' &&
     !isCheckoutLite;
 
-  const isTrialActive = !isGrant && Boolean(
+  const isSubscriptionExpired = Boolean(
+    !isGrant && (
+      subscriptionStatus === 'expired' ||
+      subscriptionStatus === 'suspended' ||
+      (trialEndsAt && new Date(trialEndsAt).getTime() <= Date.now()) ||
+      (trialDaysLeft !== null && trialDaysLeft <= 0 && Boolean(trialEndsAt || selectedPlan.toLowerCase().includes('trial') || String(tenantFeatureFlags.tier || '').toLowerCase().includes('trial')))
+    )
+  );
+
+  const isTrialActive = !isGrant && !isSubscriptionExpired && Boolean(
     trialEndsAt ||
     (trialDaysLeft !== null && trialDaysLeft > 0) ||
     String(tenantFeatureFlags.tier || '').toLowerCase().includes('trial') ||
@@ -1360,6 +1369,12 @@ export function useTenantDashboard() {
     e.preventDefault();
     if (!productForm.name || !tenantSlug) return;
 
+    if (isSubscriptionExpired) {
+      setSaveFeedback('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+      setIsUpsellModalOpen(true);
+      return;
+    }
+
     const isTargetActive = productForm.is_active !== false;
     if (isCheckoutLite && isTargetActive) {
       const isEditing = editingProductId !== null && editingProductId !== undefined;
@@ -1503,6 +1518,11 @@ export function useTenantDashboard() {
   };
 
   const handleDeleteProduct = async (id: number | string) => {
+    if (isSubscriptionExpired) {
+      setSaveFeedback('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+      setIsUpsellModalOpen(true);
+      return;
+    }
     if (!tenantSlug) return;
     if (confirm('Hapus produk ini dari etalase toko?')) {
       const updated = products.filter(p => String(p.id) !== String(id));
@@ -2321,6 +2341,7 @@ export function useTenantDashboard() {
     trialDaysLeft,
     trialEndsAt,
     subscriptionStatus,
+    isSubscriptionExpired,
     isGrant,
     grantValidUntil,
     grantDaysLeft,

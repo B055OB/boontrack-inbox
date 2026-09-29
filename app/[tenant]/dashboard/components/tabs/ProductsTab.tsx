@@ -17,11 +17,11 @@ import {
   Filter,
   Copy,
   Check,
+  Lock,
 } from 'lucide-react';
 import { ProductItem, slugify, resolveFulfillmentRequirements } from '@/lib/product-catalog';
 import { sanitizeImageUrl } from '@/lib/image-utils';
-
-const SHOP_BASE_URL = process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
+import { getProductPageUrl, getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 
 function ProductCardImage({ src, alt }: { src?: string; alt: string }) {
   const [error, setError] = useState(false);
@@ -60,6 +60,8 @@ export interface ProductsTabProps {
   storeCategory?: string;
   isCheckoutLite?: boolean;
   activeProductsCount?: number;
+  isSubscriptionExpired?: boolean;
+  onUpgrade?: () => void;
 }
 
 export default function ProductsTab({
@@ -75,6 +77,8 @@ export default function ProductsTab({
   storeCategory,
   isCheckoutLite = false,
   activeProductsCount,
+  isSubscriptionExpired = false,
+  onUpgrade,
 }: ProductsTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
@@ -86,6 +90,11 @@ export default function ProductsTab({
       : products.filter((p) => p.is_active !== false).length;
 
   const handleAddProductClick = () => {
+    if (isSubscriptionExpired) {
+      alert('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+      if (onUpgrade) onUpgrade();
+      return;
+    }
     if (isCheckoutLite && currentActiveCount >= 3) {
       alert(
         'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.'
@@ -96,6 +105,11 @@ export default function ProductsTab({
   };
 
   const handleBulkImportClick = () => {
+    if (isSubscriptionExpired) {
+      alert('Masa trial telah habis. Dashboard dalam mode baca-saja. Silakan lakukan upgrade paket untuk memperbarui toko.');
+      if (onUpgrade) onUpgrade();
+      return;
+    }
     if (isCheckoutLite && currentActiveCount >= 3) {
       alert(
         'Batas kuota tercapai: Tier Checkout Lite hanya mendukung maksimal 3 produk aktif. Upgrade untuk menambah produk.'
@@ -163,6 +177,24 @@ export default function ProductsTab({
 
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
+      {isSubscriptionExpired && (
+        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-4 text-amber-700 animate-fadeIn">
+          <div className="flex items-center gap-2.5 text-xs font-bold">
+            <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+            <span>Masa trial telah habis. Dashboard dalam mode baca-saja. Penambahan dan pengeditan produk dinonaktifkan.</span>
+          </div>
+          {onUpgrade && (
+            <button
+              type="button"
+              onClick={onUpgrade}
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shrink-0 transition shadow-xs cursor-pointer"
+            >
+              Upgrade Paket
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
@@ -476,7 +508,7 @@ export default function ProductsTab({
                         type="button"
                         onClick={() => {
                           const productSlug = p.slug || slugify(p.name);
-                          const url = `https://shop.boontrack.com/${tenantSlug}/p/${productSlug}`;
+                          const url = getProductPageUrl(tenantSlug, productSlug);
                           navigator.clipboard.writeText(url);
                           setCopiedSlugId(p.id);
                           setTimeout(() => setCopiedSlugId(null), 2500);
@@ -498,11 +530,11 @@ export default function ProductsTab({
                       </button>
 
                       <a
-                        href={`${SHOP_BASE_URL}/${tenantSlug}/p/${p.slug || slugify(p.name)}`}
+                        href={getProductPageUrl(tenantSlug, p.slug || slugify(p.name))}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 shadow-xs cursor-pointer"
-                        title="Buka Halaman Penawaran Publik di shop.boontrack.com"
+                        title="Buka Halaman Penawaran Publik"
                       >
                         <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
                         <span>Buka Halaman</span>

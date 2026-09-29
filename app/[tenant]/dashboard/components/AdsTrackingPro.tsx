@@ -474,7 +474,7 @@ export default function AdsTrackingPro({
     setTestLog((prev) => [newLog, ...prev.slice(0, 4)]);
   };
 
-  const embedScriptCode = `<script src="${process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com'}/ads-tracker.js" data-tenant="${tenantSlug}" async></script>`;
+  const embedScriptCode = `<script src="${process.env.NEXT_PUBLIC_SHOP_URL || 'https://boontrack.com'}/ads-tracker.js" data-tenant="${tenantSlug}" async></script>`;
 
   const copyEmbedScript = () => {
     navigator.clipboard.writeText(embedScriptCode);

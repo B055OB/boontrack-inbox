@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { ProductItem } from '@/lib/product-catalog';
+import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 
 function InstagramIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -352,7 +353,7 @@ export default function MicrositeTab({
 
         <div className="flex items-center gap-2">
           <a
-            href={`${process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com'}/${tenantSlug}`}
+            href={getStorefrontUrl(tenantSlug)}
             target="_blank"
             rel="noopener noreferrer"
             className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0"

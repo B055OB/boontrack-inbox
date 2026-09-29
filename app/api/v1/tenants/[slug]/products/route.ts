@@ -1,3 +1,4 @@
+import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
@@ -39,6 +40,11 @@ export async function POST(
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    const perm = await checkTenantMutationPermission(slug);
+    if (!perm.allowed && perm.response) {
+      return perm.response;
+    }
     const body = await req.json();
 
     const {
@@ -264,6 +270,11 @@ export async function DELETE(
   try {
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
+
+    const perm = await checkTenantMutationPermission(slug);
+    if (!perm.allowed && perm.response) {
+      return perm.response;
+    }
     const url = new URL(req.url);
     const id = url.searchParams.get('id');
 

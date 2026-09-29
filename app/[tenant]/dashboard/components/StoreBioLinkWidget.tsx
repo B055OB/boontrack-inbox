@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Share2, Copy, Check, ExternalLink, Globe } from 'lucide-react';
+import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
 
 interface StoreBioLinkWidgetProps {
   tenantSlug: string;
@@ -12,9 +13,8 @@ export default function StoreBioLinkWidget({ tenantSlug }: StoreBioLinkWidgetPro
 
   if (!tenantSlug) return null;
 
-  const SHOP_BASE_URL = process.env.NEXT_PUBLIC_SHOP_URL || 'https://shop.boontrack.com';
-  const bioShortlink = `${SHOP_BASE_URL}/${tenantSlug}`;
-  const storefrontUrl = `${SHOP_BASE_URL}/${tenantSlug}`;
+  const bioShortlink = getStorefrontUrl(tenantSlug);
+  const storefrontUrl = bioShortlink;
 
   const handleCopy = async () => {
     try {

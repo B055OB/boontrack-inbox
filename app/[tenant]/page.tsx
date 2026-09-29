@@ -621,8 +621,11 @@ export default function TenantStorefrontPage() {
       if (e?.detail) {
         setTenantMetadata((prev: any) => ({
           ...(prev || {}),
+          visual_theme: e.detail.visual_theme ?? prev?.visual_theme,
           theme: {
             ...(prev?.theme || {}),
+            theme_id: e.detail.visual_theme ?? e.detail.theme_id ?? prev?.theme?.theme_id,
+            visual_theme: e.detail.visual_theme ?? prev?.theme?.visual_theme,
             template: e.detail.template ?? prev?.theme?.template,
             chat_enabled: e.detail.chat_enabled ?? prev?.theme?.chat_enabled,
           },
@@ -632,8 +635,10 @@ export default function TenantStorefrontPage() {
     };
     if (typeof window !== "undefined") {
       window.addEventListener("storefront-template-changed", handleTemplateChange);
+      window.addEventListener("storefront-theme-changed", handleTemplateChange);
       return () => {
         window.removeEventListener("storefront-template-changed", handleTemplateChange);
+        window.removeEventListener("storefront-theme-changed", handleTemplateChange);
       };
     }
   }, []);
@@ -875,6 +880,100 @@ export default function TenantStorefrontPage() {
   };
 
   const currentTheme = tenantMetadata?.theme || {};
+  const currentVisualTheme = (
+    currentTheme.theme_id ||
+    currentTheme.visual_theme ||
+    tenantMetadata?.visual_theme ||
+    tenant?.metadata?.theme?.theme_id ||
+    tenant?.metadata?.theme?.visual_theme ||
+    tenant?.metadata?.visual_theme ||
+    'clean_minimal'
+  );
+
+  const defaultThemeConfig = React.useMemo(() => {
+    switch (currentVisualTheme) {
+      case 'midnight_luxe':
+        return {
+          wrapper: 'bg-slate-950 text-slate-100 selection:bg-sky-900 selection:text-sky-100',
+          header: 'bg-slate-900/90 border-slate-800 backdrop-blur-md',
+          headerTitle: 'text-slate-100',
+          headerCta: 'bg-sky-500 hover:bg-sky-600 text-white shadow-sky-500/20',
+          activeCategory: 'bg-sky-500 text-white shadow-xs',
+          inactiveCategory: 'text-slate-400 hover:bg-slate-800',
+          categoryBar: 'bg-slate-900 border-slate-800',
+          card: 'bg-slate-900 border-slate-800 text-slate-100',
+          cardPrice: 'text-sky-400',
+          ctaButton: 'bg-sky-500 hover:bg-sky-600 text-white',
+        };
+      case 'warm_terra':
+        return {
+          wrapper: 'bg-[#FFFBEB] text-stone-900 selection:bg-amber-100 selection:text-amber-900',
+          header: 'bg-white/90 border-amber-200/80 backdrop-blur-md',
+          headerTitle: 'text-stone-900',
+          headerCta: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20',
+          activeCategory: 'bg-amber-600 text-white shadow-xs',
+          inactiveCategory: 'text-stone-600 hover:bg-amber-100/60',
+          categoryBar: 'bg-white border-amber-200/70',
+          card: 'bg-white border-amber-200/60 text-stone-900',
+          cardPrice: 'text-amber-700',
+          ctaButton: 'bg-amber-600 hover:bg-amber-700 text-white',
+        };
+      case 'bold_performance':
+        return {
+          wrapper: 'bg-[#F0FDF4] text-slate-900 selection:bg-emerald-100 selection:text-emerald-900',
+          header: 'bg-white border-black border-b-2',
+          headerTitle: 'text-black font-black uppercase',
+          headerCta: 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]',
+          activeCategory: 'bg-emerald-500 text-slate-950 font-black border border-black shadow-xs',
+          inactiveCategory: 'text-slate-700 hover:bg-emerald-100',
+          categoryBar: 'bg-white border-2 border-black',
+          card: 'bg-white border-2 border-black text-slate-900 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]',
+          cardPrice: 'text-emerald-700 font-black',
+          ctaButton: 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black border border-black',
+        };
+      case 'slate_monochrome':
+        return {
+          wrapper: 'bg-slate-100 text-slate-900 selection:bg-slate-300 selection:text-slate-900',
+          header: 'bg-white/90 border-slate-300 backdrop-blur-md',
+          headerTitle: 'text-slate-900',
+          headerCta: 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20',
+          activeCategory: 'bg-slate-900 text-white shadow-xs',
+          inactiveCategory: 'text-slate-600 hover:bg-slate-200',
+          categoryBar: 'bg-white border-slate-300',
+          card: 'bg-white border-slate-300 text-slate-900',
+          cardPrice: 'text-slate-900 font-bold',
+          ctaButton: 'bg-slate-900 hover:bg-slate-800 text-white',
+        };
+      case 'aurora_gradient':
+        return {
+          wrapper: 'bg-[#FAF5FF] text-slate-900 selection:bg-purple-100 selection:text-purple-900',
+          header: 'bg-white/90 border-purple-100 backdrop-blur-md',
+          headerTitle: 'text-slate-900',
+          headerCta: 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20',
+          activeCategory: 'bg-purple-600 text-white shadow-xs',
+          inactiveCategory: 'text-slate-600 hover:bg-purple-50',
+          categoryBar: 'bg-white border-purple-100',
+          card: 'bg-white border-purple-100 text-slate-900',
+          cardPrice: 'text-purple-600 font-bold',
+          ctaButton: 'bg-purple-600 hover:bg-purple-700 text-white',
+        };
+      case 'clean_minimal':
+      default:
+        return {
+          wrapper: 'bg-[#F8FAFC] text-slate-900 selection:bg-blue-100 selection:text-blue-900',
+          header: 'bg-white border-slate-200 shadow-xs',
+          headerTitle: 'text-slate-900',
+          headerCta: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20',
+          activeCategory: 'bg-blue-600 text-white shadow-xs',
+          inactiveCategory: 'text-slate-600 hover:bg-slate-100',
+          categoryBar: 'bg-white border-slate-200',
+          card: 'bg-white border-slate-200 text-slate-900',
+          cardPrice: 'text-blue-600 font-bold',
+          ctaButton: 'bg-blue-600 hover:bg-blue-700 text-white',
+        };
+    }
+  }, [currentVisualTheme]);
+
   const rawTemplate =
     tenantMetadata?.selected_template ||
     tenantMetadata?.storefront_template ||
@@ -1096,6 +1195,7 @@ export default function TenantStorefrontPage() {
           displayName={displayName}
           tenant={tenant}
           tenantMetadata={tenantMetadata}
+          visualTheme={currentVisualTheme}
           storeLogoUrl={sanitizedActiveLogo}
           storeProducts={storeProducts}
           dynamicQuickReplies={dynamicQuickReplies}
@@ -1129,8 +1229,8 @@ export default function TenantStorefrontPage() {
 
   // ── TEMPLATE 1: DEFAULT (Katalog Commerce) ──
   return (
-    <div className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 flex flex-col antialiased">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <div className={`min-h-[100dvh] ${defaultThemeConfig.wrapper} font-sans flex flex-col antialiased transition-colors duration-200`}>
+      <header className={`${defaultThemeConfig.header} border-b sticky top-0 z-30 shadow-xs transition-colors duration-200`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {displayAvatar && displayAvatar !== "/icon-shop.png" && displayAvatar !== "/logo.png" ? (
@@ -1148,7 +1248,7 @@ export default function TenantStorefrontPage() {
             )}
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-black text-slate-900 capitalize tracking-tight text-base sm:text-lg">
+                <span className={`font-black ${defaultThemeConfig.headerTitle} capitalize tracking-tight text-base sm:text-lg`}>
                   {storeName || displayName}
                 </span>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1168,7 +1268,7 @@ export default function TenantStorefrontPage() {
 
             <button
               onClick={() => setShowCartModal(true)}
-              className="relative bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-blue-500/20 transition-all active:scale-95 cursor-pointer"
+              className={`relative ${defaultThemeConfig.headerCta} px-3.5 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer`}
             >
               <ShoppingBag className="w-4 h-4" />
               <span className="hidden sm:inline">{headerCtaText}</span>
@@ -1186,7 +1286,7 @@ export default function TenantStorefrontPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 w-full items-start">
         {/* KOLOM KIRI: KATALOG LAYANAN DARI SUPABASE (Posisi Baru di Sisi Kiri) */}
         <section className={`${isChatEnabled ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-5 order-1`}>
-          <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
+          <div className={`${defaultThemeConfig.categoryBar} p-1.5 rounded-2xl border shadow-xs flex items-center gap-1.5 overflow-x-auto text-xs font-bold transition-colors`}>
             {/* Tombol Scan Barcode / QR */}
             <button
               type="button"
@@ -1202,7 +1302,7 @@ export default function TenantStorefrontPage() {
             <button
               onClick={() => setActiveCategory("all")}
               className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-                activeCategory === "all" ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
+                activeCategory === "all" ? defaultThemeConfig.activeCategory : defaultThemeConfig.inactiveCategory
               }`}
             >
               Semua ({(storeProducts || []).length})
@@ -1215,7 +1315,7 @@ export default function TenantStorefrontPage() {
                   key={catClean}
                   onClick={() => setActiveCategory(catClean.toLowerCase())}
                   className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-                    String(activeCategory || "").toLowerCase() === catClean.toLowerCase() ? "bg-blue-600 text-white shadow-xs" : "text-slate-600 hover:bg-slate-100"
+                    String(activeCategory || "").toLowerCase() === catClean.toLowerCase() ? defaultThemeConfig.activeCategory : defaultThemeConfig.inactiveCategory
                   }`}
                 >
                   {catClean}
