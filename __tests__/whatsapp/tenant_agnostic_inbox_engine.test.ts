@@ -98,7 +98,8 @@ jest.mock('@/lib/supabaseClient', () => {
             for (const c of mockConnectionsDb) {
               if (
                 orConditions.includes(`instance_name.eq.${c.instance_name}`) ||
-                orConditions.includes(`phone_number.eq.${c.phone_number}`)
+                orConditions.includes(`phone_number.eq.${c.phone_number}`) ||
+                orConditions.includes(`phone_number_id.eq.${c.phone_number_id}`)
               ) {
                 return { data: c, error: null };
               }

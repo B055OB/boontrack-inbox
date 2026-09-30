@@ -179,7 +179,17 @@ export async function processEvolutionWebhookEvent(
   let tenantSlug: string | null = null;
   let resolvedApiKey = EVOLUTION_API_KEY;
 
-  const resolvedTenant = await resolveTenantFromConnection({ instanceName });
+  const botPhoneNumber =
+    payload.owner ||
+    payload.data?.owner ||
+    payload.sender ||
+    payload.data?.sender ||
+    undefined;
+
+  const resolvedTenant = await resolveTenantFromConnection({
+    instanceName,
+    botPhoneNumber,
+  });
   if (resolvedTenant) {
     tenantId = resolvedTenant.tenantId;
     tenantSlug = resolvedTenant.tenantSlug;

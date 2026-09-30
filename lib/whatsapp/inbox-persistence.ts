@@ -59,35 +59,46 @@ export async function resolveTenantFromConnection(identifier: {
   instanceName?: string;
   phoneNumberId?: string;
   phoneNumber?: string;
+  botPhoneNumber?: string;
 }): Promise<ResolvedTenant | null> {
   const supabase = getSupabaseAdmin() || getSupabase();
   if (!supabase) return null;
 
-  const { instanceName, phoneNumberId, phoneNumber } = identifier;
+  const { instanceName, phoneNumberId, phoneNumber, botPhoneNumber } = identifier;
+  const botPhone = botPhoneNumber || phoneNumber;
+  const cleanBotPhone = botPhone ? cleanCustomerPhone(botPhone) : '';
 
   try {
     let query: any = supabase.from('whatsapp_connections').select('tenant_id, tenant_slug, credential_ref, status');
 
+    const orParts: string[] = [];
+    if (instanceName) {
+      orParts.push(`instance_name.eq.${instanceName}`);
+      orParts.push(`tenant_slug.eq.${instanceName}`);
+    }
+    if (cleanBotPhone) {
+      orParts.push(`phone_number.eq.${cleanBotPhone}`);
+      if (botPhone && botPhone !== cleanBotPhone) {
+        orParts.push(`phone_number.eq.${botPhone}`);
+      }
+    }
     if (phoneNumberId) {
-      query = query.eq('phone_number_id', phoneNumberId);
-    } else if (instanceName) {
-      if (typeof query.or === 'function') {
-        query = query.or(`instance_name.eq.${instanceName},tenant_slug.eq.${instanceName},phone_number.eq.${instanceName}`);
-      } else {
-        query = query.eq('instance_name', instanceName);
-      }
-    } else if (phoneNumber) {
-      const clean = cleanCustomerPhone(phoneNumber);
-      if (typeof query.or === 'function') {
-        query = query.or(`phone_number.eq.${phoneNumber},phone_number.eq.${clean}`);
-      } else {
-        query = query.eq('phone_number', clean);
-      }
-    } else {
-      return null;
+      orParts.push(`phone_number_id.eq.${phoneNumberId}`);
     }
 
-    const { data: conn } = await query.maybeSingle();
+    if (orParts.length === 0) return null;
+
+    if (typeof query.or === 'function') {
+      query = query.or(orParts.join(','));
+    } else if (instanceName) {
+      query = query.eq('instance_name', instanceName);
+    } else if (phoneNumberId) {
+      query = query.eq('phone_number_id', phoneNumberId);
+    } else if (cleanBotPhone) {
+      query = query.eq('phone_number', cleanBotPhone);
+    }
+
+    const { data: conn } = await (query.maybeSingle ? query.maybeSingle() : Promise.resolve({ data: null }));
 
     if (conn?.tenant_id) {
       // Lookup canonical tenant UUID and slug
