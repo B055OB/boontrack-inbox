@@ -52,6 +52,7 @@ import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
 import OrdersTab from './components/tabs/OrdersTab';
 import {
   ModularVerticalTabDispatcher,
+  FnbInstantCourier,
   resolveDomainVertical,
 } from './components/modules';
 import { useTenantDashboard } from './hooks/useTenantDashboard';
@@ -1055,10 +1056,19 @@ export default function TenantDashboardPage() {
       {/* TAB: LOGISTIK & EKSPEDISI MULTI-KURIR (HANYA PRODUK FISIK) */}
       {(activeTab === 'shipping' || activeTab === 'biteship') && (
         resolveDomainVertical(storeCategory) === 'fnb-culinary' ? (
-          <ModularVerticalTabDispatcher
-            verticalKey="fnb-culinary"
-            tenantSlug={tenantSlug}
-          />
+          <>
+            {/* FnB: Konfigurasi Pinpoint Dapur & Kurir Instan (GoSend/Grab) */}
+            <FnbInstantCourier tenantSlug={tenantSlug} />
+            {/* FnB: Multi-Kurir Matrix (Lincah Reguler/Kargo + Toggle Ekspedisi) */}
+            <BiteshipCourierConfig
+              tenantSlug={tenantSlug}
+              displayName={displayName}
+              onSaved={(msg) => {
+                setSaveFeedback(msg);
+                setTimeout(() => setSaveFeedback(null), 3000);
+              }}
+            />
+          </>
         ) : (
           <BiteshipCourierConfig
             tenantSlug={tenantSlug}
