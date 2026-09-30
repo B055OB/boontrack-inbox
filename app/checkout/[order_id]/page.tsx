@@ -18,7 +18,9 @@ import {
   Sparkles,
   Key,
   FileText,
-  Download
+  Download,
+  Calendar,
+  Video
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
@@ -448,7 +450,7 @@ export default function CheckoutPage({ params }: Props) {
   const [hasTrackedPurchase, setHasTrackedPurchase] = useState(false);
   useEffect(() => {
     if (order && !hasTrackedPurchase) {
-      const gross = Number(order.gross_amount || order.total_amount || order.amount || 0);
+      const gross = Number(order.base_price || order.gross_amount || order.total_amount || order.amount || 149000);
       const title = order.product_title || order.product_name || 'Checkout Order';
 
       // Baca pixel ID: Gunakan meta_pixel_id_override (jika diisi di produk) atau fallback ke default tenant Meta Pixel
@@ -457,6 +459,9 @@ export default function CheckoutPage({ params }: Props) {
         order.metadata?.meta_pixel_id_override ||
         tenant?.metadata?.pixel_config?.meta_pixel_id ||
         tenant?.metadata?.meta_pixel_id ||
+        tenant?.metadata?.pixel_id ||
+        tenant?.metadata?.tracking?.meta_pixel_id ||
+        tenant?.metadata?.tracking?.facebook_pixel_id ||
         null;
 
       const resolvedTTPixelId =
@@ -594,7 +599,19 @@ export default function CheckoutPage({ params }: Props) {
     order?.metadata?.fulfillment_metadata ||
     null;
 
+  const appointmentUrl =
+    order?.fulfillment_metadata?.access_url ||
+    order?.fulfillment_metadata?.booking_url ||
+    order?.fulfillment_metadata?.calendar_url ||
+    order?.access_url ||
+    order?.download_url ||
+    tenant?.metadata?.appointment_url ||
+    tenant?.metadata?.booking_url ||
+    tenant?.metadata?.calendar_url ||
+    (order?.product_title?.toLowerCase().includes('konsul') ? 'https://cal.com/solusiads/konsultasi-1on1' : null);
+
   const accessUrlCandidate =
+    appointmentUrl ||
     resolvedFulfillment?.access_url ||
     order?.download_url ||
     order?.link_digital ||
@@ -609,7 +626,7 @@ export default function CheckoutPage({ params }: Props) {
     resolvedFulfillment?.delivery_type ||
     order?.delivery_type ||
     order?.access_type ||
-    (accessUrlCandidate ? 'DOWNLOAD_LINK' : '')
+    (appointmentUrl ? 'CALENDAR_LINK' : accessUrlCandidate ? 'DOWNLOAD_LINK' : '')
   ).toUpperCase();
 
   const fileFormat =
@@ -623,9 +640,11 @@ export default function CheckoutPage({ params }: Props) {
     (deliveryType !== 'DOWNLOAD_LINK' && typeof accessUrlCandidate === 'string' && accessUrlCandidate.includes('t.me'));
 
   const ctaButtonText =
-    resolvedFulfillment?.button_text ||
-    order?.button_text ||
-    (fileFormat ? `Download ${fileFormat}` : 'Akses Materi Sekarang');
+    appointmentUrl
+      ? 'Pilih Jadwal Konsultasi (Google Meet)'
+      : resolvedFulfillment?.button_text ||
+        order?.button_text ||
+        (fileFormat ? `Download ${fileFormat}` : 'Akses Materi Sekarang');
 
   // Auto-redirect ke link akses pasca status bayar PAID (countdown 3 detik)
   useEffect(() => {
@@ -687,6 +706,38 @@ export default function CheckoutPage({ params }: Props) {
           <div className="flex items-center justify-center gap-2 bg-slate-950/80 border border-slate-800 rounded-2xl py-2.5 text-amber-400 font-mono text-sm font-semibold">
             <Clock className="w-4 h-4" />
             <span>Sisa Waktu Pembayaran: {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</span>
+          </div>
+        )}
+
+        {/* Tombol / CTA Jelas: Pilih Jadwal Konsultasi (Google Meet) */}
+        {appointmentUrl && (
+          <div className="bg-gradient-to-r from-blue-950/90 via-slate-900 to-indigo-950/90 border-2 border-blue-500/70 rounded-3xl p-5 space-y-3.5 shadow-xl shadow-blue-950/40 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/30">
+                <Calendar className="w-5 h-5 text-white" />
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-black text-blue-400 bg-blue-950/90 px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-blue-700/60 inline-block">
+                  Sesi Konsultasi &amp; Audit 1-on-1
+                </span>
+                <h3 className="text-sm font-bold text-white">
+                  Pilih Jadwal Konsultasi Google Meet
+                </h3>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Sesi audit funnel &amp; konsultasi 1-on-1 dilakukan via Google Meet. Silakan pilih tanggal dan jam yang sesuai dengan agenda Anda melalui tombol di bawah ini:
+            </p>
+            <a
+              href={appointmentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-teal-500 hover:from-blue-500 hover:via-indigo-500 hover:to-teal-400 text-white font-black text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-blue-600/30 hover:shadow-blue-600/50 transform hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer border border-blue-400/40 group"
+            >
+              <Video className="w-4 h-4 text-blue-200 animate-pulse" />
+              <span>Pilih Jadwal Konsultasi (Google Meet)</span>
+              <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </a>
           </div>
         )}
 

@@ -374,8 +374,8 @@ function SingleProductContent() {
               bonus_items: ob.bonus_items || builder.bonus_items || cfg.bonus_items || [],
               discount_coupon: cfg.discount_coupon || cfg.voucher?.code || '',
               voucher: cfg.voucher || null,
-              enable_qris: pm.enable_qris ?? cfg.enable_qris ?? true,
-              enable_manual_transfer: Boolean(pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? true),
+              enable_qris: pm.enable_qris ?? cfg.enable_qris ?? (tenantRow?.metadata?.payment_config?.enable_qris !== false && tenantRow?.metadata?.payment_settings?.is_qris_active !== false && tenantRow?.metadata?.payment_settings?.enable_qris !== false && tenantRow?.is_qris_active !== false),
+              enable_manual_transfer: Boolean(pm.enable_manual_transfer ?? cfg.enable_manual_transfer ?? (tenantRow?.metadata?.payment_config?.enable_manual_transfer || tenantRow?.metadata?.payment_settings?.enable_manual_transfer || hasTenantBankAccounts(tenantRow))),
               affiliate_commission_rate: 0, // Audit: komisi kemitraan dinonaktifkan
               whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || (tenantRow as any)?.whatsapp_number || (tenantRow as any)?.phone || tenantRow?.metadata?.whatsapp_number || tenantRow?.metadata?.phone || (tenantRow?.metadata as any)?.store_profile?.whatsapp || (tenantRow?.metadata as any)?.store_profile?.phone || (tenantRow?.metadata as any)?.contact_phone || (tenantRow?.metadata as any)?.contact_whatsapp || '',
               cta_label: hero.cta_label || cfg.cta_label || match.cta_label || undefined,
@@ -494,16 +494,29 @@ function SingleProductContent() {
     config.enable_qris
   );
 
-  // Default metode pembayaran: QRIS Instan aktif utama
-  const allowQris = (config.enable_qris ?? true) && (tenantData ? hasQris : true);
-  const allowManual = config.enable_manual_transfer ?? false;
+  // Default metode pembayaran: QRIS Instan aktif utama jika diizinkan tenant
+  const tenantQrisActive =
+    tenantData?.metadata?.payment_config?.enable_qris !== false &&
+    tenantData?.metadata?.payment_settings?.is_qris_active !== false &&
+    tenantData?.metadata?.payment_settings?.enable_qris !== false &&
+    tenantData?.is_qris_active !== false;
+
+  const tenantManualActive = Boolean(
+    config.enable_manual_transfer ||
+    tenantData?.metadata?.payment_config?.enable_manual_transfer ||
+    tenantData?.metadata?.payment_settings?.enable_manual_transfer ||
+    hasTenantBankAccounts(tenantData)
+  );
+
+  const allowQris = Boolean((config.enable_qris ?? true) && tenantQrisActive && (tenantData ? hasQris : true));
+  const allowManual = Boolean(tenantManualActive);
 
   const [paymentMethod, setPaymentMethod] = useState<'qris' | 'manual_transfer'>('qris');
 
   useEffect(() => {
     if (!allowQris && allowManual) {
       setPaymentMethod('manual_transfer');
-    } else {
+    } else if (allowQris) {
       setPaymentMethod('qris');
     }
   }, [allowQris, allowManual]);
