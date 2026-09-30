@@ -242,6 +242,8 @@ export interface ProductItem {
   sku?: string;
   is_unlimited?: boolean;
   weight_grams?: number;
+  requires_shipping?: boolean;
+  is_digital?: boolean;
   fulfillment_metadata?: FulfillmentMetadata;
   single_page_config?: SinglePageConfig;
   external_url?: string;

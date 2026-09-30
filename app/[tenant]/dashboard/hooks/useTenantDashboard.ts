@@ -21,10 +21,11 @@ import type { BusinessConfigurationProposal } from '@/types/boonpilot';
 import { mapProposalToAiForm } from '@/lib/boonpilotMapper';
 import { sanitizeImageUrl, uploadImageFile } from '@/lib/image-utils';
 import type { InteractiveMenu } from '@/lib/whatsappFormatter';
-import {
-  generateConversationsFromOrders,
-} from '../components/tabs/mockInboxConversations';
 import { getRemainingDays } from '@/lib/subscription-tiers';
+import {
+  calculateFinancialMetrics,
+  fetchTenantOrdersAgnostic,
+} from '@/lib/finance-engine';
 
 export type DashboardTab =
   | 'dashboard'
@@ -1175,54 +1176,116 @@ export function useTenantDashboard() {
     if (!tenantSlug || isAuthenticated !== true) return;
     const fetchTransactions = async () => {
       try {
-        const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}`).catch(() => null);
-        if (res && res.ok) {
-          const result = await res.json();
-          const ordersList = Array.isArray(result) ? result : (result.orders || result.data || []);
-          console.log('[DEBUG Dashboard] Fetched orders:', ordersList.length);
-          setOrders(ordersList);
-          setTransactions(ordersList);
-
-          // Cek percakapan riil dari tabel conversations di Supabase terlebih dahulu
+        let ordersList: any[] = [];
+        const supabase = getSupabase();
+        if (supabase) {
           try {
-            const supabase = getSupabase();
-            if (supabase) {
-              const { data: dbConversations } = await supabase
-                .from('conversations')
-                .select('*')
-                .or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantSlug}`)
-                .order('updated_at', { ascending: false });
+            const agnosticData = await fetchTenantOrdersAgnostic(supabase, tenantSlug);
+            if (Array.isArray(agnosticData.orders) && agnosticData.orders.length > 0) {
+              ordersList = agnosticData.orders;
+            }
+          } catch (agnosticErr) {
+            console.debug('[Dashboard] Agnostic orders fetch note:', agnosticErr);
+          }
+        }
 
-              if (Array.isArray(dbConversations) && dbConversations.length > 0) {
-                const mappedChats: ChatConversation[] = dbConversations.map((c: any) => ({
+        if (ordersList.length === 0) {
+          const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}`).catch(() => null);
+          if (res && res.ok) {
+            const result = await res.json();
+            ordersList = Array.isArray(result) ? result : (result.orders || result.data || []);
+          }
+        }
+
+        setOrders(ordersList);
+        setTransactions(ordersList);
+
+        // 4b. Fetch Real Conversations from Supabase (Universal & 100% Tenant-Agnostic, Zero Dummy Mock)
+        try {
+          if (supabase) {
+            const { data: dbConversations } = await supabase
+              .from('conversations')
+              .select('*')
+              .or(`tenant_slug.eq.${tenantSlug},tenant_id.eq.${tenantSlug}`)
+              .order('last_message_at', { ascending: false, nullsFirst: false })
+              .limit(100);
+
+            if (Array.isArray(dbConversations) && dbConversations.length > 0) {
+              const convIds = dbConversations.map((c: any) => c.id);
+              const { data: latestMsgs } = await supabase
+                .from('messages')
+                .select('conversation_id, text, message_body, sender, sender_type, created_at, payload, raw_payload')
+                .in('conversation_id', convIds)
+                .order('created_at', { ascending: false });
+
+              const lastMsgMap: Record<string, any> = {};
+              const leadMap: Record<string, any> = {};
+              for (const m of (latestMsgs || [])) {
+                if (!lastMsgMap[m.conversation_id]) {
+                  lastMsgMap[m.conversation_id] = m;
+                }
+                const p = m.payload || m.raw_payload;
+                if (p?.lead_qualification && !leadMap[m.conversation_id]) {
+                  leadMap[m.conversation_id] = p.lead_qualification;
+                }
+              }
+
+              const mappedChats: ChatConversation[] = dbConversations.map((c: any) => {
+                const lastMsg = lastMsgMap[c.id];
+                const lead = leadMap[c.id];
+                const msgTime = c.last_message_at || c.updated_at || c.created_at;
+                const updatedAt = msgTime ? new Date(msgTime) : new Date();
+                const diffMs = Date.now() - updatedAt.getTime();
+                const diffMin = Math.floor(diffMs / 60000);
+                const diffHr = Math.floor(diffMs / 3600000);
+                const diffDay = Math.floor(diffMs / 86400000);
+                let timeLabel = 'Baru saja';
+                if (diffMin < 1) timeLabel = 'Baru saja';
+                else if (diffMin < 60) timeLabel = `${diffMin} mnt lalu`;
+                else if (diffHr < 24) timeLabel = `${diffHr} jam lalu`;
+                else timeLabel = `${diffDay} hari lalu`;
+
+                const phone = c.customer_phone || c.phone_number || '';
+                const name = c.customer_name || c.contact_name || phone || 'Pelanggan WhatsApp';
+
+                return {
                   id: c.id,
-                  customerPhone: c.phone_number || '',
-                  customerName: c.contact_name || 'Pelanggan WhatsApp',
-                  lastMessage: c.last_message || 'Percakapan berlangsung',
-                  time: 'Baru saja',
-                  status: 'online',
+                  customerPhone: phone,
+                  customerName: name,
+                  avatarInitials: (() => {
+                    const parts = name.trim().split(/\s+/);
+                    return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
+                  })(),
+                  lastMessage: c.last_message || lastMsg?.message_body || lastMsg?.text || (lead ? `📋 Form kualifikasi dari ${lead.name || name}` : 'Percakapan baru'),
+                  time: timeLabel,
+                  status: (c.status === 'active' || c.status === 'online') ? 'online' : 'offline',
                   assignedTo: c.assigned_agent_id ? 'my_chat' : 'unassigned',
                   assignedAgentName: c.assigned_agent_name || (c.assigned_agent_id ? 'CS Aktif' : 'Unassigned / AI Bot'),
                   isBotActive: c.bot_paused === true ? false : (c.bot_mode === 'HUMAN_ACTIVE' ? false : true),
+                  tag: lead ? 'Hot Lead' : (c.unread_count > 0 ? 'Pesan Baru' : 'Pelanggan'),
+                  unreadCount: c.unread_count ?? (lead ? 1 : 0),
+                  crm: lead ? {
+                    totalOrders: 0,
+                    lifetimeValue: 0,
+                    city: lead.city || '',
+                    notes: [
+                      lead.store_name ? `Toko: ${lead.store_name}` : '',
+                      lead.monthly_revenue ? `Omset: ${lead.monthly_revenue}` : '',
+                      lead.store_link && lead.store_link !== 'Belum ada' ? `Link: ${lead.store_link}` : '',
+                    ].filter(Boolean).join(' | '),
+                  } : undefined,
                   messages: [],
-                }));
-                setConversations(mappedChats);
-                return;
-              }
+                };
+              });
+              setConversations(mappedChats);
+            } else {
+              setConversations([]);
             }
-          } catch (convErr) {
-            console.debug('Direct conversations query note:', convErr);
-          }
-
-          if (ordersList.length > 0) {
-            const scaledChats = generateConversationsFromOrders(ordersList);
-            setConversations(scaledChats);
           } else {
             setConversations([]);
           }
-        } else {
-          setOrders([]);
-          setTransactions([]);
+        } catch (convErr) {
+          console.debug('[Dashboard] Conversations fetch note:', convErr);
           setConversations([]);
         }
       } catch (err) {
@@ -1235,11 +1298,14 @@ export function useTenantDashboard() {
     fetchTransactions();
   }, [tenantSlug, isAuthenticated]);
 
-  const calculatedOmzet = orders
-    .filter((o: any) => ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes((o.payment_status || o.status || '').toUpperCase()))
-    .reduce((sum: number, o: any) => sum + Number(o.gross_amount || o.total_amount || o.total_price || 0), 0);
-  const totalOmzet = calculatedOmzet > 0 ? calculatedOmzet : (tenantMetaOmzet > 0 ? tenantMetaOmzet : 0);
+  const financialMetrics = calculateFinancialMetrics(orders);
+  const totalOmzet = financialMetrics.totalRevenue > 0 ? financialMetrics.totalRevenue : (tenantMetaOmzet > 0 ? tenantMetaOmzet : 0);
   const readyBalance = totalOmzet;
+  const aov = financialMetrics.aov;
+  const totalSuccessfulOrders = financialMetrics.totalSuccessfulOrders;
+  const pendingVerificationCount = financialMetrics.pendingVerificationCount;
+  const pendingVerificationAmount = financialMetrics.pendingVerificationAmount;
+  const pendingVerificationOrders = financialMetrics.pendingVerificationOrders;
 
   // 5. Products Handlers
   const refreshProducts = async (): Promise<ProductItem[]> => {
@@ -1492,14 +1558,25 @@ export function useTenantDashboard() {
         : undefined,
     };
 
+    const newProdId = (editingProductId !== null && editingProductId !== undefined)
+      ? editingProductId
+      : (updatedProductItem.id || `prod-${Date.now()}`);
+    const newProdSku = updatedProductItem.sku || `SKU-${finalSlug}`;
+
+    const fullProductItem: ProductItem = {
+      ...updatedProductItem,
+      id: newProdId,
+      sku: newProdSku,
+      is_active: isTargetActive,
+    };
+
     let updatedProducts: ProductItem[];
     if (editingProductId !== null && editingProductId !== undefined) {
-      updatedProducts = products.map(p => (String(p.id) === String(editingProductId) ? updatedProductItem : p));
+      updatedProducts = products.map(p => (String(p.id) === String(editingProductId) ? fullProductItem : p));
       setProducts(updatedProducts);
       setSaveFeedback('✅ Produk berhasil diperbarui!');
     } else {
-      const newProd = { ...updatedProductItem, id: updatedProductItem.id || `prod-${Date.now()}` };
-      updatedProducts = [newProd, ...products];
+      updatedProducts = [fullProductItem, ...products];
       setProducts(updatedProducts);
       setSaveFeedback('✅ Produk baru berhasil ditambahkan!');
     }
@@ -1508,7 +1585,7 @@ export function useTenantDashboard() {
       localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(updatedProducts));
     }
 
-    // 1. Direct Mutation ke database Supabase (tenants.metadata.products)
+    // 1. Direct Mutation ke database Supabase (tenants.metadata.products) - APPEND & MERGE GUARANTEE
     try {
       const supabase = getSupabase();
       if (supabase) {
@@ -1519,10 +1596,91 @@ export function useTenantDashboard() {
           .maybeSingle();
 
         if (tenantRow?.id) {
+          // Fetch existing products from DB metadata
+          const existingMetaProducts: ProductItem[] = Array.isArray(tenantRow.metadata?.products)
+            ? tenantRow.metadata.products
+            : (tenantRow.metadata?.product?.name ? [tenantRow.metadata.product] : []);
+
+          let allKnownProducts: ProductItem[] = [...existingMetaProducts];
+
+          // Fetch products from relational SQL table to ensure no orphan product is overwritten
+          try {
+            const { data: sqlProds } = await supabase
+              .from('products')
+              .select('*')
+              .eq('tenant_id', tenantRow.id);
+
+            if (Array.isArray(sqlProds) && sqlProds.length > 0) {
+              const knownSlugs = new Set(allKnownProducts.map(p => (p.slug || '').toLowerCase()));
+              const knownIds = new Set(allKnownProducts.map(p => String(p.id)));
+
+              for (const sp of sqlProds) {
+                const spSlug = (sp.slug || '').toLowerCase();
+                const spId = String(sp.id);
+                if (!knownSlugs.has(spSlug) && !knownIds.has(spId)) {
+                  allKnownProducts.push({
+                    id: sp.id,
+                    name: sp.title || `Produk`,
+                    title: sp.title,
+                    slug: sp.slug,
+                    category: sp.category || 'digital',
+                    product_type: sp.product_type || 'DIGITAL',
+                    type: sp.product_type === 'PHYSICAL' ? 'physical' : 'digital',
+                    price: Number(sp.price) || 0,
+                    promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
+                    sku: sp.sku || `SKU-${sp.id}`,
+                    is_active: sp.is_active !== false,
+                    image: sp.image || sp.image_url || '',
+                    image_url: sp.image || sp.image_url || '',
+                    description: sp.description || '',
+                    download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+                    stock: sp.stock ?? 999999,
+                    is_unlimited: sp.is_unlimited_stock ?? true,
+                    fulfillment_metadata: sp.fulfillment_metadata,
+                    single_page_config: sp.fulfillment_metadata?.single_page_config,
+                  });
+                }
+              }
+            }
+          } catch (sqlReadErr) {
+            console.debug('[Dashboard] SQL products read note:', sqlReadErr);
+          }
+
+          // Merge any products currently in React state not yet in DB
+          for (const p of products) {
+            const pSlug = (p.slug || '').toLowerCase();
+            const pId = String(p.id);
+            if (!allKnownProducts.some(kp => String(kp.id) === pId || (kp.slug && kp.slug.toLowerCase() === pSlug))) {
+              allKnownProducts.push(p);
+            }
+          }
+
+          // APPEND or UPDATE fullProductItem cleanly
+          const editIndex = allKnownProducts.findIndex(
+            p => (editingProductId && String(p.id) === String(editingProductId)) || (p.slug && p.slug.toLowerCase() === finalSlug)
+          );
+
+          let finalMergedProducts: ProductItem[];
+          if (editIndex >= 0) {
+            finalMergedProducts = [...allKnownProducts];
+            finalMergedProducts[editIndex] = {
+              ...finalMergedProducts[editIndex],
+              ...fullProductItem,
+            };
+          } else {
+            // APPEND to array, NEVER replace total
+            finalMergedProducts = [fullProductItem, ...allKnownProducts];
+          }
+
+          setProducts(finalMergedProducts);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(`bt_products_${tenantSlug}`, JSON.stringify(finalMergedProducts));
+          }
+
           const updatedMeta = {
             ...(tenantRow.metadata || {}),
-            products: updatedProducts,
-            product: updatedProductItem,
+            products: finalMergedProducts,
+            product: fullProductItem,
           };
 
           const { error: tErr } = await supabase
@@ -1536,25 +1694,40 @@ export function useTenantDashboard() {
 
           // Sync juga ke tabel SQL `products` jika ada
           try {
-            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(updatedProductItem.id));
-            await supabase.from('products').upsert({
-              ...(isUuid ? { id: String(updatedProductItem.id) } : {}),
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(fullProductItem.id));
+            const sqlPayload = {
+              ...(isUuid ? { id: String(fullProductItem.id) } : {}),
               tenant_id: tenantRow.id,
-              title: updatedProductItem.name,
+              title: fullProductItem.name,
               slug: finalSlug,
-              description: updatedProductItem.description || '',
-              price: Number(updatedProductItem.price),
-              promo_price: updatedProductItem.promo_price ? Number(updatedProductItem.promo_price) : 0,
+              description: fullProductItem.description || '',
+              price: Number(fullProductItem.price),
+              promo_price: fullProductItem.promo_price ? Number(fullProductItem.promo_price) : 0,
               image: cleanImage,
               image_url: cleanImage,
-              category: updatedProductItem.category || 'service',
-              stock: updatedProductItem.stock !== undefined ? Number(updatedProductItem.stock) : 999999,
-              is_unlimited_stock: updatedProductItem.is_unlimited ?? true,
+              category: fullProductItem.category || 'digital',
+              stock: fullProductItem.stock !== undefined ? Number(fullProductItem.stock) : 999999,
+              is_unlimited_stock: fullProductItem.is_unlimited ?? true,
               asset_reference: `product:${finalSlug}`,
               license_status: 'UNVERIFIED',
-              product_type: 'DIGITAL_FILE',
-              fulfillment_metadata: updatedProductItem.fulfillment_metadata || {},
-            });
+              product_type: fullProductItem.product_type || (isPhysicalStock ? 'PHYSICAL' : 'DIGITAL_FILE'),
+              sku: fullProductItem.sku || `SKU-${finalSlug}`,
+              is_active: isTargetActive,
+              fulfillment_metadata: fullProductItem.fulfillment_metadata || {},
+            };
+
+            const { data: existingSql } = await supabase
+              .from('products')
+              .select('id')
+              .eq('tenant_id', tenantRow.id)
+              .or(`slug.eq.${finalSlug}${isUuid ? `,id.eq.${fullProductItem.id}` : ''}`)
+              .maybeSingle();
+
+            if (existingSql?.id) {
+              await supabase.from('products').update(sqlPayload).eq('id', existingSql.id);
+            } else {
+              await supabase.from('products').insert(sqlPayload);
+            }
           } catch (pTableErr) {
             console.debug('[Dashboard] SQL products table sync note:', pTableErr);
           }
@@ -1569,7 +1742,7 @@ export function useTenantDashboard() {
       await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedProductItem),
+        body: JSON.stringify(fullProductItem),
       });
     } catch (err) {
       console.warn('Gagal sync produk ke API route:', err);
@@ -2421,6 +2594,12 @@ export function useTenantDashboard() {
     setOrders,
     totalOmzet,
     readyBalance,
+    aov,
+    totalSuccessfulOrders,
+    pendingVerificationCount,
+    pendingVerificationAmount,
+    pendingVerificationOrders,
+    financialMetrics,
     isWithdrawModalOpen,
     setIsWithdrawModalOpen,
     withdrawAmount,

@@ -9,8 +9,16 @@ import {
 } from '@/lib/whatsappFormatter';
 import { processZeroAiMessage } from '@/lib/zero-ai-engine';
 import { processMultimodalChat } from '@/lib/ai/multimodal-chat';
+import {
+  isManualOrderMessage,
+  getOrderConfirmationReply,
+  markSessionAsPendingVerification,
+} from '@/lib/whatsapp/order-interceptor';
+import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 
 function getEngineSupabase() {
+  const existing = getSupabaseAdmin() || getSupabase();
+  if (existing) return existing;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -60,12 +68,62 @@ export class ConversationEngine {
     const cleanMsg = message.trim();
     const trace: string[] = [];
 
+    if (!tenant_id || tenant_id === 'null' || tenant_id === 'undefined') {
+      console.warn('[SECURITY_FAIL_CLOSED_DROP] ConversationEngine called without tenant_id. Silently dropping.');
+      return {
+        reply: '',
+        next_state: 'DROPPED',
+        state_trace: ['FAIL_CLOSED_NULL_TENANT'],
+        entities: {},
+        is_booking_ready: false,
+        bot_paused: true,
+      };
+    }
+
     // 0. Ambil Data Tenant & Konfigurasi Interactive Menu / Bot Mode
     const { data: tenant } = await supabase
       .from('tenants')
       .select('id, slug, name, category, business_type, metadata')
       .eq('slug', tenant_id)
       .maybeSingle();
+
+    if (!tenant) {
+      console.warn(`[SECURITY_FAIL_CLOSED_DROP] Tenant '${tenant_id}' not found in database. Silently dropping to prevent leak.`);
+      return {
+        reply: '',
+        next_state: 'DROPPED',
+        state_trace: ['FAIL_CLOSED_TENANT_NOT_FOUND'],
+        entities: {},
+        is_booking_ready: false,
+        bot_paused: true,
+      };
+    }
+
+    // --- INTERCEPTOR ORDER TRANSAKSI (ORDER GATEKEEPER) ---
+    // Cek apakah isi pesan mengandung pola order manual: "Total Nominal:", "Metode: Transfer Bank", "Mohon dicek dan aktivasi akses", atau "Masterclass CPM"
+    if (isManualOrderMessage(cleanMsg)) {
+      trace.push('MANUAL_ORDER_INTERCEPTED');
+      const storeName = tenant.name || tenant_id;
+      const orderConfirmReply = getOrderConfirmationReply(storeName);
+
+      await markSessionAsPendingVerification({
+        supabase,
+        tenantId: tenant_id,
+        senderPhone: user_identifier || session_id,
+        textBody: cleanMsg,
+        storeName,
+      });
+
+      return {
+        reply: orderConfirmReply,
+        next_state: 'ORDER_PENDING_VERIFICATION',
+        state_trace: trace,
+        entities: { status: 'ORDER_PENDING_VERIFICATION' },
+        is_booking_ready: false,
+        active_engine: 'ORDER_GATEKEEPER',
+        bot_paused: true,
+      };
+    }
 
     const metadata = tenant?.metadata || {};
     const interactiveMenus: InteractiveMenu[] = Array.isArray(metadata.interactive_menus)

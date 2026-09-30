@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
+import { extractOrderAmount } from '@/lib/finance-engine';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,7 +106,7 @@ export async function GET(
     const normalizedOrders = rawOrders.map((o: any) => {
       const orderId = String(o.id || o.order_id || o.invoice_no || '');
       const rawStatus = String(o.status || o.payment_status || 'PENDING').toUpperCase();
-      const grossAmount = Number(o.gross_amount ?? o.total_amount ?? o.amount ?? o.total_price ?? 0);
+      const grossAmount = extractOrderAmount(o);
 
       return {
         id: orderId,

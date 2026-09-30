@@ -40,7 +40,11 @@ export async function GET(
         if (productsList.length > 0) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           productsList.forEach((prod: any, idx: number) => {
-            const isProdDigital = prod.type === 'digital' || tenantRow.category === 'digital';
+            const isProdDigital =
+              String(prod.type || '').toLowerCase() === 'digital' ||
+              String(prod.product_type || '').toLowerCase() === 'digital' ||
+              String(prod.category || '').toLowerCase().includes('digital') ||
+              String(tenantRow.category || '').toLowerCase().includes('digital');
             packages.push({
               id: prod.id || `${slug}-prod-${idx}`,
               name: prod.name,

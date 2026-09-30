@@ -81,7 +81,18 @@ export async function POST(req: NextRequest) {
 
           // Deteksi pola aktivasi "AKTIVASI BT-XXXX" (case-insensitive)
           const activationMatch = textBody.match(/AKTIVASI\s+([A-Za-z0-9_-]+)/i);
-          if (!activationMatch) continue;
+          if (!activationMatch) {
+            // Delegasikan pesan non-aktivasi (order manual / chat umum) ke normalized WABA processor
+            const { parseMetaWebhookPayload, processNormalizedMetaEvent } = await import(
+              '@/lib/whatsapp/meta-webhook-normalizer'
+            );
+            const normalizedEvent = parseMetaWebhookPayload(body);
+            if (normalizedEvent.phoneNumberId) {
+              const metaReport = await processNormalizedMetaEvent(normalizedEvent);
+              return NextResponse.json(metaReport, { status: 200 });
+            }
+            continue;
+          }
 
           const token = activationMatch[1].toUpperCase().trim();
           console.log(`[WhatsApp Inbound] Extracted token: "${token}" from ${senderPhone}`);

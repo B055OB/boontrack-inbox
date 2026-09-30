@@ -112,14 +112,14 @@ export function resolveBoonVertical(
   const rawType = (product.type || '').toLowerCase();
   const rawCat = (product.category || '').toLowerCase();
 
-  if (rawCat === 'kuliner & f&b' || rawCat === 'fnb' || rawCat === 'food' || rawType === 'fnb') return 'fnb';
-  if (rawCat === 'digital' || rawType === 'digital') return 'digital_product';
-  if (rawCat === 'konsultasi' || rawCat === 'pro_service') return 'pro_service';
-  if (rawCat === 'agency & kreator' || rawCat === 'creator_agency') return 'creator_agency';
-  if (rawCat === 'jasa lapangan' || rawCat === 'field_service' || rawCat === 'jasa' || rawCat === 'service' || rawType === 'service') {
+  if (rawCat.includes('kuliner') || rawCat.includes('fnb') || rawCat.includes('food') || rawType.includes('fnb')) return 'fnb';
+  if (rawCat.includes('digital') || rawCat.includes('course') || rawCat.includes('ebook') || rawType.includes('digital')) return 'digital_product';
+  if (rawCat.includes('konsultasi') || rawCat.includes('pro_service')) return 'pro_service';
+  if (rawCat.includes('agency') || rawCat.includes('kreator') || rawCat.includes('creator')) return 'creator_agency';
+  if (rawCat.includes('jasa') || rawCat.includes('field') || rawCat.includes('service') || rawType.includes('service')) {
     return 'field_service';
   }
-  if (rawCat === 'fisik' || rawCat === 'physical' || rawType === 'physical') return 'retail_physical';
+  if (rawCat.includes('fisik') || rawCat.includes('physical') || rawType.includes('physical')) return 'retail_physical';
 
   return 'retail_physical';
 }

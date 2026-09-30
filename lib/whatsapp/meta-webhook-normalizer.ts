@@ -16,6 +16,15 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { ConversationEngine } from '@/lib/conversationEngine';
 import { metaWabaAdapter } from '@/services/waba';
 import { sendWhatsAppSessionMessage } from '@/lib/whatsapp';
+import {
+  isManualOrderMessage,
+  getOrderConfirmationReply,
+  markSessionAsPendingVerification,
+} from '@/lib/whatsapp/order-interceptor';
+import {
+  persistInboundMessage,
+  persistOutboundMessage,
+} from '@/lib/whatsapp/inbox-persistence';
 
 // ============================================================================
 // Types
@@ -609,71 +618,142 @@ export async function processNormalizedMetaEvent(
     try {
       const convTable = supabase.from('conversations');
       if (convTable && typeof (convTable as any).insert === 'function') {
-        const { data: existingConv } = await (convTable as any)
-          .select('id')
-          .or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantId}`)
-          .eq('phone_number', senderPhone)
-          .maybeSingle();
 
-        if (existingConv?.id) {
-          convId = existingConv.id;
-          const updateData: Record<string, any> = {
-            last_message: textContent,
-            updated_at: msg.isoTimestamp,
+        // --- QUALIFICATION FORM PARSER ---
+        // Deteksi dan parse form kualifikasi WhatsApp:
+        // Format: "Nama : X\nDomisili : Y\nNama Toko : Z\nLink Toko : ...\nOmset ... : W"
+        let leadQualification: Record<string, string> | null = null;
+        let qualifiedName: string | null = null;
+        const qualText = String(textContent || '');
+        const hasNamaField = /(?:nama|name)\s*[:\-]/i.test(qualText);
+        const hasDomisiliField = /(?:domisili|kota|lokasi|alamat)\s*[:\-]/i.test(qualText);
+        const hasOmsetField = /(?:omset|omzet|revenue|pendapatan)\s*[:\-]/i.test(qualText);
+
+        if (hasNamaField && (hasDomisiliField || hasOmsetField)) {
+          const parseField = (text: string, pattern: RegExp): string => {
+            const match = text.match(pattern);
+            return match ? String(match[1] || '').trim().replace(/^[*_~`]+|[*_~`]+$/g, '') : '';
           };
-          if (msg.ctwa_clid) {
-            updateData.metadata = {
-              ...((existingConv as any)?.metadata || {}),
-              ctwa_clid: msg.ctwa_clid,
+
+          const nama = parseField(qualText, /(?:nama|name)\s*[:\-]\s*(.+)/i);
+          const domisili = parseField(qualText, /(?:domisili|kota|lokasi|alamat)\s*[:\-]\s*(.+)/i);
+          const namaToko = parseField(qualText, /(?:nama\s*toko|toko)\s*[:\-]\s*(.+)/i);
+          const linkToko = parseField(qualText, /(?:link\s*toko|link|url)\s*[:\-]\s*(.+)/i);
+          const omset = parseField(qualText, /(?:omset|omzet|revenue|pendapatan)[^:\-]*\s*[:\-]\s*(.+)/i);
+
+          if (nama) {
+            qualifiedName = nama;
+            leadQualification = {
+              name: nama,
+              city: domisili,
+              store_name: namaToko,
+              store_link: linkToko || 'Belum ada',
+              monthly_revenue: omset,
+              phone: senderPhone,
+              submitted_at: msg.isoTimestamp || new Date().toISOString(),
             };
+            console.log(`[WABA_QUALIFIER] Lead form parsed for tenant=${tenantId}, phone=${senderPhone}, name=${nama}, city=${domisili}`);
           }
-          await (convTable as any)
-            .update(updateData)
-            .eq('id', convId);
-        } else {
-          const insertData: Record<string, any> = {
-            tenant_slug: tenantId,
-            tenant_id: tenantId,
-            phone_number: senderPhone,
-            contact_name: msg.senderName || 'Pelanggan WhatsApp',
-            last_message: textContent,
-            updated_at: msg.isoTimestamp,
-            status: 'online',
-          };
-          if (msg.ctwa_clid) {
-            insertData.metadata = { ctwa_clid: msg.ctwa_clid };
-          }
-          const { data: newConv } = await (convTable as any)
-            .insert(insertData)
-            .select('id')
-            .single();
-          if (newConv?.id) convId = newConv.id;
         }
-      }
+        // --- END QUALIFICATION FORM PARSER ---
 
-      const msgTable = supabase.from('messages');
-      if (msgTable && typeof (msgTable as any).insert === 'function') {
-        await (msgTable as any).insert({
-          conversation_id: convId,
-          tenant_slug: tenantId,
-          tenant_id: tenantId,
-          sender: 'user',
-          user_name: msg.senderName || senderPhone,
-          text: textContent,
-          channel: 'whatsapp',
-          created_at: msg.isoTimestamp,
-          payload: {
-            meta_message_id: msg.id,
-            type: msg.type,
-            media: msg.media,
-            interactive: msg.interactiveReply,
-            ...(msg.ctwa_clid ? { ctwa_clid: msg.ctwa_clid } : {}),
-            ...(msg.referral ? { referral: msg.referral } : {}),
-          },
-        });
+        // Ingest into conversations & messages via universal persistence engine
+        try {
+          const persisted = await persistInboundMessage({
+            tenantId,
+            customerPhone: senderPhone,
+            customerName: qualifiedName || msg.senderName || senderPhone,
+            messageBody: textContent,
+            senderType: 'customer',
+            rawPayload: {
+              meta_message_id: msg.id,
+              type: msg.type,
+              media: msg.media,
+              interactive: msg.interactiveReply,
+              ...(msg.ctwa_clid ? { ctwa_clid: msg.ctwa_clid } : {}),
+              ...(msg.referral ? { referral: msg.referral } : {}),
+            },
+          });
+          if (persisted.conversationId) {
+            convId = persisted.conversationId;
+          }
+        } catch (dbErr) {
+          console.warn('[Meta WABA] Error persisting inbound message:', dbErr);
+        }
       }
     } catch {
       // Non-fatal if schema is mocked in tests
+    }
+
+    // 3.5. INTERCEPTOR ORDER TRANSAKSI (ORDER GATEKEEPER)
+    // Cek apakah isi pesan mengandung pola order manual: "Total Nominal:", "Metode: Transfer Bank", "Mohon dicek dan aktivasi akses", atau "Masterclass CPM"
+    if (isManualOrderMessage(textContent)) {
+      console.info(
+        `[ORDER_GATEKEEPER] Intercepted manual order from ${senderPhone} on tenant '${tenantId}' via Meta WABA. Bypassing ConversationEngine/LLM.`
+      );
+      const nowIso = new Date().toISOString();
+
+      let storeName = 'Admin Toko';
+      try {
+        const { data: storeInfo } = await supabase
+          .from('tenants')
+          .select('name')
+          .eq('slug', tenantId)
+          .maybeSingle();
+        if (storeInfo?.name) {
+          storeName = storeInfo.name;
+        }
+      } catch {}
+
+      await markSessionAsPendingVerification({
+        supabase,
+        tenantId,
+        senderPhone,
+        textBody: textContent,
+        convId,
+        storeName,
+      });
+
+      const orderConfirmReply = getOrderConfirmationReply(storeName);
+
+      // Kirim auto-reply konfirmasi order standar jika WABA connected
+      if (connection.status === 'CONNECTED' && connection.credential_ref) {
+        const resolvedToken =
+          process.env[`META_TOKEN_${tenantId.toUpperCase()}`] ||
+          process.env.META_WA_TOKEN ||
+          process.env.WHATSAPP_API_TOKEN ||
+          (connection.credential_ref.startsWith('ey') ? connection.credential_ref : '');
+
+        if (resolvedToken) {
+          try {
+            await metaWabaAdapter.dispatchTenantMessage(
+              tenantId,
+              connection,
+              senderPhone,
+              {
+                type: 'text',
+                text: { preview_url: false, body: orderConfirmReply },
+              },
+              resolvedToken,
+              connection.credential_ref
+            );
+
+            await persistOutboundMessage({
+              tenantId,
+              customerPhone: senderPhone,
+              senderType: 'bot',
+              senderName: 'OrderGatekeeper',
+              messageBody: orderConfirmReply,
+              rawPayload: { trigger: 'order_gatekeeper' },
+            });
+          } catch (sendErr) {
+            console.warn('[Meta Webhook] Order confirmation reply error:', sendErr);
+          }
+        }
+      }
+
+      processedMessages++;
+      continue; // JANGAN panggil ConversationEngine / AI!
     }
 
     // 4. Pass payload to internal ConversationEngine
@@ -746,23 +826,15 @@ export async function processNormalizedMetaEvent(
               connection.credential_ref
             );
 
-            // Record bot reply in messages table
-            try {
-              const msgTable = supabase.from('messages');
-              if (msgTable && typeof (msgTable as any).insert === 'function') {
-                await (msgTable as any).insert({
-                  conversation_id: convId,
-                  tenant_slug: tenantId,
-                  tenant_id: tenantId,
-                  sender: 'bot',
-                  text: engineResult.reply,
-                  channel: 'whatsapp',
-                  created_at: new Date().toISOString(),
-                });
-              }
-            } catch {
-              // Non-fatal
-            }
+            // Record bot reply in messages & update conversation
+            await persistOutboundMessage({
+              tenantId,
+              customerPhone: senderPhone,
+              senderType: 'bot',
+              senderName: 'BoonPilot AI',
+              messageBody: engineResult.reply,
+              rawPayload: { trigger: 'conversation_engine' },
+            });
           }
         }
       }

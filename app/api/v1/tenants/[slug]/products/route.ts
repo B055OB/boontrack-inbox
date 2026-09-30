@@ -85,6 +85,8 @@ export async function POST(
       download_url: download_url || null,
       type: type || (body.product_type === 'PHYSICAL' ? 'physical' : (body.product_type === 'SERVICE' || category === 'jasa' ? 'service' : 'digital')),
       product_type: body.product_type || (category === 'fisik' ? 'PHYSICAL' : (category === 'jasa' ? 'SERVICE' : 'DIGITAL')),
+      sku: body.sku || `SKU-${finalSlug}`,
+      is_active: body.is_active !== false,
       single_page_config: body.single_page_config
         ? {
             ...body.single_page_config,
@@ -126,14 +128,60 @@ export async function POST(
           ]
         : [];
 
-      const existingIndex = existingProducts.findIndex((p: any) => String(p.id) === String(productId));
+      // ── DATA INTEGRITY GATE: Query SQL products table to guarantee existing catalog is never overwritten ──
+      let mergedExisting = [...existingProducts];
+      if (existing?.id) {
+        try {
+          const { data: sqlProds } = await supabase
+            .from('products')
+            .select('*')
+            .eq('tenant_id', existing.id);
+          if (Array.isArray(sqlProds) && sqlProds.length > 0) {
+            const existingSlugs = new Set(mergedExisting.map((p) => (p.slug || '').toLowerCase()));
+            const existingIds = new Set(mergedExisting.map((p) => String(p.id)));
+            for (const sp of sqlProds) {
+              const spSlug = (sp.slug || '').toLowerCase();
+              const spId = String(sp.id);
+              if (!existingSlugs.has(spSlug) && !existingIds.has(spId)) {
+                mergedExisting.push({
+                  id: sp.id,
+                  name: sp.title || `Produk`,
+                  title: sp.title,
+                  slug: sp.slug,
+                  category: sp.category || 'digital',
+                  product_type: sp.product_type || 'DIGITAL',
+                  type: sp.product_type === 'PHYSICAL' ? 'physical' : 'digital',
+                  price: Number(sp.price) || 0,
+                  promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
+                  sku: sp.sku || `SKU-${sp.id}`,
+                  is_active: sp.is_active !== false,
+                  image: sp.image || sp.image_url || '',
+                  image_url: sp.image || sp.image_url || '',
+                  description: sp.description || '',
+                  download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+                  stock: sp.stock ?? 999999,
+                  is_unlimited: sp.is_unlimited_stock ?? true,
+                  fulfillment_metadata: sp.fulfillment_metadata,
+                  single_page_config: sp.fulfillment_metadata?.single_page_config,
+                });
+              }
+            }
+          }
+        } catch (sqlReadErr) {
+          console.debug('[Products Route] SQL existing products query note:', sqlReadErr);
+        }
+      }
+
+      const existingIndex = mergedExisting.findIndex(
+        (p: any) => String(p.id) === String(productId) || (p.slug && p.slug.toLowerCase() === finalSlug.toLowerCase())
+      );
 
       // VALIDASI KUOTA CHECKOUT_LITE: MAKSIMAL 3 PRODUK AKTIF
       const tenantTier = String(existing?.tier || existing?.metadata?.tier || '').toUpperCase();
       if (tenantTier === 'CHECKOUT_LITE') {
         const isTargetActive = body.is_active !== false;
         if (isTargetActive) {
-          const otherActiveCount = existingProducts.filter(
+          const otherActiveCount = mergedExisting.filter(
             (p: any) => String(p.id) !== String(productId) && p.is_active !== false
           ).length;
 
@@ -150,20 +198,29 @@ export async function POST(
         }
       }
 
+      const productSku = body.sku || newProduct.sku || `SKU-${finalSlug}`;
+      const productWithActive: ProductItem = {
+        ...newProduct,
+        sku: productSku,
+        is_active: body.is_active !== false,
+      };
+
       if (existingIndex >= 0) {
-        updatedProducts = [...existingProducts];
+        updatedProducts = [...mergedExisting];
         updatedProducts[existingIndex] = {
           ...updatedProducts[existingIndex],
-          ...newProduct,
+          ...productWithActive,
+          sku: productSku,
         };
       } else {
-        updatedProducts = [newProduct, ...existingProducts];
+        // APPEND LOGIC: Tambahkan produk baru ke array eksisting, DILARANG replace total
+        updatedProducts = [productWithActive, ...mergedExisting];
       }
 
       const updatedMetadata = {
         ...(existing?.metadata || {}),
         products: updatedProducts,
-        product: newProduct,
+        product: productWithActive,
       };
 
       if (existing?.id) {
@@ -198,7 +255,9 @@ export async function POST(
             is_unlimited_stock: body.is_unlimited ?? true,
             asset_reference: `product:${finalSlug}`,
             license_status: 'UNVERIFIED',
-            product_type: 'DIGITAL_FILE',
+            product_type: body.product_type || (category === 'fisik' ? 'PHYSICAL' : 'DIGITAL_FILE'),
+            sku: productSku,
+            is_active: body.is_active !== false,
             fulfillment_metadata: {
               ...(body.fulfillment_metadata || {}),
               ...(body.order_bumps || body.metadata?.order_bumps ? { order_bumps: body.order_bumps || body.metadata?.order_bumps } : {}),

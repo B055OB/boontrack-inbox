@@ -1,4 +1,4 @@
-﻿# ðŸ›ï¸ BOONTRACK ENGINEERING CONSTITUTION & CORE ARCHITECTURE
+# ðŸ›ï¸ BOONTRACK ENGINEERING CONSTITUTION & CORE ARCHITECTURE
 
 > **Golden Rule**: *"Implementation can change. Architecture contracts do not change without an explicit Architecture Decision Record (ADR)."*  
 > **Core Principle**: *"Natural conversation, deterministic commerce."*
@@ -18,6 +18,9 @@
 10. **New features must strengthen the BoonTrack Business Graph or remain isolated as optional capabilities.**
 11. **Verticals define configuration and business rules; the Core Engine defines how configuration is interpreted and executed.**
 12. **Zero Fake Fallbacks on External Infrastructure**: Dilarang keras membuat generator kode tiruan (mock/hash generator) untuk menutupi kegagalan koneksi pihak ketiga (seperti WhatsApp pairing code). Kegagalan infrastruktur wajib diekspos secara jujur dan transparan sebagai error HTTP eksplisit.
+13. **Single Financial Authority (Financial State Machine)**: BoonTrack accepts multiple payment evidence rails, but maintains a single financial authority: the Financial State Machine. No OCR result, Reader event, or manual action may bypass its tenant, lifecycle, idempotency, and authorization invariants.
+14. **Fail-Closed Tenant Isolation**: If tenant resolution fails at any gateway (webhook router, API, checkout), the system MUST fail closed (silent drop, zero response, log security alert). Global platform sales fallbacks are strictly prohibited.
+15. **Pre-LLM Transaction Gatekeeper**: All purchase confirmations, order payments, and transactional messages must be intercepted deterministically before entering probabilistic AI context.
 
 ### 0.1 Tri-Rule Database-Driven Multi-Tenant Constitution (Phase B Guardrails)
 - **Rule 1 (Zero Hardcoded Tenant Logic)**: Tidak boleh membuat percabangan kode berbasis slug fisik (misal: `if tenant == 'gym'` atau `if slug in ['om_budi', 'career']`). Seluruh logika runtime wajib membaca `capabilities`, `business_type`, atau `tenant_kind` dari database Supabase (`TenantRuntimeContext`).
@@ -2438,6 +2441,302 @@ Pelanggaran aturan ini akan menyebabkan 404 pada domain dashboard karena middlew
 4. **Environment Variable**:
    - `GEMINI_API_KEY`: API Key resmi terdaftar dari Google AI Studio.
    - `AI_MODEL_NAME=gemini-3.8-flash`
+
+---
+
+## § 31. DUAL-RAIL PAYMENT ENGINE, FINANCIAL STATE MACHINE (FSM) & MULTI-TENANT ISOLATION INVARIANTS (ADR 2026-09-30)
+
+### 31.1 Architectural Doctrine: Single Financial Authority
+> *"BoonTrack accepts multiple payment evidence rails, but maintains a single financial authority: the Financial State Machine. No OCR result, Reader event, or manual action may bypass its tenant, lifecycle, idempotency, and authorization invariants."*
+
+Financial state transitions in BoonTrack are strictly deterministic, idempotent, and authoritative. Under no circumstances may an asynchronous ingestion rail (e.g. Bank Mutation Reader, Slip OCR extraction, payment gateway webhook, or manual merchant dashboard input) directly write or mutate an order status to `PAID` or `SETTLED`. All incoming payment signals are captured as unverified `payment_evidence` and submitted to the Financial State Machine (FSM), which validates tenant ownership, temporal expiration, idempotency keys, and nominal matching before mutating order financial states.
+
+```
+                           +----------------------------+
+                           |  Inbound Payment Evidence  |
+                           +----------------------------+
+                                         |
+            +----------------------------+----------------------------+
+            |                            |                            |
+    [Bank Reader Rail]           [Dynamic QRIS Rail]           [Slip OCR Rail]
+            |                            |                            |
+            +----------------------------+----------------------------+
+                                         |
+                                         v
+                         +-------------------------------+
+                         |   payment_evidence (Ingest)   |
+                         +-------------------------------+
+                                         |
+                                         v
+                         +-------------------------------+
+                         | Financial State Machine (FSM) |
+                         |   - Triple Match Invariant    |
+                         |   - Atomic Suffix Match       |
+                         |   - Expiration & Replay Guard |
+                         +-------------------------------+
+                                  /             \
+                   [Valid Match] /               \ [Mismatch / Orphan]
+                                v                 v
+                 +-----------------------+   +-----------------------+
+                 | payment_intents       |   | orphan_payments       |
+                 | -> status: SETTLED    |   | -> status: QUARANTINE |
+                 | orders -> PAID        |   | (Zero tenant leakage) |
+                 +-----------------------+   +-----------------------+
+```
+
+---
+
+### 31.2 Table Contracts: `payment_intents`, `payment_evidence`, & `orphan_payments`
+
+#### 1. `payment_intents` (The Deterministic Financial Contract)
+Created at checkout before buyer initiates payment. Represents the exclusive expected transaction slot.
+
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `UUID` | `PRIMARY KEY, DEFAULT gen_random_uuid()` | Unique identifier of the payment intent |
+| `tenant_id` | `UUID` | `NOT NULL, REFERENCES tenants(id) ON DELETE CASCADE` | Immutable tenant owner |
+| `order_id` | `TEXT` / `UUID` | `NOT NULL, INDEXED` | Bound order identifier |
+| `base_amount` | `NUMERIC(15,2)` | `NOT NULL, CHECK (base_amount > 0)` | Net items + services + shipping total |
+| `unique_suffix` | `INTEGER` | `NOT NULL, CHECK (unique_suffix BETWEEN 100 AND 999)` | Atomically reserved 3-digit nominal suffix |
+| `expected_amount`| `NUMERIC(15,2)` | `NOT NULL, INDEXED` | Exact expected bank mutation credit amount |
+| `status` | `TEXT` | `NOT NULL, DEFAULT 'PENDING'` | `PENDING`, `SETTLED`, `EXPIRED`, `VOID` |
+| `expires_at` | `TIMESTAMPTZ` | `NOT NULL, INDEXED` | Expiration deadline (default 2h). Suffix released upon expiry. |
+| `settled_at` | `TIMESTAMPTZ` | `NULL` | Timestamp when matched by FSM |
+| `evidence_id` | `UUID` | `NULL, REFERENCES payment_evidence(id)` | Matched evidence linkage |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` | Intent creation timestamp |
+
+#### 2. `payment_evidence` (Multi-Rail Ingestion Signals)
+Raw incoming payment records ingested from any rail. Preserves full untampered audit trail.
+
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `UUID` | `PRIMARY KEY, DEFAULT gen_random_uuid()` | Unique evidence identifier |
+| `tenant_id` | `UUID` | `NOT NULL, REFERENCES tenants(id)` | Resolved tenant identifier |
+| `rail_type` | `TEXT` | `NOT NULL` | `BANK_MUTATION_READER`, `QRIS_DYNAMIC`, `MANUAL_SLIP_OCR`, `DIRECT_MANUAL` |
+| `raw_amount` | `NUMERIC(15,2)` | `NOT NULL, CHECK (raw_amount > 0)` | Exact credit recorded by bank / acquirer |
+| `sender_account` | `TEXT` | `NULL` | Masked sender bank, account number, or customer phone |
+| `reference_no` | `TEXT` | `NULL, INDEXED` | Bank mutation ID, QRIS RRN, or acquirer transaction reference |
+| `raw_payload` | `JSONB` | `NOT NULL, DEFAULT '{}'` | Untampered incoming webhook or reader event payload |
+| `status` | `TEXT` | `NOT NULL, DEFAULT 'UNMATCHED'` | `MATCHED`, `UNMATCHED`, `DISPUTED` |
+| `matched_intent_id` | `UUID` | `NULL, REFERENCES payment_intents(id)` | Linked payment intent once settled |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` | Event ingestion timestamp |
+
+#### 3. `orphan_payments` (Safety Net & Quarantine Repository)
+Quarantine for signals that cannot be matched cleanly to an active `payment_intent`. Ensures zero loss of financial trace without crediting any unverified tenant.
+
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | `UUID` | `PRIMARY KEY, DEFAULT gen_random_uuid()` | Unique orphan record ID |
+| `evidence_id` | `UUID` | `NOT NULL, REFERENCES payment_evidence(id)` | Source payment evidence |
+| `raw_amount` | `NUMERIC(15,2)` | `NOT NULL` | Unmatched monetary amount |
+| `suspected_tenant_id` | `UUID` | `NULL, REFERENCES tenants(id)` | Guessed or hinted tenant from metadata |
+| `rejection_reason` | `TEXT` | `NOT NULL` | `NO_ACTIVE_INTENT`, `AMOUNT_MISMATCH`, `CROSS_TENANT_REJECTED`, `EXPIRED_INTENT` |
+| `reconciled` | `BOOLEAN` | `NOT NULL, DEFAULT FALSE` | Flag for manual investigation status |
+| `reconciled_by` | `UUID` | `NULL` | User ID of merchant/admin who investigated |
+| `reconciliation_note` | `TEXT` | `NULL` | Audit memo explaining manual reconciliation |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL, DEFAULT NOW()` | Ingestion timestamp |
+
+---
+
+### 31.3 Atomic Unique Suffix Allocation (`100–999`)
+Direct bank transfer reconciliation depends on distinct transfer amounts within a rolling expiration window.
+- **Range**: Exactly `100` to `999` (inclusive).
+- **Concurrency Isolation**:
+  Allocation is strictly isolated per `tenant_id`. Concurrency races are prevented via PostgreSQL row locks:
+  ```sql
+  -- Allocation query executed in an atomic transaction
+  WITH active_slots AS (
+    SELECT unique_suffix FROM payment_intents
+    WHERE tenant_id = :tenant_id
+      AND status = 'PENDING'
+      AND expires_at > NOW()
+    FOR UPDATE SKIP LOCKED
+  ),
+  available_slots AS (
+    SELECT s.slot
+    FROM generate_series(100, 999) AS s(slot)
+    WHERE s.slot NOT IN (SELECT unique_suffix FROM active_slots)
+  )
+  SELECT slot FROM available_slots
+  ORDER BY RANDOM()
+  LIMIT 1;
+  ```
+- **Guarantees**: Zero collisions across concurrent checkouts within the same merchant, and zero interference between separate tenants.
+
+---
+
+### 31.4 The Triple Match Invariant
+A payment intent may **ONLY** transition to `SETTLED` (and credit the associated order to `PAID`) if and only if:
+
+$$\mathbf{evidence.tenant\_id \equiv payment\_intent.tenant\_id \equiv order.tenant\_id}$$
+
+**Invariant Violations:**
+1. If `evidence.tenant_id != payment_intent.tenant_id`:
+   - Match is **IMMEDIATELY REJECTED**.
+   - Evidence is flagged with `status = 'DISPUTED'` and routed to `orphan_payments` with reason `CROSS_TENANT_REJECTED`.
+   - High-severity security alert dispatched.
+2. If `payment_intent.order_id` belongs to another tenant:
+   - FSM terminates the transaction immediately and marks the intent as `VOID`.
+   - **Cross-tenant payment crediting is strictly mathematically impossible.**
+
+---
+
+### 31.5 Webhook Fail-Closed Invariant & Pre-LLM Order Gatekeeper
+
+#### 1. Webhook Fail-Closed Invariant
+Every inbound webhook router (WhatsApp, Meta Cloud API, Evolution API, Payment Gateways) must strictly enforce the Fail-Closed policy:
+- **`TENANT_RESOLVED`**: Load `TenantRuntimeContext` from database Supabase -> Execute isolated merchant flow.
+- **`TENANT_RESOLUTION_FAILED`**: **Silent Drop**.
+  * Acknowledge provider with HTTP 200/204 to prevent retry storms.
+  * Emit **0 outbound messages** to the sender.
+  * Log security alert with sender details.
+  * **STRICT PROHIBITION**: Dilarang keras melakukan catch-all fallback ke pesan pemasaran atau template global platform (contoh: *"Berikut 3 pilihan Paket Layanan Resmi BoonTrack"*). Fallback platform hanya boleh terjadi di channel customer service resmi BoonTrack sendiri, bukan di nomor operasional tenant.
+
+#### 2. Pre-LLM Order Gatekeeper (Transaction Interceptor)
+The Order Gatekeeper acts as a deterministic barrier situated between inbound message receipt and LLM/AI prompt construction:
+```
+Inbound Message -> [Order Gatekeeper]
+                          |
+             [Transaction Pattern Detected?]
+                    /               \
+              (YES)/                 \(NO)
+                  v                   v
+      +---------------------+   +---------------------+
+      | Direct Order Module |   | AI Conversational   |
+      | - Pending Verif     |   |   Engine (LLM)      |
+      | - Notify Admin CS   |   +---------------------+
+      +---------------------+
+```
+- **Detection Triggers**: Regex patterns matching order submissions and payment confirmations:
+  * `"Total Nominal:"`
+  * `"Metode: Transfer Bank"`
+  * `"Mohon dicek dan aktivasi akses"`
+  * `"Masterclass CPM"` / specific product purchase intent
+  * Image attachments containing bank receipt signatures
+- **Execution Rules**:
+  * **BYPASS AI PROMPT**: AI models (Gemini, OpenAI, Claude) are never invoked on transaction messages. Prevents prompt injection, token waste, and hallucinated financial figures.
+  * **State Creation**: Records an unverified order in Supabase with status `ORDER_PENDING_VERIFICATION`.
+  * **Merchant Alert**: Dispatches notification directly to store admin/CS dashboard for verification.
+
+---
+
+### 31.6 Universal / Zero-Hardcoding Policy
+1. **Zero Tenant Hardcoding Mandate**:
+   - DILARANG KERAS membuat pengecekan statis berbasis nama slug toko (`if (slug === 'onlineboost')`, `slug.includes('suhu')`, `ALLOWED_SLUGS`, atau `DEFAULT_TENANT_CONFIGS`).
+   - DILARANG membuat dummy catalog, dummy products, atau mock data di dalam API route atau komponen UI.
+2. **Single Source of Truth: Supabase**:
+   - Seluruh data tenant WAJIB dibaca langsung dari tabel `tenants`, `products`, dan `orders`.
+   - Jika record di Supabase tidak ditemukan, kembalikan status `404 Not Found` atau state kosong. DILARANG membuat fallback data mockup.
+3. **Multi-Vertical Agnostic Aggregation**:
+   - Laporan keuangan, analitik, dan kalkulasi omzet wajib mengagregasi seluruh vertikal secara adil:
+     * **Jasa / Tiket**: Ekstraksi nominal dari `amount` / `total_amount`.
+     * **FnB / Retail Fisik**: Ekstraksi nominal dari `final_amount` / `total_amount` (mencakup harga produk + ongkir kurir + kode unik).
+     * **Digital / Ecourse**: Ekstraksi nominal dari `gross_amount` / `price`.
+   - **Valid Revenue Statuses**: `['PAID', 'SETTLED', 'SETTLEMENT', 'SUCCESS', 'COMPLETED', 'VERIFIED', 'LUNAS']`.
+   - **Pending Verification**: `ORDER_PENDING_VERIFICATION` dipisahkan ke metrik "Menunggu Verifikasi" dan otomatis masuk omzet ketika diverifikasi menjadi `PAID`.
+4. **WIB Timezone Standard**:
+   - Seluruh perhitungan tanggal transaksi (Hari Ini, Kemarin, Bulan Ini) wajib dinormalisasi ke zona waktu **WIB (Asia/Jakarta / GMT+7)** untuk mengeliminasi UTC mismatch bug.
+
+---
+
+### 31.7 14 Release Criteria Checklist (Dual-Rail Payment Engine Acceptance Criteria)
+
+Setiap rilis staging dan deployment produksi WAJIB memenuhi seluruh 14 kriteria penerimaan berikut sebagai syarat mutlak kelulusan (Definition of Done):
+
+- [ ] **RC-01 (Tenant Isolation Invariant)**: Seluruh database query, cache key, dan sesi transaksi terikat mutlak pada `tenant_id` atau dynamic `tenant_slug`. Zero cross-tenant data leakage.
+- [ ] **RC-02 (Triple Match Enforcement)**: Transisi order ke `PAID`/`SETTLED` memverifikasi validitas `evidence.tenant_id ≡ payment_intent.tenant_id ≡ order.tenant_id`.
+- [ ] **RC-03 (Fail-Closed on Resolution Failure)**: Webhook router melakukan silent drop (0 outbound response) jika tenant gagal diresolusi; dilarang fallback ke template platform.
+- [ ] **RC-04 (Pre-LLM Order Gatekeeper)**: Pesan konfirmasi transfer dan order diintersepsi sebelum masuk ke LLM context; zero token hallucination pada transaksi.
+- [ ] **RC-05 (Atomic Unique Suffix Allocation)**: Uji konkurensi membuktikan 0 tabrakan suffix nominal 100–999 per tenant via `FOR UPDATE SKIP LOCKED`.
+- [ ] **RC-06 (Single Financial Authority - FSM)**: Hanya FSM yang berhak mengubah order menjadi `PAID`/`SETTLED`. Raw OCR/Reader events dilarang melakukan mutasi order langsung.
+- [ ] **RC-07 (Strict Idempotency)**: Pengiriman event pembayaran duplikat atau webhook retry menghasilkan tepat 1 mutasi saldo dan mengembalikan respon idempotent HTTP 200.
+- [ ] **RC-08 (Orphan Payment Safety Net)**: Mutasi atau bukti transfer tanpa active intent yang valid dialihkan ke tabel `orphan_payments` tanpa kehilangan jejak audit dana.
+- [ ] **RC-09 (Multi-Vertical Revenue Aggregation)**: Laporan keuangan mampu mengagregasi transaksi Jasa (tiket), FnB (menu + ongkir + COD), dan Digital (ecourse) tanpa ada yang bernilai Rp 0 jika memiliki order valid.
+- [ ] **RC-10 (Pending Verification Segregation)**: Transaksi `ORDER_PENDING_VERIFICATION` terisolasi di kolom terpisah dan baru masuk ke total omzet setelah diverifikasi menjadi `PAID`.
+- [ ] **RC-11 (Timezone Determinism - WIB/GMT+7)**: Filter tanggal dan metrik harian dihitung secara deterministik berbasis kalender WIB (Asia/Jakarta), bukan UTC mentah.
+- [ ] **RC-12 (Outbox Idempotent Fulfillment)**: Penyerahan akses produk digital, pengiriman lisensi, atau cetak resi kurir dieksekusi tepat 1 kali melalui transactional outbox pattern.
+- [ ] **RC-13 (Zero Hardcoded Logic)**: Pemindaian kode sumber (static analysis) lulus 100% tanpa ada percabangan berbasis nama/slug tenant statis (`if slug === ...`).
+- [ ] **RC-14 (Audit Trail Completeness)**: 100% transisi status keuangan tercatat di tabel ledger dengan timestamp presisi, user/rail identifier, dan payload mutasi utuh.
+
+---
+
+### § 31.8 Anti-Fraud Engine & Visual Forensic Invariants
+
+Untuk memitigasi risiko manipulasi gambar struk transfer (Canva, receipt generator palsu, kompresi ulang WhatsApp), collision kode unik bank, dan serangan kehabisan kuota token Vision API (Denial of Inventory / Suffix Exhaustion), Dual-Rail Payment Engine dilengkapi dengan 4 lapisan pengaman anti-fraud berlapis:
+
+#### 1. Dual-Rail Asymmetric Authority & Tiered Risk Threshold
+BoonTrack membedakan bobot otoritas settlement antara mutasi bank riil dan hasil ekstraksi OCR:
+- **Rail 1 (Bank Mutation Reader) = ABSOLUTE SETTLEMENT AUTHORITY**:
+  Mutasi kredit rekening bank membawa kepastian dana masuk 100%. Sinyal dari Rail 1 berhak langsung mentransisikan `payment_intent` ke `SETTLED` dan `order` ke `PAID` secara otomatis.
+- **Rail 2 (Vision OCR Struk) = PROVISIONAL EVIDENCE AUTHORITY**:
+  Struk transfer gambar hanya berstatus bukti sementara (*provisional evidence*).
+- **Aturan Threshold Nilai Transaksi (Tiered Risk Rule)**:
+  * **Order $\le$ Rp 50.000 (Low-Risk Micro)**: Diizinkan auto-settlement instan jika OCR confidence score $\ge 95\%$ dan seluruh parameter (nominal, rekening tujuan, tanggal) cocok.
+  * **Order $>$ Rp 50.000 (Standard & High-Value)**: Hasil match OCR **DILARANG KERAS** langsung mengubah status order menjadi `PAID`. Order wajib ditransisikan ke status intermediate:
+    ```
+    status = 'SOFT_MATCH_AWAITING_MUTATION'
+    ```
+  * **Eskalasi & Settlement Flow**:
+    - **Kasus Ideal**: Jika Reader mutasi bank mendeteksi kredit rekening yang sesuai $\rightarrow$ Status di-upgrade otomatis menjadi `PAID` seketika.
+    - **Kasus Mutasi Pending**: Jika mutasi bank belum terdeteksi setelah **15 menit** sejak OCR matching, sistem secara otomatis mengelevasi order ke antrian prioritas dashboard merchant dengan fitur **Manual Approval 1-Klik** ("Verifikasi Bukti Transfer"), dilengkapi perbandingan visual thumbnail struk asli vs data ekstraksi OCR.
+
+#### 2. Forensic Image Guard (Anti-Canva & Anti-Duplicate Proof)
+Mencegah penggunaan ulang struk transfer yang sama untuk pesanan berulang atau lintas merchant:
+- **Dual Fingerprinting (SHA-256 + Perceptual Hash / pHash)**:
+  * **SHA-256 Checksum**: Mengidentifikasi duplikasi byte-for-byte identik. Upload berkas persis sama langsung di-reject dengan kode `DUPLICATE_FILE_HASH`.
+  * **pHash (Perceptual Hash - DCT 64-bit)**: Mendeteksi re-upload screenshot yang telah dimodifikasi secara kosmetik (misal: di-crop beberapa piksel, di-resave dengan kompresi WhatsApp, diubah format dari PNG ke JPEG, atau dinaikkan kontrasnya).
+  * **Aturan Visual Similarity**:
+    $$\text{Similarity} = 1 - \frac{\text{HammingDistance}(\text{pHash}_A, \text{pHash}_B)}{64}$$
+    Jika $\text{Similarity} \ge 92\%$ (Hamming distance $\le 5$) terhadap bukti transfer yang pernah disetujui sebelumnya (baik pada tenant yang sama maupun pada merchant lain di seluruh platform BoonTrack), sistem melakukan **AUTO-REJECT** dengan status `FRAUD_IMAGE_REUSED`.
+- **Bank Reference Number / RRN / No. Jurnal Extraction**:
+  * Vision OCR model wajib mengekstrak nomor referensi bank unik (RRN / No. Referensi / No. Jurnal / Transaction ID).
+  * Diterapkan indeks keunikan pada database:
+    ```sql
+    CREATE UNIQUE INDEX idx_payment_evidence_unique_ref
+    ON payment_evidence (tenant_id, reference_no)
+    WHERE reference_no IS NOT NULL AND status IN ('MATCHED', 'SETTLED');
+    ```
+  * Menjamin satu nomor referensi bank asli tidak dapat dipakai berulang kali untuk mengklaim pembayaran berbeda.
+
+#### 3. Suffix Quarantine Window (30-Minute Cooldown)
+Mencegah nominal transfer pembeli yang terlambat bayar mencocokkan pesanan pembeli baru:
+- **Aturan Cooldown**: Suffix 100–999 yang telah berada pada status `EXPIRED` atau `VOID` **DILARANG LANGSUNG DIALOKASIKAN KEMBALI** ke order baru pada tenant yang sama.
+- **Quarantine Window**: Suffix wajib menjalani masa pendinginan minimal **30 menit**:
+  $$\text{reusable\_at} \ge \text{expires\_at} + 30\text{ menit}$$
+- **Query Alokasi Atomik**:
+  ```sql
+  WITH active_and_cooling_suffixes AS (
+    SELECT unique_suffix FROM payment_intents
+    WHERE tenant_id = :tenant_id
+      AND (
+        (status = 'PENDING' AND expires_at > NOW())
+        OR
+        (status IN ('EXPIRED', 'VOID') AND expires_at + INTERVAL '30 minutes' > NOW())
+      )
+    FOR UPDATE SKIP LOCKED
+  ),
+  available_slots AS (
+    SELECT s.slot
+    FROM generate_series(100, 999) AS s(slot)
+    WHERE s.slot NOT IN (SELECT unique_suffix FROM active_and_cooling_suffixes)
+  )
+  SELECT slot FROM available_slots
+  ORDER BY RANDOM()
+  LIMIT 1;
+  ```
+- **Hasil**: Zero-risk pembeli A yang mentransfer nominal Rp 149.324 lima menit setelah expired tertukar dengan pembeli B yang baru saja checkout produk seharga Rp 149.000.
+
+#### 4. Checkout Sybil & Client-Side Cost Shield
+Melindungi stabilitas sistem dan kuota AI Vision dari serangan Denial of Inventory maupun spamming:
+- **IP Rate-Limit (Checkout Sybil Protection)**:
+  * Pembuatan payment intent / order baru dibatasi maksimal **5 order berstatus PENDING per IP address per 10 menit**.
+  * Mencegah script bot menghabiskan seluruh 900 slot kombinasi suffix (100–999) dalam waktu singkat.
+- **Client-Side Cost Shield (Pre-Upload Validation)**:
+  * Sebelum berkas struk di-upload ke Cloudflare R2 dan sebelum memicu panggilan Gemini Vision API yang berbiaya token, antarmuka browser pembeli wajib menjalankan validasi pre-flight:
+    1. **Format File**: Wajib MIME type gambar asli (`image/jpeg`, `image/png`, `image/webp`). Berkas dokumen (PDF, DOCX) atau berkas executable dilarang.
+    2. **Ukuran File**: Minimal **20 KB** (menolak berkas blank / 1x1 piksel) dan maksimal **5 MB** (mencegah payload bloat).
+    3. **Dimensi Gambar**: Resolusi minimal **300 × 300 piksel** (divalidasi melalui instansiasi `Image()` / HTML5 Canvas di memori browser sebelum pengunggahan).
+  * **Efisiensi Biaya**: Menjamin 100% request yang sampai ke backend Vision OCR adalah gambar yang memiliki konten visual riil, memblokir pengurasan token AI tenant akibat kesalahan pengguna atau serangan bot.
 
 
 

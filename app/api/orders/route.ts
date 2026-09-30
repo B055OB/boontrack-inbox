@@ -3,6 +3,8 @@ import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
+import { extractOrderAmount } from '@/lib/finance-engine';
+import { orderEventBus } from '@/lib/email/order-event-bus';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,7 +117,7 @@ export async function GET(req: NextRequest) {
     const normalizedOrders = rawOrders.map((o: any) => {
       const orderId = String(o.id || o.order_id || o.invoice_no || '');
       const rawStatus = String(o.status || o.payment_status || 'PENDING').toUpperCase();
-      const grossAmount = Number(o.gross_amount ?? o.total_amount ?? o.amount ?? o.total_price ?? 0);
+      const grossAmount = extractOrderAmount(o);
 
       return {
         id: orderId,
@@ -290,6 +292,32 @@ export async function POST(req: NextRequest) {
             updated_at: now,
           };
           await supabase.from('orders').insert(corePayload);
+        }
+
+        // Asynchronously dispatch ORDER_CREATED notification to buyer (Non-blocking)
+        if (insertPayload.customer_email && insertPayload.customer_email.includes('@')) {
+          orderEventBus
+            .publishOrderCreated({
+              order_id: orderId,
+              tenant_slug: body.tenant_slug || '',
+              tenant_id: body.tenant_id || null,
+              customer_name: body.customer_name || 'Pelanggan Toko',
+              customer_email: insertPayload.customer_email,
+              customer_phone: body.customer_phone || null,
+              items: [
+                {
+                  id: body.product_id || 'prod_default',
+                  name: body.product_title || body.product_name || 'Pesanan Produk',
+                  quantity: 1,
+                  price: gross,
+                  total: gross,
+                },
+              ],
+              total_amount: gross,
+              payment_method: body.payment_method || 'Transfer Bank / QRIS',
+              unique_code: body.unique_code || body.uniqueCode || undefined,
+            })
+            .catch((err) => console.warn('[Orders API] Order created email dispatch note:', err));
         }
 
         return NextResponse.json({

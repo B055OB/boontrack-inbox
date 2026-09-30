@@ -4,6 +4,7 @@ import { getBackendApiUrl } from '@/lib/api-config';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
+import { orderEventBus } from '@/lib/email/order-event-bus';
 
 export async function POST(req: NextRequest) {
   try {
@@ -249,6 +250,33 @@ export async function POST(req: NextRequest) {
             console.error('[Payments API] Pre-creation order insert error:', insertErr);
           } else {
             console.log(`[Payments API] Pre-created PENDING order #${orderId} for tenant '${targetTenantSlug}' (Rp ${numAmount})`);
+            // Asynchronously dispatch ORDER_CREATED notification to buyer (Non-blocking)
+            if (customer_email && customer_email.includes('@')) {
+              orderEventBus
+                .publishOrderCreated({
+                  order_id: orderId,
+                  tenant_slug: targetTenantSlug,
+                  tenant_id: resolvedTenantId,
+                  customer_name: customer_name || 'Pelanggan Toko',
+                  customer_email: customer_email,
+                  customer_phone: customer_phone || null,
+                  items: [
+                    {
+                      id: product_id || 'prod_default',
+                      name: product_name || 'Pesanan Produk',
+                      quantity: 1,
+                      price: numAmount,
+                      total: numAmount,
+                    },
+                  ],
+                  total_amount: numAmount,
+                  unique_code: uniqueCode,
+                  payment_method: 'QRIS Dinamis',
+                  qris_url: qrCodeUrl || null,
+                  action_url: `/checkout/${orderId}`,
+                })
+                .catch((e) => console.warn('[Payments API] QRIS order created email dispatch note:', e));
+            }
           }
         }
       } catch (dbErr) {

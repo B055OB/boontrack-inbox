@@ -485,10 +485,11 @@ export default function MicrositeBioTemplate({
   const visibleProducts = React.useMemo(() => {
     if (!showProducts || !Array.isArray(storeProducts) || storeProducts.length === 0) return [];
     if (productMode === 'manual' && featuredIds.length > 0) {
-      return storeProducts.filter((p) => featuredIds.includes(String(p.id))).slice(0, 5);
+      const filtered = storeProducts.filter((p) => featuredIds.includes(String(p.id)));
+      if (filtered.length > 0) return filtered;
     }
-    // Default mode 'all': tampilkan hingga 5 produk unggulan katalog
-    return storeProducts.slice(0, 5);
+    // Default mode 'all': tampilkan seluruh produk katalog aktif
+    return storeProducts;
   }, [showProducts, storeProducts, productMode, featuredIds]);
 
   const isDigitalCatalog = ['DIGITAL', 'COURSE', 'SOFTWARE', 'CREATOR', 'AGENCY'].some((k) =>
@@ -669,9 +670,10 @@ export default function MicrositeBioTemplate({
             {/* Product cards */}
             {visibleProducts.map((item) => {
               const hasDedicatedPage =
-                (item.slug && item.slug === 'ctwa-mastery-7day') ||
-                Boolean(item.single_page_config) ||
-                Boolean((item as any).single_page_enabled);
+                Boolean(item.slug) &&
+                (Boolean(item.single_page_config) ||
+                 Boolean((item as any).single_page_enabled) ||
+                 Boolean((item as any).single_page));
               const dedicatedPageUrl = hasDedicatedPage && item.slug
                 ? `/${tenantSlug}/p/${item.slug}`
                 : null;
@@ -684,9 +686,7 @@ export default function MicrositeBioTemplate({
                 : null;
               const externalUrl = rawExternal ? String(rawExternal).trim() : null;
               const isExternal = Boolean(externalUrl);
-              const ctaLabel = item.slug === 'ctwa-mastery-7day'
-                ? (item.cta_label || 'Daftar Kelas Sekarang - Rp 100.000')
-                : resolveProductCtaLabel(item, isExternal);
+              const ctaLabel = item.cta_label || resolveProductCtaLabel(item, isExternal);
 
               const handleExternalClick = (e: React.MouseEvent) => {
                 e.stopPropagation();

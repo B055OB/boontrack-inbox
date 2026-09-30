@@ -34,6 +34,12 @@ import {
   printOrderInvoice,
   exportOrdersToLincahCsv,
 } from '@/lib/utils/orderFulfillment';
+import {
+  isValidPaidStatus,
+  isPendingVerificationStatus,
+  extractOrderAmount,
+  formatWIBDateTime,
+} from '@/lib/finance-engine';
 
 export interface OrderItem {
   id: string;
@@ -75,7 +81,7 @@ export function mapRawOrder(o: any): OrderItem {
     customer_phone: o.customer_phone || '',
     customer_email: o.customer_email || '',
     items_summary: o.items_summary || o.product_name || o.product_title || 'Pesanan Produk',
-    total_amount: Number(o.gross_amount ?? o.total_amount ?? o.total_price ?? 0),
+    total_amount: extractOrderAmount(o),
     payment_method: o.payment_method || 'QRIS Dinamis',
     payment_status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
     status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
@@ -166,10 +172,12 @@ export default function OrdersTab({
     onOrderUpdated?.(updatedOrder);
   };
 
-  // Helper identifikasi pesanan manual yang berstatus pending/waiting_payment
+  // Helper identifikasi pesanan manual yang berstatus pending/waiting_payment/verifikasi
   const isManualPendingPayment = (order: OrderItem) => {
-    const paymentStatus = String(order.payment_status || order.status || '').toUpperCase();
-    const isPending = ['PENDING', 'WAITING_PAYMENT', 'UNPAID', 'WAITING'].includes(paymentStatus);
+    const paymentStatus = order.payment_status || order.status;
+    const isPending =
+      !isValidPaidStatus(paymentStatus) ||
+      isPendingVerificationStatus(paymentStatus);
     
     const method = String(order.payment_method || '').toUpperCase();
     const isManual = 
@@ -185,7 +193,7 @@ export default function OrdersTab({
       method.includes('BNI') ||
       method.includes('CASH');
 
-    return isPending && isManual;
+    return (isPending && isManual) || isPendingVerificationStatus(paymentStatus);
   };
 
   const filteredOrders = orders.filter((o) => {
@@ -196,11 +204,12 @@ export default function OrdersTab({
       o.customer_name?.toLowerCase().includes(query) ||
       o.customer_phone?.includes(searchQuery);
     
-    const pStatus = (o.payment_status || o.status || '').toUpperCase();
+    const pStatus = o.payment_status || o.status;
     const matchStatus = 
       statusFilter === 'ALL' || 
-      (statusFilter === 'PAID' && (pStatus === 'PAID' || pStatus === 'LUNAS')) ||
-      (statusFilter === 'UNPAID' && (pStatus === 'UNPAID' || pStatus === 'PENDING' || pStatus === 'WAITING_PAYMENT'));
+      (statusFilter === 'PAID' && isValidPaidStatus(pStatus)) ||
+      (statusFilter === 'VERIFICATION' && isPendingVerificationStatus(pStatus)) ||
+      (statusFilter === 'UNPAID' && !isValidPaidStatus(pStatus) && !isPendingVerificationStatus(pStatus));
 
     const createdMs = new Date(o.created_at || Date.now()).getTime();
     const startMs = dateRange.startDate ? new Date(dateRange.startDate).getTime() : 0;
@@ -475,6 +484,7 @@ export default function OrdersTab({
               >
                 <option value="ALL">Semua Status</option>
                 <option value="UNPAID">Menunggu Pembayaran / Belum Lunas</option>
+                <option value="VERIFICATION">Menunggu Verifikasi Manual (ORDER_PENDING_VERIFICATION)</option>
                 <option value="PAID">Lunas (Paid / Verified)</option>
               </select>
             </div>
@@ -561,10 +571,16 @@ export default function OrdersTab({
                           className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
                             isPaid
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : isPendingVerificationStatus(ord.payment_status || ord.status)
+                              ? 'bg-amber-50 text-amber-800 border-amber-300 font-extrabold animate-pulse'
                               : 'bg-amber-50 text-amber-700 border-amber-200'
                           }`}
                         >
-                          {isPaid ? 'LUNAS (PAID)' : 'PENDING'}
+                          {isPaid
+                            ? 'LUNAS (PAID)'
+                            : isPendingVerificationStatus(ord.payment_status || ord.status)
+                            ? 'MENUNGGU VERIFIKASI'
+                            : 'PENDING'}
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-right">

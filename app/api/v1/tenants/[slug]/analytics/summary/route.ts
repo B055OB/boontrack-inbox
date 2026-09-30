@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
+import { calculateFinancialMetrics } from '@/lib/finance-engine';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,30 +100,32 @@ export async function GET(
 
     const { count: chatSessionsCount } = await convQuery;
 
-    // 4. Hitung Pesanan / Orders
+    // 4. Hitung Pesanan / Orders (Universal Agnostic Query: tenant_slug ATAU tenant_id)
     let ordersQuery = supabase
       .from('orders')
-      .select('id, gross_amount, total_amount, payment_status, status, created_at')
-      .eq('tenant_slug', slug)
-      .gte('created_at', effectiveStart);
+      .select('id, gross_amount, total_amount, final_amount, amount, total_price, payment_status, status, created_at');
+
+    if (tenantId) {
+      ordersQuery = ordersQuery.or(`tenant_slug.eq.${slug},tenant_id.eq.${tenantId}`);
+    } else {
+      ordersQuery = ordersQuery.eq('tenant_slug', slug);
+    }
+
+    ordersQuery = ordersQuery.gte('created_at', effectiveStart);
     if (endDate) ordersQuery = ordersQuery.lte('created_at', endDate);
 
     const { data: recentOrders } = await ordersQuery;
-
-    const ordersCount = recentOrders?.length || 0;
-    const paidOmzet = (recentOrders || [])
-      .filter((o: any) => {
-        const s = (o.payment_status || o.status || '').toUpperCase();
-        return ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes(s);
-      })
-      .reduce((sum: number, o: any) => sum + Number(o.gross_amount || o.total_amount || 0), 0);
+    const { totalRevenue, totalSuccessfulOrders, aov, pendingVerificationCount } = calculateFinancialMetrics(recentOrders || []);
 
     return NextResponse.json({
       success: true,
       visits: totalVisits,
       chat_sessions: chatSessionsCount || 0,
-      orders_count: ordersCount,
-      total_omzet: paidOmzet,
+      orders_count: recentOrders?.length || 0,
+      successful_orders_count: totalSuccessfulOrders,
+      total_omzet: totalRevenue,
+      aov,
+      pending_verification_count: pendingVerificationCount,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error fetching analytics summary';

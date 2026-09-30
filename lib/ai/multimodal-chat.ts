@@ -18,6 +18,7 @@ import {
   formatInteractiveMenusSummary,
 } from '@/lib/whatsappFormatter';
 import { processZeroAiMessage, getIndustryQuickReplies } from '@/lib/zero-ai-engine';
+import { isManualOrderMessage, getOrderConfirmationReply } from '@/lib/whatsapp/order-interceptor';
 
 export interface MultimodalChatInput {
   tenant_slug?: string;
@@ -85,8 +86,19 @@ export async function processMultimodalChat(
     input.tenant_slug ||
     input.tenant_id ||
     input.tenant ||
-    input.slug ||
-    'general';
+    input.slug;
+
+  if (!slug || slug === 'general' || slug === 'null' || slug === 'undefined') {
+    console.warn('[SECURITY_FAIL_CLOSED_DROP] Multimodal chat called without valid tenant. Silently dropping.');
+    return {
+      success: false,
+      reply: '',
+      tenant_id: '',
+      tenant_slug: '',
+      silent: true,
+      error: 'Tenant unresolved (fail-closed)',
+    };
+  }
 
   const rawMessage = input.message ?? input.text ?? '';
   const message = typeof rawMessage === 'string' ? rawMessage.trim() : String(rawMessage);
@@ -192,6 +204,24 @@ export async function processMultimodalChat(
     (input as any).phone_number ||
     (input as any).from ||
     '';
+
+  // ── ORDER GATEKEEPER CHECK (MANUAL TRANSACTION INTERCEPTOR) ──────────────────
+  // Cek apakah isi pesan mengandung pola order manual: "Total Nominal:", "Metode: Transfer Bank", "Mohon dicek dan aktivasi akses", atau "Masterclass CPM"
+  if (isManualOrderMessage(message)) {
+    console.info(`[ORDER_GATEKEEPER] Intercepted manual order for tenant '${slug}'. Bypassing Gemini multimodal pipeline.`);
+    const realStoreName = tenantMetadata.store_name || tenantMetadata.name || storeName;
+    const orderConfirmReply = getOrderConfirmationReply(realStoreName);
+
+    return {
+      success: true,
+      reply: orderConfirmReply,
+      tenant_id: slug,
+      tenant_slug: slug,
+      type: 'ORDER_PENDING_VERIFICATION',
+      quick_actions: defaultQuickActions,
+      active_engine: activeEngine,
+    };
+  }
 
   // ── INBOUND MULTIMODAL EXTRACTION ─────────────────────────────────────────────
   const rawImage =

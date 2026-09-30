@@ -33,6 +33,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import StoreBioLinkWidget from '@/app/[tenant]/dashboard/components/StoreBioLinkWidget';
 import BoonPilotHeroBanner from '@/app/[tenant]/dashboard/components/BoonPilotHeroBanner';
 import AiSessionQuotaMeter from '@/app/[tenant]/dashboard/components/AiSessionQuotaMeter';
+import { isValidPaidStatus, extractOrderAmount } from '@/lib/finance-engine';
 
 
 interface DashboardOverviewTabProps {
@@ -502,12 +503,12 @@ export default function DashboardOverviewTab({
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const paidRecent = transactions.filter((t: any) => {
       const tTime = new Date(t.created_at || t.date || 0).getTime();
-      const status = (t.payment_status || t.status || '').toUpperCase();
-      const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes(status);
+      const status = t.payment_status || t.status;
+      const isPaid = isValidPaidStatus(status);
       return isPaid && !isNaN(tTime) && tTime >= sevenDaysAgo;
     });
     const calculated = paidRecent.reduce(
-      (sum: number, t: any) => sum + Number(t.gross_amount || t.total_amount || t.total_price || 0),
+      (sum: number, t: any) => sum + extractOrderAmount(t),
       0
     );
     if (calculated > 0) return calculated;

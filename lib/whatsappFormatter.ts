@@ -76,14 +76,14 @@ export interface WabaInteractivePayload {
  * - Footer text: max 60 karakter
  * - Max buttons: 3, Max rows: 10
  */
-export function formatWabaInteractive(menuData: InteractiveMenu): WabaInteractivePayload {
+export function formatWabaInteractive(menuData: InteractiveMenu, footerTitle?: string): WabaInteractivePayload {
   const headerText = String(menuData.trigger || menuData.header_text || menuData.trigger_keyword || menuData.title || 'Pilih Menu').slice(0, 60);
   const bodyText = String(
     menuData.description ||
     menuData.body_text ||
     'Silakan pilih salah satu opsi di bawah ini untuk melanjutkan:'
   ).slice(0, 1024);
-  const footerText = 'BoonTrack AI Assistant'.slice(0, 60);
+  const footerText = String(footerTitle || 'Customer Service').slice(0, 60);
   const options = Array.isArray(menuData.options) ? menuData.options : [];
 
   // Jika opsi <= 3: Gunakan WhatsApp Interactive Buttons (maksimal 3 tombol)

@@ -7,6 +7,7 @@ import {
   formatInteractiveMenu,
   formatInteractiveMenusSummary,
 } from "@/lib/whatsappFormatter";
+import { isManualOrderMessage, getOrderConfirmationReply } from "@/lib/whatsapp/order-interceptor";
 
 function getSupabaseAdmin() {
   return createClient(
@@ -41,6 +42,15 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
   const rawMessage = String(req.message || "").trim();
   const lower = rawMessage.toLowerCase();
 
+  if (!cleanSlug || cleanSlug === "null" || cleanSlug === "undefined") {
+    console.warn("[SECURITY_FAIL_CLOSED_DROP] processTenantChatCore called with empty slug. Fail closed.");
+    return {
+      reply_text: "",
+      action: "FAIL_CLOSED_DROP",
+      type: "DROP",
+    };
+  }
+
   const supabase = getSupabaseAdmin();
 
   // 1. Ambil data tenant termasuk metadata
@@ -50,7 +60,25 @@ export async function processTenantChatCore(req: ChatCoreRequest): Promise<ChatC
     .eq("slug", cleanSlug)
     .maybeSingle();
 
-  const storeName = tenant?.name || cleanSlug.replace(/[-_]/g, " ").toUpperCase();
+  if (!tenant) {
+    console.warn(`[SECURITY_FAIL_CLOSED_DROP] Tenant '${cleanSlug}' not found in database. Fail closed.`);
+    return {
+      reply_text: "",
+      action: "FAIL_CLOSED_DROP",
+      type: "DROP",
+    };
+  }
+
+  const storeName = tenant.name || cleanSlug.replace(/[-_]/g, " ").toUpperCase();
+
+  // --- INTERCEPTOR ORDER TRANSAKSI (ORDER GATEKEEPER) ---
+  if (isManualOrderMessage(rawMessage)) {
+    return {
+      reply_text: getOrderConfirmationReply(storeName),
+      action: "ORDER_PENDING_VERIFICATION",
+      type: "ORDER_INTERCEPTED",
+    };
+  }
   const rawVertical = String(
     tenant?.metadata?.vertical_category ||
     tenant?.metadata?.vertical_type ||

@@ -75,6 +75,7 @@ import {
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts } from '@/lib/bank-accounts';
+import StickyBuyButton from '@/components/storefront/StickyBuyButton';
 
 // Nomor Resmi WABA Holding BoonTrack: 6285181830080 (Khusus Platform Concierge / Enterprise)
 export const WABA_HOLDING_NUMBER = '6285181830080';
@@ -298,6 +299,8 @@ function SingleProductContent() {
             promo_price: sqlProd.promo_price,
             category: sqlProd.category,
             product_type: sqlProd.product_type,
+            requires_shipping: (sqlProd as any).requires_shipping ?? match?.requires_shipping,
+            is_digital: (sqlProd as any).is_digital ?? match?.is_digital,
             description: sqlProd.description,
             image: freshImage || match?.image,
             image_url: freshImage || match?.image_url || match?.image,
@@ -388,13 +391,23 @@ function SingleProductContent() {
               id: match.id || Date.now(),
               name: dynamicConfig.headline || match.title || match.name || 'Produk Eksklusif',
               slug: match.slug || slug,
-              category: match.category || (match.product_type === 'PHYSICAL' ? 'Fisik' : match.product_type === 'SERVICE' ? 'Jasa' : 'Digital'),
-              product_type: match.product_type || (match.category?.toLowerCase() === 'fisik' || match.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (match.category?.toLowerCase() === 'jasa' || match.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL')),
+              category: match.category || (match.product_type === 'PHYSICAL' ? 'Fisik' : match.product_type === 'FOOD' ? 'Kuliner' : match.product_type === 'SERVICE' ? 'Jasa' : 'Digital'),
+              product_type: match.product_type || (match.category?.toLowerCase() === 'fisik' || match.category?.toLowerCase() === 'physical' ? 'PHYSICAL' : (match.category?.toLowerCase() === 'food' || match.category?.toLowerCase() === 'fnb' || match.category?.toLowerCase() === 'kuliner' ? 'FOOD' : (match.category?.toLowerCase() === 'jasa' || match.category?.toLowerCase() === 'service' ? 'FIELD_SERVICE' : 'DIGITAL'))),
+              requires_shipping: Boolean(
+                (sqlProd as any)?.requires_shipping ??
+                match.requires_shipping ??
+                (match.product_type === 'FOOD' || match.product_type === 'PHYSICAL' || tenantCategory === 'FOOD' || tenantCategory === 'FNB')
+              ),
+              is_digital: Boolean(
+                (sqlProd as any)?.is_digital ??
+                match.is_digital ??
+                (match.product_type === 'DIGITAL')
+              ),
               price: rawPrice,
               promo_price: rawPromoPrice,
               original_price: match.original_price || match.originalPrice || (sqlProd as any)?.original_price || (sqlProd as any)?.originalPrice || undefined,
               originalPrice: match.original_price || match.originalPrice || (sqlProd as any)?.original_price || (sqlProd as any)?.originalPrice || undefined,
-              variants: match.variants || 'Format Digital • Akses Instan',
+              variants: match.variants || (match.product_type === 'FOOD' ? 'Porsi Standar' : 'Format Digital • Akses Instan'),
               promo: dynamicConfig.badge_text,
               description: dynamicConfig.subheadline,
               download_url: match.download_url || match.link_digital || match.delivery_url || match.fulfillment_metadata?.access_url || '',
@@ -552,22 +565,40 @@ function SingleProductContent() {
   const isPhysicalCategory = isStorePhysical || isStoreFnb || ['fisik', 'physical', 'retail_physical', 'fnb', 'food', 'kuliner'].some(k => rawCategory.includes(k) || rawType.includes(k) || rawProductType.includes(k));
   const isServiceCategory = isStoreFieldService || isStoreProService || isStoreCreator || ['jasa', 'service', 'field', 'local', 'pro', 'consult', 'agency', 'creator', 'toren', 'teknisi'].some(k => rawCategory.includes(k) || rawType.includes(k) || rawProductType.includes(k));
 
-  const productType: ProductType = isStoreFieldService ? 'FIELD_SERVICE' :
-    isStoreDigital ? 'DIGITAL' :
-    isStoreProService ? 'PROFESSIONAL_SERVICE' :
-    isStoreCreator ? 'AGENCY' :
-    (product.product_type || (
-      isPhysicalCategory ? 'PHYSICAL' :
-      (isServiceCategory ? 'SERVICE' : 'DIGITAL')
-    ));
+  // PERSYARATAN STOREFRONT FULFILLMENT:
+  // Blok pengiriman (Alamat, Pin Lokasi/Jarak KM, Pilihan Kurir Instan/Ekspedisi) aktif jika:
+  // product.requires_shipping === true || product.product_type === 'PHYSICAL' || product.product_type === 'FOOD' || tenant.category === 'FOOD'
+  const isExplicitShippingRequired = Boolean(
+    product.requires_shipping === true ||
+    (product as any).requiresShipping === true ||
+    product.product_type === 'PHYSICAL' ||
+    product.product_type === 'FOOD' ||
+    rawProductType === 'PHYSICAL' ||
+    rawProductType === 'FOOD' ||
+    storeCat === 'FOOD' ||
+    storeCat === 'FNB' ||
+    tenantCategory === 'FOOD' ||
+    tenantCategory === 'FNB'
+  );
+
+  const productType: ProductType = isExplicitShippingRequired
+    ? (product.product_type === 'FOOD' || rawProductType === 'FOOD' || storeCat === 'FOOD' || storeCat === 'FNB' ? 'FOOD' : 'PHYSICAL')
+    : (isStoreFieldService ? 'FIELD_SERVICE' :
+       isStoreDigital ? 'DIGITAL' :
+       isStoreProService ? 'PROFESSIONAL_SERVICE' :
+       isStoreCreator ? 'AGENCY' :
+       (product.product_type || (
+         isPhysicalCategory ? 'PHYSICAL' :
+         (isServiceCategory ? 'SERVICE' : 'DIGITAL')
+       )));
 
   const requirements = resolveFulfillmentRequirements(productType);
-  // STRICT ARCHITECTURE GUARDRAIL: Pilihan kurir HANYA aktif untuk vertikal retail_physical dan fnb
-  const isEligibleForShipping = isPhysicalCategory && !isServiceCategory && !isStoreFieldService && !isStoreDigital && !isStoreProService && !isStoreCreator;
-  const requiresShipping = isEligibleForShipping && requirements.requiresShipping;
-  const requiresAddress = requirements.requiresAddress;
+  // STRICT ARCHITECTURE GUARDRAIL: Pilihan kurir aktif jika isExplicitShippingRequired ATAU vertikal retail_physical dan fnb
+  const isEligibleForShipping = isExplicitShippingRequired || (isPhysicalCategory && !isServiceCategory && !isStoreFieldService && !isStoreDigital && !isStoreProService && !isStoreCreator);
+  const requiresShipping = isExplicitShippingRequired || (isEligibleForShipping && requirements.requiresShipping);
+  const requiresAddress = isExplicitShippingRequired || requiresShipping || requirements.requiresAddress;
   const requiresWeight = requiresShipping && requirements.requiresWeight;
-  const requiresDeliveryPayload = requirements.requiresDeliveryPayload;
+  const requiresDeliveryPayload = !isExplicitShippingRequired && requirements.requiresDeliveryPayload;
   const isPhysical = requiresShipping; // Backward-compatible alias
 
   // Status Pembayaran dari query param (jika redirect sukses dari invoice/gateway)
@@ -1129,7 +1160,11 @@ function SingleProductContent() {
     }
   };
 
-  const handleOpenCheckout = () => {
+  const handleOpenCheckout = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     triggerAddToCart();
     triggerInitiateCheckout();
     if (isAffiliateProduct && externalAffiliateUrl) {
@@ -1137,9 +1172,18 @@ function SingleProductContent() {
       window.open(externalAffiliateUrl, '_blank', 'noopener,noreferrer');
       return;
     }
-    const checkoutEl = document.getElementById('checkout-section');
+    const checkoutEl =
+      document.getElementById('checkout-form') ||
+      document.getElementById('checkout-section');
     if (checkoutEl) {
-      checkoutEl.scrollIntoView({ behavior: 'smooth' });
+      checkoutEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Safely focus the first input without causing mobile viewport jump
+      setTimeout(() => {
+        const input = checkoutEl.querySelector('input') as HTMLInputElement | null;
+        if (input && document.activeElement !== input) {
+          input.focus({ preventScroll: true });
+        }
+      }, 400);
     } else {
       setCheckoutOpen(true);
     }
@@ -1334,7 +1378,7 @@ function SingleProductContent() {
   };
 
   const renderCheckoutForm = () => (
-    <form onSubmit={handleDirectCheckout} className="space-y-4 text-xs">
+    <form id="checkout-form" onSubmit={handleDirectCheckout} className="space-y-4 text-xs">
       {errorMessage && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
           {errorMessage}
@@ -2550,40 +2594,22 @@ function SingleProductContent() {
 
       {/* 4. Sticky Bottom CTA (Mobile & Desktop) */}
       {config.enable_payment !== false && (
-        <div className="fixed bottom-0 inset-x-0 bg-white/95 border-t border-slate-200 p-4 z-40 backdrop-blur shadow-lg">
-          <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
-            <div>
-              <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Investasi</span>
-              <span className="text-lg font-black text-slate-900">
-                {totalAmount === 0 ? 'GRATIS' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
-              </span>
-            </div>
-            {isAffiliateProduct ? (
-              <a
-                href={externalAffiliateUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={handleExternalProductClick}
-                className="flex-1 max-w-xs py-3.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer text-center"
-              >
-                <span>{affiliateCtaLabel}</span>
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            ) : (
-              <button
-                onClick={handleOpenCheckout}
-                className="flex-1 max-w-xs py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition cursor-pointer"
-              >
-                <span>
-                  {totalAmount === 0 
-                    ? (product.metadata?.cta_text || 'Klaim Sekarang (Gratis)') 
-                    : `${dynamicCtaPrefix} - Rp ${totalAmount.toLocaleString('id-ID')}`}
-                </span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
+        <StickyBuyButton
+          totalAmount={totalAmount}
+          dynamicCtaPrefix={dynamicCtaPrefix}
+          ctaText={
+            totalAmount === 0
+              ? (product.metadata?.cta_text || 'Klaim Sekarang (Gratis)')
+              : undefined
+          }
+          isAffiliateProduct={isAffiliateProduct}
+          externalAffiliateUrl={externalAffiliateUrl}
+          affiliateCtaLabel={affiliateCtaLabel}
+          targetFormId="checkout-form"
+          onOpenCheckout={handleOpenCheckout}
+          onExternalClick={handleExternalProductClick}
+          disabled={loading}
+        />
       )}
 
       {/* 5. Instant Checkout Modal Fallback */}
@@ -2596,6 +2622,7 @@ function SingleProductContent() {
                 <span>Single Page Checkout Form</span>
               </h3>
               <button 
+                type="button"
                 onClick={() => setCheckoutOpen(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 transition"
               >

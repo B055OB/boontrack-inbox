@@ -181,6 +181,76 @@ export default function TeamChatTab({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentConversation?.messages]);
 
+  // Real CRM aggregation from orders table (Zero Mock)
+  const [crmMetrics, setCrmMetrics] = useState<{ totalOrders: number; lifetimeValue: number; isLoading: boolean }>({
+    totalOrders: 0,
+    lifetimeValue: 0,
+    isLoading: false,
+  });
+
+  useEffect(() => {
+    if (!currentConversation?.customerPhone) {
+      setCrmMetrics({ totalOrders: 0, lifetimeValue: 0, isLoading: false });
+      return;
+    }
+
+    let isMounted = true;
+    const fetchCustomerOrders = async () => {
+      setCrmMetrics((prev) => ({ ...prev, isLoading: true }));
+      try {
+        const supabase = getSupabase();
+        if (!supabase) return;
+
+        const rawPhone = currentConversation.customerPhone;
+        let cleanPhone = rawPhone.replace(/\D/g, '');
+        let altPhone = cleanPhone;
+        if (cleanPhone.startsWith('62')) {
+          altPhone = '0' + cleanPhone.slice(2);
+        } else if (cleanPhone.startsWith('0')) {
+          altPhone = '62' + cleanPhone.slice(1);
+        }
+
+        const cleanSlug = tenantSlug || (typeof window !== 'undefined' ? window.location.pathname.split('/')[1] : '');
+
+        let query = supabase
+          .from('orders')
+          .select('total_amount, gross_amount, status')
+          .or(`customer_phone.eq.${cleanPhone},customer_phone.eq.${altPhone},customer_phone.eq.${rawPhone}`)
+          .in('status', ['PAID', 'SETTLED', 'COMPLETED']);
+
+        if (cleanSlug) {
+          query = query.or(`tenant_slug.eq.${cleanSlug},tenant_id.eq.${cleanSlug}`);
+        }
+
+        const { data: matchedOrders, error } = await query;
+        if (!error && Array.isArray(matchedOrders)) {
+          const count = matchedOrders.length;
+          const total = matchedOrders.reduce((acc: number, o: any) => {
+            const amt = Number(o.total_amount || o.gross_amount || 0);
+            return acc + (isNaN(amt) ? 0 : amt);
+          }, 0);
+
+          if (isMounted) {
+            setCrmMetrics({ totalOrders: count, lifetimeValue: total, isLoading: false });
+          }
+        } else {
+          if (isMounted) {
+            setCrmMetrics({ totalOrders: 0, lifetimeValue: 0, isLoading: false });
+          }
+        }
+      } catch {
+        if (isMounted) {
+          setCrmMetrics({ totalOrders: 0, lifetimeValue: 0, isLoading: false });
+        }
+      }
+    };
+
+    fetchCustomerOrders();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentConversation?.customerPhone, tenantSlug]);
+
   // Filtered conversation list
   const filteredConversations = useMemo(() => {
     return conversationsList.filter((c) => {
@@ -217,14 +287,55 @@ export default function TeamChatTab({
   }, [conversationsList]);
 
   // Select conversation handler
-  const handleSelectConversation = (id: string) => {
+  const handleSelectConversation = async (id: string) => {
     setSelectedConvId(id);
     externalSetActiveConversationId(id);
     // Mark as read
     setConversationsList((prev) =>
       prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
     );
+
+    // Lazy-load messages from Supabase if not yet populated
+    const targetConv = conversationsList.find((c) => c.id === id);
+    if (targetConv && targetConv.messages.length === 0) {
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data: msgs } = await supabase
+            .from('messages')
+            .select('id, sender, text, created_at, user_name, payload')
+            .eq('conversation_id', id)
+            .order('created_at', { ascending: true })
+            .limit(100);
+
+          if (Array.isArray(msgs) && msgs.length > 0) {
+            const mapped: ConversationMessage[] = msgs.map((m: any) => {
+              const ts = m.created_at ? new Date(m.created_at) : new Date();
+              const hh = String(ts.getHours()).padStart(2, '0');
+              const mm = String(ts.getMinutes()).padStart(2, '0');
+              const sender = m.sender === 'user' ? 'customer'
+                           : m.sender === 'bot' ? 'bot'
+                           : m.sender === 'agent' ? 'agent'
+                           : 'system';
+              return {
+                id: m.id,
+                sender: sender as ConversationMessage['sender'],
+                senderName: m.user_name || (sender === 'bot' ? 'Bot AI' : sender === 'agent' ? 'CS Agent' : undefined),
+                text: m.text || '',
+                time: `${hh}:${mm}`,
+              };
+            });
+            setConversationsList((prev) =>
+              prev.map((c) => c.id === id ? { ...c, messages: mapped } : c)
+            );
+          }
+        }
+      } catch (e) {
+        console.debug('[TeamChat] Failed to load messages:', e);
+      }
+    }
   };
+
 
   // Toggle Bot Pause / CS Takeover
   const handleToggleBot = () => {
@@ -745,7 +856,19 @@ export default function TeamChatTab({
             }}
             className="flex-1 overflow-y-auto p-2 space-y-1.5 divide-y-0"
           >
-            {filteredConversations.length === 0 ? (
+            {conversationsList.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-3 my-auto">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
+                  <MessageSquare className="w-6 h-6" />
+                </div>
+                <div className="space-y-1 max-w-xs">
+                  <p className="font-bold text-slate-700 text-xs">Belum ada pesan masuk</p>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Chat pelanggan WhatsApp toko Anda akan muncul di sini secara otomatis.
+                  </p>
+                </div>
+              </div>
+            ) : filteredConversations.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
                 <MessageSquare className="w-6 h-6 text-slate-300" />
                 <p className="font-semibold">Tidak ada chat ditemukan</p>
@@ -1157,18 +1280,18 @@ export default function TeamChatTab({
                   <ExternalLink className="w-2.5 h-2.5 ml-auto text-emerald-600" />
                 </a>
 
-                {/* Metrik CRM Ringkas */}
+                {/* Metrik CRM Ringkas (Database-Driven, Zero Mock) */}
                 <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
                   <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
                     <span className="text-[9px] font-bold text-slate-400 block uppercase">Total Order</span>
                     <span className="text-xs font-black text-slate-800">
-                      {currentConversation.crm?.totalOrders ?? 1} Pesanan
+                      {crmMetrics.isLoading ? '...' : `${crmMetrics.totalOrders} Pesanan`}
                     </span>
                   </div>
                   <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
                     <span className="text-[9px] font-bold text-slate-400 block uppercase">Nilai Belanja</span>
                     <span className="text-xs font-black text-indigo-700">
-                      Rp {(currentConversation.crm?.lifetimeValue ?? 150000).toLocaleString('id-ID')}
+                      {crmMetrics.isLoading ? '...' : `Rp ${crmMetrics.lifetimeValue.toLocaleString('id-ID')}`}
                     </span>
                   </div>
                 </div>

@@ -11,10 +11,19 @@ import {
   Clock,
   X,
   Loader2,
-  Calendar,
+  CheckCircle2,
+  AlertCircle,
+  HelpCircle,
 } from 'lucide-react';
 import { TransactionItem } from '@/lib/product-catalog';
 import DateRangePicker, { DateRangeState, getDateRangeFromPreset } from '../DateRangePicker';
+import {
+  calculateFinancialMetrics,
+  isValidPaidStatus,
+  isPendingVerificationStatus,
+  formatWIBDateTime,
+  extractOrderAmount,
+} from '@/lib/finance-engine';
 
 export interface OverviewTabProps {
   totalOmzet: number;
@@ -39,6 +48,8 @@ export interface OverviewTabProps {
   setWithdrawAmount: (amount: number) => void;
   handleProcessWithdraw: (e: React.FormEvent) => void;
   isWithdrawing?: boolean;
+  tenantSlug?: string;
+  onOrderUpdated?: (order: any) => void;
 }
 
 export default function OverviewTab({
@@ -54,29 +65,76 @@ export default function OverviewTab({
   setWithdrawAmount,
   handleProcessWithdraw,
   isWithdrawing = false,
+  tenantSlug,
+  onOrderUpdated,
 }: OverviewTabProps) {
   const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('all'));
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'PENDING_VERIFICATION' | 'PENDING'>('ALL');
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+
+  // Financial Metrics dynamically calculated by universal finance engine
+  const financialMetrics = useMemo(() => {
+    return calculateFinancialMetrics(transactions || [], {
+      startDate: dateRange.startDate || undefined,
+      endDate: dateRange.endDate || undefined,
+    });
+  }, [transactions, dateRange.startDate, dateRange.endDate]);
+
+  const effectiveOmzet = financialMetrics.totalRevenue > 0 ? financialMetrics.totalRevenue : (!dateRange.startDate && !dateRange.endDate && totalOmzet > 0 ? totalOmzet : 0);
 
   const filteredTransactions = useMemo(() => {
     if (!transactions) return [];
-    if (!dateRange.startDate && !dateRange.endDate) return transactions;
     const startMs = dateRange.startDate ? new Date(dateRange.startDate).getTime() : 0;
     const endMs = dateRange.endDate ? new Date(dateRange.endDate).getTime() : Infinity;
 
     return transactions.filter((t: any) => {
       const createdMs = new Date(t.created_at || t.date || Date.now()).getTime();
-      return createdMs >= startMs && createdMs <= endMs;
-    });
-  }, [transactions, dateRange]);
+      const inDateRange = createdMs >= startMs && createdMs <= endMs;
+      if (!inDateRange) return false;
 
-  const filteredOmzet = useMemo(() => {
-    if (!dateRange.startDate && !dateRange.endDate) {
-      return totalOmzet;
+      const rawStatus = t.status || t.payment_status;
+      if (statusFilter === 'ALL') return true;
+      if (statusFilter === 'PAID') return isValidPaidStatus(rawStatus);
+      if (statusFilter === 'PENDING_VERIFICATION') return isPendingVerificationStatus(rawStatus);
+      if (statusFilter === 'PENDING') return !isValidPaidStatus(rawStatus) && !isPendingVerificationStatus(rawStatus);
+
+      return true;
+    });
+  }, [transactions, dateRange, statusFilter]);
+
+  // Action: Tandai Lunas order manual yang berstatus ORDER_PENDING_VERIFICATION
+  const handleVerifyManualOrder = async (order: any) => {
+    const orderId = order.id || order.order_id || order.invoice_no;
+    if (!orderId) return;
+
+    setVerifyingId(String(orderId));
+    try {
+      const updatedOrder = {
+        ...order,
+        status: 'PAID',
+        payment_status: 'PAID',
+        verified_at: new Date().toISOString(),
+      };
+
+      if (onOrderUpdated) {
+        onOrderUpdated(updatedOrder);
+      }
+
+      if (tenantSlug) {
+        await fetch(
+          `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(orderId)}/quick-paid`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        ).catch(() => null);
+      }
+    } catch (err) {
+      console.warn('Verifikasi order manual note:', err);
+    } finally {
+      setVerifyingId(null);
     }
-    return filteredTransactions
-      .filter((t: any) => ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes((t.status || t.payment_status || '').toUpperCase()))
-      .reduce((sum: number, t: any) => sum + Number(t.gross_amount || t.total_amount || t.amount || 0), 0);
-  }, [filteredTransactions, dateRange, totalOmzet]);
+  };
 
   return (
     <div className="flex-1 p-6 md:p-8 overflow-y-auto max-w-6xl mx-auto w-full space-y-6">
@@ -84,10 +142,10 @@ export default function OverviewTab({
         <div>
           <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
             <Wallet className="w-5 h-5 text-emerald-600" />
-            <span>Ringkasan Keuangan & Laporan Penjualan</span>
+            <span>Laporan Keuangan & Omzet Multi-Vertical</span>
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Pantau mutasi pembayaran QRIS otomatis, saldo siap cair, serta kelola rekening penarikan.
+            Pusat audit pendapatan riil, agregasi multi-vertikal (Jasa, FnB, Digital, Fisik), dan penarikan saldo merchant.
           </p>
         </div>
 
@@ -106,7 +164,9 @@ export default function OverviewTab({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* METRIC CARDS: 4-COLUMN RESPONSIVE GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 1. TOTAL OMZET */}
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-400">
@@ -117,13 +177,55 @@ export default function OverviewTab({
             </span>
           </div>
           <div className="text-2xl font-black text-slate-900">
-            Rp {filteredOmzet.toLocaleString('id-ID')}
+            Rp {Math.round(effectiveOmzet).toLocaleString('id-ID')}
           </div>
           <p className="text-[11px] text-slate-400 font-medium">
-            {dateRange.preset !== 'all' ? `Periode: ${dateRange.label}` : 'Akumulasi seluruh transaksi sukses'}
+            {dateRange.preset !== 'all' ? `Periode: ${dateRange.label}` : 'Akumulasi seluruh transaksi lunas (WIB)'}
           </p>
         </div>
 
+        {/* 2. TRANSAKSI SUKSES & AOV */}
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400">Transaksi Berhasil & AOV</span>
+            <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+              <CheckCircle2 className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="text-2xl font-black text-indigo-950">
+            {financialMetrics.totalSuccessfulOrders}{' '}
+            <span className="text-sm font-semibold text-slate-400">Order</span>
+          </div>
+          <p className="text-[11px] text-indigo-700 font-bold">
+            AOV: Rp {Math.round(financialMetrics.aov).toLocaleString('id-ID')} / pesanan
+          </p>
+        </div>
+
+        {/* 3. MENUNGGU VERIFIKASI */}
+        <div
+          onClick={() => setStatusFilter(statusFilter === 'PENDING_VERIFICATION' ? 'ALL' : 'PENDING_VERIFICATION')}
+          className={`p-5 rounded-3xl border transition cursor-pointer space-y-2 ${
+            statusFilter === 'PENDING_VERIFICATION'
+              ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-400/20 shadow-xs'
+              : 'bg-white border-slate-200 shadow-xs hover:border-amber-200'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-800">Menunggu Verifikasi</span>
+            <span className="p-2 bg-amber-100 text-amber-700 rounded-xl">
+              <AlertCircle className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="text-2xl font-black text-amber-900">
+            {financialMetrics.pendingVerificationCount}{' '}
+            <span className="text-sm font-semibold text-amber-700">Order</span>
+          </div>
+          <p className="text-[11px] text-amber-700 font-medium">
+            Rp {Math.round(financialMetrics.pendingVerificationAmount).toLocaleString('id-ID')} (Pending Manual)
+          </p>
+        </div>
+
+        {/* 4. SALDO SIAP TARIK */}
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-400">Saldo Siap Tarik</span>
@@ -132,39 +234,72 @@ export default function OverviewTab({
             </span>
           </div>
           <div className="text-2xl font-black text-emerald-600">
-            Rp {readyBalance.toLocaleString('id-ID')}
+            Rp {Math.round(readyBalance).toLocaleString('id-ID')}
           </div>
           <p className="text-[11px] text-emerald-700 font-medium">
             Dana bersih realtime di rekening penampung
           </p>
         </div>
-
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400">Rekening Tujuan</span>
-            <span className="p-2 bg-slate-50 text-slate-600 rounded-xl">
-              <CreditCard className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="text-base font-black text-slate-900 font-mono">
-            {bankForm.name || 'Belum Ditetapkan'}
-          </div>
-          <p className="text-[11px] text-slate-500 font-mono font-bold truncate">
-            {bankForm.account
-              ? `${bankForm.account} • ${bankForm.holder || displayName.toUpperCase()}`
-              : 'Atur nomor rekening di bawah'}
-          </p>
-        </div>
       </div>
 
+      {/* TABEL RIWAYAT TRANSAKSI DENGAN STATUS FILTER */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
-          <div>
+          <div className="flex items-center gap-2">
             <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
               <FileText className="w-4 h-4 text-blue-600" />
-              <span>Riwayat Transaksi & Invoice Pembeli</span>
+              <span>Riwayat Transaksi &amp; Invoice Pembeli</span>
             </h3>
           </div>
+
+          {/* Quick Filter Tabs */}
+          <div className="inline-flex p-1 bg-slate-200/60 rounded-xl items-center text-xs font-bold gap-1">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('ALL')}
+              className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                statusFilter === 'ALL'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Semua ({transactions?.length || 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('PAID')}
+              className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                statusFilter === 'PAID'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-emerald-700'
+              }`}
+            >
+              Lunas ({financialMetrics.totalSuccessfulOrders})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('PENDING_VERIFICATION')}
+              className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                statusFilter === 'PENDING_VERIFICATION'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-amber-700'
+              }`}
+            >
+              Menunggu Verifikasi ({financialMetrics.pendingVerificationCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('PENDING')}
+              className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                statusFilter === 'PENDING'
+                  ? 'bg-slate-700 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Pending Bayar ({financialMetrics.pendingPaymentCount})
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => alert('Mengekspor laporan penjualan ke file CSV...')}
@@ -179,9 +314,9 @@ export default function OverviewTab({
           <table className="w-full min-w-[640px] text-left text-xs text-slate-600">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
               <tr>
-                <th className="px-5 py-3.5">Invoice / Waktu</th>
+                <th className="px-5 py-3.5">Invoice / Waktu (WIB)</th>
                 <th className="px-5 py-3.5">Pembeli</th>
-                <th className="px-5 py-3.5">Produk</th>
+                <th className="px-5 py-3.5">Produk / Layanan</th>
                 <th className="px-5 py-3.5">Metode</th>
                 <th className="px-5 py-3.5 text-right">Nominal</th>
                 <th className="px-5 py-3.5 text-center">Status</th>
@@ -197,11 +332,11 @@ export default function OverviewTab({
                         <FileText className="w-5 h-5 text-slate-400" />
                       </div>
                       <p className="text-xs font-bold text-slate-700">
-                        Belum ada transaksi masuk pada periode ini.
+                        Belum ada transaksi pada kriteria filter ini.
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        {dateRange.preset !== 'all'
-                          ? `Tidak ditemukan transaksi untuk periode: ${dateRange.label}`
+                        {statusFilter !== 'ALL'
+                          ? `Tidak ditemukan pesanan dengan status filter: ${statusFilter}`
                           : 'Transaksi dari checkout etalase atau WhatsApp akan tercatat otomatis di sini.'}
                       </p>
                     </div>
@@ -209,14 +344,15 @@ export default function OverviewTab({
                 </tr>
               ) : (
                 filteredTransactions.map((t: any) => {
-                  const invoiceNo = t.invoice_no || t.id;
-                  const dateVal = t.date || t.created_at;
-                  const customerName = t.customer_name || t.customerName || 'Pelanggan';
+                  const invoiceNo = t.invoice_no || t.id || t.order_id;
+                  const dateVal = t.created_at || t.date || t.updated_at;
+                  const customerName = t.customer_name || t.customerName || 'Pelanggan Toko';
                   const customerPhone = t.customer_phone || t.customerPhone;
-                  const productTitle = t.product_title || t.product_name || t.productTitle || t.items_summary || 'Produk Digital';
-                  const grossAmount = Number(t.gross_amount ?? t.amount ?? t.total_amount ?? 0);
-                  const status = t.status || t.payment_status || 'PENDING';
-                  const isPaid = ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes(String(status).toUpperCase());
+                  const productTitle = t.product_title || t.product_name || t.productTitle || t.items_summary || 'Pesanan Produk';
+                  const grossAmount = extractOrderAmount(t);
+                  const rawStatus = t.status || t.payment_status || 'PENDING';
+                  const isPaid = isValidPaidStatus(rawStatus);
+                  const isPendingVerif = isPendingVerificationStatus(rawStatus);
                   const paymentMethod = t.payment_method || t.paymentMethod || 'QRIS Dinamis';
 
                   return (
@@ -224,12 +360,14 @@ export default function OverviewTab({
                       <td className="px-5 py-4">
                         <div className="font-bold text-slate-900 font-mono">{invoiceNo}</div>
                         <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                          <Clock className="w-3 h-3" /> {typeof dateVal === 'string' && dateVal.includes('T') ? new Date(dateVal).toLocaleDateString('id-ID') : (dateVal || '-')}
+                          <Clock className="w-3 h-3" /> {formatWIBDateTime(dateVal)}
                         </div>
                       </td>
                       <td className="px-5 py-4">
                         <div className="font-bold text-slate-800">{customerName}</div>
-                        <div className="text-[11px] text-slate-400 font-mono">{customerPhone ? (String(customerPhone).startsWith('+') ? customerPhone : `+${customerPhone}`) : '-'}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">
+                          {customerPhone ? (String(customerPhone).startsWith('+') ? customerPhone : `+${customerPhone}`) : '-'}
+                        </div>
                       </td>
                       <td className="px-5 py-4 max-w-[220px]">
                         <div className="truncate font-semibold text-slate-900" title={productTitle}>{productTitle}</div>
@@ -243,22 +381,48 @@ export default function OverviewTab({
                         Rp {Math.round(grossAmount).toLocaleString('id-ID')}
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
-                          isPaid
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
-                          {isPaid ? 'LUNAS (PAID)' : 'PENDING'}
+                        <span
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
+                            isPaid
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : isPendingVerif
+                              ? 'bg-amber-50 text-amber-800 border-amber-300 font-extrabold animate-pulse'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {isPaid
+                            ? 'LUNAS (PAID)'
+                            : isPendingVerif
+                            ? 'MENUNGGU VERIFIKASI'
+                            : 'BELUM BAYAR'}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => alert(`Membuka lembar Invoice Resmi untuk ${invoiceNo}`)}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
-                        >
-                          Invoice
-                        </button>
+                        {isPendingVerif ? (
+                          <button
+                            type="button"
+                            disabled={verifyingId === String(invoiceNo)}
+                            onClick={() => handleVerifyManualOrder(t)}
+                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg font-bold text-[11px] transition cursor-pointer shadow-xs inline-flex items-center gap-1"
+                          >
+                            {verifyingId === String(invoiceNo) ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <span>Verifikasi...</span>
+                              </>
+                            ) : (
+                              <span>Verifikasi Lunas</span>
+                            )}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => alert(`Membuka lembar Invoice Resmi untuk ${invoiceNo}`)}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                          >
+                            Invoice
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -269,6 +433,7 @@ export default function OverviewTab({
         </div>
       </div>
 
+      {/* REKENING BANK TOKO */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
         <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
           Ubah Data Rekening Bank Toko
@@ -329,7 +494,7 @@ export default function OverviewTab({
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
                 <span className="text-xs text-emerald-800 font-medium">Saldo Tersedia</span>
                 <div className="text-xl font-black text-emerald-700 mt-0.5">
-                  Rp {readyBalance.toLocaleString('id-ID')}
+                  Rp {Math.round(readyBalance).toLocaleString('id-ID')}
                 </div>
               </div>
 

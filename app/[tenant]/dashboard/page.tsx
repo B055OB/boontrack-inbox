@@ -862,6 +862,20 @@ export default function TenantDashboardPage() {
             setWithdrawAmount={setWithdrawAmount}
             handleProcessWithdraw={handleProcessWithdraw}
             isWithdrawing={isWithdrawing}
+            tenantSlug={tenantSlug}
+            onOrderUpdated={(updated) => {
+              setOrders((prev: any[]) =>
+                Array.isArray(prev)
+                  ? prev.map((o: any) => {
+                      const id = String(o.order_id || o.id || o.invoice_no || '');
+                      if (id === updated.id || o.invoice_no === updated.invoice_no) {
+                        return { ...o, ...updated };
+                      }
+                      return o;
+                    })
+                  : []
+              );
+            }}
           />
         )
       )}

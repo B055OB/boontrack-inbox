@@ -78,9 +78,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [tenantStaticQris, setTenantStaticQris] = useState<string>("");
   const [tenantQrisImageUrl, setTenantQrisImageUrl] = useState<string>("");
 
-  // Resolver Context Fulfillment Digital vs Fisik vs Booking/Service
+  // Resolver Context Fulfillment Digital vs Fisik vs Food vs Booking/Service
   const rawProductType = (product?.product_type || product?.type || (product?.category === 'fisik' || product?.category === 'physical' ? 'physical' : 'digital')).toLowerCase();
-  const isPhysical = rawProductType === 'physical' || rawProductType === 'fisik';
+  const isPhysical = rawProductType === 'physical' || rawProductType === 'fisik' || rawProductType === 'food' || rawProductType === 'fnb' || Boolean((product as any)?.requires_shipping) || Boolean((product as any)?.requiresShipping);
   const isBookingOrService = rawProductType === 'service' || rawProductType === 'booking' || rawProductType === 'consultation' || Boolean(product?.slot);
   const isDigital = !isPhysical;
 

@@ -269,11 +269,27 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
   const isExternal = Boolean(externalUrl);
   const ctaLabel = resolveProductCtaLabel(p, isExternal);
 
+  const isExplicitlyInactive =
+    (p as any).is_active === false ||
+    (p as any).is_active === 'false' ||
+    (p as any).is_active === 0 ||
+    (p as any).is_active === '0' ||
+    (typeof (p as any).status === 'string' && ['draft', 'inactive', 'archived'].includes((p as any).status.toLowerCase()));
+
+  const rawType = String((p as any).type || (p as any).product_type || '').toLowerCase();
+  const rawCat = String(p.category || '').toLowerCase();
+  const resolvedType =
+    rawType.includes('physical') || rawType.includes('fisik') || rawCat.includes('fisik')
+      ? 'physical'
+      : (rawType.includes('service') || rawType.includes('jasa') || rawCat.includes('jasa')
+      ? 'service'
+      : 'digital');
+
   return {
     id: p.id !== undefined && p.id !== null ? p.id : `prod-${idx + 1}`,
     name: p.name || p.title || `Layanan ${idx + 1}`,
     category: p.category || categoryBadge,
-    type: p.type || (p.product_type === 'PHYSICAL' ? 'physical' : (p.product_type === 'SERVICE' || p.product_type === 'FIELD_SERVICE' ? 'service' : 'digital')),
+    type: resolvedType,
     price,
     originalPrice,
     image: sanitizedImg,
@@ -285,14 +301,14 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     features: Array.isArray(p.features) && p.features.length > 0 ? p.features : [],
     modules: Array.isArray(p.modules) ? p.modules : undefined,
     promo_price: rawPromoPrice,
-    download_url: p.download_url || p.delivery_url || p.link_digital || p.asset_reference || p.fulfillment_metadata?.access_url || "",
+    download_url: p.download_url || (p as any).delivery_url || (p as any).link_digital || (p as any).asset_reference || (p as any).fulfillment_metadata?.access_url || "",
     stock: p.stock !== undefined && p.stock !== null ? Number(p.stock) : 999,
     sku: p.sku || `SKU-${idx + 1}`,
     external_url: externalUrl || undefined,
     cta_label: ctaLabel,
     checkout_type: isExternal ? 'external' : (p.checkout_type || 'standard'),
     metadata: p.metadata || {},
-    is_active: p.is_active !== undefined ? Boolean(p.is_active) : (p.status !== "draft" && p.status !== "inactive"),
+    is_active: !isExplicitlyInactive,
   };
 }
 
@@ -519,7 +535,6 @@ export default function TenantStorefrontPage() {
                   setTenantMetadata(fbData.settings.metadata || fbData.settings);
                   const rawProds = fbData.settings.products;
                   const prods = Array.isArray(rawProds) ? rawProds : [];
-                  // Filter ketat storefront: Hanya render produk jika product.is_active !== false
                   setStoreProducts(
                     prods
                       .filter(Boolean)
@@ -572,6 +587,22 @@ export default function TenantStorefrontPage() {
           return;
         }
 
+        // ── QUERY RELASIONAL SQL PRODUCTS SECARA PARALEL (DATA INTEGRITY GUARANTEE) ──
+        let sqlProducts: any[] = [];
+        if (tenantRow?.id) {
+          try {
+            const { data: sqlData } = await supabase
+              .from("products")
+              .select("*")
+              .eq("tenant_id", tenantRow.id);
+            if (Array.isArray(sqlData)) {
+              sqlProducts = sqlData;
+            }
+          } catch (sqlErr) {
+            console.debug("[Storefront] SQL products query note:", sqlErr);
+          }
+        }
+
         if (isMounted) {
           setTenant(tenantRow);
           setStoreName(tenantRow.name || displayName);
@@ -588,9 +619,42 @@ export default function TenantStorefrontPage() {
                 ? [tenantRow.metadata.product]
                 : []);
 
-          // Filter ketat storefront: Hanya render produk jika product.is_active !== false
+          // Gabungkan metadata dan SQL table (menjamin SKU dan etalase toko tidak pernah hilang)
+          const combinedProds = [...prodsList];
+          const existingSlugs = new Set(prodsList.map((p: any) => (p.slug || '').toLowerCase()));
+          const existingIds = new Set(prodsList.map((p: any) => String(p.id)));
+
+          for (const sp of sqlProducts) {
+            const spSlug = (sp.slug || '').toLowerCase();
+            const spId = String(sp.id);
+            if (!existingSlugs.has(spSlug) && !existingIds.has(spId)) {
+              combinedProds.push({
+                id: sp.id,
+                name: sp.title || `Produk`,
+                title: sp.title,
+                slug: sp.slug,
+                category: sp.category || 'Digital',
+                product_type: sp.product_type || 'DIGITAL',
+                type: String(sp.product_type || '').toUpperCase() === 'PHYSICAL' ? 'physical' : 'digital',
+                price: Number(sp.price) || 0,
+                promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
+                sku: sp.sku || `SKU-${sp.id}`,
+                is_active: sp.is_active !== false,
+                image: sp.image || sp.image_url || '',
+                image_url: sp.image || sp.image_url || '',
+                description: sp.description || '',
+                download_url: sp.link_digital || sp.fulfillment_metadata?.access_url || '',
+                stock: sp.stock ?? 999999,
+                is_unlimited: sp.is_unlimited_stock ?? true,
+                fulfillment_metadata: sp.fulfillment_metadata,
+                single_page_config: sp.fulfillment_metadata?.single_page_config,
+              });
+            }
+          }
+
           setStoreProducts(
-            prodsList
+            combinedProds
+              .filter(Boolean)
               .map((p: unknown, idx: number) => mapProductItemToStoreProduct(p, idx))
               .filter((p: Product) => p.is_active !== false)
           );

@@ -24,47 +24,84 @@ export function getDateRangeFromPreset(
   customStart = '',
   customEnd = ''
 ): DateRangeState {
-  const now = new Date();
+  const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+  // Current time projected into WIB (GMT+7)
+  const wibNow = new Date(Date.now() + WIB_OFFSET_MS);
+  const curY = wibNow.getUTCFullYear();
+  const curM = wibNow.getUTCMonth();
+  const curD = wibNow.getUTCDate();
+
+  // Helper to convert WIB calendar day (UTC representation) into absolute ISO string
+  const toWibIsoRange = (startY: number, startM: number, startD: number, endY: number, endM: number, endD: number) => {
+    const startMs = Date.UTC(startY, startM, startD, 0, 0, 0) - WIB_OFFSET_MS;
+    const endMs = Date.UTC(endY, endM, endD, 23, 59, 59, 999) - WIB_OFFSET_MS;
+    return {
+      startDate: new Date(startMs).toISOString(),
+      endDate: new Date(endMs).toISOString(),
+    };
+  };
 
   if (preset === 'today') {
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    return { preset, startDate: start.toISOString(), endDate: end.toISOString(), label: 'Hari Ini' };
+    const range = toWibIsoRange(curY, curM, curD, curY, curM, curD);
+    return { preset, ...range, label: 'Hari Ini (WIB)' };
   }
 
   if (preset === 'yesterday') {
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
-    return { preset, startDate: start.toISOString(), endDate: end.toISOString(), label: 'Kemarin' };
+    const yest = new Date(Date.UTC(curY, curM, curD - 1));
+    const range = toWibIsoRange(
+      yest.getUTCFullYear(),
+      yest.getUTCMonth(),
+      yest.getUTCDate(),
+      yest.getUTCFullYear(),
+      yest.getUTCMonth(),
+      yest.getUTCDate()
+    );
+    return { preset, ...range, label: 'Kemarin (WIB)' };
   }
 
   if (preset === '7d') {
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    return { preset, startDate: start.toISOString(), endDate: end.toISOString(), label: '7 Hari Terakhir' };
+    const past = new Date(Date.UTC(curY, curM, curD - 6));
+    const range = toWibIsoRange(
+      past.getUTCFullYear(),
+      past.getUTCMonth(),
+      past.getUTCDate(),
+      curY,
+      curM,
+      curD
+    );
+    return { preset, ...range, label: '7 Hari Terakhir' };
   }
 
   if (preset === '30d') {
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    return { preset, startDate: start.toISOString(), endDate: end.toISOString(), label: '30 Hari Terakhir' };
+    const past = new Date(Date.UTC(curY, curM, curD - 29));
+    const range = toWibIsoRange(
+      past.getUTCFullYear(),
+      past.getUTCMonth(),
+      past.getUTCDate(),
+      curY,
+      curM,
+      curD
+    );
+    return { preset, ...range, label: '30 Hari Terakhir' };
   }
 
   if (preset === 'this_month') {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    return { preset, startDate: start.toISOString(), endDate: end.toISOString(), label: 'Bulan Ini' };
+    const lastDay = new Date(Date.UTC(curY, curM + 1, 0)).getUTCDate();
+    const range = toWibIsoRange(curY, curM, 1, curY, curM, lastDay);
+    return { preset, ...range, label: 'Bulan Ini' };
   }
 
   if (preset === 'custom' && customStart && customEnd) {
-    const start = new Date(`${customStart}T00:00:00`);
-    const end = new Date(`${customEnd}T23:59:59.999`);
-    return {
-      preset,
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      label: `${customStart} s/d ${customEnd}`,
-    };
+    const [sY, sM, sD] = customStart.split('-').map(Number);
+    const [eY, eM, eD] = customEnd.split('-').map(Number);
+    if (sY && sM && sD && eY && eM && eD) {
+      const range = toWibIsoRange(sY, sM - 1, sD, eY, eM - 1, eD);
+      return {
+        preset,
+        ...range,
+        label: `${customStart} s/d ${customEnd}`,
+      };
+    }
   }
 
   return { preset: 'all', startDate: '', endDate: '', label: 'Semua Waktu' };

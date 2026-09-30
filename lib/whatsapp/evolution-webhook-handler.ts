@@ -12,6 +12,16 @@
 
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { processMultimodalChat } from '@/lib/ai/multimodal-chat';
+import {
+  isManualOrderMessage,
+  getOrderConfirmationReply,
+  markSessionAsPendingVerification,
+} from '@/lib/whatsapp/order-interceptor';
+import {
+  resolveTenantFromConnection,
+  persistInboundMessage,
+  persistOutboundMessage,
+} from '@/lib/whatsapp/inbox-persistence';
 
 const EVOLUTION_API_URL =
   process.env.EVOLUTION_API_URL ||
@@ -164,11 +174,19 @@ export async function processEvolutionWebhookEvent(
     return { success: true, processed: 1, event: rawEvent };
   }
 
-  // 2. Resolve Tenant Identity from whatsapp_connections
-  let tenantId = 'boon';
+  // 2. Resolve Tenant Identity from whatsapp_connections dynamically (Zero Hardcoding)
+  let tenantId: string | null = null;
+  let tenantSlug: string | null = null;
   let resolvedApiKey = EVOLUTION_API_KEY;
 
-  if (supabase) {
+  const resolvedTenant = await resolveTenantFromConnection({ instanceName });
+  if (resolvedTenant) {
+    tenantId = resolvedTenant.tenantId;
+    tenantSlug = resolvedTenant.tenantSlug;
+    if (resolvedTenant.apiKey) {
+      resolvedApiKey = resolvedTenant.apiKey;
+    }
+  } else if (supabase) {
     const { data: conn } = await supabase
       .from('whatsapp_connections')
       .select('tenant_id, credential_ref, status')
@@ -177,6 +195,7 @@ export async function processEvolutionWebhookEvent(
 
     if (conn?.tenant_id) {
       tenantId = conn.tenant_id;
+      tenantSlug = conn.tenant_id;
       if (conn.credential_ref) {
         resolvedApiKey = conn.credential_ref.trim();
       }
@@ -188,10 +207,24 @@ export async function processEvolutionWebhookEvent(
         .or(`slug.eq.${instanceName},metadata->>whatsapp_instance.eq.${instanceName}`)
         .maybeSingle();
 
-      if (tenant?.slug) {
+      if (tenant?.id) {
+        tenantId = tenant.id;
+        tenantSlug = tenant.slug;
+      } else if (tenant?.slug) {
         tenantId = tenant.slug;
+        tenantSlug = tenant.slug;
       }
     }
+  }
+
+  // ATURAN MUTLAK FAIL-CLOSED & ANTI-LEAK:
+  // Jika tenant_id bernilai null atau tidak ter-resolve, bot HARUS DIAM (SILENT / SAFE DROP) dan log alert ke internal.
+  // DILARANG KERAS mengirimkan template sales BoonTrack ke customer toko merchant mana pun.
+  if (!tenantId) {
+    console.warn(
+      `[SECURITY_FAIL_CLOSED_DROP] Unable to resolve tenant identity for instance '${instanceName}'. Silently dropping webhook event to prevent merchant cross-tenant leak.`
+    );
+    return { success: true, processed: 0, error: 'Tenant unresolved (fail-closed silent drop)' };
   }
 
   // 3. Normalisasi Daftar Pesan
@@ -395,69 +428,82 @@ export async function processEvolutionWebhookEvent(
       }
     }
 
-    // 6. Ingest ke Conversations & Messages Schema
+    // 6. Ingest ke Conversations & Messages Schema (Atomic Database Persistence)
     let convId: string | null = null;
-    if (supabase) {
-      try {
-        const { data: existingConv } = await supabase
-          .from('conversations')
-          .select('id')
-          .or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantId}`)
-          .eq('phone_number', senderPhone)
-          .maybeSingle();
+    const lastPreview = hasImage
+      ? caption
+        ? `📷 ${caption}`
+        : '📷 [Gambar]'
+      : textBody;
 
-        const lastPreview = hasImage
-          ? caption
-            ? `📷 ${caption}`
-            : '📷 [Gambar]'
-          : textBody;
+    try {
+      const persisted = await persistInboundMessage({
+        tenantId: tenantId,
+        tenantSlug: tenantSlug || tenantId,
+        customerPhone: senderPhone,
+        customerName: item.pushName || senderPhone,
+        messageBody: lastPreview || (hasImage ? '[Gambar dikirim pembeli]' : ''),
+        senderType: 'customer',
+        rawPayload: {
+          has_image: hasImage,
+          mime_type: hasImage ? mimeType : undefined,
+          type: hasImage ? 'image' : 'text',
+          source: 'evolution_webhook',
+        },
+      });
+      convId = persisted.conversationId;
+    } catch (dbErr) {
+      console.warn('[Evolution Webhook] DB logging error:', dbErr);
+    }
 
-        if (existingConv?.id) {
-          convId = existingConv.id;
-          await supabase
-            .from('conversations')
-            .update({
-              last_message: lastPreview,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', convId);
-        } else {
-          const { data: newConv } = await supabase
-            .from('conversations')
-            .insert({
-              tenant_slug: tenantId,
-              tenant_id: tenantId,
-              phone_number: senderPhone,
-              contact_name: item.pushName || senderPhone,
-              last_message: lastPreview,
-              updated_at: new Date().toISOString(),
-              status: 'online',
-            })
-            .select('id')
-            .single();
-          if (newConv?.id) convId = newConv.id;
-        }
+    // 6.1. INTERCEPTOR ORDER TRANSAKSI (ORDER GATEKEEPER)
+    // Cek apakah isi pesan mengandung pola order manual: "Total Nominal:", "Metode: Transfer Bank", "Mohon dicek dan aktivasi akses", atau "Masterclass CPM"
+    if (isManualOrderMessage(textBody)) {
+      console.info(`[ORDER_GATEKEEPER] Intercepted manual order from ${senderPhone} on tenant '${tenantId}'. Bypassing AI/LLM.`);
+      const nowIso = new Date().toISOString();
 
-        if (convId) {
-          await supabase.from('messages').insert({
-            conversation_id: convId,
-            tenant_slug: tenantId,
-            tenant_id: tenantId,
-            sender: 'user',
-            user_name: item.pushName || senderPhone,
-            text: textBody || (hasImage ? '[Gambar dikirim pembeli]' : ''),
-            channel: 'whatsapp',
-            created_at: new Date().toISOString(),
-            payload: {
-              has_image: hasImage,
-              mime_type: hasImage ? mimeType : undefined,
-              type: hasImage ? 'image' : 'text',
-            },
-          });
-        }
-      } catch (dbErr) {
-        console.warn('[Evolution Webhook] DB logging error:', dbErr);
+      let storeName = 'Admin Toko';
+      if (supabase) {
+        try {
+          const { data: tRow } = await supabase
+            .from('tenants')
+            .select('name')
+            .eq('slug', tenantId)
+            .maybeSingle();
+          if (tRow?.name) storeName = tRow.name;
+        } catch {}
       }
+
+      await markSessionAsPendingVerification({
+        supabase,
+        tenantId,
+        senderPhone,
+        textBody,
+        convId,
+        storeName,
+      });
+
+      const orderConfirmReply = getOrderConfirmationReply(storeName);
+
+      await sendEvolutionTextMessage(
+        instanceName,
+        senderPhone,
+        orderConfirmReply,
+        resolvedApiKey
+      );
+
+      await persistOutboundMessage({
+        tenantId: tenantId,
+        tenantSlug: tenantSlug || tenantId,
+        customerPhone: senderPhone,
+        senderType: 'bot',
+        senderName: 'OrderGatekeeper',
+        messageBody: orderConfirmReply,
+        rawPayload: { trigger: 'order_gatekeeper' },
+      });
+
+      processedCount++;
+      continue; // JANGAN panggil AI / Gemini / OpenAI prompt!
     }
 
     // 6.2. Deteksi Buyer Escalation Intent (Kunci Sesi & Alihkan ke Admin Manusia)
@@ -510,7 +556,7 @@ export async function processEvolutionWebhookEvent(
             tenant_slug: tenantId,
             tenant_id: tenantId,
             sender: 'bot',
-            user_name: 'BoonBot',
+            user_name: 'CS',
             text: transitionText,
             channel: 'whatsapp',
             created_at: nowIso,
@@ -577,21 +623,16 @@ export async function processEvolutionWebhookEvent(
         resolvedApiKey
       );
 
-      // Catat balasan bot di messages
-      if (supabase && convId) {
-        try {
-          await supabase.from('messages').insert({
-            conversation_id: convId,
-            tenant_slug: tenantId,
-            tenant_id: tenantId,
-            sender: 'bot',
-            user_name: 'BoonBot',
-            text: aiResult.reply.trim(),
-            channel: 'whatsapp',
-            created_at: new Date().toISOString(),
-          });
-        } catch {}
-      }
+      // Catat balasan bot di messages & update conversations
+      await persistOutboundMessage({
+        tenantId: tenantId,
+        tenantSlug: tenantSlug || tenantId,
+        customerPhone: senderPhone,
+        senderType: 'bot',
+        senderName: 'BoonPilot CS',
+        messageBody: aiResult.reply.trim(),
+        rawPayload: { trigger: 'gemini_multimodal' },
+      });
     }
 
     processedCount++;

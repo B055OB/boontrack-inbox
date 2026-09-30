@@ -169,6 +169,14 @@ export async function POST(req: NextRequest) {
             originLon = Number(originObj.longitude);
           }
 
+          const fnbSettings = biteshipCfg?.fnb_settings || metaShipping?.fnb_settings || meta?.fnb_settings || {};
+          if ((originLat == null || isNaN(originLat)) && fnbSettings.latitude !== undefined && fnbSettings.latitude !== null) {
+            originLat = Number(fnbSettings.latitude);
+          }
+          if ((originLon == null || isNaN(originLon)) && fnbSettings.longitude !== undefined && fnbSettings.longitude !== null) {
+            originLon = Number(fnbSettings.longitude);
+          }
+
           if (!originPostalCode && typeof meta.warehouse_address === 'string') {
             const match = meta.warehouse_address.match(/\b\d{5}\b/);
             if (match) originPostalCode = match[0];
