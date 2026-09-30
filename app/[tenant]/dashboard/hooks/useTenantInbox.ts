@@ -127,13 +127,27 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
 
       const { data, error } = await query;
 
-      if (error) {
-        console.debug('[useTenantInbox] Fetch conversations note:', error.message);
-        return;
+      let convRows = data;
+      if (error || !Array.isArray(convRows) || convRows.length === 0) {
+        // Fallback to server route handler via service role key
+        try {
+          const targetParam = effectiveTenantSlug || effectiveTenantId || tenantSlug || tenantId || '';
+          if (targetParam) {
+            const res = await fetch(`/api/inbox/conversations?tenant=${encodeURIComponent(targetParam)}`);
+            if (res.ok) {
+              const json = await res.json();
+              if (Array.isArray(json.conversations) && json.conversations.length > 0) {
+                convRows = json.conversations;
+              }
+            }
+          }
+        } catch (apiErr) {
+          console.debug('[useTenantInbox] Server API fallback note:', apiErr);
+        }
       }
 
-      if (Array.isArray(data)) {
-        const mapped: ChatConversation[] = data.map((c: any) => {
+      if (Array.isArray(convRows)) {
+        const mapped: ChatConversation[] = convRows.map((c: any) => {
           const phone = c.customer_phone || c.phone_number || '';
           const name = c.customer_name || c.contact_name || phone || 'Pelanggan WhatsApp';
           const lastTime = c.last_message_at || c.updated_at || c.created_at;
@@ -180,22 +194,38 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
     setIsLoadingMessages(true);
     try {
       const supabase = getSupabase();
-      if (!supabase) return;
+      let msgRows: any[] | null = null;
 
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', convId)
-        .order('created_at', { ascending: true })
-        .limit(200);
+      if (supabase) {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', convId)
+          .order('created_at', { ascending: true })
+          .limit(200);
 
-      if (error) {
-        console.debug('[useTenantInbox] Fetch messages error:', error.message);
-        return;
+        if (!error && Array.isArray(data)) {
+          msgRows = data;
+        }
       }
 
-      if (Array.isArray(data)) {
-        const mapped: ConversationMessage[] = data.map((m: any) => {
+      if (!msgRows || msgRows.length === 0) {
+        // Fallback to server route handler via service role
+        try {
+          const res = await fetch(`/api/inbox/messages?conversationId=${encodeURIComponent(convId)}`);
+          if (res.ok) {
+            const json = await res.json();
+            if (Array.isArray(json.messages)) {
+              msgRows = json.messages;
+            }
+          }
+        } catch (apiErr) {
+          console.debug('[useTenantInbox] Server messages API note:', apiErr);
+        }
+      }
+
+      if (Array.isArray(msgRows)) {
+        const mapped: ConversationMessage[] = msgRows.map((m: any) => {
           const isCustomer = m.sender_type === 'customer' || m.sender === 'user' || m.sender === 'customer';
           const isBot = m.sender_type === 'bot' || m.sender === 'bot';
           const isAgent = m.sender_type === 'agent' || m.sender === 'agent';
