@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar } from "lucide-react";
+import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar, Zap } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, getClientTrackingContext, trackLead, trackInitiateCheckout, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
@@ -25,6 +25,9 @@ interface CheckoutModalProps {
     category?: string;
     type?: string;
     product_type?: string;
+    requires_shipping?: boolean;
+    slug?: string;
+    metadata?: any;
     fulfillment_metadata?: any;
     external_url?: string;
     cta_label?: string;
@@ -46,7 +49,13 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingCity, setShippingCity] = useState("");
   const [shippingCost, setShippingCost] = useState(0);
-  const [shippingCourier, setShippingCourier] = useState("Kurir Reguler (J&T / SiCepat)");
+  const [shippingCourier, setShippingCourier] = useState("Kurir Dapur Instan (GoSend / GrabExpress)");
+  const [courierServiceType, setCourierServiceType] = useState<'instant' | 'regular'>('instant');
+  const [instantRate, setInstantRate] = useState<number>(20000);
+  const [regularRate, setRegularRate] = useState<number>(15000);
+  const [instantCourierName, setInstantCourierName] = useState<string>('Kurir Dapur Instan (GoSend / GrabExpress)');
+  const [regularCourierName, setRegularCourierName] = useState<string>('Ekspedisi Reguler (J&T / SiCepat)');
+  const [directWaUrl, setDirectWaUrl] = useState<string>('');
   const [isLoadingShipping, setIsLoadingShipping] = useState(false);
   const [tenantMetaPixel, setTenantMetaPixel] = useState<string>("");
   const [tenantTTPixel, setTenantTTPixel] = useState<string>("");
@@ -80,9 +89,28 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
 
   // Resolver Context Fulfillment Digital vs Fisik vs Food vs Booking/Service
   const rawProductType = (product?.product_type || product?.type || (product?.category === 'fisik' || product?.category === 'physical' ? 'physical' : 'digital')).toLowerCase();
-  const isPhysical = rawProductType === 'physical' || rawProductType === 'fisik' || rawProductType === 'food' || rawProductType === 'fnb' || Boolean((product as any)?.requires_shipping) || Boolean((product as any)?.requiresShipping);
-  const isBookingOrService = rawProductType === 'service' || rawProductType === 'booking' || rawProductType === 'consultation' || Boolean(product?.slot);
-  const isDigital = !isPhysical;
+  const rawCategory = (product?.category || '').toLowerCase();
+  const isFood =
+    rawProductType === 'food' ||
+    rawProductType === 'fnb' ||
+    rawProductType.includes('food') ||
+    rawProductType.includes('fnb') ||
+    rawCategory.includes('food') ||
+    rawCategory.includes('kuliner');
+  const isPhysical =
+    rawProductType === 'physical' ||
+    rawProductType === 'fisik' ||
+    rawProductType === 'food' ||
+    rawProductType === 'fnb' ||
+    isFood ||
+    Boolean((product as any)?.requires_shipping) ||
+    Boolean((product as any)?.requiresShipping);
+  const isBookingOrService =
+    rawProductType === 'service' ||
+    rawProductType === 'booking' ||
+    rawProductType === 'consultation' ||
+    Boolean(product?.slot);
+  const isDigital = !isPhysical && !isBookingOrService;
 
   const handleCopy = (text: string, field: string) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -102,6 +130,22 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     ? Math.max(1000, basePrice + adminFee + currentShippingCost - currentUniqueCode)
     : basePrice + adminFee + currentUniqueCode + currentShippingCost;
   const affiliateCommission = 0; // Fitur affiliate produk ritel dinonaktifkan sementara (murni direct store)
+
+  // Sinkronisasi Ongkos Kirim sesuai Layanan Kurir Terpilih (Instan vs Reguler)
+  useEffect(() => {
+    if (!isPhysical) {
+      setShippingCost(0);
+      return;
+    }
+    const hasCity = shippingCity.trim().length >= 3;
+    if (courierServiceType === 'instant') {
+      setShippingCost(hasCity ? instantRate : 0);
+      setShippingCourier(instantCourierName);
+    } else {
+      setShippingCost(hasCity ? regularRate : 0);
+      setShippingCourier(regularCourierName);
+    }
+  }, [courierServiceType, instantRate, regularRate, instantCourierName, regularCourierName, isPhysical, shippingCity]);
 
   // LAZY SHIPPING: DILARANG dipicu saat modal pertama kali dimuat.
   // Hanya dipanggil saat pembeli selesai mengisi kecamatan/kota tujuan (debounce 400ms).
@@ -130,31 +174,59 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           }),
         });
 
+        let foundInstant = false;
+        let foundRegular = false;
+
         if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.rates) && data.rates.length > 0) {
-            const basic = data.rates[0];
-            setShippingCost(basic.price || 15000);
-            setShippingCourier(basic.courier_name || 'Kurir Reguler (J&T / SiCepat)');
-          } else {
-            setShippingCost(15000);
-            setShippingCourier('Kurir Reguler (J&T / SiCepat)');
+            const instOpt = data.rates.find((r: any) =>
+              r.type === 'instant' ||
+              String(r.service || '').toLowerCase().includes('instant') ||
+              String(r.courier_name || '').toLowerCase().includes('instan') ||
+              String(r.courier_name || '').toLowerCase().includes('gosend') ||
+              String(r.courier_name || '').toLowerCase().includes('grab')
+            );
+            if (instOpt) {
+              setInstantRate(instOpt.price || 20000);
+              setInstantCourierName(instOpt.courier_name || 'Kurir Dapur Instan (GoSend / GrabExpress)');
+              foundInstant = true;
+            }
+
+            const regOpt = data.rates.find((r: any) =>
+              r.type === 'regular' ||
+              String(r.service || '').toLowerCase().includes('reguler') ||
+              String(r.courier_name || '').toLowerCase().includes('j&t') ||
+              String(r.courier_name || '').toLowerCase().includes('sicepat') ||
+              String(r.courier_name || '').toLowerCase().includes('jne')
+            );
+            if (regOpt) {
+              setRegularRate(regOpt.price || 15000);
+              setRegularCourierName(regOpt.courier_name || 'Ekspedisi Reguler (J&T / SiCepat)');
+              foundRegular = true;
+            }
           }
-        } else {
-          setShippingCost(15000);
-          setShippingCourier('Kurir Reguler (J&T / SiCepat)');
+        }
+
+        if (!foundInstant) {
+          setInstantRate(isFood ? 18000 : 25000);
+          setInstantCourierName('Kurir Dapur Instan (GoSend / GrabExpress)');
+        }
+        if (!foundRegular) {
+          setRegularRate(15000);
+          setRegularCourierName('Ekspedisi Reguler (J&T / SiCepat)');
         }
       } catch (err) {
         console.warn('[CheckoutModal] Lazy shipping rate note:', err);
-        setShippingCost(15000);
-        setShippingCourier('Kurir Reguler (J&T / SiCepat)');
+        setInstantRate(isFood ? 18000 : 25000);
+        setRegularRate(15000);
       } finally {
         setIsLoadingShipping(false);
       }
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isPhysical, shippingCity, tenantSlug]);
+  }, [isOpen, isPhysical, shippingCity, tenantSlug, isFood]);
 
   // Load tenant metadata, bank accounts, and default pixel IDs
   useEffect(() => {
@@ -497,6 +569,31 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           }),
         }).catch(() => {});
 
+        // Dispatch sinyal pesanan resmi ke CS WhatsApp & Supabase Inbox Conversations
+        fetch('/api/inbox/order-signal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: result.orderId,
+            tenantSlug,
+            customerName,
+            customerPhone,
+            productTitle: product.title,
+            amount: totalAmount,
+            shippingAddress: isPhysical ? shippingAddress : undefined,
+            shippingCity: isPhysical ? shippingCity : undefined,
+            shippingCourier: isPhysical ? shippingCourier : undefined,
+            paymentMethod,
+          }),
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((sigData) => {
+            if (sigData?.waUrl) {
+              setDirectWaUrl(sigData.waUrl);
+            }
+          })
+          .catch((sigErr) => console.warn('[Checkout] Order signal dispatch note:', sigErr));
+
         // Kunci atomic booking slot jika produk merupakan sesi booking jadwal
         if (product?.slot) {
           fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/book-slot`, {
@@ -710,7 +807,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               }
 
               const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222');
-              const waConfirmUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(
+              const waConfirmUrl = directWaUrl || `https://wa.me/${cleanWa}?text=${encodeURIComponent(
                 `Halo Admin, saya ingin konfirmasi pembayaran untuk Order ID: ${paymentData.orderId}\nProduk: ${product.title}\nNominal: Rp ${totalAmount.toLocaleString('id-ID')}`
               )}`;
 
@@ -943,32 +1040,83 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                     </span>
                   </div>
 
-                  {/* Opsi Ongkir: Single Basic Courier */}
-                  <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-1.5 font-bold text-slate-200">
-                        <Truck className="w-4 h-4 text-emerald-400" />
-                        <span>{shippingCourier}</span>
-                      </div>
-                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                        Reguler (2-3 hari)
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900">
-                      <span>Tarif Pengiriman:</span>
-                      <span className="font-bold text-white">
-                        {isLoadingShipping ? (
-                          <span className="text-blue-400 flex items-center gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Menghitung ongkir...
+                  {/* Opsi Ongkir: Instant vs Regular Courier */}
+                  <div className="space-y-2">
+                    <label className="text-slate-300 font-bold block">Pilih Opsi Pengiriman</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {/* Kurir Dapur Instan */}
+                      <div
+                        onClick={() => setCourierServiceType('instant')}
+                        className={`p-3 rounded-2xl border cursor-pointer transition ${
+                          courierServiceType === 'instant'
+                            ? 'border-emerald-500 bg-emerald-950/30'
+                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                            <Zap className="w-4 h-4 text-amber-400" />
+                            <span>Kurir Dapur Instan</span>
+                          </div>
+                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                            Hari Ini (1-2 Jam)
                           </span>
-                        ) : shippingCost > 0 ? (
-                          `Rp ${shippingCost.toLocaleString("id-ID")}`
-                        ) : shippingCity.trim().length >= 3 ? (
-                          "Rp 15.000"
-                        ) : (
-                          "Masukkan kota tujuan"
-                        )}
-                      </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          {instantCourierName} (GoSend / Grab)
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
+                          <span>Ongkir:</span>
+                          <span className="font-bold text-white">
+                            {isLoadingShipping ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
+                            ) : instantRate > 0 ? (
+                              `Rp ${instantRate.toLocaleString("id-ID")}`
+                            ) : shippingCity.trim().length >= 3 ? (
+                              "Rp 20.000"
+                            ) : (
+                              "-"
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Ekspedisi Reguler */}
+                      <div
+                        onClick={() => setCourierServiceType('regular')}
+                        className={`p-3 rounded-2xl border cursor-pointer transition ${
+                          courierServiceType === 'regular'
+                            ? 'border-emerald-500 bg-emerald-950/30'
+                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                            <Truck className="w-4 h-4 text-emerald-400" />
+                            <span>Ekspedisi Reguler</span>
+                          </div>
+                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                            2-3 Hari
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          {regularCourierName} (J&T / SiCepat / Anteraja)
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
+                          <span>Ongkir:</span>
+                          <span className="font-bold text-white">
+                            {isLoadingShipping ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
+                            ) : regularRate > 0 ? (
+                              `Rp ${regularRate.toLocaleString("id-ID")}`
+                            ) : shippingCity.trim().length >= 3 ? (
+                              "Rp 15.000"
+                            ) : (
+                              "-"
+                            )}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -1093,7 +1241,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 </>
               ) : (
                 <>
-                  <span>Bayar Sekarang (Rp {totalAmount.toLocaleString("id-ID")})</span>
+                  <span>
+                    {isPhysical || isFood
+                      ? `Konfirmasi & Lanjut ke WhatsApp / QRIS (Rp ${totalAmount.toLocaleString("id-ID")})`
+                      : `Bayar Sekarang (Rp ${totalAmount.toLocaleString("id-ID")})`}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

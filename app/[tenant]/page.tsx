@@ -92,6 +92,8 @@ export interface Product {
   stock?: number;
   sku?: string;
   type?: string;
+  product_type?: string;
+  requires_shipping?: boolean;
   external_url?: string;
   affiliate_url?: string;
   cta_label?: string;
@@ -231,6 +233,25 @@ export function getStoreChatGreeting(category: string, activeName: string): stri
   return `Halo! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar katalog produk, promo, atau informasi belanja hari ini?`;
 }
 
+// Helper to detect physical or food products requiring shipping / local delivery
+export function isPhysicalOrFoodProduct(p?: Partial<Product> | any, tenantCategory?: string): boolean {
+  if (!p) return false;
+  if (p.requires_shipping === true || p.requiresShipping === true) return true;
+  const pType = String(p.product_type || p.type || '').toUpperCase();
+  const pCat = String(p.category || '').toUpperCase();
+  const tCat = String(tenantCategory || '').toUpperCase();
+  if (pType === 'FOOD' || pType === 'PHYSICAL' || pType.includes('FOOD') || pType.includes('PHYSICAL') || pType.includes('FISIK')) {
+    return true;
+  }
+  if (pCat === 'FOOD' || pCat.includes('FOOD') || pCat.includes('KULINER') || pCat.includes('FISIK') || pCat.includes('PHYSICAL')) {
+    return true;
+  }
+  if (tCat === 'FOOD' || tCat.includes('FOOD') || tCat.includes('KULINER')) {
+    return true;
+  }
+  return false;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProductItemToStoreProduct(p: any, idx: number): Product {
   if (!p || typeof p !== "object") {
@@ -239,6 +260,8 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
       name: `Layanan ${idx + 1}`,
       category: "Fisik",
       type: "physical",
+      product_type: "PHYSICAL",
+      requires_shipping: true,
       price: 0,
       image: "",
       image_url: "",
@@ -278,18 +301,27 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
 
   const rawType = String((p as any).type || (p as any).product_type || '').toLowerCase();
   const rawCat = String(p.category || '').toLowerCase();
+  const isFoodType = rawType.includes('food') || rawType.includes('fnb') || rawCat.includes('food') || rawCat.includes('kuliner');
+  const isPhysicalType = rawType.includes('physical') || rawType.includes('fisik') || rawCat.includes('fisik') || isFoodType || Boolean(p.requires_shipping) || Boolean(p.requiresShipping);
   const resolvedType =
-    rawType.includes('physical') || rawType.includes('fisik') || rawCat.includes('fisik')
+    isFoodType
+      ? 'food'
+      : isPhysicalType
       ? 'physical'
       : (rawType.includes('service') || rawType.includes('jasa') || rawCat.includes('jasa')
       ? 'service'
       : 'digital');
+  const resolvedProductType = (p.product_type || (isFoodType ? 'FOOD' : isPhysicalType ? 'PHYSICAL' : resolvedType.toUpperCase()));
+  const requiresShipping = Boolean(p.requires_shipping || p.requiresShipping || isPhysicalType || isFoodType);
 
   return {
     id: p.id !== undefined && p.id !== null ? p.id : `prod-${idx + 1}`,
     name: p.name || p.title || `Layanan ${idx + 1}`,
     category: p.category || categoryBadge,
     type: resolvedType,
+    product_type: resolvedProductType,
+    requires_shipping: requiresShipping,
+    slug: p.slug,
     price,
     originalPrice,
     image: sanitizedImg,
@@ -339,6 +371,9 @@ export default function TenantStorefrontPage() {
     category?: string;
     type?: string;
     product_type?: string;
+    requires_shipping?: boolean;
+    slug?: string;
+    metadata?: any;
     fulfillment_metadata?: any;
     slot?: {
       slotDate: string;
@@ -635,7 +670,8 @@ export default function TenantStorefrontPage() {
                 slug: sp.slug,
                 category: sp.category || 'Digital',
                 product_type: sp.product_type || 'DIGITAL',
-                type: String(sp.product_type || '').toUpperCase() === 'PHYSICAL' ? 'physical' : 'digital',
+                requires_shipping: Boolean(sp.requires_shipping || String(sp.product_type || '').toUpperCase() === 'PHYSICAL' || String(sp.product_type || '').toUpperCase() === 'FOOD'),
+                type: String(sp.product_type || '').toUpperCase() === 'FOOD' ? 'food' : String(sp.product_type || '').toUpperCase() === 'PHYSICAL' ? 'physical' : 'digital',
                 price: Number(sp.price) || 0,
                 promo_price: sp.promo_price ? Number(sp.promo_price) : 0,
                 sku: sp.sku || `SKU-${sp.id}`,
@@ -854,10 +890,15 @@ export default function TenantStorefrontPage() {
     
     trackInitiateCheckout(combinedTitles, totalCartPrice);
 
+    const hasPhysicalOrFood = cart.some(c => isPhysicalOrFoodProduct(c.product, tenantMetadata?.category || tenantCategory || tenant?.category));
+
     setProductForCheckout({
       id: `CART-MULTI-${Date.now()}`,
       title: combinedTitles,
-      price: totalCartPrice
+      price: totalCartPrice,
+      requires_shipping: hasPhysicalOrFood,
+      product_type: hasPhysicalOrFood ? 'PHYSICAL' : 'DIGITAL',
+      type: hasPhysicalOrFood ? 'physical' : 'digital',
     });
     setShowCartModal(false);
     setIsCheckoutOpen(true);
@@ -1211,6 +1252,35 @@ export default function TenantStorefrontPage() {
                     );
                   }
 
+                  const isPhysOrFood = isPhysicalOrFoodProduct(selectedProduct, tenantMetadata?.category || tenantCategory || tenant?.category);
+                  if (isPhysOrFood) {
+                    return (
+                      <button
+                        onClick={() => {
+                          trackInitiateCheckout(selectedProduct.name, selectedProduct.price);
+                          setProductForCheckout({
+                            id: String(selectedProduct.id),
+                            title: selectedProduct.name,
+                            price: selectedProduct.price,
+                            download_url: selectedProduct.download_url,
+                            category: selectedProduct.category,
+                            type: selectedProduct.type,
+                            product_type: selectedProduct.product_type || 'PHYSICAL',
+                            requires_shipping: true,
+                            slug: selectedProduct.slug,
+                            metadata: selectedProduct.metadata,
+                          });
+                          setSelectedProduct(null);
+                          setIsCheckoutOpen(true);
+                        }}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <ShoppingBag className="w-4 h-4" />
+                        <span>Pesan Sekarang</span>
+                      </button>
+                    );
+                  }
+
                   return (
                     <button
                       onClick={() => {
@@ -1475,6 +1545,37 @@ export default function TenantStorefrontPage() {
                         );
                       }
 
+                      const isPhysOrFood = isPhysicalOrFoodProduct(p, tenantMetadata?.category || tenantCategory || tenant?.category);
+                      if (isPhysOrFood) {
+                        return (
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (p) {
+                                trackInitiateCheckout(p.name, p.price);
+                                setProductForCheckout({
+                                  id: String(p.id),
+                                  title: p.name,
+                                  price: p.price,
+                                  download_url: p.download_url,
+                                  category: p.category,
+                                  type: p.type,
+                                  product_type: p.product_type || 'PHYSICAL',
+                                  requires_shipping: true,
+                                  slug: p.slug,
+                                  metadata: p.metadata,
+                                });
+                                setIsCheckoutOpen(true);
+                              }
+                            }} 
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
+                          >
+                            <ShoppingBag className="w-3.5 h-3.5" /> Pesan Sekarang
+                          </button>
+                        );
+                      }
+
                       return (
                         <button 
                           type="button"
@@ -1595,6 +1696,7 @@ export default function TenantStorefrontPage() {
                                   onClick={() => {
                                     if (!msg.product) return;
                                     trackInitiateCheckout(msg.product.name, msg.product.price);
+                                    const isMsgPhysOrFood = isPhysicalOrFoodProduct(msg.product, tenantMetadata?.category || tenantCategory || tenant?.category);
                                     setProductForCheckout({
                                       id: String(msg.product.id),
                                       title: msg.product.name,
@@ -1602,6 +1704,8 @@ export default function TenantStorefrontPage() {
                                       download_url: msg.product.download_url,
                                       type: msg.product.type,
                                       category: msg.product.category,
+                                      product_type: (msg.product as any)?.product_type || (isMsgPhysOrFood ? 'PHYSICAL' : 'DIGITAL'),
+                                      requires_shipping: isMsgPhysOrFood,
                                     });
                                     setIsCheckoutOpen(true);
                                   }}
@@ -1761,6 +1865,35 @@ export default function TenantStorefrontPage() {
                       <span>{ctaLabel}</span>
                       <ExternalLink className="w-4 h-4" />
                     </a>
+                  );
+                }
+
+                const isPhysOrFood = isPhysicalOrFoodProduct(selectedProduct, tenantMetadata?.category || tenantCategory || tenant?.category);
+                if (isPhysOrFood) {
+                  return (
+                    <button
+                      onClick={() => {
+                        trackInitiateCheckout(selectedProduct.name, selectedProduct.price);
+                        setProductForCheckout({
+                          id: String(selectedProduct.id),
+                          title: selectedProduct.name,
+                          price: selectedProduct.price,
+                          download_url: selectedProduct.download_url,
+                          category: selectedProduct.category,
+                          type: selectedProduct.type,
+                          product_type: selectedProduct.product_type || 'PHYSICAL',
+                          requires_shipping: true,
+                          slug: selectedProduct.slug,
+                          metadata: selectedProduct.metadata,
+                        });
+                        setSelectedProduct(null);
+                        setIsCheckoutOpen(true);
+                      }}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <ShoppingBag className="w-4 h-4" />
+                      <span>Pesan Sekarang</span>
+                    </button>
                   );
                 }
 
@@ -2000,6 +2133,7 @@ export default function TenantStorefrontPage() {
                                       onClick={() => {
                                         if (!msg.product) return;
                                         trackInitiateCheckout(msg.product.name, msg.product.price);
+                                        const isMobPhysOrFood = isPhysicalOrFoodProduct(msg.product, tenantMetadata?.category || tenantCategory || tenant?.category);
                                         setProductForCheckout({
                                           id: String(msg.product.id),
                                           title: msg.product.name,
@@ -2007,6 +2141,8 @@ export default function TenantStorefrontPage() {
                                           download_url: msg.product.download_url,
                                           type: msg.product.type,
                                           category: msg.product.category,
+                                          product_type: (msg.product as any)?.product_type || (isMobPhysOrFood ? 'PHYSICAL' : 'DIGITAL'),
+                                          requires_shipping: isMobPhysOrFood,
                                         });
                                         setIsMobileChatOpen(false);
                                         setIsCheckoutOpen(true);
