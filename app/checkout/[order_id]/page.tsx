@@ -34,6 +34,7 @@ import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 import { getTenantWhatsApp, getPlatformWhatsApp } from '@/lib/tenant-config';
 import { resolveFulfillmentRequirements } from '@/lib/product-catalog';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
+import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
 
 
 
@@ -817,7 +818,7 @@ export default function CheckoutPage({ params }: Props) {
               </div>
             )}
             <a
-              href={`/${tenantSlug || 'shop'}/invoice/${orderId}`}
+              href={getStorefrontInvoiceUrl(tenantSlug || 'shop', orderId)}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition"
@@ -1363,7 +1364,7 @@ export default function CheckoutPage({ params }: Props) {
           </a>
 
           <a
-            href={`/${tenantSlug || 'shop'}/invoice/${orderId}`}
+            href={getStorefrontInvoiceUrl(tenantSlug || 'shop', orderId)}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full py-2.5 bg-slate-950 hover:bg-slate-800/80 border border-slate-800 text-slate-300 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"

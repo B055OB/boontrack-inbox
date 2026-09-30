@@ -58,6 +58,7 @@ import {
   ArrowUpRight,
   FileText,
 } from 'lucide-react';
+import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
 
 // ─────────────────────────────────────────────────────────────
 // MOCK IDENTITY — Buzzer UKM / Scale Tier
@@ -1583,10 +1584,12 @@ function FinanceTab() {
                         onClick={() => {
                           if (typeof window !== 'undefined') {
                             const cleanInv = String(t.invoice_no).replace(/^#/, '');
-                            window.open(`/${(t as any).tenant_slug || 'shop'}/invoice/${encodeURIComponent(cleanInv)}`, '_blank');
+                            const invUrl = getStorefrontInvoiceUrl((t as any).tenant_slug || 'shop', cleanInv);
+                            window.open(invUrl, '_blank', 'noopener,noreferrer');
                           }
                         }}
                         className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                        title="Buka Lembar Invoice Resmi (shop.boontrack.com)"
                       >
                         Invoice
                       </button>

@@ -55,3 +55,51 @@ export function getRotatorUrl(tenantSlug: string): string {
 export function getDigitalDeliveryUrl(orderId: string): string {
   return `${CANONICAL_DOMAIN}/d/${(orderId || '').trim()}`;
 }
+
+export const STOREFRONT_DOMAIN = 'https://shop.boontrack.com';
+
+/**
+ * Resolves the public storefront shop homepage URL on shop.boontrack.com.
+ * Example: getStorefrontShopUrl('tanev-food') -> 'https://shop.boontrack.com/tanev-food'
+ */
+export function getStorefrontShopUrl(tenantSlug?: string | null): string {
+  if (!tenantSlug) return STOREFRONT_DOMAIN;
+  const cleanSlug = encodeURIComponent(tenantSlug.trim());
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return `/${cleanSlug}`;
+    }
+  }
+
+  const base = process.env.NEXT_PUBLIC_STOREFRONT_URL
+    ? process.env.NEXT_PUBLIC_STOREFRONT_URL.replace(/\/+$/, '')
+    : STOREFRONT_DOMAIN;
+
+  return `${base}/${cleanSlug}`;
+}
+
+/**
+ * Resolves the public storefront invoice URL on shop.boontrack.com.
+ * Example: getStorefrontInvoiceUrl('tanev-food', 'ORD-123') -> 'https://shop.boontrack.com/tanev-food/invoice/ORD-123'
+ * In local development (localhost / 127.0.0.1), preserves local routing for seamless testing.
+ */
+export function getStorefrontInvoiceUrl(tenantSlug?: string | null, orderId?: string | null): string {
+  const cleanSlug = encodeURIComponent(String(tenantSlug || 'shop').trim());
+  const cleanOrderId = encodeURIComponent(String(orderId || '').replace(/^#/, '').trim());
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return `/${cleanSlug}/invoice/${cleanOrderId}`;
+    }
+  }
+
+  const base = process.env.NEXT_PUBLIC_STOREFRONT_URL
+    ? process.env.NEXT_PUBLIC_STOREFRONT_URL.replace(/\/+$/, '')
+    : STOREFRONT_DOMAIN;
+
+  return `${base}/${cleanSlug}/invoice/${cleanOrderId}`;
+}
+

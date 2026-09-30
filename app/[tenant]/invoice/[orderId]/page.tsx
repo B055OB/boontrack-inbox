@@ -25,6 +25,7 @@ import {
 } from '@/lib/product-catalog';
 import { formatWIBDateTime } from '@/lib/finance-engine';
 import { printThermalShippingLabel } from '@/lib/utils/orderFulfillment';
+import { getStorefrontShopUrl } from '@/lib/storefront-urls';
 
 interface InvoicePageProps {
   params: Promise<{ tenant: string; orderId: string }>;
@@ -119,7 +120,7 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
           Pesanan dengan nomor #{orderId} tidak terdaftar pada toko ini atau telah diarsipkan.
         </p>
         <a
-          href={`/${tenantSlug}`}
+          href={getStorefrontShopUrl(tenantSlug)}
           className="mt-5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl transition inline-flex items-center gap-1.5"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -159,11 +160,11 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
         {/* Navigation & Action Bar (Hidden during Print) */}
         <div className="flex items-center justify-between gap-2 flex-wrap print:hidden">
           <a
-            href={`/${tenantSlug}`}
-            className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 transition"
+            href={getStorefrontShopUrl(tenantSlug)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-xs"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Ke Toko {storeName}</span>
+            <ArrowLeft className="w-4 h-4 text-slate-500" />
+            <span>Kembali ke Toko {storeName}</span>
           </a>
 
           <div className="flex items-center gap-2">
@@ -428,11 +429,22 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
           </div>
 
           {/* Footer Card */}
-          <div className="p-6 bg-slate-50 border-t border-slate-100 text-center text-xs text-slate-400 space-y-1">
-            <p>Terima kasih atas kepercayaan Anda bertransaksi dengan {storeName}.</p>
-            <p className="text-[10px] text-slate-400">
-              Dokumen ini merupakan bukti transaksi yang sah dari sistem multi-tenant BoonTrack.
-            </p>
+          <div className="p-6 bg-slate-50 border-t border-slate-100 text-center text-xs text-slate-400 space-y-3">
+            <div className="flex justify-center print:hidden">
+              <a
+                href={getStorefrontShopUrl(tenantSlug)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 hover:text-blue-600 transition shadow-xs"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-500" />
+                <span>Kembali ke Beranda Toko ({storeName})</span>
+              </a>
+            </div>
+            <div>
+              <p>Terima kasih atas kepercayaan Anda bertransaksi dengan {storeName}.</p>
+              <p className="text-[10px] text-slate-400">
+                Dokumen ini merupakan bukti transaksi yang sah dari sistem multi-tenant BoonTrack.
+              </p>
+            </div>
           </div>
         </div>
       </div>

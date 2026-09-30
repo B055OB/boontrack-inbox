@@ -190,4 +190,16 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
       expect(res.status).toBe(200);
     }
   });
+
+  it('14. [QUEUE #5.1 HOTFIX] Redirects /:tenantSlug/invoice/:orderId to shop.boontrack.com with 307', async () => {
+    const req = new NextRequest('https://dashboard.boontrack.com/tanev-food/invoice/ORD-9999?source=wa', {
+      headers: { host: 'dashboard.boontrack.com' },
+    });
+
+    const res = await middleware(req);
+    expect(res.status).toBe(307);
+    const location = res.headers.get('location');
+    expect(location).toBe('https://shop.boontrack.com/tanev-food/invoice/ORD-9999?source=wa');
+  });
 });
+

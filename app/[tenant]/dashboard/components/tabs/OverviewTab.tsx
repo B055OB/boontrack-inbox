@@ -24,6 +24,7 @@ import {
   formatWIBDateTime,
   extractOrderAmount,
 } from '@/lib/finance-engine';
+import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
 
 export interface OverviewTabProps {
   totalOmzet: number;
@@ -398,35 +399,38 @@ export default function OverviewTab({
                         </span>
                       </td>
                       <td className="px-5 py-4 text-center">
-                        {isPendingVerif ? (
-                          <button
-                            type="button"
-                            disabled={verifyingId === String(invoiceNo)}
-                            onClick={() => handleVerifyManualOrder(t)}
-                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg font-bold text-[11px] transition cursor-pointer shadow-xs inline-flex items-center gap-1"
-                          >
-                            {verifyingId === String(invoiceNo) ? (
-                              <>
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                                <span>Verifikasi...</span>
-                              </>
-                            ) : (
-                              <span>Verifikasi Lunas</span>
-                            )}
-                          </button>
-                        ) : (
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          {isPendingVerif && (
+                            <button
+                              type="button"
+                              disabled={verifyingId === String(invoiceNo)}
+                              onClick={() => handleVerifyManualOrder(t)}
+                              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg font-bold text-[11px] transition cursor-pointer shadow-xs inline-flex items-center gap-1"
+                            >
+                              {verifyingId === String(invoiceNo) ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <span>Verifikasi...</span>
+                                </>
+                              ) : (
+                                <span>Verifikasi Lunas</span>
+                              )}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
                               if (typeof window !== 'undefined') {
-                                window.open(`/${tenantSlug}/invoice/${encodeURIComponent(String(invoiceNo))}`, '_blank');
+                                const invUrl = getStorefrontInvoiceUrl(tenantSlug, String(invoiceNo));
+                                window.open(invUrl, '_blank', 'noopener,noreferrer');
                               }
                             }}
                             className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                            title="Buka Lembar Invoice Resmi (shop.boontrack.com)"
                           >
                             Invoice
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -349,6 +349,18 @@ export async function middleware(req: NextRequest) {
     const tenantSlug = segments[0]?.toLowerCase().trim();
 
     if (tenantSlug && !RESERVED_PUBLIC_ROUTES.has(tenantSlug)) {
+      // HOTFIX QUEUE #5.1: Public invoice routes hitting dashboard domain -> Redirect 307 to storefront domain (shop.boontrack.com)
+      if (segments[1] === 'invoice') {
+        const invoiceSubPath = segments.slice(1).join('/');
+        const isProd = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
+        const targetHost = isProd ? 'https://shop.boontrack.com' : `${req.nextUrl.protocol}//shop.${hostClean.replace(/^dashboard\./, '')}`;
+        const targetUrl = new URL(`${targetHost}/${tenantSlug}/${invoiceSubPath}`);
+        req.nextUrl.searchParams.forEach((val, key) => {
+          targetUrl.searchParams.set(key, val);
+        });
+        return NextResponse.redirect(targetUrl, 307);
+      }
+
       // ── TENANT AUTH GUARD & ISOLATION CHECK (P0 SECURITY) ──
       // Incognito / unauthenticated / wrong tenant cookie langsung di-redirect ke /login
       if (!hasValidTenantSession(req, tenantSlug)) {

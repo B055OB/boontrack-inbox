@@ -41,6 +41,7 @@ import {
   extractOrderAmount,
   formatWIBDateTime,
 } from '@/lib/finance-engine';
+import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
 
 export interface OrderItem {
   id: string;
@@ -635,6 +636,22 @@ export default function OrdersTab({
                             <Eye className="w-3.5 h-3.5" />
                           </button>
 
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (typeof window !== 'undefined') {
+                                const invUrl = getStorefrontInvoiceUrl(tenantSlug, ord.invoice_no || ord.id);
+                                window.open(invUrl, '_blank', 'noopener,noreferrer');
+                              }
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                            title="Buka Lembar Invoice Resmi (shop.boontrack.com)"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+
                           {/* Toggle Paid / Unpaid inline */}
                           <button
                             type="button"
@@ -1000,7 +1017,7 @@ export default function OrdersTab({
                     </button>
                   )}
 
-                  {/* Buka & Cetak Invoice Resmi (Universal Invoice Viewer) */}
+                  {/* Buka & Cetak Invoice Resmi (Universal Invoice Viewer di Domain Storefront) */}
                   <button
                     type="button"
                     id={`orders-modal-print-invoice-${selectedOrder.id}`}
@@ -1008,7 +1025,8 @@ export default function OrdersTab({
                       e.preventDefault();
                       e.stopPropagation();
                       if (typeof window !== 'undefined') {
-                        window.open(`/${tenantSlug}/invoice/${encodeURIComponent(selectedOrder.invoice_no || selectedOrder.id)}`, '_blank');
+                        const invUrl = getStorefrontInvoiceUrl(tenantSlug, selectedOrder.invoice_no || selectedOrder.id);
+                        window.open(invUrl, '_blank', 'noopener,noreferrer');
                       }
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer"
