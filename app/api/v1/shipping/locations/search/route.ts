@@ -50,6 +50,7 @@ export function resolveAreaCoordinates(
 
   // 4. Jawa Timur & Bali
   if (text.includes('gubeng') || p === '60281') return { latitude: -7.2750, longitude: 112.7550 };
+  if (text.includes('manyar') || c.includes('gresik') || p.startsWith('61')) return { latitude: -7.1171, longitude: 112.5936 };
   if (c.includes('surabaya') || p.startsWith('60')) return { latitude: -7.2575, longitude: 112.7521 };
   if (c.includes('denpasar') || c.includes('bali') || p.startsWith('80')) return { latitude: -8.6705, longitude: 115.2126 };
 
@@ -96,12 +97,13 @@ export const FALLBACK_LOCAL_AREAS: LocationArea[] = [
   { id: 'IDNP6IDNC147IDND842IDZ10110', name: 'Gambir, Jakarta Pusat, DKI Jakarta. 10110', district: 'Gambir', city: 'Jakarta Pusat', province: 'DKI Jakarta', postal_code: '10110', latitude: -6.1754, longitude: 106.8272 },
   { id: 'IDNP6IDNC146IDND843IDZ11110', name: 'Taman Sari, Jakarta Barat, DKI Jakarta. 11110', district: 'Taman Sari', city: 'Jakarta Barat', province: 'DKI Jakarta', postal_code: '11110', latitude: -6.1436, longitude: 106.8153 },
 
-  // Jawa Timur / Surabaya & Malang
+  // Jawa Timur / Surabaya & Malang & Gresik
   { id: 'IDNP11IDNC434IDND5427IDZ60281', name: 'Gubeng, Surabaya, Jawa Timur. 60281', district: 'Gubeng', city: 'Surabaya', province: 'Jawa Timur', postal_code: '60281', latitude: -7.2750, longitude: 112.7550 },
   { id: 'IDNP11IDNC434IDND5428IDZ60261', name: 'Tegalsari, Surabaya, Jawa Timur. 60261', district: 'Tegalsari', city: 'Surabaya', province: 'Jawa Timur', postal_code: '60261', latitude: -7.2683, longitude: 112.7383 },
   { id: 'IDNP11IDNC434IDND5429IDZ60111', name: 'Wonokromo, Surabaya, Jawa Timur. 60111', district: 'Wonokromo', city: 'Surabaya', province: 'Jawa Timur', postal_code: '60111', latitude: -7.3017, longitude: 112.7350 },
   { id: 'IDNP11IDNC435IDND5430IDZ65111', name: 'Klojen, Malang, Jawa Timur. 65111', district: 'Klojen', city: 'Malang', province: 'Jawa Timur', postal_code: '65111', latitude: -7.9797, longitude: 112.6304 },
   { id: 'IDNP11IDNC436IDND5431IDZ61211', name: 'Sidoarjo, Sidoarjo, Jawa Timur. 61211', district: 'Sidoarjo', city: 'Sidoarjo', province: 'Jawa Timur', postal_code: '61211', latitude: -7.4478, longitude: 112.7183 },
+  { id: 'IDNP11IDNC437IDND5432IDZ61111', name: 'Manyar, Gresik, Jawa Timur. 61111', district: 'Manyar', city: 'Gresik', province: 'Jawa Timur', postal_code: '61111', latitude: -7.1171, longitude: 112.5936 },
 
   // Jawa Tengah & DIY
   { id: 'IDNP10IDNC341IDND3955IDZ59111', name: 'Pati, Pati, Jawa Tengah. 59111', district: 'Pati', city: 'Pati', province: 'Jawa Tengah', postal_code: '59111', latitude: -6.7558, longitude: 111.0378 },

@@ -227,6 +227,9 @@ export async function PUT(
       custom_greeting_message,
       sales_policy,
       playbook,
+      shipping_config,
+      lincah_config,
+      shipping_settings,
     } = body;
 
     const supabase = getSupabase();
@@ -328,6 +331,9 @@ export async function PUT(
       ...(sales_policy !== undefined ? { sales_policy, playbook: sales_policy } : (playbook !== undefined ? { sales_policy: playbook, playbook } : {})),
       ...(microsite !== undefined ? { microsite } : {}),
       ...(rotator !== undefined ? { rotator } : {}),
+      ...(shipping_config !== undefined ? { shipping_config } : {}),
+      ...(lincah_config !== undefined ? { lincah_config } : {}),
+      ...(shipping_settings !== undefined ? { shipping_settings } : {}),
     };
 
     const { error: updateError } = await supabase

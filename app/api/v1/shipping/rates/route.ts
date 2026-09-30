@@ -258,6 +258,8 @@ export async function POST(req: NextRequest) {
         ? Number(body.origin_longitude)
         : null;
 
+    let tenantLincah: any = null;
+
     if (slug) {
       try {
         const supabase = getSupabase();
@@ -279,6 +281,7 @@ export async function POST(req: NextRequest) {
           const shippingOrigin = (settingsRes.data as any)?.shipping_origin;
           const meta = tenantRes.data?.metadata || {};
           const metaShipping = meta.shipping_config;
+          tenantLincah = metaShipping?.lincah || biteshipCfg?.lincah || meta.lincah_config || meta.shipping_settings || null;
 
           if (biteshipCfg) {
             isShippingActive = biteshipCfg.is_enabled ?? true;
@@ -287,8 +290,8 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // Prioritas data origin toko dinamis (biteship_config -> shipping_origin -> shipping_config -> warehouse_address)
-          const originObj = biteshipCfg?.origin || shippingOrigin || {};
+          // Prioritas data origin toko dinamis (biteship_config -> shipping_origin -> shipping_config -> basic_shipping -> warehouse_address)
+          const originObj = biteshipCfg?.origin || shippingOrigin || metaShipping?.origin || meta.shipping_settings || meta.basic_shipping || {};
 
           originCity =
             originCity ||
@@ -296,6 +299,7 @@ export async function POST(req: NextRequest) {
             originObj.origin_city ||
             metaShipping?.origin_city ||
             meta.origin_city ||
+            meta.basic_shipping?.origin_city ||
             meta.warehouse_address?.city ||
             '';
 
@@ -303,8 +307,11 @@ export async function POST(req: NextRequest) {
             originDistrict ||
             originObj.district ||
             originObj.origin_district ||
+            originObj.subdistrict ||
             metaShipping?.origin_district ||
+            metaShipping?.origin_subdistrict ||
             meta.origin_district ||
+            meta.basic_shipping?.origin_district ||
             meta.warehouse_address?.district ||
             '';
 
@@ -333,6 +340,7 @@ export async function POST(req: NextRequest) {
             originObj.origin_address ||
             metaShipping?.origin_address ||
             meta.origin_address ||
+            meta.basic_shipping?.origin_address ||
             (typeof meta.warehouse_address === 'string' ? meta.warehouse_address : meta.warehouse_address?.address) ||
             '';
 
@@ -495,18 +503,23 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. INTEGRASI LINCAH API (REGULER, HEMAT & KARGO)
-    const lincahPartnerId = process.env.LINCAH_PARTNER_ID;
-    const lincahToken = process.env.LINCAH_API_TOKEN;
+    const lincahPartnerId = tenantLincah?.api_key || process.env.LINCAH_PARTNER_ID;
+    const lincahToken = tenantLincah?.secret || tenantLincah?.api_key_read_only || process.env.LINCAH_API_TOKEN;
 
-    if (lincahPartnerId && (!externalRatesLoaded || availableRates.filter((r) => r.type === 'regular').length === 0)) {
+    const isLincahActive = Boolean(lincahPartnerId);
+
+    if (isLincahActive && (!externalRatesLoaded || availableRates.filter((r) => r.type === 'regular').length === 0)) {
       try {
+        const lincahHeaders: Record<string, string> = {
+          'Content-Type': 'application/json',
+          ...(lincahPartnerId ? { 'partner-id': lincahPartnerId } : {}),
+          ...(lincahToken ? { Authorization: `Bearer ${lincahToken}` } : {}),
+          ...(tenantLincah?.secret ? { 'X-Lincah-Secret': tenantLincah.secret } : {}),
+        };
+
         const lincahRes = await fetch(LINCAH_API_URL, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'partner-id': lincahPartnerId,
-            ...(lincahToken ? { Authorization: `Bearer ${lincahToken}` } : {}),
-          },
+          headers: lincahHeaders,
           body: JSON.stringify({
             isPickup: true,
             isCod: false,
@@ -514,14 +527,14 @@ export async function POST(req: NextRequest) {
             weight: weightInGrams,
             packagePrice: 50000,
             origin: {
-              code: originSubdistrictId || '32.73.06',
-              longitude: 107.6757,
-              latitude: -6.9538,
+              code: originSubdistrictId || (effectiveOriginCity.toLowerCase().includes('gresik') ? '35.25.15' : '32.73.06'),
+              longitude: originLon || 107.6757,
+              latitude: originLat || -6.9538,
             },
             destination: {
-              code: destinationDistrictCode,
-              longitude: 107.6108,
-              latitude: -6.9085,
+              code: destinationDistrictCode || (destinationCity.toLowerCase().includes('jakarta') ? '31.71.01' : '32.73.01'),
+              longitude: finalDestLon,
+              latitude: finalDestLat,
             },
             logistics: ['JNE', 'SiCepat Ekspres', 'J&T Express', 'Anteraja'],
             services: ['Regular', 'Express', 'Cargo'],
