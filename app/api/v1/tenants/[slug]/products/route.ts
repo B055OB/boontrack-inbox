@@ -9,7 +9,9 @@ import { slugify } from '@/lib/product-catalog';
 export interface ProductItem {
   id: string | number;
   name: string;
+  title?: string;
   slug?: string;
+  is_active?: boolean;
   category: 'ebook' | 'course' | 'template' | 'physical' | 'membership' | string;
   price: number;
   promo_price?: number;
@@ -18,6 +20,7 @@ export interface ProductItem {
   description?: string;
   download_url?: string | null;
   image?: string;
+  image_url?: string;
   stock?: number;
   sku?: string;
   is_unlimited?: boolean;

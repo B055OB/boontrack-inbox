@@ -193,6 +193,7 @@ export default function TenantDashboardPage() {
     handleSendMessage,
     isTenantBotPaused,
     handleToggleTenantBot,
+    tenantId,
 
     bankForm,
     setBankForm,
@@ -691,6 +692,7 @@ export default function TenantDashboardPage() {
       {activeTab === 'inbox' && (
         <TeamChatTab
           tenantSlug={tenantSlug}
+          tenantId={tenantId || undefined}
           conversations={conversations}
           activeConversation={activeConversation}
           activeConversationId={activeConversationId}

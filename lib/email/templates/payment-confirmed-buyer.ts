@@ -164,7 +164,7 @@ export function buildPaymentConfirmedBuyerHtml(
             <td class="meta-label">Nama Pelanggan</td>
             <td class="meta-value">${payload.customer_name}</td>
           </tr>
-          ${payload.customerPhone ? `<tr><td class="meta-label">Nomor WhatsApp</td><td class="meta-value">${payload.customerPhone}</td></tr>` : ''}
+          ${(payload.customer_phone || payload.customerPhone) ? `<tr><td class="meta-label">Nomor WhatsApp</td><td class="meta-value">${payload.customer_phone || payload.customerPhone}</td></tr>` : ''}
           ${payload.customer_email ? `<tr><td class="meta-label">Email Pelanggan</td><td class="meta-value">${payload.customer_email}</td></tr>` : ''}
           <tr>
             <td class="meta-label">Status Transaksi</td>

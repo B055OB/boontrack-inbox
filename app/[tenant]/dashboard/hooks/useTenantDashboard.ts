@@ -317,6 +317,8 @@ export function useTenantDashboard() {
   const [editingProductId, setEditingProductId] = useState<number | string | null>(null);
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
 
+  const [tenantId, setTenantId] = useState<string | null>(null);
+
   // Client-side hydration sync: loads cached localStorage & URL params AFTER mount to guarantee 0 SSR mismatch (#418)
   useEffect(() => {
     if (typeof window === 'undefined' || !tenantSlug) return;
@@ -348,12 +350,9 @@ export function useTenantDashboard() {
       }
     } catch (_) {}
 
+    // Security & Data Integrity: Clear any legacy mock conversations from localStorage
     try {
-      const savedConvs = localStorage.getItem(`bt_conversations_${tenantSlug}`);
-      if (savedConvs) {
-        const parsed = JSON.parse(savedConvs);
-        if (Array.isArray(parsed) && parsed.length > 0) setConversations(parsed);
-      }
+      localStorage.removeItem(`bt_conversations_${tenantSlug}`);
     } catch (_) {}
 
     try {
@@ -752,6 +751,9 @@ export function useTenantDashboard() {
 
         // Sesi & kredensial terverifikasi valid
         setIsAuthenticated(true);
+        if (tenant.id) {
+          setTenantId(tenant.id);
+        }
         if (false) {
         } else {
           const resolvedBusinessType =
@@ -2572,6 +2574,7 @@ export function useTenantDashboard() {
     isTenantBotPaused,
     setIsTenantBotPaused,
     handleToggleTenantBot,
+    tenantId,
 
     // Reverse Trial & Entitlement
     trialDaysLeft,

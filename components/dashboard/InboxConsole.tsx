@@ -38,6 +38,7 @@ export default function InboxConsole(props: InboxConsoleProps) {
   return (
     <TeamChatTab
       tenantSlug={tenantSlug}
+      tenantId={props.tenantId}
       conversations={conversations}
       activeConversation={activeConversation}
       activeConversationId={activeConversationId}

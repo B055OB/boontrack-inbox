@@ -222,6 +222,7 @@ export function resolveFulfillmentRequirements(productType?: ProductType | strin
 export interface ProductItem {
   id: number | string;
   name: string;
+  title?: string;
   slug?: string;
   is_active?: boolean;
   category: 'terlaris' | 'digital' | 'fisik' | string;

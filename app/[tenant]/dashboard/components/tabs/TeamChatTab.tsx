@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { useTenantInbox } from '../../hooks/useTenantInbox';
 
 export interface ConversationMessage {
   id: number | string;
@@ -70,13 +71,14 @@ export interface ChatConversation {
 
 export interface TeamChatTabProps {
   tenantSlug?: string;
-  conversations: any[];
-  activeConversation: any | null;
-  activeConversationId: string | null;
-  setActiveConversationId: (id: string) => void;
-  replyText: string;
-  setReplyText: (val: string) => void;
-  handleSendMessage: (e: React.FormEvent) => void;
+  tenantId?: string;
+  conversations?: any[];
+  activeConversation?: any | null;
+  activeConversationId?: string | null;
+  setActiveConversationId?: (id: string) => void;
+  replyText?: string;
+  setReplyText?: (val: string) => void;
+  handleSendMessage?: (e?: any) => void;
   isProScale: boolean;
   isGrowthPlus: boolean;
   isGrowth: boolean;
@@ -92,6 +94,7 @@ export interface TeamChatTabProps {
 
 export default function TeamChatTab({
   tenantSlug,
+  tenantId,
   conversations: externalConversations,
   activeConversation: externalActiveConversation,
   activeConversationId: externalActiveConversationId,
@@ -122,32 +125,39 @@ export default function TeamChatTab({
 
   const isTrialExpired = effectiveDaysLeft !== null && effectiveDaysLeft <= 0;
 
-  // Local state for presentation layer (isolated per tenant)
-  const [conversationsList, setConversationsList] = useState<ChatConversation[]>(() => {
-    return Array.isArray(externalConversations) ? externalConversations : [];
-  });
+  const resolvedTenant = tenantSlug || (typeof window !== 'undefined' ? window.location.pathname.split('/')[1] : '');
 
-  const [selectedConvId, setSelectedConvId] = useState<string>(
-    externalActiveConversationId || externalConversations?.[0]?.id || ''
-  );
+  // 100% Global & Tenant-Agnostic Supabase Realtime Inbox Hook (Single Source of Truth)
+  const inbox = useTenantInbox(tenantId, resolvedTenant);
+
+  // Active Conversations List (Single Source of Truth: Supabase via useTenantInbox)
+  const conversationsList = useMemo(() => {
+    if (inbox.conversations.length > 0) return inbox.conversations;
+    if (Array.isArray(externalConversations) && externalConversations.length > 0) return externalConversations;
+    return [];
+  }, [inbox.conversations, externalConversations]);
+
+  const selectedConvId = inbox.activeConversationId || externalActiveConversationId || conversationsList[0]?.id || '';
+
+  const currentConversation = useMemo(() => {
+    return (
+      conversationsList.find((c) => c.id === selectedConvId) ||
+      inbox.activeConversation ||
+      conversationsList[0] ||
+      null
+    );
+  }, [conversationsList, selectedConvId, inbox.activeConversation]);
+
+  const messagesList = useMemo(() => {
+    if (inbox.messages.length > 0) return inbox.messages;
+    if (currentConversation?.messages && currentConversation.messages.length > 0) return currentConversation.messages;
+    return [];
+  }, [inbox.messages, currentConversation?.messages]);
 
   const [searchKeyword, setSearchKeyword] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'mine' | 'unassigned'>('all');
   const [localReplyText, setLocalReplyText] = useState('');
   const [displayLimit, setDisplayLimit] = useState(60);
-
-  // Sinkronisasi state lokal jika externalConversations dari parent terisi atau berubah
-  useEffect(() => {
-    const list = Array.isArray(externalConversations) ? externalConversations : [];
-    setConversationsList(list);
-    if (list.length > 0) {
-      if (!list.some((c) => c.id === selectedConvId)) {
-        setSelectedConvId(list[0].id);
-      }
-    } else {
-      setSelectedConvId('');
-    }
-  }, [externalConversations]);
 
   useEffect(() => {
     setDisplayLimit(60);
@@ -158,7 +168,6 @@ export default function TeamChatTab({
   const [qrisAmount, setQrisAmount] = useState('150000');
   const [isGeneratingQris, setIsGeneratingQris] = useState(false);
   const [markingPaidOrderId, setMarkingPaidOrderId] = useState<string | null>(null);
-  const resolvedTenant = tenantSlug || (typeof window !== 'undefined' ? window.location.pathname.split('/')[1] : '');
   const [qrisFeedback, setQrisFeedback] = useState<string | null>(null);
 
   // Transfer CS state
@@ -167,19 +176,10 @@ export default function TeamChatTab({
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Active conversation resolved
-  const currentConversation = useMemo(() => {
-    return (
-      conversationsList.find((c) => c.id === selectedConvId) ||
-      conversationsList[0] ||
-      null
-    );
-  }, [conversationsList, selectedConvId]);
-
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentConversation?.messages]);
+  }, [messagesList]);
 
   // Real CRM aggregation from orders table (Zero Mock)
   const [crmMetrics, setCrmMetrics] = useState<{ totalOrders: number; lifetimeValue: number; isLoading: boolean }>({
@@ -210,7 +210,7 @@ export default function TeamChatTab({
           altPhone = '62' + cleanPhone.slice(1);
         }
 
-        const cleanSlug = tenantSlug || (typeof window !== 'undefined' ? window.location.pathname.split('/')[1] : '');
+        const cleanSlug = resolvedTenant;
 
         let query = supabase
           .from('orders')
@@ -249,7 +249,7 @@ export default function TeamChatTab({
     return () => {
       isMounted = false;
     };
-  }, [currentConversation?.customerPhone, tenantSlug]);
+  }, [currentConversation?.customerPhone, resolvedTenant]);
 
   // Filtered conversation list
   const filteredConversations = useMemo(() => {
@@ -287,84 +287,39 @@ export default function TeamChatTab({
   }, [conversationsList]);
 
   // Select conversation handler
-  const handleSelectConversation = async (id: string) => {
-    setSelectedConvId(id);
-    externalSetActiveConversationId(id);
-    // Mark as read
-    setConversationsList((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
-    );
-
-    // Lazy-load messages from Supabase if not yet populated
-    const targetConv = conversationsList.find((c) => c.id === id);
-    if (targetConv && targetConv.messages.length === 0) {
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data: msgs } = await supabase
-            .from('messages')
-            .select('id, sender, text, created_at, user_name, payload')
-            .eq('conversation_id', id)
-            .order('created_at', { ascending: true })
-            .limit(100);
-
-          if (Array.isArray(msgs) && msgs.length > 0) {
-            const mapped: ConversationMessage[] = msgs.map((m: any) => {
-              const ts = m.created_at ? new Date(m.created_at) : new Date();
-              const hh = String(ts.getHours()).padStart(2, '0');
-              const mm = String(ts.getMinutes()).padStart(2, '0');
-              const sender = m.sender === 'user' ? 'customer'
-                           : m.sender === 'bot' ? 'bot'
-                           : m.sender === 'agent' ? 'agent'
-                           : 'system';
-              return {
-                id: m.id,
-                sender: sender as ConversationMessage['sender'],
-                senderName: m.user_name || (sender === 'bot' ? 'Bot AI' : sender === 'agent' ? 'CS Agent' : undefined),
-                text: m.text || '',
-                time: `${hh}:${mm}`,
-              };
-            });
-            setConversationsList((prev) =>
-              prev.map((c) => c.id === id ? { ...c, messages: mapped } : c)
-            );
-          }
-        }
-      } catch (e) {
-        console.debug('[TeamChat] Failed to load messages:', e);
-      }
+  const handleSelectConversation = (id: string) => {
+    inbox.setActiveConversationId(id);
+    if (externalSetActiveConversationId) {
+      externalSetActiveConversationId(id);
     }
   };
 
-
   // Toggle Bot Pause / CS Takeover
-  const handleToggleBot = () => {
+  const handleToggleBot = async () => {
     if (!currentConversation) return;
     const newBotState = !currentConversation.isBotActive;
     const isPaused = !newBotState;
     const nowIso = new Date().toISOString();
     const pausedUntilIso = isPaused ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
     const cleanPhone = (currentConversation.customerPhone || '').replace(/\D/g, '');
-    const cleanSlug = tenantSlug || 'boon';
+    const cleanSlug = resolvedTenant || 'boon';
 
-    // Sinkronisasi status bot ke Supabase conversations dan conversation_sessions
     try {
       const supabase = getSupabase();
       if (supabase) {
         if (currentConversation.id) {
-          supabase
+          await supabase
             .from('conversations')
             .update({
               bot_paused: isPaused,
               bot_mode: newBotState ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
               updated_at: nowIso,
             })
-            .eq('id', currentConversation.id)
-            .then();
+            .eq('id', currentConversation.id);
         }
 
         if (cleanPhone) {
-          supabase
+          await supabase
             .from('conversation_sessions')
             .upsert({
               tenant_id: cleanSlug,
@@ -382,71 +337,24 @@ export default function TeamChatTab({
                 paused_at: isPaused ? nowIso : null,
               },
               updated_at: nowIso,
-            }, { onConflict: 'tenant_id,user_identifier' })
-            .then();
+            }, { onConflict: 'tenant_id,user_identifier' });
         }
       }
+      await inbox.refreshConversations();
     } catch (e) {
       console.debug('[TeamChat] Sync bot_paused error:', e);
     }
-
-    setConversationsList((prev) =>
-      prev.map((c) => {
-        if (c.id === currentConversation.id) {
-          const sysMsg: ConversationMessage = {
-            id: `sys-${Date.now()}`,
-            sender: 'system',
-            text: newBotState
-              ? 'Bot AI diaktifkan kembali. Asisten otomatis siap merespons.'
-              : 'Bot AI dijeda. Sesi diambil alih sepenuhnya oleh agen CS.',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          };
-          return {
-            ...c,
-            isBotActive: newBotState,
-            assignedTo: newBotState ? 'unassigned' : 'my_chat',
-            assignedAgentName: newBotState ? 'Unassigned / AI Bot' : 'Anda (CS Aktif)',
-            messages: [...c.messages, sysMsg],
-          };
-        }
-        return c;
-      })
-    );
   };
 
   // Send Manual Reply
-  const handleSendLocalMessage = (e: React.FormEvent) => {
+  const handleSendLocalMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    const textToSend = localReplyText.trim() || externalReplyText.trim();
+    const textToSend = inbox.replyText.trim() || localReplyText.trim() || (externalReplyText || '').trim();
     if (!textToSend || !currentConversation) return;
 
-    const newMsg: ConversationMessage = {
-      id: `msg-${Date.now()}`,
-      sender: 'agent',
-      senderName: 'Anda (CS)',
-      text: textToSend,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setConversationsList((prev) =>
-      prev.map((c) => {
-        if (c.id === currentConversation.id) {
-          return {
-            ...c,
-            lastMessage: textToSend,
-            time: 'Baru saja',
-            assignedTo: 'my_chat',
-            assignedAgentName: 'Anda (CS Aktif)',
-            isBotActive: false, // automatic takeover when human CS sends a reply
-            messages: [...c.messages, newMsg],
-          };
-        }
-        return c;
-      })
-    );
-
+    await inbox.handleSendMessage(textToSend);
     setLocalReplyText('');
-    externalSetReplyText('');
+    if (externalSetReplyText) externalSetReplyText('');
   };
 
   // Quick POS: Generate QRIS Tagihan & Record Order in Core Backend
@@ -508,21 +416,35 @@ export default function TeamChatTab({
         },
       };
 
-      setConversationsList((prev) =>
-        prev.map((c) => {
-          if (c.id === currentConversation.id) {
-            return {
-              ...c,
-              lastMessage: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${realOrderId})`,
-              time: 'Baru saja',
-              tag: 'Konfirmasi Bayar',
-              messages: [...c.messages, qrisPayload],
-            };
-          }
-          return c;
-        })
-      );
+      // Direct persist ke database Supabase messages & update conversation
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          await supabase.from('messages').insert({
+            conversation_id: currentConversation.id,
+            tenant_id: tenantId || resolvedTenant,
+            tenant_slug: resolvedTenant,
+            sender_type: 'agent',
+            sender: 'agent',
+            message_body: qrisPayload.text,
+            text: qrisPayload.text,
+            channel: 'whatsapp',
+            user_name: 'Anda (Quick POS)',
+            user_phone: currentConversation.customerPhone,
+            payload: { is_qris: true, qris_data: qrisPayload.qrisData },
+            created_at: new Date().toISOString(),
+          });
 
+          await supabase.from('conversations').update({
+            last_message: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${realOrderId})`,
+            last_message_at: new Date().toISOString(),
+          }).eq('id', currentConversation.id);
+        }
+      } catch (dbErr) {
+        console.warn('[Quick POS] Persist QRIS message note:', dbErr);
+      }
+
+      await inbox.refreshConversations();
       setQrisFeedback(`✅ Tagihan QRIS (${realOrderId}) terkirim ke chat!`);
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
@@ -558,41 +480,34 @@ export default function TeamChatTab({
         throw new Error(data?.detail || 'Gagal menandai lunas pesanan.');
       }
 
-      setConversationsList((prev) =>
-        prev.map((c) => {
-          if (c.id === currentConversation?.id) {
-            const updatedMessages = c.messages.map((m) => {
-              if (m.isQris && m.qrisData && m.qrisData.orderId === orderId) {
-                return {
-                  ...m,
-                  qrisData: {
-                    ...m.qrisData,
-                    status: 'PAID' as const,
-                  },
-                };
-              }
-              return m;
-            });
+      // Record system confirmation in messages
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const confirmationText = `✅ Pembayaran untuk tagihan ${orderId} senilai Rp ${data?.gross_amount ? data.gross_amount.toLocaleString('id-ID') : ''} telah DIVERIFIKASI LUNAS oleh CS. Event konversi Purchase Meta CAPI telah terkirim.`;
+          await supabase.from('messages').insert({
+            conversation_id: currentConversation?.id,
+            tenant_id: tenantId || resolvedTenant,
+            tenant_slug: resolvedTenant,
+            sender_type: 'system',
+            sender: 'system',
+            message_body: confirmationText,
+            text: confirmationText,
+            channel: 'whatsapp',
+            user_name: 'Sistem BoonTrack',
+            created_at: new Date().toISOString(),
+          });
 
-            const confirmationMsg: ConversationMessage = {
-              id: `paid-conf-${Date.now()}`,
-              sender: 'system',
-              senderName: 'Sistem BoonTrack',
-              text: `✅ Pembayaran untuk tagihan ${orderId} senilai Rp ${data?.gross_amount ? data.gross_amount.toLocaleString('id-ID') : ''} telah DIVERIFIKASI LUNAS oleh CS. Event konversi Purchase Meta CAPI telah terkirim.`,
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            };
+          await supabase.from('conversations').update({
+            last_message: `LUNAS: Tagihan ${orderId}`,
+            last_message_at: new Date().toISOString(),
+          }).eq('id', currentConversation?.id);
+        }
+      } catch (dbErr) {
+        console.warn('[Mark Paid] DB confirmation note:', dbErr);
+      }
 
-            return {
-              ...c,
-              lastMessage: `LUNAS: Tagihan ${orderId}`,
-              tag: 'Repeat Buyer',
-              messages: [...updatedMessages, confirmationMsg],
-            };
-          }
-          return c;
-        })
-      );
-
+      await inbox.refreshConversations();
       setQrisFeedback(`✅ Tagihan ${orderId} LUNAS & Event Meta CAPI tersinkron!`);
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
@@ -603,28 +518,32 @@ export default function TeamChatTab({
   };
 
   // Transfer Chat to Colleague
-  const handleTransferChat = () => {
+  const handleTransferChat = async () => {
     if (!currentConversation) return;
-    setConversationsList((prev) =>
-      prev.map((c) => {
-        if (c.id === currentConversation.id) {
-          const sysMsg: ConversationMessage = {
-            id: `sys-${Date.now()}`,
-            sender: 'system',
-            text: `Percakapan berhasil dialihkan ke ${targetAgent}.`,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          };
-          return {
-            ...c,
-            assignedTo: targetAgent,
-            assignedAgentName: targetAgent,
-            messages: [...c.messages, sysMsg],
-          };
-        }
-        return c;
-      })
-    );
-
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const sysMsgText = `Percakapan berhasil dialihkan ke ${targetAgent}.`;
+        await supabase.from('messages').insert({
+          conversation_id: currentConversation.id,
+          tenant_id: tenantId || resolvedTenant,
+          tenant_slug: resolvedTenant,
+          sender_type: 'system',
+          sender: 'system',
+          message_body: sysMsgText,
+          text: sysMsgText,
+          created_at: new Date().toISOString(),
+        });
+        await supabase.from('conversations').update({
+          assigned_agent_name: targetAgent,
+          last_message: sysMsgText,
+          last_message_at: new Date().toISOString(),
+        }).eq('id', currentConversation.id);
+      }
+    } catch (e) {
+      console.warn('[Transfer] Error:', e);
+    }
+    await inbox.refreshConversations();
     setTransferFeedback(`✅ Chat dialihkan ke ${targetAgent}`);
     setTimeout(() => setTransferFeedback(null), 3000);
   };
@@ -856,7 +775,12 @@ export default function TeamChatTab({
             }}
             className="flex-1 overflow-y-auto p-2 space-y-1.5 divide-y-0"
           >
-            {conversationsList.length === 0 ? (
+            {inbox.isLoadingConversations && conversationsList.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-3 my-auto">
+                <RefreshCw className="w-6 h-6 animate-spin text-slate-400" />
+                <p className="text-xs text-slate-500">Menghubungkan ke Inbox Supabase...</p>
+              </div>
+            ) : conversationsList.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-3 my-auto">
                 <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
                   <MessageSquare className="w-6 h-6" />
@@ -1046,139 +970,152 @@ export default function TeamChatTab({
 
               {/* Area Pesan Chat (Scrollable) */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/40">
-                {currentConversation.messages.map((msg) => {
-                  if (msg.sender === 'system') {
+                {inbox.isLoadingMessages && messagesList.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2 my-auto">
+                    <RefreshCw className="w-5 h-5 animate-spin text-slate-400" />
+                    <p className="text-[11px] text-slate-400">Memuat riwayat pesan WhatsApp...</p>
+                  </div>
+                ) : messagesList.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2 my-auto">
+                    <MessageSquare className="w-8 h-8 text-slate-300" />
+                    <p className="font-semibold text-slate-600">Belum ada riwayat pesan</p>
+                    <p className="text-[11px] text-slate-400">Pesan dari pelanggan WhatsApp akan ditampilkan di sini.</p>
+                  </div>
+                ) : (
+                  messagesList.map((msg: ConversationMessage) => {
+                    if (msg.sender === 'system') {
+                      return (
+                        <div key={msg.id} className="flex justify-center my-2">
+                          <span className="px-3 py-1 rounded-full bg-slate-200/80 text-slate-600 text-[10px] font-semibold flex items-center gap-1.5 shadow-2xs">
+                            <AlertCircle className="w-3 h-3 text-slate-500" />
+                            <span>{msg.text}</span>
+                            <span className="text-[9px] text-slate-400">• {msg.time}</span>
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    const isCustomer = msg.sender === 'customer';
+                    const isBot = msg.sender === 'bot';
+                    const isAgent = msg.sender === 'agent';
+
                     return (
-                      <div key={msg.id} className="flex justify-center my-2">
-                        <span className="px-3 py-1 rounded-full bg-slate-200/80 text-slate-600 text-[10px] font-semibold flex items-center gap-1.5 shadow-2xs">
-                          <AlertCircle className="w-3 h-3 text-slate-500" />
-                          <span>{msg.text}</span>
-                          <span className="text-[9px] text-slate-400">• {msg.time}</span>
-                        </span>
-                      </div>
-                    );
-                  }
-
-                  const isCustomer = msg.sender === 'customer';
-                  const isBot = msg.sender === 'bot';
-                  const isAgent = msg.sender === 'agent';
-
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`flex flex-col ${isCustomer ? 'items-start' : 'items-end'}`}
-                    >
-                      {/* Sender label badge */}
-                      <span className="text-[9px] font-bold text-slate-400 mb-1 px-1 flex items-center gap-1">
-                        {isBot ? (
-                          <>
-                            <Sparkles className="w-2.5 h-2.5 text-violet-500" />
-                            <span className="text-violet-600">BoonPilot AI Bot</span>
-                          </>
-                        ) : isAgent ? (
-                          <>
-                            <User className="w-2.5 h-2.5 text-blue-500" />
-                            <span className="text-blue-600">{msg.senderName || 'Live CS Agent'}</span>
-                          </>
-                        ) : (
-                          <span>{currentConversation.customerName || 'Customer'}</span>
-                        )}
-                      </span>
-
-                      {/* Bubble Text */}
                       <div
-                        className={`p-3.5 rounded-2xl max-w-[85%] sm:max-w-md shadow-2xs ${
-                          isCustomer
-                            ? 'bg-white border border-slate-200 text-slate-900 rounded-tl-xs'
-                            : isBot
-                            ? 'bg-violet-50/90 border border-violet-200 text-slate-900 rounded-tr-xs'
-                            : 'bg-indigo-600 text-white rounded-tr-xs'
-                        }`}
+                        key={msg.id}
+                        className={`flex flex-col ${isCustomer ? 'items-start' : 'items-end'}`}
                       >
-                        <p className="text-xs leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                        {/* Sender label badge */}
+                        <span className="text-[9px] font-bold text-slate-400 mb-1 px-1 flex items-center gap-1">
+                          {isBot ? (
+                            <>
+                              <Sparkles className="w-2.5 h-2.5 text-violet-500" />
+                              <span className="text-violet-600">BoonPilot AI Bot</span>
+                            </>
+                          ) : isAgent ? (
+                            <>
+                              <User className="w-2.5 h-2.5 text-blue-500" />
+                              <span className="text-blue-600">{msg.senderName || 'Live CS Agent'}</span>
+                            </>
+                          ) : (
+                            <span>{currentConversation.customerName || 'Customer'}</span>
+                          )}
+                        </span>
 
-                        {/* Interactive QRIS Card Preview inside Chat */}
-                        {msg.isQris && msg.qrisData && (
-                          <div className="mt-3 p-3 bg-white rounded-xl border border-slate-200 text-slate-900 space-y-2.5 shadow-xs">
-                            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-[10px] font-black text-slate-800 flex items-center gap-1">
-                                <QrCode className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>TAGIHAN QRIS DINAMIS</span>
-                              </span>
-                              <span
-                                className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
-                                  msg.qrisData.status === 'PAID'
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                                }`}
-                              >
-                                {msg.qrisData.status === 'PAID' ? 'LUNAS (PAID)' : 'MENUNGGU BAYAR'}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-3 pt-1">
-                              <div className="p-1 bg-slate-50 border border-slate-200 rounded-lg shrink-0">
-                                <QRCodeSVG value={msg.qrisData.qrValue} size={64} level="M" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-[11px] font-bold text-slate-800 truncate">
-                                  {msg.qrisData.description}
-                                </p>
-                                <p className="text-xs font-black text-indigo-700 mt-0.5">
-                                  Rp {msg.qrisData.amount.toLocaleString('id-ID')}
-                                </p>
-                                <p className="text-[9px] text-slate-400 font-mono mt-0.5">
-                                  Ref: {msg.qrisData.orderId}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Tombol Aksi Tandai Lunas jika belum dibayar */}
-                            {msg.qrisData.status === 'WAITING_PAYMENT' ? (
-                              <button
-                                type="button"
-                                onClick={() => handleMarkPaid(msg.qrisData!.orderId)}
-                                disabled={markingPaidOrderId === msg.qrisData.orderId}
-                                className="w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
-                              >
-                                {markingPaidOrderId === msg.qrisData.orderId ? (
-                                  <>
-                                    <RefreshCw className="w-3 h-3 animate-spin" />
-                                    <span>Memverifikasi & Kirim CAPI...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>Tandai Lunas & Sinkron CAPI</span>
-                                  </>
-                                )}
-                              </button>
-                            ) : (
-                              <div className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center gap-1 text-[10px] font-black text-emerald-700">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Terverifikasi Lunas (Synced to Meta CAPI)</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Timestamp & checkmarks */}
+                        {/* Bubble Text */}
                         <div
-                          className={`text-[9px] mt-1.5 flex items-center gap-1 ${
+                          className={`p-3.5 rounded-2xl max-w-[85%] sm:max-w-md shadow-2xs ${
                             isCustomer
-                              ? 'text-slate-400'
+                              ? 'bg-white border border-slate-200 text-slate-900 rounded-tl-xs'
                               : isBot
-                              ? 'text-violet-500 justify-end'
-                              : 'text-indigo-200 justify-end'
+                              ? 'bg-violet-50/90 border border-violet-200 text-slate-900 rounded-tr-xs'
+                              : 'bg-indigo-600 text-white rounded-tr-xs'
                           }`}
                         >
-                          <span>{msg.time}</span>
-                          {!isCustomer && <CheckCheck className="w-3 h-3" />}
+                          <p className="text-xs leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+
+                          {/* Interactive QRIS Card Preview inside Chat */}
+                          {msg.isQris && msg.qrisData && (
+                            <div className="mt-3 p-3 bg-white rounded-xl border border-slate-200 text-slate-900 space-y-2.5 shadow-xs">
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                                <span className="text-[10px] font-black text-slate-800 flex items-center gap-1">
+                                  <QrCode className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>TAGIHAN QRIS DINAMIS</span>
+                                </span>
+                                <span
+                                  className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
+                                    msg.qrisData.status === 'PAID'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                                  }`}
+                                >
+                                  {msg.qrisData.status === 'PAID' ? 'LUNAS (PAID)' : 'MENUNGGU BAYAR'}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-3 pt-1">
+                                <div className="p-1 bg-slate-50 border border-slate-200 rounded-lg shrink-0">
+                                  <QRCodeSVG value={msg.qrisData.qrValue} size={64} level="M" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[11px] font-bold text-slate-800 truncate">
+                                    {msg.qrisData.description}
+                                  </p>
+                                  <p className="text-xs font-black text-indigo-700 mt-0.5">
+                                    Rp {msg.qrisData.amount.toLocaleString('id-ID')}
+                                  </p>
+                                  <p className="text-[9px] text-slate-400 font-mono mt-0.5">
+                                    Ref: {msg.qrisData.orderId}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Tombol Aksi Tandai Lunas jika belum dibayar */}
+                              {msg.qrisData.status === 'WAITING_PAYMENT' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkPaid(msg.qrisData!.orderId)}
+                                  disabled={markingPaidOrderId === msg.qrisData.orderId}
+                                  className="w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
+                                >
+                                  {markingPaidOrderId === msg.qrisData.orderId ? (
+                                    <>
+                                      <RefreshCw className="w-3 h-3 animate-spin" />
+                                      <span>Memverifikasi & Kirim CAPI...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      <span>Tandai Lunas & Sinkron CAPI</span>
+                                    </>
+                                  )}
+                                </button>
+                              ) : (
+                                <div className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center gap-1 text-[10px] font-black text-emerald-700">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Terverifikasi Lunas (Synced to Meta CAPI)</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Timestamp & checkmarks */}
+                          <div
+                            className={`text-[9px] mt-1.5 flex items-center gap-1 ${
+                              isCustomer
+                                ? 'text-slate-400'
+                                : isBot
+                                ? 'text-violet-500 justify-end'
+                                : 'text-indigo-200 justify-end'
+                            }`}
+                          >
+                            <span>{msg.time}</span>
+                            {!isCustomer && <CheckCheck className="w-3 h-3" />}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
                 <div ref={messagesEndRef} />
               </div>
 
@@ -1193,7 +1130,11 @@ export default function TeamChatTab({
                   <button
                     key={idx}
                     type="button"
-                    onClick={() => setLocalReplyText(tpl)}
+                    onClick={() => {
+                      inbox.setReplyText(tpl);
+                      setLocalReplyText(tpl);
+                      if (externalSetReplyText) externalSetReplyText(tpl);
+                    }}
                     className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-[10px] font-medium text-slate-600 hover:text-indigo-600 truncate shrink-0 transition cursor-pointer"
                   >
                     {tpl}
@@ -1208,18 +1149,22 @@ export default function TeamChatTab({
               >
                 <input
                   type="text"
-                  value={localReplyText}
-                  onChange={(e) => setLocalReplyText(e.target.value)}
+                  value={inbox.replyText || localReplyText}
+                  onChange={(e) => {
+                    inbox.setReplyText(e.target.value);
+                    setLocalReplyText(e.target.value);
+                    if (externalSetReplyText) externalSetReplyText(e.target.value);
+                  }}
                   placeholder="Ketik balasan CS langsung ke pembeli (otomatis menjeda bot)..."
                   className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 transition"
                 />
                 <button
                   type="submit"
-                  disabled={!localReplyText.trim()}
+                  disabled={(!inbox.replyText.trim() && !localReplyText.trim()) || inbox.isSending}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs active:scale-95"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Kirim</span>
+                  <span>{inbox.isSending ? 'Mengirim...' : 'Kirim'}</span>
                 </button>
               </form>
             </>
@@ -1379,7 +1324,7 @@ export default function TeamChatTab({
 
                   {/* Ringkasan & Aksi Cepat Tandai Lunas Tagihan Terakhir */}
                   {(() => {
-                    const latestQris = currentConversation?.messages.slice().reverse().find((m) => m.isQris && m.qrisData);
+                    const latestQris = (messagesList || []).slice().reverse().find((m: any) => m.isQris && m.qrisData);
                     if (!latestQris || !latestQris.qrisData) return null;
                     const isPaid = latestQris.qrisData.status === 'PAID';
                     return (

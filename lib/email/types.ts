@@ -62,6 +62,7 @@ export interface PaymentConfirmedEmailPayload {
   customer_name: string;
   customer_email?: string | null;
   customer_phone?: string | null;
+  customerPhone?: string | null;
   items: EmailOrderItem[];
   total_amount: number;
   payment_method: string;

@@ -34,6 +34,7 @@ export default function InboxDashboardClient({
       <div className="flex-1 p-3 sm:p-5 max-w-7xl w-full mx-auto">
         <TeamChatTab
           tenantSlug={tenantSlug}
+          tenantId={tenantId || undefined}
           conversations={conversations}
           activeConversation={activeConversation}
           activeConversationId={activeConversationId}

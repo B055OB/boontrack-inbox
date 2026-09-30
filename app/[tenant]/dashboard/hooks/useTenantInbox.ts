@@ -6,7 +6,7 @@
  * 1. Fetching real conversations from `conversations` table
  * 2. Fetching real messages from `messages` table for active conversation
  * 3. Listening to Supabase Realtime Channel (`tenant-inbox-${tenantId}`)
- * 4. Zero static/dummy/mock data ('Bagus', 'Shopee Ads', etc.)
+ * 4. Zero static/dummy/mock data (100% dynamic database-driven)
  * 5. Sending manual live CS replies back to customer
  */
 
@@ -51,11 +51,51 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
   const [replyText, setReplyText] = useState<string>('');
   const [isSending, setIsSending] = useState<boolean>(false);
 
-  const resolvedTenantId = tenantId || tenantSlug || '';
+  const [resolvedTenantUuid, setResolvedTenantUuid] = useState<string | null>(
+    tenantId && tenantId.includes('-') && tenantId.length > 30 ? tenantId : null
+  );
+  const [resolvedTenantSlug, setResolvedTenantSlug] = useState<string | null>(
+    tenantSlug || (tenantId && !tenantId.includes('-') ? tenantId : null)
+  );
 
-  // 1. Fetch Conversations from Supabase
+  // Auto-resolve full tenant record from Supabase if either UUID or slug is missing
+  useEffect(() => {
+    let isMounted = true;
+    async function resolveTenantIdentities() {
+      const identifier = tenantId || tenantSlug;
+      if (!identifier) return;
+      try {
+        const supabase = getSupabase();
+        if (!supabase) return;
+
+        let query = supabase.from('tenants').select('id, slug');
+        if (tenantId && tenantId.includes('-') && tenantId.length > 30) {
+          query = query.or(`id.eq.${tenantId},slug.eq.${tenantId}`);
+        } else if (tenantSlug) {
+          query = query.or(`slug.eq.${tenantSlug},id.eq.${tenantSlug}`);
+        } else {
+          query = query.or(`slug.eq.${identifier},id.eq.${identifier}`);
+        }
+
+        const { data } = await query.maybeSingle();
+        if (data && isMounted) {
+          if (data.id) setResolvedTenantUuid(data.id);
+          if (data.slug) setResolvedTenantSlug(data.slug);
+        }
+      } catch (e) {
+        console.debug('[useTenantInbox] resolveTenantIdentities error:', e);
+      }
+    }
+    resolveTenantIdentities();
+    return () => { isMounted = false; };
+  }, [tenantId, tenantSlug]);
+
+  const effectiveTenantId = resolvedTenantUuid || tenantId || resolvedTenantSlug || tenantSlug || '';
+  const effectiveTenantSlug = resolvedTenantSlug || tenantSlug || '';
+
+  // 1. Fetch Conversations from Supabase (Universal & 100% Tenant-Agnostic, Zero Dummy Mock)
   const fetchConversations = useCallback(async () => {
-    if (!resolvedTenantId) {
+    if (!effectiveTenantId && !effectiveTenantSlug) {
       setConversations([]);
       setIsLoadingConversations(false);
       return;
@@ -65,10 +105,23 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
       const supabase = getSupabase();
       if (!supabase) return;
 
+      const orTokens = new Set<string>();
+      if (resolvedTenantUuid) orTokens.add(`tenant_id.eq.${resolvedTenantUuid}`);
+      if (resolvedTenantSlug) {
+        orTokens.add(`tenant_slug.eq.${resolvedTenantSlug}`);
+        orTokens.add(`tenant_id.eq.${resolvedTenantSlug}`);
+      }
+      if (tenantId) orTokens.add(`tenant_id.eq.${tenantId}`);
+      if (tenantSlug) {
+        orTokens.add(`tenant_slug.eq.${tenantSlug}`);
+        orTokens.add(`tenant_id.eq.${tenantSlug}`);
+      }
+
+      const orClause = Array.from(orTokens).join(',');
       const query = supabase
         .from('conversations')
         .select('*')
-        .or(`tenant_id.eq.${resolvedTenantId},tenant_slug.eq.${tenantSlug || resolvedTenantId}`)
+        .or(orClause)
         .order('last_message_at', { ascending: false })
         .limit(150);
 
@@ -115,7 +168,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
     } finally {
       setIsLoadingConversations(false);
     }
-  }, [resolvedTenantId, tenantSlug, activeConversationId]);
+  }, [resolvedTenantUuid, resolvedTenantSlug, tenantId, tenantSlug, effectiveTenantId, effectiveTenantSlug, activeConversationId]);
 
   // 2. Fetch Messages for Active Conversation
   const fetchMessages = useCallback(async (convId: string) => {
@@ -186,13 +239,14 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
     }
   }, [activeConversationId, fetchMessages]);
 
-  // 3. Supabase Realtime Listener (tenant-inbox-${tenantId})
+  // 3. Supabase Realtime Listener (tenant-inbox-${effectiveTenantSlug || effectiveTenantId})
   useEffect(() => {
-    if (!resolvedTenantId) return;
+    if (!effectiveTenantId && !effectiveTenantSlug) return;
     const supabase = getSupabase();
     if (!supabase) return;
 
-    const channelName = `tenant-inbox-${resolvedTenantId}`;
+    const channelIdentifier = effectiveTenantSlug || effectiveTenantId;
+    const channelName = `tenant-inbox-${channelIdentifier}`;
     const channel = supabase
       .channel(channelName)
       .on(
@@ -201,9 +255,17 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
           event: '*',
           schema: 'public',
           table: 'conversations',
-          filter: `tenant_id=eq.${resolvedTenantId}`,
         },
         (payload: any) => {
+          const rec = payload.new || payload.old || {};
+          const isTargetTenant =
+            rec.tenant_id === effectiveTenantId ||
+            rec.tenant_slug === effectiveTenantSlug ||
+            rec.tenant_id === effectiveTenantSlug ||
+            rec.tenant_id === resolvedTenantUuid;
+
+          if (!isTargetTenant) return;
+
           if (payload.eventType === 'INSERT') {
             fetchConversations();
           } else if (payload.eventType === 'UPDATE') {
@@ -235,7 +297,6 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `tenant_id=eq.${resolvedTenantId}`,
         },
         (payload: any) => {
           const newMsg = payload.new;
@@ -269,7 +330,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [resolvedTenantId, activeConversationId, fetchConversations]);
+  }, [effectiveTenantId, effectiveTenantSlug, resolvedTenantUuid, activeConversationId, fetchConversations]);
 
   // Active conversation object
   const activeConversation = useMemo(() => {
@@ -280,7 +341,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
   const handleSendMessage = useCallback(
     async (text?: string): Promise<boolean> => {
       const body = (text !== undefined ? text : replyText).trim();
-      if (!body || !activeConversation || !resolvedTenantId) return false;
+      if (!body || !activeConversation || (!effectiveTenantId && !effectiveTenantSlug)) return false;
 
       setIsSending(true);
       try {
@@ -293,8 +354,8 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
         // 4a. Insert into messages
         await supabase.from('messages').insert({
           conversation_id: activeConversation.id,
-          tenant_id: resolvedTenantId,
-          tenant_slug: tenantSlug || resolvedTenantId,
+          tenant_id: effectiveTenantId,
+          tenant_slug: effectiveTenantSlug,
           sender_type: 'agent',
           sender: 'agent',
           message_body: body,
@@ -322,7 +383,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
           const { data: conn } = await supabase
             .from('whatsapp_connections')
             .select('instance_name, credential_ref')
-            .or(`tenant_id.eq.${resolvedTenantId},tenant_slug.eq.${tenantSlug || resolvedTenantId}`)
+            .or(`tenant_id.eq.${effectiveTenantId},tenant_slug.eq.${effectiveTenantSlug},tenant_id.eq.${effectiveTenantSlug}`)
             .eq('status', 'open')
             .maybeSingle();
 
@@ -347,7 +408,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
         setIsSending(false);
       }
     },
-    [replyText, activeConversation, resolvedTenantId, tenantSlug, fetchMessages, fetchConversations]
+    [replyText, activeConversation, effectiveTenantId, effectiveTenantSlug, fetchMessages, fetchConversations]
   );
 
   return {
