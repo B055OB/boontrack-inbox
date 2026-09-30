@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { persistInboundMessage, cleanCustomerPhone } from '@/lib/whatsapp/inbox-persistence';
+import { normalizeBriefingUrl } from '@/lib/product-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,8 @@ export async function POST(req: NextRequest) {
       shippingCity,
       shippingCourier,
       paymentMethod,
+      briefingUrl,
+      briefing_url,
     } = body;
 
     if (!orderId || !tenantSlug || !customerPhone) {
@@ -81,6 +84,11 @@ export async function POST(req: NextRequest) {
     }
     if (shippingCourier) {
       orderSignalText += `🚚 Layanan Kurir: ${shippingCourier}\n`;
+    }
+
+    const cleanBriefing = normalizeBriefingUrl(briefingUrl || briefing_url);
+    if (cleanBriefing) {
+      orderSignalText += `📋 Link Briefing: ${cleanBriefing}\n`;
     }
 
     orderSignalText += `💰 Total Tagihan: Rp ${formattedAmount}\n` +

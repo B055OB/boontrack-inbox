@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Sparkles, Video, FileText, Link as LinkIcon } from 'lucide-react';
-import { ProductItem, FulfillmentMetadata } from '@/lib/product-catalog';
+import { ProductItem, FulfillmentMetadata, normalizeBriefingUrl } from '@/lib/product-catalog';
 
 export interface ModularProductFormProps {
   productForm: ProductItem;
@@ -58,9 +58,14 @@ export default function CreatorAgencyProductForm({
             <div className="relative">
               <LinkIcon className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
-                type="url"
+                type="text"
                 value={metadata.access_url || productForm.download_url || ''}
                 onChange={(e) => onMetadataChange('access_url', e.target.value)}
+                onBlur={(e) => {
+                  if (e.target.value.trim()) {
+                    onMetadataChange('access_url', normalizeBriefingUrl(e.target.value));
+                  }
+                }}
                 placeholder="https://forms.gle/... atau https://airtable.com/..."
                 className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-purple-600 font-medium"
               />

@@ -71,7 +71,8 @@ import {
   isProductVoucherActive,
   getProductActiveVoucher,
   resolveProductDefaultCta,
-  resolveProductCtaLabel
+  resolveProductCtaLabel,
+  normalizeBriefingUrl
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts } from '@/lib/bank-accounts';
@@ -486,6 +487,7 @@ function SingleProductContent() {
   const [buyerName, setBuyerName] = useState('');
   const [buyerPhone, setBuyerPhone] = useState('');
   const [buyerEmail, setBuyerEmail] = useState('');
+  const [briefingUrl, setBriefingUrl] = useState('');
 
   // Deteksi ketersediaan QRIS toko secara fleksibel (URL gambar QRIS, payload EMVCo, atau status aktif)
   const hasQris = Boolean(
@@ -1217,6 +1219,8 @@ function SingleProductContent() {
     const courierEtd = selectedShipping ? (selectedShipping.etd || (selectedShipping as any).eta || '') : '';
     const formattedCourier = courierEtd ? `${courierLabel} (${courierEtd})` : courierLabel;
 
+    const cleanBriefingUrl = normalizeBriefingUrl(briefingUrl);
+
     try {
       const result = await createOrderAndInvoice({
         tenantSlug: tenant,
@@ -1256,7 +1260,12 @@ function SingleProductContent() {
         customerPhone: buyerPhone,
         customerEmail: buyerEmail,
         affiliateCode: undefined, // Murni direct store ke toko merchant
-        tracking: trackingParams
+        tracking: trackingParams,
+        briefing_url: cleanBriefingUrl || undefined,
+        customer_briefing: cleanBriefingUrl ? {
+          briefing_url: cleanBriefingUrl,
+          submitted_at: new Date().toISOString(),
+        } : undefined,
       });
 
       if (result?.orderId) {
@@ -1482,6 +1491,29 @@ function SingleProductContent() {
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs transition"
           />
         </div>
+
+        {(!requiresShipping || productType === 'SERVICE' || (product.fulfillment_metadata?.delivery_type === 'BRIEF_FORM')) && (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="font-bold text-slate-700">
+                Link Dokumen Briefing <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
+              </label>
+              <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                Google Docs / Drive / Notion
+              </span>
+            </div>
+            <input
+              type="text"
+              placeholder="Contoh: docs.google.com/document/d/... atau notion.so/..."
+              value={briefingUrl}
+              onChange={(e) => setBriefingUrl(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-purple-600 focus:bg-white text-sm md:text-xs font-mono transition"
+            />
+            <span className="text-[10px] text-slate-500 block mt-1">
+              💡 Cantumkan link referensi, script konten, atau brief kampanye. Protokol https:// otomatis ditambahkan jika terlewat.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Opsi Metode Pembayaran (Disesuaikan dari Konfigurasi Toko) */}

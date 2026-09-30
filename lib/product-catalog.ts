@@ -1033,3 +1033,19 @@ export function getProductActiveVoucher(product: any, config?: SinglePageConfig 
 
   return null;
 }
+
+/**
+ * Normalizes customer briefing link (Google Docs/Drive/Notion/Airtable).
+ * Automatically prepends 'https://' if user omitted the protocol.
+ */
+export function normalizeBriefingUrl(url?: string | null): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) return '';
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+

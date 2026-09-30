@@ -5,6 +5,7 @@ import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
 import { extractOrderAmount } from '@/lib/finance-engine';
 import { orderEventBus } from '@/lib/email/order-event-bus';
+import { normalizeBriefingUrl } from '@/lib/product-catalog';
 
 export const dynamic = 'force-dynamic';
 
@@ -140,6 +141,8 @@ export async function GET(req: NextRequest) {
         shipping_courier: o.shipping_courier || null,
         shipping_cost: Number(o.shipping_cost || 0),
         unique_code: Number(o.unique_code || 0),
+        briefing_url: o.briefing_url || o.customer_briefing?.briefing_url || null,
+        customer_briefing: o.customer_briefing || (o.briefing_url ? { briefing_url: o.briefing_url } : null),
         created_at: o.created_at || new Date().toISOString(),
       };
     });
@@ -214,9 +217,20 @@ export async function POST(req: NextRequest) {
           },
         };
 
+        const updatePayload: any = {
+          metadata: mergedMetadata,
+        };
+
+        if (body.briefing_url) {
+          updatePayload.briefing_url = normalizeBriefingUrl(body.briefing_url);
+        }
+        if (body.customer_briefing) {
+          updatePayload.customer_briefing = body.customer_briefing;
+        }
+
         const { error: updateErr } = await supabase
           .from('orders')
-          .update({ metadata: mergedMetadata })
+          .update(updatePayload)
           .eq('id', orderId);
 
         if (updateErr) {

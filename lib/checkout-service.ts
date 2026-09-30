@@ -2,7 +2,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { getBackendApiUrl } from "@/lib/api-config";
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
-import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher } from "@/lib/product-catalog";
+import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher, normalizeBriefingUrl } from "@/lib/product-catalog";
 import { sanitizeOrderPayload } from "@/lib/order-sanitizer";
 
 export interface CreateOrderPayload {
@@ -40,6 +40,8 @@ export interface CreateOrderPayload {
   shippingCourier?: string;
   productType?: string;
   fulfillmentMetadata?: any;
+  briefing_url?: string;
+  customer_briefing?: any;
   selectedOrderBumps?: Array<{
     id: string;
     name?: string;
@@ -304,6 +306,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     utm_term: payload.tracking?.utm_term || null,
     fbclid: payload.tracking?.fbclid || null,
     ttclid: payload.tracking?.ttclid || null,
+    briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
+    customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
     status: "PENDING",
     payment_status: "PENDING",
     order_status: "PENDING",
@@ -329,6 +333,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       gross_amount: grossAmount,
       customer_name: payload.customerName,
       customer_phone: payload.customerPhone,
+      briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
+      customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
       status: "PENDING",
       created_at: orderData.created_at,
       updated_at: orderData.created_at,
@@ -358,6 +364,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
           product_discount: productDiscount,
           voucher_code: payload.voucherCode || null,
           tracking_context: resolvedTrackingContext,
+          briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
+          customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
         },
       },
       ...verifiedOrderBumps.map((b) => ({

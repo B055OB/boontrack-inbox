@@ -8,6 +8,7 @@ import { getActiveAffiliateCode, getTrackingData, getClientTrackingContext, trac
 import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
+import { normalizeBriefingUrl } from "@/lib/product-catalog";
 
 
 
@@ -46,6 +47,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [briefingUrl, setBriefingUrl] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingCity, setShippingCity] = useState("");
   const [shippingCost, setShippingCost] = useState(0);
@@ -505,6 +507,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
 
     const clientTrackingContext = getClientTrackingContext();
 
+    const cleanBriefingUrl = normalizeBriefingUrl(briefingUrl);
+
     try {
       const result = await createOrderAndInvoice({
         tenantSlug,
@@ -528,6 +532,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         tracking_context: clientTrackingContext,
         productType: resolvedProductType,
         fulfillmentMetadata: resolvedFulfillmentMetadata,
+        briefing_url: cleanBriefingUrl || undefined,
+        customer_briefing: cleanBriefingUrl ? {
+          briefing_url: cleanBriefingUrl,
+          submitted_at: new Date().toISOString(),
+        } : undefined,
       });
 
       // Simpan IP Address dan context tracking sesi ke server backend Next.js
@@ -583,6 +592,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
             shippingAddress: isPhysical ? shippingAddress : undefined,
             shippingCity: isPhysical ? shippingCity : undefined,
             shippingCourier: isPhysical ? shippingCourier : undefined,
+            briefingUrl: cleanBriefingUrl || undefined,
             paymentMethod,
           }),
         })
@@ -1007,6 +1017,26 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                     placeholder="nama@email.com"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
                   />
+                </div>
+              )}
+
+              {/* INPUT BRIEFING LINK (Google Docs / Drive / Notion) */}
+              {!isPhysical && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-slate-400 font-medium">Link Dokumen Briefing (Opsional)</label>
+                    <span className="text-[10px] text-slate-500">Google Docs / Notion / Drive</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={briefingUrl}
+                    onChange={(e) => setBriefingUrl(e.target.value)}
+                    placeholder="Contoh: docs.google.com/document/d/... atau notion.so/..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs font-mono"
+                  />
+                  <span className="text-[10px] text-slate-500 block">
+                    💡 Cantumkan link referensi, materi, atau brief kampanye. Protokol https:// otomatis ditambahkan jika terlewat.
+                  </span>
                 </div>
               )}
 

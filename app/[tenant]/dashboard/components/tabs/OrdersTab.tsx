@@ -26,7 +26,8 @@ import GodPayButton, { OrderItem as GodPayOrderItem } from '../orders/GodPayButt
 import { 
   resolveFulfillmentRequirements, 
   ProductType, 
-  FulfillmentMetadata 
+  FulfillmentMetadata,
+  normalizeBriefingUrl
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
 import {
@@ -59,6 +60,8 @@ export interface OrderItem {
   tracking_number?: string;
   waybill?: string;
   fulfillment_metadata?: FulfillmentMetadata;
+  briefing_url?: string;
+  customer_briefing?: any;
   created_at: string;
 }
 
@@ -92,6 +95,8 @@ export function mapRawOrder(o: any): OrderItem {
     tracking_number: o.tracking_number,
     waybill: o.waybill,
     fulfillment_metadata: o.fulfillment_metadata,
+    briefing_url: o.briefing_url || o.customer_briefing?.briefing_url || o.fulfillment_metadata?.briefing_url || o.fulfillment_metadata?.brief_url || '',
+    customer_briefing: o.customer_briefing || (o.briefing_url ? { briefing_url: o.briefing_url } : null),
     created_at: o.created_at || new Date().toISOString(),
   };
 }
@@ -546,6 +551,21 @@ export default function OrdersTab({
                       <td className="py-2.5 px-3">
                         <div className="font-semibold text-slate-900">{ord.customer_name || 'Pelanggan Toko'}</div>
                         <div className="text-[11px] text-slate-500 font-mono">{ord.customer_phone || '-'}</div>
+                        {ord.briefing_url ? (
+                          <div className="mt-1">
+                            <a
+                              href={normalizeBriefingUrl(ord.briefing_url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded border border-purple-200 transition cursor-pointer"
+                              title="Buka Dokumen Briefing Klien"
+                            >
+                              <FileText className="w-2.5 h-2.5 text-purple-600" />
+                              <span>Briefing Klien ↗</span>
+                            </a>
+                          </div>
+                        ) : null}
                       </td>
                       <td className="py-2.5 px-3">
                         {reqs.requiresShipping ? (
@@ -786,6 +806,27 @@ export default function OrdersTab({
                         <span className="font-mono text-slate-700">{selectedOrder.customer_email}</span>
                       </div>
                     )}
+
+                    {/* Dokumen Briefing Klien */}
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-slate-500 font-medium">Dokumen Briefing:</span>
+                      {selectedOrder.briefing_url ? (
+                        <a
+                          href={normalizeBriefingUrl(selectedOrder.briefing_url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition shadow-xs cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-purple-600" />
+                          <span>Buka Briefing Klien (External Link ↗)</span>
+                          <ExternalLink className="w-3 h-3 text-purple-500" />
+                        </a>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">
+                          Tidak menyertakan dokumen briefing
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 

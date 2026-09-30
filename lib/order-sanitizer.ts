@@ -33,6 +33,8 @@ export const VALID_ORDER_COLUMNS = new Set<string>([
   'trace_id',
   'email_sent',
   'email_sent_at',
+  'briefing_url',
+  'customer_briefing',
   'created_at',
   'updated_at',
 ]);
