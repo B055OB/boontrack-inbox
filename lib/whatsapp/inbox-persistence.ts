@@ -26,6 +26,7 @@ export interface InboundMessageParams {
   messageBody: string;
   senderType?: 'customer' | 'bot' | 'agent' | 'system';
   rawPayload?: any;
+  externalId?: string;
 }
 
 export interface OutboundMessageParams {
@@ -36,6 +37,7 @@ export interface OutboundMessageParams {
   senderName?: string;
   messageBody: string;
   rawPayload?: any;
+  externalId?: string;
 }
 
 /**
@@ -169,7 +171,21 @@ export async function persistInboundMessage(
   let messageId: string | null = null;
 
   try {
-    // 2a. Atomic UPSERT into `conversations`
+    // 2a. Deduplication check by externalId if provided
+    if (params.externalId) {
+      const { data: existingMsg } = await supabase
+        .from('messages')
+        .select('id, conversation_id')
+        .eq('external_id', params.externalId)
+        .maybeSingle();
+
+      if (existingMsg?.id) {
+        console.log(`[InboxPersistence] Deduplication: external_id ${params.externalId} already exists. Skipping.`);
+        return { conversationId: existingMsg.conversation_id, messageId: existingMsg.id };
+      }
+    }
+
+    // 2b. Atomic UPSERT into `conversations`
     // Check if conversation already exists for (tenant_id, customer_phone)
     let convCheckQuery: any = supabase
       .from('conversations')
@@ -248,12 +264,32 @@ export async function persistInboundMessage(
       }
     }
 
-    // 2b. INSERT into `messages`
+    // 2c. Check recent identical message in same conversation within 30s
+    if (conversationId) {
+      const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+      const { data: recentDup } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', conversationId)
+        .eq('text', messageBody)
+        .eq('sender', senderType)
+        .gte('created_at', thirtySecondsAgo)
+        .limit(1)
+        .maybeSingle();
+
+      if (recentDup?.id) {
+        console.log(`[InboxPersistence] Deduplication: identical message within 30s found (${recentDup.id}). Skipping insert.`);
+        return { conversationId, messageId: recentDup.id };
+      }
+    }
+
+    // 2d. INSERT into `messages`
     if (conversationId) {
       const msgInsertRes: any = supabase
         .from('messages')
         .insert({
           conversation_id: conversationId,
+          external_id: params.externalId || null,
           tenant_id: tenantId,
           tenant_slug: tenantSlug || tenantId,
           sender_type: senderType,
@@ -359,8 +395,39 @@ export async function persistOutboundMessage(
     }
 
     if (convId) {
+      // Deduplication check for outbound replies within 30s
+      if (params.externalId) {
+        const { data: existingExternal } = await supabase
+          .from('messages')
+          .select('id')
+          .eq('external_id', params.externalId)
+          .maybeSingle();
+
+        if (existingExternal?.id) {
+          console.log(`[InboxPersistence] Deduplication: outbound external_id ${params.externalId} already exists. Skipping.`);
+          return;
+        }
+      }
+
+      const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString();
+      const { data: recentOutboundDup } = await supabase
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', convId)
+        .eq('text', messageBody)
+        .eq('sender', senderType)
+        .gte('created_at', thirtySecondsAgo)
+        .limit(1)
+        .maybeSingle();
+
+      if (recentOutboundDup?.id) {
+        console.log(`[InboxPersistence] Deduplication: identical outbound reply to ${phone} within 30s found (${recentOutboundDup.id}). Skipping.`);
+        return;
+      }
+
       await supabase.from('messages').insert({
         conversation_id: convId,
+        external_id: params.externalId || null,
         tenant_id: tenantId,
         tenant_slug: tenantSlug || tenantId,
         sender_type: senderType,

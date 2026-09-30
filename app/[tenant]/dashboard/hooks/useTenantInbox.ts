@@ -147,12 +147,22 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
       }
 
       if (Array.isArray(convRows)) {
-        const mapped: ChatConversation[] = convRows.map((c: any) => {
+        const uniqueConvs: ChatConversation[] = [];
+        const seenIds = new Set<string>();
+        const seenPhones = new Set<string>();
+
+        for (const c of convRows) {
           const phone = c.customer_phone || c.phone_number || '';
           const name = c.customer_name || c.contact_name || phone || 'Pelanggan WhatsApp';
           const lastTime = c.last_message_at || c.updated_at || c.created_at;
+          const cleanPhone = phone ? phone.replace(/\D/g, '') : '';
 
-          return {
+          if (seenIds.has(c.id)) continue;
+          if (cleanPhone && seenPhones.has(cleanPhone)) continue;
+          seenIds.add(c.id);
+          if (cleanPhone) seenPhones.add(cleanPhone);
+
+          uniqueConvs.push({
             id: c.id,
             customerPhone: phone,
             customerName: name,
@@ -166,12 +176,12 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
             tag: c.unread_count > 0 ? 'Pesan Baru' : 'WhatsApp',
             unreadCount: c.unread_count || 0,
             messages: [],
-          };
-        });
+          });
+        }
 
-        setConversations(mapped);
-        if (mapped.length > 0 && !activeConversationId) {
-          setActiveConversationId(mapped[0].id);
+        setConversations(uniqueConvs);
+        if (uniqueConvs.length > 0 && !activeConversationId) {
+          setActiveConversationId(uniqueConvs[0].id);
         }
       } else {
         setConversations([]);
@@ -184,7 +194,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
     }
   }, [resolvedTenantUuid, resolvedTenantSlug, tenantId, tenantSlug, effectiveTenantId, effectiveTenantSlug, activeConversationId]);
 
-  // 2. Fetch Messages for Active Conversation
+  // 2. Fetch Messages for Active Conversation (with Frontend Deduplication)
   const fetchMessages = useCallback(async (convId: string) => {
     if (!convId) {
       setMessages([]);
@@ -225,27 +235,47 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
       }
 
       if (Array.isArray(msgRows)) {
-        const mapped: ConversationMessage[] = msgRows.map((m: any) => {
+        const uniqueMsgs: ConversationMessage[] = [];
+        const seenMsgIds = new Set<string | number>();
+        const seenSignatures = new Set<string>();
+
+        for (const m of msgRows) {
+          const msgId = m.id || m.created_at;
           const isCustomer = m.sender_type === 'customer' || m.sender === 'user' || m.sender === 'customer';
           const isBot = m.sender_type === 'bot' || m.sender === 'bot';
           const isAgent = m.sender_type === 'agent' || m.sender === 'agent';
+          const text = (m.message_body || m.text || '').trim();
+          const sender = isCustomer ? 'customer' : isBot ? 'bot' : isAgent ? 'agent' : 'system';
           const ts = m.created_at ? new Date(m.created_at) : new Date();
+          const timeSecBucket = Math.floor(ts.getTime() / 15000);
+          const sig = `${sender}:${text}:${timeSecBucket}`;
+
+          if (seenMsgIds.has(msgId)) continue;
+          if (m.external_id && seenMsgIds.has(m.external_id)) continue;
+          if (text && seenSignatures.has(sig)) continue;
+
+          seenMsgIds.add(msgId);
+          if (m.external_id) seenMsgIds.add(m.external_id);
+          if (text) seenSignatures.add(sig);
+
           const timeStr = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')} WIB`;
 
-          return {
-            id: m.id || m.created_at,
-            sender: isCustomer ? 'customer' : isBot ? 'bot' : isAgent ? 'agent' : 'system',
+          uniqueMsgs.push({
+            id: msgId,
+            external_id: m.external_id || undefined,
+            created_at: m.created_at,
+            sender,
             senderName: m.user_name || (isBot ? 'BoonPilot AI' : isAgent ? 'Live CS Agent' : undefined),
-            text: m.message_body || m.text || '',
+            text,
             time: timeStr,
             isQris: m.payload?.is_qris || m.raw_payload?.is_qris,
             qrisData: m.payload?.qris_data || m.raw_payload?.qris_data,
-          };
-        });
+          });
+        }
 
-        setMessages(mapped);
+        setMessages(uniqueMsgs);
         setConversations((prev) =>
-          prev.map((c) => (c.id === convId ? { ...c, messages: mapped, unreadCount: 0 } : c))
+          prev.map((c) => (c.id === convId ? { ...c, messages: uniqueMsgs, unreadCount: 0 } : c))
         );
       }
     } catch (err) {
@@ -336,19 +366,32 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
             const isAgent = newMsg.sender_type === 'agent' || newMsg.sender === 'agent';
             const ts = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
             const timeStr = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')} WIB`;
+            const incomingText = (newMsg.message_body || newMsg.text || '').trim();
+            const incomingSender = isCust ? 'customer' : isBot ? 'bot' : isAgent ? 'agent' : 'system';
 
             const incoming: ConversationMessage = {
               id: newMsg.id,
-              sender: isCust ? 'customer' : isBot ? 'bot' : isAgent ? 'agent' : 'system',
+              external_id: newMsg.external_id || undefined,
+              created_at: newMsg.created_at,
+              sender: incomingSender,
               senderName: newMsg.user_name || (isBot ? 'BoonPilot AI' : isAgent ? 'Live CS Agent' : undefined),
-              text: newMsg.message_body || newMsg.text || '',
+              text: incomingText,
               time: timeStr,
               isQris: newMsg.payload?.is_qris || newMsg.raw_payload?.is_qris,
               qrisData: newMsg.payload?.qris_data || newMsg.raw_payload?.qris_data,
             };
 
             setMessages((prev) => {
-              if (prev.some((m) => m.id === incoming.id)) return prev;
+              if (
+                prev.some(
+                  (m) =>
+                    m.id === incoming.id ||
+                    (m.external_id && incoming.external_id && m.external_id === incoming.external_id) ||
+                    (m.text.trim() === incomingText && m.sender === incomingSender)
+                )
+              ) {
+                return prev;
+              }
               return [...prev, incoming];
             });
           }

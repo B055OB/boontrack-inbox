@@ -454,6 +454,7 @@ export async function processEvolutionWebhookEvent(
         customerName: item.pushName || senderPhone,
         messageBody: lastPreview || (hasImage ? '[Gambar dikirim pembeli]' : ''),
         senderType: 'customer',
+        externalId: item.key?.id || undefined,
         rawPayload: {
           has_image: hasImage,
           mime_type: hasImage ? mimeType : undefined,
@@ -641,6 +642,7 @@ export async function processEvolutionWebhookEvent(
         senderType: 'bot',
         senderName: 'BoonPilot CS',
         messageBody: aiResult.reply.trim(),
+        externalId: item.key?.id ? `bot_reply_${item.key.id}` : undefined,
         rawPayload: { trigger: 'gemini_multimodal' },
       });
     }

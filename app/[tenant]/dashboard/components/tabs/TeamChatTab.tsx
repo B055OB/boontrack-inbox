@@ -33,6 +33,8 @@ import { useTenantInbox } from '../../hooks/useTenantInbox';
 
 export interface ConversationMessage {
   id: number | string;
+  external_id?: string;
+  created_at?: string;
   sender: 'customer' | 'agent' | 'bot' | 'system';
   senderName?: string;
   text: string;

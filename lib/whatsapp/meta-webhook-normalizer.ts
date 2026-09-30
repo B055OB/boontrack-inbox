@@ -665,6 +665,7 @@ export async function processNormalizedMetaEvent(
             customerName: qualifiedName || msg.senderName || senderPhone,
             messageBody: textContent,
             senderType: 'customer',
+            externalId: msg.id || undefined,
             rawPayload: {
               meta_message_id: msg.id,
               type: msg.type,
@@ -833,6 +834,7 @@ export async function processNormalizedMetaEvent(
               senderType: 'bot',
               senderName: 'BoonPilot AI',
               messageBody: engineResult.reply,
+              externalId: msg.id ? `bot_reply_${msg.id}` : undefined,
               rawPayload: { trigger: 'conversation_engine' },
             });
           }
