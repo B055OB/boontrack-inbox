@@ -150,7 +150,11 @@ export function buildBuyerReceiptHtml(data: {
           <h3>🎉 Akses Materi Digital Anda Telah Aktif!</h3>
           <p>${data.instructions || 'Terima kasih atas pembayaran Anda. Silakan klik tombol di bawah untuk bergabung ke grup private Telegram dan mengakses materi:'}</p>
           <a href="${data.accessUrl}" class="cta-button" target="_blank" rel="noopener noreferrer">
-            Akses Materi / Gabung Grup Telegram 🚀
+            ${data.accessUrl?.includes('meet.google') || data.accessUrl?.includes('cal.com')
+              ? 'Pilih Jadwal Konsultasi (Google Meet) 📅'
+              : data.accessUrl?.includes('t.me')
+              ? 'Akses Materi / Gabung Grup Telegram 🚀'
+              : 'Download File / Akses Materi Digital 🚀'}
           </a>
           <div class="url-fallback">
             Atau salin tautan berikut ke browser Anda:<br>
@@ -461,7 +465,20 @@ export async function sendOrderFulfillmentEmails(
         supportPhone: supportPhone || undefined,
       });
 
-      const buyerSubject = `[LUNAS] Bukti Pembayaran Resmi #${options.orderId} - ${effectiveProduct}`;
+      const isDigitalOrder = Boolean(
+        resolvedAccessUrl ||
+        options.accessUrl ||
+        options.productType === 'DIGITAL' ||
+        options.instructions ||
+        effectiveProduct.toLowerCase().includes('digital') ||
+        effectiveProduct.toLowerCase().includes('ctwa') ||
+        effectiveProduct.toLowerCase().includes('kelas') ||
+        effectiveProduct.toLowerCase().includes('kursus')
+      );
+
+      const buyerSubject = isDigitalOrder
+        ? `[Akses Produk] Link Pesanan Kakak Sudah Siap! - Order #${options.orderId}`
+        : `[LUNAS] Bukti Pembayaran Resmi #${options.orderId} - ${effectiveProduct}`;
       const buyerRes = await dispatchResendEmail({
         to: targetBuyerEmail,
         subject: buyerSubject,
@@ -534,3 +551,179 @@ export async function sendOrderFulfillmentEmails(
 
   return result;
 }
+
+export interface PaymentProofAlertOptions {
+  orderId: string;
+  tenantSlug: string;
+  tenantId?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  productTitle?: string | null;
+  grossAmount?: number | null;
+  uniqueCode?: number | null;
+  paymentProofUrl: string;
+  notes?: string | null;
+}
+
+/**
+ * HTML Template for Merchant Alert when Buyer uploads Payment Proof
+ */
+export function buildSellerProofAlertHtml(data: {
+  storeName: string;
+  orderId: string;
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  productTitle: string;
+  grossAmount: number;
+  uniqueCode?: number;
+  paymentProofUrl: string;
+  notes?: string;
+  dashboardUrl: string;
+}): string {
+  const formattedAmount = formatRupiah(data.grossAmount);
+
+  return `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Bukti Transfer Masuk #${data.orderId}</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; }
+    .wrapper { max-width: 580px; margin: 20px auto; background-color: #ffffff; border-radius: 14px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: #0f172a; padding: 24px; color: #ffffff; text-align: center; }
+    .badge { background: #f59e0b; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; text-transform: uppercase; }
+    .content { padding: 24px; }
+    .highlight { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 14px 18px; margin-bottom: 20px; border-radius: 0 8px 8px 0; }
+    .meta-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 16px 0; }
+    .meta-table td { padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+    .btn { display: inline-block; background: #0f172a; color: #ffffff !important; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; font-size: 13px; margin-top: 16px; }
+    .proof-img { max-width: 100%; height: auto; max-height: 380px; border-radius: 8px; border: 1px solid #cbd5e1; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <span class="badge">Perlu Verifikasi Seller</span>
+      <h2 style="margin: 8px 0 0 0; font-size: 18px;">Bukti Transfer Pembayaran Masuk</h2>
+      <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">${data.storeName.toUpperCase()} &bull; Order #${data.orderId}</p>
+    </div>
+    <div class="content">
+      <div class="highlight">
+        <p style="margin: 0; font-size: 13px; color: #b45309; font-weight: 600;">
+          Pelanggan telah mengunggah bukti transfer bank. Harap periksa mutasi rekening Anda dan setujui transaksi untuk mengaktifkan akses/pengiriman.
+        </p>
+      </div>
+
+      <table class="meta-table">
+        <tr><td style="color: #64748b;">Nomor Order</td><td><strong>#${data.orderId}</strong></td></tr>
+        <tr><td style="color: #64748b;">Nama Pembeli</td><td><strong>${data.customerName}</strong></td></tr>
+        ${data.customerPhone ? `<tr><td style="color: #64748b;">WhatsApp</td><td><a href="https://wa.me/${data.customerPhone.replace(/[^0-9]/g, '')}">${data.customerPhone}</a></td></tr>` : ''}
+        ${data.customerEmail ? `<tr><td style="color: #64748b;">Email</td><td>${data.customerEmail}</td></tr>` : ''}
+        <tr><td style="color: #64748b;">Produk</td><td>${data.productTitle}</td></tr>
+        <tr><td style="color: #64748b;">Total Nominal</td><td style="font-weight: 800; color: #0f172a; font-size: 15px;">${formattedAmount}</td></tr>
+        ${data.uniqueCode ? `<tr><td style="color: #64748b;">Kode Unik</td><td><span style="font-family: monospace; font-weight: 700; color: #0284c7;">+${data.uniqueCode}</span></td></tr>` : ''}
+        <tr><td style="color: #64748b;">Status Saat Ini</td><td><span style="color: #d97706; font-weight: 700;">WAITING_CONFIRMATION</span></td></tr>
+      </table>
+
+      ${data.paymentProofUrl ? `
+        <div style="margin: 18px 0;">
+          <strong style="font-size: 12px; color: #475569; display: block; margin-bottom: 6px;">Lampiran Bukti Transfer:</strong>
+          <a href="${data.paymentProofUrl}" target="_blank" rel="noopener noreferrer">
+            <img src="${data.paymentProofUrl}" alt="Bukti Transfer Order #${data.orderId}" class="proof-img" />
+          </a>
+          <div style="margin-top: 6px;">
+            <a href="${data.paymentProofUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: #2563eb;">
+              Buka gambar resolusi penuh &rarr;
+            </a>
+          </div>
+        </div>
+      ` : ''}
+
+      <div style="text-align: center; margin-top: 24px;">
+        <a href="${data.dashboardUrl}" class="btn" target="_blank">
+          Buka Dashboard &amp; Verifikasi Transaksi
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Dispatch Seller Notification Alert when Buyer uploads Payment Proof
+ */
+export async function sendPaymentProofAlertToSeller(
+  options: PaymentProofAlertOptions
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  try {
+    const supabase = getSupabaseAdmin() || getSupabase();
+    if (!supabase) {
+      return { success: false, error: 'Database Supabase client unreachable.' };
+    }
+
+    let storeName = options.tenantSlug;
+    let merchantEmail = '';
+
+    try {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('name, metadata')
+        .eq('slug', options.tenantSlug)
+        .maybeSingle();
+
+      if (tenantData) {
+        storeName =
+          tenantData.metadata?.business_profile?.store_name ||
+          tenantData.metadata?.store_name ||
+          tenantData.name ||
+          options.tenantSlug;
+
+        merchantEmail =
+          tenantData.metadata?.email ||
+          tenantData.metadata?.owner_email ||
+          tenantData.metadata?.business_profile?.email ||
+          '';
+      }
+    } catch (tErr) {
+      console.warn('[sendPaymentProofAlertToSeller] Tenant metadata error:', tErr);
+    }
+
+    if (!merchantEmail || !merchantEmail.includes('@')) {
+      console.log(`[sendPaymentProofAlertToSeller] No valid merchant email for tenant ${options.tenantSlug}`);
+      return { success: false, error: 'Merchant email not configured.' };
+    }
+
+    const dashboardUrl = `https://dashboard.boontrack.com/${encodeURIComponent(options.tenantSlug)}?tab=orders&orderId=${encodeURIComponent(options.orderId)}`;
+    const subject = `Bukti Transfer Masuk - Segera verifikasi mutasi untuk Order #${options.orderId}`;
+
+    const html = buildSellerProofAlertHtml({
+      storeName,
+      orderId: options.orderId,
+      customerName: options.customerName || 'Pelanggan',
+      customerPhone: options.customerPhone || undefined,
+      customerEmail: options.customerEmail || undefined,
+      productTitle: options.productTitle || 'Pesanan Produk',
+      grossAmount: options.grossAmount || 0,
+      uniqueCode: options.uniqueCode || undefined,
+      paymentProofUrl: options.paymentProofUrl,
+      notes: options.notes || undefined,
+      dashboardUrl,
+    });
+
+    const res = await dispatchResendEmail({
+      to: merchantEmail,
+      subject,
+      html,
+    });
+
+    return res;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[sendPaymentProofAlertToSeller] Error:', msg);
+    return { success: false, error: msg };
+  }
+}
+

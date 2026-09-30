@@ -660,10 +660,13 @@ export default function OrdersTab({
                             )}
                           </button>
 
-                          {/* Quick Print Label Resi (hanya untuk pesanan fisik) */}
-                          {resolveFulfillmentRequirements(
-                            ord.product_type || (ord.shipping_address ? 'PHYSICAL' : 'DIGITAL')
-                          ).requiresShipping && (
+                          {/* Quick Print Label Resi (HANYA jika produk fisik & requires_shipping === true, BUKAN DIGITAL / SERVICE) */}
+                          {(() => {
+                            const normType = String(ord.product_type || '').toUpperCase();
+                            const isDigitalOrService = normType === 'DIGITAL' || normType === 'SERVICE' || normType === 'FIELD_SERVICE' || normType === 'AGENCY' || normType === 'JASA' || normType === 'CREATOR';
+                            const reqs = resolveFulfillmentRequirements(ord.product_type || (ord.shipping_address ? 'PHYSICAL' : 'DIGITAL'));
+                            return !isDigitalOrService && reqs.requiresShipping;
+                          })() && (
                             <button
                               type="button"
                               id={`orders-print-label-${ord.id}`}
@@ -972,8 +975,12 @@ export default function OrdersTab({
                     )}
                   </button>
 
-                  {/* Print Label Resi Thermal (hanya untuk pesanan fisik) */}
-                  {orderReqs.requiresShipping && (
+                  {/* Print Label Resi Thermal (HANYA untuk pesanan fisik, BUKAN DIGITAL / SERVICE) */}
+                  {(() => {
+                    const normType = String(selectedOrder.product_type || '').toUpperCase();
+                    const isDigitalOrService = normType === 'DIGITAL' || normType === 'SERVICE' || normType === 'FIELD_SERVICE' || normType === 'AGENCY' || normType === 'JASA' || normType === 'CREATOR';
+                    return !isDigitalOrService && orderReqs.requiresShipping;
+                  })() && (
                     <button
                       type="button"
                       id={`orders-modal-print-label-${selectedOrder.id}`}
@@ -993,23 +1000,22 @@ export default function OrdersTab({
                     </button>
                   )}
 
-                  {/* Print Invoice (semua jenis pesanan) */}
+                  {/* Buka & Cetak Invoice Resmi (Universal Invoice Viewer) */}
                   <button
                     type="button"
                     id={`orders-modal-print-invoice-${selectedOrder.id}`}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      printOrderInvoice(selectedOrder, {
-                        name: storeDisplayName || tenantSlug,
-                        phone: storePhone,
-                        address: storeCity,
-                      });
+                      if (typeof window !== 'undefined') {
+                        window.open(`/${tenantSlug}/invoice/${encodeURIComponent(selectedOrder.invoice_no || selectedOrder.id)}`, '_blank');
+                      }
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5" />
-                    <span>Cetak Invoice</span>
+                    <span>Lihat &amp; Cetak Invoice</span>
+                    <ExternalLink className="w-3 h-3 text-slate-400" />
                   </button>
 
                   <GodPayButton

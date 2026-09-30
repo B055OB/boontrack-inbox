@@ -35,6 +35,7 @@ export const VALID_ORDER_COLUMNS = new Set<string>([
   'email_sent_at',
   'briefing_url',
   'customer_briefing',
+  'payment_proof_url',
   'created_at',
   'updated_at',
 ]);

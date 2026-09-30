@@ -417,7 +417,11 @@ export default function OverviewTab({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => alert(`Membuka lembar Invoice Resmi untuk ${invoiceNo}`)}
+                            onClick={() => {
+                              if (typeof window !== 'undefined') {
+                                window.open(`/${tenantSlug}/invoice/${encodeURIComponent(String(invoiceNo))}`, '_blank');
+                              }
+                            }}
                             className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
                           >
                             Invoice

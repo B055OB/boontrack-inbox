@@ -95,12 +95,23 @@ export async function GET(
       ['PAID', 'SETTLED', 'SUCCESS', 'COMPLETED'].includes(rawPaymentStatus) ||
       ['PAID', 'SETTLED', 'SUCCESS', 'COMPLETED'].includes(rawOrderStatus);
 
+    const isWaitingConfirmation =
+      ['WAITING_CONFIRMATION', 'WAITING_VERIFICATION', 'IN_VERIFICATION'].includes(rawStatus) ||
+      ['WAITING_CONFIRMATION', 'WAITING_VERIFICATION', 'IN_VERIFICATION'].includes(rawPaymentStatus) ||
+      ['WAITING_CONFIRMATION', 'WAITING_VERIFICATION', 'IN_VERIFICATION'].includes(rawOrderStatus);
+
     const isExpired =
       ['EXPIRED', 'CANCELLED', 'FAILED'].includes(rawStatus) ||
       ['EXPIRED', 'CANCELLED', 'FAILED'].includes(rawPaymentStatus) ||
       ['EXPIRED', 'CANCELLED', 'FAILED'].includes(rawOrderStatus);
 
-    const finalStatus = isPaid ? 'PAID' : isExpired ? 'EXPIRED' : 'PENDING';
+    const finalStatus = isPaid
+      ? 'PAID'
+      : isWaitingConfirmation
+      ? 'WAITING_CONFIRMATION'
+      : isExpired
+      ? 'EXPIRED'
+      : 'PENDING';
 
     // 3. Resolusi data fulfillment & payload link secara dinamis dari katalog Supabase jika order belum memuatnya
     let resolvedFulfillment = order.fulfillment_metadata || null;
@@ -173,6 +184,7 @@ export async function GET(
       shipping_courier: order.shipping_courier || null,
       shipping_cost: Number(order.shipping_cost || 0),
       unique_code: Number(order.unique_code || 0),
+      payment_proof_url: order.payment_proof_url || null,
     };
 
     return NextResponse.json(responsePayload, {

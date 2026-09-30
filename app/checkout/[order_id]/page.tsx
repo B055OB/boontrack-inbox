@@ -20,7 +20,11 @@ import {
   FileText,
   Download,
   Calendar,
-  Video
+  Video,
+  Upload,
+  Image as ImageIcon,
+  FileCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { QRCodeSVG } from 'qrcode.react';
@@ -50,6 +54,10 @@ export default function CheckoutPage({ params }: Props) {
   const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
   const [countdown, setCountdown] = useState(3);
   const [hasAutoRedirected, setHasAutoRedirected] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const [proofUploadFeedback, setProofUploadFeedback] = useState<string | null>(null);
   const hasTrackedPixelRef = React.useRef(false);
 
   const triggerPurchasePixels = React.useCallback((orderData: any) => {
@@ -317,6 +325,16 @@ export default function CheckoutPage({ params }: Props) {
           });
           return;
         }
+
+        if (statusData?.status === 'WAITING_CONFIRMATION') {
+          setOrder((prev: any) => ({
+            ...prev,
+            status: 'WAITING_CONFIRMATION',
+            payment_status: 'WAITING_CONFIRMATION',
+            order_status: 'WAITING_CONFIRMATION',
+            payment_proof_url: statusData.payment_proof_url || prev?.payment_proof_url,
+          }));
+        }
       } catch (err) {
         consecutiveErrors++;
         if (consecutiveErrors >= 5) {
@@ -538,6 +556,63 @@ export default function CheckoutPage({ params }: Props) {
     order?.payment_status === 'PAID' ||
     order?.order_status === 'PAID';
 
+  const isWaitingConfirmation =
+    order?.status === 'WAITING_CONFIRMATION' ||
+    order?.status === 'WAITING_VERIFICATION' ||
+    order?.status === 'IN_VERIFICATION' ||
+    order?.payment_status === 'WAITING_CONFIRMATION' ||
+    order?.order_status === 'WAITING_CONFIRMATION';
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setProofFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProofPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUploadProof = async () => {
+    if (!proofFile && !proofPreview) return;
+    setIsUploadingProof(true);
+    setProofUploadFeedback(null);
+    try {
+      const formData = new FormData();
+      if (proofFile) {
+        formData.append('file', proofFile);
+      } else if (proofPreview) {
+        formData.append('proof_base64', proofPreview);
+      }
+      formData.append('notes', 'Bukti transfer diunggah oleh pembeli via checkout');
+
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/payment-proof`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal mengunggah bukti transfer.');
+      }
+
+      setOrder((prev: any) => ({
+        ...prev,
+        status: 'WAITING_CONFIRMATION',
+        payment_status: 'WAITING_CONFIRMATION',
+        order_status: 'WAITING_CONFIRMATION',
+        payment_proof_url: data.payment_proof_url || proofPreview,
+      }));
+      setProofUploadFeedback('✅ Bukti transfer berhasil dikirim! Menunggu verifikasi penjual.');
+    } catch (err: any) {
+      setProofUploadFeedback(`❌ ${err.message || 'Gagal mengirim bukti transfer.'}`);
+    } finally {
+      setIsUploadingProof(false);
+    }
+  };
+
   const fallbackQrisString =
     tenant?.metadata?.payment_settings?.qris_raw ||
     tenant?.metadata?.payment_settings?.raw_qris_string ||
@@ -684,6 +759,11 @@ export default function CheckoutPage({ params }: Props) {
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
               <span>Pembayaran Telah Terverifikasi (LUNAS)</span>
             </span>
+          ) : isWaitingConfirmation ? (
+            <span className="text-xs uppercase tracking-wider font-bold text-amber-400 bg-amber-950/80 px-3.5 py-1 rounded-full border border-amber-800/60 inline-flex items-center gap-1.5 shadow-sm">
+              <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <span>Menunggu Verifikasi Penjual (WAITING CONFIRMATION)</span>
+            </span>
           ) : isManual ? (
             <span className="text-xs uppercase tracking-wider font-semibold text-blue-400 bg-blue-950/60 px-3 py-1 rounded-full border border-blue-800/40 inline-flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5" />
@@ -701,11 +781,51 @@ export default function CheckoutPage({ params }: Props) {
           <p className="text-xs text-slate-400 font-mono">Order ID: {orderId}</p>
         </div>
 
-        {/* Timer Bar (Hanya jika belum bayar) */}
-        {!isPaidOrder && (
+        {/* Timer Bar (Hanya jika belum bayar dan belum konfirmasi) */}
+        {!isPaidOrder && !isWaitingConfirmation && (
           <div className="flex items-center justify-center gap-2 bg-slate-950/80 border border-slate-800 rounded-2xl py-2.5 text-amber-400 font-mono text-sm font-semibold">
             <Clock className="w-4 h-4" />
             <span>Sisa Waktu Pembayaran: {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}</span>
+          </div>
+        )}
+
+        {/* Status Card Khusus: Menunggu Verifikasi Seller (WAITING_CONFIRMATION) */}
+        {isWaitingConfirmation && !isPaidOrder && (
+          <div className="bg-gradient-to-b from-amber-950/60 via-slate-900 to-slate-900 border-2 border-amber-500/70 rounded-3xl p-5 space-y-3.5 shadow-xl shadow-amber-950/40 text-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/40">
+                <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-black text-amber-400 bg-amber-950/90 px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-amber-700/60 inline-block">
+                  Bukti Transfer Terkirim
+                </span>
+                <h3 className="text-sm font-bold text-white">
+                  Menunggu Verifikasi Mutasi oleh Admin Toko
+                </h3>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Bukti pembayaran Anda telah berhasil kami kirimkan ke admin toko. Mutasi rekening sedang diverifikasi. Halaman ini akan diperbarui otomatis begitu pembayaran disetujui.
+            </p>
+            {order?.payment_proof_url && (
+              <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5">
+                <span className="text-[10px] font-bold text-slate-400 block">Lampiran Bukti Transfer:</span>
+                <a href={order.payment_proof_url} target="_blank" rel="noopener noreferrer" className="block max-w-[200px] overflow-hidden rounded-lg border border-slate-700 hover:opacity-90 transition">
+                  <img src={order.payment_proof_url} alt="Bukti Transfer" className="w-full h-auto max-h-36 object-cover" />
+                </a>
+              </div>
+            )}
+            <a
+              href={`/${tenantSlug || 'shop'}/invoice/${orderId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition"
+            >
+              <FileText className="w-4 h-4 text-amber-400" />
+              <span>Buka Lembar Invoice Resmi #{orderId}</span>
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+            </a>
           </div>
         )}
 
@@ -951,6 +1071,79 @@ export default function CheckoutPage({ params }: Props) {
                   </div>
                 </div>
               )}
+
+              {/* Upload Bukti Transfer Box (Hanya jika belum konfirmasi) */}
+              {!isWaitingConfirmation && (
+                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Upload className="w-4 h-4 text-emerald-400" />
+                    <span>Unggah Bukti Transfer Bank</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Setelah melakukan transfer, lampirkan foto slip / screenshot m-Banking Anda agar tim admin toko dapat segera memverifikasi mutasi.
+                  </p>
+
+                  <div className="space-y-2.5">
+                    <label className="border-2 border-dashed border-slate-700 hover:border-slate-500 rounded-xl p-3.5 flex flex-col items-center justify-center cursor-pointer bg-slate-900/60 transition group">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                      {proofPreview ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <img
+                            src={proofPreview}
+                            alt="Preview Bukti"
+                            className="w-28 h-28 object-cover rounded-lg border border-slate-700 shadow-md"
+                          />
+                          <span className="text-[11px] text-emerald-400 font-semibold group-hover:underline">
+                            Ganti foto bukti transfer
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1.5 py-2">
+                          <ImageIcon className="w-7 h-7 text-slate-500 group-hover:text-slate-300 transition" />
+                          <span className="text-xs font-semibold text-slate-300">
+                            Pilih Gambar / Slip Transfer
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            Format JPG, PNG, atau WEBP (Maks 10MB)
+                          </span>
+                        </div>
+                      )}
+                    </label>
+
+                    {proofUploadFeedback && (
+                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-semibold text-center">
+                        {proofUploadFeedback}
+                      </div>
+                    )}
+
+                    {proofPreview && (
+                      <button
+                        type="button"
+                        onClick={handleUploadProof}
+                        disabled={isUploadingProof}
+                        className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md shadow-emerald-600/20 cursor-pointer active:scale-95"
+                      >
+                        {isUploadingProof ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Mengirim Bukti Transfer...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4" />
+                            <span>Kirim Bukti Transfer ke Penjual</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : rawQrisValue ? (
             /* QR Code Container (QRIS Standar Nasional SVG Dinamis) */
@@ -1167,6 +1360,17 @@ export default function CheckoutPage({ params }: Props) {
                 ? 'Chat Admin CS via WhatsApp (Bantuan / Pertanyaan)'
                 : 'Konfirmasi Pembayaran ke WhatsApp Resmi CS'}
             </span>
+          </a>
+
+          <a
+            href={`/${tenantSlug || 'shop'}/invoice/${orderId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-2.5 bg-slate-950 hover:bg-slate-800/80 border border-slate-800 text-slate-300 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+          >
+            <FileText className="w-4 h-4 text-indigo-400" />
+            <span>Buka Lembar Invoice Resmi #{orderId}</span>
+            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
           </a>
         </div>
 

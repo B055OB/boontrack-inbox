@@ -1578,7 +1578,18 @@ function FinanceTab() {
                       </span>
                     </td>
                     <td className="px-5 py-4 text-center">
-                      <button type="button" onClick={() => alert(`Membuka Invoice Resmi untuk ${t.invoice_no}`)} className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer">Invoice</button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== 'undefined') {
+                            const cleanInv = String(t.invoice_no).replace(/^#/, '');
+                            window.open(`/${(t as any).tenant_slug || 'shop'}/invoice/${encodeURIComponent(cleanInv)}`, '_blank');
+                          }
+                        }}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                      >
+                        Invoice
+                      </button>
                     </td>
                   </tr>
                 );

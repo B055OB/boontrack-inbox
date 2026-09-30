@@ -270,6 +270,8 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
             time: timeStr,
             isQris: m.payload?.is_qris || m.raw_payload?.is_qris,
             qrisData: m.payload?.qris_data || m.raw_payload?.qris_data,
+            isBankTransfer: m.payload?.is_bank_transfer || m.raw_payload?.is_bank_transfer,
+            bankData: m.payload?.bank_data || m.raw_payload?.bank_data,
           });
         }
 
