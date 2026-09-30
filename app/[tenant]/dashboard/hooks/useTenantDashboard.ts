@@ -262,6 +262,29 @@ export function useTenantDashboard() {
   const hasUserSelectedTabRef = useRef(false);
   const [isStoreReadinessEvaluated, setIsStoreReadinessEvaluated] = useState(false);
 
+  // Authentication & Security Guard State (P0 Broken Access Control Remediation)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  const checkClientSession = (slug: string): boolean => {
+    if (typeof window === 'undefined') return false;
+    const clean = slug.toLowerCase().trim();
+    try {
+      const storedStore = (localStorage.getItem('merchant_store') || '').toLowerCase().trim();
+      const storedSession = (localStorage.getItem('merchant_session') || '').toLowerCase().trim();
+      const cookies = document.cookie;
+      const hasStoreCookie = cookies.split(';').some(c => {
+        const parts = c.trim().split('=');
+        const k = parts[0]?.trim();
+        const v = parts.slice(1).join('=').trim();
+        return (k === 'merchant_store' || k === 'merchant_session' || k === 'bt_tenant') &&
+               decodeURIComponent(v).toLowerCase().trim() === clean;
+      });
+      return storedStore === clean || storedSession === clean || hasStoreCookie;
+    } catch {
+      return false;
+    }
+  };
+
   const handleSelectTab = (tab: DashboardTab) => {
     hasUserSelectedTabRef.current = true;
     if (isCheckoutLite && !['dashboard', 'overview', 'catalog', 'products', 'orders', 'settings', 'shipping', 'ads_tracking', 'ads'].includes(tab)) {
@@ -690,24 +713,45 @@ export function useTenantDashboard() {
           }
         }
 
-        const isLocalSession = typeof window !== 'undefined' && (
-          localStorage.getItem('merchant_store') === tenantSlug ||
-          localStorage.getItem('merchant_session') === tenantSlug ||
-          document.cookie.includes(`merchant_store=${tenantSlug}`) ||
-          document.cookie.includes(`merchant_session=${tenantSlug}`)
-        );
+        const isLocalSession = checkClientSession(tenantSlug);
+
+        // Security Guard 1: Local merchant session WAJIB ada dan cocok dengan tenantSlug
+        if (!isLocalSession) {
+          setIsAuthenticated(false);
+          const redirectTarget = typeof window !== 'undefined'
+            ? window.location.pathname + window.location.search
+            : `/${tenantSlug}/dashboard`;
+          router.replace(`/login?redirectTo=${encodeURIComponent(redirectTarget)}`);
+          return;
+        }
 
         if (!tenant) {
-          if (isLocalSession) {
-            setTenantFeatureFlags(prev => ({ ...prev, tier: 'STARTER' }));
-            setPlanTier('growth');
-            const fallbackEnds = new Date(Date.now() + 7 * 86400000).toISOString();
-            setTrialEndsAt(fallbackEnds);
-            setTrialDaysLeft(7);
-          } else {
-            router.replace('/login');
+          router.replace('/login');
+          return;
+        }
+
+        // Security Guard 2: Verifikasi PIN jika tenant dilindungi PIN
+        const expectedPin =
+          tenant.metadata?.access_pin ||
+          tenant.metadata?.pin_hash ||
+          tenant.metadata?.pin ||
+          null;
+
+        if (expectedPin) {
+          const storedPin = typeof window !== 'undefined' ? localStorage.getItem('merchant_pin') : null;
+          if (!storedPin || storedPin.trim() !== String(expectedPin).trim()) {
+            setIsAuthenticated(false);
+            const redirectTarget = typeof window !== 'undefined'
+              ? window.location.pathname + window.location.search
+              : `/${tenantSlug}/dashboard`;
+            router.replace(`/login?redirectTo=${encodeURIComponent(redirectTarget)}`);
             return;
           }
+        }
+
+        // Sesi & kredensial terverifikasi valid
+        setIsAuthenticated(true);
+        if (false) {
         } else {
           const resolvedBusinessType =
             tenant.business_type ||
@@ -1011,7 +1055,7 @@ export function useTenantDashboard() {
   useEffect(() => {
     let isMounted = true;
     async function loadTenantAiSettings() {
-      if (!tenantSlug || tenantSlug === 'login' || tenantSlug === 'auth') return;
+      if (!tenantSlug || tenantSlug === 'login' || tenantSlug === 'auth' || isAuthenticated !== true) return;
       try {
         setIsLoadingAi(true);
         const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`);
@@ -1106,7 +1150,7 @@ export function useTenantDashboard() {
     return () => {
       isMounted = false;
     };
-  }, [tenantSlug]);
+  }, [tenantSlug, isAuthenticated]);
 
   // 3. Sync URL Tab Param
   useEffect(() => {
@@ -1128,7 +1172,7 @@ export function useTenantDashboard() {
 
   // 4. Fetch Transactions & Orders (Isolated per tenant)
   useEffect(() => {
-    if (!tenantSlug) return;
+    if (!tenantSlug || isAuthenticated !== true) return;
     const fetchTransactions = async () => {
       try {
         const res = await fetch(`/api/orders?tenant=${encodeURIComponent(tenantSlug)}`).catch(() => null);
@@ -1189,7 +1233,7 @@ export function useTenantDashboard() {
       }
     };
     fetchTransactions();
-  }, [tenantSlug]);
+  }, [tenantSlug, isAuthenticated]);
 
   const calculatedOmzet = orders
     .filter((o: any) => ['PAID', 'COMPLETED', 'SETTLEMENT', 'SUCCESS', 'LUNAS'].includes((o.payment_status || o.status || '').toUpperCase()))
@@ -1223,7 +1267,7 @@ export function useTenantDashboard() {
   useEffect(() => {
     let isMounted = true;
     async function evaluateStoreReadiness() {
-      if (!tenantSlug) return;
+      if (!tenantSlug || isAuthenticated !== true) return;
       try {
         const res = await fetch(`/api/whatsapp/connect?tenant=${encodeURIComponent(tenantSlug)}`);
         if (res.ok) {
@@ -1253,7 +1297,7 @@ export function useTenantDashboard() {
     return () => {
       isMounted = false;
     };
-  }, [tenantSlug]);
+  }, [tenantSlug, isAuthenticated]);
 
   const openNewProductModal = (initialData?: Partial<ProductItem>) => {
     const activeCount = products.filter(p => p.is_active !== false).length;
@@ -1834,7 +1878,7 @@ export function useTenantDashboard() {
   // 7a. Fetch messages for selected conversation from Supabase
   useEffect(() => {
     // Guard UUID syntax: only query messages if activeConversationId is a valid UUID
-    if (!activeConversationId || !isValidUuid(activeConversationId)) return;
+    if (!activeConversationId || !isValidUuid(activeConversationId) || isAuthenticated !== true) return;
     const supabase = getSupabase();
     if (!supabase) return;
 
@@ -1877,7 +1921,7 @@ export function useTenantDashboard() {
 
   // 7b. Supabase Realtime: live push for conversations & messages (Inbox Console)
   useEffect(() => {
-    if (!tenantSlug) return;
+    if (!tenantSlug || isAuthenticated !== true) return;
     const supabase = getSupabase();
     if (!supabase) return;
 
@@ -1963,7 +2007,7 @@ export function useTenantDashboard() {
     return () => {
       supabase.removeChannel(realtimeChannel);
     };
-  }, [tenantSlug]);
+  }, [tenantSlug, isAuthenticated]);
 
   // 8. Finance / Withdrawal Handlers
   const handleProcessWithdraw = (e: React.FormEvent) => {
@@ -2125,14 +2169,14 @@ export function useTenantDashboard() {
   };
 
   useEffect(() => {
-    if (activeTab === 'whatsapp' && tenantSlug) {
+    if (activeTab === 'whatsapp' && tenantSlug && isAuthenticated === true) {
       handleConnectGrowthSession();
     }
-  }, [activeTab, tenantSlug]);
+  }, [activeTab, tenantSlug, isAuthenticated]);
 
   // 11. Background Polling while on 'whatsapp' tab and status is CONNECTING
   useEffect(() => {
-    if (activeTab !== 'whatsapp' || !tenantSlug || waStatus !== 'CONNECTING') return;
+    if (activeTab !== 'whatsapp' || !tenantSlug || waStatus !== 'CONNECTING' || isAuthenticated !== true) return;
 
     let consecutiveErrors = 0;
     let isCancelled = false;
@@ -2205,6 +2249,7 @@ export function useTenantDashboard() {
 
   return {
     tenantSlug,
+    isAuthenticated,
     displayName,
     params,
     router,

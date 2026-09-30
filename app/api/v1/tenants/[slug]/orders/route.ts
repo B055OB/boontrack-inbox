@@ -41,6 +41,30 @@ export async function GET(
       console.warn('[Tenant Orders API] Tenant resolution note:', resolveErr);
     }
 
+    // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY) ──
+    const cleanCookie = (val?: string) => {
+      if (!val) return '';
+      try {
+        return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
+      } catch {
+        return val.toLowerCase().trim();
+      }
+    };
+
+    const cookieStore =
+      cleanCookie(_req.cookies.get('merchant_store')?.value) ||
+      cleanCookie(_req.cookies.get('merchant_session')?.value) ||
+      cleanCookie(_req.cookies.get('bt_tenant')?.value);
+
+    const normalizedTarget = (targetSlug || slug || '').toLowerCase().trim();
+
+    if (!cookieStore || cookieStore !== normalizedTarget) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.' },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(_req.url);
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 50, 500) : 100;

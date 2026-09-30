@@ -54,6 +54,30 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, orders: [], count: 0 });
     }
 
+    // ── AUTH GUARD & TENANT ISOLATION (P0 SECURITY) ──
+    const cleanCookie = (val?: string) => {
+      if (!val) return '';
+      try {
+        return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
+      } catch {
+        return val.toLowerCase().trim();
+      }
+    };
+
+    const cookieStore =
+      cleanCookie(req.cookies.get('merchant_store')?.value) ||
+      cleanCookie(req.cookies.get('merchant_session')?.value) ||
+      cleanCookie(req.cookies.get('bt_tenant')?.value);
+
+    const normalizedTarget = (targetSlug || '').toLowerCase().trim();
+
+    if (!cookieStore || cookieStore !== normalizedTarget) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan untuk mengakses daftar pesanan.' },
+        { status: 401 }
+      );
+    }
+
     const startDate = searchParams.get('start_date') || searchParams.get('startDate');
     const endDate = searchParams.get('end_date') || searchParams.get('endDate');
 

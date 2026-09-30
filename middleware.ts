@@ -251,21 +251,36 @@ function extractSubdomain(hostWithPort: string): string | null {
 }
 
 /**
- * Helper untuk memeriksa apakah request memiliki sesi login Supabase Auth / Merchant Store aktif
+ * Helper untuk memeriksa apakah request memiliki sesi login merchant aktif yang COCOK dengan target slug tenant.
+ * Mencegah Tenant A mengakses dashboard Tenant B (Tenant Isolation Guard) dan memblokir akses anonim/incognito.
  */
-function hasAuthSession(req: NextRequest): boolean {
-  const allCookies = req.cookies.getAll();
-  return allCookies.some((cookie) => {
-    const n = cookie.name.toLowerCase();
+function hasValidTenantSession(req: NextRequest, targetSlug?: string): boolean {
+  const cleanTarget = targetSlug ? targetSlug.toLowerCase().trim() : '';
+
+  const cleanCookie = (val?: string) => {
+    if (!val) return '';
+    try {
+      return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
+    } catch {
+      return val.toLowerCase().trim();
+    }
+  };
+
+  const merchantStore = cleanCookie(req.cookies.get('merchant_store')?.value);
+  const merchantSession = cleanCookie(req.cookies.get('merchant_session')?.value);
+  const btTenant = cleanCookie(req.cookies.get('bt_tenant')?.value);
+
+  // Jika targetSlug ditentukan, cookie WAJIB cocok dengan targetSlug
+  if (cleanTarget) {
     return (
-      n.startsWith('sb-') ||
-      n.includes('auth-token') ||
-      n.includes('access-token') ||
-      n === 'merchant_session' ||
-      n === 'merchant_store' ||
-      n === 'bt_tenant'
+      merchantStore === cleanTarget ||
+      merchantSession === cleanTarget ||
+      btTenant === cleanTarget
     );
-  });
+  }
+
+  // Jika targetSlug tidak ditentukan (misal /dashboard umum), pastikan setidaknya salah satu cookie sesi merchant ada
+  return Boolean(merchantStore || merchantSession || btTenant);
 }
 
 export async function middleware(req: NextRequest) {
@@ -311,11 +326,39 @@ export async function middleware(req: NextRequest) {
       return NextResponse.rewrite(url);
     }
 
-    // B. Parse tenant slug dan subpaths untuk internal rewrite ke /[tenant]/dashboard/...
-    const segments = pathname.split('/').filter(Boolean);
-    const tenantSlug = segments[0];
+    // B. Reserved public routes on dashboard domain
+    const RESERVED_PUBLIC_ROUTES = new Set([
+      'login',
+      'register',
+      'daftar',
+      'api',
+      '_next',
+      'static',
+      'images',
+      'favicon.ico',
+      'apple-touch-icon.png',
+      'terms',
+      'privacy',
+      'refund',
+      'contact',
+      '404-store-not-found',
+    ]);
 
-    if (tenantSlug) {
+    // C. Parse tenant slug dan subpaths untuk internal rewrite ke /[tenant]/dashboard/...
+    const segments = pathname.split('/').filter(Boolean);
+    const tenantSlug = segments[0]?.toLowerCase().trim();
+
+    if (tenantSlug && !RESERVED_PUBLIC_ROUTES.has(tenantSlug)) {
+      // ── TENANT AUTH GUARD & ISOLATION CHECK (P0 SECURITY) ──
+      // Incognito / unauthenticated / wrong tenant cookie langsung di-redirect ke /login
+      if (!hasValidTenantSession(req, tenantSlug)) {
+        const loginUrl = req.nextUrl.clone();
+        loginUrl.pathname = '/login';
+        const redirectTarget = pathname + (req.nextUrl.search || '');
+        loginUrl.search = `?redirectTo=${encodeURIComponent(redirectTarget)}`;
+        return NextResponse.redirect(loginUrl, 302);
+      }
+
       const url = req.nextUrl.clone();
       if (segments.length === 1) {
         // e.g. /buzzerukm -> /buzzerukm/dashboard
@@ -451,18 +494,17 @@ export async function middleware(req: NextRequest) {
   }
 
   // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===
-  const isDashboardPath =
-    pathname === '/dashboard' ||
-    pathname.startsWith('/dashboard/') ||
-    /^\/[^/]+\/dashboard(\/.*)?$/.test(pathname);
+  const dashboardMatch = pathname.match(/^\/([^/]+)\/dashboard(?:\/.*)?$/);
+  const isGenericDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/');
 
-  if (isDashboardPath) {
-    if (!hasAuthSession(req)) {
+  if (dashboardMatch || isGenericDashboard) {
+    const targetSlug = dashboardMatch ? dashboardMatch[1] : undefined;
+    if (!hasValidTenantSession(req, targetSlug)) {
       const loginUrl = req.nextUrl.clone();
       loginUrl.pathname = '/login';
       const redirectTarget = pathname + (req.nextUrl.search || '');
       loginUrl.search = `?redirectTo=${encodeURIComponent(redirectTarget)}`;
-      return NextResponse.redirect(loginUrl);
+      return NextResponse.redirect(loginUrl, 302);
     }
   }
 

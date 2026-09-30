@@ -18,7 +18,20 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const querySlug = searchParams.get('slug');
-    const cookieStore = req.cookies.get('merchant_store')?.value || req.cookies.get('merchant_session')?.value || req.cookies.get('bt_tenant')?.value;
+    const cleanCookie = (val?: string) => {
+      if (!val) return '';
+      try {
+        return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
+      } catch {
+        return val.toLowerCase().trim();
+      }
+    };
+
+    const cookieStore =
+      cleanCookie(req.cookies.get('merchant_store')?.value) ||
+      cleanCookie(req.cookies.get('merchant_session')?.value) ||
+      cleanCookie(req.cookies.get('bt_tenant')?.value);
+
     const rawSlug = querySlug || cookieStore || '';
     const slug = normalizeTenantSlug(rawSlug);
 
@@ -26,6 +39,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Parameter slug tenant wajib disertakan.' },
         { status: 400 }
+      );
+    }
+
+    if (!cookieStore || cookieStore !== slug.toLowerCase().trim()) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Sesi login merchant diperlukan untuk melihat profil toko.' },
+        { status: 401 }
       );
     }
 
