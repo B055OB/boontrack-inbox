@@ -693,6 +693,8 @@ export default function TenantDashboardPage() {
         <TeamChatTab
           tenantSlug={tenantSlug}
           tenantId={tenantId || undefined}
+          isCheckoutLite={isCheckoutLite}
+          tenantTier={tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'ADS_PERFORMANCE' : isTeamScale ? 'TEAM_SCALE' : 'STARTER')}
           conversations={conversations}
           activeConversation={activeConversation}
           activeConversationId={activeConversationId}

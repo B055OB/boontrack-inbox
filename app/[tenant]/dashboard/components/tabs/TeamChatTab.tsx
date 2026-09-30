@@ -92,7 +92,21 @@ export interface TeamChatTabProps {
   trialEndsAt?: string | null;
   isTenantBotPaused?: boolean;
   handleToggleTenantBot?: () => void;
+  isCheckoutLite?: boolean;
+  tenantTier?: string;
 }
+
+export const CS_SEAT_QUOTA_MAP: Record<string, number> = {
+  CHECKOUT_LITE: 0,
+  SOLO: 1,
+  STARTER: 1,
+  ADS_PERFORMANCE: 2,
+  PRO_SCALE: 2,
+  GROWTH_PLUS: 2,
+  TRIAL: 2,
+  TEAM_SCALE: 5,
+  ENTERPRISE: 5,
+};
 
 export default function TeamChatTab({
   tenantSlug,
@@ -115,6 +129,8 @@ export default function TeamChatTab({
   trialEndsAt = null,
   isTenantBotPaused = false,
   handleToggleTenantBot,
+  isCheckoutLite = false,
+  tenantTier,
 }: TeamChatTabProps) {
   // Kalkulasi dinamis real-time sisa hari dari trialEndsAt
   const effectiveDaysLeft = useMemo(() => {
@@ -165,6 +181,35 @@ export default function TeamChatTab({
     setDisplayLimit(60);
   }, [searchKeyword, filterTab]);
 
+  // Dynamic Tier & CS Seat Entitlement Quota
+  const effectiveTier = useMemo(() => {
+    if (isCheckoutLite) return 'CHECKOUT_LITE';
+    if (tenantTier) return tenantTier.toUpperCase();
+    if (isTeamScale) return 'TEAM_SCALE';
+    if (isAdsPerformance || isProScale || isGrowthPlus) return 'ADS_PERFORMANCE';
+    if (isSoloOrTrial) return 'TRIAL';
+    return 'SOLO';
+  }, [isCheckoutLite, tenantTier, isTeamScale, isAdsPerformance, isProScale, isGrowthPlus, isSoloOrTrial]);
+
+  const maxCsQuota = CS_SEAT_QUOTA_MAP[effectiveTier] ?? 1;
+
+  // Live CS Team Members from Database (Zero Mock)
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [isLoadingTeam, setIsLoadingTeam] = useState(false);
+
+  // CS Seat Management & Upgrade Paywall Modal States
+  const [isInviteCsModalOpen, setIsInviteCsModalOpen] = useState(false);
+  const [isPaywallModalOpen, setIsPaywallModalOpen] = useState(false);
+
+  // Invite CS Form States
+  const [inviteName, setInviteName] = useState('');
+  const [invitePhone, setInvitePhone] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteAccessLevel, setInviteAccessLevel] = useState<'LIVE_CHAT_ONLY' | 'FULL_DASHBOARD'>('LIVE_CHAT_ONLY');
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+
   // Quick POS QRIS Modal / Form state
   const [qrisItemName, setQrisItemName] = useState('Paket Bundle Hemat');
   const [qrisAmount, setQrisAmount] = useState('150000');
@@ -172,8 +217,8 @@ export default function TeamChatTab({
   const [markingPaidOrderId, setMarkingPaidOrderId] = useState<string | null>(null);
   const [qrisFeedback, setQrisFeedback] = useState<string | null>(null);
 
-  // Transfer CS state
-  const [targetAgent, setTargetAgent] = useState('Rina Pratiwi (CS 1)');
+  // Transfer CS state (Zero Mock: populated from live tenant_users)
+  const [targetAgent, setTargetAgent] = useState('');
   const [transferFeedback, setTransferFeedback] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -519,9 +564,105 @@ export default function TeamChatTab({
     }
   };
 
-  // Transfer Chat to Colleague
+  // Fetch live team members from database (Zero Mock)
+  const fetchTeamMembers = React.useCallback(async () => {
+    const target = resolvedTenant || tenantId;
+    if (!target) return;
+    try {
+      setIsLoadingTeam(true);
+      const res = await fetch(`/api/inbox/team-members?tenant=${encodeURIComponent(target)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.teamMembers)) {
+          setTeamMembers(data.teamMembers);
+          if (data.teamMembers.length > 0 && !targetAgent) {
+            setTargetAgent(data.teamMembers[0].name);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load team members:', err);
+    } finally {
+      setIsLoadingTeam(false);
+    }
+  }, [resolvedTenant, tenantId, targetAgent]);
+
+  useEffect(() => {
+    fetchTeamMembers();
+  }, [fetchTeamMembers]);
+
+  // Handler for "+ Tambah CS Seat" button per Architecture.md Entitlement Rules
+  const handleAddCsSeatClick = () => {
+    if (isCheckoutLite || effectiveTier === 'CHECKOUT_LITE' || maxCsQuota === 0) {
+      setIsPaywallModalOpen(true);
+      return;
+    }
+    if (teamMembers.length < maxCsQuota) {
+      setIsInviteCsModalOpen(true);
+    } else {
+      setIsPaywallModalOpen(true);
+    }
+  };
+
+  // Handler for submitting "Undang CS / Tambah Admin" Form
+  const handleInviteCsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteName.trim()) {
+      setInviteError('Nama lengkap CS wajib diisi.');
+      return;
+    }
+    setInviteSubmitting(true);
+    setInviteError(null);
+    try {
+      const res = await fetch('/api/inbox/team-members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId: tenantId || resolvedTenant,
+          tenantSlug: resolvedTenant,
+          name: inviteName.trim(),
+          phone: invitePhone.trim() || undefined,
+          email: inviteEmail.trim() || undefined,
+          accessLevel: inviteAccessLevel,
+          role: 'CS',
+          planTier: effectiveTier,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        if (data.errorCode === 'QUOTA_EXCEEDED') {
+          setIsInviteCsModalOpen(false);
+          setIsPaywallModalOpen(true);
+          return;
+        }
+        setInviteError(data.message || data.error || 'Gagal menambahkan CS');
+        return;
+      }
+
+      setInviteSuccess(data.message || '✅ Berhasil menambahkan CS!');
+      setInviteName('');
+      setInvitePhone('');
+      setInviteEmail('');
+      await fetchTeamMembers();
+      setTimeout(() => {
+        setIsInviteCsModalOpen(false);
+        setInviteSuccess(null);
+      }, 1200);
+    } catch (err: any) {
+      setInviteError(err.message || 'Terjadi kesalahan sistem saat mendaftarkan CS');
+    } finally {
+      setInviteSubmitting(false);
+    }
+  };
+
+  // Transfer Chat to Colleague (Live tenant_users)
   const handleTransferChat = async () => {
     if (!currentConversation) return;
+    if (!targetAgent) {
+      setTransferFeedback('Pilih CS tujuan terlebih dahulu.');
+      return;
+    }
     try {
       const supabase = getSupabase();
       if (supabase) {
@@ -562,13 +703,17 @@ export default function TeamChatTab({
             <h1 className="text-base sm:text-lg font-black text-slate-900">
               BoonTrack Inbox Console (3-Panel Live CS Workspace)
             </h1>
-            {isTeamScale ? (
+            {isCheckoutLite ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5 text-amber-500" /> CHECKOUT LITE • 0 SEAT
+              </span>
+            ) : isTeamScale ? (
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
-                TEAM SCALE • MULTI-AGENT
+                TEAM SCALE • {teamMembers.length}/{maxCsQuota} CS SEATS
               </span>
             ) : isAdsPerformance ? (
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
-                ADS PERFORMANCE • 2 CS SEATS
+                ADS PERFORMANCE • {teamMembers.length}/{maxCsQuota} CS SEATS
               </span>
             ) : isSoloOrTrial ? (
               isTrialExpired ? (
@@ -577,12 +722,12 @@ export default function TeamChatTab({
                 </span>
               ) : (
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5 text-amber-600 animate-pulse" /> REVERSE TRIAL (7 HARI) • {effectiveDaysLeft !== null ? `${effectiveDaysLeft} HARI TERSISA` : '7 HARI'}
+                  <Clock className="w-2.5 h-2.5 text-amber-600 animate-pulse" /> REVERSE TRIAL ({teamMembers.length}/{maxCsQuota} CS SEATS) • {effectiveDaysLeft !== null ? `${effectiveDaysLeft} HARI TERSISA` : '7 HARI'}
                 </span>
               )
             ) : (
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
-                <Lock className="w-2.5 h-2.5 text-amber-500" /> TIER SOLO • 1 SEAT
+                <Lock className="w-2.5 h-2.5 text-amber-500" /> TIER SOLO • {teamMembers.length}/{maxCsQuota} SEAT
               </span>
             )}
           </div>
@@ -596,18 +741,44 @@ export default function TeamChatTab({
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>Gateway Online</span>
           </span>
-          {!isTeamScale && (
-            <button
-              type="button"
-              onClick={() => handleUpgradeTier('ads_performance')}
-              className="px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs transition cursor-pointer flex items-center gap-1"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Tambah CS Seat</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleAddCsSeatClick}
+            className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>
+              {isCheckoutLite
+                ? 'Tambah CS Seat (0/0)'
+                : `Tambah CS Seat (${teamMembers.length}/${maxCsQuota})`}
+            </span>
+          </button>
         </div>
       </div>
+
+      {/* ── CHECKOUT LITE LOCKED BANNER ───────────────────────────────────── */}
+      {isCheckoutLite && (
+        <div className="w-full p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-amber-950">Fitur Live CS Inbox Terkunci (Paket Checkout Lite)</h3>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Fitur Live CS Inbox hanya tersedia mulai paket Solo atau Ads Performance. Paket Checkout Lite hanya mendukung link checkout otomatis tanpa omnichannel inbox.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsPaywallModalOpen(true)}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer shrink-0"
+          >
+            Upgrade Paket Sekarang
+          </button>
+        </div>
+      )}
 
       {/* ── TRIAL 7 HARI NOTIFICATION BANNER (INBOX WORKSPACE) ─────────────── */}
       {isSoloOrTrial && (
@@ -1395,11 +1566,20 @@ export default function TeamChatTab({
                   <select
                     value={targetAgent}
                     onChange={(e) => setTargetAgent(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:bg-white focus:outline-none focus:border-blue-600 cursor-pointer"
+                    disabled={teamMembers.length === 0}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:bg-white focus:outline-none focus:border-blue-600 cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                   >
-                    <option value="Rina Pratiwi (CS 1)">Rina Pratiwi (CS 1 - Support Online)</option>
-                    <option value="Dimas Arya (CS 2)">Dimas Arya (CS 2 - Closing Online)</option>
-                    <option value="Sarah Amelia (CS 3)">Sarah Amelia (CS 3 - Escalation)</option>
+                    {teamMembers.length === 0 ? (
+                      <option value="" disabled>
+                        Belum ada rekan CS lain terdaftar
+                      </option>
+                    ) : (
+                      teamMembers.map((member) => (
+                        <option key={member.id} value={member.name}>
+                          {member.name} ({member.role || 'CS'} - {member.access_level === 'LIVE_CHAT_ONLY' ? 'Live Chat' : 'Admin'})
+                        </option>
+                      ))
+                    )}
                   </select>
 
                   {transferFeedback && (
@@ -1411,7 +1591,8 @@ export default function TeamChatTab({
                   <button
                     type="button"
                     onClick={handleTransferChat}
-                    className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                    disabled={teamMembers.length === 0 || !targetAgent}
+                    className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                   >
                     <ArrowRightLeft className="w-3.5 h-3.5" />
                     <span>Transfer Percakapan Sekarang</span>
@@ -1422,6 +1603,277 @@ export default function TeamChatTab({
           )}
         </div>
       </div>
+
+      {/* ── MODAL: UNDANG CS / TAMBAH ADMIN ───────────────────────────────── */}
+      {isInviteCsModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative animate-in fade-in zoom-in-95 duration-200 text-left">
+            <button
+              type="button"
+              onClick={() => {
+                setIsInviteCsModalOpen(false);
+                setInviteError(null);
+                setInviteSuccess(null);
+              }}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">Undang CS / Tambah Admin</h3>
+                <p className="text-[11px] text-slate-500">
+                  Kursi CS Aktif: <strong>{teamMembers.length}</strong> dari <strong>{maxCsQuota}</strong> kursi ({effectiveTier})
+                </p>
+              </div>
+            </div>
+
+            {inviteError && (
+              <div className="mb-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{inviteError}</span>
+              </div>
+            )}
+
+            {inviteSuccess && (
+              <div className="mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{inviteSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleInviteCsSubmit} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Nama Lengkap CS / Rekan <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                  placeholder="Contoh: Siti Rahmawati"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Nomor WhatsApp CS
+                </label>
+                <input
+                  type="tel"
+                  value={invitePhone}
+                  onChange={(e) => setInvitePhone(e.target.value)}
+                  placeholder="Contoh: 081234567890"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Email Akun CS (Opsional)
+                </label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="Contoh: cs1@tokomu.com"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Hak Akses Sistem
+                </label>
+                <select
+                  value={inviteAccessLevel}
+                  onChange={(e) => setInviteAccessLevel(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-900 bg-white focus:outline-none focus:border-indigo-600"
+                >
+                  <option value="LIVE_CHAT_ONLY">Live Chat CS Only (Khusus melayani obrolan)</option>
+                  <option value="FULL_DASHBOARD">Full Dashboard (Chat + Produk + Order)</option>
+                </select>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsInviteCsModalOpen(false)}
+                  className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={inviteSubmitting}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                >
+                  {inviteSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Daftarkan CS</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: PAYWALL UPGRADE CS SEAT / CHECKOUT LITE ────────────────── */}
+      {isPaywallModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative animate-in fade-in zoom-in-95 duration-200 text-left">
+            <button
+              type="button"
+              onClick={() => setIsPaywallModalOpen(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
+            >
+              ✕
+            </button>
+
+            {/* Case A: CHECKOUT LITE (0 CS SEAT) */}
+            {isCheckoutLite || effectiveTier === 'CHECKOUT_LITE' ? (
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 uppercase tracking-wider">
+                    FITUR LIVE CS TERKUNCI
+                  </span>
+                  <h3 className="text-lg font-black text-slate-900 mt-1">
+                    Live CS Inbox Memerlukan Paket Solo / Ads
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                    Fitur Live CS Inbox hanya tersedia mulai paket Solo atau Ads Performance. Paket Checkout Lite hanya mendukung checkout form langsung tanpa inbox terpusat.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span><strong>Paket Solo:</strong> 1 CS Seat untuk melayani chat pelanggan.</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span><strong>Paket Ads Performance:</strong> 2 CS Seats Gratis + Otomatis CAPI Meta Ads.</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleUpgradeTier('solo');
+                      setIsPaywallModalOpen(false);
+                    }}
+                    className="py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer text-center"
+                  >
+                    Upgrade Solo (1 CS)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleUpgradeTier('ads_performance');
+                      setIsPaywallModalOpen(false);
+                    }}
+                    className="py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer text-center"
+                  >
+                    Upgrade Ads (2 CS)
+                  </button>
+                </div>
+              </div>
+            ) : effectiveTier === 'TEAM_SCALE' || maxCsQuota >= 5 ? (
+              /* Case B: TEAM SCALE (5 CS MAX REACHED) */
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 uppercase tracking-wider">
+                    KUOTA MAKSIMAL TERCAPAI
+                  </span>
+                  <h3 className="text-lg font-black text-slate-900 mt-1">
+                    Batas Maksimal 5 CS Seats Tercapai
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                    Anda telah memanfaatkan alokasi 5 CS Seats penuh pada paket Team Scale. Butuh tambahan kursi tak terbatas atau arsitektur cluster custom?
+                  </p>
+                </div>
+                <div className="pt-2">
+                  <a
+                    href="https://wa.me/6285113636165?text=Halo%20Enterprise%20BoonTrack,%20saya%20ingin%20tambah%20kuota%20CS%20Seat%20lebih%20dari%205"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full block py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs text-center transition"
+                  >
+                    Hubungi Enterprise Support
+                  </a>
+                </div>
+              </div>
+            ) : (
+              /* Case C: SOLO -> ADS PERFORMANCE, or ADS PERFORMANCE -> TEAM SCALE */
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-800 uppercase tracking-wider">
+                    KUOTA KURSI CS PENUH
+                  </span>
+                  <h3 className="text-lg font-black text-slate-900 mt-1">
+                    Batas {maxCsQuota} CS Seat Tercapai
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                    {maxCsQuota === 1
+                      ? 'Paket Solo memiliki kuota 1 CS Seat. Upgrade ke Ads Performance untuk mendapatkan 2 CS Seats Gratis serta sinkronisasi Meta Ads otomatis.'
+                      : 'Paket Ads Performance Anda sudah menggunakan 2 CS Seats penuh. Upgrade ke Team Scale untuk membuka hingga 5 CS Seats multi-agen.'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
+                  <div className="flex items-center justify-between text-slate-700 font-medium">
+                    <span>Paket Saat Ini:</span>
+                    <span className="font-bold text-slate-900">{effectiveTier} ({teamMembers.length}/{maxCsQuota} Kursi)</span>
+                  </div>
+                  <div className="flex items-center justify-between text-indigo-700 font-medium">
+                    <span>Target Upgrade:</span>
+                    <span className="font-bold text-indigo-900">
+                      {maxCsQuota === 1 ? 'Ads Performance (2 Kursi)' : 'Team Scale (5 Kursi)'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleUpgradeTier(maxCsQuota === 1 ? 'ads_performance' : 'team_scale');
+                      setIsPaywallModalOpen(false);
+                    }}
+                    className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs text-center transition cursor-pointer active:scale-95"
+                  >
+                    {maxCsQuota === 1 ? 'Upgrade ke Ads Performance (2 Seats Gratis)' : 'Upgrade ke Team Scale (Hingga 5 Seats)'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -35,6 +35,8 @@ export default function InboxDashboardClient({
         <TeamChatTab
           tenantSlug={tenantSlug}
           tenantId={tenantId || undefined}
+          isCheckoutLite={tier === 'CHECKOUT_LITE' || tier.includes('CHECKOUT_LITE')}
+          tenantTier={tier || 'STARTER'}
           conversations={conversations}
           activeConversation={activeConversation}
           activeConversationId={activeConversationId}

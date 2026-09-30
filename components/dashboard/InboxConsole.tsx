@@ -39,6 +39,8 @@ export default function InboxConsole(props: InboxConsoleProps) {
     <TeamChatTab
       tenantSlug={tenantSlug}
       tenantId={props.tenantId}
+      isCheckoutLite={props.isCheckoutLite}
+      tenantTier={props.tenantTier}
       conversations={conversations}
       activeConversation={activeConversation}
       activeConversationId={activeConversationId}

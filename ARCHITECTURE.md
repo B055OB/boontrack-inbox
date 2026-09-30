@@ -109,6 +109,16 @@ Ekosistem BoonTrack meresmikan standarisasi paket komersial yang mengikat seluru
 > **ADR Database Invariant**:
 > Kolom `tenants.tier` dan `shop_subscriptions.plan_tier` di PostgreSQL Supabase serta enum SQLAlchemy/Pydantic di Core ENGINE mendukung canonical tier: `'CHECKOUT_LITE'`, `'STARTER'`, `'PRO_SCALE'`, dan `'ENTERPRISE'` (serta `'FREE'` untuk internal testing). Seluruh string legacy (seperti `GROWTH`, `growth_tracking`, `proscale`, `team_scale`, `solo`, `checkout_lite`, `lite`) wajib ditransformasikan melalui adapter/migrasi database ke enum resmi di atas.
 
+### 3.1.1 CS Seat Entitlement & Live CS Inbox Access Rules (ADR 2026-10-01)
+Aturan alokasi kuota kursi CS (CS Seats) berlaku ketat dan deterministik di seluruh layer platform (Database `tenant_users`, API Gateway `/api/inbox/team-members`, dan Dashboard Frontend `TeamChatTab.tsx` / `InboxConsole.tsx`):
+
+| Plan Tier | Canonical Key | CS Seat Quota | Inbox Access Policy | Aksi Tombol '+ Tambah CS Seat' |
+| :--- | :--- | :--- | :--- | :--- |
+| **Checkout Lite** | `CHECKOUT_LITE` | **0 Seat** | **Locked (Gembok)**: Menu Inbox terkunci. | Membuka Modal Paywall: *"Fitur Live CS Inbox hanya tersedia mulai paket Solo atau Ads Performance."* |
+| **Solo / Starter** | `STARTER` / `SOLO` | **1 Seat** | Akses 1 Agent CS Live. | Jika `activeCsCount < 1`: Buka Form Undang CS. Jika `>= 1`: Buka Modal Upgrade Paywall ke Ads Performance (2 Seats). |
+| **Ads Performance** | `PRO_SCALE` / `ADS_PERFORMANCE` / `TRIAL` | **2 Seats Gratis** | Akses 2 CS Live Multi-Agent + Bot AI. | Jika `activeCsCount < 2`: Buka Form Undang CS. Jika `>= 2`: Buka Modal Upgrade Paywall ke Team Scale (5 Seats). |
+| **Team Scale** | `ENTERPRISE` / `TEAM_SCALE` | **5 Seats Max** | Akses Tim Skala Penuh hingga 5 CS. | Jika `activeCsCount < 5`: Buka Form Undang CS. Jika `>= 5`: Modal Limit Maksimal (Hubungi Enterprise Support). |
+
 ---
 
 ## 4. Fulfillment & Checkout Logic
