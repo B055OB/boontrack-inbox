@@ -62,6 +62,17 @@ export interface ConversationMessage {
   time: string;
   isQris?: boolean;
   qrisData?: any;
+  isBankTransfer?: boolean;
+  bankData?: any;
+  isLocation?: boolean;
+  locationData?: {
+    latitude: number;
+    longitude: number;
+    name?: string;
+    address?: string;
+    distanceKm?: number;
+    rates?: any[];
+  };
 }
 
 export interface ChatConversation {
@@ -2080,6 +2091,22 @@ export function useTenantDashboard() {
             time: m.created_at
               ? new Date(m.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
               : '',
+            isQris: m.payload?.is_qris || m.raw_payload?.is_qris,
+            qrisData: m.payload?.qris_data || m.raw_payload?.qris_data,
+            isBankTransfer: m.payload?.is_bank_transfer || m.raw_payload?.is_bank_transfer,
+            bankData: m.payload?.bank_data || m.raw_payload?.bank_data,
+            isLocation:
+              m.type === 'LOCATION' ||
+              m.payload?.is_location ||
+              m.raw_payload?.is_location ||
+              Boolean(m.metadata?.location || m.payload?.location || m.raw_payload?.location),
+            locationData:
+              m.metadata?.location ||
+              m.payload?.location ||
+              m.raw_payload?.location ||
+              (m.metadata?.coordinates
+                ? { latitude: m.metadata.coordinates.latitude, longitude: m.metadata.coordinates.longitude }
+                : undefined),
           }));
 
           setConversations(prev =>

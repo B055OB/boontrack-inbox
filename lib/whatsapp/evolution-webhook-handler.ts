@@ -365,8 +365,40 @@ export async function processEvolutionWebhookEvent(
       }
     }
 
-    // 4. Deteksi Pesan Gambar (Image Message)
+    // 3.5. Deteksi Pesan Lokasi (Location Message)
     const rawMsg = item.message || {};
+    const locMessage =
+      rawMsg.locationMessage ||
+      rawMsg.liveLocationMessage ||
+      rawMsg.viewOnceMessage?.message?.locationMessage ||
+      rawMsg.viewOnceMessageV2?.message?.locationMessage ||
+      rawMsg.ephemeralMessage?.message?.locationMessage ||
+      (item.messageType === 'locationMessage' ? rawMsg : null);
+
+    const rawLat = locMessage?.degreesLatitude ?? locMessage?.latitude;
+    const rawLng = locMessage?.degreesLongitude ?? locMessage?.longitude;
+    const lat = Number(rawLat);
+    const lng = Number(rawLng);
+    const hasLocation = Boolean(locMessage && !isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0));
+    const locName = String(locMessage?.name || '').trim();
+    const locAddress = String(locMessage?.address || '').trim();
+
+    const locationData = hasLocation
+      ? {
+          latitude: lat,
+          longitude: lng,
+          name: locName || locAddress || 'Titik Lokasi Pembeli',
+          address: locAddress || undefined,
+        }
+      : undefined;
+
+    const locLabel = locName
+      ? locAddress
+        ? `${locName} (${locAddress})`
+        : locName
+      : locAddress || `${lat}, ${lng}`;
+
+    // 4. Deteksi Pesan Gambar (Image Message)
     const imageMessage =
       rawMsg.imageMessage ||
       rawMsg.viewOnceMessage?.message?.imageMessage ||
@@ -440,7 +472,9 @@ export async function processEvolutionWebhookEvent(
 
     // 6. Ingest ke Conversations & Messages Schema (Atomic Database Persistence)
     let convId: string | null = null;
-    const lastPreview = hasImage
+    const lastPreview = hasLocation
+      ? `📍 [Lokasi Pin]: ${locLabel}`
+      : hasImage
       ? caption
         ? `📷 ${caption}`
         : '📷 [Gambar]'
@@ -452,19 +486,30 @@ export async function processEvolutionWebhookEvent(
         tenantSlug: tenantSlug || tenantId,
         customerPhone: senderPhone,
         customerName: item.pushName || senderPhone,
-        messageBody: lastPreview || (hasImage ? '[Gambar dikirim pembeli]' : ''),
+        messageBody: lastPreview || (hasLocation ? '📍 [Lokasi Pin]' : hasImage ? '[Gambar dikirim pembeli]' : ''),
         senderType: 'customer',
         externalId: item.key?.id || undefined,
+        messageType: hasLocation ? 'LOCATION' : hasImage ? 'IMAGE' : 'TEXT',
+        locationData,
         rawPayload: {
           has_image: hasImage,
+          has_location: hasLocation,
           mime_type: hasImage ? mimeType : undefined,
-          type: hasImage ? 'image' : 'text',
+          type: hasLocation ? 'location' : hasImage ? 'image' : 'text',
+          ...(hasLocation ? { is_location: true, location: locationData } : {}),
           source: 'evolution_webhook',
         },
       });
       convId = persisted.conversationId;
     } catch (dbErr) {
       console.warn('[Evolution Webhook] DB logging error:', dbErr);
+    }
+
+    // Jika ini adalah pesan pin lokasi, instant shipping sudah otomatis terpicu dan dibalas via persistInboundMessage
+    if (hasLocation) {
+      console.info(`[Evolution Webhook] Location pin processed for ${senderPhone}. Instant courier handling complete.`);
+      processedCount++;
+      continue;
     }
 
     // 6.1. INTERCEPTOR ORDER TRANSAKSI (ORDER GATEKEEPER)

@@ -28,6 +28,9 @@ import {
   UserCheck,
   Building2,
   CreditCard,
+  MapPin,
+  Navigation,
+  Copy,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '@/lib/supabaseClient';
@@ -61,6 +64,21 @@ export interface ConversationMessage {
     accountHolder: string;
     description: string;
     status: 'WAITING_PAYMENT' | 'WAITING_CONFIRMATION' | 'PAID';
+  };
+  isLocation?: boolean;
+  locationData?: {
+    latitude: number;
+    longitude: number;
+    name?: string;
+    address?: string;
+    distanceKm?: number;
+    rates?: Array<{
+      id?: string;
+      courier_name: string;
+      service: string;
+      price: number;
+      etd: string;
+    }>;
   };
 }
 
@@ -232,6 +250,7 @@ export default function TeamChatTab({
   const [isSendingBankInfo, setIsSendingBankInfo] = useState(false);
   const [markingPaidOrderId, setMarkingPaidOrderId] = useState<string | null>(null);
   const [qrisFeedback, setQrisFeedback] = useState<string | null>(null);
+  const [copiedLocationId, setCopiedLocationId] = useState<string | number | null>(null);
 
   // Dynamic Tenant Payment Config & Multi-Tenant Bank Accounts (Zero Hardcoding)
   const [tenantPaymentData, setTenantPaymentData] = useState<any>(null);
@@ -1548,6 +1567,114 @@ export default function TeamChatTab({
                                   <span>Telah Lunas & Terverifikasi</span>
                                 </div>
                               )}
+                            </div>
+                          )}
+
+                          {/* Interactive Pin Location Bubble inside Chat */}
+                          {msg.isLocation && msg.locationData && (
+                            <div className="mt-3 p-3.5 bg-white rounded-xl border border-emerald-200/90 text-slate-900 space-y-3 shadow-xs">
+                              {/* Header */}
+                              <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-5 h-5 rounded-md bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                    <MapPin className="w-3.5 h-3.5" />
+                                  </div>
+                                  <span className="text-[11px] font-black tracking-tight text-slate-900">
+                                    PINPOINT LOKASI PEMBELI
+                                  </span>
+                                </div>
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                                  <Navigation className="w-2.5 h-2.5 text-emerald-600 animate-pulse" />
+                                  <span>GPS Presisi</span>
+                                </span>
+                              </div>
+
+                              {/* Stylized Visual Map Card */}
+                              <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-emerald-950 via-slate-900 to-teal-950 p-3 text-white border border-emerald-500/20">
+                                <div
+                                  className="absolute inset-0 opacity-15 pointer-events-none"
+                                  style={{
+                                    backgroundImage: 'radial-gradient(circle, #34d399 1px, transparent 1px)',
+                                    backgroundSize: '12px 12px',
+                                  }}
+                                />
+                                <div className="relative z-10 flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-bold text-emerald-300 truncate">
+                                      {msg.locationData.name || 'Titik Koordinat Pembeli'}
+                                    </p>
+                                    <p className="text-[10px] text-slate-300 line-clamp-2 mt-0.5 leading-snug">
+                                      {msg.locationData.address || `${msg.locationData.latitude}, ${msg.locationData.longitude}`}
+                                    </p>
+                                    <div className="mt-2 flex items-center flex-wrap gap-1.5">
+                                      <span className="text-[9px] font-mono bg-black/50 px-2 py-0.5 rounded border border-white/10 text-emerald-400">
+                                        {msg.locationData.latitude.toFixed(5)}, {msg.locationData.longitude.toFixed(5)}
+                                      </span>
+                                      {msg.locationData.distanceKm !== undefined && (
+                                        <span className="text-[9px] font-bold bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-400/30 text-emerald-300">
+                                          📏 Jarak: {msg.locationData.distanceKm} km dari Dapur
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="w-8 h-8 rounded-full bg-emerald-500/30 border border-emerald-400/50 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/20">
+                                    <MapPin className="w-4 h-4 text-emerald-300 animate-bounce" />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Instant Courier Rates Badge Preview (if available) */}
+                              {msg.locationData.rates && msg.locationData.rates.length > 0 && (
+                                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1.5 text-xs">
+                                  <span className="text-[10px] font-bold text-slate-500 block uppercase tracking-wide">
+                                    Estimasi Tarif Kurir Instan:
+                                  </span>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {msg.locationData.rates.map((rate, rIdx) => (
+                                      <div key={rIdx} className="p-2 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                                        <p className="text-[10px] font-bold text-slate-700 truncate">{rate.courier_name}</p>
+                                        <p className="text-xs font-black text-emerald-600 mt-0.5">Rp {rate.price.toLocaleString('id-ID')}</p>
+                                        <p className="text-[9px] text-slate-400">{rate.etd}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Action Buttons: Open Maps & Copy */}
+                              <div className="flex items-center gap-2 pt-0.5">
+                                <a
+                                  href={`https://www.google.com/maps?q=${msg.locationData.latitude},${msg.locationData.longitude}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  <span>Buka di Google Maps</span>
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(`${msg.locationData!.latitude},${msg.locationData!.longitude}`);
+                                    setCopiedLocationId(msg.id);
+                                    setTimeout(() => setCopiedLocationId(null), 2500);
+                                  }}
+                                  className="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg transition flex items-center gap-1 cursor-pointer border border-slate-200 active:scale-95"
+                                  title="Salin Koordinat Lintang/Bujur"
+                                >
+                                  {copiedLocationId === msg.id ? (
+                                    <>
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span className="text-emerald-700 font-bold">Disalin</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                      <span>Salin GPS</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
                             </div>
                           )}
 

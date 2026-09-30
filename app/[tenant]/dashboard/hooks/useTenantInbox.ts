@@ -272,6 +272,18 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
             qrisData: m.payload?.qris_data || m.raw_payload?.qris_data,
             isBankTransfer: m.payload?.is_bank_transfer || m.raw_payload?.is_bank_transfer,
             bankData: m.payload?.bank_data || m.raw_payload?.bank_data,
+            isLocation:
+              m.type === 'LOCATION' ||
+              m.payload?.is_location ||
+              m.raw_payload?.is_location ||
+              Boolean(m.metadata?.location || m.payload?.location || m.raw_payload?.location),
+            locationData:
+              m.metadata?.location ||
+              m.payload?.location ||
+              m.raw_payload?.location ||
+              (m.metadata?.coordinates
+                ? { latitude: m.metadata.coordinates.latitude, longitude: m.metadata.coordinates.longitude }
+                : undefined),
           });
         }
 
@@ -381,6 +393,20 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
               time: timeStr,
               isQris: newMsg.payload?.is_qris || newMsg.raw_payload?.is_qris,
               qrisData: newMsg.payload?.qris_data || newMsg.raw_payload?.qris_data,
+              isBankTransfer: newMsg.payload?.is_bank_transfer || newMsg.raw_payload?.is_bank_transfer,
+              bankData: newMsg.payload?.bank_data || newMsg.raw_payload?.bank_data,
+              isLocation:
+                newMsg.type === 'LOCATION' ||
+                newMsg.payload?.is_location ||
+                newMsg.raw_payload?.is_location ||
+                Boolean(newMsg.metadata?.location || newMsg.payload?.location || newMsg.raw_payload?.location),
+              locationData:
+                newMsg.metadata?.location ||
+                newMsg.payload?.location ||
+                newMsg.raw_payload?.location ||
+                (newMsg.metadata?.coordinates
+                  ? { latitude: newMsg.metadata.coordinates.latitude, longitude: newMsg.metadata.coordinates.longitude }
+                  : undefined),
             };
 
             setMessages((prev) => {

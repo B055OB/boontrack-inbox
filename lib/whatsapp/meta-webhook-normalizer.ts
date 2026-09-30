@@ -666,11 +666,21 @@ export async function processNormalizedMetaEvent(
             messageBody: textContent,
             senderType: 'customer',
             externalId: msg.id || undefined,
+            messageType: msg.type === 'location' ? 'LOCATION' : (msg.type === 'image' ? 'IMAGE' : 'TEXT'),
+            locationData: msg.location
+              ? {
+                  latitude: Number(msg.location.latitude),
+                  longitude: Number(msg.location.longitude),
+                  name: msg.location.name,
+                  address: msg.location.address,
+                }
+              : undefined,
             rawPayload: {
               meta_message_id: msg.id,
               type: msg.type,
               media: msg.media,
               interactive: msg.interactiveReply,
+              ...(msg.location ? { location: msg.location, is_location: true } : {}),
               ...(msg.ctwa_clid ? { ctwa_clid: msg.ctwa_clid } : {}),
               ...(msg.referral ? { referral: msg.referral } : {}),
             },
