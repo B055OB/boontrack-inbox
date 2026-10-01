@@ -143,6 +143,7 @@ export async function GET(
         bank_settings: metadata.bank_settings || metadata.bank_transfer || null,
         bank_transfer: metadata.bank_transfer || metadata.bank_settings || null,
         bank_accounts: Array.isArray(metadata.bank_accounts) ? metadata.bank_accounts : [],
+        is_bank_transfer_active: metadata.is_bank_transfer_active ?? metadata.enable_manual_transfer ?? metadata.payment_config?.enable_manual_transfer ?? metadata.bank_settings?.is_active ?? metadata.bank_transfer?.is_active ?? true,
         integration: metadata.integration || {
           whatsapp_status: 'DISCONNECTED',
           webhook_verified: false,
@@ -209,6 +210,9 @@ export async function PUT(
       bank_settings,
       bank_transfer,
       bank_accounts,
+      is_bank_transfer_active,
+      enable_manual_transfer,
+      enable_bank_transfer,
       integration,
       bot_strategy,
       bot_mode,
@@ -291,6 +295,19 @@ export async function PUT(
       ...(body.bank_name ? { bank_name: body.bank_name } : {}),
       ...(body.bank_account ? { bank_account: body.bank_account } : {}),
       ...(body.bank_holder ? { bank_holder: body.bank_holder } : {}),
+      ...(is_bank_transfer_active !== undefined ? { is_bank_transfer_active: Boolean(is_bank_transfer_active) } : {}),
+      ...(enable_manual_transfer !== undefined || is_bank_transfer_active !== undefined ? {
+        payment_config: {
+          ...(existing.metadata?.payment_config || {}),
+          enable_manual_transfer: is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : Boolean(enable_manual_transfer),
+          enable_bank_transfer: is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : (enable_bank_transfer !== undefined ? Boolean(enable_bank_transfer) : Boolean(enable_manual_transfer)),
+        },
+        payment_settings: {
+          ...(existing.metadata?.payment_settings || {}),
+          enable_manual_transfer: is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : Boolean(enable_manual_transfer),
+          enable_bank_transfer: is_bank_transfer_active !== undefined ? Boolean(is_bank_transfer_active) : (enable_bank_transfer !== undefined ? Boolean(enable_bank_transfer) : Boolean(enable_manual_transfer)),
+        },
+      } : {}),
       ...(integration ? { integration } : {}),
       ...(faqs !== undefined ? { faqs } : {}),
       ...(interactive_menus !== undefined ? { interactive_menus } : {}),

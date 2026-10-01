@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   MessageSquare,
   Lock,
@@ -277,32 +277,97 @@ export default function TeamChatTab({
   const [selectedBankIdx, setSelectedBankIdx] = useState<number>(0);
 
   // Load tenant payment configuration dynamically from Supabase
-  useEffect(() => {
-    let isMounted = true;
-    const fetchPaymentConfig = async () => {
-      const targetSlug = resolvedTenant || tenantId;
-      if (!targetSlug) return;
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { data } = await supabase
-            .from('tenants')
-            .select('id, slug, name, tier, metadata')
-            .or(`slug.eq.${targetSlug},id.eq.${targetSlug}`)
-            .maybeSingle();
-          if (data && isMounted) {
-            setTenantPaymentData(data);
-          }
+  const fetchPaymentConfig = useCallback(async () => {
+    const targetSlug = resolvedTenant || tenantId;
+    if (!targetSlug) return;
+    try {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data } = await supabase
+          .from('tenants')
+          .select('id, slug, name, tier, metadata')
+          .or(`slug.eq.${targetSlug},id.eq.${targetSlug}`)
+          .maybeSingle();
+        if (data) {
+          setTenantPaymentData(data);
         }
-      } catch (err) {
-        console.warn('[TeamChatTab] Error fetching tenant payment config:', err);
+      }
+    } catch (err) {
+      console.warn('[TeamChatTab] Error fetching tenant payment config:', err);
+    }
+  }, [resolvedTenant, tenantId]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchPaymentConfig();
+  }, [fetchPaymentConfig]);
+
+  // Real-time Supabase postgres_changes + Window Event listeners + SWR polling interval
+  useEffect(() => {
+    const targetSlug = resolvedTenant || tenantId;
+    if (!targetSlug) return;
+
+    // 1. Supabase Realtime channel
+    const supabase = getSupabase();
+    let channel: any = null;
+    if (supabase) {
+      channel = supabase
+        .channel(`tenant-payment-sync-${targetSlug}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'tenants',
+          },
+          (payload: any) => {
+            if (payload?.new && (payload.new.slug === targetSlug || payload.new.id === targetSlug)) {
+              setTenantPaymentData(payload.new);
+            } else {
+              fetchPaymentConfig();
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    // 2. Custom event listener dari tab Settings
+    const handleTenantUpdated = (e: any) => {
+      if (e?.detail?.metadata) {
+        setTenantPaymentData((prev: any) => ({
+          ...(prev || {}),
+          metadata: e.detail.metadata,
+        }));
+      }
+      fetchPaymentConfig();
+    };
+
+    // 3. Window focus & visibility revalidation
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPaymentConfig();
       }
     };
-    fetchPaymentConfig();
+
+    window.addEventListener('boontrack:tenant-updated', handleTenantUpdated);
+    window.addEventListener('tenant-settings-updated', handleTenantUpdated);
+    window.addEventListener('focus', fetchPaymentConfig);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 4. SWR background polling interval (setiap 6 detik)
+    const swrInterval = setInterval(fetchPaymentConfig, 6000);
+
     return () => {
-      isMounted = false;
+      if (supabase && channel) {
+        supabase.removeChannel(channel);
+      }
+      window.removeEventListener('boontrack:tenant-updated', handleTenantUpdated);
+      window.removeEventListener('tenant-settings-updated', handleTenantUpdated);
+      window.removeEventListener('focus', fetchPaymentConfig);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(swrInterval);
     };
-  }, [resolvedTenant, tenantId]);
+  }, [resolvedTenant, tenantId, fetchPaymentConfig]);
 
   const bankAccounts = useMemo(() => {
     return extractTenantBankAccounts(tenantPaymentData);
@@ -332,11 +397,20 @@ export default function TeamChatTab({
     );
   }, [tenantPaymentData]);
 
+  const hasPaymentMethod = Boolean(hasQris || hasNorek);
+
+  // Pastikan selectedBankIdx selalu berada dalam jangkauan
+  useEffect(() => {
+    if (selectedBankIdx >= bankAccounts.length && bankAccounts.length > 0) {
+      setSelectedBankIdx(0);
+    }
+  }, [bankAccounts.length, selectedBankIdx]);
+
   // Otomatis tentukan mode penagihan aktif sesuai konfigurasi toko
   useEffect(() => {
     if (hasNorek && !hasQris) {
       setSelectedBillingTab('bank');
-    } else if (hasQris) {
+    } else if (hasQris && !hasNorek) {
       setSelectedBillingTab('qris');
     }
   }, [hasNorek, hasQris]);
@@ -658,6 +732,79 @@ export default function TeamChatTab({
       setQrisFeedback(`❌ Gagal: ${err.message || 'Error membuat tagihan'}`);
     } finally {
       setIsGeneratingQris(false);
+    }
+  };
+
+  // Quick POS: Kirim Info Rekening Bank Saja ke Chat
+  const handleSendBankOnly = async () => {
+    if (!currentConversation || bankAccounts.length === 0) return;
+    const selectedBank = bankAccounts[selectedBankIdx] || bankAccounts[0];
+    setIsSendingBankInfo(true);
+    setQrisFeedback(null);
+
+    try {
+      const bankText =
+        `🏦 *INFORMASI REKENING RESMI TOKO*\n\n` +
+        `Halo Kak! Berikut nomor rekening resmi untuk pembayaran:\n` +
+        `• *Bank:* ${selectedBank.bank_name}\n` +
+        `• *No. Rekening:* ${selectedBank.account_number}\n` +
+        `• *Atas Nama:* ${selectedBank.account_holder}\n\n` +
+        `Silakan lakukan transfer dan kirimkan konfirmasi bukti transfer di sini. Terima kasih banyak! 🙏`;
+
+      const supabase = getSupabase();
+      if (supabase) {
+        const nowIso = new Date().toISOString();
+        await supabase.from('messages').insert({
+          conversation_id: currentConversation.id,
+          tenant_id: tenantId || resolvedTenant,
+          tenant_slug: resolvedTenant,
+          sender_type: 'agent',
+          sender: 'agent',
+          message_body: bankText,
+          text: bankText,
+          channel: 'whatsapp',
+          user_name: activeCsUser?.name ? `${activeCsUser.name} (CS)` : 'Anda (Quick POS)',
+          user_phone: currentConversation.customerPhone,
+          payload: {
+            is_bank_transfer: true,
+            bank_data: {
+              bankName: selectedBank.bank_name,
+              accountNumber: selectedBank.account_number,
+              accountHolder: selectedBank.account_holder,
+            },
+          },
+          created_at: nowIso,
+        });
+
+        await supabase.from('conversations').update({
+          last_message: `Info Rekening: ${selectedBank.bank_name} ${selectedBank.account_number}`,
+          last_message_at: nowIso,
+        }).eq('id', currentConversation.id);
+
+        try {
+          const { data: conn } = await supabase
+            .from('whatsapp_connections')
+            .select('instance_name, credential_ref')
+            .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
+            .eq('status', 'open')
+            .maybeSingle();
+
+          if (conn?.instance_name) {
+            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
+            await sendEvolutionTextMessage(conn.instance_name, currentConversation.customerPhone, bankText, conn.credential_ref);
+          }
+        } catch (waErr) {
+          console.warn('[Quick POS] Outbound WA note:', waErr);
+        }
+      }
+
+      await inbox.refreshConversations();
+      setQrisFeedback(`✅ Rekening ${selectedBank.bank_name} (${selectedBank.account_number}) terkirim!`);
+      setTimeout(() => setQrisFeedback(null), 4000);
+    } catch (err: any) {
+      setQrisFeedback(`❌ Gagal: ${err.message || 'Error mengirim rekening'}`);
+    } finally {
+      setIsSendingBankInfo(false);
     }
   };
 
@@ -2042,7 +2189,7 @@ export default function TeamChatTab({
                 </div>
 
                 {/* Kondisi 1: BELUM ADA METODE PEMBAYARAN */}
-                {!hasQris && !hasNorek ? (
+                {!hasPaymentMethod ? (
                   <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-xl space-y-2 text-left">
                     <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900">
                       <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -2070,7 +2217,7 @@ export default function TeamChatTab({
                         ? 'Pilih metode pembayaran lalu kirim rincian tagihan resmi langsung ke chat pelanggan.'
                         : hasQris
                         ? 'Kirim invoice QRIS dinamis langsung ke chat pelanggan agar bisa langsung di-scan.'
-                        : 'Kirim rincian rekening bank dan nominal unik langsung ke chat pelanggan.'}
+                        : 'Kirim rincian rekening bank atau tagihan transfer resmi langsung ke chat pelanggan.'}
                     </p>
 
                     {/* Kondisi 2: KEDUANYA AKTIF -> Tab Switcher */}
@@ -2106,26 +2253,34 @@ export default function TeamChatTab({
                     <div className="space-y-2 pt-0.5">
                       {/* Pilihan Rekening Tujuan (Jika mode Transfer Bank aktif) */}
                       {((selectedBillingTab === 'bank' && hasNorek) || (!hasQris && hasNorek)) && (
-                        <div>
-                          <label className="text-[10px] font-bold text-slate-700 block mb-1">
-                            Pilih Rekening Tujuan
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-700 block">
+                            Pilihan Rekening Bank Toko
                           </label>
-                          {bankAccounts.length > 1 ? (
-                            <select
-                              value={selectedBankIdx}
-                              onChange={(e) => setSelectedBankIdx(Number(e.target.value))}
-                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:bg-white focus:outline-none focus:border-blue-600"
-                            >
-                              {bankAccounts.map((b, idx) => (
-                                <option key={idx} value={idx}>
-                                  {b.bank_name} - {b.account_number} (a/n {b.account_holder})
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <div className="p-2 bg-slate-50 rounded-xl border border-slate-200 text-[10px] text-slate-700">
-                              <span className="font-bold block text-blue-700">{bankAccounts[0]?.bank_name}</span>
-                              <span className="font-mono font-bold text-slate-900">{bankAccounts[0]?.account_number}</span> &bull; a/n {bankAccounts[0]?.account_holder}
+                          <select
+                            value={selectedBankIdx}
+                            onChange={(e) => setSelectedBankIdx(Number(e.target.value))}
+                            className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
+                          >
+                            {bankAccounts.map((b, idx) => (
+                              <option key={idx} value={idx}>
+                                {b.bank_name} - {b.account_holder} ({b.account_number})
+                              </option>
+                            ))}
+                          </select>
+                          {bankAccounts[selectedBankIdx] && (
+                            <div className="p-2.5 bg-blue-50/70 border border-blue-200/70 rounded-xl text-[11px] flex items-center justify-between">
+                              <div>
+                                <span className="font-extrabold text-blue-950 block">
+                                  {bankAccounts[selectedBankIdx].bank_name} - {bankAccounts[selectedBankIdx].account_holder}
+                                </span>
+                                <span className="font-mono font-bold text-slate-700 text-xs">
+                                  {bankAccounts[selectedBankIdx].account_number}
+                                </span>
+                              </div>
+                              <span className="text-[9px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full border border-blue-200">
+                                Rekening Aktif
+                              </span>
                             </div>
                           )}
                         </div>
@@ -2169,12 +2324,12 @@ export default function TeamChatTab({
                           type="button"
                           onClick={handleGenerateQris}
                           disabled={isGeneratingQris || !qrisAmount}
-                          className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                          className="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
                         >
                           {isGeneratingQris ? (
                             <>
                               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              <span>Membuat QRIS...</span>
+                              <span>Membuat QRIS Dinamis...</span>
                             </>
                           ) : (
                             <>
@@ -2184,24 +2339,36 @@ export default function TeamChatTab({
                           )}
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={handleSendBankTransferInfo}
-                          disabled={isSendingBankInfo || !qrisAmount}
-                          className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-                        >
-                          {isSendingBankInfo ? (
-                            <>
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              <span>Mengirim Info Rekening...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Building2 className="w-3.5 h-3.5" />
-                              <span>Kirim Rekening Bank ke Chat</span>
-                            </>
-                          )}
-                        </button>
+                        <div className="space-y-2">
+                          <button
+                            type="button"
+                            onClick={handleSendBankTransferInfo}
+                            disabled={isSendingBankInfo || !qrisAmount}
+                            className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                          >
+                            {isSendingBankInfo ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                <span>Memproses Tagihan...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Building2 className="w-3.5 h-3.5" />
+                                <span>Generate Tagihan Transfer</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleSendBankOnly}
+                            disabled={isSendingBankInfo}
+                            className="w-full py-2 px-3 bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                          >
+                            <Send className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Kirim Rekening Bank ke Chat</span>
+                          </button>
+                        </div>
                       )}
 
                       {/* Ringkasan & Aksi Cepat Tandai Lunas Tagihan Terakhir (QRIS atau Bank) */}

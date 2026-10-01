@@ -47,6 +47,10 @@ export const BANK_DROPDOWN_OPTIONS = [
   'BNI',
   'BSI',
   'CIMB Niaga',
+  'Permata',
+  'Danamon',
+  'Bank Jago',
+  'Seabank',
   'Lainnya',
 ] as const;
 
@@ -59,6 +63,10 @@ export function matchBankOption(name: string): { option: string; custom: string 
   if (upper.includes('BNI') || upper.includes('NEGARA INDONESIA')) return { option: 'BNI', custom: '' };
   if (upper.includes('BSI') || upper.includes('SYARIAH INDONESIA')) return { option: 'BSI', custom: '' };
   if (upper.includes('CIMB')) return { option: 'CIMB Niaga', custom: '' };
+  if (upper.includes('PERMATA')) return { option: 'Permata', custom: '' };
+  if (upper.includes('DANAMON')) return { option: 'Danamon', custom: '' };
+  if (upper.includes('JAGO')) return { option: 'Bank Jago', custom: '' };
+  if (upper.includes('SEABANK') || upper.includes('SEA BANK')) return { option: 'Seabank', custom: '' };
   return { option: 'Lainnya', custom: name.trim() };
 }
 
@@ -136,6 +144,7 @@ export default function SettingsTab({
   const [accountNumber, setAccountNumber] = useState<string>('');
   const [accountHolder, setAccountHolder] = useState<string>('');
   const [additionalBankAccounts, setAdditionalBankAccounts] = useState<BankAccount[]>([]);
+  const [isBankTransferActive, setIsBankTransferActive] = useState<boolean>(true);
   const [isSavingBanks, setIsSavingBanks] = useState(false);
   const [bankSaveMsg, setBankSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedBankIdx, setCopiedBankIdx] = useState<number | null>(null);
@@ -258,6 +267,19 @@ export default function SettingsTab({
               setAccountNumber(primaryBank.account_number || '');
               setAccountHolder(primaryBank.account_holder || '');
 
+              const activeFlag = primaryBank.is_active !== undefined
+                ? Boolean(primaryBank.is_active)
+                : (primaryBank as any).enabled !== undefined
+                ? Boolean((primaryBank as any).enabled)
+                : meta.is_bank_transfer_active !== undefined
+                ? Boolean(meta.is_bank_transfer_active)
+                : meta.payment_config?.enable_manual_transfer !== undefined
+                ? Boolean(meta.payment_config.enable_manual_transfer)
+                : meta.payment_config?.enable_bank_transfer !== undefined
+                ? Boolean(meta.payment_config.enable_bank_transfer)
+                : true;
+              setIsBankTransferActive(activeFlag);
+
               if (bankAccountsList.length > 1) {
                 setAdditionalBankAccounts(bankAccountsList.slice(1));
               } else {
@@ -268,6 +290,7 @@ export default function SettingsTab({
               setCustomBankName('');
               setAccountNumber('');
               setAccountHolder('');
+              setIsBankTransferActive(meta.is_bank_transfer_active !== false);
               setAdditionalBankAccounts([]);
             }
           }
@@ -313,7 +336,8 @@ export default function SettingsTab({
       bank_name: effBank,
       account_number: cleanAcc,
       account_holder: cleanHolder || trimmed,
-      is_active: true,
+      is_active: isBankTransferActive,
+      enabled: isBankTransferActive,
     } : null;
 
     const fullBankList: BankAccount[] = [
@@ -321,6 +345,7 @@ export default function SettingsTab({
       ...additionalBankAccounts.filter(b => b.account_number.trim() !== '')
     ];
 
+    let savedMetadata: any = null;
     try {
       // 1. Direct Persist ke database Supabase (tenants table & metadata)
       try {
@@ -338,6 +363,17 @@ export default function SettingsTab({
               bank_settings: bankTransferData,
               bank_transfer: bankTransferData,
               bank_accounts: fullBankList,
+              is_bank_transfer_active: isBankTransferActive,
+              payment_config: {
+                ...(tenantRow.metadata?.payment_config || {}),
+                enable_manual_transfer: isBankTransferActive,
+                enable_bank_transfer: isBankTransferActive,
+              },
+              payment_settings: {
+                ...(tenantRow.metadata?.payment_settings || {}),
+                enable_manual_transfer: isBankTransferActive,
+                enable_bank_transfer: isBankTransferActive,
+              },
               ...(cleanAcc ? {
                 bank_name: effBank,
                 bank_account: cleanAcc,
@@ -382,6 +418,7 @@ export default function SettingsTab({
                 },
               } : {}),
             };
+            savedMetadata = updatedMeta;
 
             const { error: sbUpdateErr } = await supabase
               .from('tenants')
@@ -418,6 +455,9 @@ export default function SettingsTab({
           bank_name: cleanAcc ? effBank : undefined,
           bank_account: cleanAcc || undefined,
           bank_holder: cleanHolder || undefined,
+          is_bank_transfer_active: isBankTransferActive,
+          enable_manual_transfer: isBankTransferActive,
+          enable_bank_transfer: isBankTransferActive,
           qris_image_url: storeQrisUrl || undefined,
           qris_url: storeQrisUrl || undefined,
           qris_image: storeQrisUrl || undefined,
@@ -437,6 +477,15 @@ export default function SettingsTab({
       if (!settingsRes.ok) {
         const errData = await settingsRes.json().catch(() => ({}));
         throw new Error(errData.error || errData.message || 'Gagal menyimpan profil ke database.');
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('boontrack:tenant-updated', {
+          detail: { slug: tenantSlug, metadata: savedMetadata }
+        }));
+        window.dispatchEvent(new CustomEvent('tenant-settings-updated', {
+          detail: { slug: tenantSlug, metadata: savedMetadata }
+        }));
       }
 
       if (onClose) onClose();
@@ -835,6 +884,27 @@ export default function SettingsTab({
           Konfigurasi rekening bank resmi toko Anda. Informasi ini akan ditampilkan kepada pembeli pada pilihan metode pembayaran <strong>Transfer Bank Manual</strong> di halaman checkout.
         </p>
 
+        {/* Toggle / Switch: Aktifkan Pembayaran Transfer Bank Manual */}
+        <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs">
+          <div className="space-y-0.5 pr-3">
+            <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 cursor-pointer">
+              <span>Aktifkan Pembayaran Transfer Bank Manual</span>
+            </label>
+            <p className="text-[10px] text-slate-500">
+              Tampilkan opsi metode Transfer Bank Manual di halaman checkout single page
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={isBankTransferActive}
+              onChange={(e) => setIsBankTransferActive(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600" />
+          </label>
+        </div>
+
         {/* Feedback message */}
         {bankSaveMsg && (
           <div className={`flex items-center gap-2 text-[11px] font-semibold px-3 py-2 rounded-lg ${
@@ -1081,7 +1151,8 @@ export default function SettingsTab({
                   bank_name: effBank,
                   account_number: cleanAcc,
                   account_holder: cleanHolder || storeDisplayName.trim(),
-                  is_active: true,
+                  is_active: isBankTransferActive,
+                  enabled: isBankTransferActive,
                 } : null;
 
                 const fullAccounts: BankAccount[] = [
@@ -1094,6 +1165,17 @@ export default function SettingsTab({
                   bank_settings: bankTransferData,
                   bank_transfer: bankTransferData,
                   bank_accounts: fullAccounts,
+                  is_bank_transfer_active: isBankTransferActive,
+                  payment_config: {
+                    ...(tenantRow.metadata?.payment_config || {}),
+                    enable_manual_transfer: isBankTransferActive,
+                    enable_bank_transfer: isBankTransferActive,
+                  },
+                  payment_settings: {
+                    ...(tenantRow.metadata?.payment_settings || {}),
+                    enable_manual_transfer: isBankTransferActive,
+                    enable_bank_transfer: isBankTransferActive,
+                  },
                   ...(cleanAcc ? {
                     bank_name: effBank,
                     bank_account: cleanAcc,
@@ -1118,8 +1200,20 @@ export default function SettingsTab({
                     bank_name: effBank,
                     bank_account: cleanAcc,
                     bank_holder: cleanHolder || storeDisplayName.trim(),
+                    is_bank_transfer_active: isBankTransferActive,
+                    enable_manual_transfer: isBankTransferActive,
+                    enable_bank_transfer: isBankTransferActive,
                   }),
                 }).catch(() => {});
+
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('boontrack:tenant-updated', {
+                    detail: { slug: tenantSlug, metadata: updatedMeta }
+                  }));
+                  window.dispatchEvent(new CustomEvent('tenant-settings-updated', {
+                    detail: { slug: tenantSlug, metadata: updatedMeta }
+                  }));
+                }
 
                 setBankSaveMsg({
                   type: 'success',

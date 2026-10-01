@@ -34,7 +34,8 @@ import {
   Key,
   Download,
   ShoppingBag,
-  HelpCircle
+  HelpCircle,
+  Copy,
 } from 'lucide-react';
 import { syncAttributionSession } from '@/lib/attribution';
 import { 
@@ -75,7 +76,7 @@ import {
   normalizeBriefingUrl
 } from '@/lib/product-catalog';
 import { getSupabase } from '@/lib/supabaseClient';
-import { hasTenantBankAccounts } from '@/lib/bank-accounts';
+import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import StickyBuyButton from '@/components/storefront/StickyBuyButton';
 
 // Nomor Resmi WABA Holding BoonTrack: 6285181830080 (Khusus Platform Concierge / Enterprise)
@@ -541,11 +542,25 @@ function SingleProductContent() {
     tenantData?.metadata?.payment_settings?.enable_qris !== false &&
     tenantData?.is_qris_active !== false;
 
+  const tenantBankAccounts: TenantBankAccount[] = useMemo(() => {
+    return extractTenantBankAccounts(tenantData);
+  }, [tenantData]);
+
+  const [copiedBankNumber, setCopiedBankNumber] = useState<string | null>(null);
+
+  const isBankTransferConfigActive =
+    tenantData?.metadata?.is_bank_transfer_active !== false &&
+    tenantData?.metadata?.bank_settings?.is_active !== false &&
+    tenantData?.metadata?.bank_transfer?.is_active !== false;
+
   const tenantManualActive = Boolean(
-    config.enable_manual_transfer ||
-    tenantData?.metadata?.payment_config?.enable_manual_transfer ||
-    tenantData?.metadata?.payment_settings?.enable_manual_transfer ||
-    hasTenantBankAccounts(tenantData)
+    isBankTransferConfigActive && (
+      config.enable_manual_transfer ||
+      tenantData?.metadata?.payment_config?.enable_manual_transfer ||
+      tenantData?.metadata?.payment_settings?.enable_manual_transfer ||
+      tenantBankAccounts.length > 0 ||
+      hasTenantBankAccounts(tenantData)
+    )
   );
 
   const allowQris = Boolean((config.enable_qris ?? true) && tenantQrisActive && (tenantData ? hasQris : true));
@@ -1827,36 +1842,124 @@ function SingleProductContent() {
 
         {/* Transfer Manual Option (Jika Diaktifkan) */}
         {allowManual && (
-          <label
-            onClick={() => { setPaymentMethod('manual_transfer'); triggerAddPaymentInfo('manual_transfer'); }}
-            className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition ${
-              paymentMethod === 'manual_transfer'
-                ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/30'
-                : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100'
-            }`}
-          >
-            <input
-              type="radio"
-              name="payment_method"
-              checked={paymentMethod === 'manual_transfer'}
-              onChange={() => { setPaymentMethod('manual_transfer'); triggerAddPaymentInfo('manual_transfer'); }}
-              className="mt-1 text-blue-600 focus:ring-blue-500"
-            />
-            <div className="flex-1">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                  <Building2 className="w-4 h-4 text-blue-600" />
-                  <span>Transfer Bank Manual</span>
+          <div className="space-y-2.5">
+            <label
+              onClick={() => { setPaymentMethod('manual_transfer'); triggerAddPaymentInfo('manual_transfer'); }}
+              className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition ${
+                paymentMethod === 'manual_transfer'
+                  ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-500/30'
+                  : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100'
+              }`}
+            >
+              <input
+                type="radio"
+                name="payment_method"
+                checked={paymentMethod === 'manual_transfer'}
+                onChange={() => { setPaymentMethod('manual_transfer'); triggerAddPaymentInfo('manual_transfer'); }}
+                className="mt-1 text-blue-600 focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                    <Building2 className="w-4 h-4 text-blue-600" />
+                    <span>Transfer Bank Manual</span>
+                  </div>
+                  <span className="bg-blue-100 text-blue-800 font-semibold text-[10px] px-2 py-0.5 rounded-md">
+                    Bebas Biaya Admin + Kode Unik
+                  </span>
                 </div>
-                <span className="bg-blue-100 text-blue-800 font-semibold text-[10px] px-2 py-0.5 rounded-md">
-                  Bebas Biaya Admin + Kode Unik
-                </span>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Transfer langsung ke rekening bank seller tanpa biaya admin. Dilengkapi 3 digit kode unik acak verifikasi.
+                </p>
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Transfer langsung ke rekening bank seller tanpa biaya admin. Dilengkapi 3 digit kode unik acak verifikasi.
-              </p>
-            </div>
-          </label>
+            </label>
+
+            {/* Rincian Rekening Bank Toko saat Transfer Manual Dipilih */}
+            {paymentMethod === 'manual_transfer' && (
+              <div className="p-3.5 bg-gradient-to-br from-blue-50/90 via-slate-50 to-white rounded-2xl border border-blue-200 shadow-xs space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
+                    <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>Rekening Tujuan Pembayaran</span>
+                  </div>
+                  <span className="text-[10px] text-blue-700 bg-blue-100/80 font-bold px-2 py-0.5 rounded-full">
+                    Transfer Pas Nominal
+                  </span>
+                </div>
+
+                {tenantBankAccounts.length > 0 ? (
+                  <div className="space-y-2">
+                    {tenantBankAccounts.map((acc, idx) => {
+                      const isCopied = copiedBankNumber === acc.account_number;
+                      return (
+                        <div
+                          key={idx}
+                          className="p-3 bg-white rounded-xl border border-blue-100 shadow-2xs space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-slate-900 tracking-wide uppercase flex items-center gap-1.5">
+                              <span className="inline-block w-2 h-2 rounded-full bg-blue-600" />
+                              {acc.bank_name}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              a.n. <strong className="text-slate-700">{acc.account_holder}</strong>
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                            <span className="font-mono text-sm sm:text-base font-extrabold text-blue-950 tracking-wider">
+                              {acc.account_number}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(acc.account_number);
+                                setCopiedBankNumber(acc.account_number);
+                                setTimeout(() => setCopiedBankNumber(null), 2000);
+                              }}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                                isCopied
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                              }`}
+                            >
+                              {isCopied ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Tersalin!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>Salin Rekening</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="p-2.5 bg-blue-50/60 rounded-xl border border-blue-100/80 text-[10px] text-blue-900 space-y-0.5">
+                      <p className="font-bold flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span>Pastikan transfer sesuai <strong>Total Pembayaran</strong>:</span>
+                      </p>
+                      <p className="text-slate-600 pl-4.5">
+                        Sertakan kode unik untuk verifikasi otomatis/cepat tanpa konfirmasi berbelit.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 text-slate-600 text-xs">
+                    <p className="font-medium">
+                      Nomor rekening tujuan transfer resmi toko akan ditampilkan lengkap pada invoice setelah tombol checkout ditekan.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
