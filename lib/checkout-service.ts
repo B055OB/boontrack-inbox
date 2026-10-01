@@ -18,6 +18,7 @@ export interface CreateOrderPayload {
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
+  reference_token?: string;
   affiliateCode?: string;
   managerId?: string;
   ctwa_clid?: string;
@@ -327,6 +328,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       city: resolvedCity,
       shipping_address: payload.shippingAddress || null,
       source_url: resolvedSourceUrl,
+      reference_token: payload.reference_token || null,
     },
     created_at: orderData.created_at,
     updated_at: orderData.created_at,
@@ -353,6 +355,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
       customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
       status: "PENDING",
+      metadata: {
+        tracking_context: resolvedTrackingContext,
+        city: resolvedCity,
+        shipping_address: payload.shippingAddress || null,
+        source_url: resolvedSourceUrl,
+        reference_token: payload.reference_token || null,
+      },
       created_at: orderData.created_at,
       updated_at: orderData.created_at,
     };
@@ -605,6 +614,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     qrString,
     qr_string: qrString,
     qrCodeUrl,
-    invoiceUrl
+    invoiceUrl,
+    referenceToken: payload.reference_token || null,
   };
 }
