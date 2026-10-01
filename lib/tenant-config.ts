@@ -782,6 +782,6 @@ export function getPlatformWhatsApp(): string {
     if (process.env.NEXT_PUBLIC_SUPPORT_PHONE) return process.env.NEXT_PUBLIC_SUPPORT_PHONE.replace(/\D/g, '');
     if (process.env.NEXT_PUBLIC_META_BOT_NUMBER) return process.env.NEXT_PUBLIC_META_BOT_NUMBER.replace(/\D/g, '');
   }
-  return getTenantWhatsApp('growth') || '6281237450222';
+  return getTenantWhatsApp('growth') || '6281977655099';
 }
 

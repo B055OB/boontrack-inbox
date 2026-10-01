@@ -932,7 +932,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
 
             {/* Konten Metode Pembayaran */}
             {(() => {
-              const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222');
+              const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281977655099');
               const isManual = paymentData.paymentMethod === 'manual_transfer';
               const draftConfirmMsg = `Halo Admin Toko, saya ingin konfirmasi pembayaran untuk:\n\n` +
                 `Order ID: ${paymentData.orderId}\n` +
@@ -1244,7 +1244,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
 
                 {/* Tombol Sekunder Fallback WhatsApp */}
                 <a
-                  href={directWaUrl || `https://wa.me/${formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222')}?text=${encodeURIComponent(
+                  href={directWaUrl || `https://wa.me/${formatIndonesianWhatsAppNumber(tenantPhone || '6281977655099')}?text=${encodeURIComponent(
                     `Halo Admin Toko, saya ingin konfirmasi pembayaran untuk:\n\nOrder ID: ${paymentData.orderId}\nProduk: ${product.title}\nNama: ${customerName || '-'}\nTotal Nominal: Rp ${totalAmount.toLocaleString('id-ID')}\nMetode: ${paymentData.paymentMethod === 'manual_transfer' ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n📸 Saya lampirkan foto/screenshot bukti transfer di chat ini ya Kak agar langsung dicek dan diverifikasi oleh sistem. Terima kasih! 🙏`
                   )}`}
                   target="_blank"

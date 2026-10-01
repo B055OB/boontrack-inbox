@@ -182,7 +182,7 @@ export default function WhatsAppWabaConfig({
           status: 'SUCCESS',
           message: 'Koneksi Meta Graph API Berhasil! Kredensial WABA terverifikasi valid.',
           verifiedName: json.verified_name || displayName.toUpperCase(),
-          displayPhone: json.display_phone_number || '+62 812-3745-0222',
+          displayPhone: json.display_phone_number || '+62 819-7765-5099',
           qualityRating: json.quality_rating || 'GREEN (HIGH QUALITY)',
         });
       } else {

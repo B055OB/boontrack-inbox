@@ -73,7 +73,7 @@ INSERT INTO public.whatsapp_connections (
     'boontrack-gateway',
     'SHARED',
     'CONNECTED',
-    '6281237450222'
+    '6281977655099'
 )
 ON CONFLICT (tenant_id, provider) DO UPDATE SET
     instance_name = EXCLUDED.instance_name,

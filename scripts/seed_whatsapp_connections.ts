@@ -12,7 +12,7 @@ export async function seedWhatsAppConnections() {
     instance_name: 'boontrack-gateway',
     mode: 'SHARED',
     status: 'CONNECTED',
-    phone_number: '6281237450222',
+    phone_number: '6281977655099',
   }, { onConflict: 'tenant_id,provider' });
 
   if (error) {

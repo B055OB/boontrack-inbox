@@ -42,7 +42,7 @@ export default function ContactPage() {
 
           <div className="flex items-center gap-3 text-xs">
             <a
-              href="https://wa.me/6281237450222"
+              href="https://wa.me/6281977655099"
               target="_blank"
               rel="noopener noreferrer"
               className="hidden sm:inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-1.5 rounded-lg transition shadow-sm"
@@ -125,7 +125,7 @@ export default function ContactPage() {
             <div className="space-y-3 text-xs">
               {/* WhatsApp */}
               <a
-                href="https://wa.me/6281237450222"
+                href="https://wa.me/6281977655099"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 flex items-center justify-between group transition"
@@ -136,7 +136,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <span className="font-bold text-slate-900 block">WhatsApp Customer Care</span>
-                    <span className="text-emerald-700 font-semibold font-mono text-[11px]">+62 812-3745-0222</span>
+                    <span className="text-emerald-700 font-semibold font-mono text-[11px]">+62 819-7765-5099</span>
                   </div>
                 </div>
                 <ExternalLink className="w-4 h-4 text-emerald-600 group-hover:translate-x-0.5 transition" />
