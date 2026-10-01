@@ -44,26 +44,38 @@ export async function POST(
       notes = String(formData.get('notes') || '');
 
       if (file && file.size > 0) {
-        // Upload ke Supabase Storage bucket 'payment-proofs' atau fallback ke data URI
         const fileExt = file.name.split('.').pop() || 'png';
         const fileName = `proof_${orderId}_${Date.now()}.${fileExt}`;
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from('payment-proofs')
-          .upload(fileName, buffer, {
-            contentType: file.type || 'image/jpeg',
-            upsert: true,
-          });
+        // Upload ke Supabase Storage bucket 'payment-receipts' / 'payment-proofs' / 'proofs'
+        const candidateBuckets = ['payment-receipts', 'payment-proofs', 'proofs'];
+        for (const bName of candidateBuckets) {
+          try {
+            const { data: uploadData, error: uploadErr } = await supabase.storage
+              .from(bName)
+              .upload(fileName, buffer, {
+                contentType: file.type || 'image/jpeg',
+                upsert: true,
+              });
 
-        if (!uploadErr && uploadData?.path) {
-          const { data: publicUrlData } = supabase.storage
-            .from('payment-proofs')
-            .getPublicUrl(uploadData.path);
-          proofUrl = publicUrlData?.publicUrl || '';
-        } else {
-          // Jika bucket belum dibuat di storage, fallback ke base64 data URI aman
+            if (!uploadErr && uploadData?.path) {
+              const { data: publicUrlData } = supabase.storage
+                .from(bName)
+                .getPublicUrl(uploadData.path);
+              if (publicUrlData?.publicUrl) {
+                proofUrl = publicUrlData.publicUrl;
+                break;
+              }
+            }
+          } catch (bErr) {
+            console.warn(`[Payment Proof API] Upload to ${bName} failed:`, bErr);
+          }
+        }
+
+        if (!proofUrl) {
+          // Jika storage belum siap, fallback ke base64 data URI aman
           const base64Str = buffer.toString('base64');
           proofUrl = `data:${file.type || 'image/jpeg'};base64,${base64Str}`;
         }
@@ -80,19 +92,31 @@ export async function POST(
           const buffer = Buffer.from(base64Content, 'base64');
           const fileName = `proof_${orderId}_${Date.now()}.png`;
 
-          const { data: uploadData, error: uploadErr } = await supabase.storage
-            .from('payment-proofs')
-            .upload(fileName, buffer, {
-              contentType: 'image/png',
-              upsert: true,
-            });
+          const candidateBuckets = ['payment-receipts', 'payment-proofs', 'proofs'];
+          for (const bName of candidateBuckets) {
+            try {
+              const { data: uploadData, error: uploadErr } = await supabase.storage
+                .from(bName)
+                .upload(fileName, buffer, {
+                  contentType: 'image/png',
+                  upsert: true,
+                });
 
-          if (!uploadErr && uploadData?.path) {
-            const { data: publicUrlData } = supabase.storage
-              .from('payment-proofs')
-              .getPublicUrl(uploadData.path);
-            proofUrl = publicUrlData?.publicUrl || '';
-          } else {
+              if (!uploadErr && uploadData?.path) {
+                const { data: publicUrlData } = supabase.storage
+                  .from(bName)
+                  .getPublicUrl(uploadData.path);
+                if (publicUrlData?.publicUrl) {
+                  proofUrl = publicUrlData.publicUrl;
+                  break;
+                }
+              }
+            } catch (err) {
+              // try next
+            }
+          }
+
+          if (!proofUrl) {
             proofUrl = body.proof_base64;
           }
         } catch (bErr) {

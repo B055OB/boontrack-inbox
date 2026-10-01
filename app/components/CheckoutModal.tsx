@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar, Zap } from "lucide-react";
+import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar, Zap, Upload, Image as ImageIcon, RefreshCw, Clock } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, getClientTrackingContext, trackLead, trackInitiateCheckout, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
@@ -88,6 +88,54 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [bankAccounts, setBankAccounts] = useState<TenantBankAccount[]>([]);
   const [tenantStaticQris, setTenantStaticQris] = useState<string>("");
   const [tenantQrisImageUrl, setTenantQrisImageUrl] = useState<string>("");
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const [proofUploadFeedback, setProofUploadFeedback] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setProofFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProofPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUploadProof = async (targetOrderId: string) => {
+    if (!proofFile && !proofPreview) return;
+    setIsUploadingProof(true);
+    setProofUploadFeedback(null);
+    try {
+      const formData = new FormData();
+      if (proofFile) {
+        formData.append('file', proofFile);
+      } else if (proofPreview) {
+        formData.append('proof_base64', proofPreview);
+      }
+      formData.append('notes', 'Bukti transfer diunggah via modal checkout');
+
+      const res = await fetch(`/api/orders/${encodeURIComponent(targetOrderId)}/payment-proof`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal mengunggah bukti transfer.');
+      }
+
+      setOrderStatus('WAITING_CONFIRMATION');
+      setProofUploadFeedback('✅ Bukti transfer berhasil dikirim! Menunggu verifikasi penjual.');
+    } catch (err: any) {
+      setProofUploadFeedback(`❌ ${err.message || 'Gagal mengirim bukti transfer.'}`);
+    } finally {
+      setIsUploadingProof(false);
+    }
+  };
 
   // Resolver Context Fulfillment Digital vs Fisik vs Food vs Booking/Service
   const rawProductType = (product?.product_type || product?.type || (product?.category === 'fisik' || product?.category === 'physical' ? 'physical' : 'digital')).toLowerCase();
@@ -783,18 +831,166 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 </a>
               )}
             </div>
+          ) : orderStatus === 'WAITING_CONFIRMATION' ? (
+            /* Tampilan Menunggu Verifikasi Penjual */
+            <div className="bg-gradient-to-b from-amber-950/60 via-slate-900 to-slate-900 border-2 border-amber-500/70 rounded-3xl p-5 space-y-3.5 shadow-xl shadow-amber-950/40 text-xs text-left animate-in fade-in duration-300">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/40">
+                  <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-black text-amber-400 bg-amber-950/90 px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-amber-700/60 inline-block">
+                    Bukti Transfer Terkirim
+                  </span>
+                  <h4 className="text-sm font-bold text-white">
+                    Menunggu Verifikasi Mutasi Penjual
+                  </h4>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Bukti pembayaran Anda telah berhasil kami kirimkan ke admin toko. Mutasi rekening sedang diverifikasi. Notifikasi verifikasi otomatis dikirim ke WhatsApp Anda.
+              </p>
+              {proofPreview && (
+                <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-400 block">Lampiran Bukti Transfer:</span>
+                  <img src={proofPreview} alt="Bukti Transfer" className="w-full h-auto max-h-36 object-cover rounded-lg border border-slate-700" />
+                </div>
+              )}
+              {paymentData.invoiceUrl && (
+                <a
+                  href={paymentData.invoiceUrl}
+                  className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition"
+                >
+                  <span>Buka Lembar Invoice Resmi #{paymentData.orderId}</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                </a>
+              )}
+            </div>
           ) : (
-          /* Tampilan Menunggu Pembayaran */
-          <div className="text-center space-y-4 py-4">
+          /* Tampilan Menunggu Pembayaran (Transfer Bank Manual atau QRIS) */
+          <div className="text-center space-y-4 py-3">
             <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto border border-emerald-500/30">
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mb-1 border border-slate-700 bg-slate-800 text-slate-300">
+                {paymentData.paymentMethod === 'manual_transfer' ? (
+                  <>
+                    <Building2 className="w-3 h-3 text-blue-400" />
+                    <span>Transfer Bank Manual</span>
+                  </>
+                ) : (
+                  <>
+                    <QrCode className="w-3 h-3 text-emerald-400" />
+                    <span>QRIS Dinamis</span>
+                  </>
+                )}
+              </div>
               <h4 className="font-bold text-white text-base">Pesanan Berhasil Dibuat!</h4>
               <p className="text-xs text-slate-400 font-mono mt-0.5">Order ID: {paymentData.orderId}</p>
             </div>
 
-            {paymentData.paymentMethod === 'qris' && (() => {
+            {/* Konten Metode Pembayaran */}
+            {(() => {
+              const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222');
+              const isManual = paymentData.paymentMethod === 'manual_transfer';
+              const draftConfirmMsg = `Halo Admin Toko, saya ingin konfirmasi pembayaran untuk:\n\n` +
+                `Order ID: ${paymentData.orderId}\n` +
+                `Produk: ${product.title}\n` +
+                `Nama: ${customerName || '-'}\n` +
+                `Total Nominal: Rp ${totalAmount.toLocaleString('id-ID')}\n` +
+                `Metode: ${isManual ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n` +
+                `📸 Saya lampirkan foto/screenshot bukti transfer di chat ini ya Kak agar langsung dicek dan diverifikasi oleh sistem. Terima kasih! 🙏`;
+
+              const waConfirmUrl = directWaUrl || `https://wa.me/${cleanWa}?text=${encodeURIComponent(draftConfirmMsg)}`;
+
+              if (isManual) {
+                return (
+                  <div className="space-y-3 text-left">
+                    {/* Rekening Tujuan Box */}
+                    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                          <Building2 className="w-4 h-4 text-blue-400" />
+                          <span>Rekening Tujuan Pembayaran</span>
+                        </span>
+                        <span className="text-[10px] text-blue-400 font-mono bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/40">
+                          Bebas Biaya Admin
+                        </span>
+                      </div>
+
+                      {/* Total Nominal Transfer dengan Salin Nominal 1-Klik */}
+                      <div className="flex items-center justify-between p-3 bg-slate-900/90 rounded-xl border border-slate-800">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-medium">Total Nominal Transfer:</span>
+                          <span className="text-base font-black text-emerald-400 font-mono">
+                            Rp {totalAmount.toLocaleString('id-ID')}
+                          </span>
+                          {currentUniqueCode > 0 && (
+                            <span className="text-[10px] text-blue-400 block font-mono">
+                              (Termasuk 3 digit kode unik: +{currentUniqueCode})
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(String(totalAmount), 'amount_top')}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-800/60 text-emerald-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                        >
+                          {copiedField === 'amount_top' || copiedField === 'amount' ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-emerald-400">Nominal Tersalin</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Salin Nominal</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {bankAccounts.length > 0 ? (
+                        <div className="space-y-2">
+                          {bankAccounts.map((acc, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-900 rounded-xl border border-slate-800">
+                              <div>
+                                <span className="text-[10px] font-bold text-blue-400 block">{acc.bank_name}</span>
+                                <span className="font-mono font-bold text-white text-xs">{acc.account_number}</span>
+                                <span className="text-[10px] text-slate-400 block">a/n {acc.account_holder}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(acc.account_number, `bank_${idx}`)}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition flex items-center gap-1 cursor-pointer shrink-0"
+                              >
+                                {copiedField === `bank_${idx}` ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span className="text-emerald-400">Rekening Tersalin</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>Salin Rekening</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-[11px] text-slate-300">
+                          Rekening transfer toko sedang disiapkan. Anda dapat langsung konfirmasi via WhatsApp.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              // QRIS Rendering
               const candidateQris = (paymentData.qr_string?.startsWith('000201') || paymentData.qrString?.startsWith('000201'))
                 ? (paymentData.qr_string || paymentData.qrString)
                 : tenantStaticQris;
@@ -804,22 +1000,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 (paymentData.qr_string && (paymentData.qr_string.startsWith('http://') || paymentData.qr_string.startsWith('https://')) ? paymentData.qr_string : '') ||
                 tenantQrisImageUrl ||
                 '';
-
-              if (!candidateQris && !candidateQrImage) {
-                return (
-                  <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-4 text-center space-y-2 my-3">
-                    <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
-                    <p className="text-xs text-amber-300 font-medium">
-                      Metode pembayaran QRIS toko belum dikonfigurasi. Silakan hubungi pemilik toko.
-                    </p>
-                  </div>
-                );
-              }
-
-              const cleanWa = formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222');
-              const waConfirmUrl = directWaUrl || `https://wa.me/${cleanWa}?text=${encodeURIComponent(
-                `Halo Admin, saya ingin konfirmasi pembayaran untuk Order ID: ${paymentData.orderId}\nProduk: ${product.title}\nNominal: Rp ${totalAmount.toLocaleString('id-ID')}`
-              )}`;
 
               const qrContainer = candidateQris ? (
                 <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
@@ -837,14 +1017,33 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                   <p className="text-[10px] text-slate-500 text-center">
                     BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
                   </p>
-                  <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
-                    Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
-                  </p>
+                  <div className="mt-2 pt-2 border-t border-slate-100 w-full flex items-center justify-between text-[11px] text-slate-600">
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">Nominal Terkunci:</span>
+                      <span className="font-extrabold text-emerald-700 text-sm">Rp {totalAmount.toLocaleString('id-ID')}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(String(totalAmount), 'amount')}
+                      className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedField === 'amount' || copiedField === 'amount_top' ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-700" />
+                          <span>Nominal Tersalin</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Salin Nominal</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              ) : (
+              ) : candidateQrImage ? (
                 <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center my-2 shadow-inner">
                   <div className="p-2.5 bg-white rounded-xl flex items-center justify-center max-w-[240px]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={candidateQrImage}
                       alt="QRIS Toko Resmi"
@@ -857,8 +1056,35 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                   <p className="text-[10px] text-slate-500 text-center">
                     Scan via BCA, Mandiri, BRI, BNI, GoPay, OVO, DANA, ShopeePay
                   </p>
-                  <p className="text-[9px] text-emerald-600 font-mono font-bold mt-1">
-                    Nominal Tagihan: Rp {totalAmount.toLocaleString('id-ID')}
+                  <div className="mt-2 pt-2 border-t border-slate-100 w-full flex items-center justify-between text-[11px] text-slate-600">
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">Total Nominal:</span>
+                      <span className="font-extrabold text-emerald-700 text-sm">Rp {totalAmount.toLocaleString('id-ID')}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(String(totalAmount), 'amount')}
+                      className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedField === 'amount' || copiedField === 'amount_top' ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-700" />
+                          <span>Nominal Tersalin</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Salin Nominal</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-amber-950/40 border border-amber-800/50 rounded-2xl p-4 text-center space-y-2 my-2">
+                  <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
+                  <p className="text-xs text-amber-300 font-medium">
+                    Metode pembayaran QRIS toko belum dikonfigurasi. Silakan gunakan transfer manual atau hubungi pemilik toko.
                   </p>
                 </div>
               );
@@ -867,19 +1093,18 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 <div className="space-y-3">
                   {qrContainer}
 
-                  {/* Fallback Rekening & Bantuan Transfer Manual jika QRIS berkendala */}
-                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 text-left text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-blue-400" /> Alternatif Transfer Manual
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">Bebas Biaya</span>
-                    </div>
-
-                    {bankAccounts.length > 0 ? (
+                  {/* Alternatif Transfer Manual jika tersedia */}
+                  {bankAccounts.length > 0 && (
+                    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2 text-left text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-blue-400" /> Alternatif Transfer Manual
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">Bebas Biaya</span>
+                      </div>
                       <div className="space-y-2">
                         {bankAccounts.map((acc, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2 bg-slate-900 rounded-xl border border-slate-800/80">
+                          <div key={idx} className="flex items-center justify-between p-2 bg-slate-900 rounded-xl border border-slate-800">
                             <div>
                               <span className="text-[9px] font-bold text-blue-400 block">{acc.bank_name}</span>
                               <span className="font-mono font-bold text-white text-xs">{acc.account_number}</span>
@@ -895,39 +1120,110 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
-                        <p className="text-slate-400">
-                          Mengalami kendala pada QRIS? Anda dapat langsung menghubungi CS Toko via WhatsApp untuk bantuan pembayaran.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Tombol Konfirmasi Instan WhatsApp */}
-                    <a
-                      href={waConfirmUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-600/25 cursor-pointer mt-1"
-                    >
-                      <MessageSquare className="w-4 h-4" />
-                      <span>Konfirmasi Pembayaran via WhatsApp</span>
-                    </a>
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
-            
-            <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
-              Silakan selesaikan pembayaran. Rincian invoice dan tautan QRIS telah siap. Notifikasi transaksi otomatis dikirim ke WhatsApp Anda (<strong>{customerPhone}</strong>).
-            </p>
+
+            {/* Upload Bukti Transfer Box & WhatsApp Fallback */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3 text-left text-xs shadow-lg">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Upload className="w-4 h-4 text-emerald-400" />
+                  <span>Unggah Bukti Pembayaran</span>
+                </span>
+                <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/40">
+                  Verifikasi Cepat
+                </span>
+              </div>
+
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                📸 Setelah melakukan transfer atau pembayaran QRIS, silakan unggah foto/screenshot bukti transfer di bawah ini agar langsung diverifikasi oleh sistem.
+              </p>
+
+              <div className="space-y-2.5">
+                <label className="border-2 border-dashed border-slate-700 hover:border-emerald-500/70 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer bg-slate-900/60 transition group">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  {proofPreview ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <img
+                        src={proofPreview}
+                        alt="Preview Bukti"
+                        className="w-24 h-24 object-cover rounded-lg border border-slate-700 shadow-md"
+                      />
+                      <span className="text-[10px] text-emerald-400 font-semibold group-hover:underline">
+                        Ganti foto bukti transfer
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 py-1.5">
+                      <ImageIcon className="w-6 h-6 text-slate-400 group-hover:text-emerald-400 transition" />
+                      <span className="text-xs font-semibold text-slate-200">
+                        Pilih Foto / Screenshot Struk Pembayaran
+                      </span>
+                      <span className="text-[9px] text-slate-400">
+                        Format JPG, PNG, atau WEBP (Maks 10MB)
+                      </span>
+                    </div>
+                  )}
+                </label>
+
+                {proofUploadFeedback && (
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-semibold text-center text-slate-200">
+                    {proofUploadFeedback}
+                  </div>
+                )}
+
+                {/* Tombol Utama Unggah Bukti */}
+                {proofPreview && (
+                  <button
+                    type="button"
+                    onClick={() => handleUploadProof(paymentData.orderId)}
+                    disabled={isUploadingProof}
+                    className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md shadow-emerald-600/30 cursor-pointer active:scale-95"
+                  >
+                    {isUploadingProof ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Mengirim Bukti Transfer...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        <span>Unggah Bukti Transfer Sekarang</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {/* Tombol Sekunder Fallback WhatsApp */}
+                <a
+                  href={directWaUrl || `https://wa.me/${formatIndonesianWhatsAppNumber(tenantPhone || '6281237450222')}?text=${encodeURIComponent(
+                    `Halo Admin Toko, saya ingin konfirmasi pembayaran untuk:\n\nOrder ID: ${paymentData.orderId}\nProduk: ${product.title}\nNama: ${customerName || '-'}\nTotal Nominal: Rp ${totalAmount.toLocaleString('id-ID')}\nMetode: ${paymentData.paymentMethod === 'manual_transfer' ? 'Transfer Bank Manual' : 'QRIS Dinamis'}\n\n📸 Saya lampirkan foto/screenshot bukti transfer di chat ini ya Kak agar langsung dicek dan diverifikasi oleh sistem. Terima kasih! 🙏`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-emerald-600/50 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4 text-emerald-400" />
+                  <span>Kirim Bukti via WhatsApp (Alternatif Chat)</span>
+                </a>
+              </div>
+            </div>
 
             {paymentData.invoiceUrl && (
               <a
                 href={paymentData.invoiceUrl}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+                className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition"
               >
-                <ArrowRight className="w-4 h-4" /> Buka Halaman Rincian Invoice
+                <span>Buka Lembar Invoice Resmi #{paymentData.orderId}</span>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
               </a>
             )}
           </div>
