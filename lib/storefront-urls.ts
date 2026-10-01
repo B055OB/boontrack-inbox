@@ -13,7 +13,10 @@ export {
   getDigitalDeliveryUrl,
   getStorefrontShopUrl,
   getStorefrontInvoiceUrl,
+  getStorefrontPayUrl,
 } from './utils/storefrontUrl';
+
+export { generatePaymentToken } from './utils/paymentToken';
 
 export const SHOP_BASE = 'https://boontrack.com';
 

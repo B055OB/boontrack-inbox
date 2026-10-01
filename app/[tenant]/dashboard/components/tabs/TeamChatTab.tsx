@@ -38,7 +38,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { useTenantInbox } from '../../hooks/useTenantInbox';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
-import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
+import { getStorefrontInvoiceUrl, getStorefrontPayUrl, generatePaymentToken } from '@/lib/storefront-urls';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 import DirectCsLoginModal from '../DirectCsLoginModal';
 
@@ -628,12 +628,23 @@ export default function TeamChatTab({
       }
 
       const dynamicQrString = generateDynamicQRIS(rawStaticQris, num);
+      const paymentToken = generatePaymentToken();
+      const rawPayUrl = getStorefrontPayUrl(resolvedTenant, paymentToken);
+      const payUrl = rawPayUrl.startsWith('http') ? rawPayUrl : `https://shop.boontrack.com${rawPayUrl}`;
 
       // 2. Simpan order ke Supabase orders table
       const supabase = getSupabase();
       if (supabase) {
         await supabase.from('orders').insert({
           id: realOrderId,
+          correlation_id: paymentToken,
+          metadata: {
+            public_payment_token: paymentToken,
+            payment_token: paymentToken,
+            pay_url: payUrl,
+            qr_string: dynamicQrString,
+            source: 'QUICK_POS_CHAT',
+          },
           tenant_slug: resolvedTenant,
           tenant_id: tenantId || resolvedTenant,
           customer_phone: currentConversation.customerPhone,
@@ -654,10 +665,11 @@ export default function TeamChatTab({
           `📦 *Layanan / Proyek:* ${itemName}\n` +
           `💰 *Total Nominal:* *Rp ${num.toLocaleString('id-ID')}*\n` +
           `🔖 *No. Pesanan:* ${realOrderId}\n\n` +
-          `Barcode QRIS telah dikunci pas otomatis senilai Rp ${num.toLocaleString('id-ID')}.\n` +
-          `Buka & cetak invoice resmi Anda:\n` +
-          `👉 ${invoiceLink}\n\n` +
-          `Silakan scan barcode QRIS atau lakukan pembayaran, lalu kirimkan konfirmasi di sini. Terima kasih! 🙏`;
+          `Barcode QRIS telah dikunci pas otomatis senilai Rp ${num.toLocaleString('id-ID')}.\n\n` +
+          `Silakan selesaikan pembayaran invoice Anda melalui tautan resmi ini:\n` +
+          `👉 ${payUrl}\n\n` +
+          `📄 *Invoice Digital:* ${invoiceLink}\n\n` +
+          `Silakan scan barcode QRIS atau selesaikan pembayaran lewat tautan resmi di atas, lalu kirimkan konfirmasi di sini. Terima kasih! 🙏`;
 
         await supabase.from('messages').insert({
           conversation_id: currentConversation.id,
@@ -674,6 +686,8 @@ export default function TeamChatTab({
             is_qris: true,
             qris_data: {
               orderId: realOrderId,
+              paymentToken,
+              payUrl,
               amount: num,
               description: itemName,
               qrValue: dynamicQrString,
@@ -822,6 +836,9 @@ export default function TeamChatTab({
     setQrisFeedback(null);
 
     try {
+      const paymentToken = generatePaymentToken();
+      const rawPayUrl = getStorefrontPayUrl(resolvedTenant, paymentToken);
+      const payUrl = rawPayUrl.startsWith('http') ? rawPayUrl : `https://shop.boontrack.com${rawPayUrl}`;
       const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, realOrderId);
       const bankText =
         `💳 *TAGIHAN TRANSFER BANK MANUAL*\n\n` +
@@ -832,9 +849,11 @@ export default function TeamChatTab({
         `👤 *Atas Nama:* ${selectedBank.account_holder}\n\n` +
         `💰 *Total Nominal:* *Rp ${totalWithCode.toLocaleString('id-ID')}*\n` +
         `*(Termasuk 3 digit kode unik transfer: +${uniqueCode})*\n\n` +
-        `🔖 *No. Pesanan:* ${realOrderId}\n` +
+        `🔖 *No. Pesanan:* ${realOrderId}\n\n` +
+        `Silakan selesaikan pembayaran invoice Anda melalui tautan resmi ini:\n` +
+        `👉 ${payUrl}\n\n` +
         `📄 *Invoice Digital:* ${invoiceLink}\n\n` +
-        `⚠️ *Penting:* Harap transfer tepat hingga digit terakhir agar verifikasi otomatis berjalan lancar. Kirimkan bukti transfer setelah pembayaran selesai. Terima kasih! 🙏`;
+        `⚠️ *Penting:* Harap transfer tepat hingga digit terakhir agar verifikasi otomatis berjalan lancar. Anda juga dapat mengunggah bukti transfer langsung lewat tautan invoice resmi di atas. Terima kasih! 🙏`;
 
       // Simpan pesanan di tabel orders Supabase
       const supabase = getSupabase();
@@ -844,6 +863,15 @@ export default function TeamChatTab({
           id: realOrderId,
           order_id: realOrderId,
           invoice_no: realOrderId,
+          correlation_id: paymentToken,
+          metadata: {
+            public_payment_token: paymentToken,
+            payment_token: paymentToken,
+            pay_url: payUrl,
+            unique_code: uniqueCode,
+            bank_account: selectedBank,
+            source: 'QUICK_POS_CHAT',
+          },
           tenant_slug: resolvedTenant,
           tenant_id: tenantId || resolvedTenant,
           customer_phone: currentConversation.customerPhone,
@@ -877,6 +905,8 @@ export default function TeamChatTab({
             is_bank_transfer: true,
             bank_data: {
               orderId: realOrderId,
+              paymentToken,
+              payUrl,
               amount: totalWithCode,
               baseAmount: baseAmt,
               uniqueCode,

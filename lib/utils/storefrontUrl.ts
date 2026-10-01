@@ -103,3 +103,26 @@ export function getStorefrontInvoiceUrl(tenantSlug?: string | null, orderId?: st
   return `${base}/${cleanSlug}/invoice/${cleanOrderId}`;
 }
 
+/**
+ * Resolves the dedicated public payment token URL on shop.boontrack.com.
+ * Example: getStorefrontPayUrl('solusi-ads', 'pay_8k4m2n9p') -> 'https://shop.boontrack.com/solusi-ads/pay/pay_8k4m2n9p'
+ * In local development (localhost / 127.0.0.1), preserves local routing for seamless testing.
+ */
+export function getStorefrontPayUrl(tenantSlug?: string | null, token?: string | null): string {
+  const cleanSlug = encodeURIComponent(String(tenantSlug || 'shop').trim());
+  const cleanToken = encodeURIComponent(String(token || '').trim());
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return `/${cleanSlug}/pay/${cleanToken}`;
+    }
+  }
+
+  const base = process.env.NEXT_PUBLIC_STOREFRONT_URL
+    ? process.env.NEXT_PUBLIC_STOREFRONT_URL.replace(/\/+$/, '')
+    : STOREFRONT_DOMAIN;
+
+  return `${base}/${cleanSlug}/pay/${cleanToken}`;
+}
+
