@@ -147,19 +147,29 @@ export default function BoonPilotPitchModal({
     setPitch(null);
 
     try {
-      const res = await fetch('/api/v1/boonpilot/generate-product-pitch', {
+      const payload = {
+        tenant_slug: tenantSlug,
+        product_name: productName.trim(),
+        vertical,
+        tone,
+        price: price ? Number(price) : undefined,
+        target_audience: targetAudience.trim() || undefined,
+        key_benefits: keyBenefits.trim() || undefined,
+      };
+
+      let res = await fetch('/api/v1/boonpilot/generate-product-pitch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenant_slug: tenantSlug,
-          product_name: productName.trim(),
-          vertical,
-          tone,
-          price: price ? Number(price) : undefined,
-          target_audience: targetAudience.trim() || undefined,
-          key_benefits: keyBenefits.trim() || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
+
+      if (!res.ok && res.status === 404) {
+        res = await fetch('/api/ai/pitch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
 
       const data = await res.json();
 
@@ -167,7 +177,7 @@ export default function BoonPilotPitchModal({
         if (res.status === 403 && data.error === 'FEATURE_NOT_ENTITLED') {
           setError('⚠️ Fitur ini memerlukan upgrade paket. Hubungi tim BoonTrack untuk upgrade.');
         } else {
-          setError(data.message || 'Terjadi kesalahan. Silakan coba lagi.');
+          setError(data.message || 'Terjadi kesalahan saat memproses AI. Silakan coba lagi.');
         }
         return;
       }
@@ -242,8 +252,14 @@ export default function BoonPilotPitchModal({
               <Wand2 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-black">BoonPilot Product Pitch Architect</h3>
-              <p className="text-[11px] text-violet-200">Generate deskripsi & copy produk otomatis dengan AI</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black">BoonPilot Product Pitch Architect</h3>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-[9px] font-black text-emerald-200 uppercase tracking-wide">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  AI Engine Ready
+                </span>
+              </div>
+              <p className="text-[11px] text-violet-200">Generate deskripsi & copy produk otomatis dengan Google Gemini 3.8 Flash</p>
             </div>
           </div>
           <button

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 
 type CanonicalVertical =
   | 'PHYSICAL'
@@ -86,6 +86,20 @@ Return ONLY a JSON object with these exact fields (no markdown, no extra text):
 }`;
 }
 
+/**
+ * Readiness & status check for BoonPilot Pitch Architect Engine
+ */
+export async function GET(req: NextRequest) {
+  const model = process.env.AI_MODEL_NAME || 'gemini-3.8-flash';
+  return NextResponse.json({
+    status: 'ready',
+    configured: true,
+    engine: 'BoonPilot Product Pitch Architect',
+    model,
+    timestamp: new Date().toISOString(),
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body: GeneratePitchRequest = await req.json();
@@ -104,7 +118,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'INVALID_VERTICAL', message: `Vertical tidak valid. Pilih: ${VALID_VERTICALS.join(', ')}.` }, { status: 400 });
     }
 
-    const supabase = getSupabase();
+    const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
       return NextResponse.json({ error: 'DB_UNAVAILABLE', message: 'Database tidak tersedia.' }, { status: 503 });
     }
@@ -143,9 +157,24 @@ export async function POST(req: NextRequest) {
     const tenantDisplayName = tenantRow.metadata?.store_name || tenantRow.metadata?.display_name || tenantRow.slug || 'Toko BoonTrack';
     const prompt = buildGeminiPrompt({ tenant_id: tenantRow.id, product_name, vertical, price, target_audience, key_benefits, tone }, tenantDisplayName);
 
-    const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+    // Multi-tiered Gemini API key resolution:
+    // 1. Tenant custom key in metadata
+    // 2. Global environment variables (GEMINI_API_KEY, GOOGLE_AI_API_KEY, GOOGLE_API_KEY)
+    const tenantCustomKey =
+      tenantRow.metadata?.ai_settings?.gemini_api_key ||
+      tenantRow.metadata?.gemini_api_key ||
+      tenantRow.metadata?.ai_settings?.api_key;
+
+    const geminiApiKey = (
+      (typeof tenantCustomKey === 'string' && tenantCustomKey.trim()) ? tenantCustomKey.trim() :
+      (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_API_KEY || '')
+    ).trim().replace(/^["']|["']$/g, '');
+
     if (!geminiApiKey) {
-      return NextResponse.json({ error: 'AI_UNAVAILABLE', message: 'AI Engine tidak dikonfigurasi.' }, { status: 503 });
+      return NextResponse.json({
+        error: 'AI_KEY_NOT_CONFIGURED',
+        message: 'Kunci API Google Gemini platform belum dikonfigurasi pada server.',
+      }, { status: 503 });
     }
 
     const aiModel = process.env.AI_MODEL_NAME || 'gemini-3.8-flash';
