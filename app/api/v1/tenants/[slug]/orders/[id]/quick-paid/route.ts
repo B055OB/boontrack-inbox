@@ -132,27 +132,29 @@ export async function POST(
       })
       .catch((capiErr) => console.warn('[Quick-Paid] CAPI purchase dispatch note:', capiErr));
 
-    // 2b. Update Langganan Tenant ke Tier 'CHECKOUT_LITE'
-    try {
-      const { data: tRow } = await supabase
-        .from('tenants')
-        .select('metadata')
-        .eq('slug', slug)
-        .maybeSingle();
-      const meta = tRow?.metadata || {};
-      meta.tier = 'CHECKOUT_LITE';
-      meta.plan_tier = 'CHECKOUT_LITE';
-      meta.subscription_status = 'ACTIVE';
+    // 2b. Update Langganan Tenant ke Tier jika order bertipe subscription platform
+    if (order.is_subscription === true || order.product_type === 'SUBSCRIPTION' || order.metadata?.is_subscription === true) {
+      try {
+        const { data: tRow } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', slug)
+          .maybeSingle();
+        const meta = tRow?.metadata || {};
+        meta.tier = 'CHECKOUT_LITE';
+        meta.plan_tier = 'CHECKOUT_LITE';
+        meta.subscription_status = 'ACTIVE';
 
-      await supabase
-        .from('tenants')
-        .update({
-          status: 'active',
-          metadata: meta,
-        })
-        .eq('slug', slug);
-    } catch (tierErr) {
-      console.warn('[Quick-Paid Tier Sync Note]:', tierErr);
+        await supabase
+          .from('tenants')
+          .update({
+            status: 'active',
+            metadata: meta,
+          })
+          .eq('slug', slug);
+      } catch (tierErr) {
+        console.warn('[Quick-Paid Tier Sync Note]:', tierErr);
+      }
     }
 
     // 3. Post auto-fulfillment notification to messages table

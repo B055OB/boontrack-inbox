@@ -506,3 +506,141 @@ export async function dispatchMetaCAPIPurchaseForOrder(
     return { success: false, reason: dispatchErr?.message || 'Exception during CAPI dispatch' };
   }
 }
+
+/**
+ * End-to-End Meta CAPI 'InitiateCheckout' Dispatcher for an Order
+ * Dispatches InitiateCheckout with Deduplication Key IC_${order.id} and EMQ hashing.
+ */
+export async function dispatchMetaCAPIInitiateCheckoutForOrder(
+  orderId: string,
+  supabaseClient?: any
+): Promise<{ success: boolean; result?: any; skipped?: boolean; reason?: string }> {
+  try {
+    const supabase = supabaseClient || getSupabaseAdmin() || getSupabase();
+    if (!supabase || !orderId) {
+      return { success: false, skipped: true, reason: 'Missing supabase client or orderId' };
+    }
+
+    const { data: order, error: orderErr } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .maybeSingle();
+
+    if (orderErr || !order) {
+      return { success: false, skipped: true, reason: `Order #${orderId} not found` };
+    }
+
+    const tenantSlug = (order.tenant_slug || '').toLowerCase();
+    const tenantId = order.tenant_id;
+    if (!tenantSlug && !tenantId) {
+      return { success: false, skipped: true, reason: 'Missing tenant identifier on order' };
+    }
+
+    let tenantQuery = supabase.from('tenants').select('id, slug, tier, plan, metadata');
+    if (tenantId) {
+      tenantQuery = tenantQuery.eq('id', tenantId);
+    } else {
+      tenantQuery = tenantQuery.eq('slug', tenantSlug);
+    }
+    const { data: tenantData } = await tenantQuery.maybeSingle();
+
+    if (!tenantData) {
+      return { success: false, skipped: true, reason: 'Tenant not found' };
+    }
+
+    const isEntitled = await checkAdsTrackingEntitlement(supabase, tenantData.id);
+    if (!isEntitled) {
+      return { success: false, skipped: true, reason: 'Tenant tier not entitled for Meta CAPI' };
+    }
+
+    const pixelConfig = tenantData.metadata?.pixel_config || {};
+    const trackingMeta = tenantData.metadata?.tracking || {};
+    const metaPixelId =
+      trackingMeta.meta_pixel_id ||
+      pixelConfig.meta_pixel_id ||
+      tenantData.metadata?.meta_pixel_id ||
+      tenantData.metadata?.pixel_id ||
+      tenantData.metadata?.facebook_pixel_id;
+
+    const metaAccessToken =
+      trackingMeta.meta_access_token ||
+      pixelConfig.meta_access_token ||
+      tenantData.metadata?.meta_access_token ||
+      tenantData.metadata?.facebook_access_token;
+
+    if (!metaPixelId || !metaAccessToken) {
+      return { success: false, skipped: true, reason: 'Meta Pixel ID or Access Token not configured' };
+    }
+
+    const testEventCode =
+      trackingMeta.test_event_code ||
+      trackingMeta.meta_test_event_code ||
+      tenantData.metadata?.capi_test_event_code ||
+      pixelConfig.meta_test_event_code ||
+      pixelConfig.test_event_code ||
+      tenantData.metadata?.meta_test_event_code ||
+      process.env.META_CAPI_TEST_EVENT_CODE ||
+      undefined;
+
+    let trackingContext = order.metadata?.tracking_context || {};
+    const fbp = trackingContext.fbp || order.metadata?.fbp || undefined;
+    const fbc =
+      trackingContext.fbc ||
+      order.metadata?.fbc ||
+      (order.fbclid ? `fb.1.${Date.now()}.${order.fbclid}` : undefined);
+
+    const clientIp =
+      trackingContext.client_ip_address ||
+      order.metadata?.client_ip_address ||
+      order.metadata?.client_ip ||
+      undefined;
+
+    const userAgent =
+      trackingContext.client_user_agent ||
+      order.metadata?.client_user_agent ||
+      order.metadata?.user_agent ||
+      undefined;
+
+    const customerPhone =
+      order.customer_phone || order.phone || order.whatsapp_number || undefined;
+    const customerEmail =
+      order.customer_email || order.metadata?.customer_email || undefined;
+    const customerName =
+      order.customer_name || order.buyer_name || 'Pelanggan Toko';
+
+    const grossAmount = Number(
+      order.gross_amount ?? order.total_amount ?? order.amount ?? 0
+    );
+
+    const eventId = `IC_${order.id}`;
+
+    const capiResult = await dispatchMetaCAPIInitiateCheckout(metaPixelId, metaAccessToken, {
+      orderId: String(order.id),
+      eventId,
+      tenantId: tenantData.id || tenantData.slug,
+      grossAmount,
+      currency: 'IDR',
+      customerPhone,
+      customerEmail,
+      customerName,
+      fbp,
+      fbc,
+      ipAddress: clientIp,
+      userAgent,
+      testEventCode,
+      contentName: order.product_title || 'Tagihan Custom CS',
+      contentIds: order.product_id ? [String(order.product_id)] : undefined,
+      contentType: 'product',
+      ctwaClid: order.ctwa_clid || order.metadata?.ctwa_clid || undefined,
+    });
+
+    return {
+      success: true,
+      result: capiResult,
+    };
+  } catch (dispatchErr: any) {
+    console.error(`[Meta CAPI InitiateCheckout Exception] Order #${orderId}:`, dispatchErr?.message || dispatchErr);
+    return { success: false, reason: dispatchErr?.message || 'Exception during CAPI dispatch' };
+  }
+}

@@ -18,15 +18,22 @@ import {
   MessageSquare,
   X,
   ExternalLink,
+  Phone,
+  Headphones,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 
 export default function MerchantLoginPage() {
   const router = useRouter();
 
+  // Mode: Owner (Slug + PIN) vs CS (WhatsApp + PIN, bypass magic link)
+  const [loginMode, setLoginMode] = useState<'owner' | 'cs'>('owner');
+
   // Form State
   const [storeSlug, setStoreSlug] = useState('');
   const [accessKey, setAccessKey] = useState('');
+  const [csPhone, setCsPhone] = useState('');
+  const [csPin, setCsPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -155,6 +162,73 @@ export default function MerchantLoginPage() {
     }
   };
 
+  const handleCsLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    const cleanSlug = sanitizeSlug(storeSlug);
+    if (!cleanSlug) {
+      setErrorMessage('Silakan masukkan nama domain atau slug toko.');
+      return;
+    }
+    if (!csPhone.trim()) {
+      setErrorMessage('Silakan masukkan nomor WhatsApp CS Anda.');
+      return;
+    }
+    if (!csPin.trim()) {
+      setErrorMessage('Silakan masukkan PIN Toko / Tenant.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/v1/auth/cs-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantSlug: cleanSlug,
+          phone: csPhone.trim(),
+          pin: csPin.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setErrorMessage(data.error || 'Autentikasi CS gagal. Periksa nomor WhatsApp dan PIN toko.');
+        setLoading(false);
+        return;
+      }
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('merchant_store', cleanSlug);
+        localStorage.setItem('cs_user_name', data.user?.name || 'CS Agent');
+        localStorage.setItem('cs_user_phone', data.user?.phone || csPhone.trim());
+        localStorage.setItem('merchant_login_at', new Date().toISOString());
+
+        document.cookie = `merchant_store=${cleanSlug}; path=/; max-age=2592000; SameSite=Lax`;
+        document.cookie = `merchant_session=${cleanSlug}; path=/; max-age=2592000; SameSite=Lax`;
+        document.cookie = `bt_tenant=${cleanSlug}; path=/; max-age=2592000; SameSite=Lax`;
+      }
+
+      setSuccessMessage(`Login CS Berhasil! Selamat datang, ${data.user?.name || 'CS'}. Mengalihkan ke Inbox...`);
+
+      setTimeout(() => {
+        const dest = `/${cleanSlug}/dashboard?tab=inbox`;
+        router.push(dest);
+        setTimeout(() => {
+          window.location.href = dest;
+        }, 300);
+      }, 500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan sistem saat login CS.';
+      setErrorMessage(msg);
+      setLoading(false);
+    }
+  };
+
   const handleRecoverySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRecoveryError(null);
@@ -260,92 +334,222 @@ export default function MerchantLoginPage() {
             </div>
           )}
 
-          {/* Form Login Merchant */}
-          <form onSubmit={handleStoreLogin} className="space-y-5">
-            {/* Input Domain Toko */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
-                <span>Domain atau Nama Toko Anda</span>
-                <span className="text-[10px] text-slate-500 font-normal">shop.boontrack.com/[slug]</span>
-              </label>
-
-              <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-bold text-slate-500 select-none border-r border-slate-800 pr-2.5">
-                  <Store className="w-3.5 h-3.5 text-blue-500" />
-                  <span>shop/</span>
-                </div>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={storeSlug}
-                  onChange={(e) => setStoreSlug(e.target.value)}
-                  placeholder="nama-toko-anda"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-22 pr-4 py-3.5 text-base sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                />
-              </div>
-              <p className="text-[11px] text-slate-500 flex items-center gap-1 pt-0.5">
-                <Compass className="w-3.5 h-3.5 text-blue-400" />
-                <span>Masukkan slug toko yang Anda klaim saat registrasi.</span>
-              </p>
-            </div>
-
-            {/* Access PIN / Password */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-slate-400" />
-                  <span>PIN / Password Akses</span>
-                </span>
-                <span className="text-[10px] text-slate-500 font-normal">6 Digit / Karakter</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="password"
-                  value={accessKey}
-                  onChange={(e) => setAccessKey(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-base sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                />
-              </div>
-
-              {/* LUPA PIN / KIRIM LINK MASUK */}
-              <div className="flex items-center justify-end pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecoveryIdentifier('');
-                    setRecoveryError(null);
-                    setRecoveryFeedback(null);
-                    setRecoveryWaUrl(null);
-                    setIsRecoveryOpen(true);
-                  }}
-                  className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition underline underline-offset-4 cursor-pointer"
-                >
-                  Lupa PIN? Kirim via Email
-                </button>
-              </div>
-            </div>
-
-            {/* Button Submit */}
+          {/* Segmented Mode Switcher */}
+          <div className="grid grid-cols-2 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl">
             <button
-              type="submit"
-              disabled={loading || !storeSlug.trim()}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.99]"
+              type="button"
+              onClick={() => {
+                setLoginMode('owner');
+                setErrorMessage(null);
+                setSuccessMessage(null);
+              }}
+              className={`py-2 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                loginMode === 'owner'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              {loading ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Memeriksa Akun Toko...</span>
-                </>
-              ) : (
-                <>
-                  <span>Masuk ke Dashboard Toko</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
+              <Store className="w-3.5 h-3.5" />
+              <span>Pemilik Toko</span>
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => {
+                setLoginMode('cs');
+                setErrorMessage(null);
+                setSuccessMessage(null);
+              }}
+              className={`py-2 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                loginMode === 'cs'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Headphones className="w-3.5 h-3.5" />
+              <span>Tim CS (Direct WA)</span>
+            </button>
+          </div>
+
+          {/* Form Login Pemilik Toko */}
+          {loginMode === 'owner' ? (
+            <form onSubmit={handleStoreLogin} className="space-y-5">
+              {/* Input Domain Toko */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
+                  <span>Domain atau Nama Toko Anda</span>
+                  <span className="text-[10px] text-slate-500 font-normal">shop.boontrack.com/[slug]</span>
+                </label>
+
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-bold text-slate-500 select-none border-r border-slate-800 pr-2.5">
+                    <Store className="w-3.5 h-3.5 text-blue-500" />
+                    <span>shop/</span>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={storeSlug}
+                    onChange={(e) => setStoreSlug(e.target.value)}
+                    placeholder="nama-toko-anda"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-22 pr-4 py-3.5 text-base sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 flex items-center gap-1 pt-0.5">
+                  <Compass className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Masukkan slug toko yang Anda klaim saat registrasi.</span>
+                </p>
+              </div>
+
+              {/* Access PIN / Password */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-slate-400" />
+                    <span>PIN / Password Akses</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-normal">6 Digit / Karakter</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={accessKey}
+                    onChange={(e) => setAccessKey(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-base sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                  />
+                </div>
+
+                {/* LUPA PIN / KIRIM LINK MASUK */}
+                <div className="flex items-center justify-end pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryIdentifier('');
+                      setRecoveryError(null);
+                      setRecoveryFeedback(null);
+                      setRecoveryWaUrl(null);
+                      setIsRecoveryOpen(true);
+                    }}
+                    className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition underline underline-offset-4 cursor-pointer"
+                  >
+                    Lupa PIN? Kirim via Email
+                  </button>
+                </div>
+              </div>
+
+              {/* Button Submit */}
+              <button
+                type="submit"
+                disabled={loading || !storeSlug.trim()}
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.99]"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Memeriksa Akun Toko...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Masuk ke Dashboard Toko</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            /* Form Login Tim CS (Direct WA & PIN Tenant) */
+            <form onSubmit={handleCsLogin} className="space-y-4">
+              <div className="p-3 bg-indigo-950/40 border border-indigo-800/60 rounded-2xl text-[11px] text-indigo-300 flex items-start gap-2">
+                <Headphones className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Akses Cepat CS:</strong> Masuk langsung ke inbox menggunakan nomor WhatsApp terdaftar &amp; PIN toko tanpa menunggu magic link email.
+                </span>
+              </div>
+
+              {/* Domain / Slug Toko */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300 block">
+                  Nama Toko / Tenant Slug
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-bold text-slate-500 select-none border-r border-slate-800 pr-2.5">
+                    <Store className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>shop/</span>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={storeSlug}
+                    onChange={(e) => setStoreSlug(e.target.value)}
+                    placeholder="buatinvideo"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-22 pr-4 py-3 text-base sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* WhatsApp CS */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300 block">
+                  Nomor WhatsApp CS Anda
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
+                    <Phone className="w-4 h-4 text-indigo-400" />
+                  </div>
+                  <input
+                    type="tel"
+                    required
+                    value={csPhone}
+                    onChange={(e) => setCsPhone(e.target.value)}
+                    placeholder="08123456789 atau 62812..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-10 pr-4 py-3 text-base sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* PIN Tenant */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
+                  <span>PIN Toko / Tenant</span>
+                  <span className="text-[10px] text-slate-500">Diberikan oleh Pemilik Toko</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
+                    <Key className="w-4 h-4 text-indigo-400" />
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={csPin}
+                    onChange={(e) => setCsPin(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-10 pr-4 py-3 text-base sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* Submit Button CS */}
+              <button
+                type="submit"
+                disabled={loading || !storeSlug.trim() || !csPhone.trim() || !csPin.trim()}
+                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.99] mt-2"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Memvalidasi CS &amp; PIN...</span>
+                  </>
+                ) : (
+                  <>
+                    <Headphones className="w-4 h-4" />
+                    <span>Masuk ke Inbox CS (Bypass Magic Link)</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
 
           {/* Security Guarantee */}
           <div className="pt-2 border-t border-slate-800/80 flex items-center justify-center gap-2 text-[11px] text-slate-500">

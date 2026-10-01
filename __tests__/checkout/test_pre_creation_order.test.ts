@@ -191,6 +191,8 @@ import { POST as quickPaidHandler } from '@/app/api/v1/tenants/[slug]/orders/[id
 describe('Pre-Creation Order Pattern (QRIS -> Reader / Quick-Paid)', () => {
   const testOrderId = 'ORD-TEST-998877';
 
+  const originalFetch = global.fetch;
+
   beforeEach(() => {
     // Reset DB and mock calls
     for (const key of Object.keys(mockOrdersDb)) {
@@ -198,6 +200,16 @@ describe('Pre-Creation Order Pattern (QRIS -> Reader / Quick-Paid)', () => {
     }
     mockDispatchedNotifications.length = 0;
     mockDispatchedCapi.length = 0;
+
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'Not Found' }),
+    })) as any;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   it('1. Pre-creates order in database with PENDING status when QRIS is generated', async () => {

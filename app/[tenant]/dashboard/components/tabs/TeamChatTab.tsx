@@ -32,12 +32,15 @@ import {
   Navigation,
   Copy,
   FileText,
+  Headphones,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { useTenantInbox } from '../../hooks/useTenantInbox';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
+import { generateDynamicQRIS } from '@/lib/qris-dynamic';
+import DirectCsLoginModal from '../DirectCsLoginModal';
 
 export interface ConversationMessage {
   id: number | string;
@@ -245,14 +248,28 @@ export default function TeamChatTab({
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
 
-  // Quick POS QRIS Modal / Form state
-  const [qrisItemName, setQrisItemName] = useState('Paket Bundle Hemat');
+  // Quick POS Dynamic Deal Modal / Form state (Custom Deal Closing)
+  const [qrisItemName, setQrisItemName] = useState('Jasa Video Promosi');
   const [qrisAmount, setQrisAmount] = useState('150000');
   const [isGeneratingQris, setIsGeneratingQris] = useState(false);
   const [isSendingBankInfo, setIsSendingBankInfo] = useState(false);
   const [markingPaidOrderId, setMarkingPaidOrderId] = useState<string | null>(null);
   const [qrisFeedback, setQrisFeedback] = useState<string | null>(null);
   const [copiedLocationId, setCopiedLocationId] = useState<string | number | null>(null);
+
+  // Direct CS Access state (Bypass Magic Link)
+  const [isDirectCsLoginOpen, setIsDirectCsLoginOpen] = useState(false);
+  const [activeCsUser, setActiveCsUser] = useState<{ name: string; phone: string } | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedCsName = localStorage.getItem('cs_user_name');
+      const savedCsPhone = localStorage.getItem('cs_user_phone');
+      if (savedCsName && savedCsPhone) {
+        setActiveCsUser({ name: savedCsName, phone: savedCsPhone });
+      }
+    }
+  }, []);
 
   // Dynamic Tenant Payment Config & Multi-Tenant Bank Accounts (Zero Hardcoding)
   const [tenantPaymentData, setTenantPaymentData] = useState<any>(null);
@@ -270,7 +287,7 @@ export default function TeamChatTab({
         if (supabase) {
           const { data } = await supabase
             .from('tenants')
-            .select('id, slug, name, tier, metadata, is_qris_active, qris_image_url')
+            .select('id, slug, name, tier, metadata')
             .or(`slug.eq.${targetSlug},id.eq.${targetSlug}`)
             .maybeSingle();
           if (data && isMounted) {
@@ -511,95 +528,131 @@ export default function TeamChatTab({
     if (externalSetReplyText) externalSetReplyText('');
   };
 
-  // Quick POS: Generate QRIS Tagihan & Record Order in Core Backend
+  // Quick POS: Generate QRIS Tagihan Dinamis & Trigger Meta CAPI InitiateCheckout
   const handleGenerateQris = async () => {
     if (!currentConversation) return;
     const num = parseInt(qrisAmount.replace(/[^0-9]/g, ''), 10) || 100000;
+    const itemName = qrisItemName.trim() || 'Jasa Video Promosi';
     setIsGeneratingQris(true);
     setQrisFeedback(null);
 
     try {
-      const coreApiBase = (
-        process.env.NEXT_PUBLIC_CORE_API_URL ||
-        process.env.NEXT_PUBLIC_API_URL ||
-        'https://api.boontrack.com'
-      ).replace(/\/+$/, '');
+      const realOrderId = `ORD-POS-${Date.now().toString().slice(-6)}`;
+      const nowIso = new Date().toISOString();
 
-      let realOrderId = `ORD-POS-${Math.floor(100000 + Math.random() * 900000)}`;
-      let dynamicQrString = "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
+      // 1. Ekstraksi string static QRIS tenant & konversi ke Dynamic QRIS terkunci angka pas
+      const rawStaticQris =
+        tenantPaymentData?.metadata?.payment_config?.raw_qris_string ||
+        tenantPaymentData?.metadata?.emvco_qris?.raw_string ||
+        tenantPaymentData?.metadata?.raw_qris_string ||
+        tenantPaymentData?.metadata?.qris_static_string ||
+        tenantPaymentData?.metadata?.qris_payload ||
+        '';
 
+      if (!rawStaticQris) {
+        throw new Error('Static QRIS belum dikonfigurasi di data toko. Silakan atur QRIS di Pengaturan Pembayaran terlebih dahulu.');
+      }
+
+      const dynamicQrString = generateDynamicQRIS(rawStaticQris, num);
+
+      // 2. Simpan order ke Supabase orders table
+      const supabase = getSupabase();
+      if (supabase) {
+        await supabase.from('orders').insert({
+          id: realOrderId,
+          tenant_slug: resolvedTenant,
+          tenant_id: tenantId || resolvedTenant,
+          customer_phone: currentConversation.customerPhone,
+          customer_name: currentConversation.customerName || 'Pelanggan',
+          product_title: itemName,
+          gross_amount: num,
+          status: 'PENDING',
+          payment_status: 'PENDING',
+          order_status: 'PENDING',
+          created_at: nowIso,
+          updated_at: nowIso,
+        });
+
+        // 3. Simpan pesan chat di tabel messages
+        const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, realOrderId);
+        const qrisChatText = `🧾 *TAGIHAN QRIS DINAMIS KESEPAKATAN*\n\n` +
+          `Halo Kak! Berikut rincian tagihan kesepakatan:\n` +
+          `📦 *Layanan / Proyek:* ${itemName}\n` +
+          `💰 *Total Nominal:* *Rp ${num.toLocaleString('id-ID')}*\n` +
+          `🔖 *No. Pesanan:* ${realOrderId}\n\n` +
+          `Barcode QRIS telah dikunci pas otomatis senilai Rp ${num.toLocaleString('id-ID')}.\n` +
+          `Buka & cetak invoice resmi Anda:\n` +
+          `👉 ${invoiceLink}\n\n` +
+          `Silakan scan barcode QRIS atau lakukan pembayaran, lalu kirimkan konfirmasi di sini. Terima kasih! 🙏`;
+
+        await supabase.from('messages').insert({
+          conversation_id: currentConversation.id,
+          tenant_id: tenantId || resolvedTenant,
+          tenant_slug: resolvedTenant,
+          sender_type: 'agent',
+          sender: 'agent',
+          message_body: qrisChatText,
+          text: qrisChatText,
+          channel: 'whatsapp',
+          user_name: activeCsUser?.name ? `${activeCsUser.name} (CS)` : 'Anda (Quick POS)',
+          user_phone: currentConversation.customerPhone,
+          payload: {
+            is_qris: true,
+            qris_data: {
+              orderId: realOrderId,
+              amount: num,
+              description: itemName,
+              qrValue: dynamicQrString,
+              status: 'WAITING_PAYMENT',
+            },
+          },
+          created_at: nowIso,
+        });
+
+        await supabase.from('conversations').update({
+          last_message: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${realOrderId})`,
+          last_message_at: nowIso,
+        }).eq('id', currentConversation.id);
+
+        // 4. Outbound dispatch ke WhatsApp pembeli via Evolution API
+        try {
+          const { data: conn } = await supabase
+            .from('whatsapp_connections')
+            .select('instance_name, credential_ref')
+            .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
+            .eq('status', 'open')
+            .maybeSingle();
+
+          if (conn?.instance_name) {
+            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
+            await sendEvolutionTextMessage(conn.instance_name, currentConversation.customerPhone, qrisChatText, conn.credential_ref);
+          }
+        } catch (waErr) {
+          console.warn('[Quick POS] Outbound WA QRIS note:', waErr);
+        }
+      }
+
+      // 5. Trigger Meta CAPI event 'InitiateCheckout' dengan nominal kesepakatan
       try {
-        const checkoutRes = await fetch(`${coreApiBase}/api/v1/orders/qris-checkout`, {
+        fetch('/api/v1/tracking/capi', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            merchant_slug: resolvedTenant,
-            merchant_name: resolvedTenant,
-            product_name: qrisItemName || 'Tagihan Manual CS',
-            customer_phone: currentConversation.customerPhone,
-            total_amount: num,
+            tenantSlug: resolvedTenant,
+            eventName: 'InitiateCheckout',
+            orderId: realOrderId,
+            amount: num,
+            customerPhone: currentConversation.customerPhone,
+            customerName: currentConversation.customerName,
+            contentName: itemName,
           }),
-        });
-
-        if (checkoutRes.ok) {
-          const checkData = await checkoutRes.json();
-          if (checkData?.order_id) {
-            realOrderId = checkData.order_id;
-          }
-          if (checkData?.qr_string) {
-            dynamicQrString = checkData.qr_string;
-          }
-        }
-      } catch (apiErr) {
-        console.warn('[Quick POS] Core API checkout note:', apiErr);
-      }
-
-      const qrisPayload: ConversationMessage = {
-        id: `qris-${Date.now()}`,
-        sender: 'agent',
-        senderName: 'Anda (Quick POS)',
-        text: `Tagihan pembayaran QRIS kilat senilai Rp ${num.toLocaleString('id-ID')} untuk "${qrisItemName}".`,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isQris: true,
-        qrisData: {
-          orderId: realOrderId,
-          amount: num,
-          description: qrisItemName,
-          qrValue: dynamicQrString,
-          status: 'WAITING_PAYMENT',
-        },
-      };
-
-      // Direct persist ke database Supabase messages & update conversation
-      try {
-        const supabase = getSupabase();
-        if (supabase) {
-          await supabase.from('messages').insert({
-            conversation_id: currentConversation.id,
-            tenant_id: tenantId || resolvedTenant,
-            tenant_slug: resolvedTenant,
-            sender_type: 'agent',
-            sender: 'agent',
-            message_body: qrisPayload.text,
-            text: qrisPayload.text,
-            channel: 'whatsapp',
-            user_name: 'Anda (Quick POS)',
-            user_phone: currentConversation.customerPhone,
-            payload: { is_qris: true, qris_data: qrisPayload.qrisData },
-            created_at: new Date().toISOString(),
-          });
-
-          await supabase.from('conversations').update({
-            last_message: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${realOrderId})`,
-            last_message_at: new Date().toISOString(),
-          }).eq('id', currentConversation.id);
-        }
-      } catch (dbErr) {
-        console.warn('[Quick POS] Persist QRIS message note:', dbErr);
+        }).catch((capiErr) => console.warn('[Quick POS] CAPI InitiateCheckout note:', capiErr));
+      } catch (triggerErr) {
+        console.warn('[Quick POS] CAPI trigger note:', triggerErr);
       }
 
       await inbox.refreshConversations();
-      setQrisFeedback(`✅ Tagihan QRIS (${realOrderId}) terkirim ke chat!`);
+      setQrisFeedback(`✅ Tagihan QRIS Dinamis (${realOrderId}) & CAPI InitiateCheckout terkirim!`);
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
       setQrisFeedback(`❌ Gagal: ${err.message || 'Error membuat tagihan'}`);
@@ -608,30 +661,33 @@ export default function TeamChatTab({
     }
   };
 
-  // Quick POS: Kirim Tagihan Rekening Bank Manual ke Chat
+  // Quick POS: Kirim Tagihan Rekening Bank Manual ke Chat & Trigger CAPI InitiateCheckout
   const handleSendBankTransferInfo = async () => {
     if (!currentConversation || bankAccounts.length === 0) return;
     const baseAmt = parseInt(qrisAmount.replace(/[^0-9]/g, ''), 10) || 100000;
     const uniqueCode = Math.floor(1 + Math.random() * 999);
     const totalWithCode = baseAmt + uniqueCode;
     const selectedBank = bankAccounts[selectedBankIdx] || bankAccounts[0];
-    const itemName = qrisItemName || 'Pesanan Manual CS';
-    const realOrderId = `ORD-POS-${Math.floor(100000 + Math.random() * 900000)}`;
+    const itemName = qrisItemName.trim() || 'Jasa Video Promosi';
+    const realOrderId = `ORD-POS-${Date.now().toString().slice(-6)}`;
 
     setIsSendingBankInfo(true);
     setQrisFeedback(null);
 
     try {
+      const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, realOrderId);
       const bankText =
         `💳 *TAGIHAN TRANSFER BANK MANUAL*\n\n` +
-        `📦 *Item:* ${itemName}\n` +
+        `Halo Kak! Berikut rincian tagihan kesepakatan:\n` +
+        `📦 *Layanan / Proyek:* ${itemName}\n` +
         `🏦 *Bank:* ${selectedBank.bank_name}\n` +
-        `🔢 *No Rekening:* ${selectedBank.account_number}\n` +
+        `🔢 *No. Rekening:* ${selectedBank.account_number}\n` +
         `👤 *Atas Nama:* ${selectedBank.account_holder}\n\n` +
         `💰 *Total Nominal:* *Rp ${totalWithCode.toLocaleString('id-ID')}*\n` +
-        `*(Termasuk kode unik transfer +${uniqueCode})*\n\n` +
-        `🔖 *Ref Order:* ${realOrderId}\n\n` +
-        `⚠️ *Penting:* Harap transfer tepat hingga 3 digit terakhir agar dapat diverifikasi otomatis. Kirimkan foto bukti transfer setelah selesai.`;
+        `*(Termasuk 3 digit kode unik transfer: +${uniqueCode})*\n\n` +
+        `🔖 *No. Pesanan:* ${realOrderId}\n` +
+        `📄 *Invoice Digital:* ${invoiceLink}\n\n` +
+        `⚠️ *Penting:* Harap transfer tepat hingga digit terakhir agar verifikasi otomatis berjalan lancar. Kirimkan bukti transfer setelah pembayaran selesai. Terima kasih! 🙏`;
 
       // Simpan pesanan di tabel orders Supabase
       const supabase = getSupabase();
@@ -668,7 +724,7 @@ export default function TeamChatTab({
           message_body: bankText,
           text: bankText,
           channel: 'whatsapp',
-          user_name: 'Anda (Quick POS)',
+          user_name: activeCsUser?.name ? `${activeCsUser.name} (CS)` : 'Anda (Quick POS)',
           user_phone: currentConversation.customerPhone,
           payload: {
             is_bank_transfer: true,
@@ -691,10 +747,46 @@ export default function TeamChatTab({
           last_message: `Tagihan Transfer Rp ${totalWithCode.toLocaleString('id-ID')} (${realOrderId})`,
           last_message_at: nowIso,
         }).eq('id', currentConversation.id);
+
+        // Outbound dispatch ke WhatsApp pembeli via Evolution API
+        try {
+          const { data: conn } = await supabase
+            .from('whatsapp_connections')
+            .select('instance_name, credential_ref')
+            .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
+            .eq('status', 'open')
+            .maybeSingle();
+
+          if (conn?.instance_name) {
+            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
+            await sendEvolutionTextMessage(conn.instance_name, currentConversation.customerPhone, bankText, conn.credential_ref);
+          }
+        } catch (waErr) {
+          console.warn('[Quick POS] Outbound WA Bank note:', waErr);
+        }
+      }
+
+      // Trigger Meta CAPI event 'InitiateCheckout'
+      try {
+        fetch('/api/v1/tracking/capi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenantSlug: resolvedTenant,
+            eventName: 'InitiateCheckout',
+            orderId: realOrderId,
+            amount: totalWithCode,
+            customerPhone: currentConversation.customerPhone,
+            customerName: currentConversation.customerName,
+            contentName: itemName,
+          }),
+        }).catch((capiErr) => console.warn('[Quick POS] CAPI InitiateCheckout bank note:', capiErr));
+      } catch (triggerErr) {
+        console.warn('[Quick POS] CAPI trigger note:', triggerErr);
       }
 
       await inbox.refreshConversations();
-      setQrisFeedback(`✅ Rekening Bank & Tagihan (${realOrderId}) terkirim ke chat!`);
+      setQrisFeedback(`✅ Rekening Bank & Tagihan (${realOrderId}) terkirim ke chat & WA!`);
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
       setQrisFeedback(`❌ Gagal: ${err.message || 'Error mengirim info rekening'}`);
@@ -703,33 +795,34 @@ export default function TeamChatTab({
     }
   };
 
-  // Manual Transaction: Tandai Lunas & Dispatch Meta CAPI Event + Digital Fulfillment Email Backup
+  // Manual Transaction: Tandai Lunas & Dispatch Meta CAPI Purchase + WhatsApp Confirmation
   const handleMarkPaid = async (orderId: string) => {
     if (!orderId) return;
     setMarkingPaidOrderId(orderId);
     try {
-      const coreApiBase = (
-        process.env.NEXT_PUBLIC_CORE_API_URL ||
-        process.env.NEXT_PUBLIC_API_URL ||
-        'https://api.boontrack.com'
-      ).replace(/\/+$/, '');
+      const nowIso = new Date().toISOString();
+      const supabase = getSupabase();
 
-      const res = await fetch(`${coreApiBase}/api/v1/orders/${orderId}/mark-paid`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenant_id: resolvedTenant,
-          agent_id: currentConversation?.assignedTo || 'agent_cs',
-          notes: 'Manual CS Mark Paid via BoonTrack Inbox',
-        }),
-      });
+      // 1. Fetch current order info
+      let orderGrossAmount = 0;
+      let orderTitle = 'Layanan / Proyek';
+      let custPhone = currentConversation?.customerPhone || '';
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok && res.status !== 200) {
-        console.warn('[handleMarkPaid] Core API mark-paid note:', data?.detail);
+      if (supabase) {
+        const { data: ordRow } = await supabase
+          .from('orders')
+          .select('gross_amount, product_title, customer_phone, customer_name')
+          .eq('id', orderId)
+          .maybeSingle();
+
+        if (ordRow) {
+          orderGrossAmount = Number(ordRow.gross_amount) || 0;
+          orderTitle = ordRow.product_title || orderTitle;
+          if (ordRow.customer_phone) custPhone = ordRow.customer_phone;
+        }
       }
 
-      // Dual-dispatch to Next.js Quick-Paid route to guarantee email fulfillment backup & WhatsApp
+      // 2. Dispatch to Next.js Quick-Paid route (Updates DB, dispatches Meta CAPI Purchase with EMQ hashing, & sends email)
       try {
         await fetch(
           `/api/v1/tenants/${encodeURIComponent(resolvedTenant)}/orders/${encodeURIComponent(orderId)}/quick-paid`,
@@ -739,50 +832,88 @@ export default function TeamChatTab({
           }
         );
       } catch (qpErr) {
-        console.warn('[Mark Paid] Quick-paid email & WhatsApp fulfillment dispatch note:', qpErr);
+        console.warn('[Mark Paid] Quick-paid dispatch note:', qpErr);
       }
 
-      // Record system confirmation in messages and update Supabase orders table
+      // 3. Fallback direct dispatch to Meta CAPI Purchase route
       try {
-        const supabase = getSupabase();
-        if (supabase) {
-          const nowIso = new Date().toISOString();
-          await supabase
-            .from('orders')
-            .update({
-              status: 'PAID',
-              payment_status: 'PAID',
-              order_status: 'COMPLETED',
-              paid_at: nowIso,
-              updated_at: nowIso,
-            })
-            .eq('id', orderId);
+        fetch('/api/v1/tracking/capi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenantSlug: resolvedTenant,
+            eventName: 'Purchase',
+            orderId,
+            amount: orderGrossAmount || undefined,
+            customerPhone: custPhone,
+            customerName: currentConversation?.customerName,
+            contentName: orderTitle,
+          }),
+        }).catch((cErr) => console.warn('[Mark Paid] CAPI Purchase fallback note:', cErr));
+      } catch (cErr) {
+        console.warn('[Mark Paid] CAPI Purchase trigger note:', cErr);
+      }
 
-          const confirmationText = `✅ Pembayaran untuk tagihan ${orderId} senilai Rp ${data?.gross_amount ? data.gross_amount.toLocaleString('id-ID') : ''} telah DIVERIFIKASI LUNAS oleh CS. Event konversi Purchase Meta CAPI dan email fulfillment digital telah terkirim.`;
-          await supabase.from('messages').insert({
-            conversation_id: currentConversation?.id,
-            tenant_id: tenantId || resolvedTenant,
-            tenant_slug: resolvedTenant,
-            sender_type: 'system',
-            sender: 'system',
-            message_body: confirmationText,
-            text: confirmationText,
-            channel: 'whatsapp',
-            user_name: 'Sistem BoonTrack',
-            created_at: nowIso,
-          });
+      // 4. Update Supabase orders table & send WhatsApp confirmation
+      if (supabase) {
+        await supabase
+          .from('orders')
+          .update({
+            status: 'PAID',
+            payment_status: 'PAID',
+            order_status: 'COMPLETED',
+            paid_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('id', orderId);
 
-          await supabase.from('conversations').update({
-            last_message: `LUNAS: Tagihan ${orderId}`,
-            last_message_at: nowIso,
-          }).eq('id', currentConversation?.id);
+        const invoiceUrl = getStorefrontInvoiceUrl(resolvedTenant, orderId);
+        const confirmationText =
+          `🎉 *PEMBAYARAN DIVERIFIKASI LUNAS!*\n\n` +
+          `Halo Kak! Pembayaran untuk pesanan *#${orderId}* senilai *Rp ${orderGrossAmount.toLocaleString('id-ID')}* telah diverifikasi LUNAS oleh tim CS.\n\n` +
+          `📦 *Layanan:* ${orderTitle}\n` +
+          `✅ *Status:* LUNAS (PAID)\n` +
+          `📄 *Invoice Lunas Resmi:* ${invoiceUrl}\n\n` +
+          `Terima kasih banyak atas kerjasamanya! 🙏`;
+
+        await supabase.from('messages').insert({
+          conversation_id: currentConversation?.id,
+          tenant_id: tenantId || resolvedTenant,
+          tenant_slug: resolvedTenant,
+          sender_type: 'system',
+          sender: 'system',
+          message_body: confirmationText,
+          text: confirmationText,
+          channel: 'whatsapp',
+          user_name: 'Sistem BoonTrack',
+          created_at: nowIso,
+        });
+
+        await supabase.from('conversations').update({
+          last_message: `LUNAS: Tagihan ${orderId}`,
+          last_message_at: nowIso,
+        }).eq('id', currentConversation?.id);
+
+        // Outbound WhatsApp confirmation message via Evolution API
+        try {
+          const { data: conn } = await supabase
+            .from('whatsapp_connections')
+            .select('instance_name, credential_ref')
+            .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
+            .eq('status', 'open')
+            .maybeSingle();
+
+          if (conn?.instance_name && custPhone) {
+            const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
+            await sendEvolutionTextMessage(conn.instance_name, custPhone, confirmationText, conn.credential_ref);
+          }
+        } catch (waErr) {
+          console.warn('[handleMarkPaid] Outbound WA confirmation note:', waErr);
         }
-      } catch (dbErr) {
-        console.warn('[Mark Paid] DB confirmation note:', dbErr);
       }
 
       await inbox.refreshConversations();
-      setQrisFeedback(`✅ Tagihan ${orderId} LUNAS, CAPI & Email Akses tersinkron!`);
+      setQrisFeedback(`✅ Tagihan ${orderId} LUNAS, CAPI Purchase & WA Konfirmasi terkirim!`);
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
       alert(`Gagal menandai lunas: ${err.message || 'Terjadi kesalahan sistem'}`);
@@ -964,6 +1095,15 @@ export default function TeamChatTab({
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => setIsDirectCsLoginOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs active:scale-95"
+            title="Login CS Langsung via WhatsApp + PIN (Bypass Magic Link Email)"
+          >
+            <Headphones className="w-3.5 h-3.5 text-indigo-600" />
+            <span>{activeCsUser?.name ? `CS: ${activeCsUser.name}` : 'Login CS Direct'}</span>
+          </button>
           <span className="px-3 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>Gateway Online</span>
@@ -1485,7 +1625,7 @@ export default function TeamChatTab({
                                   ) : (
                                     <>
                                       <CheckCircle2 className="w-3.5 h-3.5" />
-                                      <span>Tandai Lunas & Sinkron CAPI</span>
+                                      <span>Tandai Pembayaran Lunas / Verify Paid</span>
                                     </>
                                   )}
                                 </button>
@@ -1574,7 +1714,7 @@ export default function TeamChatTab({
                                   ) : (
                                     <>
                                       <CheckCircle2 className="w-3.5 h-3.5" />
-                                      <span>Tandai Lunas (Verifikasi Seller)</span>
+                                      <span>Tandai Pembayaran Lunas / Verify Paid</span>
                                     </>
                                   )}
                                 </button>
@@ -1993,20 +2133,20 @@ export default function TeamChatTab({
 
                       <div>
                         <label className="text-[10px] font-bold text-slate-700 block mb-1">
-                          Deskripsi Produk / Paket
+                          Nama Layanan / Proyek
                         </label>
                         <input
                           type="text"
                           value={qrisItemName}
                           onChange={(e) => setQrisItemName(e.target.value)}
-                          placeholder="Contoh: Paket 2 Pcs Kemeja + Ongkir"
+                          placeholder="Jasa Video Promosi"
                           className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:bg-white focus:outline-none focus:border-indigo-600"
                         />
                       </div>
 
                       <div>
                         <label className="text-[10px] font-bold text-slate-700 block mb-1">
-                          Nominal Total (Rp)
+                          Nominal Kesepakatan (Rp)
                         </label>
                         <input
                           type="text"
@@ -2115,7 +2255,7 @@ export default function TeamChatTab({
                                 ) : (
                                   <>
                                     <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>Tandai Lunas (Verifikasi Seller)</span>
+                                    <span>Tandai Pembayaran Lunas / Verify Paid</span>
                                   </>
                                 )}
                               </button>
@@ -2473,6 +2613,16 @@ export default function TeamChatTab({
           </div>
         </div>
       )}
+
+      {/* Direct CS Login Modal (Bypass Magic Link) */}
+      <DirectCsLoginModal
+        isOpen={isDirectCsLoginOpen}
+        onClose={() => setIsDirectCsLoginOpen(false)}
+        tenantSlug={resolvedTenant}
+        onSuccess={(csUser) => {
+          setActiveCsUser(csUser);
+        }}
+      />
     </div>
   );
 }
