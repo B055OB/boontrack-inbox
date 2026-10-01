@@ -856,8 +856,6 @@ export default function TenantDashboardPage() {
           <OverviewTab
             totalOmzet={totalOmzet}
             readyBalance={readyBalance}
-            bankForm={bankForm}
-            setBankForm={setBankForm}
             displayName={displayName}
             transactions={transactions && transactions.length > 0 ? transactions : orders}
             isWithdrawModalOpen={isWithdrawModalOpen}

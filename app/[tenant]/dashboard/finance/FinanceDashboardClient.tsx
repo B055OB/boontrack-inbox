@@ -22,13 +22,6 @@ export default function FinanceDashboardClient({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Bank Form State
-  const [bankForm, setBankForm] = useState({
-    name: initialTenant?.metadata?.bank_name || 'BCA',
-    account: initialTenant?.metadata?.bank_account || '',
-    holder: initialTenant?.metadata?.bank_holder || initialTenant?.name || '',
-  });
-
   // Withdraw Modal State
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState(0);
@@ -144,8 +137,6 @@ export default function FinanceDashboardClient({
         <OverviewTab
           totalOmzet={totalOmzet}
           readyBalance={readyBalance}
-          bankForm={bankForm}
-          setBankForm={setBankForm}
           displayName={displayName}
           transactions={orders}
           isWithdrawModalOpen={isWithdrawModalOpen}

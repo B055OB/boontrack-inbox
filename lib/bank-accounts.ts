@@ -66,12 +66,15 @@ export function extractTenantBankAccounts(tenant: any): TenantBankAccount[] {
     }
   }
 
-  // 2. Object bank_info / bank / payment_info / manual_config
+  // 2. Object bank_info / bank / payment_info / manual_config / bank_transfer / bank_settings
   const bankObj =
+    meta.bank_transfer ||
+    meta.bank_settings ||
     meta.bank_info ||
     meta.bank ||
     meta.payment_info ||
     meta.payment_config?.manual_config?.bank ||
+    meta.payment_config?.bank_transfer ||
     meta.manual_config?.bank;
 
   if (bankObj && typeof bankObj === 'object' && !Array.isArray(bankObj)) {

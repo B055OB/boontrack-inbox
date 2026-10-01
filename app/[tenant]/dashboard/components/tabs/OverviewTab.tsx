@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Wallet,
   ArrowUpRight,
@@ -29,18 +29,6 @@ import { getStorefrontInvoiceUrl } from '@/lib/storefront-urls';
 export interface OverviewTabProps {
   totalOmzet: number;
   readyBalance: number;
-  bankForm: {
-    name: string;
-    account: string;
-    holder: string;
-  };
-  setBankForm: React.Dispatch<
-    React.SetStateAction<{
-      name: string;
-      account: string;
-      holder: string;
-    }>
-  >;
   displayName: string;
   transactions: TransactionItem[];
   isWithdrawModalOpen: boolean;
@@ -56,8 +44,6 @@ export interface OverviewTabProps {
 export default function OverviewTab({
   totalOmzet,
   readyBalance,
-  bankForm,
-  setBankForm,
   displayName,
   transactions,
   isWithdrawModalOpen,
@@ -72,6 +58,7 @@ export default function OverviewTab({
   const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('all'));
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PAID' | 'PENDING_VERIFICATION' | 'PENDING'>('ALL');
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [activeBankAccounts, setActiveBankAccounts] = useState<{ bank_name: string; account_number: string; account_holder: string }[]>([]);
 
   // Financial Metrics dynamically calculated by universal finance engine
   const financialMetrics = useMemo(() => {
@@ -80,6 +67,43 @@ export default function OverviewTab({
       endDate: dateRange.endDate || undefined,
     });
   }, [transactions, dateRange.startDate, dateRange.endDate]);
+
+  // Load active bank accounts from Supabase for withdraw modal display
+  useEffect(() => {
+    let mounted = true;
+    async function loadBankAccounts() {
+      if (!tenantSlug) return;
+      try {
+        const { getSupabase } = await import('@/lib/supabaseClient');
+        const supabase = getSupabase();
+        if (!supabase) return;
+        const { data } = await supabase
+          .from('tenants')
+          .select('metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+        const meta = data?.metadata || {};
+        const rawAccounts = Array.isArray(meta.bank_accounts) && meta.bank_accounts.length > 0
+          ? meta.bank_accounts
+          : (meta.bank_transfer || meta.bank_settings ? [meta.bank_transfer || meta.bank_settings] : []);
+
+        if (mounted && rawAccounts.length > 0) {
+          const accounts = (rawAccounts as any[])
+            .filter((a: any) => a && a.is_active !== false && (a.account_number || a.account))
+            .map((a: any) => ({
+              bank_name: a.bank_name || a.name || 'Bank Transfer',
+              account_number: a.account_number || a.account || '',
+              account_holder: a.account_holder || a.holder || '',
+            }));
+          setActiveBankAccounts(accounts);
+        }
+      } catch (e) {
+        console.debug('[OverviewTab] Could not load bank accounts:', e);
+      }
+    }
+    loadBankAccounts();
+    return () => { mounted = false; };
+  }, [tenantSlug]);
 
   const effectiveOmzet = financialMetrics.totalRevenue > 0 ? financialMetrics.totalRevenue : (!dateRange.startDate && !dateRange.endDate && totalOmzet > 0 ? totalOmzet : 0);
 
@@ -441,42 +465,20 @@ export default function OverviewTab({
         </div>
       </div>
 
-      {/* REKENING BANK TOKO */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 space-y-4">
-        <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
-          Ubah Data Rekening Bank Toko
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5">Nama Bank</label>
-            <input
-              type="text"
-              value={bankForm.name}
-              onChange={(e) => setBankForm((b) => ({ ...b, name: e.target.value }))}
-              placeholder="Contoh: BCA / Mandiri / BRI"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5">Nomor Rekening</label>
-            <input
-              type="text"
-              value={bankForm.account}
-              onChange={(e) => setBankForm((b) => ({ ...b, account: e.target.value }))}
-              placeholder="Contoh: 1234567890"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-mono font-bold"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-slate-700 block mb-1.5">Nama Pemilik Rekening</label>
-            <input
-              type="text"
-              value={bankForm.holder}
-              onChange={(e) => setBankForm((b) => ({ ...b, holder: e.target.value }))}
-              placeholder="Nama sesuai buku tabungan"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 uppercase font-bold"
-            />
-          </div>
+      {/* INFO: REKENING BANK DI PENGATURAN TOKO */}
+      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center gap-4">
+        <div className="w-9 h-9 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
+          <CreditCard className="w-4 h-4 text-violet-600" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-black text-slate-900">
+            {activeBankAccounts.length > 0
+              ? `${activeBankAccounts.length} Rekening Bank Aktif: ${activeBankAccounts.map(a => a.bank_name).join(', ')}`
+              : 'Rekening Bank Belum Dikonfigurasi'}
+          </p>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Kelola rekening di <strong>Pengaturan Toko → Tab 3. Payment / QRIS</strong>.
+          </p>
         </div>
       </div>
 
@@ -521,12 +523,24 @@ export default function OverviewTab({
                 <span className="text-[10px] text-slate-400 mt-1 block">Minimal penarikan dana Rp 50.000</span>
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
                 <div className="font-bold text-slate-800">Transfer Ditujukan ke:</div>
-                <div className="text-slate-600 font-mono">
-                  {bankForm.name} - {bankForm.account}
-                </div>
-                <div className="text-slate-500 font-bold uppercase">a.n {bankForm.holder || displayName}</div>
+                {activeBankAccounts.length > 0 ? (
+                  activeBankAccounts.map((acc, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="font-bold text-slate-900">{acc.bank_name}</span>
+                        <span className="text-slate-500 font-mono ml-1">{acc.account_number}</span>
+                      </div>
+                      <span className="text-slate-500 font-bold uppercase text-[10px]">a.n {acc.account_holder}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-amber-700 font-semibold flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Rekening belum dikonfigurasi. Atur di Pengaturan → Payment.</span>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">

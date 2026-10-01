@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Save,
   RefreshCw,
+  MessageCircle,
 } from 'lucide-react';
 import ImageUpload from '@/components/ImageUpload';
 import {
@@ -982,6 +983,185 @@ export default function SinglePageBuilderModal({
                 enabled={singlePageForm.enable_payment ?? true}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_payment: val }))}
               />
+
+              {/* SELEKTOR TIPE AKSI / CALL TO ACTION (CTA) CHECKOUT */}
+              <div className="bg-gradient-to-br from-slate-50 to-blue-50/40 border border-slate-200 rounded-2xl p-4 space-y-3.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold leading-none">🎯</span>
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xs">Tipe Aksi Transaksi / Call to Action (CTA)</h4>
+                      <p className="text-[10px] text-slate-500">Pilih alur transaksi utama yang dialami calon pembeli saat mengunjungi landing page produk ini.</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 uppercase tracking-wide">
+                    {(singlePageForm.checkout_action_mode || 'DIRECT') === 'DIRECT' ? 'Direct Order' : (singlePageForm.checkout_action_mode === 'WHATSAPP' ? 'Direct WhatsApp' : 'Hybrid')}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {/* Mode 1: DIRECT */}
+                  <label
+                    onClick={() => setSinglePageForm(p => ({ ...p, checkout_action_mode: 'DIRECT' }))}
+                    className={`relative p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between select-none ${
+                      (singlePageForm.checkout_action_mode || 'DIRECT') === 'DIRECT'
+                        ? 'border-blue-600 bg-white shadow-sm ring-2 ring-blue-500/20'
+                        : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-base">🛒</span>
+                        <input
+                          type="radio"
+                          name="checkout_action_mode"
+                          value="DIRECT"
+                          checked={(singlePageForm.checkout_action_mode || 'DIRECT') === 'DIRECT'}
+                          onChange={() => setSinglePageForm(p => ({ ...p, checkout_action_mode: 'DIRECT' }))}
+                          className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+                      <h5 className="font-black text-xs text-slate-900 leading-snug">
+                        Form Checkout Langsung
+                      </h5>
+                      <span className="inline-block text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                        Direct Order
+                      </span>
+                      <p className="text-[10px] text-slate-500 leading-relaxed pt-1">
+                        Form checkout instan di halaman lengkap dengan rincian data pembeli &amp; pembayaran QRIS/Transfer.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Mode 2: WHATSAPP */}
+                  <label
+                    onClick={() => setSinglePageForm(p => ({ ...p, checkout_action_mode: 'WHATSAPP' }))}
+                    className={`relative p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between select-none ${
+                      singlePageForm.checkout_action_mode === 'WHATSAPP'
+                        ? 'border-emerald-600 bg-emerald-50/40 shadow-sm ring-2 ring-emerald-500/20'
+                        : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-base">💬</span>
+                        <input
+                          type="radio"
+                          name="checkout_action_mode"
+                          value="WHATSAPP"
+                          checked={singlePageForm.checkout_action_mode === 'WHATSAPP'}
+                          onChange={() => setSinglePageForm(p => ({ ...p, checkout_action_mode: 'WHATSAPP' }))}
+                          className="h-3.5 w-3.5 text-emerald-600 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <h5 className="font-black text-xs text-slate-900 leading-snug">
+                        Konsultasi / Order via WhatsApp
+                      </h5>
+                      <span className="inline-block text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                        Chat to Close
+                      </span>
+                      <p className="text-[10px] text-slate-500 leading-relaxed pt-1">
+                        Tombol utama langsung mengarahkan buyer ke WhatsApp CS/seller dengan template pesan otomatis.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* Mode 3: HYBRID */}
+                  <label
+                    onClick={() => setSinglePageForm(p => ({ ...p, checkout_action_mode: 'HYBRID' }))}
+                    className={`relative p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between select-none ${
+                      singlePageForm.checkout_action_mode === 'HYBRID'
+                        ? 'border-indigo-600 bg-indigo-50/40 shadow-sm ring-2 ring-indigo-500/20'
+                        : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'
+                    }`}
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-base">⚡</span>
+                        <input
+                          type="radio"
+                          name="checkout_action_mode"
+                          value="HYBRID"
+                          checked={singlePageForm.checkout_action_mode === 'HYBRID'}
+                          onChange={() => setSinglePageForm(p => ({ ...p, checkout_action_mode: 'HYBRID' }))}
+                          className="h-3.5 w-3.5 text-indigo-600 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <h5 className="font-black text-xs text-slate-900 leading-snug">
+                        Keduanya (Form + WA Melayang)
+                      </h5>
+                      <span className="inline-block text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                        Rekomendasi
+                      </span>
+                      <p className="text-[10px] text-slate-500 leading-relaxed pt-1">
+                        Form checkout aktif di halaman, ditambah tombol WhatsApp melayang agar buyer bisa bertanya jika ragu.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                {/* SINKRONISASI KONFIGURASI WHATSAPP & PRE-FILLED DRAFT */}
+                {(singlePageForm.checkout_action_mode === 'WHATSAPP' || singlePageForm.checkout_action_mode === 'HYBRID') && (
+                  <div className="p-3.5 bg-white border border-emerald-200 rounded-xl space-y-3 animate-fadeIn">
+                    <div className="flex items-center justify-between border-b border-emerald-100 pb-2">
+                      <div className="flex items-center gap-1.5">
+                        <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span className="font-bold text-slate-900 text-xs">Pengaturan WhatsApp CS &amp; Pesan Otomatis</span>
+                      </div>
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                        WhatsApp Terhubung
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="font-bold text-slate-700 block text-[11px] mb-1">
+                          Nomor WhatsApp CS / Seller (Opsional)
+                        </label>
+                        <input
+                          type="tel"
+                          value={singlePageForm.whatsapp_number || ''}
+                          onChange={(e) => setSinglePageForm(p => ({ ...p, whatsapp_number: e.target.value }))}
+                          placeholder="Contoh: 081234567890 (Gunakan nomor toko jika kosong)"
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                        />
+                        <span className="text-[10px] text-slate-400 mt-1 block">
+                          Jika dikosongkan, sistem otomatis memakai nomor WhatsApp resmi toko.
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="font-bold text-slate-700 block text-[11px]">
+                            Teks Pesan WhatsApp Otomatis
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setSinglePageForm(p => ({
+                              ...p,
+                              whatsapp_custom_message: 'Halo Admin, saya tertarik dengan produk {nama_produk}. Boleh minta info lebih detail?'
+                            }))}
+                            className="text-[10px] text-emerald-700 hover:text-emerald-800 font-bold underline cursor-pointer"
+                          >
+                            Gunakan Template
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={singlePageForm.whatsapp_custom_message ?? ''}
+                          onChange={(e) => setSinglePageForm(p => ({ ...p, whatsapp_custom_message: e.target.value }))}
+                          placeholder="Halo Admin, saya tertarik dengan produk {nama_produk}..."
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-medium focus:outline-none focus:border-emerald-600"
+                        />
+                        <span className="text-[10px] text-slate-400 mt-1 block">
+                          Gunakan variabel <code className="text-emerald-700 font-bold">{"{nama_produk}"}</code> untuk otomatis diisi nama produk saat buyer mengklik tombol.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
                 <span className="font-bold text-slate-800 block text-xs">
                   Opsi Metode Pembayaran di Checkout
@@ -1306,7 +1486,11 @@ export default function SinglePageBuilderModal({
                     Teks Tombol Aksi / CTA Label
                   </span>
                   <span className="text-[10px] text-slate-500 font-medium">
-                    Default: <strong className="text-blue-600 font-bold">"{activeProduct.category === 'fisik' ? 'Beli Sekarang' : 'Daftar Kelas Sekarang'}"</strong>
+                    Default: <strong className="text-blue-600 font-bold">
+                      {singlePageForm.checkout_action_mode === 'WHATSAPP'
+                        ? '"Order via WhatsApp Langsung"'
+                        : `"${activeProduct.category === 'fisik' ? 'Beli Sekarang' : 'Daftar Kelas Sekarang'}"`}
+                    </strong>
                   </span>
                 </div>
                 <input

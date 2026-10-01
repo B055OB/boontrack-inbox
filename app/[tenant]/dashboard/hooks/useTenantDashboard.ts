@@ -1842,6 +1842,9 @@ export function useTenantDashboard() {
 
     setSinglePageForm({
       slug: prodSlug,
+      checkout_action_mode: cfg?.checkout_action_mode || 'DIRECT',
+      whatsapp_custom_message: cfg?.whatsapp_custom_message || '',
+      whatsapp_number: cfg?.whatsapp_number || '',
       enable_hero: cfg?.enable_hero ?? true,
       enable_client_logos: cfg?.enable_client_logos ?? false,
       enable_problem_solution: cfg?.enable_problem_solution ?? true,
@@ -1920,6 +1923,9 @@ export function useTenantDashboard() {
       ...singlePageForm,
       slug: prodSlug,
       discount_coupon: singlePageForm.voucher?.code || singlePageForm.discount_coupon || '',
+      checkout_action_mode: singlePageForm.checkout_action_mode || 'DIRECT',
+      whatsapp_custom_message: singlePageForm.whatsapp_custom_message || '',
+      whatsapp_number: singlePageForm.whatsapp_number || '',
     };
 
     const updatedProducts = products.map(p => {
@@ -1930,11 +1936,17 @@ export function useTenantDashboard() {
           slug: prodSlug,
           cta_label: ctaText || undefined,
           single_page_config: updatedConfig,
+          fulfillment_metadata: {
+            ...(p.fulfillment_metadata || {}),
+            single_page_config: updatedConfig,
+          },
           metadata: {
             ...(p.metadata || {}),
             cta_text: ctaText || undefined,
             cta_label: ctaText || undefined,
             voucher_config: updatedConfig.voucher,
+            checkout_action_mode: updatedConfig.checkout_action_mode,
+            whatsapp_custom_message: updatedConfig.whatsapp_custom_message,
           },
         };
       }

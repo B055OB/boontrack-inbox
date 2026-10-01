@@ -197,6 +197,46 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     }
   }, [courierServiceType, instantRate, regularRate, instantCourierName, regularCourierName, isPhysical, shippingCity]);
 
+  // Resolusi Scarcity / Kuota Badge Dedikasi dari Metadata Produk
+  const scarcityBadge = React.useMemo(() => {
+    const raw =
+      (product?.metadata as any)?.scarcity_badge ||
+      (product?.fulfillment_metadata as any)?.scarcity_badge ||
+      (product?.fulfillment_metadata?.single_page_config as any)?.scarcity_badge;
+
+    if (raw) {
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        return trimmed ? { enabled: true, text: trimmed } : null;
+      }
+      if (typeof raw === 'object' && raw !== null) {
+        if (raw.enabled === false) return null;
+        const text = String(raw.text || '').trim();
+        if (!text) return null;
+        return { enabled: true, text };
+      }
+    }
+
+    if (typeof (product as any)?.variants === 'string') {
+      const parts = ((product as any).variants as string).split(/[•,]/).map((s) => s.trim());
+      const scarcityPart = parts.find((p) => {
+        const l = p.toLowerCase();
+        return (
+          l.includes('kuota terbatas') ||
+          l.includes('seat kuota') ||
+          l.includes('sisa seat') ||
+          l.includes('kuota hanya')
+        );
+      });
+      if (scarcityPart) {
+        const cleanText = scarcityPart.startsWith('🔥') ? scarcityPart : `🔥 ${scarcityPart}`;
+        return { enabled: true, text: cleanText };
+      }
+    }
+
+    return null;
+  }, [product]);
+
   // LAZY SHIPPING: DILARANG dipicu saat modal pertama kali dimuat.
   // Hanya dipanggil saat pembeli selesai mengisi kecamatan/kota tujuan (debounce 400ms).
   useEffect(() => {

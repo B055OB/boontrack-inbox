@@ -110,6 +110,7 @@ export function buildWabaStorefrontConsultationUrl(params: {
   productSlug: string;
   tenantWhatsApp?: string | null;
   botNumber?: string | null;
+  customMessage?: string | null;
 }): { text: string; url: string; number: string } {
   const rawNumber = params.tenantWhatsApp || params.botNumber || '';
   const num = normalizeStorefrontWhatsAppNumber(rawNumber);
@@ -117,8 +118,20 @@ export function buildWabaStorefrontConsultationUrl(params: {
   const tSlug = params.tenantSlug || '';
   const pSlug = params.productSlug || '';
 
-  // Format standar: "Halo Kak, saya tertarik dengan [NAMA_PRODUK]. Boleh minta info lebih detail? (Ref: [tenant_slug]#[product_slug])"
-  const text = `Halo Kak, saya tertarik dengan ${pName}. Boleh minta info lebih detail? (Ref: ${tSlug}#${pSlug})`;
+  let text: string;
+  if (params.customMessage && params.customMessage.trim()) {
+    text = params.customMessage
+      .replace(/\{nama_produk\}/gi, pName)
+      .replace(/\{product_name\}/gi, pName)
+      .replace(/\[nama_produk\]/gi, pName)
+      .replace(/\{nama_toko\}/gi, params.storeName || '')
+      .replace(/\[nama_toko\]/gi, params.storeName || '')
+      .replace(/\{tenant\}/gi, tSlug)
+      .replace(/\{slug\}/gi, pSlug);
+  } else {
+    // Format standar: "Halo Kak, saya tertarik dengan [NAMA_PRODUK]. Boleh minta info lebih detail? (Ref: [tenant_slug]#[product_slug])"
+    text = `Halo Kak, saya tertarik dengan ${pName}. Boleh minta info lebih detail? (Ref: ${tSlug}#${pSlug})`;
+  }
 
   if (!num) {
     return { text, url: '', number: '' };
@@ -383,6 +396,15 @@ function SingleProductContent() {
               affiliate_commission_rate: 0, // Audit: komisi kemitraan dinonaktifkan
               whatsapp_number: cfg.whatsapp_number || match.whatsapp_number || (tenantRow as any)?.whatsapp_number || (tenantRow as any)?.phone || tenantRow?.metadata?.whatsapp_number || tenantRow?.metadata?.phone || (tenantRow?.metadata as any)?.store_profile?.whatsapp || (tenantRow?.metadata as any)?.store_profile?.phone || (tenantRow?.metadata as any)?.contact_phone || (tenantRow?.metadata as any)?.contact_whatsapp || '',
               cta_label: hero.cta_label || cfg.cta_label || match.cta_label || undefined,
+              scarcity_badge: cfg.scarcity_badge || match?.metadata?.scarcity_badge || (match?.fulfillment_metadata as any)?.scarcity_badge || (sqlProd?.fulfillment_metadata as any)?.scarcity_badge || undefined,
+              // ── Feature flags resolved from product / config metadata ──
+              show_pain_points: cfg.show_pain_points ?? (match?.metadata?.show_pain_points ?? undefined),
+              hide_address_for_digital: cfg.hide_address_for_digital ?? (match?.metadata?.hide_address_for_digital ?? undefined),
+              whatsapp_cta_enabled: cfg.whatsapp_cta_enabled ?? (match?.metadata?.whatsapp_cta_enabled ?? undefined),
+              whatsapp_cta_label: cfg.whatsapp_cta_label || match?.metadata?.whatsapp_cta_label || undefined,
+              whatsapp_cta_number: cfg.whatsapp_cta_number || match?.metadata?.whatsapp_cta_number || undefined,
+              checkout_action_mode: cfg.checkout_action_mode || match?.metadata?.checkout_action_mode || (match?.fulfillment_metadata?.single_page_config?.checkout_action_mode) || 'DIRECT',
+              whatsapp_custom_message: cfg.whatsapp_custom_message || match?.metadata?.whatsapp_custom_message || (match?.fulfillment_metadata?.single_page_config?.whatsapp_custom_message) || '',
             };
 
             const rawPrice = match.price !== undefined && match.price !== null ? Number(match.price) : (ob.price !== undefined && ob.price !== null ? Number(ob.price) : 0);
@@ -425,7 +447,10 @@ function SingleProductContent() {
               meta_pixel_id_override: match.meta_pixel_id_override || match.metadata?.meta_pixel_id_override || (sqlProd as any)?.meta_pixel_id_override || '',
               tiktok_pixel_id_override: match.tiktok_pixel_id_override || match.metadata?.tiktok_pixel_id_override || (sqlProd as any)?.tiktok_pixel_id_override || '',
               order_bumps: match.order_bumps || match.metadata?.order_bumps || match.fulfillment_metadata?.order_bumps,
-              metadata: match.metadata,
+              metadata: {
+                ...(match.metadata || {}),
+                scarcity_badge: match?.metadata?.scarcity_badge || cfg.scarcity_badge || (match?.fulfillment_metadata as any)?.scarcity_badge || (sqlProd?.fulfillment_metadata as any)?.scarcity_badge || undefined,
+              },
             };
 
             setResolvedData({
@@ -791,26 +816,85 @@ function SingleProductContent() {
     searchParams.get('checkout') === 'direct'
   );
 
-  // Parsing varian produk dinamis
+  // Parsing varian produk dinamis & pembersihan frase scarcity yang salah tempat
   const variantList = useMemo(() => {
     if (!product.variants) return [];
-    if (Array.isArray(product.variants)) return (product.variants as string[]).filter(Boolean);
-    if (typeof product.variants === 'string') {
+    let rawList: string[] = [];
+    if (Array.isArray(product.variants)) {
+      rawList = (product.variants as string[]).filter(Boolean);
+    } else if (typeof product.variants === 'string') {
       if (product.variants.includes(',')) {
-        return product.variants.split(',').map((s: string) => s.trim()).filter(Boolean);
+        rawList = product.variants.split(',').map((s: string) => s.trim()).filter(Boolean);
+      } else if (product.variants.includes('•')) {
+        rawList = product.variants.split('•').map((s: string) => s.trim()).filter(Boolean);
+      } else {
+        rawList = [product.variants.trim()];
       }
-      if (product.variants.includes('•')) {
-        return product.variants.split('•').map((s: string) => s.trim()).filter(Boolean);
-      }
-      return [product.variants.trim()];
     }
-    return [];
+
+    // Filter ketat: pisahkan teks scarcity/kuota agar tidak menjadi tombol varian produk
+    return rawList.filter((item) => {
+      const lower = item.toLowerCase();
+      if (
+        lower.includes('kuota terbatas') ||
+        lower.includes('seat kuota') ||
+        lower.includes('sisa seat') ||
+        lower.includes('kuota hanya')
+      ) {
+        return false;
+      }
+      return true;
+    });
   }, [product.variants]);
+
+  // Resolusi Scarcity / Kuota Badge Dedikasi dari Metadata Produk atau SinglePageConfig
+  const scarcityBadge = useMemo(() => {
+    const raw =
+      (product.metadata as any)?.scarcity_badge ||
+      (config as any)?.scarcity_badge ||
+      (product as any)?.scarcity_badge ||
+      (product?.fulfillment_metadata as any)?.scarcity_badge;
+
+    if (raw) {
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        return trimmed ? { enabled: true, text: trimmed } : null;
+      }
+      if (typeof raw === 'object' && raw !== null) {
+        if (raw.enabled === false) return null;
+        const text = String(raw.text || '').trim();
+        if (!text) return null;
+        return { enabled: true, text };
+      }
+    }
+
+    // Fallback cerdas: Jika string variants sebelumnya membawa fragmen scarcity (contoh: "50 Seat Kuota Terbatas")
+    if (typeof product.variants === 'string') {
+      const parts = product.variants.split(/[•,]/).map((s) => s.trim());
+      const scarcityPart = parts.find((p) => {
+        const l = p.toLowerCase();
+        return (
+          l.includes('kuota terbatas') ||
+          l.includes('seat kuota') ||
+          l.includes('sisa seat') ||
+          l.includes('kuota hanya')
+        );
+      });
+      if (scarcityPart) {
+        const cleanText = scarcityPart.startsWith('🔥') ? scarcityPart : `🔥 ${scarcityPart}`;
+        return { enabled: true, text: cleanText };
+      }
+    }
+
+    return null;
+  }, [product.metadata, config, product]);
 
   const [selectedVariant, setSelectedVariant] = useState<string>('');
 
   useEffect(() => {
-    if (variantList.length > 0 && !selectedVariant) {
+    if (variantList.length === 1) {
+      setSelectedVariant(variantList[0]);
+    } else if (variantList.length > 1 && (!selectedVariant || !variantList.includes(selectedVariant))) {
       setSelectedVariant(variantList[0]);
     }
   }, [variantList, selectedVariant]);
@@ -1135,7 +1219,11 @@ function SingleProductContent() {
     tenantSlug: tenant,
     productSlug: product.slug || slug,
     tenantWhatsApp: rawStoreWhatsApp,
+    customMessage: config.whatsapp_custom_message,
   });
+
+  const actionMode: 'DIRECT' | 'WHATSAPP' | 'HYBRID' =
+    config.checkout_action_mode || (rawStoreWhatsApp ? 'HYBRID' : 'DIRECT');
 
   const handleWhatsAppConsultation = () => {
     if (!wabaConsultationUrl) return;
@@ -1386,11 +1474,184 @@ function SingleProductContent() {
     );
   };
 
+  const renderWhatsAppOrderCard = () => (
+    <div id="checkout-section" className="space-y-4 text-xs animate-fadeIn">
+      {errorMessage && (
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* Scarcity / Kuota Badge Notifikasi Urgency Box */}
+      {scarcityBadge && scarcityBadge.enabled && (
+        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-amber-500/10 border border-amber-400/40 text-amber-950 font-bold text-xs shadow-xs animate-in fade-in duration-300">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex h-2 w-2 relative shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+            </span>
+            <span className="truncate text-[11px] sm:text-xs text-amber-950 font-extrabold tracking-tight">
+              {scarcityBadge.text}
+            </span>
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-100/90 px-2 py-0.5 rounded-full border border-rose-200/80 shrink-0">
+            Terbatas
+          </span>
+        </div>
+      )}
+
+      {/* Visual Produk & Varian (WhatsApp Ordering Card) */}
+      <div className="p-4 bg-gradient-to-br from-emerald-50/70 via-slate-50 to-white rounded-2xl border border-emerald-200/80 space-y-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          <img
+            src={config.banner_url || (product as any).image_url || product.image || "/placeholder-product.png"}
+            alt={product.name}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = "/placeholder-product.png";
+            }}
+            className="w-16 h-16 object-cover rounded-xl border border-slate-200 bg-white shrink-0 shadow-2xs"
+          />
+          <div className="flex-1 min-w-0">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase mb-1">
+              <MessageCircle className="w-3 h-3 text-emerald-600" />
+              Order &amp; Konsultasi via WhatsApp
+            </span>
+            <h4 className="font-bold text-slate-900 text-sm truncate">{product.name}</h4>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="font-black text-emerald-600 text-base">
+                {totalAmount === 0 ? 'GRATIS' : `Rp ${totalAmount.toLocaleString('id-ID')}`}
+              </span>
+              {promoPrice > basePrice && (
+                <span className="text-xs line-through text-slate-400">
+                  Rp {promoPrice.toLocaleString('id-ID')}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Pilihan Varian Produk jika tersedia */}
+        {variantList.length > 1 ? (
+          <div className="pt-2 border-t border-emerald-100">
+            <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
+              Pilihan Varian / Paket yang Diminati:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {variantList.map((v, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setSelectedVariant(v)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    selectedVariant === v
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:border-emerald-300'
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : variantList.length === 1 ? (
+          <div className="pt-2 border-t border-emerald-100 flex items-center justify-between text-xs">
+            <span className="text-[11px] font-semibold text-slate-500">
+              Paket Terpilih:
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
+              <Check className="w-3 h-3 text-emerald-600" />
+              <span>{variantList[0]}</span>
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Ringkasan & Benefit Konsultasi WhatsApp */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+          <div className="flex items-center gap-1.5 text-slate-900 font-bold text-[11px]">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Respon Cepat CS</span>
+          </div>
+          <p className="text-[10px] text-slate-500">Terhubung langsung ke customer service resmi toko.</p>
+        </div>
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+          <div className="flex items-center gap-1.5 text-slate-900 font-bold text-[11px]">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Bebas Konsultasi</span>
+          </div>
+          <p className="text-[10px] text-slate-500">Tanyakan detail produk &amp; penawaran khusus sebelum bayar.</p>
+        </div>
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+          <div className="flex items-center gap-1.5 text-slate-900 font-bold text-[11px]">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Transaksi Terjamin</span>
+          </div>
+          <p className="text-[10px] text-slate-500">Rekening resmi &amp; konfirmasi instan tanpa ribet.</p>
+        </div>
+      </div>
+
+      {/* Preview Pesan Otomatis */}
+      {wabaPrefilledMessage && (
+        <div className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl space-y-1">
+          <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wide block">
+            💬 Teks Pesan Otomatis yang Disiapkan:
+          </span>
+          <p className="text-xs text-slate-700 italic bg-white p-2.5 rounded-lg border border-emerald-100 font-medium">
+            "{wabaPrefilledMessage}"
+          </p>
+        </div>
+      )}
+
+      {/* Tombol Aksi Utama WhatsApp */}
+      {wabaConsultationUrl ? (
+        <a
+          href={wabaConsultationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handleWhatsAppConsultation}
+          className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-600/30 hover:scale-[1.01] active:scale-[0.99] transition text-sm cursor-pointer no-underline"
+        >
+          <MessageCircle className="w-5 h-5 shrink-0" />
+          <span>{config.cta_label || 'Order & Konsultasi via WhatsApp Sekarang'}</span>
+          <ArrowRight className="w-4 h-4 shrink-0" />
+        </a>
+      ) : (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs text-center font-medium">
+          Nomor WhatsApp belum dikonfigurasi oleh seller. Silakan hubungi admin toko.
+        </div>
+      )}
+
+      <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400 pt-1">
+        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+        <span>Jalur Komunikasi &amp; Transaksi Resmi Langsung ke Penjual</span>
+      </div>
+    </div>
+  );
+
   const renderCheckoutForm = () => (
     <form id="checkout-form" onSubmit={handleDirectCheckout} className="space-y-4 text-xs">
       {errorMessage && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs">
           {errorMessage}
+        </div>
+      )}
+
+      {/* Scarcity / Kuota Badge Notifikasi Urgency Box */}
+      {scarcityBadge && scarcityBadge.enabled && (
+        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-amber-500/10 border border-amber-400/40 text-amber-950 font-bold text-xs shadow-xs animate-in fade-in duration-300">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex h-2 w-2 relative shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-600"></span>
+            </span>
+            <span className="truncate text-[11px] sm:text-xs text-amber-950 font-extrabold tracking-tight">
+              {scarcityBadge.text}
+            </span>
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-100/90 px-2 py-0.5 rounded-full border border-rose-200/80 shrink-0">
+            Terbatas
+          </span>
         </div>
       )}
 
@@ -1420,8 +1681,8 @@ function SingleProductContent() {
           </div>
         </div>
 
-        {/* Pilihan Varian Produk jika tersedia */}
-        {variantList.length > 0 && (
+        {/* Pilihan Varian Produk jika tersedia (Single Variant = Badge, Multi Variant = Selector) */}
+        {variantList.length > 1 ? (
           <div className="pt-2 border-t border-slate-200/70">
             <span className="text-[11px] font-bold text-slate-600 block mb-1.5">
               Pilihan Varian / Paket:
@@ -1443,7 +1704,17 @@ function SingleProductContent() {
               ))}
             </div>
           </div>
-        )}
+        ) : variantList.length === 1 ? (
+          <div className="pt-2 border-t border-slate-200/70 flex items-center justify-between text-xs">
+            <span className="text-[11px] font-semibold text-slate-500">
+              Paket Terpilih:
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200/80 shadow-2xs">
+              <Check className="w-3 h-3 text-blue-600" />
+              <span>{variantList[0]}</span>
+            </span>
+          </div>
+        ) : null}
       </div>
 
       {/* Input Data Pembeli: Hanya 3 Field (Ultra-Lean Single Section) */}
@@ -1590,7 +1861,8 @@ function SingleProductContent() {
       </div>
 
       {/* Khusus Produk yang Memerlukan Alamat: Alamat Pengiriman (Fisik) / Alamat Lokasi (Jasa) */}
-      {requiresAddress && (
+      {/* hide_address_for_digital: Jika flag aktif (tiket konsultasi / produk digital murni), sembunyikan blok alamat */}
+      {requiresAddress && !config.hide_address_for_digital && !product.is_digital && !product.metadata?.is_digital_service && (
         <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
           <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
             {requiresShipping ? (
@@ -2151,7 +2423,7 @@ function SingleProductContent() {
       </button>
 
       {/* ── CTA KONSULTASI WHATSAPP SEKUNDER (Jalur Chat-to-Close) ── */}
-      {wabaConsultationUrl ? (
+      {wabaConsultationUrl && actionMode === 'HYBRID' ? (
         <a
           href={wabaConsultationUrl}
           target="_blank"
@@ -2265,7 +2537,7 @@ function SingleProductContent() {
               )}
 
               {/* Quick Action Scroll CTA */}
-              <div className="pt-1">
+              <div className="pt-1 space-y-2.5">
                 {isAffiliateProduct ? (
                   <a
                     href={externalAffiliateUrl}
@@ -2291,6 +2563,35 @@ function SingleProductContent() {
                     <ArrowDown className="w-4 h-4" />
                   </button>
                 )}
+
+                {/* ── Dual CTA: Secondary WhatsApp Button (Hero) ── */}
+                {/* Ditampilkan jika whatsapp_cta_enabled === true atau whatsapp_cta_label diisi di metadata produk */}
+                {(config.whatsapp_cta_enabled || config.whatsapp_cta_label) && (() => {
+                  const ctaWaNumber = config.whatsapp_cta_number
+                    ? normalizeStorefrontWhatsAppNumber(config.whatsapp_cta_number)
+                    : tenantWhatsAppNumber;
+                  if (!ctaWaNumber) return null;
+                  const ctaWaMsg = encodeURIComponent(
+                    `Halo kak, saya tertarik dengan ${product.name}. Boleh minta info lebih lanjut?`
+                  );
+                  const ctaWaUrl = `https://wa.me/${ctaWaNumber}?text=${ctaWaMsg}`;
+                  const ctaLabel = config.whatsapp_cta_label || '💬 Tanya via WhatsApp';
+                  return (
+                    <a
+                      href={ctaWaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        trackWhatsAppConsultation({ name: product.name, price: basePrice });
+                        trackContactEvent('WhatsApp Hero CTA');
+                      }}
+                      className="w-full py-3 px-5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-400 text-emerald-800 rounded-2xl flex items-center justify-center gap-2 font-bold text-sm transition shadow-xs active:scale-[0.99] no-underline"
+                    >
+                      <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{ctaLabel}</span>
+                    </a>
+                  );
+                })()}
               </div>
             </div>
           </section>
@@ -2308,7 +2609,8 @@ function SingleProductContent() {
             {config.enable_problem_solution !== false && (
               <>
                 {/* 3a. Problem Section */}
-                {Boolean((config.pain_points && config.pain_points.length > 0) || (config.problem_title && config.problem_title.trim())) ? (
+                {/* show_pain_points: Jika false (tiket konsultasi / produk tanpa narasi masalah), section ini disembunyikan */}
+                {config.show_pain_points !== false && Boolean((config.pain_points && config.pain_points.length > 0) || (config.problem_title && config.problem_title.trim())) ? (
                   <section className="bg-rose-50/70 border border-rose-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
                       {config.problem_title || 'Apakah Anda Sering Mengalami Masalah Ini?'}
@@ -2617,6 +2919,8 @@ function SingleProductContent() {
               <div className="space-y-3">
                 {renderDeliveryPayloadCard()}
               </div>
+            ) : actionMode === 'WHATSAPP' ? (
+              renderWhatsAppOrderCard()
             ) : (
               renderCheckoutForm()
             )}
@@ -2630,7 +2934,9 @@ function SingleProductContent() {
           totalAmount={totalAmount}
           dynamicCtaPrefix={dynamicCtaPrefix}
           ctaText={
-            totalAmount === 0
+            actionMode === 'WHATSAPP'
+              ? (config.cta_label || 'Order via WhatsApp')
+              : totalAmount === 0
               ? (product.metadata?.cta_text || 'Klaim Sekarang (Gratis)')
               : undefined
           }
@@ -2640,6 +2946,9 @@ function SingleProductContent() {
           targetFormId="checkout-form"
           onOpenCheckout={handleOpenCheckout}
           onExternalClick={handleExternalProductClick}
+          isWhatsAppMode={actionMode === 'WHATSAPP'}
+          whatsAppUrl={wabaConsultationUrl}
+          onWhatsAppClick={handleWhatsAppConsultation}
           disabled={loading}
         />
       )}
@@ -2668,7 +2977,7 @@ function SingleProductContent() {
       )}
 
       {/* ── FLOATING WHATSAPP BUTTON (POJOK KANAN BAWAH) ── */}
-      {wabaConsultationUrl ? (
+      {wabaConsultationUrl && (actionMode === 'HYBRID' || actionMode === 'WHATSAPP') ? (
         <div className="fixed bottom-24 sm:bottom-20 right-4 sm:right-6 z-40">
           <a
             href={wabaConsultationUrl}

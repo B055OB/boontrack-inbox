@@ -25,7 +25,43 @@ import {
   Info,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
+  Plus,
+  Trash2,
+  Copy,
+  Building2,
 } from 'lucide-react';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+interface BankAccount {
+  bank_name: string;
+  account_number: string;
+  account_holder: string;
+  is_active: boolean;
+}
+
+export const BANK_DROPDOWN_OPTIONS = [
+  'BCA',
+  'Mandiri',
+  'BRI',
+  'BNI',
+  'BSI',
+  'CIMB Niaga',
+  'Lainnya',
+] as const;
+
+export function matchBankOption(name: string): { option: string; custom: string } {
+  if (!name) return { option: 'BCA', custom: '' };
+  const upper = name.trim().toUpperCase();
+  if (upper.includes('BCA')) return { option: 'BCA', custom: '' };
+  if (upper.includes('MANDIRI')) return { option: 'Mandiri', custom: '' };
+  if (upper.includes('BRI') || upper.includes('RAKYAT INDONESIA')) return { option: 'BRI', custom: '' };
+  if (upper.includes('BNI') || upper.includes('NEGARA INDONESIA')) return { option: 'BNI', custom: '' };
+  if (upper.includes('BSI') || upper.includes('SYARIAH INDONESIA')) return { option: 'BSI', custom: '' };
+  if (upper.includes('CIMB')) return { option: 'CIMB Niaga', custom: '' };
+  return { option: 'Lainnya', custom: name.trim() };
+}
+
 import { getSupabase } from '@/lib/supabaseClient';
 import ReaderIntegrationCard from '../settings/ReaderIntegrationCard';
 import AiSessionQuotaMeter from '../AiSessionQuotaMeter';
@@ -93,6 +129,16 @@ export default function SettingsTab({
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [localQrisPayload, setLocalQrisPayload] = useState(storeQrisPayload || '');
   const [localGreeting, setLocalGreeting] = useState<string>(storeGreetingMessage || '');
+
+  // Manual Bank Transfer state (bank_settings / metadata.bank_transfer)
+  const [selectedBank, setSelectedBank] = useState<string>('BCA');
+  const [customBankName, setCustomBankName] = useState<string>('');
+  const [accountNumber, setAccountNumber] = useState<string>('');
+  const [accountHolder, setAccountHolder] = useState<string>('');
+  const [additionalBankAccounts, setAdditionalBankAccounts] = useState<BankAccount[]>([]);
+  const [isSavingBanks, setIsSavingBanks] = useState(false);
+  const [bankSaveMsg, setBankSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [copiedBankIdx, setCopiedBankIdx] = useState<number | null>(null);
 
   // Tab Navigation Slider & Wheel state
   const tabContainerRef = useRef<HTMLDivElement>(null);
@@ -167,10 +213,10 @@ export default function SettingsTab({
   const [originAddress, setOriginAddress] = useState('');
   const [selectedCourier, setSelectedCourier] = useState('jne');
 
-  // Load basic shipping info from metadata if available
+  // Load shipping info, bank accounts and QRIS payload from Supabase metadata
   useEffect(() => {
     let isMounted = true;
-    async function loadShippingInfo() {
+    async function loadMetadata() {
       try {
         const supabase = getSupabase();
         if (supabase) {
@@ -181,30 +227,62 @@ export default function SettingsTab({
             .maybeSingle();
 
           if (isMounted && data?.metadata) {
+            // Shipping
             if (data.metadata.basic_shipping) {
               const bs = data.metadata.basic_shipping;
               if (bs.origin_city) setOriginCity(bs.origin_city);
               if (bs.origin_address) setOriginAddress(bs.origin_address);
               if (bs.selected_courier) setSelectedCourier(bs.selected_courier);
             }
+            // QRIS payload
             if (!storeQrisPayload && (data.metadata.qris_payload || data.metadata.qris_static_string)) {
               const p = data.metadata.qris_payload || data.metadata.qris_static_string;
               setLocalQrisPayload(p);
               if (setStoreQrisPayload) setStoreQrisPayload(p);
             }
+            // Manual Bank Transfer (bank_settings / metadata.bank_transfer / bank_accounts)
+            const meta = data.metadata;
+            const bankTransfer = meta.bank_settings || meta.bank_transfer;
+            const bankAccountsList = Array.isArray(meta.bank_accounts) ? (meta.bank_accounts as BankAccount[]) : [];
+            const primaryBank = bankTransfer || bankAccountsList[0] || (meta.bank_name || meta.bank_account ? {
+              bank_name: meta.bank_name || '',
+              account_number: meta.bank_account || '',
+              account_holder: meta.bank_holder || meta.store_name || '',
+              is_active: true,
+            } : null);
+
+            if (primaryBank) {
+              const { option, custom } = matchBankOption(primaryBank.bank_name || '');
+              setSelectedBank(option);
+              setCustomBankName(custom);
+              setAccountNumber(primaryBank.account_number || '');
+              setAccountHolder(primaryBank.account_holder || '');
+
+              if (bankAccountsList.length > 1) {
+                setAdditionalBankAccounts(bankAccountsList.slice(1));
+              } else {
+                setAdditionalBankAccounts([]);
+              }
+            } else {
+              setSelectedBank('BCA');
+              setCustomBankName('');
+              setAccountNumber('');
+              setAccountHolder('');
+              setAdditionalBankAccounts([]);
+            }
           }
         }
       } catch (err) {
-        console.debug('Error loading shipping info:', err);
+        console.debug('Error loading store metadata:', err);
       }
     }
     if (tenantSlug) {
-      loadShippingInfo();
+      loadMetadata();
     }
     return () => {
       isMounted = false;
     };
-  }, [tenantSlug]);
+  }, [tenantSlug, isOpen]);
 
   // Reset pesan error saat modal baru pertama kali terbuka atau berganti mode
   useEffect(() => {
@@ -227,6 +305,22 @@ export default function SettingsTab({
     setIsSavingStore(true);
     setNameError(null);
 
+    const effBank = selectedBank === 'Lainnya' ? (customBankName.trim() || 'Lainnya') : selectedBank;
+    const cleanAcc = accountNumber.trim();
+    const cleanHolder = accountHolder.trim();
+
+    const bankTransferData = cleanAcc ? {
+      bank_name: effBank,
+      account_number: cleanAcc,
+      account_holder: cleanHolder || trimmed,
+      is_active: true,
+    } : null;
+
+    const fullBankList: BankAccount[] = [
+      ...(bankTransferData ? [bankTransferData] : []),
+      ...additionalBankAccounts.filter(b => b.account_number.trim() !== '')
+    ];
+
     try {
       // 1. Direct Persist ke database Supabase (tenants table & metadata)
       try {
@@ -241,6 +335,14 @@ export default function SettingsTab({
           if (tenantRow?.id) {
             const updatedMeta = {
               ...(tenantRow.metadata || {}),
+              bank_settings: bankTransferData,
+              bank_transfer: bankTransferData,
+              bank_accounts: fullBankList,
+              ...(cleanAcc ? {
+                bank_name: effBank,
+                bank_account: cleanAcc,
+                bank_holder: cleanHolder || trimmed,
+              } : {}),
               store_name: trimmed,
               bio: storeBio,
               whatsapp_number: storeWhatsapp,
@@ -310,6 +412,12 @@ export default function SettingsTab({
           whatsapp_number: storeWhatsapp,
           greeting_message: localGreeting,
           custom_greeting_message: localGreeting,
+          bank_settings: bankTransferData,
+          bank_transfer: bankTransferData,
+          bank_accounts: fullBankList,
+          bank_name: cleanAcc ? effBank : undefined,
+          bank_account: cleanAcc || undefined,
+          bank_holder: cleanHolder || undefined,
           qris_image_url: storeQrisUrl || undefined,
           qris_url: storeQrisUrl || undefined,
           qris_image: storeQrisUrl || undefined,
@@ -694,6 +802,343 @@ export default function SettingsTab({
               if (onSavedSuccess) onSavedSuccess();
             }}
           />
+        </div>
+      </div>
+
+      {/* ── SEKSI REKENING BANK MANUAL (TRANSFER BANK) ── */}
+      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-bold text-slate-800">
+            <div className="p-1.5 bg-violet-100 text-violet-700 rounded-lg">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-slate-900">Rekening Bank Manual (Transfer Bank)</span>
+              <p className="text-[10px] text-slate-500 font-normal">
+                Tujuan transfer manual tanpa potongan fee payment gateway
+              </p>
+            </div>
+          </div>
+          {accountNumber.trim() ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              <CheckCircle2 className="w-3 h-3" />
+              Rekening Terpasang
+            </span>
+          ) : (
+            <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+              Belum diisi
+            </span>
+          )}
+        </div>
+
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          Konfigurasi rekening bank resmi toko Anda. Informasi ini akan ditampilkan kepada pembeli pada pilihan metode pembayaran <strong>Transfer Bank Manual</strong> di halaman checkout.
+        </p>
+
+        {/* Feedback message */}
+        {bankSaveMsg && (
+          <div className={`flex items-center gap-2 text-[11px] font-semibold px-3 py-2 rounded-lg ${
+            bankSaveMsg.type === 'success'
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              : 'bg-red-50 text-red-600 border border-red-200'
+          }`}>
+            {bankSaveMsg.type === 'success'
+              ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+            <span>{bankSaveMsg.text}</span>
+          </div>
+        )}
+
+        {/* Form Rekening Utama */}
+        <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+              <CreditCard className="w-3.5 h-3.5 text-violet-600" />
+              Rekening Utama
+            </span>
+            <span className="text-[10px] text-slate-400 font-medium">Prioritas Tampilan Checkout</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Pilihan Bank (Dropdown) */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                Pilihan Bank <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={selectedBank}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedBank(val);
+                  if (val !== 'Lainnya') {
+                    setCustomBankName('');
+                  }
+                }}
+                className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-violet-600 focus:bg-white"
+              >
+                {BANK_DROPDOWN_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt === 'Lainnya' ? 'Lainnya (Bank Lain)' : opt}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Input No Rekening */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                Nomor Rekening <span className="text-red-500">*</span>
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={accountNumber}
+                  onChange={(e) => setAccountNumber(e.target.value.replace(/[^\d\s-]/g, ''))}
+                  placeholder="Contoh: 1234567890"
+                  className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:border-violet-600 focus:bg-white pr-8"
+                />
+                {accountNumber.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(accountNumber.trim());
+                      setCopiedBankIdx(-1);
+                      setTimeout(() => setCopiedBankIdx(null), 2000);
+                    }}
+                    title="Salin nomor rekening"
+                    className="absolute right-1.5 p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                  >
+                    {copiedBankIdx === -1 ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Input Atas Nama Rekening */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                Atas Nama Rekening <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={accountHolder}
+                onChange={(e) => setAccountHolder(e.target.value)}
+                placeholder="Nama sesuai buku tabungan"
+                className="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold uppercase text-slate-900 focus:outline-hidden focus:border-violet-600 focus:bg-white"
+              />
+            </div>
+          </div>
+
+          {/* Conditional Input Nama Bank Lainnya */}
+          {selectedBank === 'Lainnya' && (
+            <div className="p-2.5 bg-violet-50/60 rounded-lg border border-violet-100">
+              <label className="block text-[10px] font-bold text-violet-900 mb-1">
+                Nama Bank Lainnya <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={customBankName}
+                onChange={(e) => setCustomBankName(e.target.value)}
+                placeholder="Contoh: Bank Permata / Bank Danamon / Bank Jago / SeaBank"
+                className="w-full px-2.5 py-1.5 bg-white border border-violet-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-hidden focus:border-violet-600"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Daftar Rekening Tambahan (Jika Ada) */}
+        {additionalBankAccounts.length > 0 && (
+          <div className="space-y-2 pt-1">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              Rekening Tambahan ({additionalBankAccounts.length})
+            </span>
+            {additionalBankAccounts.map((acc, idx) => {
+              const { option, custom } = matchBankOption(acc.bank_name);
+              return (
+                <div
+                  key={idx}
+                  className="p-3 bg-white rounded-xl border border-slate-200 space-y-2"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 mb-0.5">Bank</label>
+                      <select
+                        value={option}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setAdditionalBankAccounts(prev => prev.map((a, i) => i === idx ? {
+                            ...a,
+                            bank_name: val === 'Lainnya' ? (custom || 'Lainnya') : val
+                          } : a));
+                        }}
+                        className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-violet-500"
+                      >
+                        {BANK_DROPDOWN_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt === 'Lainnya' ? 'Lainnya' : opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 mb-0.5">Nomor Rekening</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={acc.account_number}
+                        onChange={(e) => setAdditionalBankAccounts(prev => prev.map((a, i) => i === idx ? {
+                          ...a,
+                          account_number: e.target.value.replace(/[^\d\s-]/g, '')
+                        } : a))}
+                        placeholder="1234567890"
+                        className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:border-violet-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <label className="block text-[9px] font-bold text-slate-500 mb-0.5">Atas Nama</label>
+                        <input
+                          type="text"
+                          value={acc.account_holder}
+                          onChange={(e) => setAdditionalBankAccounts(prev => prev.map((a, i) => i === idx ? {
+                            ...a,
+                            account_holder: e.target.value
+                          } : a))}
+                          placeholder="Nama pemilik"
+                          className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold uppercase text-slate-900 focus:outline-hidden focus:border-violet-500"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAdditionalBankAccounts(prev => prev.filter((_, i) => i !== idx))}
+                        className="mt-3.5 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                        title="Hapus rekening tambahan ini"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  {option === 'Lainnya' && (
+                    <input
+                      type="text"
+                      value={custom}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAdditionalBankAccounts(prev => prev.map((a, i) => i === idx ? { ...a, bank_name: val } : a));
+                      }}
+                      placeholder="Ketik nama bank lainnya"
+                      className="w-full px-2 py-1 bg-slate-50 border border-violet-200 rounded-lg text-xs text-slate-800 focus:outline-hidden focus:border-violet-500"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Tombol Aksi: Tambah Rekening Tambahan + Simpan Rekening Cepat */}
+        <div className="flex items-center gap-2 pt-1 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setAdditionalBankAccounts(prev => [
+              ...prev,
+              { bank_name: 'BCA', account_number: '', account_holder: accountHolder || storeDisplayName.trim(), is_active: true }
+            ])}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-dashed border-violet-400 text-violet-700 rounded-xl text-xs font-bold hover:bg-violet-50 transition cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Tambah Rekening Tambahan
+          </button>
+
+          <button
+            type="button"
+            disabled={isSavingBanks}
+            onClick={async () => {
+              setIsSavingBanks(true);
+              setBankSaveMsg(null);
+              try {
+                const supabase = getSupabase();
+                if (!supabase) throw new Error('Koneksi database tidak tersedia.');
+
+                const { data: tenantRow } = await supabase
+                  .from('tenants')
+                  .select('id, metadata')
+                  .eq('slug', tenantSlug)
+                  .maybeSingle();
+
+                if (!tenantRow?.id) throw new Error('Tenant tidak ditemukan.');
+
+                const effBank = selectedBank === 'Lainnya' ? (customBankName.trim() || 'Lainnya') : selectedBank;
+                const cleanAcc = accountNumber.trim();
+                const cleanHolder = accountHolder.trim();
+
+                const bankTransferData = cleanAcc ? {
+                  bank_name: effBank,
+                  account_number: cleanAcc,
+                  account_holder: cleanHolder || storeDisplayName.trim(),
+                  is_active: true,
+                } : null;
+
+                const fullAccounts: BankAccount[] = [
+                  ...(bankTransferData ? [bankTransferData] : []),
+                  ...additionalBankAccounts.filter(b => b.account_number.trim() !== ''),
+                ];
+
+                const updatedMeta = {
+                  ...(tenantRow.metadata || {}),
+                  bank_settings: bankTransferData,
+                  bank_transfer: bankTransferData,
+                  bank_accounts: fullAccounts,
+                  ...(cleanAcc ? {
+                    bank_name: effBank,
+                    bank_account: cleanAcc,
+                    bank_holder: cleanHolder || storeDisplayName.trim(),
+                  } : {}),
+                };
+
+                const { error: updateErr } = await supabase
+                  .from('tenants')
+                  .update({ metadata: updatedMeta })
+                  .eq('id', tenantRow.id);
+
+                if (updateErr) throw new Error(updateErr.message);
+
+                await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    bank_settings: bankTransferData,
+                    bank_transfer: bankTransferData,
+                    bank_accounts: fullAccounts,
+                    bank_name: effBank,
+                    bank_account: cleanAcc,
+                    bank_holder: cleanHolder || storeDisplayName.trim(),
+                  }),
+                }).catch(() => {});
+
+                setBankSaveMsg({
+                  type: 'success',
+                  text: cleanAcc
+                    ? `✅ Rekening ${effBank} (${cleanAcc}) berhasil disimpan ke Supabase.`
+                    : '✅ Pengaturan rekening bank berhasil diperbarui.',
+                });
+                setTimeout(() => setBankSaveMsg(null), 4000);
+              } catch (err: any) {
+                setBankSaveMsg({ type: 'error', text: err.message || 'Gagal menyimpan rekening.' });
+              } finally {
+                setIsSavingBanks(false);
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-xs active:scale-95"
+          >
+            <Save className="w-3.5 h-3.5" />
+            {isSavingBanks ? 'Menyimpan...' : 'Simpan Rekening'}
+          </button>
         </div>
       </div>
     </div>
@@ -1124,7 +1569,7 @@ export default function SettingsTab({
                 }`}
               >
                 {isSubscriptionExpired ? <Lock className="w-3.5 h-3.5 text-amber-500" /> : <Save className="w-3.5 h-3.5" />}
-                <span>{isSavingStore ? 'Menyimpan...' : 'Simpan Pengaturan'}</span>
+                <span>{isSavingStore ? 'Menyimpan...' : 'Simpan Pengaturan Toko'}</span>
               </button>
             </div>
           </div>
@@ -1196,3 +1641,5 @@ export default function SettingsTab({
     </div>
   );
 }
+
+export { SettingsTab as StoreSettingsModal };

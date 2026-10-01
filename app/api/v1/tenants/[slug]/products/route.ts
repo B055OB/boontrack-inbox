@@ -264,6 +264,7 @@ export async function POST(
             fulfillment_metadata: {
               ...(body.fulfillment_metadata || {}),
               ...(body.order_bumps || body.metadata?.order_bumps ? { order_bumps: body.order_bumps || body.metadata?.order_bumps } : {}),
+              ...(body.single_page_config ? { single_page_config: body.single_page_config } : {}),
             },
           };
 

@@ -104,6 +104,11 @@ export interface SinglePageConfig {
   subheadline: string;
   banner_url: string;
   badge_text?: string;
+  /** Scarcity / Urgency notification badge (e.g. { enabled: true, text: "🔥 Sisa 50 Seat Kuota Terbatas" }) */
+  scarcity_badge?: {
+    enabled?: boolean;
+    text?: string;
+  } | string;
 
   // 2. Client Logos / Social Proof Grid
   client_logos?: ClientLogoItem[];
@@ -116,6 +121,8 @@ export interface SinglePageConfig {
   agitation_points?: string[];  // Poin-poin eskalasi/dampak masalah
   solution_title?: string;
   solution_points?: string[];   // Poin-poin solusi & keunggulan
+  /** Set false to hide the entire pain-points (problem) section. Default: true */
+  show_pain_points?: boolean;
 
   // 4. Tabel Perbandingan (Us vs Them)
   comparison_rows?: ComparisonItem[];
@@ -139,6 +146,22 @@ export interface SinglePageConfig {
   affiliate_commission_rate: number;
   whatsapp_number?: string;
   cta_label?: string;
+  /** Action mode for storefront checkout:
+   * - 'DIRECT': Form Checkout Langsung (Direct Order)
+   * - 'WHATSAPP': Konsultasi / Order via WhatsApp Langsung
+   * - 'HYBRID': Keduanya (Form Checkout + Tombol WhatsApp Melayang)
+   */
+  checkout_action_mode?: 'DIRECT' | 'WHATSAPP' | 'HYBRID';
+  /** Teks Pesan WhatsApp Otomatis dengan variabel fallback (misal: "Halo Admin, saya tertarik dengan produk {nama_produk}...") */
+  whatsapp_custom_message?: string;
+  /** Show a secondary WhatsApp CTA button next to / below the main checkout CTA. Default: false */
+  whatsapp_cta_enabled?: boolean;
+  /** Label for the secondary WhatsApp CTA button. Falls back to a sensible default. */
+  whatsapp_cta_label?: string;
+  /** Optional override WhatsApp number for the secondary CTA (uses store number by default). */
+  whatsapp_cta_number?: string;
+  /** When true, hides Alamat Lengkap & Kecamatan/Kota fields (for digital/consultation products). Default: false */
+  hide_address_for_digital?: boolean;
 }
 
 export type ProductType =
@@ -630,7 +653,13 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
     promo_price: 100000,
     stock: 50,
     is_unlimited: false,
-    variants: "Batch Intensif • 50 Seat Kuota Terbatas",
+    variants: "Batch Intensif",
+    metadata: {
+      scarcity_badge: {
+        enabled: true,
+        text: "🔥 Sisa 50 Seat Kuota Terbatas",
+      },
+    },
     promo: "BATCH INTENSIF: HANYA 50 SEAT",
     description: "Pelajari metode baru 7-Day Sprint CTWA Mastery bersama Kang Sakti: Bongkar rahasia alur iklan Click-to-WhatsApp langsung closing otomatis via Dynamic QRIS & auto-ongkir tanpa admin repot.",
     download_url: "https://t.me/+zhWxgGbzZxhmMjU1",
@@ -669,6 +698,10 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
     single_page_config: {
       slug: "ctwa-mastery-7day",
       badge_text: "BATCH INTENSIF: HANYA 50 SEAT",
+      scarcity_badge: {
+        enabled: true,
+        text: "🔥 Sisa 50 Seat Kuota Terbatas",
+      },
       headline: "Capek Pasang Iklan CTWA Tapi Ujung-ujungnya Boncos & Admin Kewalahan?",
       subheadline: "Pelajari metode baru 7-Day Sprint CTWA Mastery bersama Kang Sakti: Bongkar rahasia alur iklan Click-to-WhatsApp langsung closing otomatis via Dynamic QRIS & auto-ongkir tanpa admin repot.",
       banner_url: "https://assets.boontrack.com/products/ctwa_mastery_banner.jpg",
@@ -811,6 +844,8 @@ export function resolveSinglePageProduct(
               voucher: undefined,
               affiliate_commission_rate: 30,
               badge_text: 'Direct Access Offer',
+              checkout_action_mode: 'DIRECT',
+              whatsapp_custom_message: '',
             },
           };
         }

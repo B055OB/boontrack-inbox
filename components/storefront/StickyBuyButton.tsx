@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowRight, ExternalLink } from 'lucide-react';
+import { ArrowRight, ExternalLink, MessageCircle } from 'lucide-react';
 
 export interface StickyBuyButtonProps {
   totalAmount: number;
@@ -15,6 +15,9 @@ export interface StickyBuyButtonProps {
   onExternalClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
   disabled?: boolean;
   className?: string;
+  isWhatsAppMode?: boolean;
+  whatsAppUrl?: string;
+  onWhatsAppClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
 }
 
 /**
@@ -39,6 +42,9 @@ export function StickyBuyButton({
   onExternalClick,
   disabled = false,
   className = '',
+  isWhatsAppMode = false,
+  whatsAppUrl,
+  onWhatsAppClick,
 }: StickyBuyButtonProps) {
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -74,6 +80,23 @@ export function StickyBuyButton({
       !externalAffiliateUrl.trim().startsWith('#')
   );
 
+  const hasValidWhatsAppUrl = Boolean(
+    isWhatsAppMode &&
+      whatsAppUrl &&
+      whatsAppUrl.trim() !== '' &&
+      !whatsAppUrl.trim().startsWith('#')
+  );
+
+  const handleWhatsAppClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.stopPropagation();
+    if (!hasValidWhatsAppUrl) {
+      e.preventDefault();
+    }
+    if (onWhatsAppClick) {
+      onWhatsAppClick(e);
+    }
+  };
+
   const handleAnchorClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.stopPropagation();
     if (!hasValidExternalUrl) {
@@ -106,7 +129,20 @@ export function StickyBuyButton({
         </div>
 
         {/* Right: CTA Button */}
-        {hasValidExternalUrl ? (
+        {hasValidWhatsAppUrl ? (
+          <a
+            href={whatsAppUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={handleWhatsAppClick}
+            id="sticky-whatsapp-button"
+            data-testid="sticky-whatsapp-button"
+            className="flex-1 max-w-xs py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition cursor-pointer text-center no-underline"
+          >
+            <MessageCircle className="w-4 h-4 shrink-0" />
+            <span className="truncate">{resolvedCtaLabel}</span>
+          </a>
+        ) : hasValidExternalUrl ? (
           <a
             href={externalAffiliateUrl}
             target="_blank"

@@ -76,15 +76,7 @@ interface LeadScoreItem {
   timestamp: string;
 }
 
-const DAILY_TREND_DATA = [
-  { day: 'Senin', clicks: 1240, leads: 142, orders: 48, revenue: 2400000, roas: 5.2 },
-  { day: 'Selasa', clicks: 1450, leads: 178, orders: 62, revenue: 3100000, roas: 5.8 },
-  { day: 'Rabu', clicks: 1680, leads: 210, orders: 74, revenue: 3700000, roas: 6.4 },
-  { day: 'Kamis', clicks: 1520, leads: 185, orders: 65, revenue: 3250000, roas: 5.9 },
-  { day: 'Jumat', clicks: 1890, leads: 240, orders: 88, revenue: 4400000, roas: 6.8 },
-  { day: 'Sabtu', clicks: 2310, leads: 320, orders: 114, revenue: 5700000, roas: 7.2 },
-  { day: 'Minggu', clicks: 2750, leads: 385, orders: 139, revenue: 6950000, roas: 7.6 },
-];
+
 
 export default function AdsTrackingPro({
   tenantSlug,
@@ -291,7 +283,8 @@ export default function AdsTrackingPro({
     const totalLeads = campaigns.reduce((acc, curr) => acc + curr.leads, 0);
     const totalOrders = campaigns.reduce((acc, curr) => acc + curr.closings, 0);
     const totalRev = campaigns.reduce((acc, curr) => acc + curr.revenue, 0);
-    const blendedRoas = totalSpend > 0 ? (totalRev / totalSpend).toFixed(2) : (totalRev > 0 ? '10.0+' : '0.00');
+    // Never show misleading '10.0+' — if no spend data show '0.00'
+    const blendedRoas = totalSpend > 0 ? (totalRev / totalSpend).toFixed(2) : '0.00';
 
     return {
       totalSpend,
@@ -570,67 +563,119 @@ export default function AdsTrackingPro({
 
       {/* ── FITUR UNGGULAN: EMQ SCORE & LEAD QUALITY SUMMARY CARDS ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        {/* EMQ Score Card */}
-        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl p-5 shadow-xl relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Event Match Quality (EMQ)</span>
-            </div>
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              EXCELLENT
-            </span>
-          </div>
 
-          <div className="my-3">
-            <div className="text-3xl font-black text-white flex items-baseline gap-1">
-              <span>8.9</span>
-              <span className="text-sm font-semibold text-slate-400">/ 10</span>
-            </div>
-            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
-              <div className="bg-gradient-to-r from-emerald-500 to-cyan-400 h-full w-[89%] rounded-full transition-all" />
-            </div>
-          </div>
+        {/* EMQ Score Card — Proxy score computed from config signals */}
+        {(() => {
+          // Proxy EMQ score: each signal adds points toward 10.0
+          const hasPixel = !!metaPixelId;
+          const hasCapi = !!metaCapiToken;
+          const hasDedup = autoDeduplication;
+          const hasWaUtm = enableWaUtm;
+          const hasPhoneData = recentLeads.length > 0;
+          // Base score per signal
+          const score = (
+            (hasPixel ? 2.0 : 0) +
+            (hasCapi ? 3.0 : 0) +
+            (hasDedup ? 1.5 : 0) +
+            (hasWaUtm ? 1.5 : 0) +
+            (hasPhoneData ? 2.0 : 0)
+          );
+          const scoreDisplay = score.toFixed(1);
+          const scorePct = Math.round((score / 10) * 100);
+          const badge =
+            score >= 8.0 ? 'EXCELLENT' :
+            score >= 5.0 ? 'GOOD' :
+            score >= 2.0 ? 'FAIR' : 'NO DATA';
+          const badgeColor =
+            score >= 8.0 ? 'text-emerald-300 bg-emerald-500/20 border-emerald-500/30' :
+            score >= 5.0 ? 'text-blue-300 bg-blue-500/20 border-blue-500/30' :
+            score >= 2.0 ? 'text-amber-300 bg-amber-500/20 border-amber-500/30' :
+            'text-slate-400 bg-slate-700/40 border-slate-600';
+          const barColor =
+            score >= 8.0 ? 'from-emerald-500 to-cyan-400' :
+            score >= 5.0 ? 'from-blue-500 to-indigo-400' :
+            score >= 2.0 ? 'from-amber-400 to-orange-400' :
+            'from-slate-600 to-slate-500';
+          return (
+            <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl p-5 shadow-xl relative overflow-hidden flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Event Match Quality (EMQ)</span>
+                </div>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-black border ${badgeColor}`}>
+                  {badge}
+                </span>
+              </div>
 
-          <div className="text-[11px] text-slate-300 space-y-0.5 pt-1 border-t border-slate-800">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Hash No. WhatsApp:</span>
-              <strong className="text-emerald-400">98% Match</strong>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">CAPI Deduplication:</span>
-              <strong className="text-cyan-400">100% Active</strong>
-            </div>
-          </div>
-        </div>
+              <div className="my-3">
+                <div className="text-3xl font-black text-white flex items-baseline gap-1">
+                  {score === 0 ? (
+                    <span className="text-slate-400 text-xl font-bold">Belum Ada Sinyal</span>
+                  ) : (
+                    <><span>{scoreDisplay}</span><span className="text-sm font-semibold text-slate-400">/ 10</span></>
+                  )}
+                </div>
+                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
+                  <div
+                    className={`bg-gradient-to-r ${barColor} h-full rounded-full transition-all`}
+                    style={{ width: `${scorePct}%` }}
+                  />
+                </div>
+              </div>
 
-        {/* Lead Score Hot Intent Card */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Lead Scoring Otomatis</span>
-            <span className="p-1.5 rounded-xl bg-rose-50 text-rose-600">
-              <Flame className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="my-2">
-            <div className="text-2xl font-black text-slate-900">
-              {campaigns.length > 0 ? (
-                <>68.4% <span className="text-xs font-bold text-emerald-600">+12%</span></>
-              ) : (
-                '0%'
-              )}
+              <div className="text-[11px] text-slate-300 space-y-0.5 pt-1 border-t border-slate-800">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">CAPI Token:</span>
+                  <strong className={hasCapi ? 'text-emerald-400' : 'text-slate-500'}>{hasCapi ? 'Aktif' : 'Belum Dikonfigurasi'}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Deduplication:</span>
+                  <strong className={hasDedup ? 'text-cyan-400' : 'text-slate-500'}>{hasDedup ? 'Active' : 'Off'}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Phone Hash Match:</span>
+                  <strong className={hasPhoneData ? 'text-emerald-400' : 'text-slate-500'}>{hasPhoneData ? `${recentLeads.length} Lead` : '0 Event'}</strong>
+                </div>
+              </div>
             </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              {campaigns.length > 0 ? 'Rasio Calon Pembeli Berkualitas Tinggi (HOT)' : 'Belum ada data konversi lead iklan'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 text-[10px] font-bold">
-            <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">🔥 Hot: {campaigns.length > 0 ? '68%' : '0%'}</span>
-            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">⚡ Warm: {campaigns.length > 0 ? '24%' : '0%'}</span>
-            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600">❄️ Cold: {campaigns.length > 0 ? '8%' : '0%'}</span>
-          </div>
-        </div>
+          );
+        })()}
+
+        {/* Lead Score Hot Intent Card — computed from real recentLeads */}
+        {(() => {
+          const total = recentLeads.length;
+          const hotCount = recentLeads.filter(l => l.quality === 'HOT').length;
+          const warmCount = recentLeads.filter(l => l.quality === 'WARM').length;
+          const coldCount = total - hotCount - warmCount;
+          const hotPct = total > 0 ? Math.round((hotCount / total) * 100) : 0;
+          const warmPct = total > 0 ? Math.round((warmCount / total) * 100) : 0;
+          const coldPct = total > 0 ? Math.round((coldCount / total) * 100) : 0;
+          const hasData = total > 0;
+          return (
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500">Lead Scoring Otomatis</span>
+                <span className="p-1.5 rounded-xl bg-rose-50 text-rose-600">
+                  <Flame className="w-4 h-4" />
+                </span>
+              </div>
+              <div className="my-2">
+                <div className="text-2xl font-black text-slate-900">
+                  {hasData ? `${hotPct}%` : <span className="text-base font-bold text-slate-400">Belum Ada Data</span>}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {hasData ? 'Rasio Calon Pembeli Berkualitas Tinggi (HOT)' : 'Belum ada data order/lead untuk periode ini'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] font-bold">
+                <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">🔥 Hot: {hotPct}%</span>
+                <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">⚡ Warm: {warmPct}%</span>
+                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600">❄️ Cold: {coldPct}%</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Total Omzet & Spend */}
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex flex-col justify-between">
