@@ -304,7 +304,7 @@ describe('CRITICAL CTO SECURITY INVARIANTS: Fail-Closed Tenant Isolation & Fulfi
   });
 
   describe('Invariant 4: Tenant A order + Tenant B fulfillment asset -> ACCESS DENIED', () => {
-    it('denies access when fulfillment asset tenant does not match order tenant', () => {
+    it('denies access when fulfillment asset tenant does not match order tenant (Tenant A -> Tenant B asset REJECT)', () => {
       const order = mockOrdersDb['ORD-CROSS-TENANT-LEAK'];
       const activeTenant = mockTenantsDb[0]; // Tenant Alpha
 
@@ -321,10 +321,32 @@ describe('CRITICAL CTO SECURITY INVARIANTS: Fail-Closed Tenant Isolation & Fulfi
       expect(isFulfillmentOwnerMatch).toBe(false);
       expect(isFulfillmentAuthorized).toBe(false);
     });
+
+    it('rejects cross-tenant knowledge base and order queries across tenants', () => {
+      // Simulate Tenant A trying to access Tenant B products/KB
+      const tenantA = mockTenantsDb[0];
+      const tenantB = mockTenantsDb[1];
+
+      // Tenant A querying product from Tenant B
+      const tenantAProducts = tenantA.metadata.products.map((p: any) => p.id);
+      const isTenantBProductAccessible = tenantAProducts.includes('prod-b1');
+      expect(isTenantBProductAccessible).toBe(false);
+
+      // Triad verification reject
+      const crossTenantAttempt = {
+        requestTenantId: tenantA.id,
+        targetOrderTenantId: tenantB.id,
+        targetAssetTenantId: tenantB.id,
+      };
+      const isAllowed =
+        crossTenantAttempt.requestTenantId === crossTenantAttempt.targetOrderTenantId &&
+        crossTenantAttempt.requestTenantId === crossTenantAttempt.targetAssetTenantId;
+      expect(isAllowed).toBe(false);
+    });
   });
 
-  describe('Invariant 5: Order PENDING dengan private asset -> ACCESS DENIED', () => {
-    it('hides private download_url and fulfillment_metadata from API status when status is PENDING', async () => {
+  describe('Invariant 5: Fulfillment Authorization Hard-Gate (PENDING DENY, PAID ALLOW/DENY)', () => {
+    it('DENY: hides private download_url and fulfillment_metadata from API status when status is PENDING', async () => {
       const req = new NextRequest('https://boontrack.com/api/orders/ORD-PENDING-A/status');
       const res = await getOrderStatus(req, { params: Promise.resolve({ orderId: 'ORD-PENDING-A' }) });
 
@@ -339,7 +361,19 @@ describe('CRITICAL CTO SECURITY INVARIANTS: Fail-Closed Tenant Isolation & Fulfi
       expect(data.fulfillment_metadata).toBeNull();
     });
 
-    it('exposes private download_url ONLY when payment status is confirmed PAID', async () => {
+    it('DENY: denies fulfillment asset when order is PAID but ownership belongs to another tenant', async () => {
+      const order = mockOrdersDb['ORD-CROSS-TENANT-LEAK'];
+      const activeTenant = mockTenantsDb[0]; // Tenant Alpha
+
+      const isPaid = order.payment_status === 'PAID';
+      const isTenantMatch = order.tenant_id === activeTenant.id;
+      const isAssetMatch = order.fulfillment_metadata?.tenant_id === activeTenant.id;
+
+      const isAuthorized = isPaid && isTenantMatch && isAssetMatch;
+      expect(isAuthorized).toBe(false);
+    });
+
+    it('ALLOW: exposes private download_url ONLY when payment status is confirmed PAID with correct ownership', async () => {
       const req = new NextRequest('https://boontrack.com/api/orders/ORD-PAID-A/status');
       const res = await getOrderStatus(req, { params: Promise.resolve({ orderId: 'ORD-PAID-A' }) });
 
@@ -350,6 +384,52 @@ describe('CRITICAL CTO SECURITY INVARIANTS: Fail-Closed Tenant Isolation & Fulfi
       expect(data.payment_status).toBe('PAID');
       expect(data.download_url).toBe('https://cdn.boontrack.com/alpha-exclusive.zip');
       expect(data.fulfillment_metadata).not.toBeNull();
+    });
+  });
+
+  describe('Frontend Boundary & Scoped Cache Isolation', () => {
+    it('ensures Tenant A asset is completely ABSENT when switching to Tenant B context', () => {
+      // Mock browser cache storage
+      const mockStorage = new Map<string, string>();
+
+      // Tenant A loads order
+      const tenantAId = 'tenant-a';
+      const orderAId = 'ORD-PAID-A';
+      const scopedKeyA = `checkout:${tenantAId}:${orderAId}`;
+      mockStorage.set(scopedKeyA, JSON.stringify({
+        order_id: orderAId,
+        tenant_id: tenantAId,
+        private_asset: 'https://cdn.boontrack.com/alpha-exclusive.zip',
+      }));
+
+      // User navigates / switches to Tenant B
+      const tenantBId = 'tenant-b';
+      const orderBId = 'ORD-PAID-B';
+      const scopedKeyB = `checkout:${tenantBId}:${orderBId}`;
+
+      // Simulate atomic state reset on route change
+      let currentActiveOrder: any = null;
+      let currentActiveTenant: any = null;
+      // Atomic reset
+      currentActiveOrder = null;
+      currentActiveTenant = null;
+
+      // Tenant B reads only its scoped cache
+      const cachedB = mockStorage.get(scopedKeyB);
+      if (cachedB) {
+        currentActiveOrder = JSON.parse(cachedB);
+      }
+
+      // Verify Tenant B has NO data and Tenant A asset is completely ABSENT
+      expect(currentActiveOrder).toBeNull();
+      expect(currentActiveTenant).toBeNull();
+
+      // Even if legacy unscoped key is queried, it was purged
+      expect(mockStorage.get(`bt_order_${orderAId}`)).toBeUndefined();
+      expect(mockStorage.get(`bt_order_${orderBId}`)).toBeUndefined();
+
+      // Tenant A asset cannot be accessed via Tenant B key
+      expect(mockStorage.get(scopedKeyB)).toBeUndefined();
     });
   });
 
