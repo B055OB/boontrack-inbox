@@ -10,3 +10,6 @@ export * from './templates/order-created-buyer';
 export * from './templates/payment-confirmed-buyer';
 export * from './templates/payment-confirmed-seller';
 export * from './templates/flagged-manual-seller';
+export * from './templates/broadcast-release';
+export * from './broadcast-service';
+

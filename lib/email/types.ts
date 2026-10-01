@@ -116,3 +116,87 @@ export interface OrderEventBusResult {
   seller_dispatch?: EmailDispatchResult | null;
   timestamp: string;
 }
+
+/**
+ * Feature Highlight for Broadcast & Release Announcement Suite
+ */
+export interface BroadcastFeatureHighlight {
+  icon?: string; // Emoji, SVG, or icon keyword (e.g. '⚡', '📍', '💳', '📦', '🤖', '🚀')
+  title: string;
+  description: string;
+  badge?: string; // Optional tag, e.g. 'Baru', 'P0', 'Enterprise', 'Hemat 40%'
+}
+
+/**
+ * Payload for Enterprise Modern Broadcast Email Template (BoonTrack Brand Suite)
+ */
+export interface BroadcastEmailPayload {
+  recipientName?: string;
+  recipientEmail?: string;
+  tenantSlug?: string;
+  storeName?: string;
+  versionBadge?: string; // e.g. 'v3.2.0 • Major Update'
+  platformStatus?: 'STABLE' | 'MAJOR_RELEASE' | 'FEATURE_UPDATE' | 'MAINTENANCE' | string;
+  eyebrow?: string; // e.g. 'PEMBERITAHUAN RESMI EKOSISTEM'
+  headline: string; // e.g. 'WhatsApp Native Pinpoint & Instant Courier Sudah Aktif'
+  subheadline?: string;
+  summaryText?: string;
+  features?: BroadcastFeatureHighlight[];
+  primaryCtaText?: string;
+  primaryCtaUrl?: string;
+  secondaryCtaText?: string;
+  secondaryCtaUrl?: string;
+  unsubscribeUrl?: string;
+  preferencesUrl?: string;
+  helpDocsUrl?: string;
+  termsUrl?: string;
+  companyAddress?: string;
+  customMessageHtml?: string;
+}
+
+/**
+ * Resend Batch Email Item Contract
+ */
+export interface BroadcastBatchItem {
+  to: string;
+  name?: string;
+  subject: string;
+  html?: string;
+  text?: string;
+  payload?: BroadcastEmailPayload;
+  from?: string;
+  replyTo?: string;
+  headers?: Record<string, string>;
+  tags?: Array<{ name: string; value: string }>;
+}
+
+export interface BroadcastBatchOptions {
+  from?: string;
+  replyTo?: string;
+  chunkSize?: number; // default 100 (Resend Batch API limit)
+  delayBetweenChunksMs?: number; // default 300ms to respect rate limit
+  recordAuditLog?: boolean; // default true
+  auditSource?: string; // e.g. 'ADMIN_BROADCAST', 'RELEASE_ANNOUNCEMENT'
+  dryRun?: boolean; // simulation mode without calling external provider
+}
+
+export interface BroadcastBatchChunkResult {
+  chunkIndex: number;
+  totalInChunk: number;
+  successCount: number;
+  failedCount: number;
+  messageIds?: string[];
+  error?: string;
+}
+
+export interface BroadcastBatchResult {
+  success: boolean;
+  totalEmails: number;
+  totalSent: number;
+  totalFailed: number;
+  batchCount: number;
+  chunks: BroadcastBatchChunkResult[];
+  errors: string[];
+  executionTimeMs: number;
+}
+
