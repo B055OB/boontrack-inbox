@@ -5,8 +5,8 @@
  * intelligent rate limiting, database audit logging, and automated template generation.
  */
 
-import { getResendApiKey } from '@/lib/boonpilot-email';
-import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { getResendApiKey } from '../boonpilot-email';
+import { getSupabaseAdmin, getSupabase } from '../supabaseClient';
 import {
   BroadcastBatchItem,
   BroadcastBatchOptions,
@@ -132,7 +132,7 @@ export async function sendBroadcastBatch(
   const defaultSender =
     options?.from ||
     process.env.RESEND_FROM ||
-    'BoonTrack Official <orders@boontrack.com>';
+    'BoonTrack Official <updates@boontrack.com>';
 
   // Process chunks sequentially to respect provider rate limits
   for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
