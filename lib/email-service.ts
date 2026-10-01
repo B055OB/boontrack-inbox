@@ -127,6 +127,7 @@ export function buildBuyerReceiptHtml(data: {
     <div class="wrapper">
       <!-- HEADER -->
       <div class="header">
+        <img src="https://dashboard.boontrack.com/logo-master.jpg" alt="BoonTrack Shop" width="120" style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" />
         <span class="header-badge">✓ Terverifikasi Otomatis</span>
         <h1>${data.storeName.toUpperCase()}</h1>
         <p>Bukti Transaksi &amp; Invoice Resmi Pembayaran</p>
@@ -267,6 +268,7 @@ export function buildMerchantAlertHtml(data: {
 <body>
   <div class="wrapper">
     <div class="header">
+      <img src="https://dashboard.boontrack.com/logo-master.jpg" alt="BoonTrack Shop" width="120" style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" />
       <span class="badge">Pesanan Baru Lunas (PAID)</span>
       <h2 style="margin: 10px 0 0 0; font-size: 20px;">Toko: ${data.storeName}</h2>
     </div>
@@ -605,6 +607,7 @@ export function buildSellerProofAlertHtml(data: {
 <body>
   <div class="wrapper">
     <div class="header">
+      <img src="https://dashboard.boontrack.com/logo-master.jpg" alt="BoonTrack Shop" width="120" style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" />
       <span class="badge">Perlu Verifikasi Seller</span>
       <h2 style="margin: 8px 0 0 0; font-size: 18px;">Bukti Transfer Pembayaran Masuk</h2>
       <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">${data.storeName.toUpperCase()} &bull; Order #${data.orderId}</p>

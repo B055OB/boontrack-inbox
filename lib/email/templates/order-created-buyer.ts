@@ -117,7 +117,7 @@ export function buildOrderCreatedBuyerHtml(
     <div class="wrapper">
       <!-- HEADER -->
       <div class="header">
-        ${branding.logo_url ? `<img src="${branding.logo_url}" alt="${storeName}" style="max-height: 44px; margin-bottom: 12px; border-radius: 6px;" /><br>` : ''}
+        ${branding.logo_url ? `<img src="${branding.logo_url}" alt="${storeName}" style="max-height: 44px; margin-bottom: 12px; border-radius: 6px;" /><br>` : '<img src="https://dashboard.boontrack.com/logo-master.jpg" alt="BoonTrack Shop" width="120" style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" />'}
         <span style="display: inline-block; background-color: rgba(255, 255, 255, 0.15); color: #ffffff; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; margin-bottom: 10px;">
           Pesanan Diterima &bull; Menunggu Pembayaran
         </span>
