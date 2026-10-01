@@ -19,6 +19,14 @@ import {
 } from '@/lib/whatsappFormatter';
 import { processZeroAiMessage, getIndustryQuickReplies } from '@/lib/zero-ai-engine';
 import { isManualOrderMessage, getOrderConfirmationReply } from '@/lib/whatsapp/order-interceptor';
+import {
+  isOfficialPlatformIdentifier,
+  resolveBoonPilotSender,
+} from '@/lib/boonpilot/sender-resolver';
+import {
+  processBoonPilotPlatformChat,
+  buildBoonPilotSystemPrompt,
+} from '@/lib/boonpilot/platform-engine';
 
 export interface MultimodalChatInput {
   tenant_slug?: string;
@@ -135,7 +143,13 @@ export async function processMultimodalChat(
         }
       }
 
-      if (!t) {
+      const isOfficial =
+        isOfficialPlatformIdentifier(slug, input.sender_phone || input.user_identifier) ||
+        slug === 'boon' ||
+        slug === 'system' ||
+        slug === '52967979-4760-4cea-b686-cdbdb389c0e1';
+
+      if (!t && !isOfficial) {
         console.warn(`[SECURITY_ALERT / QUARANTINE] Tenant '${slug}' not found in database. Silently dropping chat (FAIL-CLOSED).`);
         return {
           success: false,
@@ -304,6 +318,32 @@ export async function processMultimodalChat(
 
   // ── JIKA TIDAK ADA GAMBAR: Jalankan Deterministik Funnel & Fast-Paths ──────────
   if (!hasImage) {
+    const isOfficial =
+      isOfficialPlatformIdentifier(slug, senderPhone) ||
+      slug === 'boon' ||
+      slug === 'system' ||
+      slug === '52967979-4760-4cea-b686-cdbdb389c0e1';
+
+    if (isOfficial) {
+      const platformRes = await processBoonPilotPlatformChat({
+        senderPhone,
+        message,
+        interactive_reply: input.interactive_reply,
+        channel_type: channel === 'WABA' ? 'WABA' : 'WAHA',
+      });
+      return {
+        success: true,
+        reply: platformRes.reply,
+        tenant_id: slug,
+        tenant_slug: slug,
+        checkout_url: checkoutUrl,
+        type: platformRes.role === 'MERCHANT' ? 'MERCHANT_COPILOT' : 'GUEST_ONBOARDING',
+        quick_actions: platformRes.quick_actions,
+        active_engine: platformRes.activeEngine,
+        interactive_payload: platformRes.interactive_payload,
+      };
+    }
+
     // 1. Funnel Booking Auto-Extraction
     const funnelRes = await processFunnelBookingMessage({
       tenantSlug: slug,
@@ -572,7 +612,24 @@ export async function processMultimodalChat(
         ? tenantMetadata.bot_profile.strict_guardrails.join('\n- ')
         : '';
 
-      const systemPrompt = `Anda adalah "${botPersona}", representasi customer service resmi untuk "${storeName}" (Kategori: ${category}).
+      let systemPrompt = '';
+      let modelGreeting = '';
+
+      const isOfficial =
+        isOfficialPlatformIdentifier(slug, senderPhone) ||
+        slug === 'boon' ||
+        slug === 'system' ||
+        slug === '52967979-4760-4cea-b686-cdbdb389c0e1';
+
+      if (isOfficial) {
+        const resolution = await resolveBoonPilotSender(senderPhone);
+        systemPrompt = buildBoonPilotSystemPrompt(resolution);
+        modelGreeting =
+          resolution.role === 'MERCHANT'
+            ? `Halo Kak ${resolution.tenant?.owner_name || 'Owner'}! Saya BoonPilot, Co-Pilot resmi toko ${resolution.tenant?.name || 'Anda'}. Siap membantu operasional dan analisis Anda.`
+            : `Halo! Saya BoonPilot, Onboarding & Platform Specialist resmi dari BoonTrack. Siap membantu penjelasan fitur dan pendaftaran toko Anda.`;
+      } else {
+        systemPrompt = `Anda adalah "${botPersona}", representasi customer service resmi untuk "${storeName}" (Kategori: ${category}).
 Gaya Komunikasi / Tone: ${botTone}.
 ${customPrompt ? `\nPanduan Persona Tambahan:\n${customPrompt}\n` : ''}
 ${guards ? `\nStrict Guardrails (ATURAN MUTLAK):\n- ${guards}\n` : ''}
@@ -613,6 +670,8 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
    - Identifikasi objek visual produk tersebut, cocokkan dengan katalog resmi toko di atas, dan jelaskan rincian produk, varian, serta harganya.
 3. Jika gambar tidak jelas atau buram:
    - Sampaikan secara sopan bagian apa yang belum terbaca jelas dan minta pengguna mengirimkan foto yang lebih terang/jelas.`;
+        modelGreeting = `Halo! Saya AI Customer Service resmi untuk ${storeName}. Siap melayani dan menganalisis pertanyaan serta foto dokumen/produk Anda.`;
+      }
 
       const geminiMessages = [
         { role: 'user', parts: [{ text: systemPrompt }] },
@@ -620,7 +679,7 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
           role: 'model',
           parts: [
             {
-              text: `Halo! Saya AI Customer Service resmi untuk ${storeName}. Siap melayani dan menganalisis pertanyaan serta foto dokumen/produk Anda.`,
+              text: modelGreeting,
             },
           ],
         },

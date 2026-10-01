@@ -15,6 +15,10 @@ import {
   markSessionAsPendingVerification,
 } from '@/lib/whatsapp/order-interceptor';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import {
+  isOfficialPlatformIdentifier,
+} from '@/lib/boonpilot/sender-resolver';
+import { processBoonPilotPlatformChat } from '@/lib/boonpilot/platform-engine';
 
 function getEngineSupabase() {
   const existing = getSupabaseAdmin() || getSupabase();
@@ -101,7 +105,13 @@ export class ConversationEngine {
       }
     }
 
-    if (!tenant) {
+    const isOfficialPlatform =
+      isOfficialPlatformIdentifier(tenant_id, user_identifier) ||
+      tenant_id === 'boon' ||
+      tenant_id === 'system' ||
+      tenant_id === '52967979-4760-4cea-b686-cdbdb389c0e1';
+
+    if (!tenant && !isOfficialPlatform) {
       console.warn(`[SECURITY_FAIL_CLOSED_DROP] Tenant '${tenant_id}' not found in database. Silently dropping to prevent leak.`);
       return {
         reply: '',
@@ -117,7 +127,7 @@ export class ConversationEngine {
     // Cek apakah isi pesan mengandung pola order manual: "Total Nominal:", "Metode: Transfer Bank", "Mohon dicek dan aktivasi akses", atau "Masterclass CPM"
     if (isManualOrderMessage(cleanMsg)) {
       trace.push('MANUAL_ORDER_INTERCEPTED');
-      const storeName = tenant.name || tenant_id;
+      const storeName = tenant?.name || tenant_id;
       const orderConfirmReply = getOrderConfirmationReply(storeName);
 
       await markSessionAsPendingVerification({
@@ -136,6 +146,41 @@ export class ConversationEngine {
         is_booking_ready: false,
         active_engine: 'ORDER_GATEKEEPER',
         bot_paused: true,
+      };
+    }
+
+    // --- BOONPILOT DUAL-BRANCH ROUTER (OFFICIAL PLATFORM GATEWAY 081215567168) ---
+    if (isOfficialPlatform && !payload.image_base64) {
+      trace.push('BOONPILOT_PLATFORM_GATEWAY');
+      const platformResult = await processBoonPilotPlatformChat(
+        {
+          senderPhone: user_identifier || session_id,
+          message: cleanMsg,
+          sessionId: session_id,
+          channel_type: payload.channel_type || (payload.channel === 'WHATSAPP' ? 'WABA' : 'WAHA'),
+          interactive_reply: payload.interactive_reply,
+        },
+        supabase
+      );
+
+      trace.push(platformResult.activeEngine);
+
+      return {
+        reply: platformResult.reply,
+        next_state:
+          platformResult.role === 'MERCHANT'
+            ? 'MERCHANT_COPILOT_ACTIVE'
+            : 'GUEST_ONBOARDING_ACTIVE',
+        state_trace: trace,
+        entities: {
+          role: platformResult.role,
+          tenant_slug: platformResult.tenant?.slug,
+          tenant_name: platformResult.tenant?.name,
+        },
+        is_booking_ready: false,
+        active_engine: platformResult.activeEngine,
+        quick_actions: platformResult.quick_actions,
+        interactive_payload: platformResult.interactive_payload,
       };
     }
 
