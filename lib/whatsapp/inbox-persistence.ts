@@ -13,10 +13,30 @@
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendInstantShippingRecommendation } from '@/lib/shipping/instant-shipping-service';
 
-export interface ResolvedTenant {
+export interface TenantRuntimeContext {
   tenantId: string;
   tenantSlug: string;
+  tenantName?: string;
+  instanceName?: string;
+  ownerPhone?: string;
   apiKey?: string;
+  isVerified: boolean;
+}
+
+export type ResolvedTenant = TenantRuntimeContext;
+
+/**
+ * Normalizes phone numbers to standard E.164-compatible Indonesian format (628xxx).
+ */
+export function cleanCustomerPhone(phone: string): string {
+  if (!phone) return '';
+  let cleaned = phone.replace(/[^0-9]/g, '');
+  if (cleaned.startsWith('0')) {
+    cleaned = '62' + cleaned.slice(1);
+  } else if (cleaned.startsWith('8')) {
+    cleaned = '62' + cleaned;
+  }
+  return cleaned;
 }
 
 export interface InboundMessageParams {
@@ -28,13 +48,13 @@ export interface InboundMessageParams {
   senderType?: 'customer' | 'bot' | 'agent' | 'system';
   rawPayload?: any;
   externalId?: string;
-  messageType?: 'TEXT' | 'IMAGE' | 'LOCATION' | 'DOCUMENT' | 'AUDIO' | 'VIDEO' | string;
+  messageType?: string;
   locationData?: {
     latitude: number;
     longitude: number;
-    name?: string;
     address?: string;
-  };
+    name?: string;
+  } | null;
 }
 
 export interface OutboundMessageParams {
@@ -46,109 +66,185 @@ export interface OutboundMessageParams {
   messageBody: string;
   rawPayload?: any;
   externalId?: string;
+  messageType?: string;
 }
 
 /**
- * Normalizes phone number into clean international format (e.g. 6281234567890)
- */
-export function cleanCustomerPhone(phone: string): string {
-  let clean = String(phone || '').replace(/\D/g, '');
-  if (clean.startsWith('0')) {
-    clean = '62' + clean.slice(1);
-  } else if (clean.startsWith('8')) {
-    clean = '62' + clean;
-  }
-  return clean;
-}
-
-/**
- * 1. Resolve Tenant Identity dynamically from `whatsapp_connections`
- * DILARANG hardcode nama slug! Seluruh aliran ditentukan oleh database.
+ * 1. Global Fail-Closed WhatsApp Pipeline & Dynamic Tenant Resolution
+ * Inbound Message -> Identify Instance -> Identify Owner Phone -> Resolve tenant_id -> Validate instance ↔ owner ↔ tenant -> TenantRuntimeContext.
+ *
+ * JIKA BOONTRACK TIDAK TAHU TENANT MANA YANG DIPROSES, BOONTRACK HARUS FAIL-CLOSED (TIDAK BOLEH MENJAWAB / ZERO FALLBACK).
  */
 export async function resolveTenantFromConnection(identifier: {
   instanceName?: string;
   phoneNumberId?: string;
   phoneNumber?: string;
   botPhoneNumber?: string;
-}): Promise<ResolvedTenant | null> {
+}): Promise<TenantRuntimeContext | null> {
   const supabase = getSupabaseAdmin() || getSupabase();
   if (!supabase) return null;
 
   const { instanceName, phoneNumberId, phoneNumber, botPhoneNumber } = identifier;
   const botPhone = botPhoneNumber || phoneNumber;
   const cleanBotPhone = botPhone ? cleanCustomerPhone(botPhone) : '';
+  const cleanInstance = instanceName?.trim() || '';
+  const cleanPhoneId = phoneNumberId?.trim() || '';
 
-  try {
-    let query: any = supabase.from('whatsapp_connections').select('tenant_id, tenant_slug, credential_ref, status');
-
-    const orParts: string[] = [];
-    if (instanceName) {
-      orParts.push(`instance_name.eq.${instanceName}`);
-      orParts.push(`tenant_slug.eq.${instanceName}`);
-    }
-    if (cleanBotPhone) {
-      orParts.push(`phone_number.eq.${cleanBotPhone}`);
-      if (botPhone && botPhone !== cleanBotPhone) {
-        orParts.push(`phone_number.eq.${botPhone}`);
-      }
-    }
-    if (phoneNumberId) {
-      orParts.push(`phone_number_id.eq.${phoneNumberId}`);
-    }
-
-    if (orParts.length === 0) return null;
-
-    if (typeof query.or === 'function') {
-      query = query.or(orParts.join(','));
-    } else if (instanceName) {
-      query = query.eq('instance_name', instanceName);
-    } else if (phoneNumberId) {
-      query = query.eq('phone_number_id', phoneNumberId);
-    } else if (cleanBotPhone) {
-      query = query.eq('phone_number', cleanBotPhone);
-    }
-
-    const { data: conn } = await (query.maybeSingle ? query.maybeSingle() : Promise.resolve({ data: null }));
-
-    if (conn?.tenant_id) {
-      // Lookup canonical tenant UUID and slug
-      let tenantQuery: any = supabase.from('tenants').select('id, slug');
-      if (typeof tenantQuery.or === 'function') {
-        tenantQuery = tenantQuery.or(`id.eq.${conn.tenant_id},slug.eq.${conn.tenant_id}`);
-      } else {
-        tenantQuery = tenantQuery.eq('id', conn.tenant_id);
-      }
-      const { data: tenantRow } = await tenantQuery.maybeSingle();
-
-      return {
-        tenantId: tenantRow?.id || conn.tenant_id,
-        tenantSlug: tenantRow?.slug || conn.tenant_slug || conn.tenant_id,
-        apiKey: conn.credential_ref || undefined,
-      };
-    }
-
-    // Fallback: Check tenants table directly if instanceName matches slug or metadata
-    if (instanceName) {
-      let tQuery: any = supabase.from('tenants').select('id, slug, metadata');
-      if (typeof tQuery.or === 'function') {
-        tQuery = tQuery.or(`slug.eq.${instanceName},metadata->>whatsapp_instance.eq.${instanceName}`);
-      } else {
-        tQuery = tQuery.eq('slug', instanceName);
-      }
-      const { data: tenant } = await tQuery.maybeSingle();
-
-      if (tenant?.id && tenant?.slug) {
-        return {
-          tenantId: tenant.id,
-          tenantSlug: tenant.slug,
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('[InboxPersistence] resolveTenantFromConnection error:', err);
+  if (!cleanInstance && !cleanBotPhone && !cleanPhoneId) {
+    console.warn('[SECURITY_ALERT / QUARANTINE] Neither instance, owner phone, nor phone_number_id provided. FAIL-CLOSED.');
+    return null;
   }
 
-  return null;
+  try {
+    let connByInstance: any = null;
+    let connByPhone: any = null;
+    let connByPhoneId: any = null;
+
+    // 1. Identify Instance & Owner Phone in whatsapp_connections
+    if (cleanInstance) {
+      const q = supabase
+        .from('whatsapp_connections')
+        .select('tenant_id, tenant_slug, instance_name, phone_number, phone_number_id, credential_ref, status, ownership_domain');
+      const { data } = await (typeof (q as any).or === 'function'
+        ? (q as any).or(`instance_name.eq.${cleanInstance},tenant_slug.eq.${cleanInstance}`).maybeSingle()
+        : q.eq('instance_name', cleanInstance).maybeSingle());
+      connByInstance = data;
+    }
+
+    if (cleanBotPhone) {
+      const { data } = await supabase
+        .from('whatsapp_connections')
+        .select('tenant_id, tenant_slug, instance_name, phone_number, phone_number_id, credential_ref, status, ownership_domain')
+        .eq('phone_number', cleanBotPhone)
+        .maybeSingle();
+      connByPhone = data;
+    }
+
+    if (cleanPhoneId) {
+      const { data } = await supabase
+        .from('whatsapp_connections')
+        .select('tenant_id, tenant_slug, instance_name, phone_number, phone_number_id, credential_ref, status, ownership_domain')
+        .eq('phone_number_id', cleanPhoneId)
+        .maybeSingle();
+      connByPhoneId = data;
+    }
+
+    // 2. Validate Instance ↔ Owner Phone (Anti-Spoofing & Cross-Tenant Mismatch Guard)
+    if (cleanInstance && cleanBotPhone) {
+      if (connByInstance) {
+        const expectedPhone = connByInstance.phone_number ? cleanCustomerPhone(connByInstance.phone_number) : '';
+        if (expectedPhone && expectedPhone !== cleanBotPhone) {
+          console.warn(
+            `[SECURITY_ALERT / QUARANTINE] Mismatched Instance and Owner Phone: instance "${cleanInstance}" is bound to phone "${expectedPhone}", but request claimed owner phone "${cleanBotPhone}". REJECTING (FAIL-CLOSED).`
+          );
+          return null;
+        }
+      }
+
+      if (connByPhone) {
+        const expectedInstance = connByPhone.instance_name || connByPhone.tenant_slug;
+        if (expectedInstance && expectedInstance !== cleanInstance) {
+          console.warn(
+            `[SECURITY_ALERT / QUARANTINE] Mismatched Owner Phone and Instance: phone "${cleanBotPhone}" belongs to instance "${expectedInstance}", but request claimed instance "${cleanInstance}". REJECTING (FAIL-CLOSED).`
+          );
+          return null;
+        }
+      }
+
+      if (!connByInstance && !connByPhone) {
+        console.warn(
+          `[SECURITY_ALERT / QUARANTINE] Unknown WhatsApp instance "${cleanInstance}" and owner phone "${cleanBotPhone}". REJECTING (FAIL-CLOSED).`
+        );
+        return null;
+      }
+    }
+
+    const matchedConn = connByInstance || connByPhone || connByPhoneId;
+    let candidateTenantId: string | null = matchedConn?.tenant_id || null;
+    let candidateApiKey: string | undefined = matchedConn?.credential_ref || undefined;
+
+    // Direct tenant table check ONLY if instanceName was given without conflicting phone
+    if (!candidateTenantId && cleanInstance && !cleanBotPhone) {
+      let tQuery: any = supabase.from('tenants').select('id, slug, name, status, metadata');
+      if (typeof tQuery.or === 'function') {
+        tQuery = tQuery.or(`slug.eq.${cleanInstance},metadata->>whatsapp_instance.eq.${cleanInstance}`);
+      } else {
+        tQuery = tQuery.eq('slug', cleanInstance);
+      }
+      const { data: tenantRow } = await tQuery.maybeSingle();
+      if (tenantRow?.id) {
+        candidateTenantId = tenantRow.id;
+      }
+    }
+
+    // Direct tenant table check by owner phone ONLY if phone given without conflicting instance
+    if (!candidateTenantId && cleanBotPhone && !cleanInstance) {
+      let tQuery: any = supabase.from('tenants').select('id, slug, name, status, metadata');
+      if (typeof tQuery.or === 'function') {
+        tQuery = tQuery.or(`metadata->>phone.eq.${cleanBotPhone},metadata->>whatsapp_number.eq.${cleanBotPhone}`);
+      } else {
+        tQuery = tQuery.eq('slug', cleanBotPhone);
+      }
+      const { data: tenantRow } = await tQuery.maybeSingle();
+      if (tenantRow?.id) {
+        candidateTenantId = tenantRow.id;
+      }
+    }
+
+    if (!candidateTenantId) {
+      console.warn(
+        `[SECURITY_ALERT / QUARANTINE] Unable to resolve tenant identity for instance="${cleanInstance}", phone="${cleanBotPhone}". REJECTING (FAIL-CLOSED).`
+      );
+      return null;
+    }
+
+    if (matchedConn && matchedConn.status === 'REVOKED') {
+      console.warn(`[SECURITY_ALERT / QUARANTINE] Connection for tenant "${candidateTenantId}" is REVOKED. FAIL-CLOSED.`);
+      return null;
+    }
+
+    // 3. Resolve canonical tenant from tenants table (Single Source of Truth)
+    let tenantRow: any = null;
+    const { data: tById } = await supabase
+      .from('tenants')
+      .select('id, slug, name, status, metadata')
+      .eq('id', candidateTenantId)
+      .maybeSingle();
+
+    if (tById?.id) {
+      tenantRow = tById;
+    } else {
+      const { data: tBySlug } = await supabase
+        .from('tenants')
+        .select('id, slug, name, status, metadata')
+        .eq('slug', candidateTenantId)
+        .maybeSingle();
+      if (tBySlug?.id) {
+        tenantRow = tBySlug;
+      }
+    }
+
+    if (!tenantRow || !tenantRow.id) {
+      console.warn(
+        `[SECURITY_ALERT / QUARANTINE] Resolved tenant ID "${candidateTenantId}" does not exist in tenants database. REJECTING (FAIL-CLOSED).`
+      );
+      return null;
+    }
+
+    // 4. Return Verified Immutable TenantRuntimeContext
+    return {
+      tenantId: tenantRow.id,
+      tenantSlug: tenantRow.slug || matchedConn?.tenant_slug || candidateTenantId,
+      tenantName: tenantRow.name || undefined,
+      instanceName: cleanInstance || matchedConn?.instance_name || undefined,
+      ownerPhone: cleanBotPhone || (matchedConn?.phone_number ? cleanCustomerPhone(matchedConn.phone_number) : undefined),
+      apiKey: candidateApiKey,
+      isVerified: true,
+    };
+  } catch (err) {
+    console.warn('[SECURITY_ALERT / QUARANTINE] resolveTenantFromConnection exception:', err);
+    return null;
+  }
 }
 
 /**

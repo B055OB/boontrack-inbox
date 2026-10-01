@@ -146,7 +146,7 @@ export async function sendEvolutionTextMessage(
 export async function processEvolutionWebhookEvent(
   payload: any,
   paramInstance?: string
-): Promise<{ success: boolean; processed: number; event?: string; error?: string }> {
+): Promise<{ success: boolean; processed: number; event?: string; error?: string; status?: string }> {
   const supabase = getSupabaseAdmin() || getSupabase();
   const rawEvent = String(payload.event || payload.type || '').toUpperCase();
   const instanceName =
@@ -190,51 +190,21 @@ export async function processEvolutionWebhookEvent(
     instanceName,
     botPhoneNumber,
   });
-  if (resolvedTenant) {
-    tenantId = resolvedTenant.tenantId;
-    tenantSlug = resolvedTenant.tenantSlug;
-    if (resolvedTenant.apiKey) {
-      resolvedApiKey = resolvedTenant.apiKey;
-    }
-  } else if (supabase) {
-    const { data: conn } = await supabase
-      .from('whatsapp_connections')
-      .select('tenant_id, credential_ref, status')
-      .eq('instance_name', instanceName)
-      .maybeSingle();
-
-    if (conn?.tenant_id) {
-      tenantId = conn.tenant_id;
-      tenantSlug = conn.tenant_id;
-      if (conn.credential_ref) {
-        resolvedApiKey = conn.credential_ref.trim();
-      }
-    } else {
-      // Cek berdasarkan metadata->>whatsapp_instance atau slug
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('id, slug, metadata')
-        .or(`slug.eq.${instanceName},metadata->>whatsapp_instance.eq.${instanceName}`)
-        .maybeSingle();
-
-      if (tenant?.id) {
-        tenantId = tenant.id;
-        tenantSlug = tenant.slug;
-      } else if (tenant?.slug) {
-        tenantId = tenant.slug;
-        tenantSlug = tenant.slug;
-      }
-    }
-  }
 
   // ATURAN MUTLAK FAIL-CLOSED & ANTI-LEAK:
-  // Jika tenant_id bernilai null atau tidak ter-resolve, bot HARUS DIAM (SILENT / SAFE DROP) dan log alert ke internal.
-  // DILARANG KERAS mengirimkan template sales BoonTrack ke customer toko merchant mana pun.
-  if (!tenantId) {
+  // Jika tenant_id bernilai null atau validasi instance/owner gagal, bot HARUS DIAM (SILENT / SAFE DROP) dan log alert ke internal.
+  // DILARANG KERAS memanggil AI, dilarang mengirim template platform BoonTrack, dilarang membalas ke customer!
+  if (!resolvedTenant || !resolvedTenant.tenantId) {
     console.warn(
-      `[SECURITY_FAIL_CLOSED_DROP] Unable to resolve tenant identity for instance '${instanceName}'. Silently dropping webhook event to prevent merchant cross-tenant leak.`
+      `[SECURITY_ALERT / QUARANTINE] Unable to resolve or validate tenant identity for instance '${instanceName}', owner='${botPhoneNumber || 'none'}'. Silently dropping webhook event (FAIL-CLOSED).`
     );
-    return { success: true, processed: 0, error: 'Tenant unresolved (fail-closed silent drop)' };
+    return { success: true, processed: 0, status: 'quarantine', error: 'Tenant unresolved (fail-closed silent drop)' };
+  }
+
+  tenantId = resolvedTenant.tenantId;
+  tenantSlug = resolvedTenant.tenantSlug;
+  if (resolvedTenant.apiKey) {
+    resolvedApiKey = resolvedTenant.apiKey;
   }
 
   // 3. Normalisasi Daftar Pesan

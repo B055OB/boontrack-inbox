@@ -104,25 +104,15 @@ export default function CheckoutPage({ params }: Props) {
   useEffect(() => {
     async function loadOrder() {
       setLoading(true);
+      // Reset state saat mount atau berpindah order/tenant untuk mencegah kebocoran data
+      setOrder(null);
+      setTenant(null);
+
       try {
         let localBackup: any = null;
-        // 1. Coba baca dari backup lokal untuk instant render awal
-        if (typeof window !== 'undefined') {
-          const localOrderStr = localStorage.getItem(`bt_order_${orderId}`);
-          if (localOrderStr) {
-            try {
-              const parsed = JSON.parse(localOrderStr);
-              if (parsed?.id) {
-                localBackup = parsed;
-                setOrder(parsed);
-              }
-            } catch {}
-          }
-        }
-
         const supabase = getSupabase();
         if (supabase) {
-          // 2. Query data aktual dari tabel orders (Single Source of Truth)
+          // 1. Query data aktual dari tabel orders (Single Source of Truth)
           const { data: dbOrder } = await supabase
             .from('orders')
             .select('*')
@@ -130,9 +120,6 @@ export default function CheckoutPage({ params }: Props) {
             .maybeSingle();
 
           if (dbOrder) {
-            let enriched: any = { ...localBackup, ...dbOrder };
-
-            // Resolusi data tenant & katalog produk dari tabel tenants (Single Source of Truth)
             const tSlug = (dbOrder.tenant_slug || dbOrder.tenant_id || '').toLowerCase();
             let tenantData: any = null;
 
@@ -152,6 +139,34 @@ export default function CheckoutPage({ params }: Props) {
               }
             }
 
+            // Baca dari scoped cache: checkout:{tenant_id}:{order_id}
+            const tenantIdentifier = tenantData?.slug || tenantData?.id || tSlug || 'default';
+            const scopedKey = `checkout:${tenantIdentifier}:${orderId}`;
+            if (typeof window !== 'undefined') {
+              const cachedStr = localStorage.getItem(scopedKey);
+              if (cachedStr) {
+                try {
+                  const parsed = JSON.parse(cachedStr);
+                  if (parsed?.id === orderId && (parsed?.tenant_slug === tenantIdentifier || parsed?.tenant_id === tenantIdentifier)) {
+                    localBackup = parsed;
+                  }
+                } catch {}
+              }
+              // Purge legacy unscoped key
+              localStorage.removeItem(`bt_order_${orderId}`);
+            }
+
+            let enriched: any = { ...localBackup, ...dbOrder };
+
+            // HARD-GATE CHECKOUT: Hanya enrich link akses privat jika status LUNAS (PAID)
+            const isOrderPaid =
+              dbOrder.status === 'PAID' ||
+              dbOrder.status === 'COMPLETED' ||
+              dbOrder.status === 'SUCCESS' ||
+              dbOrder.status === 'SETTLED' ||
+              dbOrder.payment_status === 'PAID' ||
+              dbOrder.order_status === 'PAID';
+
             // Cari produk di katalog tenant (tenants.metadata.products)
             const pList: any[] = Array.isArray(tenantData?.metadata?.products) ? tenantData.metadata.products : [];
             const pIdStr = String(dbOrder.product_id || '').trim();
@@ -169,15 +184,19 @@ export default function CheckoutPage({ params }: Props) {
             });
 
             if (matchedProd) {
-              const resolvedAccess =
-                matchedProd.download_url ||
-                matchedProd.fulfillment_metadata?.access_url ||
-                matchedProd.link_digital ||
-                matchedProd.access_url ||
-                matchedProd.delivery_url ||
-                '';
+              const resolvedAccess = isOrderPaid
+                ? (matchedProd.download_url ||
+                   matchedProd.fulfillment_metadata?.access_url ||
+                   matchedProd.link_digital ||
+                   matchedProd.access_url ||
+                   matchedProd.delivery_url ||
+                   '')
+                : '';
 
-              const resolvedFulfillment = matchedProd.fulfillment_metadata || (resolvedAccess ? {
+              const resolvedFulfillment = matchedProd.fulfillment_metadata ? {
+                ...matchedProd.fulfillment_metadata,
+                access_url: isOrderPaid ? (matchedProd.fulfillment_metadata.access_url || resolvedAccess) : '',
+              } : (resolvedAccess ? {
                 delivery_type: matchedProd.delivery_type || 'DOWNLOAD_LINK',
                 access_url: resolvedAccess,
                 instructions: matchedProd.instructions || '',
@@ -187,14 +206,14 @@ export default function CheckoutPage({ params }: Props) {
 
               enriched = {
                 ...enriched,
-                link_digital: resolvedAccess || enriched.link_digital,
-                download_url: resolvedAccess || enriched.download_url,
-                access_url: resolvedAccess || enriched.access_url,
+                link_digital: resolvedAccess || (isOrderPaid ? enriched.link_digital : null),
+                download_url: resolvedAccess || (isOrderPaid ? enriched.download_url : null),
+                access_url: resolvedAccess || (isOrderPaid ? enriched.access_url : null),
                 file_format: matchedProd.promo || matchedProd.format_file || matchedProd.fulfillment_metadata?.file_format || enriched.file_format,
                 promo: matchedProd.promo || enriched.promo,
                 variants: matchedProd.variants || enriched.variants,
                 button_text: matchedProd.button_text || matchedProd.fulfillment_metadata?.button_text || enriched.button_text,
-                fulfillment_metadata: resolvedFulfillment || enriched.fulfillment_metadata,
+                fulfillment_metadata: resolvedFulfillment || (isOrderPaid ? enriched.fulfillment_metadata : null),
                 product_type: matchedProd.type || matchedProd.product_type || enriched.product_type,
               };
             } else if (!enriched.fulfillment_metadata || (!enriched.download_url && !enriched.link_digital)) {
@@ -555,12 +574,41 @@ export default function CheckoutPage({ params }: Props) {
       : 'DIGITAL');
   const orderRequirements = resolveFulfillmentRequirements(rawOrderType);
   const isPaidOrder =
-    order?.status === 'PAID' ||
-    order?.status === 'COMPLETED' ||
-    order?.status === 'SUCCESS' ||
-    order?.status === 'SETTLED' ||
-    order?.payment_status === 'PAID' ||
-    order?.order_status === 'PAID';
+    (order?.status === 'PAID' ||
+      order?.status === 'COMPLETED' ||
+      order?.status === 'SUCCESS' ||
+      order?.status === 'SETTLED' ||
+      order?.payment_status === 'PAID' ||
+      order?.order_status === 'PAID') &&
+    order?.status !== 'PENDING' &&
+    order?.status !== 'WAITING_PAYMENT' &&
+    order?.status !== 'WAITING_CONFIRMATION' &&
+    order?.status !== 'EXPIRED' &&
+    order?.status !== 'CANCELLED' &&
+    order?.payment_status !== 'PENDING' &&
+    order?.payment_status !== 'WAITING_PAYMENT' &&
+    order?.payment_status !== 'WAITING_CONFIRMATION';
+
+  const isTenantAuthorized = Boolean(
+    tenant &&
+    order &&
+    (order.tenant_id === tenant.id ||
+      (order.tenant_slug && tenant.slug && String(order.tenant_slug).toLowerCase() === String(tenant.slug).toLowerCase()))
+  );
+
+  const isFulfillmentOwnerMatch = Boolean(
+    order &&
+    (!order.fulfillment_metadata?.tenant_id || order.fulfillment_metadata.tenant_id === tenant?.id) &&
+    (!order.fulfillment_metadata?.order_id || order.fulfillment_metadata.order_id === order.id)
+  );
+
+  // Security Invariant #2: Hard-Gate Fulfillment Authorization
+  // Kartu atau link privat digital (Google Meet, Cal.com, download file) HANYA BOLEH DI-RENDER jika:
+  // 1. order.payment_status === 'PAID' (confirmed)
+  // 2. order.tenant_id === current_tenant_id
+  // 3. fulfillment.tenant_id === current_tenant_id
+  // 4. fulfillment.order_id === order.id
+  const isFulfillmentAuthorized = isPaidOrder && isTenantAuthorized && isFulfillmentOwnerMatch;
 
   const isWaitingConfirmation =
     order?.status === 'WAITING_CONFIRMATION' ||
@@ -727,9 +775,9 @@ export default function CheckoutPage({ params }: Props) {
         order?.button_text ||
         (fileFormat ? `Download ${fileFormat}` : 'Akses Materi Sekarang');
 
-  // Auto-redirect ke link akses pasca status bayar PAID (countdown 3 detik)
+  // Auto-redirect ke link akses pasca status bayar PAID & terverifikasi (countdown 3 detik)
   useEffect(() => {
-    if (!isPaidOrder || !accessUrlCandidate || hasAutoRedirected) return;
+    if (!isFulfillmentAuthorized || !accessUrlCandidate || hasAutoRedirected) return;
 
     const redirectTimer = setInterval(() => {
       setCountdown((prev) => {
@@ -835,8 +883,8 @@ export default function CheckoutPage({ params }: Props) {
           </div>
         )}
 
-        {/* Tombol / CTA Jelas: Pilih Jadwal Konsultasi (Google Meet) */}
-        {appointmentUrl && (
+        {/* Tombol / CTA Jelas: Pilih Jadwal Konsultasi (Google Meet) - HARD-GATED: Hanya untuk status PAID */}
+        {isFulfillmentAuthorized && appointmentUrl && (
           <div className="bg-gradient-to-r from-blue-950/90 via-slate-900 to-indigo-950/90 border-2 border-blue-500/70 rounded-3xl p-5 space-y-3.5 shadow-xl shadow-blue-950/40 text-xs">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/30">
@@ -867,8 +915,8 @@ export default function CheckoutPage({ params }: Props) {
           </div>
         )}
 
-        {/* Kartu Akses Delivery Payload / Link Unduhan Jika Status Lunas (PAID) */}
-        {isPaidOrder && (
+        {/* Kartu Akses Delivery Payload / Link Unduhan Jika Status Lunas (PAID) - HARD-GATED */}
+        {isFulfillmentAuthorized && (
           <div className="bg-gradient-to-b from-emerald-950/80 via-slate-900 to-slate-900 border-2 border-emerald-500/80 rounded-3xl p-5 space-y-4 shadow-2xl shadow-emerald-950/50 text-xs animate-in fade-in zoom-in-95 duration-500">
             {/* Header Ucapan Selamat */}
             <div className="text-center space-y-2">

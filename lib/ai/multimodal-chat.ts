@@ -115,21 +115,45 @@ export async function processMultimodalChat(
   try {
     const supabase = getSupabase();
     if (supabase) {
-      const { data: t } = await supabase
+      let t: any = null;
+      const { data: tById } = await supabase
         .from('tenants')
         .select('id, slug, category, business_type, metadata')
-        .eq('slug', slug)
+        .eq('id', slug)
         .maybeSingle();
 
-      if (t) {
-        tenantDomainInfo = {
-          slug: t.slug || slug,
-          custom_domain: t.metadata?.custom_domain || null,
-        };
-        tenantMetadata = t.metadata || {};
-        if (t.category || t.business_type) {
-          category = t.category || t.business_type;
+      if (tById?.id || tById?.slug) {
+        t = tById;
+      } else {
+        const { data: tBySlug } = await supabase
+          .from('tenants')
+          .select('id, slug, category, business_type, metadata')
+          .eq('slug', slug)
+          .maybeSingle();
+        if (tBySlug?.id || tBySlug?.slug) {
+          t = tBySlug;
         }
+      }
+
+      if (!t) {
+        console.warn(`[SECURITY_ALERT / QUARANTINE] Tenant '${slug}' not found in database. Silently dropping chat (FAIL-CLOSED).`);
+        return {
+          success: false,
+          reply: '',
+          tenant_id: '',
+          tenant_slug: '',
+          silent: true,
+          error: 'Tenant not found in database (fail-closed)',
+        };
+      }
+
+      tenantDomainInfo = {
+        slug: t.slug || slug,
+        custom_domain: t.metadata?.custom_domain || null,
+      };
+      tenantMetadata = t.metadata || {};
+      if (t.category || t.business_type) {
+        category = t.category || t.business_type;
       }
 
       const { data: bp } = await supabase
@@ -141,7 +165,9 @@ export async function processMultimodalChat(
         botProfileRow = bp;
       }
     }
-  } catch {}
+  } catch (dbErr) {
+    console.warn('[Multimodal Chat] DB error during tenant resolution:', dbErr);
+  }
 
   const checkoutUrl = getTenantActionUrl(
     {

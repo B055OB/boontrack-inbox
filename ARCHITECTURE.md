@@ -2748,5 +2748,126 @@ Melindungi stabilitas sistem dan kuota AI Vision dari serangan Denial of Invento
     3. **Dimensi Gambar**: Resolusi minimal **300 × 300 piksel** (divalidasi melalui instansiasi `Image()` / HTML5 Canvas di memori browser sebelum pengunggahan).
   * **Efisiensi Biaya**: Menjamin 100% request yang sampai ke backend Vision OCR adalah gambar yang memiliki konten visual riil, memblokir pengurasan token AI tenant akibat kesalahan pengguna atau serangan bot.
 
+---
 
+## 32. Multi-Tenant Isolation & Fulfillment Security Policy (Fail-Closed)
 
+### 32.1 Guiding Mandate & Core Security Principle
+> **CTO Core Mandate**:
+> *"JIKA BOONTRACK TIDAK TAHU TENANT MANA YANG DIPROSES, BOONTRACK HARUS FAIL-CLOSED (TIDAK BOLEH MENJAWAB / ZERO FALLBACK)."*
+
+Insiden kebocoran lintas-tenant atau fallback ke persona platform default merupakan pelanggaran tingkat P0/P1 terhadap integritas arsitektur multi-tenant BoonTrack. Seluruh komponen (WhatsApp Webhook Router, Next.js API Routes, AI Chat Engine, dan Checkout Storefront) wajib menerapkan pertahanan berlapis (*Defense-in-Depth*) dengan 5 Security Invariants yang tidak dapat ditawar.
+
+---
+
+### 32.2 The 5 Security Invariants (Defense-in-Depth)
+
+#### Invariant 1: Deterministic Multi-Stage Tenant Resolution Pipeline
+Setiap pesan inbound WhatsApp atau webhook event wajib melalui pipeline verifikasi bertingkat sebelum menyentuh AI engine, persistensi pesan, atau routing bisnis:
+
+$$\text{Inbound Message} \longrightarrow \text{Identify Instance} \longrightarrow \text{Identify Owner Phone} \longrightarrow \text{Resolve Tenant ID} \longrightarrow \text{Validate Instance} \leftrightarrow \text{Owner} \leftrightarrow \text{Tenant} \longrightarrow \text{TenantRuntimeContext}$$
+
+1. **Anti-Spoofing & Cross-Tenant Mismatch Guard**:
+   - Jika payload menyertakan `instance_name` dan nomor telepon bot owner (`botPhoneNumber` / `phoneNumber`):
+     * Hubungan keduanya diverifikasi silang di tabel `whatsapp_connections`.
+     * Jika instance milik Tenant A tetapi nomor telepon terdaftar pada Tenant B, request langsung ditolak seketika (*fail-closed rejection*).
+2. **Canonical Tenant Validation**:
+   - `candidateTenantId` wajib diverifikasi eksistensinya di tabel `tenants`. Jika ID/slug tidak terdaftar, proses dihentikan.
+3. **Immutable Verification Flag**:
+   - Hanya pipeline yang melewati seluruh validasi yang menghasilkan `TenantRuntimeContext` dengan `isVerified: true`.
+
+#### Invariant 2: Absolute Zero Platform Fallback (Fail-Closed Drop)
+1. **Peniadaan Template Default Platform**:
+   - Dilarang keras menggunakan pattern fallback ke template paket langganan BoonTrack, persona platform default, atau bot umum jika lookup tenant gagal.
+2. **Silent Drop & Security Quarantine**:
+   - Jika identitas tenant tidak dapat diresolusi (`tenant_id = null`):
+     * **Dilarang memanggil LLM / AI** (menghemat kuota token & mencegah halusinasi data).
+     * **Dilarang mengirim pesan balasan apapun ke pengirim/customer** (zero outbound response).
+     * **Dilarang mengirim template promosi platform BoonTrack**.
+     * Catat log peringatan resmi: `[SECURITY_ALERT / QUARANTINE] Unable to resolve tenant identity ... REJECTING (FAIL-CLOSED)`.
+     * Return status webhook HTTP 200 dengan payload `{ success: true, processed: 0, status: 'quarantine' }` agar upstream webhook provider tidak melakukan infinite retry loop.
+3. **Restorasi Profil Vertikal Asli**:
+   - Metadata tenant vertikal (seperti `solusi-ads` untuk agensi periklanan / kreator) wajib terikat 100% ke profil agensi aslinya (layanan Meta/TikTok Ads, konsultasi kampanye) dan steril dari template persona software internal BoonTrack.
+
+#### Invariant 3: Strict Asset Ownership (Tenant-Order-Asset Triad)
+Aset privat digital, materi unduhan, atau sesi konsultasi memiliki batasan kepemilikan ketat tiga arah:
+
+$$\text{order.tenant\_id} \equiv \text{current\_tenant\_id} \quad \land \quad \text{fulfillment.tenant\_id} \equiv \text{current\_tenant\_id} \quad \land \quad \text{fulfillment.order\_id} \equiv \text{order.id}$$
+
+- Jika aset fulfillment milik Tenant B dikaitkan dengan order Tenant A, atau sebaliknya, sistem otorisasi wajib mengeluarkan penolakan mutlak (`ACCESS DENIED / 403 Forbidden`).
+- Seluruh query database untuk mengambil aset pemenuhan pesanan wajib menyertakan filter eksplisit:
+  ```sql
+  WHERE tenant_id = :current_tenant_id AND order_id = :order_id
+  ```
+
+#### Invariant 4: Hard-Gate Fulfillment Authorization (Payment Confirmation Lock)
+Aset privat digital (tautan Google Meet / Cal.com, link download berkas rahasia, lisensi digital, kredensial akses) **HANYA BOLEH DI-RENDER / DIEKSPOSE** jika seluruh kondisi berikut terpenuhi secara simultan:
+1. `order.payment_status === 'PAID'` (pembayaran telah diverifikasi secara sah oleh payment gateway / FSM).
+2. `order.tenant_id === current_tenant_id`.
+3. `fulfillment.tenant_id === current_tenant_id`.
+4. `fulfillment.order_id === order.id`.
+
+**Penegakan pada Status Pre-Payment (`PENDING`, `WAITING_PAYMENT`, `EXPIRED`, `CANCELLED`)**:
+- **Backend API (`/api/orders/[orderId]/status`)**:
+  * Menghapus dan me-nullify parameter privat: `download_url = null`, `link_digital = null`, `fulfillment_metadata = null`, `button_text = null`.
+  * Pembeli berstatus PENDING hanya menerima data instruksi bayar (QRIS, rekening, jumlah tagihan).
+- **Frontend Checkout UI (`app/checkout/[order_id]/page.tsx`)**:
+  * DILARANG KERAS merender kartu aset digital, tautan Google Drive/Docs, iframe Cal.com, maupun tombol "Mulai Pertemuan".
+  * Auto-redirect ke link digital hanya boleh dieksekusi jika `isFulfillmentAuthorized === true`.
+
+#### Invariant 5: Immutable TenantRuntimeContext
+- Objek `TenantRuntimeContext` dibuat saat inisialisasi request dan bersifat *deep-freeze / read-only*.
+- Dilarang merekayasa ulang `tenant_id` di pertengahan alur eksekusi.
+- Setiap sub-layanan (AI, checkout, notifikasi WhatsApp, CAPI) mengonsumsi konteks yang sama tanpa mutasi.
+
+---
+
+### 32.3 Frontend Browser Cache & State Isolation Policy
+Untuk mencegah kebocoran data di perangkat bersama (shared device / internet cafe) atau transisi antar-order di browser yang sama:
+
+1. **Scoped Storage Key Structure**:
+   Semua item cache (localStorage, sessionStorage, React Query, SWR, dan state memory) yang menyimpan detail pesanan WAJIB menggunakan format terisolasi ganda:
+   ```
+   checkout:{tenant_id}:{order_id}
+   ```
+2. **Purge Legacy Unscoped Keys**:
+   Sistem secara otomatis menghapus key warisan lama yang tidak memiliki isolasi tenant (seperti `bt_order_*` atau `last_checkout_state`).
+3. **Atomic State Reset on Route Change**:
+   Saat berpindah `order_id` atau pada event component mount, komponen checkout wajib mereset state internal seketika:
+   ```typescript
+   setOrder(null);
+   setTenant(null);
+   setPaymentStatus('PENDING');
+   ```
+   Hal ini menjamin tidak terjadi rendering sesaat (*flash of private content*) dari pesanan sebelumnya sebelum data pesanan baru selesai dimuat.
+
+---
+
+### 32.4 Ringkasan Milestone Produksi P0 hingga P7 (Live Architecture Capabilities)
+
+Seluruh milestone berikut telah berhasil diuji, di-hardening, dan aktif melayani merchant di lingkungan produksi:
+
+| Milestone / Queue | Nama Kapabilitas | Komponen & Invariant Utama | Status |
+| :--- | :--- | :--- | :--- |
+| **P0** | **Global Realtime Inbox Engine & Anti-Double Deduplication** | - Dynamic tenant resolution dari `whatsapp_connections`<br>- Ingress multi-tenant bypass RLS via Service Role Key<br>- Deduplikasi pesan atomik via `external_id` (wamid)<br>- Realtime WebSocket sync ke dashboard CS | **LIVE** |
+| **Queue #1** | **CS Seat Quota & Role Hardening** | - Kuota seat CS adaptif berbasis tier (`SOLO`: 1 seat, `PRO_SCALE`: 3 seats, `ENTERPRISE`: unlimited)<br>- Role-based permissions (`owner`, `admin`, `agent`)<br>- Audit trail aktivitas percakapan CS | **LIVE** |
+| **Queue #2** | **Universal Front-Page Checkout Modal (Fisik/FnB/Digital)** | - Modal checkout instan langsung pada storefront pembeli tanpa redirect penuh<br>- Dukungan multi-vertikal (variasi ukuran fisik, add-on FnB, field lisensi digital)<br>- Terintegrasi QRIS dinamis & auto-expire | **LIVE** |
+| **Queue #3** | **Creator & Agency Campaign Normalization** | - Parsing dan normalisasi otomatis tautan kampanye (Google Drive, Docs, Google Forms, Notion, Typeform)<br>- Restorasi profil agensi periklanan asli (`solusi-ads` / advertising agency) bebas dari template SaaS internal | **LIVE** |
+| **Queue #4** | **Universal Fast Invoice Viewer & Digital Fulfillment Backup** | - Halaman invoice ultra-cepat berbasis server components (`/invoice/[orderId]`)<br>- Redundant digital fulfillment: pengiriman otomatis tautan aset dan invoice via WhatsApp & Email fallback saat payment settled | **LIVE** |
+| **Queue #5 & #5.1** | **WhatsApp Native locationMessage Parser & Domain Storefront Routing** | - Ekstraksi koordinat GPS native (`degreesLatitude`, `degreesLongitude`) langsung dari kiriman pin lokasi WhatsApp pembeli<br>- Geocoding reverse & kalkulasi ongkir instan kurir on-demand (GoSend / GrabExpress)<br>- Dynamic Storefront Domain Routing via Next.js Middleware (`shop.boontrack.com/{slug}` & custom domains) | **LIVE** |
+| **Queue #6** | **Modular HTML Email Suite & Resend Batch Chunker** | - Template transactional email modular adaptif dengan palet warna brand merchant<br>- Engine batch chunking Resend API untuk mencegah bottleneck dan rate-limit spike saat broadcast notifikasi massal | **LIVE** |
+| **Queue #7** | **Official Changelog v3.2.0 Broadcast Engine** | - Sistem broadcast pengumuman resmi ke seluruh 27 active merchant platform BoonTrack<br>- 100% delivery tracking, retry queue otomatis, dan log analitik pengiriman | **LIVE** |
+
+#### Fitur Terkini (Live Production Enhancements):
+1. **Dynamic Deal Quick POS**:
+   - Antarmuka Point-of-Sale kilat di dalam WhatsApp Inbox bagi agen CS untuk membuat penawaran harga khusus (diskon, bundling kustom, ongkir manual) dan mengirimkan invoice/link pembayaran sekali bayar langsung ke chat pembeli.
+2. **Tombol Verify Paid CAPI Trigger**:
+   - Tombol verifikasi manual 1-klik bagi CS untuk pembayaran transfer manual/bank yang secara instan:
+     * Mengubah status order menjadi `PAID`.
+     * Mentransisikan financial state machine.
+     * Memicu server-side Meta Conversions API (CAPI) `Purchase` event dengan skor Event Match Quality (EMQ) optimal ($\ge 8.0/10$) menggunakan hashing SHA-256 (phone, email, first name, last name, city) dan browser cookie matching (`fbc`, `fbp`).
+3. **Direct CS Login via WA + PIN**:
+   - Alur masuk cepat bagi staf Customer Service tanpa memerlukan kombinasi email/password yang rumit:
+     * Verifikasi nomor WhatsApp terdaftar.
+     * Otentikasi menggunakan 6-digit PIN dinamis atau link Magic OTP WhatsApp.
+     * Auto-binding sesi CS ke instance dan tenant yang bersangkutan dengan isolasi akses data 100%.

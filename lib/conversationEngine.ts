@@ -81,11 +81,25 @@ export class ConversationEngine {
     }
 
     // 0. Ambil Data Tenant & Konfigurasi Interactive Menu / Bot Mode
-    const { data: tenant } = await supabase
+    let tenant: any = null;
+    const { data: tById } = await supabase
       .from('tenants')
       .select('id, slug, name, category, business_type, metadata')
-      .eq('slug', tenant_id)
+      .eq('id', tenant_id)
       .maybeSingle();
+
+    if (tById?.id || tById?.slug) {
+      tenant = tById;
+    } else {
+      const { data: tBySlug } = await supabase
+        .from('tenants')
+        .select('id, slug, name, category, business_type, metadata')
+        .eq('slug', tenant_id)
+        .maybeSingle();
+      if (tBySlug?.id || tBySlug?.slug) {
+        tenant = tBySlug;
+      }
+    }
 
     if (!tenant) {
       console.warn(`[SECURITY_FAIL_CLOSED_DROP] Tenant '${tenant_id}' not found in database. Silently dropping to prevent leak.`);

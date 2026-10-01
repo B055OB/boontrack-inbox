@@ -235,10 +235,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     created_at: new Date().toISOString()
   };
 
-  // Simpan ke localStorage untuk akses cepat di browser client (menyimpan data lengkap)
+  // Simpan ke localStorage dengan scoped key checkout:{tenant_id}:{order_id}
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(`bt_order_${orderId}`, JSON.stringify(orderData));
+      const scopedKey = `checkout:${payload.tenantSlug}:${orderId}`;
+      localStorage.setItem(scopedKey, JSON.stringify(orderData));
+      localStorage.removeItem(`bt_order_${orderId}`); // Purge legacy unscoped key
     } catch (e) {
       console.warn("[Checkout Service] Failed to save local order backup:", e);
     }
@@ -550,12 +552,14 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     // Persist QR payload to local storage and DB
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem(`bt_order_${orderId}`);
+        const scopedKey = `checkout:${payload.tenantSlug}:${orderId}`;
+        const saved = localStorage.getItem(scopedKey) || localStorage.getItem(`bt_order_${orderId}`);
         if (saved) {
           const parsed = JSON.parse(saved);
           parsed.qr_string = qrString;
           parsed.qr_code_url = qrCodeUrl;
-          localStorage.setItem(`bt_order_${orderId}`, JSON.stringify(parsed));
+          localStorage.setItem(scopedKey, JSON.stringify(parsed));
+          localStorage.removeItem(`bt_order_${orderId}`);
         }
       } catch {}
     }
