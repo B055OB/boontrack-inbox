@@ -9,6 +9,7 @@ export interface CAPIEventPayload {
   eventId?: string;
   orderId?: string;
   tenantId: string;
+  tenantSlug?: string;
   grossAmount?: number;
   currency?: string;
   customerPhone?: string;
@@ -16,8 +17,14 @@ export interface CAPIEventPayload {
   customerEmail?: string;
   firstName?: string;
   lastName?: string;
+  city?: string | null;
+  customerCity?: string | null;
+  country?: string | null;
+  zip?: string | null;
   fbc?: string | null;
   fbp?: string | null;
+  eventSourceUrl?: string | null;
+  sourceUrl?: string | null;
   /** Parameter Atribusi Click-to-WhatsApp Meta */
   ctwaClid?: string | null;
   userAgent?: string | null;
@@ -101,6 +108,41 @@ export function hashLastName(name: string | undefined | null): string | null {
   const rest = parts.slice(1).join(' ').trim().toLowerCase();
   if (!rest) return null;
   return hashSha256(rest);
+}
+
+/**
+ * Normalisasi & Hashing Kota untuk Meta CAPI (ct)
+ * 1. Lowercase, hapus tanda baca, trim
+ * 2. SHA-256 lowercase
+ */
+export function hashCity(city: string | undefined | null): string | null {
+  if (!city || typeof city !== 'string') return null;
+  const clean = city
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+  if (!clean) return null;
+  return hashSha256(clean);
+}
+
+/**
+ * Normalisasi & Hashing Kode Pos untuk Meta CAPI (zp)
+ */
+export function hashZip(zip: string | undefined | null): string | null {
+  if (!zip || typeof zip !== 'string') return null;
+  const clean = zip.replace(/[^0-9a-z]/gi, '').trim().toLowerCase();
+  if (!clean) return null;
+  return hashSha256(clean);
+}
+
+/**
+ * Normalisasi & Hashing Negara ISO 2-letter untuk Meta CAPI (country)
+ */
+export function hashCountry(country: string | undefined | null): string | null {
+  if (!country || typeof country !== 'string') return null;
+  const clean = country.trim().toLowerCase().slice(0, 2);
+  if (!clean || clean.length !== 2) return null;
+  return hashSha256(clean);
 }
 
 /**
@@ -188,11 +230,14 @@ export async function dispatchMetaCAPIEvent(
   const hashedPhone = hashPhone(payload.customerPhone);
   const hashedEmail = hashEmail(payload.customerEmail);
   const hashedFn = payload.firstName
-    ? hashFirstName(payload.firstName)
+    ? (hashFirstName(payload.firstName) || hashSha256(payload.firstName.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '')))
     : hashFirstName(payload.customerName);
   const hashedLn = payload.lastName
-    ? hashLastName(payload.lastName)
+    ? (hashLastName(payload.lastName) || hashSha256(payload.lastName.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '')))
     : hashLastName(payload.customerName);
+  const hashedCity = hashCity(payload.city || payload.customerCity);
+  const hashedCountry = hashCountry(payload.country || 'id');
+  const hashedZip = hashZip(payload.zip);
 
   // 2. Client Context (IP Address, User Agent, fbp, fbc)
   const clientIp = isValidIpAddress(payload.ipAddress) ? payload.ipAddress!.trim() : undefined;
@@ -207,6 +252,9 @@ export async function dispatchMetaCAPIEvent(
     em: hashedEmail ? [hashedEmail] : undefined,
     fn: hashedFn ? [hashedFn] : undefined,
     ln: hashedLn ? [hashedLn] : undefined,
+    ct: hashedCity ? [hashedCity] : undefined,
+    country: hashedCountry ? [hashedCountry] : undefined,
+    zp: hashedZip ? [hashedZip] : undefined,
     client_ip_address: clientIp,
     client_user_agent: clientUserAgent,
     fbp: rawFbp,
@@ -225,17 +273,37 @@ export async function dispatchMetaCAPIEvent(
     ...(payload.customData || {})
   };
 
+  // 4. Resolusi event_source_url (WAJIB valid domain storefront per spesifikasi Meta CAPI)
+  let resolvedEventSourceUrl =
+    payload.eventSourceUrl ||
+    payload.sourceUrl ||
+    payload.trackingContext?.source_url ||
+    undefined;
+
+  if (!resolvedEventSourceUrl) {
+    const slug = payload.tenantSlug || payload.tenantId;
+    if (slug) {
+      resolvedEventSourceUrl = payload.orderId
+        ? `https://shop.boontrack.com/${slug}/order/${payload.orderId}`
+        : `https://shop.boontrack.com/${slug}`;
+    }
+  }
+
+  const eventItem: Record<string, any> = {
+    event_name: resolvedEventName,
+    event_time: currentTimestamp,
+    event_id: resolvedEventId, // 100% DEDUPLICATION KEY MATCH
+    action_source: 'website',
+    user_data: cleanUserData,
+    custom_data: customDataObj,
+  };
+
+  if (resolvedEventSourceUrl) {
+    eventItem.event_source_url = resolvedEventSourceUrl;
+  }
+
   const body: Record<string, any> = {
-    data: [
-      {
-        event_name: resolvedEventName,
-        event_time: currentTimestamp,
-        event_id: resolvedEventId, // 100% DEDUPLICATION KEY MATCH
-        action_source: 'website',
-        user_data: cleanUserData,
-        custom_data: customDataObj
-      }
-    ],
+    data: [eventItem],
     // test_event_code disematkan di root body (bukan di dalam data[]) per spesifikasi Meta CAPI
     ...(payload.testEventCode ? { test_event_code: payload.testEventCode.trim() } : {})
   };
@@ -470,6 +538,30 @@ export async function dispatchMetaCAPIPurchaseForOrder(
     const customerName =
       order.customer_name || order.buyer_name || 'Pelanggan Toko';
 
+    const customerCity =
+      order.customer_city ||
+      order.city ||
+      order.shipping_city ||
+      order.metadata?.city ||
+      order.metadata?.customer_city ||
+      order.metadata?.shipping_address?.city ||
+      trackingContext.city ||
+      undefined;
+
+    const postalCode =
+      order.postal_code ||
+      order.zip ||
+      order.metadata?.postal_code ||
+      order.metadata?.zip ||
+      order.metadata?.shipping_address?.postal_code ||
+      undefined;
+
+    const resolvedSlug = tenantData.slug || order.tenant_slug || tenantSlug;
+    const sourceUrl =
+      trackingContext.source_url ||
+      order.metadata?.source_url ||
+      `https://shop.boontrack.com/${resolvedSlug}/order/${order.id}`;
+
     const grossAmount = Number(
       order.gross_amount ?? order.total_amount ?? order.amount ?? 0
     );
@@ -481,11 +573,17 @@ export async function dispatchMetaCAPIPurchaseForOrder(
       orderId: String(order.id),
       eventId,
       tenantId: tenantData.id || tenantData.slug,
+      tenantSlug: resolvedSlug,
       grossAmount,
       currency: 'IDR',
       customerPhone,
       customerEmail,
       customerName,
+      city: customerCity,
+      zip: postalCode,
+      country: 'id',
+      eventSourceUrl: sourceUrl,
+      sourceUrl,
       fbp,
       fbc,
       ipAddress: clientIp,
@@ -584,6 +682,21 @@ export async function dispatchMetaCAPIInitiateCheckoutForOrder(
       undefined;
 
     let trackingContext = order.metadata?.tracking_context || {};
+    if (!trackingContext.fbp && !trackingContext.client_user_agent) {
+      try {
+        const { data: itemWithMeta } = await supabase
+          .from('order_items')
+          .select('metadata')
+          .eq('order_id', orderId)
+          .not('metadata', 'is', null)
+          .limit(1)
+          .maybeSingle();
+        if (itemWithMeta?.metadata?.tracking_context) {
+          trackingContext = { ...itemWithMeta.metadata.tracking_context, ...trackingContext };
+        }
+      } catch {}
+    }
+
     const fbp = trackingContext.fbp || order.metadata?.fbp || undefined;
     const fbc =
       trackingContext.fbc ||
@@ -609,6 +722,30 @@ export async function dispatchMetaCAPIInitiateCheckoutForOrder(
     const customerName =
       order.customer_name || order.buyer_name || 'Pelanggan Toko';
 
+    const customerCity =
+      order.customer_city ||
+      order.city ||
+      order.shipping_city ||
+      order.metadata?.city ||
+      order.metadata?.customer_city ||
+      order.metadata?.shipping_address?.city ||
+      trackingContext.city ||
+      undefined;
+
+    const postalCode =
+      order.postal_code ||
+      order.zip ||
+      order.metadata?.postal_code ||
+      order.metadata?.zip ||
+      order.metadata?.shipping_address?.postal_code ||
+      undefined;
+
+    const resolvedSlug = tenantData.slug || order.tenant_slug || tenantSlug;
+    const sourceUrl =
+      trackingContext.source_url ||
+      order.metadata?.source_url ||
+      `https://shop.boontrack.com/${resolvedSlug}/order/${order.id}`;
+
     const grossAmount = Number(
       order.gross_amount ?? order.total_amount ?? order.amount ?? 0
     );
@@ -619,11 +756,17 @@ export async function dispatchMetaCAPIInitiateCheckoutForOrder(
       orderId: String(order.id),
       eventId,
       tenantId: tenantData.id || tenantData.slug,
+      tenantSlug: resolvedSlug,
       grossAmount,
       currency: 'IDR',
       customerPhone,
       customerEmail,
       customerName,
+      city: customerCity,
+      zip: postalCode,
+      country: 'id',
+      eventSourceUrl: sourceUrl,
+      sourceUrl,
       fbp,
       fbc,
       ipAddress: clientIp,

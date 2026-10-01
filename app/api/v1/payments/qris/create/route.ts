@@ -5,6 +5,7 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
 import { orderEventBus } from '@/lib/email/order-event-bus';
+import { dispatchMetaCAPIInitiateCheckoutForOrder } from '@/lib/capi.service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,6 +33,34 @@ export async function POST(req: NextRequest) {
     ).trim();
 
     const cleanSlug = String(tenant_slug || body.tenantSlug || body.slug || '').trim().toLowerCase();
+
+    // Browser Signals & Cookie Tracking untuk Meta EMQ Score 8.0+
+    const cookieFbp = req.cookies.get('_fbp')?.value;
+    const cookieFbc = req.cookies.get('_fbc')?.value;
+    const clientUserAgent = req.headers.get('user-agent') || undefined;
+    const clientIp =
+      req.headers.get('cf-connecting-ip') ||
+      req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+      req.headers.get('x-real-ip') ||
+      undefined;
+    const referer = req.headers.get('referer') || undefined;
+
+    const bodyTracking = metadata?.tracking || body.tracking || {};
+    const bodyTrackingContext = metadata?.tracking_context || body.tracking_context || {};
+    const fbp = bodyTrackingContext.fbp || bodyTracking.fbp || cookieFbp || undefined;
+    const fbclid = bodyTracking.fbclid || body.fbclid || undefined;
+    const fbc = bodyTrackingContext.fbc || bodyTracking.fbc || cookieFbc || (fbclid ? `fb.1.${Date.now()}.${fbclid}` : undefined);
+    const sourceUrl = bodyTrackingContext.source_url || bodyTracking.source_url || referer || undefined;
+    const city = body.city || metadata?.city || metadata?.shipping_city || body.shippingCity || body.customerCity || undefined;
+
+    const resolvedTrackingContext = {
+      fbp,
+      fbc,
+      client_user_agent: clientUserAgent,
+      client_ip_address: clientIp,
+      source_url: sourceUrl,
+      ...bodyTrackingContext,
+    };
 
     // a. Hitung total transfer (Harga Produk + Kode Unik 3 digit)
     const uniqueCode = Number(
@@ -211,6 +240,14 @@ export async function POST(req: NextRequest) {
               payment_status: 'PENDING',
               order_status: 'PENDING',
               status: 'PENDING',
+              metadata: {
+                ...(metadata || {}),
+                city: city || (existingOrder as any)?.metadata?.city,
+                tracking_context: {
+                  ...resolvedTrackingContext,
+                  ...((existingOrder as any)?.metadata?.tracking_context || {}),
+                },
+              },
               updated_at: now,
             });
             await supabase
@@ -234,6 +271,11 @@ export async function POST(req: NextRequest) {
             order_status: 'PENDING',
             status: 'PENDING',
             qr_code_url: qrCodeUrl || null,
+            metadata: {
+              ...(metadata || {}),
+              city,
+              tracking_context: resolvedTrackingContext,
+            },
             created_at: now,
             updated_at: now,
           };
@@ -250,6 +292,35 @@ export async function POST(req: NextRequest) {
             console.error('[Payments API] Pre-creation order insert error:', insertErr);
           } else {
             console.log(`[Payments API] Pre-created PENDING order #${orderId} for tenant '${targetTenantSlug}' (Rp ${numAmount})`);
+
+            // Simpan snapshot line item dan tracking context ke order_items
+            try {
+              await supabase.from('order_items').insert({
+                order_id: orderId,
+                tenant_id: resolvedTenantId,
+                tenant_slug: targetTenantSlug,
+                product_id: finalProductId,
+                product_title: finalProductTitle,
+                item_type: 'main',
+                price: numAmount,
+                original_price: numAmount,
+                quantity: 1,
+                metadata: {
+                  city,
+                  tracking_context: resolvedTrackingContext,
+                },
+              });
+            } catch (itemErr) {
+              console.warn('[Payments API] order_items pre-creation note:', itemErr);
+            }
+
+            // Asynchronously dispatch CAPI InitiateCheckout (EMQ Score 8.0+)
+            if (typeof dispatchMetaCAPIInitiateCheckoutForOrder === 'function') {
+              dispatchMetaCAPIInitiateCheckoutForOrder(orderId, supabase).catch((e) =>
+                console.warn('[Payments API] CAPI InitiateCheckout note:', e)
+              );
+            }
+
             // Asynchronously dispatch ORDER_CREATED notification to buyer (Non-blocking)
             if (customer_email && customer_email.includes('@')) {
               orderEventBus

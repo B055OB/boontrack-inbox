@@ -35,6 +35,7 @@ jest.mock('@/lib/capi.service', () => ({
     mockDispatchedCapi.push(orderId);
     return { success: true };
   }),
+  dispatchMetaCAPIInitiateCheckoutForOrder: jest.fn(async () => ({ success: true })),
 }));
 
 jest.mock('@/lib/affiliate-notification-service', () => ({

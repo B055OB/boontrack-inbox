@@ -4,6 +4,9 @@ import {
   hashEmail,
   hashFirstName,
   hashLastName,
+  hashCity,
+  hashZip,
+  hashCountry,
   isValidIpAddress,
   sanitizeUserData,
   dispatchMetaCAPIEvent,
@@ -61,6 +64,26 @@ describe('Meta CAPI Event Match Quality (EMQ) Optimization Tests', () => {
       expect(hashLastName('Budi Santoso Pratama')).toBe(expected);
       expect(hashLastName('SingleName')).toBeNull();
       expect(hashLastName('')).toBeNull();
+    });
+
+    it('normalizes and hashes city (ct) to lowercase alphanumeric hex without spaces (Meta standard)', () => {
+      const expected = hashSha256('jakartaselatan');
+      expect(hashCity('Jakarta Selatan')).toBe(expected);
+      expect(hashCity('  JAKARTA   SELATAN  ')).toBe(expected);
+      expect(hashCity('Jakarta-Selatan!')).toBe(expected);
+      expect(hashCity('')).toBeNull();
+      expect(hashCity(null)).toBeNull();
+    });
+
+    it('normalizes and hashes postal code (zp) and country (country)', () => {
+      expect(hashZip('12340')).toBe(hashSha256('12340'));
+      expect(hashZip(' 12340 ')).toBe(hashSha256('12340'));
+      expect(hashZip('')).toBeNull();
+
+      expect(hashCountry('ID')).toBe(hashSha256('id'));
+      expect(hashCountry('id')).toBe(hashSha256('id'));
+      expect(hashCountry('Indonesia')).toBe(hashSha256('in'));
+      expect(hashCountry('')).toBeNull();
     });
   });
 
@@ -145,6 +168,10 @@ describe('Meta CAPI Event Match Quality (EMQ) Optimization Tests', () => {
         customerPhone: '081234567890',
         customerName: 'Budi Santoso',
         customerEmail: 'budi@example.com',
+        city: 'Jakarta Selatan',
+        zip: '12340',
+        country: 'ID',
+        eventSourceUrl: 'https://shop.boontrack.com/checkout/ORD-9999',
         fbp: 'fb.1.987654321',
         fbc: 'fb.1.123456789',
         ipAddress: '180.252.160.2',
@@ -160,11 +187,15 @@ describe('Meta CAPI Event Match Quality (EMQ) Optimization Tests', () => {
       expect(event.event_name).toBe('Purchase');
       expect(event.event_id).toBe('PURCHASE_ORD-9999'); // Deduplication key match!
       expect(event.action_source).toBe('website');
+      expect(event.event_source_url).toBe('https://shop.boontrack.com/checkout/ORD-9999');
 
       // User data verification
       expect(event.user_data.ph).toEqual([hashSha256('6281234567890')]);
       expect(event.user_data.em).toEqual([hashSha256('budi@example.com')]);
       expect(event.user_data.fn).toEqual([hashSha256('budi')]);
+      expect(event.user_data.ct).toEqual([hashSha256('jakartaselatan')]);
+      expect(event.user_data.zp).toEqual([hashSha256('12340')]);
+      expect(event.user_data.country).toEqual([hashSha256('id')]);
       expect(event.user_data.fbp).toBe('fb.1.987654321');
       expect(event.user_data.fbc).toBe('fb.1.123456789');
       expect(event.user_data.client_ip_address).toBe('180.252.160.2');

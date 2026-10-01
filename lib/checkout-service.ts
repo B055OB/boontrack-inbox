@@ -30,6 +30,9 @@ export interface CreateOrderPayload {
     source_url?: string;
     [key: string]: unknown;
   };
+  city?: string;
+  customerCity?: string;
+  shippingCity?: string;
   voucherCode?: string;
   productDiscount?: number;
   netProductPrice?: number;
@@ -285,7 +288,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   const resolvedTrackingContext = payload.tracking_context || {
     ...(payload.tracking?.fbp ? { fbp: payload.tracking.fbp } : {}),
     ...(payload.tracking?.fbc ? { fbc: payload.tracking.fbc } : {}),
+    ...(payload.tracking?.client_user_agent ? { client_user_agent: payload.tracking.client_user_agent } : {}),
+    ...(payload.tracking?.client_ip_address ? { client_ip_address: payload.tracking.client_ip_address } : {}),
+    ...(payload.tracking?.source_url ? { source_url: payload.tracking.source_url } : {}),
   };
+
+  const resolvedCity = payload.city || payload.customerCity || payload.shippingCity || null;
+  const resolvedSourceUrl = resolvedTrackingContext.source_url || (typeof window !== 'undefined' ? window.location.href : null);
 
   const rawOrderData: any = {
     id: orderId,
@@ -311,6 +320,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     status: "PENDING",
     payment_status: "PENDING",
     order_status: "PENDING",
+    metadata: {
+      tracking_context: resolvedTrackingContext,
+      city: resolvedCity,
+      shipping_address: payload.shippingAddress || null,
+      source_url: resolvedSourceUrl,
+    },
     created_at: orderData.created_at,
     updated_at: orderData.created_at,
   };
@@ -562,7 +577,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       body: JSON.stringify({
         tenantSlug: payload.tenantSlug,
         eventName: 'InitiateCheckout',
-        eventId: `INITIATE_CHECKOUT_${orderId}`,
+        eventId: `IC_${orderId}`,
         orderId,
         amount: grossAmount,
         currency: 'IDR',
@@ -570,8 +585,13 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         customerName: payload.customerName,
         customerPhone: payload.customerPhone,
         customerEmail: payload.customerEmail,
+        customerCity: resolvedCity || undefined,
+        city: resolvedCity || undefined,
         ctwa_clid: trackingCtwa,
-        fbc: payload.tracking?.fbclid ? `fb.1.${Date.now()}.${payload.tracking.fbclid}` : undefined,
+        fbp: resolvedTrackingContext.fbp,
+        fbc: resolvedTrackingContext.fbc || (payload.tracking?.fbclid ? `fb.1.${Date.now()}.${payload.tracking.fbclid}` : undefined),
+        client_user_agent: resolvedTrackingContext.client_user_agent || (typeof navigator !== 'undefined' ? navigator.userAgent : undefined),
+        event_source_url: resolvedSourceUrl || undefined,
       }),
     }).catch((err) => console.warn('[Checkout Service] CAPI InitiateCheckout warning:', err));
   } catch (_) {}

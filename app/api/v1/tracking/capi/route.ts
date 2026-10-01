@@ -131,6 +131,8 @@ export async function POST(req: NextRequest) {
     if (!resolvedEventId) {
       if (resolvedEventName === 'Purchase' && orderId) {
         resolvedEventId = `PURCHASE_${orderId}`;
+      } else if (resolvedEventName === 'InitiateCheckout' && orderId) {
+        resolvedEventId = `IC_${orderId}`;
       } else if (orderId) {
         resolvedEventId = `${resolvedEventName.toUpperCase()}_${orderId}`;
       } else {
@@ -138,15 +140,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Resolusi data order & tracking_context dari Supabase jika orderId tersedia
-    let resolvedFbp = fbp;
-    let resolvedFbc = fbc;
+    // Resolusi browser signals & cookies (_fbp, _fbc, fbclid)
+    const cookieFbp = req.cookies.get('_fbp')?.value;
+    const cookieFbc = req.cookies.get('_fbc')?.value;
+    const urlFbclid = req.nextUrl?.searchParams?.get('fbclid');
+
+    let resolvedFbp = fbp || cookieFbp;
+    let resolvedFbc = fbc || cookieFbc;
+    if (!resolvedFbc && urlFbclid) {
+      resolvedFbc = `fb.1.${Date.now()}.${urlFbclid.trim()}`;
+    }
+
     let resolvedIp = ipAddress;
     let resolvedUserAgent = userAgent;
     let resolvedPhone = customerPhone;
     let resolvedEmail = customerEmail;
     let resolvedName = customerName;
     let resolvedAmount = amount;
+    let resolvedCity = body.city || body.customerCity;
 
     if (orderId) {
       try {
@@ -157,7 +168,22 @@ export async function POST(req: NextRequest) {
           .maybeSingle();
 
         if (dbOrder) {
-          const tContext = dbOrder.metadata?.tracking_context || {};
+          let tContext = dbOrder.metadata?.tracking_context || {};
+          if (!tContext.fbp && !tContext.client_user_agent) {
+            try {
+              const { data: itemWithMeta } = await supabase
+                .from('order_items')
+                .select('metadata')
+                .eq('order_id', orderId)
+                .not('metadata', 'is', null)
+                .limit(1)
+                .maybeSingle();
+              if (itemWithMeta?.metadata?.tracking_context) {
+                tContext = { ...itemWithMeta.metadata.tracking_context, ...tContext };
+              }
+            } catch {}
+          }
+
           resolvedFbp = resolvedFbp || tContext.fbp || dbOrder.metadata?.fbp;
           resolvedFbc =
             resolvedFbc ||
@@ -176,6 +202,13 @@ export async function POST(req: NextRequest) {
           resolvedEmail = resolvedEmail || dbOrder.customer_email;
           resolvedName = resolvedName || dbOrder.customer_name || dbOrder.buyer_name;
           resolvedAmount = resolvedAmount !== undefined ? resolvedAmount : dbOrder.gross_amount;
+          resolvedCity =
+            resolvedCity ||
+            dbOrder.customer_city ||
+            dbOrder.city ||
+            dbOrder.metadata?.city ||
+            dbOrder.metadata?.customer_city ||
+            tContext.city;
         }
       } catch (orderLookupErr) {
         console.warn('[CAPI Route] Order lookup note:', orderLookupErr);
@@ -183,10 +216,19 @@ export async function POST(req: NextRequest) {
     }
 
     const clientIpFromHeaders =
+      req.headers.get('cf-connecting-ip') ||
       req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
       req.headers.get('x-real-ip') ||
-      req.headers.get('cf-connecting-ip') ||
       undefined;
+
+    const clientUserAgentFromHeaders = req.headers.get('user-agent') || undefined;
+
+    const resolvedEventSourceUrl =
+      body.event_source_url ||
+      body.eventSourceUrl ||
+      body.sourceUrl ||
+      req.headers.get('referer') ||
+      (orderId ? `https://shop.boontrack.com/${cleanSlug}/order/${orderId}` : `https://shop.boontrack.com/${cleanSlug}`);
 
     // 3. Dispatch Event via CAPI Service
     const capiResult = await dispatchMetaCAPIEvent(metaPixelId, metaAccessToken, {
@@ -194,15 +236,19 @@ export async function POST(req: NextRequest) {
       eventId: resolvedEventId,
       orderId: orderId || undefined,
       tenantId: tenant.id || cleanSlug,
+      tenantSlug: cleanSlug,
       grossAmount: resolvedAmount !== undefined ? Number(resolvedAmount) : undefined,
       currency: currency || 'IDR',
       customerPhone: resolvedPhone,
       customerName: resolvedName,
       customerEmail: resolvedEmail,
+      city: resolvedCity,
       fbc: resolvedFbc || null,
       fbp: resolvedFbp || null,
       ctwaClid: resolvedCtwaClid,
-      userAgent: resolvedUserAgent || req.headers.get('user-agent') || undefined,
+      eventSourceUrl: resolvedEventSourceUrl,
+      sourceUrl: resolvedEventSourceUrl,
+      userAgent: resolvedUserAgent || clientUserAgentFromHeaders,
       ipAddress: resolvedIp || clientIpFromHeaders,
       contentName,
       contentIds,

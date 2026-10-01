@@ -69,6 +69,11 @@ export default function CheckoutPage({ params }: Props) {
       const grossVal = Number(orderData.gross_amount || orderData.total_amount || orderData.amount || 0);
       const prodName = orderData.product_title || 'Produk';
       const prodId = String(orderData.product_id || orderData.id || '');
+      const rawOrderId = String(orderData.id || orderId || '').trim();
+      const eventId = `PURCHASE_${rawOrderId}`;
+
+      // Panggil helper trackClientPurchase dengan deduplikasi storage & eventId standar
+      trackClientPurchase(rawOrderId, grossVal, prodName);
 
       if (typeof window !== 'undefined') {
         const win = window as any;
@@ -79,7 +84,7 @@ export default function CheckoutPage({ params }: Props) {
             content_type: 'product',
             value: grossVal,
             currency: 'IDR',
-          });
+          }, { eventID: eventId });
         }
         if (typeof win.ttq === 'object' && typeof win.ttq.track === 'function') {
           win.ttq.track('CompletePayment', {
@@ -88,13 +93,13 @@ export default function CheckoutPage({ params }: Props) {
             content_type: 'product',
             value: grossVal,
             currency: 'IDR',
-          });
+          }, { event_id: eventId });
         }
       }
     } catch (pixelErr) {
       console.warn('[Checkout Page] Pixel trigger note:', pixelErr);
     }
-  }, []);
+  }, [orderId]);
 
   useEffect(() => {
     async function loadOrder() {
