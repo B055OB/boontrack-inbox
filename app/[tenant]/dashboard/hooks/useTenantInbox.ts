@@ -69,12 +69,21 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
         if (!supabase) return;
 
         let query = supabase.from('tenants').select('id, slug');
-        if (tenantId && tenantId.includes('-') && tenantId.length > 30) {
-          query = query.or(`id.eq.${tenantId},slug.eq.${tenantId}`);
+        const isUuid = (val?: string | null): boolean =>
+          typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+
+        if (tenantId && isUuid(tenantId) && tenantSlug && !isUuid(tenantSlug)) {
+          query = query.or(`id.eq.${tenantId},slug.eq.${tenantSlug}`);
+        } else if (tenantId && isUuid(tenantId)) {
+          query = query.eq('id', tenantId);
         } else if (tenantSlug) {
-          query = query.or(`slug.eq.${tenantSlug},id.eq.${tenantSlug}`);
-        } else {
-          query = query.or(`slug.eq.${identifier},id.eq.${identifier}`);
+          query = query.eq('slug', tenantSlug);
+        } else if (identifier) {
+          if (isUuid(identifier)) {
+            query = query.eq('id', identifier);
+          } else {
+            query = query.eq('slug', identifier);
+          }
         }
 
         const { data } = await query.maybeSingle();

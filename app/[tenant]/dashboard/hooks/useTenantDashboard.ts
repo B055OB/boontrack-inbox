@@ -329,6 +329,29 @@ export function useTenantDashboard() {
   const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
 
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [tenantData, setTenantData] = useState<any>(null);
+
+  // Sync tenant data from SettingsTab custom events
+  useEffect(() => {
+    const handleTenantUpdated = (e: any) => {
+      if (e?.detail) {
+        setTenantData((prev: any) => ({
+          ...(prev || {}),
+          ...e.detail,
+          metadata: {
+            ...((prev && prev.metadata) || {}),
+            ...(e.detail.metadata || {}),
+          },
+        }));
+      }
+    };
+    window.addEventListener('boontrack:tenant-updated', handleTenantUpdated);
+    window.addEventListener('tenant-settings-updated', handleTenantUpdated);
+    return () => {
+      window.removeEventListener('boontrack:tenant-updated', handleTenantUpdated);
+      window.removeEventListener('tenant-settings-updated', handleTenantUpdated);
+    };
+  }, []);
 
   // Client-side hydration sync: loads cached localStorage & URL params AFTER mount to guarantee 0 SSR mismatch (#418)
   useEffect(() => {
@@ -765,6 +788,7 @@ export function useTenantDashboard() {
         if (tenant.id) {
           setTenantId(tenant.id);
         }
+        setTenantData(tenant);
         if (false) {
         } else {
           const resolvedBusinessType =
@@ -2614,6 +2638,7 @@ export function useTenantDashboard() {
     setIsTenantBotPaused,
     handleToggleTenantBot,
     tenantId,
+    tenantData,
 
     // Reverse Trial & Entitlement
     trialDaysLeft,

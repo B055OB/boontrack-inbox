@@ -35,7 +35,8 @@ import {
   Headphones,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { getSupabase } from '@/lib/supabaseClient';
+import { useParams } from 'next/navigation';
+import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { useTenantInbox } from '../../hooks/useTenantInbox';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import { getStorefrontInvoiceUrl, getStorefrontPayUrl, generatePaymentToken } from '@/lib/storefront-urls';
@@ -132,6 +133,7 @@ export interface TeamChatTabProps {
   handleToggleTenantBot?: () => void;
   isCheckoutLite?: boolean;
   tenantTier?: string;
+  initialTenant?: any;
 }
 
 export const CS_SEAT_QUOTA_MAP: Record<string, number> = {
@@ -147,6 +149,7 @@ export const CS_SEAT_QUOTA_MAP: Record<string, number> = {
 };
 
 export default function TeamChatTab({
+  initialTenant,
   tenantSlug,
   tenantId,
   conversations: externalConversations,
@@ -181,7 +184,24 @@ export default function TeamChatTab({
 
   const isTrialExpired = effectiveDaysLeft !== null && effectiveDaysLeft <= 0;
 
-  const resolvedTenant = tenantSlug || (typeof window !== 'undefined' ? window.location.pathname.split('/')[1] : '');
+  const params = useParams();
+  const routeTenant = (params?.tenant as string) || '';
+
+  const resolvedTenant = useMemo(() => {
+    if (tenantSlug && tenantSlug !== 'dashboard' && tenantSlug !== 'inbox') return tenantSlug;
+    if (routeTenant && routeTenant !== 'dashboard' && routeTenant !== 'inbox') return routeTenant;
+    if (typeof window !== 'undefined') {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      for (const part of parts) {
+        if (part && !['dashboard', 'inbox', 'orders', 'finance', 'catalog', 'settings', 'api', 'admin', 'auth'].includes(part)) {
+          return part;
+        }
+      }
+      const stored = localStorage.getItem('tenant_slug') || localStorage.getItem('last_active_tenant') || '';
+      if (stored) return stored;
+    }
+    return '';
+  }, [tenantSlug, routeTenant]);
 
   // 100% Global & Tenant-Agnostic Supabase Realtime Inbox Hook (Single Source of Truth)
   const inbox = useTenantInbox(tenantId, resolvedTenant);
@@ -272,30 +292,106 @@ export default function TeamChatTab({
   }, []);
 
   // Dynamic Tenant Payment Config & Multi-Tenant Bank Accounts (Zero Hardcoding)
-  const [tenantPaymentData, setTenantPaymentData] = useState<any>(null);
+  const [tenantPaymentData, setTenantPaymentData] = useState<any>(() => {
+    if (initialTenant) return initialTenant;
+    if (typeof window !== 'undefined') {
+      const slug = tenantSlug || '';
+      if (slug) {
+        try {
+          const cached = localStorage.getItem(`tenant_payment_metadata_${slug}`);
+          if (cached) return JSON.parse(cached);
+        } catch (_) {}
+      }
+    }
+    return null;
+  });
   const [selectedBillingTab, setSelectedBillingTab] = useState<'qris' | 'bank'>('qris');
   const [selectedBankIdx, setSelectedBankIdx] = useState<number>(0);
 
+  useEffect(() => {
+    if (initialTenant) {
+      setTenantPaymentData((prev: any) => {
+        if (!prev) return initialTenant;
+        return {
+          ...initialTenant,
+          ...prev,
+          metadata: {
+            ...(initialTenant.metadata || {}),
+            ...(prev.metadata || {}),
+          },
+        };
+      });
+    }
+  }, [initialTenant]);
+
   // Load tenant payment configuration dynamically from Supabase
   const fetchPaymentConfig = useCallback(async () => {
-    const targetSlug = resolvedTenant || tenantId;
-    if (!targetSlug) return;
+    const targetSlug =
+      (tenantSlug && tenantSlug !== 'dashboard' && tenantSlug !== 'inbox' ? tenantSlug : '') ||
+      (resolvedTenant && resolvedTenant !== 'dashboard' && resolvedTenant !== 'inbox' ? resolvedTenant : '') ||
+      (currentConversation as any)?.tenantSlug ||
+      (currentConversation as any)?.tenant_slug ||
+      (typeof window !== 'undefined' ? localStorage.getItem('tenant_slug') || localStorage.getItem('last_active_tenant') || '' : '');
+
+    const effectiveId =
+      tenantId && isValidUuid(tenantId)
+        ? tenantId
+        : (targetSlug && isValidUuid(targetSlug) ? targetSlug : null);
+
+    const effectiveSlug = targetSlug && !isValidUuid(targetSlug) ? targetSlug : '';
+
+    if (!effectiveSlug && !effectiveId) return;
+
     try {
       const supabase = getSupabase();
-      if (supabase) {
-        const { data } = await supabase
-          .from('tenants')
-          .select('id, slug, name, tier, metadata')
-          .or(`slug.eq.${targetSlug},id.eq.${targetSlug}`)
-          .maybeSingle();
-        if (data) {
-          setTenantPaymentData(data);
+      if (!supabase) return;
+
+      let query = supabase.from('tenants').select('id, slug, name, tier, metadata');
+
+      if (effectiveId && effectiveSlug) {
+        query = query.or(`id.eq.${effectiveId},slug.eq.${effectiveSlug}`);
+      } else if (effectiveId) {
+        query = query.eq('id', effectiveId);
+      } else if (effectiveSlug) {
+        query = query.eq('slug', effectiveSlug);
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (error) {
+        console.warn('[TeamChatTab] Error fetching tenant payment config:', error.message);
+      } else if (data) {
+        setTenantPaymentData(data);
+        if (typeof window !== 'undefined') {
+          const cacheSlug = data.slug || effectiveSlug;
+          if (cacheSlug) {
+            localStorage.setItem(`tenant_payment_metadata_${cacheSlug}`, JSON.stringify(data));
+          }
+        }
+        return;
+      }
+
+      // Fallback: Jika Supabase query menghasilkan null/error, panggil API settings route
+      if (effectiveSlug) {
+        try {
+          const res = await fetch(`/api/v1/tenants/${encodeURIComponent(effectiveSlug)}/settings`);
+          if (res.ok) {
+            const json = await res.json();
+            const settingsData = json?.settings || json;
+            if (settingsData && (settingsData.metadata || settingsData.slug)) {
+              setTenantPaymentData(settingsData);
+              if (typeof window !== 'undefined') {
+                localStorage.setItem(`tenant_payment_metadata_${effectiveSlug}`, JSON.stringify(settingsData));
+              }
+            }
+          }
+        } catch (apiErr) {
+          console.debug('[TeamChatTab] Settings route fallback note:', apiErr);
         }
       }
     } catch (err) {
       console.warn('[TeamChatTab] Error fetching tenant payment config:', err);
     }
-  }, [resolvedTenant, tenantId]);
+  }, [resolvedTenant, tenantSlug, tenantId, currentConversation]);
 
   // Initial fetch
   useEffect(() => {
@@ -304,7 +400,12 @@ export default function TeamChatTab({
 
   // Real-time Supabase postgres_changes + Window Event listeners + SWR polling interval
   useEffect(() => {
-    const targetSlug = resolvedTenant || tenantId;
+    const targetSlug =
+      (tenantSlug && tenantSlug !== 'dashboard' && tenantSlug !== 'inbox' ? tenantSlug : '') ||
+      (resolvedTenant && resolvedTenant !== 'dashboard' && resolvedTenant !== 'inbox' ? resolvedTenant : '') ||
+      (currentConversation as any)?.tenantSlug ||
+      (currentConversation as any)?.tenant_slug ||
+      tenantId;
     if (!targetSlug) return;
 
     // 1. Supabase Realtime channel
@@ -323,6 +424,11 @@ export default function TeamChatTab({
           (payload: any) => {
             if (payload?.new && (payload.new.slug === targetSlug || payload.new.id === targetSlug)) {
               setTenantPaymentData(payload.new);
+              if (typeof window !== 'undefined' && targetSlug) {
+                try {
+                  localStorage.setItem(`tenant_payment_metadata_${targetSlug}`, JSON.stringify(payload.new));
+                } catch (_) {}
+              }
             } else {
               fetchPaymentConfig();
             }
@@ -333,11 +439,23 @@ export default function TeamChatTab({
 
     // 2. Custom event listener dari tab Settings
     const handleTenantUpdated = (e: any) => {
-      if (e?.detail?.metadata) {
-        setTenantPaymentData((prev: any) => ({
-          ...(prev || {}),
-          metadata: e.detail.metadata,
-        }));
+      if (e?.detail) {
+        setTenantPaymentData((prev: any) => {
+          const updated = {
+            ...(prev || {}),
+            ...e.detail,
+            metadata: {
+              ...((prev && prev.metadata) || {}),
+              ...(e.detail.metadata || {}),
+            },
+          };
+          if (typeof window !== 'undefined' && targetSlug) {
+            try {
+              localStorage.setItem(`tenant_payment_metadata_${targetSlug}`, JSON.stringify(updated));
+            } catch (_) {}
+          }
+          return updated;
+        });
       }
       fetchPaymentConfig();
     };
@@ -367,35 +485,91 @@ export default function TeamChatTab({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(swrInterval);
     };
-  }, [resolvedTenant, tenantId, fetchPaymentConfig]);
+  }, [resolvedTenant, tenantSlug, tenantId, fetchPaymentConfig, currentConversation]);
 
   const bankAccounts = useMemo(() => {
-    return extractTenantBankAccounts(tenantPaymentData);
-  }, [tenantPaymentData]);
+    // 1. Direct state tenantPaymentData
+    let accounts = extractTenantBankAccounts(tenantPaymentData);
+    if (accounts.length > 0) return accounts;
+
+    // 2. initialTenant prop
+    if (initialTenant) {
+      accounts = extractTenantBankAccounts(initialTenant);
+      if (accounts.length > 0) return accounts;
+    }
+
+    // 3. currentConversation.tenant / tenant_data
+    const convTenant = (currentConversation as any)?.tenant || (currentConversation as any)?.tenant_data;
+    if (convTenant) {
+      accounts = extractTenantBankAccounts(convTenant);
+      if (accounts.length > 0) return accounts;
+    }
+
+    // 4. LocalStorage cache for instant offline / post-save sync
+    if (typeof window !== 'undefined') {
+      const targetSlug =
+        (tenantSlug && tenantSlug !== 'dashboard' && tenantSlug !== 'inbox' ? tenantSlug : '') ||
+        (resolvedTenant && resolvedTenant !== 'dashboard' && resolvedTenant !== 'inbox' ? resolvedTenant : '');
+      if (targetSlug) {
+        try {
+          const cached = localStorage.getItem(`tenant_payment_metadata_${targetSlug}`);
+          if (cached) {
+            accounts = extractTenantBankAccounts(JSON.parse(cached));
+            if (accounts.length > 0) return accounts;
+          }
+        } catch (_) {}
+      }
+    }
+
+    return [];
+  }, [tenantPaymentData, initialTenant, currentConversation, tenantSlug, resolvedTenant]);
 
   const hasNorek = bankAccounts.length > 0;
 
   const hasQris = useMemo(() => {
-    if (!tenantPaymentData) return false;
-    return Boolean(
-      (tenantPaymentData as any)?.qris_image_url ||
-      (tenantPaymentData as any)?.qris_url ||
-      (tenantPaymentData as any)?.qris_image ||
-      (tenantPaymentData as any)?.qris_content ||
-      tenantPaymentData?.metadata?.qris_image_url ||
-      tenantPaymentData?.metadata?.qris_url ||
-      tenantPaymentData?.metadata?.qris_image ||
-      tenantPaymentData?.metadata?.qris?.static_qr ||
-      tenantPaymentData?.metadata?.qris_content ||
-      tenantPaymentData?.metadata?.raw_qris_string ||
-      tenantPaymentData?.metadata?.payment_config?.raw_qris_string ||
-      tenantPaymentData?.metadata?.payment_config?.qris_image_url ||
-      tenantPaymentData?.metadata?.payment_settings?.qris ||
-      tenantPaymentData?.metadata?.payment_config?.enable_qris === true ||
-      (tenantPaymentData?.is_qris_active && ((tenantPaymentData as any)?.qris_image_url || tenantPaymentData?.metadata?.qris_image_url)) ||
-      (tenantPaymentData?.metadata?.is_qris_active && ((tenantPaymentData as any)?.qris_image_url || tenantPaymentData?.metadata?.qris_image_url))
-    );
-  }, [tenantPaymentData]);
+    const candidates = [
+      tenantPaymentData,
+      initialTenant,
+      (currentConversation as any)?.tenant,
+      (currentConversation as any)?.tenant_data,
+    ];
+
+    if (typeof window !== 'undefined') {
+      const targetSlug =
+        (tenantSlug && tenantSlug !== 'dashboard' && tenantSlug !== 'inbox' ? tenantSlug : '') ||
+        (resolvedTenant && resolvedTenant !== 'dashboard' && resolvedTenant !== 'inbox' ? resolvedTenant : '');
+      if (targetSlug) {
+        try {
+          const cached = localStorage.getItem(`tenant_payment_metadata_${targetSlug}`);
+          if (cached) candidates.push(JSON.parse(cached));
+        } catch (_) {}
+      }
+    }
+
+    for (const cand of candidates) {
+      if (!cand) continue;
+      const qrisFound = Boolean(
+        cand.qris_image_url ||
+        cand.qris_url ||
+        cand.qris_image ||
+        cand.qris_content ||
+        cand.metadata?.qris_image_url ||
+        cand.metadata?.qris_url ||
+        cand.metadata?.qris_image ||
+        cand.metadata?.qris?.static_qr ||
+        cand.metadata?.qris_content ||
+        cand.metadata?.raw_qris_string ||
+        cand.metadata?.payment_config?.raw_qris_string ||
+        cand.metadata?.payment_config?.qris_image_url ||
+        cand.metadata?.payment_settings?.qris ||
+        cand.metadata?.payment_config?.enable_qris === true ||
+        (cand.is_qris_active && (cand.qris_image_url || cand.metadata?.qris_image_url)) ||
+        (cand.metadata?.is_qris_active && (cand.qris_image_url || cand.metadata?.qris_image_url))
+      );
+      if (qrisFound) return true;
+    }
+    return false;
+  }, [tenantPaymentData, initialTenant, currentConversation, tenantSlug, resolvedTenant]);
 
   const hasPaymentMethod = Boolean(hasQris || hasNorek);
 

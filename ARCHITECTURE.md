@@ -2890,3 +2890,232 @@ Seluruh milestone berikut telah berhasil diuji, di-hardening, dan aktif melayani
      * Verifikasi nomor WhatsApp terdaftar.
      * Otentikasi menggunakan 6-digit PIN dinamis atau link Magic OTP WhatsApp.
      * Auto-binding sesi CS ke instance dan tenant yang bersangkutan dengan isolasi akses data 100%.
+
+---
+
+## 34. Dedicated Invoice Token Route (`/pay/[token]`) & Adaptive Payment Context
+
+> **Architectural Status**: 🔒 **APPROVED & RELEASED IN PRODUCTION**  
+> **Core Principle**: *"No raw database IDs in public URLs. Transaction-born chats must resolve to zero-friction, single-click payment contexts."*
+
+### 34.1 Route Publik & Batasan Privasi Database
+- **Route Path**: `app/[tenant]/pay/[token]/page.tsx`
+- **Domain Storefront**: `https://shop.boontrack.com/[tenant]/pay/[token]`
+- **Tujuan Arsitektur**:
+  - Halaman checkout/pembayaran khusus bagi transaksi yang lahir dari obrolan WhatsApp (pesanan manual via CS, penawaran harga khusus dari Quick POS Inbox, atau closing langsung via chat).
+  - Menyajikan antarmuka pembayaran yang sangat cepat (*ultra-fast*), adaptif, dan bersih tanpa membebani pembeli dengan pemilihan varian ulang, pengisian formulir produk dari awal, atau navigasi multi-halaman.
+
+```
+┌────────────────────────────────┐       1. Generate Link        ┌──────────────────────────────────┐
+│   Inbox Chat / Quick POS       │ ────────────────────────────> │  Public Invoice Route            │
+│   (TeamChatTab.tsx)            │                               │  app/[tenant]/pay/[token]/page   │
+└────────────────────────────────┘                               └─────────────────┬────────────────┘
+                                                                                   │
+                                           2. Token Lookup (correlation_id)        ▼
+                                                                 ┌──────────────────────────────────┐
+                                                                 │      Supabase orders Table       │
+                                                                 │  (Zero Raw UUID Exposed in URL)  │
+                                                                 └──────────────────────────────────┘
+```
+
+### 34.2 Spesifikasi Opaque Payment Token (`pay_xxxxxxxxxxxxxxxx`)
+1. **Pembangkitan Kriptografis Acak**:
+   - Token di-generate secara deterministik melalui helper `generatePaymentToken()` yang menghasilkan string opaque berformat `pay_` diikuti 16 karakter alfanumerik acak (`pay_[a-z0-9]{16}`).
+2. **Skema Persistensi Database**:
+   - Token disimpan pada dua lokasi di tabel `orders` Supabase:
+     * Kolom pencarian cepat terindeks: `orders.correlation_id = 'pay_xxxxxxxxxxxxxxxx'`.
+     * Metadata pesanan: `orders.metadata.public_payment_token = 'pay_xxxxxxxxxxxxxxxx'`.
+3. **Zero Database UUID Exposure (Aturan Keamanan Mutlak)**:
+   - Dilarang keras mengekspos ID numerik berurutan (*auto-increment*) maupun UUID mentah database (`orders.id`) pada URL publik pembeli.
+   - Pengeksposan UUID mentah memicu celah *enumeration attack* dan kebocoran volume pesanan toko ke publik. Token opaque menjamin keamanan data transaksi 100%.
+
+### 34.3 Lifecycle `CheckoutContext` & Real-Time Polling
+1. **Polling Status Pembayaran Otomatis**:
+   - Komponen client `CheckoutContext` menjalankan interval polling status per 5.000 ms (5 detik) ke endpoint:
+     `GET /api/orders/pay/[token]/status`
+   - Begitu webhook payment gateway memverifikasi QRIS atau staf CS mengklik tombol "Verify Paid" di dashboard/inbox, status berubah menjadi `PAID` dan tampilan browser pembeli seketika bertransisi ke kartu tanda terima (*receipt*) dan akses fulfillment digital tanpa reload halaman.
+2. **Dynamic QRIS Nominal Terkunci**:
+   - Menampilkan QRIS dinamis dengan nominal total yang telah dikunci sistem (termasuk 3 digit kode unik transfer manual jika berlaku), mencegah kesalahan nominal bayar oleh pembeli.
+3. **Multi-Bank Manual Transfer Options**:
+   - Daftar rekening bank toko diekstrak secara dinamis dari database tenant via `extractTenantBankAccounts(tenant.metadata)`.
+   - Mendukung multi-bank transfer (BCA, Mandiri, BRI, BNI, BSI, Bank Jago, SeaBank, Permata, Danamon).
+   - Dilengkapi tombol salin nomor rekening 1-klik dan nama pemilik rekening resmi.
+4. **Unggah Bukti Transfer Manual**:
+   - Formulir upload bukti transfer yang terintegrasi langsung dengan Supabase Storage / R2.
+   - Berkas struk yang diunggah otomatis mentransisikan status order menjadi `PENDING_VERIFICATION` dan memicu alert notifikasi ke panel CS Inbox.
+
+---
+
+## 35. Storefront Checkout Innovations & POS Inbox Integration
+
+### 35.1 Auto-Lock & Auto-Fill Nomor WhatsApp Terverifikasi
+- **Route**: `app/[tenant]/p/[slug]/page.tsx`
+- **Penerimaan Parameter URL**:
+  - Halaman checkout storefront publik secara otomatis menangkap query parameter: `phone`, `wa`, `whatsapp`, dan `name`.
+- **Logika Penguncian Input (Auto-Lock)**:
+  - Jika query parameter telepon tersedia di URL:
+    * Nilai input WhatsApp otomatis terisi (*pre-filled*).
+    * Input WhatsApp diberi atribut `readOnly={true}` untuk mencegah pembeli mengganti nomor yang sudah divalidasi oleh alur referral atau sesi chat.
+    * Tampilan dipercantik dengan lencana (*badge*) verifikasi resmi di bawah input:  
+      `🔒 Nomor WhatsApp terverifikasi`
+  - Jika query parameter `name` tersedia, nama lengkap pembeli otomatis terisi dan tetap dapat diedit jika diperlukan.
+
+### 35.2 Smart Dynamic Form Fields (Auto-Hide Alamat Fisik & Kurir)
+- **Tujuan**: Memangkas friksi transaksi (*checkout friction*) hingga nol untuk produk non-fisik.
+- **Logika Deteksi Produk**:
+  - Sistem memeriksa tipe produk: `product.type` atau `single_page_config.is_digital`.
+  - Jika produk bertipe digital, jasa, konsultasi, tiket, atau booking (`'digital' | 'service' | 'jasa' | 'consultation' | 'booking'`):
+    * Blok formulir pengiriman (Provinsi, Kota/Kabupaten, Kecamatan, Kode Pos, Alamat Lengkap) **otomatis disembunyikan 100%**.
+    * Komponen seleksi kurir ekspedisi dan kalkulator ongkir **otomatis di-bypass**.
+    * Checkout berubah menjadi mode ekspres 1-klik: hanya membutuhkan Nama, WhatsApp terverifikasi, dan pemilihan metode bayar (QRIS/Bank).
+
+### 35.3 Order Reference Token Generator (`BT-XXXXX`)
+- **Format Token**: `BT-` diikuti 4 hingga 5 digit acak (contoh: `BT-8921`).
+- **Penyimpanan**: Disimpan di `orders.metadata.reference_token`.
+- **Fungsi Rekonsiliasi**:
+  - Reference token disematkan pada draf pesan WhatsApp:  
+    `"Halo Admin, saya sudah pesan [Ref: BT-8921]..."`
+  - Berfungsi sebagai jembatan rekonsiliasi antara pesan chat pembeli, riwayat pesanan di dashboard seller, dan notifikasi outbox WhatsApp tanpa mengekspos ID internal database.
+
+### 35.4 Integrasi Quick POS Billing di WhatsApp Inbox (`TeamChatTab.tsx`)
+- **Lokasi Komponen**: `app/[tenant]/dashboard/components/tabs/TeamChatTab.tsx`
+- **Alur Kerja CS**:
+  1. Agen CS membuka tab obrolan buyer di BoonTrack Inbox.
+  2. Klik tombol "Buat Tagihan / Quick POS".
+  3. Sistem membuat draf pesanan baru dan menghasilkan tautan faktur publik:  
+     `https://shop.boontrack.com/[tenant]/pay/[token]`
+  4. Tombol kirim otomatis menaruh tautan invoice ke kolom ketik chat WhatsApp pembeli.
+- **Sinkronisasi Rekening Bank Toko (Penghapusan Alert Kuning)**:
+  - Komponen Quick POS secara real-time mengecek konfigurasi pembayaran toko di Supabase (`tenants.metadata.manual_bank_accounts` atau `tenants.metadata.bank_transfer`).
+  - Alert peringatan kuning *"Metode Pembayaran Belum Diatur"* **otomatis hilang** jika toko telah menyimpan rekening bank manual aktif, dan langsung memunculkan tombol generator tagihan transfer beserta dropdown bank yang tersedia (contoh: `BCA - PT Solusi Group Barokah`).
+
+---
+
+## 36. Holding Numbers & Core Infrastructure Isolation Contract
+
+Ekosistem BoonTrack menegakkan pemisahan mutlak nomor WhatsApp berdasarkan peran operasionalnya guna melindungi reputasi centang hijau WABA dan mencegah interferensi alur percakapan:
+
+| Peran Infrastruktur | Nomor Telepon Resmi | Format Internasional | Domain Kepemilikan | Tanggung Jawab & Batasan Arsitektur |
+| :--- | :--- | :--- | :--- | :--- |
+| **Storefront CS Manual Toko** | `081977655099` | `+62 819-7765-5099` | `MERCHANT_SUPPORT` | Nomor kontak customer service resmi tim Boon Shop untuk asistensi manual, konsultasi pesanan pembeli, dan fallback toko. |
+| **WABA Core Gateway** | `081581830080` | `+62 815-8183-0080` | `PLATFORM_SYSTEM` | Dispatcher notifikasi transaksional sistem (P0 priority): OTP aktivasi merchant, faktur langganan platform, reset kredensial, dan alert insiden sistem. Dilarang keras digunakan untuk chat umum atau promosi toko. |
+| **BoonPilot Dedicated AI Engine** | `081215567168` | `+62 812-1556-7168` | `PLATFORM_AI` | Gateway resmi WhatsApp AI BoonPilot & Platform Support. Menangani percakapan inbound publik, showroom kapabilitas platform, dan Co-Pilot merchant dengan arsitektur Dual-Branch. |
+
+> **Reputation Guard Invariant**:  
+> Gateway WhatsApp operasional (`081215567168`) DILARANG digunakan untuk keperluan di luar session WA aktif tenant yang bersangkutan. Alur notifikasi darurat dan OTP wajib melalui nomor terpisah (`081581830080`).
+
+---
+
+## 37. Transactional Email Branding & Asset Uniformity
+
+Seluruh template email transaksional yang dikirimkan oleh platform BoonTrack (melalui Resend API dan Nodemailer fallback di `lib/email-service.ts`) terikat standar visual resmi:
+
+### 37.1 Standardisasi Logo Header Email
+Pada bagian paling atas seluruh kartu email notifikasi transaksi (sebelum judul blok *"PESANAN BARU LUNAS (PAID)"*):
+```html
+<img 
+  src="https://dashboard.boontrack.com/logo-master.jpg" 
+  alt="BoonTrack Shop" 
+  width="120" 
+  style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" 
+/>
+```
+
+### 37.2 Aturan Kepatuhan Email:
+1. **Asset Uniformity**: Logo resmi dilayani langsung dari aset publik `public/logo-master.jpg` yang di-host pada domain dashboard produksi (`https://dashboard.boontrack.com/logo-master.jpg`).
+2. **Clean Alt Fallback**: Jika gambar dinonaktifkan oleh email client pembeli (Outlook/Apple Mail), teks alternatif `alt="BoonTrack Shop"` tetap bersih tanpa merusak struktur visual layout email.
+3. **Cakupan Pengiriman**: Diterapkan seragam pada email konfirmasi pelunasan pembeli (*Buyer Payment Receipt*), notifikasi pesanan masuk ke seller (*Merchant Order Alert*), dan laporan mingguan afiliasi.
+
+---
+
+## 38. BoonPilot Dual-Branch AI Architecture (081215567168)
+
+Nomor gateway platform `081215567168` mengadopsi pola routing berbasis pengenalan identitas pengirim (*Sender Identity Resolver*) yang membedakan alur percakapan menjadi dua cabang independen:
+
+```
+                            ┌──────────────────────────────────────────────┐
+                            │    Inbound WhatsApp Message (081215567168)   │
+                            └──────────────────────┬───────────────────────┘
+                                                   │
+                                     Normalize senderPhone (628...)
+                                                   │
+                                     resolveBoonPilotSender()
+                                    (Query Supabase 'tenants')
+                                                   │
+                         ┌─────────────────────────┴─────────────────────────┐
+                         │                                                   │
+                 [ role: 'GUEST' ]                                  [ role: 'MERCHANT' ]
+                         │                                                   │
+          ┌──────────────┴──────────────┐                     ┌──────────────┴──────────────┐
+          │  BOONPILOT GUEST ONBOARDING │                     │  BOONPILOT MERCHANT COPILOT │
+          │ - Platform Specialist       │                     │ - Co-Pilot Toko {tenant.name}│
+          │ - Feature Education         │                     │ - Sapaan Nama Owner         │
+          │ - Public Shipping Simulation│                     │ - Navigasi 8 Tab Dashboard  │
+          │ - Register CTA (/register)  │                     │ - Monitoring Order Pending  │
+          │ ❌ ZERO TENANT DATA LEAK    │                     │ ❌ DILARANG LINK /REGISTER  │
+          └─────────────────────────────┘                     └─────────────────────────────┘
+```
+
+### 38.1 Sender Identity Resolver (`lib/boonpilot/sender-resolver.ts`)
+1. **Normalisasi Nomor Telepon**:
+   - Mengeliminasi karakter non-angka (`replace(/\D/g, '')`).
+   - Menghasilkan format internasional canonical `628...` dan format lokal `08...`.
+2. **Pencocokan Multi-Kolom Metadata Supabase**:
+   - Melakukan query terhadap tabel `tenants` pada field:
+     * `metadata->>phone`
+     * `metadata->>whatsapp_number`
+     * `metadata->>wa_verified_phone`
+     * `metadata->>wa_number`
+3. **Single Source of Truth untuk Tier**:
+   - Sesuai Zero Hardcoding Policy, status tier dibaca langsung dari kolom database utama `tenants.tier` (dengan fallback aman ke `metadata.tier`).
+4. **Hasil Resolusi**:
+   - Jika nomor cocok: mengembalikan `role: 'MERCHANT'`, `isRegistered: true`, dan objek toko (`id`, `slug`, `name`, `tier`, `owner_name`).
+   - Jika nomor tidak cocok: mengembalikan `role: 'GUEST'`, `isRegistered: false`.
+
+### 38.2 Dual-Branch Execution (`lib/boonpilot/platform-engine.ts`)
+
+#### A. Cabang Guest / Calon Merchant (`BOONPILOT_GUEST_ONBOARDING`)
+- **Persona**: *BoonPilot Onboarding & Platform Specialist*.
+- **Gaya Komunikasi**: Ramah, antusias, solutif, dan profesional.
+- **Tugas Utama**:
+  1. Menjelaskan keunggulan ekosistem BoonTrack (Single-page checkout, QRIS otomatis, auto-inbox WhatsApp, kurir multi-ekspedisi BYOK).
+  2. Menjelaskan struktur paket langganan resmi: Paket Solo, Paket Pro Scale (Ads Performance), dan Paket Team Scale.
+  3. Mengarahkan pendaftaran toko baru ke tautan resmi:  
+     `https://dashboard.boontrack.com/register`
+- **Strict Security Invariant (Zero Data Leakage)**:
+  - DILARANG KERAS membocorkan data pesanan, omset, katalog produk, atau kontak toko privat milik merchant lain kepada guest.
+
+#### B. Cabang Merchant Terdaftar (`BOONPILOT_MERCHANT_COPILOT`)
+- **Persona**: *BoonPilot Business Co-Pilot Toko {tenant.name}* (Tier: `{tenant.tier}`).
+- **Sapaan Kontekstual**:  
+  `"Halo Kak {owner_name || 'Owner'}! Senang bertemu kembali ✨ Ada yang bisa BoonPilot bantu untuk operasional toko *{tenant.name}* hari ini? 🚀"`
+- **Tugas Utama**:
+  1. Membantu asistensi operasional toko (cek order masuk, input resi, pengaturan produk).
+  2. Memberikan panduan navigasi ke 8 tab dashboard: Overview, Produk, Pesanan, WhatsApp, Pengiriman, Pembayaran, Tim CS, Pengaturan.
+  3. Memberikan tips bisnis dan optimasi toko.
+- **Strict Anti-Registration Invariant**:
+  - DILARANG KERAS menyodorkan formulir registrasi awal atau memberikan tautan pendaftaran akun (`/register`) kepada merchant terdaftar. Sistem mengakui toko mereka telah aktif di BoonTrack.
+
+---
+
+## 39. Group Context Awareness & Dynamic Affiliate Readiness
+
+### 39.1 WhatsApp Group Mention Guard
+- **File**: `lib/whatsapp/meta-webhook-normalizer.ts` & `lib/whatsapp/evolution-webhook-handler.ts`
+- **Aturan Isolasi Obrolan Grup**:
+  - Seluruh akun WhatsApp merchant biasa (`ownership_domain = 'TENANT'`) HANYA diizinkan merespons obrolan direct message personal (1-on-1 DM, remoteJid `@s.whatsapp.net`).
+  - Pesan yang masuk dari grup WhatsApp (`@g.us`) ke nomor merchant toko biasa akan **seketika di-drop tanpa memanggil AI dan tanpa mengirim pesan keluar**.
+  - **Pengecualian Khusus**: HANYA nomor resmi platform `6281215567168` yang diizinkan merespons di dalam grup WhatsApp, dan HANYA JIKA pesan memuat mention eksplisit:
+    `/@(boon|boontrack|081215567168)\b/i`.
+
+### 39.2 Dynamic Affiliate Readiness & Community Group Grounding
+1. **Deteksi Konteks Grup**:
+   - Saat nomor platform dipanggil di dalam grup komunitas WhatsApp (`remoteJid` format `... @g.us`), sistem menangkap ID grup dan metadata komunitas.
+2. **Pemetaan Toko Demo & Referral Dinamis**:
+   - Jika grup WhatsApp teridentifikasi sebagai grup binaan mitra promotor / Affiliate Manager (contoh: grup komunitas *Kang Sakti*):
+     * AI BoonPilot secara dinamis menggunakan toko `buzzerukm` sebagai showcase/demo produk.
+     * Tautan registrasi atau materi yang disarankan otomatis disematkan parameter afiliasi mitra yang bersangkutan (contoh: `https://dashboard.boontrack.com/register?ref=sakti`).
+   - Mencegah hilangnya hak atribusi komisi mitra pembina komunitas saat audiens grup berinteraksi dengan AI platform.
+3. **Sterilitas Backend**:
+   - AI dilarang membocorkan aturan internal komisi, token database, atau skema pembagian margin platform di dalam obrolan grup publik.
+

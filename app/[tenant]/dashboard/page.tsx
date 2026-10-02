@@ -60,6 +60,7 @@ import { useTenantDashboard } from './hooks/useTenantDashboard';
 export default function TenantDashboardPage() {
   const {
     tenantSlug,
+    tenantData,
     isAuthenticated,
     displayName,
     isCheckoutLite,
@@ -691,6 +692,7 @@ export default function TenantDashboardPage() {
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
       {activeTab === 'inbox' && (
         <TeamChatTab
+          initialTenant={tenantData}
           tenantSlug={tenantSlug}
           tenantId={tenantId || undefined}
           isCheckoutLite={isCheckoutLite}

@@ -363,14 +363,18 @@ export default function SettingsTab({
               bank_settings: bankTransferData,
               bank_transfer: bankTransferData,
               bank_accounts: fullBankList,
+              accounts: fullBankList,
+              manual_bank_accounts: fullBankList,
               is_bank_transfer_active: isBankTransferActive,
               payment_config: {
                 ...(tenantRow.metadata?.payment_config || {}),
+                bank_accounts: fullBankList,
                 enable_manual_transfer: isBankTransferActive,
                 enable_bank_transfer: isBankTransferActive,
               },
               payment_settings: {
                 ...(tenantRow.metadata?.payment_settings || {}),
+                bank_accounts: fullBankList,
                 enable_manual_transfer: isBankTransferActive,
                 enable_bank_transfer: isBankTransferActive,
               },
@@ -480,6 +484,11 @@ export default function SettingsTab({
       }
 
       if (typeof window !== 'undefined') {
+        if (savedMetadata) {
+          try {
+            localStorage.setItem(`tenant_payment_metadata_${tenantSlug}`, JSON.stringify(savedMetadata));
+          } catch {}
+        }
         window.dispatchEvent(new CustomEvent('boontrack:tenant-updated', {
           detail: { slug: tenantSlug, metadata: savedMetadata }
         }));
@@ -705,156 +714,7 @@ export default function SettingsTab({
   // 3. SUB-MENU: PAYMENT / QRIS & KREDENSIAL SENSITIF
   const paymentSubMenu = (
     <div className="space-y-4 text-xs font-medium text-slate-600">
-      {/* KREDENSIAL SENSITIF PAYMENT GATEWAY (BACKEND-CONTROLLED) */}
-      <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3 shadow-md">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 font-bold text-slate-100">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Kredensial Payment Gateway</span>
-          </div>
-          <span className="inline-flex items-center gap-1 text-[9px] font-black tracking-wide text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800">
-            <Lock className="w-2.5 h-2.5" />
-            BACKEND-CONTROLLED
-          </span>
-        </div>
-
-        <p className="text-[11px] text-slate-300 leading-relaxed">
-          Kredensial sensitif payment gateway (Xendit / Midtrans / ASPI QRIS) dikelola dan diamankan sepenuhnya di level server BoonTrack Core. Kunci rahasia tidak terekspos di browser merchant demi keamanan transaksi.
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-slate-400">
-              <span>Server API Key</span>
-              <span className="text-[9px] text-emerald-400 font-bold">TERKUNCI AMAN</span>
-            </div>
-            <div className="font-mono text-xs text-slate-300 tracking-widest select-none">
-              ••••••••••••••••••••••••
-            </div>
-          </div>
-
-          <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-slate-400">
-              <span>Webhook Signing Secret</span>
-              <span className="text-[9px] text-emerald-400 font-bold">TERKUNCI AMAN</span>
-            </div>
-            <div className="font-mono text-xs text-slate-300 tracking-widest select-none">
-              ••••••••••••••••••••••••
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* QRIS Toko Resmi */}
-      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 font-bold text-slate-800">
-            <QrCode className="w-4 h-4 text-emerald-600" />
-            <span>QRIS Toko Resmi (0% MDR)</span>
-          </div>
-          {storeQrisUrl ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              <CheckCircle2 className="w-3 h-3" />
-              QRIS Terpasang
-            </span>
-          ) : (
-            <span className="text-[11px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-              Belum diupload
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] text-slate-500">
-          Upload gambar QRIS statis dari Bank atau e-Wallet toko Anda. Pembayaran pelanggan langsung masuk ke rekening Anda tanpa potongan biaya transaksi.
-        </p>
-
-        {storeQrisUrl && (
-          <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-200">
-            <div className="relative w-16 h-16 border border-slate-200 bg-slate-50 rounded-lg overflow-hidden flex items-center justify-center shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={storeQrisUrl}
-                alt="QRIS Toko"
-                className="w-full h-full object-contain p-1"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-slate-800 truncate">QRIS Aktif</p>
-              <p className="text-[10px] text-slate-400">Pilih file baru di bawah untuk mengganti QRIS.</p>
-            </div>
-          </div>
-        )}
-
-        <div className="relative">
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleQrisUpload}
-            disabled={isUploadingQris}
-            className="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer disabled:opacity-50"
-          />
-          {isUploadingQris && (
-            <p className="text-xs text-emerald-600 font-medium animate-pulse mt-1.5 flex items-center gap-1.5">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
-              Mengunggah &amp; membaca kode QRIS otomatis...
-            </p>
-          )}
-        </div>
-
-        {/* Dynamic QRIS Status & Payload Input */}
-        <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-              <Zap className="w-3.5 h-3.5 text-emerald-600" />
-              <span>QRIS Dinamis (Auto-inject Tagihan Pas)</span>
-            </span>
-            {localQrisPayload ? (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                <CheckCircle2 className="w-3 h-3" />
-                Dinamis Aktif
-              </span>
-            ) : (
-              <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                Mode Gambar Statis
-              </span>
-            )}
-          </div>
-          <p className="text-[10px] text-slate-500 leading-relaxed">
-            {localQrisPayload
-              ? '✅ String QRIS berhasil terdeteksi. Setiap transaksi di halaman checkout akan otomatis memuat nominal pas tagihan saat dipindai oleh pembeli.'
-              : 'Unggah file gambar QRIS toko di atas, sistem akan otomatis membaca kode EMVCo untuk mengaktifkan nominal otomatis.'}
-          </p>
-          <div>
-            <label className="block text-[10px] font-semibold text-slate-600 mb-1">
-              Payload String QRIS EMVCo (000201...):
-            </label>
-            <textarea
-              rows={2}
-              value={localQrisPayload}
-              onChange={(e) => {
-                setLocalQrisPayload(e.target.value);
-                if (setStoreQrisPayload) setStoreQrisPayload(e.target.value);
-              }}
-              placeholder="Contoh: 00020101021126570011ID.DANA.WWW..."
-              className="w-full font-mono text-[10px] p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:bg-white focus:border-emerald-500 focus:outline-hidden"
-            />
-          </div>
-        </div>
-
-        {/* Integrasi HP Reader (Automasi Mutasi) */}
-        <div className="mt-3">
-          <ReaderIntegrationCard
-            tenantSlug={tenantSlug}
-            onSavedFeedback={() => {
-              if (onSavedSuccess) onSavedSuccess();
-            }}
-          />
-        </div>
-      </div>
-
-      {/* ── SEKSI REKENING BANK MANUAL (TRANSFER BANK) ── */}
+      {/* ── SEKSI REKENING BANK MANUAL (TRANSFER BANK) - POSISI PALING ATAS ── */}
       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-slate-800">
@@ -881,7 +741,7 @@ export default function SettingsTab({
         </div>
 
         <p className="text-[11px] text-slate-500 leading-relaxed">
-          Konfigurasi rekening bank resmi toko Anda. Informasi ini akan ditampilkan kepada pembeli pada pilihan metode pembayaran <strong>Transfer Bank Manual</strong> di halaman checkout.
+          Konfigurasi rekening bank resmi toko Anda. Informasi ini akan ditampilkan kepada pembeli pada pilihan metode pembayaran <strong>Transfer Bank Manual</strong> di halaman checkout dan Quick POS.
         </p>
 
         {/* Toggle / Switch: Aktifkan Pembayaran Transfer Bank Manual */}
@@ -891,7 +751,7 @@ export default function SettingsTab({
               <span>Aktifkan Pembayaran Transfer Bank Manual</span>
             </label>
             <p className="text-[10px] text-slate-500">
-              Tampilkan opsi metode Transfer Bank Manual di halaman checkout single page
+              Tampilkan opsi metode Transfer Bank Manual di halaman checkout dan aktifkan tagihan transfer Quick POS
             </p>
           </div>
           <label className="relative inline-flex items-center cursor-pointer shrink-0">
@@ -926,7 +786,7 @@ export default function SettingsTab({
               <CreditCard className="w-3.5 h-3.5 text-violet-600" />
               Rekening Utama
             </span>
-            <span className="text-[10px] text-slate-400 font-medium">Prioritas Tampilan Checkout</span>
+            <span className="text-[10px] text-slate-400 font-medium">Prioritas Tampilan Checkout &amp; Quick POS</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1165,14 +1025,18 @@ export default function SettingsTab({
                   bank_settings: bankTransferData,
                   bank_transfer: bankTransferData,
                   bank_accounts: fullAccounts,
+                  accounts: fullAccounts,
+                  manual_bank_accounts: fullAccounts,
                   is_bank_transfer_active: isBankTransferActive,
                   payment_config: {
                     ...(tenantRow.metadata?.payment_config || {}),
+                    bank_accounts: fullAccounts,
                     enable_manual_transfer: isBankTransferActive,
                     enable_bank_transfer: isBankTransferActive,
                   },
                   payment_settings: {
                     ...(tenantRow.metadata?.payment_settings || {}),
+                    bank_accounts: fullAccounts,
                     enable_manual_transfer: isBankTransferActive,
                     enable_bank_transfer: isBankTransferActive,
                   },
@@ -1197,6 +1061,8 @@ export default function SettingsTab({
                     bank_settings: bankTransferData,
                     bank_transfer: bankTransferData,
                     bank_accounts: fullAccounts,
+                    accounts: fullAccounts,
+                    manual_bank_accounts: fullAccounts,
                     bank_name: effBank,
                     bank_account: cleanAcc,
                     bank_holder: cleanHolder || storeDisplayName.trim(),
@@ -1207,6 +1073,9 @@ export default function SettingsTab({
                 }).catch(() => {});
 
                 if (typeof window !== 'undefined') {
+                  try {
+                    localStorage.setItem(`tenant_payment_metadata_${tenantSlug}`, JSON.stringify(updatedMeta));
+                  } catch {}
                   window.dispatchEvent(new CustomEvent('boontrack:tenant-updated', {
                     detail: { slug: tenantSlug, metadata: updatedMeta }
                   }));
@@ -1233,6 +1102,155 @@ export default function SettingsTab({
             <Save className="w-3.5 h-3.5" />
             {isSavingBanks ? 'Menyimpan...' : 'Simpan Rekening'}
           </button>
+        </div>
+      </div>
+
+      {/* ── SEKSI QRIS TOKO RESMI (0% MDR) ── */}
+      <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-bold text-slate-800">
+            <QrCode className="w-4 h-4 text-emerald-600" />
+            <span>QRIS Toko Resmi (0% MDR)</span>
+          </div>
+          {storeQrisUrl ? (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              <CheckCircle2 className="w-3 h-3" />
+              QRIS Terpasang
+            </span>
+          ) : (
+            <span className="text-[11px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+              Belum diupload
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Upload gambar QRIS statis dari Bank atau e-Wallet toko Anda. Pembayaran pelanggan langsung masuk ke rekening Anda tanpa potongan biaya transaksi.
+        </p>
+
+        {storeQrisUrl && (
+          <div className="flex items-center gap-3 p-2.5 bg-white rounded-xl border border-slate-200">
+            <div className="relative w-16 h-16 border border-slate-200 bg-slate-50 rounded-lg overflow-hidden flex items-center justify-center shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={storeQrisUrl}
+                alt="QRIS Toko"
+                className="w-full h-full object-contain p-1"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-slate-800 truncate">QRIS Aktif</p>
+              <p className="text-[10px] text-slate-400">Pilih file baru di bawah untuk mengganti QRIS.</p>
+            </div>
+          </div>
+        )}
+
+        <div className="relative">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleQrisUpload}
+            disabled={isUploadingQris}
+            className="block w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer disabled:opacity-50"
+          />
+          {isUploadingQris && (
+            <p className="text-xs text-emerald-600 font-medium animate-pulse mt-1.5 flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
+              Mengunggah &amp; membaca kode QRIS otomatis...
+            </p>
+          )}
+        </div>
+
+        {/* Dynamic QRIS Status & Payload Input */}
+        <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-emerald-600" />
+              <span>QRIS Dinamis (Auto-inject Tagihan Pas)</span>
+            </span>
+            {localQrisPayload ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3" />
+                Dinamis Aktif
+              </span>
+            ) : (
+              <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                Mode Gambar Statis
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-slate-500 leading-relaxed">
+            {localQrisPayload
+              ? '✅ String QRIS berhasil terdeteksi. Setiap transaksi di halaman checkout akan otomatis memuat nominal pas tagihan saat dipindai oleh pembeli.'
+              : 'Unggah file gambar QRIS toko di atas, sistem akan otomatis membaca kode EMVCo untuk mengaktifkan nominal otomatis.'}
+          </p>
+          <div>
+            <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+              Payload String QRIS EMVCo (000201...):
+            </label>
+            <textarea
+              rows={2}
+              value={localQrisPayload}
+              onChange={(e) => {
+                setLocalQrisPayload(e.target.value);
+                if (setStoreQrisPayload) setStoreQrisPayload(e.target.value);
+              }}
+              placeholder="Contoh: 00020101021126570011ID.DANA.WWW..."
+              className="w-full font-mono text-[10px] p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:bg-white focus:border-emerald-500 focus:outline-hidden"
+            />
+          </div>
+        </div>
+
+        {/* Integrasi HP Reader (Automasi Mutasi) */}
+        <div className="mt-3">
+          <ReaderIntegrationCard
+            tenantSlug={tenantSlug}
+            onSavedFeedback={() => {
+              if (onSavedSuccess) onSavedSuccess();
+            }}
+          />
+        </div>
+      </div>
+
+      {/* ── KREDENSIAL SENSITIF PAYMENT GATEWAY (BACKEND-CONTROLLED) ── */}
+      <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3 shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-bold text-slate-100">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Kredensial Payment Gateway</span>
+          </div>
+          <span className="inline-flex items-center gap-1 text-[9px] font-black tracking-wide text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800">
+            <Lock className="w-2.5 h-2.5" />
+            BACKEND-CONTROLLED
+          </span>
+        </div>
+
+        <p className="text-[11px] text-slate-300 leading-relaxed">
+          Kredensial sensitif payment gateway (Xendit / Midtrans / ASPI QRIS) dikelola dan diamankan sepenuhnya di level server BoonTrack Core. Kunci rahasia tidak terekspos di browser merchant demi keamanan transaksi.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-400">
+              <span>Server API Key</span>
+              <span className="text-[9px] text-emerald-400 font-bold">TERKUNCI AMAN</span>
+            </div>
+            <div className="font-mono text-xs text-slate-300 tracking-widest select-none">
+              ••••••••••••••••••••••••
+            </div>
+          </div>
+
+          <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-400">
+              <span>Webhook Signing Secret</span>
+              <span className="text-[9px] text-emerald-400 font-bold">TERKUNCI AMAN</span>
+            </div>
+            <div className="font-mono text-xs text-slate-300 tracking-widest select-none">
+              ••••••••••••••••••••••••
+            </div>
+          </div>
         </div>
       </div>
     </div>
