@@ -492,12 +492,75 @@ export default function AdsTrackingPro({
     setTimeout(() => setCopiedScript(false), 2000);
   };
 
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const activeMetricValues = useMemo(() => {
+    return trendData.map((d) => {
+      if (activeChartMetric === 'revenue') return Number(d.revenue ?? d.omset ?? 0);
+      if (activeChartMetric === 'leads') return Number(d.leads ?? 0);
+      if (activeChartMetric === 'orders') return Number(d.orders ?? 0);
+      return Number(d.roas ?? 0);
+    });
+  }, [trendData, activeChartMetric]);
+
+  const rawMax = useMemo(() => Math.max(...activeMetricValues, 0), [activeMetricValues]);
   const maxMetricVal = useMemo(() => {
-    if (activeChartMetric === 'revenue') return 8000000;
-    if (activeChartMetric === 'leads') return 450;
-    if (activeChartMetric === 'orders') return 160;
-    return 10;
-  }, [activeChartMetric]);
+    if (rawMax > 0) return rawMax;
+    if (activeChartMetric === 'revenue') return 1000000;
+    if (activeChartMetric === 'leads') return 50;
+    if (activeChartMetric === 'orders') return 20;
+    return 5.0;
+  }, [rawMax, activeChartMetric]);
+
+  // Chart coordinates
+  const svgWidth = 700;
+  const svgHeight = 175;
+  const paddingX = 40;
+  const paddingTop = 25;
+  const paddingBottom = 25;
+  const chartHeight = svgHeight - paddingTop - paddingBottom;
+  const chartWidth = svgWidth - paddingX * 2;
+
+  const chartPoints = useMemo(() => {
+    return trendData.map((d, index) => {
+      const val = activeMetricValues[index] ?? 0;
+      const x = paddingX + (index * chartWidth) / Math.max(1, trendData.length - 1);
+      const ratio = rawMax > 0 ? Math.min(1, Math.max(0, val / maxMetricVal)) : 0.08;
+      const y = (svgHeight - paddingBottom) - ratio * chartHeight;
+      return { x, y, val, day: d.day, data: d };
+    });
+  }, [trendData, activeMetricValues, rawMax, maxMetricVal, chartHeight, chartWidth]);
+
+  // Smooth Bezier Curve Path calculation (Monotone Cubic Spline)
+  const linePath = useMemo(() => {
+    if (chartPoints.length === 0) return '';
+    if (chartPoints.length === 1) return `M ${chartPoints[0].x} ${chartPoints[0].y}`;
+
+    let path = `M ${chartPoints[0].x.toFixed(1)} ${chartPoints[0].y.toFixed(1)}`;
+    for (let i = 0; i < chartPoints.length - 1; i++) {
+      const p0 = chartPoints[i === 0 ? 0 : i - 1];
+      const p1 = chartPoints[i];
+      const p2 = chartPoints[i + 1];
+      const p3 = chartPoints[i + 2] || p2;
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      path += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+    }
+    return path;
+  }, [chartPoints]);
+
+  const areaPath = useMemo(() => {
+    if (chartPoints.length < 2 || !linePath) return '';
+    const lastX = chartPoints[chartPoints.length - 1].x.toFixed(1);
+    const firstX = chartPoints[0].x.toFixed(1);
+    const bottomY = (svgHeight - paddingBottom).toFixed(1);
+    return `${linePath} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
+  }, [linePath, chartPoints]);
 
   return (
     <div className="flex-1 p-4 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full space-y-6 text-slate-900">
@@ -824,56 +887,149 @@ export default function AdsTrackingPro({
         </div>
 
         <div className="space-y-4">
-          <div className="h-64 w-full flex items-end justify-between gap-2 sm:gap-4 px-2 pt-6 pb-2 bg-slate-50/60 rounded-2xl border border-slate-100">
-            {trendData.map((d, index) => {
-              const currentVal =
-                activeChartMetric === 'revenue'
-                  ? d.revenue
-                  : activeChartMetric === 'leads'
-                  ? d.leads
-                  : activeChartMetric === 'orders'
-                  ? d.orders
-                  : d.roas;
+          <div className="w-full h-64 min-h-[260px] relative bg-slate-50/70 rounded-2xl border border-slate-200/80 p-4 flex flex-col justify-between overflow-hidden">
+            {/* Y-Axis Horizontal Grid Lines & Formatted Values */}
+            <div className="absolute inset-x-4 inset-y-5 flex flex-col justify-between pointer-events-none z-0">
+              {[1, 0.66, 0.33, 0].map((step, idx) => {
+                const labelVal = maxMetricVal * step;
+                const formattedLabel =
+                  activeChartMetric === 'revenue'
+                    ? labelVal >= 1000000
+                      ? `Rp ${(labelVal / 1000000).toFixed(1)}M`
+                      : labelVal >= 1000
+                      ? `Rp ${(labelVal / 1000).toFixed(0)}k`
+                      : `Rp ${labelVal}`
+                    : activeChartMetric === 'roas'
+                    ? `${labelVal.toFixed(1)}x`
+                    : `${Math.round(labelVal)}`;
 
-              const heightPct = currentVal > 0 ? Math.min(100, Math.max(15, (currentVal / maxMetricVal) * 100)) : 4;
+                return (
+                  <div key={idx} className="w-full flex items-center justify-between gap-2 border-b border-dashed border-slate-200/90 text-[10px] text-slate-400 font-mono select-none">
+                    <span>{formattedLabel}</span>
+                  </div>
+                );
+              })}
+            </div>
 
-              return (
-                <div key={index} className="flex-1 flex flex-col items-center h-full justify-end group relative">
-                  <div className="absolute -top-12 z-20 hidden group-hover:flex flex-col items-center bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-xl shadow-xl whitespace-nowrap pointer-events-none transition-all">
-                    <span>
+            {/* SVG Area & Curve Line */}
+            <div className="relative w-full h-full flex-1 z-10">
+              <svg
+                className="w-full h-full overflow-visible"
+                viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                preserveAspectRatio="none"
+              >
+                <defs>
+                  <linearGradient id="chartAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#2563eb" stopOpacity="0.20" />
+                    <stop offset="100%" stopColor="#2563eb" stopOpacity="0.02" />
+                  </linearGradient>
+                </defs>
+
+                {/* Fill Area Gradient (fillOpacity ~0.18-0.20) */}
+                {areaPath && (
+                  <path
+                    d={areaPath}
+                    fill="url(#chartAreaGradient)"
+                    className="transition-all duration-300"
+                  />
+                )}
+
+                {/* Main Stroke Curve Line (stroke="#2563eb", strokeWidth=2.5) */}
+                {linePath && (
+                  <path
+                    d={linePath}
+                    fill="none"
+                    stroke="#2563eb"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="transition-all duration-300"
+                  />
+                )}
+
+                {/* Active Vertical Guideline on Hover */}
+                {hoveredIndex !== null && chartPoints[hoveredIndex] && (
+                  <line
+                    x1={chartPoints[hoveredIndex].x}
+                    y1={paddingTop}
+                    x2={chartPoints[hoveredIndex].x}
+                    y2={svgHeight - paddingBottom}
+                    stroke="#2563eb"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 4"
+                    strokeOpacity="0.75"
+                  />
+                )}
+
+                {/* Data Points (Dots) */}
+                {chartPoints.map((pt, i) => (
+                  <circle
+                    key={i}
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={hoveredIndex === i ? 6 : 4}
+                    fill="#ffffff"
+                    stroke="#2563eb"
+                    strokeWidth={hoveredIndex === i ? 3 : 2.5}
+                    className="transition-all duration-150"
+                  />
+                ))}
+              </svg>
+
+              {/* Interactive Tooltip Card Floating Above Active Point */}
+              {hoveredIndex !== null && chartPoints[hoveredIndex] && (
+                <div
+                  className="absolute z-30 pointer-events-none transition-all duration-150 -translate-x-1/2 -top-2"
+                  style={{
+                    left: `${(chartPoints[hoveredIndex].x / svgWidth) * 100}%`,
+                  }}
+                >
+                  <div className="bg-slate-900 text-white rounded-xl shadow-xl px-3 py-2 text-xs border border-slate-700 whitespace-nowrap space-y-0.5 animate-in fade-in">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      {chartPoints[hoveredIndex].day}
+                    </div>
+                    <div className="font-black text-white text-sm">
                       {activeChartMetric === 'revenue'
-                        ? `Rp ${d.revenue.toLocaleString('id-ID')}`
+                        ? `Rp ${chartPoints[hoveredIndex].val.toLocaleString('id-ID')}`
                         : activeChartMetric === 'leads'
-                        ? `${d.leads} Lead WA`
+                        ? `${chartPoints[hoveredIndex].val} Lead WA`
                         : activeChartMetric === 'orders'
-                        ? `${d.orders} Order Paid`
-                        : `${d.roas}x ROAS`}
-                    </span>
-                    <span className="text-[9px] text-slate-400 font-normal">Klik: {d.clicks}</span>
-                    <div className="w-2 h-2 bg-slate-900 rotate-45 -mb-1 mt-0.5" />
+                        ? `${chartPoints[hoveredIndex].val} Order Paid`
+                        : `${chartPoints[hoveredIndex].val.toFixed(2)}x ROAS`}
+                    </div>
+                    <div className="text-[10px] text-slate-300 font-medium">
+                      Klik: {chartPoints[hoveredIndex].data.clicks} • Leads: {chartPoints[hoveredIndex].data.leads}
+                    </div>
                   </div>
-
-                  <div className="w-full max-w-[48px] bg-slate-200/80 rounded-t-xl overflow-hidden flex flex-col justify-end transition-all group-hover:bg-slate-300">
-                    <div
-                      style={{ height: `${heightPct}%` }}
-                      className={`w-full rounded-t-xl transition-all duration-500 ${
-                        activeChartMetric === 'revenue'
-                          ? 'bg-gradient-to-t from-blue-600 to-indigo-500 group-hover:brightness-110'
-                          : activeChartMetric === 'leads'
-                          ? 'bg-gradient-to-t from-emerald-600 to-teal-400 group-hover:brightness-110'
-                          : activeChartMetric === 'orders'
-                          ? 'bg-gradient-to-t from-indigo-600 to-purple-500 group-hover:brightness-110'
-                          : 'bg-gradient-to-t from-amber-500 to-orange-400 group-hover:brightness-110'
-                      }`}
-                    />
-                  </div>
-
-                  <span className="text-[11px] font-bold text-slate-500 mt-2 group-hover:text-blue-600">
-                    {d.day}
-                  </span>
                 </div>
-              );
-            })}
+              )}
+
+              {/* Transparent Column Hover Interceptors */}
+              <div className="absolute inset-0 flex z-20">
+                {chartPoints.map((_, i) => (
+                  <div
+                    key={i}
+                    onMouseEnter={() => setHoveredIndex(i)}
+                    onMouseLeave={() => setHoveredIndex(null)}
+                    className="flex-1 h-full cursor-pointer"
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* X-Axis Day Labels */}
+            <div className="w-full flex justify-between px-2 pt-2 border-t border-slate-200/90 text-xs font-bold text-slate-500 z-10">
+              {trendData.map((d, i) => (
+                <span
+                  key={i}
+                  className={`transition-colors text-center flex-1 ${
+                    hoveredIndex === i ? 'text-blue-600 font-black' : 'text-slate-600'
+                  }`}
+                >
+                  {d.day}
+                </span>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-500 px-1 pt-1">
