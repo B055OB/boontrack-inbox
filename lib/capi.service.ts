@@ -59,6 +59,9 @@ import {
   buildMetaUserData,
   buildMetaCAPIEventPayload,
   extractServerTrackingContext,
+  normalizeMetaAdAccountId,
+  fetchMetaDailySpend,
+  MetaDailySpendResult,
 } from '@/lib/tracking/meta-capi';
 
 export {
@@ -80,7 +83,10 @@ export {
   buildMetaUserData,
   buildMetaCAPIEventPayload,
   extractServerTrackingContext,
+  normalizeMetaAdAccountId,
+  fetchMetaDailySpend,
 };
+export type { MetaDailySpendResult };
 
 /**
  * Dispatch server-side event ke Meta Conversions API (CAPI)

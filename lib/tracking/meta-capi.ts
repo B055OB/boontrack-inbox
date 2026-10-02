@@ -470,3 +470,113 @@ export function buildMetaCAPIEventPayload(options: MetaCAPIEventOptions): {
 
   return { body, eventId: resolvedEventId };
 }
+
+/**
+ * Normalisasi Meta Ad Account ID:
+ * Format standar Meta Graph API Insights: 'act_123456789012345'
+ * Jika user menginput '123456789012345' atau 'act_123456789012345',
+ * fungsi ini memastikan selalu berawalan 'act_' tanpa spasi.
+ */
+export function normalizeMetaAdAccountId(rawId: string | undefined | null): string {
+  if (!rawId || typeof rawId !== 'string') return '';
+  const trimmed = rawId.trim();
+  if (!trimmed) return '';
+
+  const clean = trimmed.replace(/\s+/g, '');
+  if (clean.toLowerCase().startsWith('act_')) {
+    const digits = clean.slice(4).replace(/\D/g, '');
+    return digits ? `act_${digits}` : '';
+  }
+
+  const digits = clean.replace(/\D/g, '');
+  return digits ? `act_${digits}` : '';
+}
+
+export interface MetaDailySpendResult {
+  success: boolean;
+  spend: number;
+  currency: string;
+  rawSpend: string;
+  adAccountId: string;
+  error?: string;
+}
+
+/**
+ * Tarik total spend iklan harian dari Meta Graph API Insights
+ * GET https://graph.facebook.com/v19.0/{sanitized_ad_account_id}/insights?date_preset=today&fields=spend,account_currency
+ * Headers: Authorization: Bearer {capi_access_token}
+ *
+ * Catatan: Error ditangani secara silent (fallback spend = 0) tanpa membuat render dashboard crash.
+ */
+export async function fetchMetaDailySpend(
+  adAccountId: string | undefined | null,
+  accessToken: string | undefined | null,
+  datePreset: string = 'today'
+): Promise<MetaDailySpendResult> {
+  const sanitizedId = normalizeMetaAdAccountId(adAccountId);
+  if (!sanitizedId || !accessToken) {
+    return {
+      success: false,
+      spend: 0,
+      currency: 'IDR',
+      rawSpend: '0',
+      adAccountId: sanitizedId || '',
+      error: !sanitizedId ? 'Invalid or missing Ad Account ID' : 'Missing CAPI Access Token',
+    };
+  }
+
+  const url = `https://graph.facebook.com/v19.0/${sanitizedId}/insights?date_preset=${encodeURIComponent(datePreset)}&fields=spend,account_currency`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      let errorData: any = {};
+      try {
+        errorData = await res.json();
+      } catch {}
+      const errMsg = errorData?.error?.message || `Meta Graph API responded with HTTP ${res.status}`;
+      console.warn(`[Meta Insights] Silent fallback for ${sanitizedId}:`, errMsg);
+      return {
+        success: false,
+        spend: 0,
+        currency: 'IDR',
+        rawSpend: '0',
+        adAccountId: sanitizedId,
+        error: errMsg,
+      };
+    }
+
+    const json = await res.json();
+    const insights = Array.isArray(json?.data) && json.data.length > 0 ? json.data[0] : null;
+    const rawSpend = String(insights?.spend || '0');
+    const spend = Number(rawSpend) || 0;
+    const currency = String(insights?.account_currency || 'IDR').toUpperCase();
+
+    return {
+      success: true,
+      spend,
+      currency,
+      rawSpend,
+      adAccountId: sanitizedId,
+    };
+  } catch (err: any) {
+    console.warn(`[Meta Insights Exception] Silent fallback for ${sanitizedId}:`, err?.message || err);
+    return {
+      success: false,
+      spend: 0,
+      currency: 'IDR',
+      rawSpend: '0',
+      adAccountId: sanitizedId,
+      error: err?.message || 'Network exception connecting to Meta Graph API',
+    };
+  }
+}
+
