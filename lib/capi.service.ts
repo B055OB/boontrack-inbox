@@ -40,159 +40,47 @@ export interface CAPIEventPayload {
 
 export type PurchaseEventPayload = CAPIEventPayload;
 
-/**
- * Pure SHA-256 Hasher (Lowercase Hex)
- * Spesifikasi Meta CAPI Data Processing
- */
-export function hashSha256(value: string): string {
-  return crypto.createHash('sha256').update(value).digest('hex');
-}
+import {
+  hashSha256,
+  normalizePhone,
+  hashPhone,
+  normalizeEmail,
+  hashEmail,
+  parseName,
+  hashFirstName,
+  hashLastName,
+  hashCity,
+  hashZip,
+  hashCountry,
+  isValidIpAddress,
+  formatFbc,
+  sanitizeUserData,
+  assertNoRawPii,
+  buildMetaUserData,
+  buildMetaCAPIEventPayload,
+  extractServerTrackingContext,
+} from '@/lib/tracking/meta-capi';
 
-/**
- * Normalisasi & Hashing Nomor Telepon untuk Meta CAPI (ph)
- * 1. Hapus semua karakter non-angka
- * 2. Konversi format Indonesia '08...' atau '8...' menjadi format internasional '628...'
- * 3. Hapus spasi dan tanda '+'
- * 4. SHA-256 lowercase
- */
-export function hashPhone(phone: string | undefined | null): string | null {
-  if (!phone || typeof phone !== 'string') return null;
-  let clean = phone.replace(/[^0-9]/g, '');
-  if (!clean) return null;
-
-  if (clean.startsWith('0')) {
-    clean = '62' + clean.slice(1);
-  } else if (clean.startsWith('8')) {
-    clean = '62' + clean;
-  }
-
-  return hashSha256(clean);
-}
-
-/**
- * Normalisasi & Hashing Email untuk Meta CAPI (em)
- * 1. .trim().toLowerCase()
- * 2. SHA-256 lowercase
- */
-export function hashEmail(email: string | undefined | null): string | null {
-  if (!email || typeof email !== 'string') return null;
-  const clean = email.trim().toLowerCase();
-  if (!clean) return null;
-  return hashSha256(clean);
-}
-
-/**
- * Normalisasi & Hashing Nama Depan untuk Meta CAPI (fn)
- * 1. Ambil kata pertama nama pembeli
- * 2. .trim().toLowerCase()
- * 3. SHA-256 lowercase
- */
-export function hashFirstName(name: string | undefined | null): string | null {
-  if (!name || typeof name !== 'string') return null;
-  const trimmed = name.trim();
-  if (!trimmed) return null;
-  const firstWord = trimmed.split(/\s+/)[0];
-  if (!firstWord) return null;
-  return hashSha256(firstWord.trim().toLowerCase());
-}
-
-/**
- * Normalisasi & Hashing Nama Belakang untuk Meta CAPI (ln)
- */
-export function hashLastName(name: string | undefined | null): string | null {
-  if (!name || typeof name !== 'string') return null;
-  const trimmed = name.trim();
-  if (!trimmed) return null;
-  const parts = trimmed.split(/\s+/);
-  if (parts.length <= 1) return null;
-  const rest = parts.slice(1).join(' ').trim().toLowerCase();
-  if (!rest) return null;
-  return hashSha256(rest);
-}
-
-/**
- * Normalisasi & Hashing Kota untuk Meta CAPI (ct)
- * 1. Lowercase, hapus tanda baca, trim
- * 2. SHA-256 lowercase
- */
-export function hashCity(city: string | undefined | null): string | null {
-  if (!city || typeof city !== 'string') return null;
-  const clean = city
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '')
-    .trim();
-  if (!clean) return null;
-  return hashSha256(clean);
-}
-
-/**
- * Normalisasi & Hashing Kode Pos untuk Meta CAPI (zp)
- */
-export function hashZip(zip: string | undefined | null): string | null {
-  if (!zip || typeof zip !== 'string') return null;
-  const clean = zip.replace(/[^0-9a-z]/gi, '').trim().toLowerCase();
-  if (!clean) return null;
-  return hashSha256(clean);
-}
-
-/**
- * Normalisasi & Hashing Negara ISO 2-letter untuk Meta CAPI (country)
- */
-export function hashCountry(country: string | undefined | null): string | null {
-  if (!country || typeof country !== 'string') return null;
-  const clean = country.trim().toLowerCase().slice(0, 2);
-  if (!clean || clean.length !== 2) return null;
-  return hashSha256(clean);
-}
-
-/**
- * Validasi alamat IPv4 / IPv6 untuk Meta CAPI client_ip_address
- * Menolak string null/undefined/localhost/kosong
- */
-export function isValidIpAddress(ip?: string | null): boolean {
-  if (!ip || typeof ip !== 'string') return false;
-  const trimmed = ip.trim();
-  if (
-    !trimmed ||
-    trimmed === 'unknown' ||
-    trimmed === 'null' ||
-    trimmed === 'undefined' ||
-    trimmed === '127.0.0.1' ||
-    trimmed === '::1'
-  ) {
-    return false;
-  }
-  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-  const ipv6Regex = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
-  return ipv4Regex.test(trimmed) || ipv6Regex.test(trimmed);
-}
-
-/**
- * Sanitasi & Prune objek user_data Meta CAPI
- * MENGHAPUS SEMUA key bernilai null, undefined, string kosong "", atau array kosong [].
- * Dilarang mengirim key dengan nilai null per spesifikasi Meta CAPI EMQ.
- */
-export function sanitizeUserData(userData: Record<string, any>): Record<string, any> {
-  const result: Record<string, any> = {};
-
-  for (const [key, value] of Object.entries(userData)) {
-    if (value === null || value === undefined || value === '') {
-      continue;
-    }
-    if (Array.isArray(value)) {
-      const filtered = value.filter(
-        (item) => item !== null && item !== undefined && item !== ''
-      );
-      if (filtered.length > 0) {
-        result[key] = filtered;
-      }
-    } else {
-      result[key] = value;
-    }
-  }
-
-  return result;
-}
+export {
+  hashSha256,
+  normalizePhone,
+  hashPhone,
+  normalizeEmail,
+  hashEmail,
+  parseName,
+  hashFirstName,
+  hashLastName,
+  hashCity,
+  hashZip,
+  hashCountry,
+  isValidIpAddress,
+  formatFbc,
+  sanitizeUserData,
+  assertNoRawPii,
+  buildMetaUserData,
+  buildMetaCAPIEventPayload,
+  extractServerTrackingContext,
+};
 
 /**
  * Dispatch server-side event ke Meta Conversions API (CAPI)
@@ -258,11 +146,12 @@ export async function dispatchMetaCAPIEvent(
     client_ip_address: clientIp,
     client_user_agent: clientUserAgent,
     fbp: rawFbp,
-    fbc: rawFbc,
+    fbc: rawFbc || formatFbc(null, payload.trackingContext?.fbclid || (payload as any).fbclid) || undefined,
     ...(payload.ctwaClid ? { ctwa_clid: payload.ctwaClid.trim() } : {}),
   };
 
   const cleanUserData = sanitizeUserData(rawUserData);
+  assertNoRawPii(cleanUserData);
 
   const customDataObj: Record<string, any> = {
     currency: payload.currency || 'IDR',

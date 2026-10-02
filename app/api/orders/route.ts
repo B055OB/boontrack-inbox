@@ -191,23 +191,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Tangkap Client IP Address asli pembeli dari server-side headers
+    // 1. Tangkap Client IP Address & Browser Signals asli pembeli dari server-side headers & cookies
     const clientIp =
+      req.headers.get('cf-connecting-ip') ||
       req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
       req.headers.get('x-real-ip') ||
-      req.headers.get('cf-connecting-ip') ||
       null;
 
     const userAgentHeader = req.headers.get('user-agent') || null;
+    const cookieFbp = req.cookies.get('_fbp')?.value || null;
+    const cookieFbc = req.cookies.get('_fbc')?.value || null;
+    const queryFbclid = req.nextUrl?.searchParams?.get('fbclid') || body.fbclid || null;
 
-    // 2. Rekonstruksi tracking_context
+    // 2. Rekonstruksi tracking_context dengan fallback cookies & format Meta fbc
     const rawContext = body.tracking_context || body.trackingContext || {};
+    const resolvedFbp = rawContext.fbp || body.fbp || cookieFbp || null;
+    let resolvedFbc = rawContext.fbc || body.fbc || cookieFbc || null;
+    if (!resolvedFbc && queryFbclid) {
+      resolvedFbc = `fb.1.${Date.now()}.${queryFbclid.trim()}`;
+    }
+
     const trackingContext = {
-      fbp: rawContext.fbp || body.fbp || null,
-      fbc: rawContext.fbc || body.fbc || null,
+      fbp: resolvedFbp,
+      fbc: resolvedFbc,
       client_user_agent: rawContext.client_user_agent || body.client_user_agent || userAgentHeader,
       client_ip_address: clientIp || rawContext.client_ip_address || null,
-      source_url: rawContext.source_url || body.source_url || req.headers.get('referer') || null,
+      source_url: rawContext.source_url || body.source_url || body.event_source_url || req.headers.get('referer') || null,
     };
 
     const rawOrderId = body.order_id || body.orderId || body.id || '';
