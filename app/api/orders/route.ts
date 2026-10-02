@@ -103,6 +103,18 @@ export async function GET(req: NextRequest) {
       query = query.lte('created_at', endDate);
     }
 
+    // Soft-Archive Query Filter (SPRINT 3)
+    const archiveParam = searchParams.get('archived') || searchParams.get('is_archived') || '';
+    const includeArchivedParam = searchParams.get('include_archived') === 'true' || archiveParam === 'all';
+
+    if (archiveParam === 'true' || archiveParam === 'only') {
+      // Hanya pesanan yang diarsipkan
+      query = query.eq('is_archived', true);
+    } else if (!includeArchivedParam) {
+      // Default: Pesanan Aktif (mengecualikan order yang diarsipkan)
+      query = query.or('is_archived.is.null,is_archived.eq.false');
+    }
+
     const { data: ordersData, error: ordersErr } = await query
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -143,6 +155,7 @@ export async function GET(req: NextRequest) {
         unique_code: Number(o.unique_code || 0),
         briefing_url: o.briefing_url || o.customer_briefing?.briefing_url || null,
         customer_briefing: o.customer_briefing || (o.briefing_url ? { briefing_url: o.briefing_url } : null),
+        is_archived: Boolean(o.is_archived),
         created_at: o.created_at || new Date().toISOString(),
       };
     });

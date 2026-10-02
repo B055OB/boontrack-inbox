@@ -5,6 +5,9 @@ import {
   Search, 
   Filter, 
   Eye, 
+  EyeOff,
+  Archive,
+  ArchiveRestore,
   X, 
   ExternalLink, 
   Package, 
@@ -63,6 +66,7 @@ export interface OrderItem {
   fulfillment_metadata?: FulfillmentMetadata;
   briefing_url?: string;
   customer_briefing?: any;
+  is_archived?: boolean;
   created_at: string;
 }
 
@@ -98,6 +102,7 @@ export function mapRawOrder(o: any): OrderItem {
     fulfillment_metadata: o.fulfillment_metadata,
     briefing_url: o.briefing_url || o.customer_briefing?.briefing_url || o.fulfillment_metadata?.briefing_url || o.fulfillment_metadata?.brief_url || '',
     customer_briefing: o.customer_briefing || (o.briefing_url ? { briefing_url: o.briefing_url } : null),
+    is_archived: Boolean(o.is_archived),
     created_at: o.created_at || new Date().toISOString(),
   };
 }
@@ -118,6 +123,8 @@ export default function OrdersTab({
   const [internalLoading, setInternalLoading] = useState(!propOrders || propOrders.length === 0);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [archiveFilter, setArchiveFilter] = useState<'ACTIVE' | 'ARCHIVED' | 'ALL'>('ACTIVE');
+  const [archivingId, setArchivingId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRangeState>(() => getDateRangeFromPreset('all'));
 
   // Sync propOrders ke internalOrders secara reaktif
@@ -146,6 +153,11 @@ export default function OrdersTab({
     setInternalLoading(true);
     try {
       let url = `/api/orders?tenant=${encodeURIComponent(tenantSlug)}`;
+      if (archiveFilter === 'ARCHIVED') {
+        url += '&archived=true';
+      } else if (archiveFilter === 'ALL') {
+        url += '&include_archived=true';
+      }
       if (dateRange.startDate) url += `&start_date=${encodeURIComponent(dateRange.startDate)}`;
       if (dateRange.endDate) url += `&end_date=${encodeURIComponent(dateRange.endDate)}`;
       const res = await fetch(url);
@@ -160,7 +172,7 @@ export default function OrdersTab({
     } finally {
       setInternalLoading(false);
     }
-  }, [tenantSlug, propOnRefresh, dateRange.startDate, dateRange.endDate]);
+  }, [tenantSlug, propOnRefresh, archiveFilter, dateRange.startDate, dateRange.endDate]);
 
   useEffect(() => {
     if (!propOrders || propOrders.length === 0) {
@@ -202,6 +214,58 @@ export default function OrdersTab({
     return (isPending && isManual) || isPendingVerificationStatus(paymentStatus);
   };
 
+  // Aksi Soft-Archive / Hide Order (Strict No-Hard-Delete)
+  const handleToggleArchive = async (order: OrderItem, shouldArchive: boolean, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setArchivingId(order.id);
+    const prevOrders = [...internalOrders];
+
+    // Optimistic UI update
+    const updated: OrderItem = { ...order, is_archived: shouldArchive };
+    setInternalOrders((prev) =>
+      prev.map((o) => (o.id === order.id || o.invoice_no === order.invoice_no ? updated : o))
+    );
+    if (selectedOrder?.id === order.id || selectedOrder?.invoice_no === order.invoice_no) {
+      setSelectedOrder((prev) => (prev ? { ...prev, is_archived: shouldArchive } : null));
+    }
+    onOrderUpdated?.(updated);
+
+    try {
+      const res = await fetch(`/api/v1/orders/${encodeURIComponent(order.id)}/archive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_archived: shouldArchive }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Gagal memperbarui status arsip pesanan.');
+      }
+
+      setToast({
+        message: shouldArchive
+          ? `Pesanan #${order.invoice_no} berhasil diarsipkan.`
+          : `Pesanan #${order.invoice_no} berhasil dipulihkan dari arsip.`,
+        type: 'success',
+      });
+      setTimeout(() => setToast(null), 3000);
+    } catch (err: any) {
+      console.warn('[OrdersTab] Error archiving order:', err);
+      // Revert optimistic update on failure
+      setInternalOrders(prevOrders);
+      setToast({
+        message: err.message || 'Gagal mengubah status arsip pesanan.',
+        type: 'error',
+      });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setArchivingId(null);
+    }
+  };
+
   const filteredOrders = orders.filter((o) => {
     const query = searchQuery.toLowerCase();
     const matchSearch =
@@ -217,12 +281,21 @@ export default function OrdersTab({
       (statusFilter === 'VERIFICATION' && isPendingVerificationStatus(pStatus)) ||
       (statusFilter === 'UNPAID' && !isValidPaidStatus(pStatus) && !isPendingVerificationStatus(pStatus));
 
+    // Filter Soft-Archive:
+    // 1. "ACTIVE" (Default): hanya tampilkan yang is_archived !== true
+    // 2. "ARCHIVED": hanya tampilkan yang is_archived === true
+    // 3. "ALL": tampilkan semua status
+    const matchArchive =
+      archiveFilter === 'ALL' ||
+      (archiveFilter === 'ACTIVE' && !o.is_archived) ||
+      (archiveFilter === 'ARCHIVED' && Boolean(o.is_archived));
+
     const createdMs = new Date(o.created_at || Date.now()).getTime();
     const startMs = dateRange.startDate ? new Date(dateRange.startDate).getTime() : 0;
     const endMs = dateRange.endDate ? new Date(dateRange.endDate).getTime() : Infinity;
     const matchDate = createdMs >= startMs && createdMs <= endMs;
 
-    return matchSearch && matchStatus && matchDate;
+    return matchSearch && matchStatus && matchArchive && matchDate;
   });
 
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
@@ -479,6 +552,50 @@ export default function OrdersTab({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 relative z-30 overflow-visible">
+            {/* Opsi Tampilan Soft-Archive (SPRINT 3) */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold border border-slate-200/80">
+              <button
+                type="button"
+                id="orders-filter-active-btn"
+                onClick={() => setArchiveFilter('ACTIVE')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] ${
+                  archiveFilter === 'ACTIVE'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Tampilkan hanya pesanan aktif (default)"
+              >
+                Pesanan Aktif
+              </button>
+              <button
+                type="button"
+                id="orders-filter-archived-btn"
+                onClick={() => setArchiveFilter('ARCHIVED')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] flex items-center gap-1 ${
+                  archiveFilter === 'ARCHIVED'
+                    ? 'bg-white text-purple-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Tampilkan pesanan yang disembunyikan/diarsipkan"
+              >
+                <Archive className="w-3 h-3" />
+                <span>Diarsipkan</span>
+              </button>
+              <button
+                type="button"
+                id="orders-filter-all-btn"
+                onClick={() => setArchiveFilter('ALL')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer text-[11px] ${
+                  archiveFilter === 'ALL'
+                    ? 'bg-white text-slate-800 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Tampilkan semua pesanan tanpa terkecuali"
+              >
+                Semua Pesanan
+              </button>
+            </div>
+
             <DateRangePicker value={dateRange} onChange={setDateRange} />
 
             <div className="flex items-center gap-2">
@@ -588,21 +705,29 @@ export default function OrdersTab({
                         {ord.payment_method || 'QRIS / TRANSFER'}
                       </td>
                       <td className="py-2.5 px-3">
-                        <span
-                          className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
-                            isPaid
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        <div className="flex flex-col gap-1 items-start">
+                          <span
+                            className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
+                              isPaid
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : isPendingVerificationStatus(ord.payment_status || ord.status)
+                                ? 'bg-amber-50 text-amber-800 border-amber-300 font-extrabold animate-pulse'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}
+                          >
+                            {isPaid
+                              ? 'LUNAS (PAID)'
                               : isPendingVerificationStatus(ord.payment_status || ord.status)
-                              ? 'bg-amber-50 text-amber-800 border-amber-300 font-extrabold animate-pulse'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
-                          }`}
-                        >
-                          {isPaid
-                            ? 'LUNAS (PAID)'
-                            : isPendingVerificationStatus(ord.payment_status || ord.status)
-                            ? 'MENUNGGU VERIFIKASI'
-                            : 'PENDING'}
-                        </span>
+                              ? 'MENUNGGU VERIFIKASI'
+                              : 'PENDING'}
+                          </span>
+                          {ord.is_archived && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                              <Archive className="w-2.5 h-2.5 text-slate-500" />
+                              Diarsipkan
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2.5 px-3 text-right">
                         <div className="flex items-center justify-end gap-1.5 flex-wrap">
@@ -676,6 +801,39 @@ export default function OrdersTab({
                               <><ToggleLeft className="w-3.5 h-3.5" /><span>UNPAID</span></>
                             )}
                           </button>
+
+                          {/* Tombol Arsipkan (Soft-Archive) atau Pulihkan */}
+                          {ord.is_archived ? (
+                            <button
+                              type="button"
+                              disabled={archivingId === ord.id}
+                              onClick={(e) => handleToggleArchive(ord, false, e)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer disabled:opacity-50"
+                              title="Pulihkan / Batalkan Arsip Pesanan"
+                            >
+                              {archivingId === ord.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <ArchiveRestore className="w-3.5 h-3.5 text-slate-600" />
+                              )}
+                              <span>Pulihkan</span>
+                            </button>
+                          ) : !isPaid ? (
+                            <button
+                              type="button"
+                              disabled={archivingId === ord.id}
+                              onClick={(e) => handleToggleArchive(ord, true, e)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[10px] bg-rose-50/60 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer disabled:opacity-50"
+                              title="Arsipkan Pesanan (Sembunyikan Unpaid/Pending/Dobel)"
+                            >
+                              {archivingId === ord.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <EyeOff className="w-3.5 h-3.5 text-rose-600" />
+                              )}
+                              <span>Arsipkan</span>
+                            </button>
+                          ) : null}
 
                           {/* Quick Print Label Resi (HANYA jika produk fisik & requires_shipping === true, BUKAN DIGITAL / SERVICE) */}
                           {(() => {
@@ -1035,6 +1193,39 @@ export default function OrdersTab({
                     <span>Lihat &amp; Cetak Invoice</span>
                     <ExternalLink className="w-3 h-3 text-slate-400" />
                   </button>
+
+                  {/* Soft-Archive / Pulihkan Pesanan di Modal */}
+                  {selectedOrder.is_archived ? (
+                    <button
+                      type="button"
+                      disabled={archivingId === selectedOrder.id}
+                      onClick={(e) => handleToggleArchive(selectedOrder, false, e)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition cursor-pointer disabled:opacity-50"
+                      title="Pulihkan Pesanan dari Arsip"
+                    >
+                      {archivingId === selectedOrder.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <ArchiveRestore className="w-3.5 h-3.5 text-slate-600" />
+                      )}
+                      <span>Pulihkan Pesanan</span>
+                    </button>
+                  ) : !isOrderPaid ? (
+                    <button
+                      type="button"
+                      disabled={archivingId === selectedOrder.id}
+                      onClick={(e) => handleToggleArchive(selectedOrder, true, e)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer disabled:opacity-50"
+                      title="Sembunyikan / Arsipkan Pesanan Ini"
+                    >
+                      {archivingId === selectedOrder.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <EyeOff className="w-3.5 h-3.5 text-rose-600" />
+                      )}
+                      <span>Arsipkan Pesanan</span>
+                    </button>
+                  ) : null}
 
                   <GodPayButton
                     order={selectedOrder as GodPayOrderItem}

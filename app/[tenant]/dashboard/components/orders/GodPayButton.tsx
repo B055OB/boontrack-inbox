@@ -10,6 +10,7 @@ export interface OrderItem {
   customer_phone?: string;
   total_amount: number;
   payment_status: string;
+  is_archived?: boolean;
 }
 
 interface GodPayButtonProps {
