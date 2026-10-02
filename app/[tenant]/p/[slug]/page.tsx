@@ -2966,7 +2966,7 @@ function SingleProductContent() {
 
       <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-400 pt-1">
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-        <span>Keamanan transaksi 256-bit terenkripsi SSL & QRIS resmi Bank Indonesia</span>
+        <span>Keamanan transaksi 256-bit terenkripsi SSL & Dynamic QRIS Resmi</span>
       </div>
     </form>
   );

@@ -296,11 +296,11 @@ export default function ShopLandingPage() {
           <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs font-extrabold text-slate-500 grayscale opacity-80 hover:grayscale-0 hover:opacity-100 transition-all">
             <span className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-slate-100 border border-slate-200">
               <CreditCard className="w-4 h-4 text-blue-600" />
-              <span>QRIS Bersama Bank Indonesia</span>
+              <span>Dynamic QRIS Standar Nasional</span>
             </span>
             <span className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-slate-100 border border-slate-200">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Payment Gateway Terlisensi Bank Indonesia</span>
+              <span>Payment Gateway Mitra Resmi</span>
             </span>
             <span className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-slate-100 border border-slate-200">
               <Smartphone className="w-4 h-4 text-green-600" />
@@ -687,7 +687,7 @@ export default function ShopLandingPage() {
             <div className="bg-white border border-slate-200 p-4 rounded-2xl">
               <h4 className="font-bold text-slate-900 text-sm mb-1">Bagaimana metode pembayaran QRIS di BoonTrack diproses?</h4>
               <p className="text-slate-600 leading-relaxed">
-                Pembayaran diproses secara instan melalui Payment Gateway terlisensi Bank Indonesia dan jaringan QRIS Nasional. Setiap transaksi menghasilkan barcode QRIS dinamis unik yang mendeteksi pelunasan secara real-time tanpa upload bukti transfer.
+                Pembayaran diproses secara instan melalui Payment Gateway mitra resmi dan jaringan QRIS Nasional. Setiap transaksi menghasilkan barcode QRIS dinamis unik yang mendeteksi pelunasan secara real-time tanpa upload bukti transfer.
               </p>
             </div>
 

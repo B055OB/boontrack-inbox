@@ -155,7 +155,7 @@ export default function PrivacyPage() {
               <strong>Tujuan Pelacakan:</strong> Mengukur Event Match Quality (EMQ), menghitung Return on Ad Spend (ROAS) merchant, mendeteksi bot/klik palsu, serta mencegah order fiktif.
             </li>
             <li>
-              <strong>Persetujuan Pengguna:</strong> Dengan mengakses etalase toko merchant di platform kami, mengklik tautan iklan, atau memasukkan rincian kontak saat checkout, pengunjung dan pembeli akhir mengakui dan menyetujui pemrosesan parameter teknis ini untuk keperluan atribusi analitik tersebut.
+              <strong>Persetujuan Berbasis Izin (Consent-Based Tracking):</strong> Pemrosesan parameter teknis dan pelacakan konversi (Meta CAPI &amp; TikTok Events API) dilakukan secara berbasis persetujuan eksplisit (consent-based) pengunjung/pembeli melalui interaksi checkout atau pengaturan persetujuan privasi, selaras dengan ketentuan privasi data Meta Platform dan regulasi perlindungan data pribadi.
             </li>
           </ul>
         </div>
@@ -168,7 +168,7 @@ export default function PrivacyPage() {
           Penyimpanan & Standar Keamanan Data
         </h2>
         <p className="text-xs text-slate-600">
-          Seluruh data sensitif disimpan pada pusat data terakreditasi ISO/IEC 27001 dengan perlindungan firewall ketat. Data dalam perjalanan (in-transit) dienkripsi menggunakan standar Transport Layer Security (TLS 1.3), dan token akses API sensitif disimpan dengan enkripsi tingkat lanjut pada sisi server.
+          Seluruh data sensitif dikelola melalui penyedia infrastruktur cloud yang menerapkan kontrol keamanan dan sertifikasi relevan dengan perlindungan firewall ketat. Data dalam perjalanan (in-transit) dienkripsi menggunakan standar Transport Layer Security (TLS 1.3), dan token akses API sensitif disimpan dengan enkripsi tingkat lanjut pada sisi server.
         </p>
       </section>
 

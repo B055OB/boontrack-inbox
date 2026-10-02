@@ -14,7 +14,7 @@ export default function TrustBar() {
             </div>
             <div className="text-left">
               <h4 className="text-xs sm:text-sm font-black text-slate-900">
-                Infrastruktur QRIS Standar Bank Indonesia &amp; Payment Gateway Nasional Terlisensi
+                Infrastruktur Dynamic QRIS Mitra Resmi &amp; Payment Gateway Nasional Terlisensi
               </h4>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Transaksi diproses aman melalui jaringan interkoneksi resmi QRIS nasional dan perbankan Indonesia.

@@ -23,7 +23,7 @@ export default function Footer() {
               </span>
             </div>
             <p className="text-slate-400 text-xs leading-relaxed max-w-sm">
-              Sistem operasi WhatsApp Commerce & etalase toko online otomatis dengan checkout QRIS 0% MDR dan sinkronisasi server-side Meta Conversions API.
+              Sistem operasi WhatsApp Commerce & etalase toko online otomatis dengan checkout QRIS langsung toko dan sinkronisasi server-side Meta Conversions API.
             </p>
             <div className="pt-1 flex items-center gap-2 text-[11px] text-slate-500 font-mono">
               <ShieldCheck className="w-4 h-4 text-emerald-500" />
@@ -56,7 +56,6 @@ export default function Footer() {
               <li><Link href="/privacy" className="hover:text-white transition">Kebijakan Privasi (UU PDP)</Link></li>
               <li><Link href="/refund" className="hover:text-white transition">Kebijakan Pengembalian Dana</Link></li>
               <li><Link href="/contact" className="hover:text-white transition">Hubungi Kami (Contact Us)</Link></li>
-              <li><Link href="/affiliate/register" className="text-indigo-400 hover:text-indigo-300 font-bold transition">Program Afiliasi Mitra (25%)</Link></li>
             </ul>
           </div>
         </div>

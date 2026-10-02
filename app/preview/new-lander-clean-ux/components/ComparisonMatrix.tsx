@@ -51,7 +51,7 @@ export default function ComparisonMatrix({ referralCode }: ComparisonMatrixProps
 
   const boonTrackPoints = [
     {
-      title: 'Bebas Potongan Komisi (QRIS Standar 0% MDR)',
+      title: 'Bebas Potongan Komisi Marketplace (QRIS Langsung Toko)',
       desc: '100% dana penjualan masuk utuh ke rekening bank Anda tanpa potongan komisi platform per transaksi.',
       badge: 'Hemat Jutaan / Bulan',
       icon: DollarSign

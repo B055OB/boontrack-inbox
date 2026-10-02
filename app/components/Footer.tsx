@@ -158,7 +158,7 @@ export default function Footer({ className = "" }: { className?: string }) {
 
         {/* Baris Bawah: Copyright */}
         <div className="pt-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <p>© 2026 PT BOONTRACK INOVASI DIGITAL. All rights reserved.</p>
+          <p>© 2026 BoonTrack. Dioperasikan oleh PT Boontrack Inovasi Digital.</p>
           <div className="flex items-center gap-4 text-slate-400">
             <Link href="/terms" className="hover:text-white transition">Terms</Link>
             <Link href="/privacy" className="hover:text-white transition">Privacy</Link>

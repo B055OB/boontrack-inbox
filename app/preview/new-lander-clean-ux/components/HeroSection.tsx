@@ -89,7 +89,7 @@ export default function HeroSection({ referralCode }: HeroSectionProps) {
 
           {/* Sub-headline */}
           <p className="text-slate-600 text-sm sm:text-base md:text-lg max-w-2xl mx-auto leading-relaxed font-normal">
-            Infrastruktur etalase instan, pembayaran QRIS otomatis berlisensi Bank Indonesia, manajemen chat tim CS, dan pelacakan iklan Meta &amp; TikTok CAPI dalam satu dashboard terpadu.
+            Infrastruktur etalase instan, Dynamic QRIS melalui mitra payment provider resmi sesuai ketentuan yang berlaku, manajemen chat tim CS, dan pelacakan iklan Meta &amp; TikTok CAPI dalam satu dashboard terpadu.
           </p>
 
           {/* Interactive Domain Claim Box */}
@@ -272,7 +272,7 @@ export default function HeroSection({ referralCode }: HeroSectionProps) {
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] text-emerald-800 font-medium">QRIS Standar</span>
                     <span className="text-[9px] font-black px-1.5 py-0.5 bg-emerald-200/80 text-emerald-800 rounded font-mono">
-                      0% MDR
+                      MDR Rendah
                     </span>
                   </div>
                   <div className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight">
@@ -459,7 +459,7 @@ export default function HeroSection({ referralCode }: HeroSectionProps) {
             </div>
             <div className="flex items-center gap-2 text-slate-700 font-bold text-xs">
               <span className="w-2 h-2 rounded-full bg-rose-600" />
-              <span>QRIS Standar Bank Indonesia</span>
+              <span>Dynamic QRIS Standar Nasional</span>
             </div>
           </div>
         </div>

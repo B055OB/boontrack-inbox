@@ -68,7 +68,7 @@ export default function FloatingWaDemoModal({
       let isQris = false;
 
       if (text.toLowerCase().includes('qris')) {
-        botResponse = 'Tentu! Sistem langsung menerbitkan Dynamic QRIS standar Bank Indonesia. Pembeli tinggal scan via BCA, Mandiri, BRI, GoPay, OVO, atau DANA. Pembayaran terverifikasi otomatis dalam hitungan detik oleh Reader APK tanpa potongan komisi marketplace.';
+        botResponse = 'Tentu! Sistem langsung menerbitkan Dynamic QRIS melalui mitra payment provider resmi. Pembeli tinggal scan via BCA, Mandiri, BRI, GoPay, OVO, atau DANA. Pembayaran terverifikasi otomatis dalam hitungan detik oleh Reader APK tanpa potongan komisi marketplace.';
         isQris = true;
       } else if (text.toLowerCase().includes('ongkir')) {
         botResponse = 'BoonTrack terintegrasi dengan ekspedisi reguler (J&T, SiCepat, JNE) dan kurir instan (radius km). Saat pembeli memasukkan alamat, ongkir otomatis terhitung dan masuk ke total invoice.';

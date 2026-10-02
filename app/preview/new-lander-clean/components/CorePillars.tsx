@@ -8,7 +8,8 @@ import {
   CheckCircle2, 
   Activity, 
   Users2, 
-  Cpu
+  Cpu,
+  Smartphone
 } from 'lucide-react';
 
 export default function CorePillars() {
@@ -256,95 +257,81 @@ export default function CorePillars() {
           </div>
         </div>
 
-        {/* ── PILLAR 3: Multi-Tier Affiliate Engine (Text Left, Visual Right) ── */}
+        {/* ── PILLAR 3: Automation & Team Scalability (Text Left, Visual Right) ── */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-6 space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-800 text-xs font-mono font-bold">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 border border-blue-200 text-blue-800 text-xs font-mono font-bold">
               <span>Pilar 3</span>
               <span>•</span>
-              <span>Growth Multiplication</span>
+              <span>Automation &amp; Team Scalability</span>
             </div>
 
             <h3 className="text-2xl sm:text-3xl font-black text-zinc-900 leading-tight">
-              Multi-Tier Affiliate Engine: Replikasi Pasukan Penjual Secara Otomatis
+              BoonTrack Reader APK &amp; Multi-CS Inbox Kolaboratif
             </h3>
 
             <p className="text-zinc-600 text-sm sm:text-base leading-relaxed">
-              Tingkatkan omzet toko Anda tanpa menambah anggaran iklan berbayar. Ajak mitra dan reseller menjualkan produk dengan pembagian komisi presisi dan payout otomatis.
+              Verifikasi mutasi rekening instan dalam hitungan detik tanpa repot cek m-Banking manual, ditambah fitur bagi percakapan otomatis ke banyak Customer Service tanpa bentrok.
             </p>
 
             <div className="space-y-3 text-xs text-zinc-700">
               <div className="flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Bagi Hasil 25% Mitra Langsung:</strong> Setiap transaksi melalui tautan referral mitra mencatat atribusi instan ke dashboard affiliate mereka.
+                  <strong>Reader APK Hitungan Detik:</strong> Menangkap push notification bank dan QRIS secara lokal di smartphone merchant. Anti bukti transfer editan Photoshop.
                 </span>
               </div>
               <div className="flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <span>
-                  <strong>5% Affiliate Manager (AM) Override:</strong> Motivasi tim koordinator dengan bonus bertingkat otomatis dari seluruh penjualan grup mereka.
-                </span>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Pencairan Dana 1-Klik:</strong> Rekonsiliasi saldo dan penarikan instan via rekening bank lokal yang aman.
+                  <strong>Multi-Seat CS Management:</strong> Percakapan WhatsApp dibagi adil (round-robin) ke beberapa staf CS. Dilengkapi internal note &amp; tag pesanan.
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Tier Split Breakdown Card (Right) */}
-          <div className="lg:col-span-6 bg-white border border-zinc-200 rounded-3xl p-6 shadow-xs space-y-5">
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-              <span className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
-                <Users2 className="w-4 h-4 text-indigo-600" />
-                <span>Simulasi Alokasi Bagi Hasil (Nilai Order: Rp 100.000)</span>
+          {/* Visual Kanan: Reader APK & Multi-CS Visualization */}
+          <div className="lg:col-span-6 bg-zinc-50 border border-zinc-200 rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-200">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-emerald-600" />
+                <span className="text-xs font-bold text-zinc-900">Reader APK: Mutasi Monitoring</span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold font-mono">
+                Listening Mode
               </span>
-              <span className="font-mono text-[10px] text-emerald-700 font-bold">Pencairan Otomatis</span>
             </div>
 
-            <div className="space-y-3">
-              {/* Merchant Gross */}
-              <div className="bg-zinc-50 p-3.5 rounded-2xl border border-zinc-200 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-zinc-900 block">Pendapatan Bersih Merchant</span>
-                  <span className="text-[10px] text-zinc-500 font-mono">70% Margin Toko</span>
+            <div className="space-y-2.5">
+              <div className="p-3 bg-white border border-zinc-200 rounded-2xl flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                    ✓
+                  </div>
+                  <div>
+                    <div className="font-bold text-zinc-900">QRIS Masuk: Rp 299.000</div>
+                    <div className="text-[10px] text-zinc-500">Auto-match ke Order #ORD-8819 • Lunas</div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="font-black text-zinc-900 text-base">Rp 70.000</span>
-                  <span className="text-[10px] text-emerald-700 block font-mono">100% Milik Toko</span>
-                </div>
+                <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded">
+                  Hitungan Detik
+                </span>
               </div>
 
-              {/* Mitra Direct Affiliate */}
-              <div className="bg-indigo-50/50 p-3.5 rounded-2xl border border-indigo-200 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-indigo-900 block">Komisi Mitra Penjual (Direct Ref)</span>
-                  <span className="text-[10px] text-zinc-500 font-mono">25% Komisi Penjualan</span>
+              <div className="p-3 bg-white border border-zinc-200 rounded-2xl flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                    <Users2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-zinc-900">CS Dispatch: CS Dini</div>
+                    <div className="text-[10px] text-zinc-500">Percakapan otomatis ditugaskan ke Agent #2</div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="font-black text-indigo-900 text-base">Rp 25.000</span>
-                  <span className="text-[10px] text-indigo-700 block font-mono">Masuk Saldo Mitra</span>
-                </div>
+                <span className="text-[10px] font-mono text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded">
+                  Round-Robin
+                </span>
               </div>
-
-              {/* AM Override */}
-              <div className="bg-amber-50/50 p-3.5 rounded-2xl border border-amber-200 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-amber-900 block">Bonus Affiliate Manager (AM Override)</span>
-                  <span className="text-[10px] text-zinc-500 font-mono">5% Team Leadership Bonus</span>
-                </div>
-                <div className="text-right">
-                  <span className="font-black text-amber-900 text-base">Rp 5.000</span>
-                  <span className="text-[10px] text-amber-700 block font-mono">Masuk Saldo AM</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-2 text-[11px] text-zinc-500 font-mono text-center">
-              Seluruh komisi dihitung dengan rumus integer presisi tanpa selisih pembulatan desimal.
             </div>
           </div>
         </div>

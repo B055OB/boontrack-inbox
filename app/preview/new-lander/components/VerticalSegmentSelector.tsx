@@ -55,7 +55,7 @@ const VERTICALS: VerticalConfig[] = [
       user: 'Halo, ada promo gamis basic size XL warna navy?',
       bot: 'Halo kak! Gamis Basic size XL Navy ready stok 12 pcs. Promo diskon 20% + Subsidi Ongkir otomatis aktif.',
       quickReplies: ['Cek Ongkir ke Kotaku', 'Pilih Varian Lain', 'Beli Sekarang (QRIS)'],
-      actionDetail: 'Alur: Pembeli pilih varian -> Cek tarif kurir Biteship -> Bayar QRIS 0% MDR -> Resi kurir dikirim otomatis.'
+      actionDetail: 'Alur: Pembeli pilih varian -> Cek tarif kurir Biteship -> Bayar Dynamic QRIS -> Resi kurir dikirim otomatis.'
     }
   },
   {

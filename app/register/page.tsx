@@ -76,8 +76,8 @@ const CATEGORIES = [
   },
   {
     id: "CREATOR_AGENCY",
-    label: "Affiliate, Agensi Live & Kreator",
-    desc: "Live host, video sample creator, VIP channel",
+    label: "Kreator, Agensi Live & Endorsement",
+    desc: "Live host, influencer, rekomendasi link produk",
     icon: Video,
   },
 ];
@@ -1064,8 +1064,8 @@ export default function RegisterShopPage() {
     setPayError(null);
 
     const cleanPin = merchantData.pin.trim();
-    if (!cleanPin || cleanPin.length < 6) {
-      setPayError("PIN / Password akses wajib diisi minimal 6 digit/karakter.");
+    if (!cleanPin || cleanPin.length < 8) {
+      setPayError("Password akses wajib diisi minimal 8 karakter.");
       setLoadingPay(false);
       return;
     }
@@ -1409,7 +1409,7 @@ export default function RegisterShopPage() {
               Klaim &amp; Buka Toko Online Anda
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-2 leading-relaxed">
-              Infrastruktur etalase instan, pembayaran QRIS otomatis berlisensi Bank Indonesia, dan integrasi Meta &amp; TikTok CAPI.
+              Infrastruktur etalase instan, Dynamic QRIS melalui mitra payment provider resmi sesuai ketentuan yang berlaku, dan integrasi Meta &amp; TikTok CAPI.
             </p>
           </div>
 
@@ -1619,7 +1619,7 @@ export default function RegisterShopPage() {
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none font-mono"
                     />
                     <p className="text-[10px] text-slate-500 mt-1 leading-snug">
-                      Nomor WhatsApp aktif digunakan untuk notifikasi pesanan &amp; kredensial toko (1 Nomor = 1 Hak Trial 7 Hari).
+                      Nomor WhatsApp aktif digunakan untuk notifikasi pesanan &amp; kredensial toko (Setiap nomor WhatsApp mendapatkan satu periode trial 7 hari).
                     </p>
                   </div>
                   <div>
@@ -1642,12 +1642,12 @@ export default function RegisterShopPage() {
                   </div>
                 </div>
 
-                {/* BUAT PIN AKSES WAJIB */}
+                {/* BUAT PASSWORD AKSES WAJIB */}
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <Key className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Buat PIN / Password Akses (6 Digit / Karakter)</span>
+                      <span>Password Akses (Minimal 8 Karakter)</span>
                     </span>
                     <span className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-wider">
                       Wajib
@@ -1656,8 +1656,8 @@ export default function RegisterShopPage() {
                   <input
                     type="password"
                     required
-                    minLength={6}
-                    placeholder="Minimal 6 karakter atau digit angka"
+                    minLength={8}
+                    placeholder="Minimal 8 karakter"
                     value={merchantData.pin}
                     onChange={(e) =>
                       setMerchantData({
@@ -1668,7 +1668,7 @@ export default function RegisterShopPage() {
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base md:text-xs font-medium text-slate-900 focus:bg-white focus:border-blue-600 outline-none font-mono tracking-wider"
                   />
                   <p className="text-[10px] text-slate-500 mt-1">
-                    Ingat PIN ini untuk masuk kembali ke Dashboard Toko Anda kapan saja.
+                    Ingat password ini untuk masuk kembali ke Dashboard Toko Anda kapan saja.
                   </p>
                 </div>
 
@@ -1791,7 +1791,7 @@ export default function RegisterShopPage() {
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>Dynamic QRIS Standar Bank Indonesia</span>
+                          <span>Dynamic QRIS melalui mitra payment provider resmi sesuai ketentuan yang berlaku</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -1809,9 +1809,9 @@ export default function RegisterShopPage() {
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                           <span>Produk Digital &amp; Fisik (Lazy Shipping)</span>
                         </li>
-                        <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
-                          <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                          <span>Tanpa Server-Side CAPI &amp; GTM (Iklan berisiko data loss)</span>
+                        <li className="flex items-start gap-2 text-slate-700">
+                          <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>Browser Pixel Tracking saja — tanpa Server-Side CAPI &amp; GTM</span>
                         </li>
                         <li className="flex items-start gap-2 text-rose-600 font-medium bg-rose-50/60 p-1.5 rounded-lg border border-rose-100">
                           <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
@@ -1891,7 +1891,7 @@ export default function RegisterShopPage() {
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                          <span>Checkout WhatsApp Cepat &amp; Dynamic QRIS Standar 0% MDR</span>
+                          <span>Checkout WhatsApp Cepat &amp; Dynamic QRIS — MDR mengikuti ketentuan kategori merchant &amp; payment provider</span>
                         </li>
                         <li className="flex items-start gap-2 text-slate-700">
                           <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />

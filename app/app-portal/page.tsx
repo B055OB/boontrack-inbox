@@ -32,7 +32,7 @@ export default function AppPortalPage() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
                 </span>
-                <span className="text-orange-400 font-bold">Official Meta WhatsApp Cloud API Ready • Zero-Friction Engine:</span>
+                <span className="text-orange-400 font-bold">Built for Meta WhatsApp Business Platform — Integrasi Cloud API melalui konfigurasi resmi Meta:</span>
                 Tanpa install app untuk pelanggan. Seluruh interaksi CRM &amp; Transaksi berjalan via Chat &amp; Hardware API.
             </div>
 
@@ -101,7 +101,7 @@ export default function AppPortalPage() {
                     {/* Eyebrow Badge */}
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-700/60 text-orange-400 text-xs mb-8 shadow-sm">
                         <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                        <span>Official Meta WhatsApp Cloud API Ready • Zero-Friction Engine</span>
+                        <span>Built for Meta WhatsApp Business Platform — Integrasi Cloud API melalui konfigurasi resmi Meta</span>
                     </div>
 
                     {/* Headline Typography */}
@@ -114,7 +114,7 @@ export default function AppPortalPage() {
 
                     {/* Subheadline */}
                     <p className="mt-6 text-slate-400 text-base md:text-lg max-w-2xl mx-auto leading-relaxed">
-                        Hilangkan friksi interaksi pelanggan. Orkestrasi transaksi menyeluruh dari Official Meta WhatsApp Cloud API, POS kasir, IoT Smart Doorlock, verifikasi mutasi real-time, hingga otomasi backend kustom tanpa download aplikasi tambahan.
+                        Hilangkan friksi interaksi pelanggan. Orkestrasi transaksi menyeluruh dari WhatsApp Business Platform Cloud API, POS kasir, IoT Smart Doorlock, verifikasi mutasi real-time, hingga otomasi backend kustom tanpa download aplikasi tambahan.
                     </p>
 
                     {/* CTA Button Group */}
@@ -247,12 +247,12 @@ export default function AppPortalPage() {
                             Customer Anda berada di WhatsApp & Chat. Tanpa repot download aplikasi.
                         </h2>
                         <p className="mt-4 text-slate-600 text-base leading-relaxed">
-                            Database pelanggan, status pesanan, faktur, hingga notifikasi pengingat terkirim otomatis ke kanal pesan instan yang sudah terpasang di smartphone mereka. Integrasi resmi WhatsApp Cloud API (v20.0+) dengan enkripsi end-to-end Meta dan SLA pengiriman pesan instan.
+                            Database pelanggan, status pesanan, faktur, hingga notifikasi pengingat terkirim otomatis ke kanal pesan instan yang sudah terpasang di smartphone mereka. Integrasi WhatsApp Cloud API dengan keamanan transportasi HTTPS/TLS dan mekanisme pengiriman berbasis WhatsApp Business Platform.
                         </p>
                         <div className="mt-6 space-y-3">
                             <div className="flex items-center gap-3 text-sm font-medium text-slate-700">
                                 <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs font-bold">✓</span>
-                                <span>Integrasi resmi WhatsApp Cloud API (v20.0+) dengan enkripsi end-to-end Meta dan SLA pengiriman pesan instan</span>
+                                <span>Integrasi WhatsApp Cloud API dengan keamanan transportasi HTTPS/TLS dan mekanisme pengiriman berbasis WhatsApp Business Platform</span>
                             </div>
                             <div className="flex items-center gap-3 text-sm font-medium text-slate-700">
                                 <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-xs font-bold">✓</span>
@@ -307,7 +307,7 @@ export default function AppPortalPage() {
                         POS yang Berbicara Langsung dengan Perangkat Fisik
                     </h2>
                     <p className="mt-4 text-slate-600 text-sm sm:text-base">
-                        BoonTrack Apps menjembatani kasir Anda dengan perangkat keras di lapangan yang memiliki API atau koneksi jaringan. Integrasi resmi WhatsApp Cloud API (v20.0+) dengan enkripsi end-to-end Meta dan SLA pengiriman pesan instan.
+                        BoonTrack Apps menjembatani kasir Anda dengan perangkat keras di lapangan yang memiliki API atau koneksi jaringan dengan keamanan transportasi HTTPS/TLS dan mekanisme pengiriman berbasis WhatsApp Business Platform.
                     </p>
                 </div>
 
@@ -350,7 +350,7 @@ export default function AppPortalPage() {
                         Uji Coba di Cabang Anda Tanpa Risiko Finansial.
                     </h2>
                     <p className="mt-4 text-orange-100 text-sm leading-relaxed max-w-2xl mx-auto">
-                        Kami rekayasa arsitektur chat WhatsApp Resmi (Meta WABA Cloud API) dan integrasi hardware di 1 cabang Anda selama 7 hari. Bebas risiko pemblokiran nomor, tanpa biaya langganan jika sistem gagal mengoptimalkan waktu operasional Anda.
+                        Kami rekayasa arsitektur chat WhatsApp (Meta WABA Cloud API) dan integrasi hardware di 1 cabang Anda selama 7 hari. Dirancang untuk penggunaan WhatsApp Business Platform yang compliant dan terukur dengan model Bring Your Own Key (BYOK), tanpa biaya langganan jika sistem gagal mengoptimalkan waktu operasional Anda.
                     </p>
                     <div className="mt-8 flex justify-center">
                         <a
@@ -367,7 +367,7 @@ export default function AppPortalPage() {
 
             {/* Footer */}
             <footer className="border-t border-slate-200 py-10 bg-white text-center text-xs text-slate-500">
-                <p>&copy; 2026 BoonTrack Apps. Dioperasikan oleh PT Envirotech Multi Core. Seluruh hak cipta dilindungi.</p>
+                <p>&copy; 2026 BoonTrack Apps. Dioperasikan oleh PT Boontrack Inovasi Digital. Seluruh hak cipta dilindungi.</p>
             </footer>
         </div>
     );

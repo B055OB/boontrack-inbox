@@ -34,7 +34,7 @@ export default function Footer({ referralCode }: FooterProps) {
               </div>
             </Link>
             <p className="text-slate-400 text-xs leading-relaxed max-w-sm">
-              Sistem operasi WhatsApp Commerce &amp; etalase toko online otomatis dengan checkout QRIS standar Bank Indonesia dan sinkronisasi server-side Meta Conversions API.
+              Sistem operasi WhatsApp Commerce &amp; etalase toko online otomatis dengan checkout QRIS langsung toko dan sinkronisasi server-side Meta Conversions API.
             </p>
             <div className="pt-1 flex items-center gap-2 text-[11px] text-slate-400 font-mono">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -66,7 +66,7 @@ export default function Footer({ referralCode }: FooterProps) {
               <li><a href="#vertikal" className="hover:text-blue-400 transition">F&amp;B, Resto &amp; Kuliner</a></li>
               <li><a href="#vertikal" className="hover:text-blue-400 transition">Jasa Lapangan &amp; Teknisi</a></li>
               <li><a href="#vertikal" className="hover:text-blue-400 transition">Profesi, Legal &amp; Agensi</a></li>
-              <li><a href="#vertikal" className="hover:text-blue-400 transition">Kreator &amp; Affiliate</a></li>
+              <li><a href="#vertikal" className="hover:text-blue-400 transition">Kreator &amp; Endorsement</a></li>
             </ul>
           </div>
 

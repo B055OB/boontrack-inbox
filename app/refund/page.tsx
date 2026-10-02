@@ -13,7 +13,7 @@ const TOC = [
   { id: "transaksi-konsumen", label: "Kebijakan Transaksi Belanja Konsumen Toko" },
   { id: "prosedur-retur-merchant", label: "Prosedur Retur & Komplain kepada Merchant" },
   { id: "sengketa-chargeback", label: "Penanganan Sengketa Pembayaran & Mitigasi Fraud" },
-  { id: "penahanan-payout", label: "Ketentuan Penahanan Pencairan Dana (Payout Hold)" },
+  { id: "penahanan-payout", label: "Ketentuan Penahanan Pencairan Dana (Payment Provider Settlement / Payout Hold)" },
   { id: "jalur-mediasi", label: "Jalur Bantuan & Mediasi Resmi" },
 ];
 
@@ -116,14 +116,14 @@ export default function RefundPage() {
         </div>
       </section>
 
-      {/* 5. Penahanan Payout */}
+      {/* 5. Payment Provider Settlement / Payout Hold */}
       <section id="penahanan-payout" className="space-y-3 pt-4">
         <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-2">
           <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">5</span>
-          Ketentuan Penahanan Pencairan Dana (Payout Hold)
+          Ketentuan Penahanan Pencairan Dana (Payment Provider Settlement / Payout Hold)
         </h2>
         <p className="text-xs text-slate-600 leading-relaxed">
-          BoonTrack dan mitra payment gateway berhak melakukan pembekuan sementara atau penahanan pencairan saldo toko (escrow hold) selama 14 sampai 60 hari kerja apabila terdeteksi laporan sengketa massal dari konsumen, indikasi toko fiktif, atau aktivitas yang berpotensi melanggar hukum, hingga proses investigasi tuntas.
+          Payment Provider Settlement / Payout Hold: Penundaan pencairan dana atau investigasi transaksi mengikuti kebijakan dan status resmi dari penyedia pembayaran. BoonTrack bukan merupakan kustodian atau penampung dana. Pembekuan sementara atau penahanan pencairan saldo toko (payout hold) dilakukan oleh mitra payment gateway berizin resmi selama 14 sampai 60 hari kerja apabila terdeteksi laporan sengketa massal dari konsumen, indikasi toko fiktif, atau aktivitas yang berpotensi melanggar hukum, hingga proses investigasi tuntas.
         </p>
       </section>
 

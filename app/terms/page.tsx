@@ -13,7 +13,7 @@ const TOC = [
   { id: "bukan-pihak-jual-beli", label: "Kedudukan Transaksi Toko & Pembeli" },
   { id: "safe-harbor", label: "Pembatasan Tanggung Jawab (Safe Harbor)" },
   { id: "afiliasi-ketentuan", label: "Posisi & Etika Mitra Afiliasi (Affiliate)" },
-  { id: "escrow-chargeback", label: "Penahanan Saldo (Escrow Hold) & Chargeback" },
+  { id: "escrow-chargeback", label: "Payment Provider Settlement / Payout Hold & Chargeback" },
   { id: "kewajiban-merchant", label: "Kewajiban Pengguna & Merchant" },
   { id: "hak-kekayaan-intelektual", label: "Hak Kekayaan Intelektual" },
   { id: "pengaduan-pmse", label: "Layanan Pengaduan Konsumen (PMSE Kemendag)" },
@@ -141,18 +141,18 @@ export default function TermsPage() {
         </ul>
       </section>
 
-      {/* 5. Penahanan Saldo & Chargeback */}
+      {/* 5. Payment Provider Settlement / Payout Hold & Chargeback */}
       <section id="escrow-chargeback" className="space-y-3 pt-4">
         <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-2">
           <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">5</span>
-          Penahanan Saldo Penarikan (Escrow Hold) & Chargeback
+          Payment Provider Settlement / Payout Hold &amp; Chargeback
         </h2>
         <p>
           Demi menjaga keamanan ekosistem pembayaran elektronik nasional dan mencegah aktivitas pencucian uang (AML) serta penipuan:
         </p>
         <div className="space-y-2 text-xs text-slate-600">
           <p>
-            <strong>Hak Diskresi Penahanan Dana (Escrow Hold):</strong> BoonTrack dan lembaga mitra payment gateway berhak menahan dana transaksi atau menunda proses penarikan saldo (payout) Merchant dalam hal:
+            <strong>Payment Provider Settlement / Payout Hold:</strong> Penundaan pencairan dana atau investigasi transaksi mengikuti kebijakan dan status resmi dari penyedia pembayaran. BoonTrack bukan merupakan bank, lembaga keuangan perantara, maupun kustodian/penampung dana. Penundaan pencairan dana atau penahanan saldo penarikan (payout hold) dilakukan oleh mitra payment gateway/provider berizin resmi dalam hal:
           </p>
           <ul className="list-disc pl-5 space-y-1">
             <li>Ditemukan lonjakan transaksi yang tidak wajar (anomali volume).</li>

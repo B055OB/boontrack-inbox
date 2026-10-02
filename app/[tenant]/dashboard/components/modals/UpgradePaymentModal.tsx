@@ -513,14 +513,14 @@ export default function UpgradePaymentModal({
       checkout_lite: [
         'Single Page Checkout siap jual',
         'Maks 3 produk aktif (fisik & digital)',
-        'QRIS Dinamis 0% MDR',
+        'QRIS Dinamis (Langsung Toko)',
         'Notifikasi order WhatsApp ringkas',
         'Basic Browser Pixel tracking',
       ],
       solo: [
         'Storefront mandiri katalog tanpa batas',
         'Kalkulasi ongkir multi-ekspedisi otomatis',
-        'QRIS Dinamis 0% MDR + Bot auto-reply dasar',
+        'QRIS Dinamis (Langsung Toko) + Bot auto-reply dasar',
         'Manajemen stok real-time & laporan lengkap',
         'Custom branding toko & link bio',
       ],

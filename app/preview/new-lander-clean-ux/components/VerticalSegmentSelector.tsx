@@ -141,23 +141,23 @@ const VERTICALS: VerticalConfig[] = [
   },
   {
     id: 'creator',
-    name: 'Kreator & Affiliate',
-    badge: 'Affiliate & Makelar Luar',
+    name: 'Kreator & Endorsement',
+    badge: 'Kreator & Rekomendasi',
     icon: Video,
     tagline: 'Bypass Checkout ke Shopee, TikTok, Mayar & Sejoli',
-    description: 'Maksimalkan komisi affiliate konten kreator. Etalase produk affiliate langsung mengarahkan pembeli ke link mitra tanpa keranjang belanja yang memperlambat alur.',
+    description: 'Etalase rekomendasi produk untuk konten kreator & influencer. Tombol langsung mengarahkan audiens ke link sponsor atau toko eksternal secara mulus.',
     features: [
       'Bypass checkout langsung ke link eksternal (Shopee/TikTok/Sejoli)',
       'Trigger event Meta Pixel InitiateCheckout otomatis saat tombol diklik',
       'Custom label tombol CTA dinamis (e.g. Akses Sekarang, Beli di Shopee)',
       'Dukungan harga Rp0 untuk lead magnet gratis & katalog rekomendasi'
     ],
-    botTitle: 'Bot Kreator & Affiliate Engine',
+    botTitle: 'Bot Kreator & Rekomendasi',
     initialChat: {
       user: 'Kak, spill link outfit kemeja linen yang dipakai di video TikTok!',
       bot: 'Ini kak kemeja linen premiumnya! Lagi ada diskon 40% di etalase rekomendasi saya.',
       quickReplies: ['Beli di Shopee (Diskon 40%)', 'Lihat Koleksi Celana', 'Join VIP Telegram'],
-      actionDetail: 'Alur: Klik CTA -> Trigger InitiateCheckout Pixel -> Direct redirect ke link affiliate eksternal.'
+      actionDetail: 'Alur: Klik CTA -> Trigger InitiateCheckout Pixel -> Direct redirect ke link produk eksternal.'
     }
   }
 ];

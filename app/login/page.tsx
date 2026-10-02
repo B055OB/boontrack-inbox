@@ -406,9 +406,9 @@ export default function MerchantLoginPage() {
                 <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <Key className="w-3.5 h-3.5 text-slate-400" />
-                    <span>PIN / Password Akses</span>
+                    <span>Password Akses</span>
                   </span>
-                  <span className="text-[10px] text-slate-500 font-normal">6 Digit / Karakter</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Minimal 8 Karakter</span>
                 </label>
                 <div className="relative">
                   <input

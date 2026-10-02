@@ -424,7 +424,7 @@ export default function ReaderIntegrationCard({
                 Integrasi HP Reader (Automasi Mutasi)
               </h3>
               <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
-                0% MDR • Bebas Potongan
+                Verifikasi Otomatis • Bebas Potongan Marketplace
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -852,7 +852,7 @@ export default function ReaderIntegrationCard({
                     Panduan &amp; Pasang BoonTrack Reader
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Verifikasi mutasi QRIS otomatis 100% tanpa biaya perantara (0% MDR)
+                    Verifikasi mutasi QRIS otomatis 100% langsung ke rekening Anda
                   </p>
                 </div>
               </div>

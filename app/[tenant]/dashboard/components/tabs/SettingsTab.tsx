@@ -1105,12 +1105,12 @@ export default function SettingsTab({
         </div>
       </div>
 
-      {/* ── SEKSI QRIS TOKO RESMI (0% MDR) ── */}
+      {/* ── SEKSI QRIS TOKO RESMI ── */}
       <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 font-bold text-slate-800">
             <QrCode className="w-4 h-4 text-emerald-600" />
-            <span>QRIS Toko Resmi (0% MDR)</span>
+            <span>QRIS Toko Resmi</span>
           </div>
           {storeQrisUrl ? (
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">

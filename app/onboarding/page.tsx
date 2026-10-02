@@ -55,7 +55,7 @@ export default function OnboardingHubPage() {
           Inisialisasi Toko Online &amp; WhatsApp Commerce Anda
         </h1>
         <p className="text-sm sm:text-base text-slate-600 mt-3 max-w-lg leading-relaxed">
-          Aktifkan etalase instan, integrasi bot kasir WhatsApp otomatis, dan pembayaran QRIS berizin resmi Bank Indonesia dalam kurang dari 2 menit.
+          Aktifkan etalase instan, integrasi bot kasir WhatsApp otomatis, dan Dynamic QRIS melalui mitra payment provider resmi sesuai ketentuan yang berlaku dalam kurang dari 2 menit.
         </p>
 
         <div className="mt-8 w-full max-w-md space-y-3">
@@ -80,7 +80,7 @@ export default function OnboardingHubPage() {
         <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-lg text-left">
           <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
             <ShieldCheck className="w-5 h-5 text-emerald-600 mb-1.5" />
-            <h4 className="text-xs font-black text-slate-900">QRIS Resmi Bank Indonesia</h4>
+            <h4 className="text-xs font-black text-slate-900">Dynamic QRIS Mitra Resmi</h4>
             <p className="text-[11px] text-slate-500 mt-0.5">Dana masuk langsung ke rekening bank pemilik toko.</p>
           </div>
           <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs">
