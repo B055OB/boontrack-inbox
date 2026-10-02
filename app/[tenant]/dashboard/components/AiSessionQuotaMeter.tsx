@@ -12,6 +12,7 @@ import {
   Layers,
   ArrowRight,
   ShieldAlert,
+  Calendar,
 } from 'lucide-react';
 
 interface QuotaData {
@@ -25,6 +26,8 @@ interface QuotaData {
   is_low: boolean;
   is_depleted: boolean;
   fallback_mode: boolean;
+  current_period_ends_at?: string | null;
+  days_remaining?: number;
 }
 
 interface AiSessionQuotaMeterProps {
@@ -119,12 +122,16 @@ export default function AiSessionQuotaMeter({
   };
 
 
-  const displayTier = tierName || quota?.tier || 'STARTER';
-  const remaining = quota?.remaining_sessions ?? 150;
-  const total = quota?.total_quota ?? 150;
-  const percentage = quota?.percentage ?? 100;
-  const isDepleted = quota?.is_depleted ?? false;
-  const isLow = quota?.is_low ?? false;
+  const displayTier = (quota?.tier || tierName || 'STARTER').toUpperCase();
+  const isEnterprise = displayTier.includes('ENTERPRISE') || displayTier.includes('TEAM');
+  const isStarter = displayTier.includes('STARTER') || displayTier.includes('SOLO') || displayTier.includes('LITE');
+  const defaultBaseQuota = isEnterprise ? 600 : isStarter ? 0 : 300;
+
+  const remaining = quota?.remaining_sessions ?? defaultBaseQuota;
+  const total = quota?.total_quota ?? defaultBaseQuota;
+  const percentage = quota?.percentage ?? (total > 0 ? Math.round((remaining / total) * 100) : 0);
+  const isDepleted = quota?.is_depleted ?? (total === 0 || remaining <= 0);
+  const isLow = quota?.is_low ?? (total > 0 && remaining <= Math.ceil(total * 0.2));
 
   // Visual styling based on quota health
   const getProgressColor = () => {
@@ -171,6 +178,11 @@ export default function AiSessionQuotaMeter({
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
                     Paket {displayTier}
                   </span>
+                  {quota?.days_remaining !== undefined && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                      {quota.days_remaining > 0 ? `Reset ${quota.days_remaining} hari lagi` : 'Reset hari ini'}
+                    </span>
+                  )}
                   {isDepleted && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
                       Fallback Assistant Mode
@@ -183,9 +195,11 @@ export default function AiSessionQuotaMeter({
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  {isDepleted
+                  {isStarter && total === 0
+                    ? 'Paket Solo/Starter beroperasi dalam mode Auto-Reply deterministik (0 Sesi AI). Upgrade ke Ads Performance (300 sesi) atau Team Scale (600 sesi) untuk AI cerdas.'
+                    : isDepleted
                     ? 'Kuota sesi AI habis. Bot saat ini otomatis beroperasi dalam mode Menu Interaktif Statis (0-token).'
-                    : `Digunakan untuk melayani calon pembeli secara proaktif & kontekstual via WhatsApp.`}
+                    : 'Digunakan untuk melayani calon pembeli secara proaktif & kontekstual via WhatsApp.'}
                 </p>
               </div>
             </div>
@@ -206,6 +220,22 @@ export default function AiSessionQuotaMeter({
                   style={{ width: `${Math.max(4, percentage)}%` }}
                 />
               </div>
+              {quota?.current_period_ends_at && (
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium pt-0.5">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>
+                    Siklus Kuota 30 Hari: Reset pada{' '}
+                    <strong className="text-slate-700 font-bold">
+                      {new Date(quota.current_period_ends_at).toLocaleDateString('id-ID', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </strong>
+                    {quota.days_remaining !== undefined && ` (${quota.days_remaining} hari tersisa)`}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

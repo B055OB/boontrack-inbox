@@ -195,6 +195,76 @@ Ekosistem BoonTrack (frontend registrasi, gateway onboarding, billing Xendit, da
   - Ketika akun berada di status tanpa entitlement bot (misal: mode dasar atau promo habis), backend worker wajib menonaktifkan panggilan ke AI/WhatsApp secara otomatis tanpa merusak data katalog dan riwayat pesanan.
 - **Identity & Fraud Guard**: Pencegahan eksploitasi promo berulang berbasis identitas bernilai riil (verifikasi nomor WhatsApp unik dan rekening payout bank).
 
+### 5.2 Subscription & Billing Lifecycle Domain (Sprint H+1 Multi-Duration Standard)
+
+#### 5.2.1 Relational Schema & Table Invariants (`shop_subscriptions`)
+Seluruh siklus hidup langganan berbayar toko merchant dikelola secara deterministik melalui tabel relasional `shop_subscriptions` di Supabase PostgreSQL:
+
+```sql
+CREATE TYPE public.subscription_tier AS ENUM ('STARTER', 'PRO_SCALE', 'ENTERPRISE');
+CREATE TYPE public.subscription_status AS ENUM ('TRIAL', 'ACTIVE', 'GRACE_PERIOD', 'EXPIRED');
+
+CREATE TABLE public.shop_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+    tier public.subscription_tier NOT NULL DEFAULT 'STARTER',
+    duration_months INT NOT NULL DEFAULT 1 CHECK (duration_months IN (1, 6, 12)),
+    starts_at TIMESTAMPTZ NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Jakarta'),
+    current_period_starts_at TIMESTAMPTZ NOT NULL DEFAULT (now() AT TIME ZONE 'Asia/Jakarta'),
+    current_period_ends_at TIMESTAMPTZ NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    status public.subscription_status NOT NULL DEFAULT 'TRIAL',
+    invoice_id TEXT NULL,
+    amount_paid NUMERIC DEFAULT 0,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT (now() AT TIME ZONE 'Asia/Jakarta'),
+    updated_at TIMESTAMPTZ DEFAULT (now() AT TIME ZONE 'Asia/Jakarta')
+);
+
+CREATE INDEX idx_shop_subscriptions_tenant_status ON public.shop_subscriptions (tenant_id, status);
+CREATE INDEX idx_shop_subscriptions_period_ends ON public.shop_subscriptions (current_period_ends_at);
+CREATE INDEX idx_shop_subscriptions_tenant_id ON public.shop_subscriptions (tenant_id);
+CREATE INDEX idx_shop_subscriptions_expires_at ON public.shop_subscriptions (expires_at);
+```
+
+- **Multi-Tenancy Isolation & Cascading**: `tenant_id` berelasi langsung ke `public.tenants(id)` dengan `ON DELETE CASCADE`. Setiap penghapusan atau migrasi data tenant terisolasi secara aman.
+- **Row Level Security (RLS)**:
+  * RLS diaktifkan (`ENABLE ROW LEVEL SECURITY`).
+  * `service_role` memiliki full access tanpa batas untuk background worker, billing gateway, dan automation cron.
+  * Autentikasi tenant dipagari policy isolasi: merchant hanya dapat membaca data langganan miliknya (`tenant_id = auth.uid()` atau subquery tenant yang terverifikasi).
+- **Timezone Invariant**: Seluruh kolom datetime (`starts_at`, `current_period_starts_at`, `current_period_ends_at`, `expires_at`, `created_at`, `updated_at`) berpedoman wajib pada zona waktu **Asia/Jakarta (+07:00 / WIB)**.
+
+#### 5.2.2 Multi-Duration Pricing Matrix & Billing Terms
+
+Ekosistem mendukung tiga opsi durasi komitmen langganan: **1 Bulan**, **6 Bulan** (Hemat 10%), dan **12 Bulan** (Hemat 20%):
+
+| Tier Komersial | Tier Enum | 1 Bulan (Normal) | 6 Bulan (Diskon 10%) | 12 Bulan (Diskon 20%) | Hak Akses Utama |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Solo / Starter** | `STARTER` | Rp 199.000 / bln | Rp 1.074.600 *(Rp 179.100/bln)* | Rp 1.910.400 *(Rp 159.200/bln)* | Storefront mandiri, katalog tanpa batas, cek ongkir multi-ekspedisi, QRIS dinamis, auto-reply dasar. |
+| **Ads Performance** | `PRO_SCALE` | Rp 299.000 / bln | Rp 1.614.600 *(Rp 269.100/bln)* | Rp 2.870.400 *(Rp 239.200/bln)* | Semua fitur Starter + Server-Side CAPI (Meta & TikTok), God Button konversi, 2 Seats CS Inbox, Advanced Analytics. |
+| **Team Scale** | `ENTERPRISE` | Rp 499.000 / bln | Rp 2.694.600 *(Rp 449.100/bln)* | Rp 4.790.400 *(Rp 399.200/bln)* | Semua fitur Pro Scale + Unlimited CS Seats, Official Meta Cloud API (WABA), Broadcast WA, Custom Domain + SSL. |
+
+#### 5.2.3 Arsitektur Monthly Reset Window (30 Hari Kalender) & Kuota Sesi AI
+
+BoonTrack memisahkan **Durasi Kontrak Langganan (`expires_at`)** dengan **Siklus Reset Kuota Sesi AI (`current_period_ends_at`)**:
+
+1. **Jendela Reset 30 Hari Kalender**:
+   - Terlepas dari durasi komitmen merchant (baik 1, 6, atau 12 bulan), kuota dasar percakapan AI bot di-reset setiap **30 hari kalender deterministik** (+30 hari dari `current_period_starts_at`).
+   - Setiap kali `now() >= current_period_ends_at` dan status kontrak masih `ACTIVE`, background worker memajukan `current_period_starts_at` dan menghitung ulang `current_period_ends_at` (+30 hari) serta mereset pemakaian kuota dasar sesi AI.
+2. **Alokasi Kuota Sesi AI per Tier**:
+   - `STARTER`: **0 Sesi AI** (Hanya mendukung pesan selamat datang & menu cepat deterministik non-LLM).
+   - `PRO_SCALE`: **300 Sesi AI / 30 hari kalender**.
+   - `ENTERPRISE`: **600 Sesi AI / 30 hari kalender**.
+3. **Session TTL Invariant (2 Jam Inaktivitas)**:
+   - Satu sesi percakapan AI didefinisikan dengan batas waktu inaktivitas (*TTL / Time-to-Live*) selama **2 jam**.
+   - Seluruh interaksi pesan masuk dan balasan AI antara pembeli dan toko dalam kurun waktu 2 jam sejak pesan terakhir dihitung sebagai **1 sesi yang sama** (tidak memotong kuota berulang kali per bubble chat).
+   - Jika pembeli kembali mengirim pesan setelah 2 jam inaktivitas, sesi baru terbentuk dan 1 kuota sesi dipotong.
+4. **Top-Up Kuota Overage**:
+   - Merchant dapat membeli kuota tambahan kapan saja (+100 sesi @ Rp 49.000, +250 sesi @ Rp 99.000).
+   - Kuota top-up overage bersifat persisten dan tidak hangus saat siklus reset 30 hari terjadi.
+5. **Circuit Breaker / Depleted Fallback**:
+   - Ketika kuota sesi habis (0), sistem secara otomatis mengaktifkan mode **Fallback Assistant Mode (Menu Statis)** agar percakapan tetap dilayani dengan menu tombol WhatsApp tanpa menyebabkan kegagalan API LLM ataupun pembengkakan biaya.
+
 ---
 
 ## 6. Media Storage

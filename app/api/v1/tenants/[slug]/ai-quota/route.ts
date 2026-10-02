@@ -1,16 +1,18 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 
+import { getTierAiSessionQuota } from '@/lib/subscriptions/entitlement';
+import { SubscriptionTier } from '@/lib/subscriptions/types';
+
 export function resolveBaselineQuota(tier: string | undefined | null): number {
-  if (!tier) return 150;
+  if (!tier) return 0;
   const t = tier.toUpperCase();
-  if (t === 'ENTERPRISE' || t === 'TEAM_SCALE') return 600;
-  if (t === 'PRO_SCALE' || t === 'ADS_PERFORMANCE') return 300;
-  if (t === 'STARTER' || t === 'SOLO') return 150;
-  if (t === 'CHECKOUT_LITE' || t === 'LITE') return 50;
-  return 150;
+  if (t.includes('ENTERPRISE') || t.includes('TEAM')) return 600;
+  if (t.includes('PRO') || t.includes('ADS') || t.includes('PERFORMANCE') || t.includes('SCALE')) return 300;
+  if (t.includes('STARTER') || t.includes('SOLO') || t.includes('LITE')) return 0;
+  return 0;
 }
 
 export async function GET(
@@ -21,10 +23,10 @@ export async function GET(
     const { slug: rawSlug } = await params;
     const slug = normalizeTenantSlug(rawSlug || '');
 
-    const supabase = getSupabase();
+    const supabase = getSupabaseAdmin() || getSupabase();
     const { data: tenant, error } = await supabase
       .from('tenants')
-      .select('id, slug, name, tier, metadata')
+      .select('id, slug, name, tier, subscription_tier, subscription_status, metadata')
       .eq('slug', slug)
       .maybeSingle();
 
@@ -36,11 +38,39 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
+    // Query active subscription from shop_subscriptions
+    let activeSub: any = null;
+    try {
+      const { data: subData } = await supabase
+        .from('shop_subscriptions')
+        .select('id, tier, current_period_starts_at, current_period_ends_at, expires_at, status')
+        .eq('tenant_id', tenant.id)
+        .eq('status', 'ACTIVE')
+        .order('expires_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      activeSub = subData;
+    } catch {}
+
     const metadata = tenant.metadata || {};
-    const tier = String(tenant.tier || metadata.plan_tier || 'STARTER').toUpperCase();
-    const baseQuota = resolveBaselineQuota(tier);
+    const effectiveTier = (
+      activeSub?.tier ||
+      tenant.subscription_tier ||
+      tenant.tier ||
+      metadata.subscription?.tier ||
+      metadata.plan_tier ||
+      'STARTER'
+    ).toUpperCase();
+    const baseQuota = resolveBaselineQuota(effectiveTier);
     const overageQuota = Number(metadata.overage_sessions || 0);
     const totalQuota = baseQuota + overageQuota;
+
+    const currentPeriodEndsAt = activeSub?.current_period_ends_at || metadata.subscription?.current_period_ends_at || null;
+    let daysRemaining = 0;
+    if (currentPeriodEndsAt) {
+      const diffMs = new Date(currentPeriodEndsAt).getTime() - Date.now();
+      daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    }
 
     // Single Source of Truth: Check live sessions_remaining from database
     let remainingSessions: number;
@@ -57,13 +87,13 @@ export async function GET(
     }
 
     const percentage = totalQuota > 0 ? Math.min(100, Math.round((remainingSessions / totalQuota) * 100)) : 0;
-    const isLow = remainingSessions <= Math.ceil(totalQuota * 0.2);
+    const isLow = totalQuota > 0 && remainingSessions <= Math.ceil(totalQuota * 0.2);
     const isDepleted = remainingSessions <= 0;
 
     return NextResponse.json(
       {
         success: true,
-        tier,
+        tier: effectiveTier,
         base_quota: baseQuota,
         overage_quota: overageQuota,
         total_quota: totalQuota,
@@ -73,6 +103,8 @@ export async function GET(
         is_low: isLow,
         is_depleted: isDepleted,
         fallback_mode: isDepleted,
+        current_period_ends_at: currentPeriodEndsAt,
+        days_remaining: daysRemaining,
       },
       {
         headers: {

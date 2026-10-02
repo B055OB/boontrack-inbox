@@ -9,6 +9,8 @@ import { checkTrialQuota } from '@/lib/entitlements/trial-guard';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { parseDanaNotification, validateOrderPaymentMatch } from '@/lib/payment/dana-reader';
+import { activateShopSubscription } from '@/lib/subscriptions/service';
+import { SubscriptionTier, SubscriptionDurationMonths } from '@/lib/subscriptions/types';
 
 // In-memory diagnostic logs ring buffer (stores up to 50 latest webhook calls)
 export interface WebhookLogEntry {
@@ -191,9 +193,11 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   const isDirectPaid =
     rawStatus === 'PAID' ||
     rawStatus === 'SETTLED' ||
+    rawStatus === 'SETTLEMENT' ||
     rawStatus === 'SUCCESS' ||
     rawStatus === 'COMPLETED' ||
-    rawStatus === 'MUTATION_MATCHED';
+    rawStatus === 'MUTATION_MATCHED' ||
+    (rawStatus === 'CAPTURE' && (!rawBody.fraud_status || String(rawBody.fraud_status).toLowerCase() === 'accept'));
 
   // 3. Ekstraksi Notifikasi Teks (dari BoonTrack Reader APK Android)
   // FIX(2026-09-19): Ternary operator precedence bug - rawBody.title ? ... mengevaluasi
@@ -262,6 +266,201 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     return NextResponse.json(errorRes, { status: 500 });
   }
 
+  // ── SPECIAL HANDLER: SUBSCRIPTION INVOICE ACTIVATION (order_id starting with SUB-) ──
+  const potentialSubOrderId = String(
+    rawBody.order_id ||
+    rawBody.external_id ||
+    rawBody.id ||
+    rawBody.invoice_id ||
+    rawBody.reference_id ||
+    rawBody.bill_no ||
+    directOrderId ||
+    searchParams.get('order_id') ||
+    ''
+  ).trim();
+
+  const isSubOrder =
+    potentialSubOrderId.toUpperCase().startsWith('SUB-') ||
+    potentialSubOrderId.toLowerCase().startsWith('sub_') ||
+    potentialSubOrderId.toLowerCase().startsWith('sub-');
+
+  if (isSubOrder && isDirectPaid) {
+    console.log(`[Webhook Reader ${logId}] Subscription payment detected for order #${potentialSubOrderId}. Activating subscription...`);
+
+    const subInvoiceId = String(
+      rawBody.invoice_id ||
+      rawBody.id ||
+      rawBody.external_id ||
+      potentialSubOrderId
+    );
+
+    const subAmountPaid = explicitAmount > 0
+      ? explicitAmount
+      : (parsedAmount || Number(rawBody.amount || rawBody.gross_amount || rawBody.total || 0));
+
+    // Resolve tenant identifier
+    let subTenantId = rawBody.tenant_id || rawBody.tenantId || rawBody.metadata?.tenant_id || rawBody.metadata?.tenantId || null;
+    let subTenantSlug = tenantSlug || rawBody.tenant_slug || rawBody.metadata?.tenant_slug || null;
+
+    // Check if there is a pending subscription record in shop_subscriptions
+    let pendingSub: any = null;
+    try {
+      const { data } = await supabase
+        .from('shop_subscriptions')
+        .select('*')
+        .or(`invoice_id.eq.${subInvoiceId},invoice_id.eq.${potentialSubOrderId}`)
+        .limit(1)
+        .maybeSingle();
+      pendingSub = data;
+    } catch {}
+
+    if (pendingSub) {
+      if (!subTenantId) subTenantId = pendingSub.tenant_id;
+      if (!subTenantSlug) subTenantSlug = pendingSub.tenant_slug;
+    }
+
+    if (!subTenantId && !subTenantSlug && potentialSubOrderId.includes('-')) {
+      const parts = potentialSubOrderId.split('-');
+      if (parts[1]) {
+        subTenantSlug = parts[1];
+      }
+    }
+
+    // Determine tier
+    let subTier: SubscriptionTier = 'PRO_SCALE';
+    const tierCandidate = String(
+      rawBody.tier ||
+      rawBody.plan_tier ||
+      rawBody.subscription_tier ||
+      rawBody.metadata?.tier ||
+      rawBody.metadata?.plan_tier ||
+      pendingSub?.tier ||
+      pendingSub?.plan_tier ||
+      potentialSubOrderId
+    ).toUpperCase();
+
+    if (tierCandidate.includes('ENTERPRISE') || tierCandidate.includes('TEAM')) {
+      subTier = 'ENTERPRISE';
+    } else if (tierCandidate.includes('STARTER') || tierCandidate.includes('SOLO')) {
+      subTier = 'STARTER';
+    } else if (tierCandidate.includes('PRO') || tierCandidate.includes('ADS') || tierCandidate.includes('PERFORMANCE') || tierCandidate.includes('SCALE')) {
+      subTier = 'PRO_SCALE';
+    }
+
+    // Determine duration
+    let subDuration: SubscriptionDurationMonths = 1;
+    const durationCandidate = Number(
+      rawBody.duration_months ||
+      rawBody.durationMonths ||
+      rawBody.metadata?.duration_months ||
+      rawBody.metadata?.durationMonths ||
+      pendingSub?.duration_months ||
+      0
+    );
+
+    if (durationCandidate === 6 || durationCandidate === 12) {
+      subDuration = durationCandidate as SubscriptionDurationMonths;
+    } else if (potentialSubOrderId.includes('-6-') || potentialSubOrderId.endsWith('-6')) {
+      subDuration = 6;
+    } else if (potentialSubOrderId.includes('-12-') || potentialSubOrderId.endsWith('-12')) {
+      subDuration = 12;
+    } else if (subAmountPaid >= 4000000 || subAmountPaid === 2870400 || subAmountPaid === 1910400) {
+      subDuration = 12;
+    } else if (subAmountPaid >= 1000000 || subAmountPaid === 1614600 || subAmountPaid === 1074600) {
+      subDuration = 6;
+    }
+
+    // Execute activation via activateShopSubscription
+    const activationResult = await activateShopSubscription(
+      {
+        tenantId: subTenantId || undefined,
+        tenantSlug: subTenantSlug || undefined,
+        tier: subTier,
+        durationMonths: subDuration,
+        invoiceId: subInvoiceId,
+        amountPaid: subAmountPaid,
+        metadata: {
+          ...(rawBody.metadata || {}),
+          provider: detectedApp || 'gateway',
+          order_id: potentialSubOrderId,
+          activated_via: 'webhook',
+        },
+      },
+      supabase
+    );
+
+    // Also update any matching record in orders table if present
+    try {
+      await supabase
+        .from('orders')
+        .update({
+          status: 'PAID',
+          payment_status: 'PAID',
+          paid_at: new Date().toISOString(),
+        })
+        .eq('id', potentialSubOrderId);
+    } catch {}
+
+    const subResponse = {
+      success: activationResult.success,
+      message: activationResult.success
+        ? `Subscription for order #${potentialSubOrderId} successfully activated.`
+        : `Subscription activation error: ${activationResult.error}`,
+      subscription: activationResult.subscription,
+      already_paid: activationResult.isExisting,
+      order_id: potentialSubOrderId,
+      log_id: logId,
+    };
+
+    addWebhookLog({
+      id: logId,
+      timestamp: new Date().toISOString(),
+      endpoint: endpointSource,
+      method: 'POST',
+      headers: headersObj,
+      rawBody,
+      parsedAmount: subAmountPaid,
+      detectedApp,
+      tenantSlug: activationResult.tenantSlug || subTenantSlug,
+      matchedOrderId: potentialSubOrderId,
+      matchStrategy: 'subscription_activation',
+      resultStatus: activationResult.success ? 200 : 400,
+      resultBody: subResponse,
+    });
+
+    return NextResponse.json(subResponse, {
+      status: activationResult.success ? 200 : 400,
+    });
+  } else if (isSubOrder) {
+    // Subscription webhook received but payment status is not settled / paid (e.g. PENDING, EXPIRED, FAILED)
+    console.log(`[Webhook Reader ${logId}] Subscription order #${potentialSubOrderId} received with status '${rawStatus || 'PENDING'}'. Activation skipped.`);
+    const skippedRes = {
+      success: true,
+      message: `Subscription order #${potentialSubOrderId} status is '${rawStatus || 'PENDING'}'. Activation skipped.`,
+      order_id: potentialSubOrderId,
+      status: rawStatus || 'PENDING',
+      log_id: logId,
+    };
+
+    addWebhookLog({
+      id: logId,
+      timestamp: new Date().toISOString(),
+      endpoint: endpointSource,
+      method: 'POST',
+      headers: headersObj,
+      rawBody,
+      parsedAmount,
+      detectedApp,
+      tenantSlug,
+      matchedOrderId: potentialSubOrderId,
+      matchStrategy: 'subscription_skipped_unpaid',
+      resultStatus: 200,
+      resultBody: skippedRes,
+    });
+
+    return NextResponse.json(skippedRes, { status: 200 });
+  }
+
   let matchedOrder: any = null;
   let matchStrategy = 'none';
 
@@ -280,10 +479,10 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
   }
 
   // JALUR 2: Pencocokan berbasis Nominal Notifikasi Reader (BoonTrack Reader APK)
-  // Dilengkapi toleransi timing (3x retry dengan delay 1.5 detik jika frontend checkout terlambat insert)
-  if (!matchedOrder && parsedAmount && parsedAmount > 0) {
+  // Dilengkapi toleransi timing (3x retry jika frontend checkout terlambat insert)
+  if (!matchedOrder && !directOrderId && parsedAmount && parsedAmount > 0) {
     const MAX_RETRIES = 3;
-    const RETRY_DELAY_MS = 1500;
+    const RETRY_DELAY_MS = process.env.NODE_ENV === 'test' ? 10 : 1500;
 
     for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
       console.log(`[Webhook Reader ${logId}] Mencari order dengan nominal ${parsedAmount} (Tenant: ${tenantSlug || 'ALL'}, Percobaan ${attempt}/${MAX_RETRIES + 1})...`);

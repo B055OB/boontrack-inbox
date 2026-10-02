@@ -40,6 +40,7 @@ export const VALID_ORDER_COLUMNS = new Set<string>([
   'quantity',
   'unit_price',
   'is_archived',
+  'subscription_id',
   'metadata',
   'created_at',
   'updated_at',
