@@ -20,8 +20,10 @@ import {
   ExternalLink,
   Key,
   X,
+  Store,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getStoreShippingConfig, saveStoreShippingConfig } from '@/lib/shipping/self-pickup';
 
 interface BiteshipCourierConfigProps {
   tenantSlug: string;
@@ -82,6 +84,13 @@ export default function BiteshipCourierConfig({
   const [couriers, setCouriers] = useState<CourierItem[]>(DEFAULT_COURIERS);
   const [autoPickup, setAutoPickup] = useState(true);
   const [freeShippingThreshold, setFreeShippingThreshold] = useState<number>(0);
+
+  // Self-Pickup (Ambil Sendiri di Toko) State
+  const [isSelfPickupEnabled, setIsSelfPickupEnabled] = useState(false);
+  const [useOriginAsPickup, setUseOriginAsPickup] = useState(true);
+  const [pickupAddress, setPickupAddress] = useState('');
+  const [pickupMapsUrl, setPickupMapsUrl] = useState('');
+  const [pickupInstructions, setPickupInstructions] = useState('Buka jam 09.00 - 21.00 WIB');
 
   // Rate Simulator State
   const [calcDestCity, setCalcDestCity] = useState('Bandung');
@@ -166,6 +175,22 @@ export default function BiteshipCourierConfig({
             setLincahApiKeyReadOnly((prev) => prev || tLincah.api_key_read_only || tLincah.secret || '');
             setIsLincahConnected(true);
           }
+
+          // Load universal self-pickup configuration
+          const storeShipping = await getStoreShippingConfig(tenantSlug, supabase);
+          if (storeShipping) {
+            setIsSelfPickupEnabled(storeShipping.is_self_pickup_enabled);
+            if (storeShipping.pickup_address) {
+              setPickupAddress(storeShipping.pickup_address);
+              setUseOriginAsPickup(storeShipping.pickup_address === (storeShipping.origin_address || originAddress));
+            }
+            if (storeShipping.pickup_maps_url) {
+              setPickupMapsUrl(storeShipping.pickup_maps_url);
+            }
+            if (storeShipping.pickup_instructions || storeShipping.pickup_operational_hours) {
+              setPickupInstructions(storeShipping.pickup_instructions || storeShipping.pickup_operational_hours || '');
+            }
+          }
         }
       } catch (err) {
         console.warn('[Courier Config] Using default settings:', err);
@@ -185,8 +210,22 @@ export default function BiteshipCourierConfig({
     setSaving(true);
     setFeedback(null);
 
+    const effectivePickupAddress = useOriginAsPickup ? originAddress : (pickupAddress || originAddress);
+
     const payload: any = {
       is_enabled: isEnabled,
+      is_self_pickup_enabled: isSelfPickupEnabled,
+      pickup_address: effectivePickupAddress,
+      pickup_maps_url: pickupMapsUrl,
+      pickup_operational_hours: pickupInstructions,
+      pickup_instructions: pickupInstructions,
+      self_pickup: {
+        is_enabled: isSelfPickupEnabled,
+        address: effectivePickupAddress,
+        maps_url: pickupMapsUrl,
+        operational_hours: pickupInstructions,
+        instructions: pickupInstructions,
+      },
       origin: {
         sender_name: senderName,
         sender_phone: senderPhone,
@@ -229,6 +268,20 @@ export default function BiteshipCourierConfig({
             },
             { onConflict: 'tenant_slug' }
           );
+
+        // Synchronize to store_shipping_configs table
+        await saveStoreShippingConfig({
+          tenant_slug: tenantSlug,
+          is_self_pickup_enabled: isSelfPickupEnabled,
+          pickup_address: effectivePickupAddress,
+          pickup_maps_url: pickupMapsUrl,
+          pickup_operational_hours: pickupInstructions,
+          pickup_instructions: pickupInstructions,
+          origin_address: originAddress,
+          origin_city: originCity,
+          origin_district: originDistrict,
+          origin_postal_code: originPostalCode,
+        }, supabase);
       }
 
       setFeedback('✅ Pengaturan Logistik & Ekspedisi berhasil disimpan!');
@@ -910,6 +963,102 @@ export default function BiteshipCourierConfig({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* GRUP 3: AMBIL SENDIRI DI TOKO (SELF-PICKUP) */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <Store className="w-4 h-4 text-emerald-600" />
+                  <span>Ambil Sendiri di Toko (Self-Pickup)</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Izinkan pembeli mengambil langsung pesanan di toko, outlet, atau gudang Anda tanpa biaya ongkir (Gratis).
+                </p>
+              </div>
+
+              <label className="relative inline-flex items-center cursor-pointer self-start sm:self-auto">
+                <input
+                  type="checkbox"
+                  checked={isSelfPickupEnabled}
+                  onChange={(e) => setIsSelfPickupEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                <span className="ml-2.5 text-xs font-bold text-slate-700">
+                  {isSelfPickupEnabled ? 'Self-Pickup Aktif' : 'Nonaktif'}
+                </span>
+              </label>
+            </div>
+
+            {isSelfPickupEnabled && (
+              <div className="p-4 rounded-2xl bg-emerald-50/40 border border-emerald-200/80 space-y-4 animate-in fade-in">
+                {/* Checkbox: Gunakan alamat asal toko */}
+                <label className="flex items-center gap-2.5 cursor-pointer text-xs font-bold text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={useOriginAsPickup}
+                    onChange={(e) => {
+                      setUseOriginAsPickup(e.target.checked);
+                      if (e.target.checked) {
+                        setPickupAddress(originAddress);
+                      }
+                    }}
+                    className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4 border-slate-300"
+                  />
+                  <span>Gunakan alamat asal toko/gudang utama sebagai lokasi pickup</span>
+                </label>
+
+                {/* Input Alamat Pickup */}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Alamat Lengkap Lokasi Pengambilan Toko <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={useOriginAsPickup ? originAddress : pickupAddress}
+                    onChange={(e) => {
+                      setPickupAddress(e.target.value);
+                      if (useOriginAsPickup) setUseOriginAsPickup(false);
+                    }}
+                    placeholder="Contoh: Ruko Boulevard No. 12, Jl. Sudirman (Lantai 1 Counter Pickup)"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                {/* Input Google Maps Link */}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Tautan Google Maps / Titik Lokasi Toko (Opsional)
+                  </label>
+                  <input
+                    type="url"
+                    value={pickupMapsUrl}
+                    onChange={(e) => setPickupMapsUrl(e.target.value)}
+                    placeholder="Contoh: https://maps.app.goo.gl/... atau https://maps.google.com/?q=-6.917,107.619"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    💡 Link ini akan ditampilkan ke pembeli pada checkout, invoice, dan notifikasi WhatsApp (&quot;Buka Petunjuk Arah&quot;).
+                  </span>
+                </div>
+
+                {/* Textarea: Petunjuk penjemputan / jam operasional */}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Jam Operasional &amp; Petunjuk Penjemputan Pesanan
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={pickupInstructions}
+                    onChange={(e) => setPickupInstructions(e.target.value)}
+                    placeholder="Contoh: Buka jam 09.00 - 21.00 WIB. Tunjukkan pesan WhatsApp atau No. Pesanan ke kasir/staff toko."
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
         </div>

@@ -237,6 +237,13 @@ export interface OrderFulfillmentParams {
   itemsSummary: string;
   totalAmount: number;
   productType?: 'DIGITAL' | 'PHYSICAL' | string;
+  fulfillmentType?: 'PICKUP' | 'DELIVERY' | string;
+  pickupInfo?: {
+    storeName?: string;
+    address?: string;
+    mapsUrl?: string;
+    instructions?: string;
+  };
   accessUrl?: string;
   downloadUrl?: string;
   instructions?: string;
@@ -245,7 +252,7 @@ export interface OrderFulfillmentParams {
 }
 
 /**
- * Format order fulfillment message text based on product type (Digital vs Physical).
+ * Format order fulfillment message text based on product type (Digital vs Physical) and fulfillment type (Delivery vs Pickup).
  */
 export function formatOrderFulfillmentMessage({
   phone,
@@ -254,6 +261,8 @@ export function formatOrderFulfillmentMessage({
   itemsSummary,
   totalAmount,
   productType = 'DIGITAL',
+  fulfillmentType = 'DELIVERY',
+  pickupInfo,
   accessUrl,
   downloadUrl,
   instructions,
@@ -273,11 +282,33 @@ export function formatOrderFulfillmentMessage({
   const safeItems = String(itemsSummary || 'Produk Pesanan').trim();
   const normType = String(productType || 'DIGITAL').toUpperCase().trim();
   const isPhysical = normType === 'PHYSICAL' || normType === 'FISIK';
+  const isPickup = String(fulfillmentType || '').toUpperCase() === 'PICKUP';
 
   const resolvedLink = accessUrl || downloadUrl || '';
 
   let messageText = '';
-  if (isPhysical) {
+  if (isPickup) {
+    // Pesan Khusus Ambil Sendiri di Toko (Self-Pickup): Hilangkan resi, cantumkan alamat toko, maps, & instruksi operasional
+    const pickupStore = pickupInfo?.storeName || storeName;
+    const pickupAddress = pickupInfo?.address || instructions || 'Lokasi Toko';
+    const mapsSection = pickupInfo?.mapsUrl ? `\n📍 Petunjuk Arah (Google Maps):\n${pickupInfo.mapsUrl}\n` : '';
+    const operationalHours = pickupInfo?.instructions ? `\n⏰ Waktu Operasional / Instruksi:\n${pickupInfo.instructions}\n` : '';
+
+    messageText = 
+`Halo ${safeName}! 🏪
+
+Kabar baik! Pembayaran untuk pesanan #${safeOrderId} sebesar ${formattedAmount} telah KAMI TERIMA (LUNAS).
+
+🛍️ Rincian Pesanan (Ambil Sendiri di Toko):
+• Produk: ${safeItems}
+• Total Bayar: ${formattedAmount}
+• Status: Sedang disiapkan oleh tim ${pickupStore}.
+
+🏬 Lokasi Pengambilan:
+${pickupAddress}
+${mapsSection}${operationalHours}
+Silakan tunjukkan nomor pesanan #${safeOrderId} atau nama Anda kepada staf kami saat pengambilan barang. Terima kasih telah berbelanja di ${pickupStore}!`;
+  } else if (isPhysical) {
     // Pesan Khusus Produk Fisik: Konfirmasi Lunas & Pengemasan
     messageText = 
 `Halo ${safeName}! 📦

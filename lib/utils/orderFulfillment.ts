@@ -315,6 +315,12 @@ export function printOrderInvoice(
   }
 
   const isPaid = (order.payment_status || '').toUpperCase() === 'PAID';
+  const isPickup =
+    (order as any).fulfillment_type === 'PICKUP' ||
+    (order as any).metadata?.fulfillment_type === 'PICKUP' ||
+    String(order.shipping_courier || '').toLowerCase().includes('pickup') ||
+    String(order.shipping_courier || '').toLowerCase().includes('ambil sendiri');
+  const pickupData = (order as any).pickup_info || (order as any).metadata?.pickup_info || null;
   const totalAmount = order.total_amount ? `Rp ${order.total_amount.toLocaleString('id-ID')}` : 'Rp 0';
 
   const html = `<!DOCTYPE html>
@@ -448,14 +454,21 @@ export function printOrderInvoice(
         <div style="font-weight: 700; font-size: 14px;">${order.customer_name || 'Pelanggan Toko'}</div>
         <div>No. WhatsApp: ${order.customer_phone || '-'}</div>
         <div>Email: ${order.customer_email || '-'}</div>
-        <div>Alamat: ${order.shipping_address || '-'}</div>
+        <div>${isPickup ? 'Metode Serah Terima: Ambil Langsung di Toko' : `Alamat: ${order.shipping_address || '-'}`}</div>
       </div>
       <div class="info-col">
         <h4>Detail Transaksi:</h4>
         <div>Tanggal Pesanan: ${new Date(order.created_at).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
         <div>Metode Pembayaran: ${order.payment_method || 'QRIS Dinamis'}</div>
-        <div>Ekspedisi: ${order.shipping_courier || 'Kurir Reguler'}</div>
-        ${order.waybill ? `<div>No. Resi: <strong>${order.waybill}</strong></div>` : ''}
+        ${isPickup ? `
+          <div>Fulfillment: <strong>Ambil Sendiri di Toko (Self-Pickup)</strong></div>
+          ${pickupData?.address || storeInfo.address ? `<div>Lokasi Toko: ${pickupData?.address || storeInfo.address}</div>` : ''}
+          ${pickupData?.mapsUrl ? `<div>Petunjuk Arah: <a href="${pickupData.mapsUrl}" target="_blank" style="color: #2563eb;">Buka Google Maps</a></div>` : ''}
+          ${pickupData?.instructions ? `<div>Instruksi: ${pickupData.instructions}</div>` : ''}
+        ` : `
+          <div>Ekspedisi: ${order.shipping_courier || 'Kurir Reguler'}</div>
+          ${order.waybill ? `<div>No. Resi: <strong>${order.waybill}</strong></div>` : ''}
+        `}
       </div>
     </div>
 
@@ -473,7 +486,7 @@ export function printOrderInvoice(
             <div style="font-weight: 700;">${order.items_summary || 'Pesanan Produk'}</div>
             <div style="font-size: 11px; color: #64748b;">SKU: ${order.fulfillment_metadata?.sku || '-'}</div>
           </td>
-          <td class="text-right">1</td>
+          <td class="text-right">${(order as any).quantity || (order as any).metadata?.quantity || 1}</td>
           <td class="text-right">${totalAmount}</td>
         </tr>
       </tbody>

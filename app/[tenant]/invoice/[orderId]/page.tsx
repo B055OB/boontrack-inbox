@@ -135,7 +135,13 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
   const rawProductType = (order.product_type || (order.shipping_address ? 'PHYSICAL' : 'DIGITAL')).toUpperCase();
   const isPhysical = rawProductType === 'PHYSICAL' || rawProductType === 'FOOD' || rawProductType === 'FISIK';
   const isDigitalOrService = rawProductType === 'DIGITAL' || rawProductType === 'SERVICE' || rawProductType === 'FIELD_SERVICE' || rawProductType === 'AGENCY';
-  const shouldShowShippingLabel = isPhysical && !isDigitalOrService;
+  const isPickup =
+    order.fulfillment_type === 'PICKUP' ||
+    order.metadata?.fulfillment_type === 'PICKUP' ||
+    String(order.shipping_courier || '').toLowerCase().includes('pickup') ||
+    String(order.shipping_courier || '').toLowerCase().includes('ambil sendiri');
+  const pickupData = order.pickup_info || order.metadata?.pickup_info || null;
+  const shouldShowShippingLabel = isPhysical && !isDigitalOrService && !isPickup;
 
   const totalAmount = Number(order.gross_amount || order.total_amount || 0);
   const storeName = tenant?.name || tenant?.metadata?.store_name || tenantSlug;
@@ -276,7 +282,35 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
                 )}
               </div>
 
-              {order.shipping_address && (
+              {isPickup ? (
+                <div className="space-y-1 sm:border-l sm:border-slate-200 sm:pl-4">
+                  <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">
+                    Metode Serah Terima:
+                  </span>
+                  <div className="font-bold text-slate-900 text-xs flex items-center gap-1 text-emerald-800">
+                    <span>🏬 Ambil Sendiri di Toko (Self-Pickup)</span>
+                  </div>
+                  <p className="text-slate-700 leading-snug">
+                    {pickupData?.address || storeAddress || 'Toko Utama'}
+                  </p>
+                  {pickupData?.mapsUrl && (
+                    <a
+                      href={pickupData.mapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-bold text-[11px] mt-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Buka Petunjuk Arah (Google Maps)</span>
+                    </a>
+                  )}
+                  {pickupData?.instructions && (
+                    <div className="text-[11px] text-slate-500 mt-1 italic">
+                      ⏰ {pickupData.instructions}
+                    </div>
+                  )}
+                </div>
+              ) : order.shipping_address ? (
                 <div className="space-y-1 sm:border-l sm:border-slate-200 sm:pl-4">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                     Alamat Pengiriman (Fisik):
@@ -288,7 +322,7 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
                     </div>
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Rincian Produk & Tagihan */}
@@ -344,8 +378,70 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
               </div>
             </div>
 
-            {/* FULFILLMENT & DIGITAL ACCESS BOX (Muncul Saat Status Lunas) */}
-            {isPaid && (
+            {/* FULFILLMENT: SELF-PICKUP INSTRUCTIONS */}
+            {isPaid && isPickup && (
+              <div className="bg-emerald-50/90 border-2 border-emerald-500/70 rounded-2xl p-5 space-y-3.5 animate-in fade-in">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900">
+                      Pesanan Siap Diambil di Toko (Self-Pickup)
+                    </h3>
+                    <p className="text-[11px] text-slate-600">
+                      Pembayaran telah lunas. Silakan datangi alamat toko berikut untuk mengambil pesanan Anda.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-emerald-200 text-xs space-y-3">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Nama Toko / Merchant:
+                    </span>
+                    <p className="font-bold text-slate-900 text-sm">{storeName}</p>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Lokasi Toko:
+                    </span>
+                    <p className="text-slate-800 font-medium leading-relaxed">
+                      {pickupData?.address || storeAddress || 'Toko Utama'}
+                    </p>
+                  </div>
+
+                  {pickupData?.instructions && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                      <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider block">
+                        Instruksi &amp; Jam Operasional:
+                      </span>
+                      <p className="text-amber-950 font-medium mt-0.5 whitespace-pre-line">
+                        {pickupData.instructions}
+                      </p>
+                    </div>
+                  )}
+
+                  {pickupData?.mapsUrl && (
+                    <div className="pt-1">
+                      <a
+                        href={pickupData.mapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow-xs"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Buka Petunjuk Arah (Google Maps)</span>
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* FULFILLMENT & DIGITAL ACCESS BOX (Muncul Saat Status Lunas & Bukan Pickup) */}
+            {isPaid && !isPickup && (
               <div className="bg-emerald-50/70 border-2 border-emerald-500/70 rounded-2xl p-5 space-y-3.5 animate-in fade-in">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">

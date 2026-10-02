@@ -53,6 +53,7 @@ export interface OrderItem {
   customer_phone?: string;
   customer_email?: string;
   items_summary?: string;
+  quantity?: number;
   total_amount: number;
   payment_method?: string;
   payment_status: 'UNPAID' | 'PAID' | 'FAILED' | 'PENDING' | 'WAITING_PAYMENT' | string;
@@ -89,6 +90,7 @@ export function mapRawOrder(o: any): OrderItem {
     customer_phone: o.customer_phone || '',
     customer_email: o.customer_email || '',
     items_summary: o.items_summary || o.product_name || o.product_title || 'Pesanan Produk',
+    quantity: Number(o.quantity || o.metadata?.quantity || (Array.isArray(o.order_items) && o.order_items[0]?.quantity) || 1),
     total_amount: extractOrderAmount(o),
     payment_method: o.payment_method || 'QRIS Dinamis',
     payment_status: (o.status || o.payment_status || 'PENDING').toUpperCase(),
@@ -669,6 +671,16 @@ export default function OrdersTab({
                       <td className="py-2.5 px-3">
                         <div className="font-semibold text-slate-900">{ord.customer_name || 'Pelanggan Toko'}</div>
                         <div className="text-[11px] text-slate-500 font-mono">{ord.customer_phone || '-'}</div>
+                        {ord.items_summary && (
+                          <div className="text-[10px] text-slate-500 font-medium truncate max-w-[200px] flex items-center gap-1 mt-0.5">
+                            <span className="truncate">{ord.items_summary}</span>
+                            {ord.quantity && ord.quantity > 1 ? (
+                              <span className="bg-slate-100 text-slate-700 font-bold px-1 rounded text-[9px]">
+                                x{ord.quantity}
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
                         {ord.briefing_url ? (
                           <div className="mt-1">
                             <a
@@ -945,6 +957,17 @@ export default function OrdersTab({
                     <span className="text-slate-500 font-medium">Metode Pembayaran:</span>
                     <span className="font-bold text-slate-800 uppercase font-mono">
                       {selectedOrder.payment_method || 'QRIS / TRANSFER'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">Produk:</span>
+                    <span className="font-bold text-slate-800 flex items-center gap-1.5 text-right">
+                      <span>{selectedOrder.items_summary}</span>
+                      {selectedOrder.quantity && selectedOrder.quantity > 1 ? (
+                        <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-1.5 py-0.5 rounded">
+                          x{selectedOrder.quantity}
+                        </span>
+                      ) : null}
                     </span>
                   </div>
                   <div className="flex items-center justify-between border-t border-slate-200/60 pt-1.5">

@@ -35,6 +35,8 @@ export interface Order {
   access_url?: string | null;
   google_meet_url?: string | null;
   fulfillment_metadata?: any;
+  fulfillment_type?: 'PICKUP' | 'DELIVERY' | string;
+  pickup_info?: any;
   metadata?: Record<string, any>;
   is_archived: boolean; // Soft-Archive status (default false)
   created_at: string;

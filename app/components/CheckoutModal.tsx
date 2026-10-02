@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar, Zap, Upload, Image as ImageIcon, RefreshCw, Clock } from "lucide-react";
+import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar, Zap, Upload, Image as ImageIcon, RefreshCw, Clock, Store, MapPin, Plus, Minus } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, getClientTrackingContext, trackLead, trackInitiateCheckout, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
@@ -9,6 +9,7 @@ import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { getSupabase } from "@/lib/supabaseClient";
 import { extractTenantBankAccounts, TenantBankAccount } from "@/lib/bank-accounts";
 import { normalizeBriefingUrl } from "@/lib/product-catalog";
+import { getStoreShippingConfig } from "@/lib/shipping/self-pickup";
 
 
 
@@ -59,6 +60,30 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [regularCourierName, setRegularCourierName] = useState<string>('Ekspedisi Reguler (J&T / SiCepat)');
   const [directWaUrl, setDirectWaUrl] = useState<string>('');
   const [isLoadingShipping, setIsLoadingShipping] = useState(false);
+  const [quantity, setQuantity] = useState<number>(1);
+  const maxQuantity = React.useMemo(() => {
+    const stock = Number((product as any)?.stock ?? (product as any)?.stock_quantity ?? 99);
+    return stock > 0 ? Math.min(stock, 99) : 99;
+  }, [product]);
+
+  const handleQuantityChange = (newQty: number) => {
+    const clamped = Math.max(1, Math.min(newQty, maxQuantity));
+    setQuantity(clamped);
+  };
+
+  const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
+  const [selfPickupConfig, setSelfPickupConfig] = useState<{
+    isEnabled: boolean;
+    pickupAddress: string;
+    pickupMapsUrl: string;
+    pickupInstructions: string;
+    storeName?: string;
+  }>({
+    isEnabled: false,
+    pickupAddress: '',
+    pickupMapsUrl: '',
+    pickupInstructions: '',
+  });
   const [tenantMetaPixel, setTenantMetaPixel] = useState<string>("");
   const [tenantTTPixel, setTenantTTPixel] = useState<string>("");
 
@@ -170,12 +195,15 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     }
   };
 
-  const basePrice = product?.price || 0;
+  const unitPrice = product?.price || 0;
+  const productSubtotal = unitPrice * quantity;
+  const basePrice = productSubtotal;
   // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
   const adminFee = 0;
   const isQris = paymentMethod === 'qris';
+  const isPickup = fulfillmentType === 'PICKUP';
   const currentUniqueCode = uniqueCode;
-  const currentShippingCost = isPhysical ? shippingCost : 0;
+  const currentShippingCost = isPhysical && !isPickup ? shippingCost : 0;
   const totalAmount = isQris
     ? Math.max(1000, basePrice + adminFee + currentShippingCost - currentUniqueCode)
     : basePrice + adminFee + currentUniqueCode + currentShippingCost;
@@ -358,6 +386,26 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               setBankAccounts(accounts);
               if (accounts.length === 0) {
                 setPaymentMethod('qris');
+              }
+
+              const shippingCfg = await getStoreShippingConfig(tenantSlug, supabase).catch(() => null);
+              if (shippingCfg) {
+                setSelfPickupConfig({
+                  isEnabled: Boolean(shippingCfg.is_self_pickup_enabled),
+                  pickupAddress: shippingCfg.pickup_address || shippingCfg.origin_address || '',
+                  pickupMapsUrl: shippingCfg.pickup_maps_url || '',
+                  pickupInstructions: shippingCfg.pickup_operational_hours || shippingCfg.pickup_instructions || '',
+                  storeName: data?.name || data?.metadata?.store_name || tenantSlug,
+                });
+              } else if (data?.metadata?.biteship_config) {
+                const bCfg = data.metadata.biteship_config;
+                setSelfPickupConfig({
+                  isEnabled: Boolean(bCfg.is_self_pickup_enabled),
+                  pickupAddress: bCfg.pickup_address || bCfg.origin_address || '',
+                  pickupMapsUrl: bCfg.pickup_maps_url || '',
+                  pickupInstructions: bCfg.pickup_operational_hours || bCfg.pickup_instructions || '',
+                  storeName: data?.name || data?.metadata?.store_name || tenantSlug,
+                });
               }
 
               const staticQris =
@@ -603,7 +651,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         productId: product.id,
         productTitle: product.title,
         amount: totalAmount,
-        basePrice,
+        basePrice: productSubtotal,
+        unitPrice,
+        quantity,
         adminFee,
         uniqueCode: currentUniqueCode,
         paymentMethod,
@@ -611,10 +661,21 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         customerName,
         customerPhone,
         customerEmail: isDigital ? (customerEmail || undefined) : undefined,
-        shippingAddress: isPhysical ? shippingAddress : undefined,
-        shippingCourier: isPhysical ? shippingCourier : undefined,
-        shippingCost: isPhysical ? shippingCost : 0,
-        netShippingCost: isPhysical ? shippingCost : 0,
+        fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
+        pickupInfo: isPickup ? {
+          storeName: selfPickupConfig.storeName || tenantSlug,
+          address: selfPickupConfig.pickupAddress,
+          mapsUrl: selfPickupConfig.pickupMapsUrl,
+          instructions: selfPickupConfig.pickupInstructions,
+        } : undefined,
+        shippingAddress: isPhysical
+          ? (isPickup ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}` : shippingAddress)
+          : undefined,
+        shippingCourier: isPhysical
+          ? (isPickup ? 'Ambil Sendiri di Toko (Self-Pickup)' : shippingCourier)
+          : undefined,
+        shippingCost: isPhysical && !isPickup ? shippingCost : 0,
+        netShippingCost: isPhysical && !isPickup ? shippingCost : 0,
         affiliateCode: undefined, // Murni direct store ke toko merchant
         tracking: trackingWithSlot,
         tracking_context: clientTrackingContext,
@@ -1271,19 +1332,59 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         ) : (
           /* Form Data Pembeli (Ultra-Lean Single Section) */
           <form onSubmit={handleCheckout} className="space-y-4 text-xs">
-            {/* Ringkasan Produk */}
-            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1">
-              <div className="flex justify-between font-bold text-white">
+            {/* Ringkasan Produk & Quantity Stepper */}
+            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
+              <div className="flex justify-between items-start font-bold text-white">
                 <span className="line-clamp-1">{product.title}</span>
                 <span className="text-emerald-400 shrink-0 ml-2">
-                  Rp {basePrice.toLocaleString("id-ID")}
+                  Rp {unitPrice.toLocaleString("id-ID")}
                 </span>
               </div>
-              {/* FIX: Elemen Reff hanya mount ke DOM jika affiliateCode
-                  benar-benar ada dari URL aktif (?ref=...) saat ini.
-                  Tenant biasa tanpa fitur affiliate tidak akan pernah
-                  melihat teks ini — termasuk jika localStorage
-                  mengandung sisa referral dari sesi testing sebelumnya. */}
+
+              {/* Kontrol Pemilihan Kuantiti / Stepper (- [ Qty ] +) */}
+              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-slate-300 block">Jumlah Kuantiti:</span>
+                  {quantity > 1 && (
+                    <span className="text-[10px] text-slate-400">
+                      Subtotal: <strong className="text-emerald-400 font-mono">Rp {productSubtotal.toLocaleString("id-ID")}</strong>
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl p-1 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => handleQuantityChange(quantity - 1)}
+                    disabled={quantity <= 1}
+                    aria-label="Kurangi Jumlah"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={maxQuantity}
+                    value={quantity}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val)) handleQuantityChange(val);
+                    }}
+                    className="w-10 text-center font-bold text-xs text-white bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleQuantityChange(quantity + 1)}
+                    disabled={quantity >= maxQuantity}
+                    aria-label="Tambah Jumlah"
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
               {affiliateCode && (
                 <div className="text-[10px] text-indigo-400 font-mono flex items-center gap-1 pt-1">
                   <ShieldCheck className="w-3 h-3" /> Reff: {affiliateCode} (Komisi 30%: Rp {affiliateCommission.toLocaleString("id-ID")})
@@ -1379,112 +1480,194 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               {/* JIKA FISIK: Tampilkan Alamat Pengiriman, Kota/Kecamatan, dan Opsi Ongkir (Single Basic Courier) */}
               {isPhysical && (
                 <>
-                  <div className="space-y-1">
-                    <label className="text-slate-400 font-medium">Alamat Lengkap Pengiriman *</label>
-                    <textarea
-                      rows={2}
-                      required
-                      value={shippingAddress}
-                      onChange={(e) => setShippingAddress(e.target.value)}
-                      placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-slate-400 font-medium">Kecamatan / Kota Tujuan *</label>
-                    <input
-                      type="text"
-                      required
-                      value={shippingCity}
-                      onChange={(e) => setShippingCity(e.target.value)}
-                      placeholder="Contoh: Sukasari, Kota Bandung"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
-                    />
-                    <span className="text-[10px] text-slate-500 block">
-                      💡 Masukkan kecamatan/kota untuk kalkulasi otomatis ongkos kirim standar.
-                    </span>
-                  </div>
-
-                  {/* Opsi Ongkir: Instant vs Regular Courier */}
-                  <div className="space-y-2">
-                    <label className="text-slate-300 font-bold block">Pilih Opsi Pengiriman</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {/* Kurir Dapur Instan */}
-                      <div
-                        onClick={() => setCourierServiceType('instant')}
-                        className={`p-3 rounded-2xl border cursor-pointer transition ${
-                          courierServiceType === 'instant'
-                            ? 'border-emerald-500 bg-emerald-950/30'
-                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                  {/* Opsi Tab: Ekspedisi vs Ambil Sendiri */}
+                  {selfPickupConfig.isEnabled && (
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900 border border-slate-800 rounded-xl mb-1">
+                      <button
+                        type="button"
+                        onClick={() => setFulfillmentType('DELIVERY')}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          fulfillmentType === 'DELIVERY'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
                         }`}
                       >
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1.5 font-bold text-slate-200">
-                            <Zap className="w-4 h-4 text-amber-400" />
-                            <span>Kurir Dapur Instan</span>
-                          </div>
-                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                            Hari Ini (1-2 Jam)
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          {instantCourierName} (GoSend / Grab)
-                        </p>
-                        <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
-                          <span>Ongkir:</span>
-                          <span className="font-bold text-white">
-                            {isLoadingShipping ? (
-                              <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
-                            ) : instantRate > 0 ? (
-                              `Rp ${instantRate.toLocaleString("id-ID")}`
-                            ) : shippingCity.trim().length >= 3 ? (
-                              "Rp 20.000"
-                            ) : (
-                              "-"
-                            )}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Ekspedisi Reguler */}
-                      <div
-                        onClick={() => setCourierServiceType('regular')}
-                        className={`p-3 rounded-2xl border cursor-pointer transition ${
-                          courierServiceType === 'regular'
-                            ? 'border-emerald-500 bg-emerald-950/30'
-                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                        <Truck className="w-3.5 h-3.5" />
+                        <span>Kirim via Kurir</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFulfillmentType('PICKUP')}
+                        className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          fulfillmentType === 'PICKUP'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
                         }`}
                       >
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1.5 font-bold text-slate-200">
-                            <Truck className="w-4 h-4 text-emerald-400" />
-                            <span>Ekspedisi Reguler</span>
-                          </div>
-                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                            2-3 Hari
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          {regularCourierName} (J&T / SiCepat / Anteraja)
-                        </p>
-                        <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
-                          <span>Ongkir:</span>
-                          <span className="font-bold text-white">
-                            {isLoadingShipping ? (
-                              <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
-                            ) : regularRate > 0 ? (
-                              `Rp ${regularRate.toLocaleString("id-ID")}`
-                            ) : shippingCity.trim().length >= 3 ? (
-                              "Rp 15.000"
-                            ) : (
-                              "-"
-                            )}
-                          </span>
-                        </div>
-                      </div>
+                        <Store className="w-3.5 h-3.5" />
+                        <span>Ambil di Toko (Gratis)</span>
+                      </button>
                     </div>
-                  </div>
+                  )}
+
+                  {fulfillmentType === 'PICKUP' ? (
+                    <div className="bg-slate-900/90 rounded-2xl p-3.5 border border-emerald-500/40 text-xs space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+                            <Store className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-slate-100 text-xs">Lokasi Pengambilan Toko:</h5>
+                            <p className="text-[11px] font-semibold text-emerald-400">
+                              {selfPickupConfig.storeName || tenantSlug}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                          Bebas Ongkir
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-1 text-slate-300">
+                        <div className="font-medium text-slate-100">
+                          {selfPickupConfig.pickupAddress || 'Alamat toko utama merchant'}
+                        </div>
+                        {selfPickupConfig.pickupInstructions && (
+                          <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                            <span className="font-bold text-slate-300">⏰ Jam Operasional: </span>
+                            {selfPickupConfig.pickupInstructions}
+                          </div>
+                        )}
+                      </div>
+
+                      {selfPickupConfig.pickupMapsUrl && (
+                        <a
+                          href={selfPickupConfig.pickupMapsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-400 hover:text-blue-300 hover:underline"
+                        >
+                          <MapPin className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Buka Petunjuk Arah (Google Maps)</span>
+                          <ExternalLink className="w-3 h-3 text-blue-400" />
+                        </a>
+                      )}
+
+                      <p className="text-[10px] text-slate-500 italic">
+                        * Cukup isi Nama &amp; No. WhatsApp Anda di atas untuk verifikasi serah terima barang di toko.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-slate-400 font-medium">Alamat Lengkap Pengiriman *</label>
+                        <textarea
+                          rows={2}
+                          required={fulfillmentType === 'DELIVERY'}
+                          value={shippingAddress}
+                          onChange={(e) => setShippingAddress(e.target.value)}
+                          placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-slate-400 font-medium">Kecamatan / Kota Tujuan *</label>
+                        <input
+                          type="text"
+                          required={fulfillmentType === 'DELIVERY'}
+                          value={shippingCity}
+                          onChange={(e) => setShippingCity(e.target.value)}
+                          placeholder="Contoh: Sukasari, Kota Bandung"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
+                        />
+                        <span className="text-[10px] text-slate-500 block">
+                          💡 Masukkan kecamatan/kota untuk kalkulasi otomatis ongkos kirim standar.
+                        </span>
+                      </div>
+
+                      {/* Opsi Ongkir: Instant vs Regular Courier */}
+                      <div className="space-y-2">
+                        <label className="text-slate-300 font-bold block">Pilih Opsi Pengiriman</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {/* Kurir Dapur Instan */}
+                          <div
+                            onClick={() => setCourierServiceType('instant')}
+                            className={`p-3 rounded-2xl border cursor-pointer transition ${
+                              courierServiceType === 'instant'
+                                ? 'border-emerald-500 bg-emerald-950/30'
+                                : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                                <Zap className="w-4 h-4 text-amber-400" />
+                                <span>Kurir Dapur Instan</span>
+                              </div>
+                              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                                Hari Ini (1-2 Jam)
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              {instantCourierName} (GoSend / Grab)
+                            </p>
+                            <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
+                              <span>Ongkir:</span>
+                              <span className="font-bold text-white">
+                                {isLoadingShipping ? (
+                                  <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
+                                ) : instantRate > 0 ? (
+                                  `Rp ${instantRate.toLocaleString("id-ID")}`
+                                ) : shippingCity.trim().length >= 3 ? (
+                                  "Rp 20.000"
+                                ) : (
+                                  "-"
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Ekspedisi Reguler */}
+                          <div
+                            onClick={() => setCourierServiceType('regular')}
+                            className={`p-3 rounded-2xl border cursor-pointer transition ${
+                              courierServiceType === 'regular'
+                                ? 'border-emerald-500 bg-emerald-950/30'
+                                : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                                <Truck className="w-4 h-4 text-emerald-400" />
+                                <span>Ekspedisi Reguler</span>
+                              </div>
+                              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                                2-3 Hari
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              {regularCourierName} (J&T / SiCepat / Anteraja)
+                            </p>
+                            <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
+                              <span>Ongkir:</span>
+                              <span className="font-bold text-white">
+                                {isLoadingShipping ? (
+                                  <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
+                                ) : regularRate > 0 ? (
+                                  `Rp ${regularRate.toLocaleString("id-ID")}`
+                                ) : shippingCity.trim().length >= 3 ? (
+                                  "Rp 15.000"
+                                ) : (
+                                  "-"
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -1559,18 +1742,28 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 <span>Rp {basePrice.toLocaleString("id-ID")}</span>
               </div>
               {isPhysical && (
-                <div className="flex justify-between">
-                  <span>Ongkos Kirim (Single Basic Courier)</span>
-                  <span className={shippingCost > 0 ? "text-slate-200 font-semibold" : "text-slate-500"}>
-                    {isLoadingShipping
-                      ? "Menghitung..."
-                      : shippingCost > 0
-                      ? `Rp ${shippingCost.toLocaleString("id-ID")}`
-                      : shippingCity.trim().length >= 3
-                      ? "Rp 15.000"
-                      : "Menunggu kota tujuan"}
-                  </span>
-                </div>
+                fulfillmentType === 'PICKUP' ? (
+                  <div className="flex justify-between text-emerald-400">
+                    <span className="flex items-center gap-1 font-medium">
+                      <Store className="w-3.5 h-3.5" />
+                      <span>Pengambilan (Ambil di Toko)</span>
+                    </span>
+                    <span className="font-bold">Rp 0 (Gratis)</span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between">
+                    <span>Ongkos Kirim ({courierServiceType === 'instant' ? 'Kurir Instan' : 'Ekspedisi Reguler'})</span>
+                    <span className={shippingCost > 0 ? "text-slate-200 font-semibold" : "text-slate-500"}>
+                      {isLoadingShipping
+                        ? "Menghitung..."
+                        : shippingCost > 0
+                        ? `Rp ${shippingCost.toLocaleString("id-ID")}`
+                        : shippingCity.trim().length >= 3
+                        ? "Rp 15.000"
+                        : "Menunggu kota tujuan"}
+                    </span>
+                  </div>
+                )
               )}
               <div className="flex justify-between">
                 <span>Biaya Layanan & Admin</span>

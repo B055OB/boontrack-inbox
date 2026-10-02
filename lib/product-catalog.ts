@@ -88,6 +88,7 @@ export interface FaqItem {
 
 export interface SinglePageConfig {
   slug?: string;
+  store_name?: string;
 
   // ── Toggle Visibility: 8 Canonical Sections ──
   enable_hero?: boolean;              // default: true

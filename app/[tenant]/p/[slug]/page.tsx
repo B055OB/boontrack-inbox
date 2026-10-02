@@ -36,7 +36,11 @@ import {
   ShoppingBag,
   HelpCircle,
   Copy,
+  Store,
+  Plus,
+  Minus,
 } from 'lucide-react';
+import { getStoreShippingConfig } from '@/lib/shipping/self-pickup';
 import { syncAttributionSession } from '@/lib/attribution';
 import { 
   initMetaPixel, 
@@ -126,6 +130,8 @@ export function buildWabaStorefrontConsultationUrl(params: {
   buyerPhone?: string | null;
   totalAmount?: number | null;
   variant?: string | null;
+  fulfillmentType?: string | null;
+  quantity?: number | null;
 }): { text: string; url: string; number: string } {
   const rawNumber = params.tenantWhatsApp || params.botNumber || '';
   const num = normalizeStorefrontWhatsAppNumber(rawNumber);
@@ -133,6 +139,8 @@ export function buildWabaStorefrontConsultationUrl(params: {
   const tSlug = params.tenantSlug || '';
   const pSlug = params.productSlug || '';
   const refToken = (params.referenceToken || '').trim();
+  const pickupLine = params.fulfillmentType === 'PICKUP' ? '\n- Metode: Ambil Sendiri di Toko (Self-Pickup)' : '';
+  const qtyLine = params.quantity && params.quantity > 1 ? `\n- Jumlah (Qty): ${params.quantity} pcs` : '';
 
   let text: string;
   if (refToken) {
@@ -148,6 +156,8 @@ export function buildWabaStorefrontConsultationUrl(params: {
         .replace(/\{nama_pembeli\}/gi, params.buyerName || '')
         .replace(/\{buyer_name\}/gi, params.buyerName || '')
         .replace(/\{phone\}/gi, params.buyerPhone || '')
+        .replace(/\{qty\}/gi, String(params.quantity || 1))
+        .replace(/\{quantity\}/gi, String(params.quantity || 1))
         .replace(/\{ref\}/gi, refToken)
         .replace(/\{reference_token\}/gi, refToken);
 
@@ -163,7 +173,7 @@ export function buildWabaStorefrontConsultationUrl(params: {
       }
     } else {
       // Format standar: "Halo Admin, konfirmasi pesanan [Ref: BT-XXXXX]..."
-      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
+      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${qtyLine}${pickupLine}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
     }
   } else if (params.customMessage && params.customMessage.trim()) {
     text = params.customMessage
@@ -172,6 +182,8 @@ export function buildWabaStorefrontConsultationUrl(params: {
       .replace(/\[nama_produk\]/gi, pName)
       .replace(/\{nama_toko\}/gi, params.storeName || '')
       .replace(/\[nama_toko\]/gi, params.storeName || '')
+      .replace(/\{qty\}/gi, String(params.quantity || 1))
+      .replace(/\{quantity\}/gi, String(params.quantity || 1))
       .replace(/\{tenant\}/gi, tSlug)
       .replace(/\{slug\}/gi, pSlug);
   } else {
@@ -280,8 +292,8 @@ function SingleProductContent() {
         const supabase = getSupabase();
         if (!supabase) return;
 
-        // 2. Query paralel non-waterfall ke database Supabase (tenants, products, tenant_settings)
-        const [tenantRes, sqlProdRes, settingsRes] = await Promise.all([
+        // 2. Query paralel non-waterfall ke database Supabase (tenants, products, tenant_settings, shipping config)
+        const [tenantRes, sqlProdRes, settingsRes, shippingCfg] = await Promise.all([
           supabase
             .from("tenants")
             .select("*")
@@ -297,6 +309,7 @@ function SingleProductContent() {
             .select("ads_tracking_config")
             .eq("tenant_slug", tenant)
             .maybeSingle(),
+          getStoreShippingConfig(tenant, supabase).catch(() => null),
         ]);
 
         const tenantRow = tenantRes.data;
@@ -305,6 +318,23 @@ function SingleProductContent() {
 
         if (tenantRow && isMounted) {
           setTenantData(tenantRow);
+        }
+
+        if (shippingCfg && isMounted) {
+          setSelfPickupConfig({
+            isEnabled: Boolean(shippingCfg.is_self_pickup_enabled),
+            pickupAddress: shippingCfg.pickup_address || shippingCfg.origin_address || '',
+            pickupMapsUrl: shippingCfg.pickup_maps_url || '',
+            pickupInstructions: shippingCfg.pickup_operational_hours || shippingCfg.pickup_instructions || '',
+          });
+        } else if (tenantRow?.metadata?.biteship_config && isMounted) {
+          const bCfg = tenantRow.metadata.biteship_config;
+          setSelfPickupConfig({
+            isEnabled: Boolean(bCfg.is_self_pickup_enabled),
+            pickupAddress: bCfg.pickup_address || bCfg.origin_address || '',
+            pickupMapsUrl: bCfg.pickup_maps_url || '',
+            pickupInstructions: bCfg.pickup_operational_hours || bCfg.pickup_instructions || '',
+          });
         }
 
         if (tenantRow?.category) {
@@ -756,6 +786,18 @@ function SingleProductContent() {
   const [shippingCity, setShippingCity] = useState<string>('');
   const [shippingDistrict, setShippingDistrict] = useState<string>('');
   const [shippingPostalCode, setShippingPostalCode] = useState<string>('');
+  const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
+  const [selfPickupConfig, setSelfPickupConfig] = useState<{
+    isEnabled: boolean;
+    pickupAddress: string;
+    pickupMapsUrl: string;
+    pickupInstructions: string;
+  }>({
+    isEnabled: false,
+    pickupAddress: '',
+    pickupMapsUrl: '',
+    pickupInstructions: '',
+  });
 
   // Location Autocomplete State (Biteship Location Search & Anti-Typo Lock)
   interface LocationAreaItem {
@@ -990,6 +1032,20 @@ function SingleProductContent() {
 
   const [selectedVariant, setSelectedVariant] = useState<string>('');
 
+  // ── FITUR QUANTITY SELECTOR / STEPPER ──
+  const maxQuantity = useMemo(() => {
+    if (product.is_unlimited || (product as any).is_unlimited_stock) return 99;
+    const stock = Number(product.stock ?? (product as any).stock_quantity ?? 99);
+    return stock > 0 ? Math.min(stock, 99) : 99;
+  }, [product]);
+
+  const [quantity, setQuantity] = useState<number>(1);
+
+  const handleQuantityChange = (newQty: number) => {
+    const clamped = Math.max(1, Math.min(newQty, maxQuantity));
+    setQuantity(clamped);
+  };
+
   useEffect(() => {
     if (variantList.length === 1) {
       setSelectedVariant(variantList[0]);
@@ -1055,7 +1111,7 @@ function SingleProductContent() {
             destination_postal_code: queryPostal,
             destination_latitude: destinationLatitude,
             destination_longitude: destinationLongitude,
-            weight_grams: (product as any).weight || (product as any).weight_grams || 1000,
+            weight_grams: (((product as any).weight || (product as any).weight_grams || 1000) * quantity),
             is_fnb: isFnbProduct,
           }),
         });
@@ -1101,7 +1157,7 @@ function SingleProductContent() {
     }, 380);
 
     return () => clearTimeout(timer);
-  }, [requiresShipping, shippingCity, shippingDistrict, shippingPostalCode, shippingAddress, selectedAreaId, destinationLatitude, destinationLongitude, tenant, product, isFnbProduct]);
+  }, [requiresShipping, shippingCity, shippingDistrict, shippingPostalCode, shippingAddress, selectedAreaId, destinationLatitude, destinationLongitude, tenant, product, isFnbProduct, quantity]);
 
   // Cek keaktifan voucher seller secara universal (Metadata-First & Zero Hardcoding)
   const isVoucherActive = isProductVoucherActive(product, config);
@@ -1123,18 +1179,20 @@ function SingleProductContent() {
     }
   }, [isVoucherActive, activeSellerVoucher, appliedVoucher]);
 
-  // Perhitungan Finansial Presisi (Mendukung Harga Rp0 / Freebie)
+  // Perhitungan Finansial Presisi (Mendukung Multi-Quantity, Diskon & Freebie)
   const isFreebie = product.price === 0 || product.promo_price === 0;
-  const basePrice = (product.promo_price !== undefined && product.promo_price !== null && product.promo_price >= 0 && (product.price === undefined || product.promo_price < product.price))
+  const unitPrice = (product.promo_price !== undefined && product.promo_price !== null && product.promo_price >= 0 && (product.price === undefined || product.promo_price < product.price))
     ? product.promo_price
     : (product.price !== undefined && product.price !== null ? product.price : 0);
-  const promoPrice = (product.original_price && product.original_price > basePrice)
+  const basePrice = unitPrice;
+  const productSubtotal = unitPrice * quantity;
+  const promoPrice = (product.original_price && product.original_price > unitPrice)
     ? product.original_price
-    : ((product as any).originalPrice && (product as any).originalPrice > basePrice)
+    : ((product as any).originalPrice && (product as any).originalPrice > unitPrice)
     ? (product as any).originalPrice
-    : (product.price && product.price > basePrice)
+    : (product.price && product.price > unitPrice)
     ? product.price
-    : (product.promo_price && product.promo_price > 0 ? Math.round(basePrice * 1.5) : basePrice);
+    : (product.promo_price && product.promo_price > 0 ? Math.round(unitPrice * 1.5) : unitPrice);
 
   const handleApplyVoucher = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -1150,7 +1208,7 @@ function SingleProductContent() {
       return;
     }
 
-    const currentBasePrice = basePrice;
+    const currentBasePrice = productSubtotal;
 
     // Cek kecocokan kode voucher dengan konfigurasi resmi seller (Zero hardcoding)
     if (activeSellerVoucher.code.toUpperCase() !== code) {
@@ -1186,13 +1244,13 @@ function SingleProductContent() {
   let productDiscount = 0;
   if (appliedVoucher) {
     if (appliedVoucher.discount_type === 'percentage') {
-      productDiscount = Math.round(basePrice * ((appliedVoucher.discount_value || 0) / 100));
+      productDiscount = Math.round(productSubtotal * ((appliedVoucher.discount_value || 0) / 100));
     } else {
       productDiscount = appliedVoucher.discount_value || 0;
     }
   }
-  productDiscount = Math.min(productDiscount, Math.max(0, basePrice - 1000));
-  const netProductPrice = Math.max(0, basePrice - (appliedVoucher ? productDiscount : 0)) + orderBumpsTotal;
+  productDiscount = Math.min(productDiscount, Math.max(0, productSubtotal - 1000));
+  const netProductPrice = Math.max(0, productSubtotal - (appliedVoucher ? productDiscount : 0)) + orderBumpsTotal;
 
   // 2. Ongkos Kirim & Subsidi (Khusus Produk Fisik / requiresShipping)
   const selectedShipping = availableShippingOptions.find(s => s.id === selectedShippingId) || availableShippingOptions[0] || null;
@@ -1206,7 +1264,8 @@ function SingleProductContent() {
     }
   }
   const netShippingCost = Math.max(0, baseShippingCost - shippingSubsidy);
-  const effectiveShippingCost = shouldShowAddressSection && requiresShipping ? netShippingCost : 0;
+  const isPickup = fulfillmentType === 'PICKUP';
+  const effectiveShippingCost = (shouldShowAddressSection && requiresShipping && !isPickup) ? netShippingCost : 0;
 
   // 3. Biaya Admin = Rp 0 & Kode Unik Verifikasi
   const adminFee = 0;
@@ -1383,17 +1442,19 @@ function SingleProductContent() {
     e.preventDefault();
     if (loading) return;
 
-    if (shouldShowAddressSection && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
+    const isPickup = fulfillmentType === 'PICKUP';
+
+    if (shouldShowAddressSection && !isPickup && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
       setErrorMessage('Silakan lengkapi alamat, kota/kabupaten, kecamatan, dan kode pos pengiriman.');
       return;
     }
 
-    if (shouldShowAddressSection && requiresShipping && isShippingFnbBlocked) {
+    if (shouldShowAddressSection && !isPickup && requiresShipping && isShippingFnbBlocked) {
       setErrorMessage(shippingNotice || 'Tujuan pengiriman melebihi batas waktu aman pengiriman makanan segar (maksimal 2 hari).');
       return;
     }
 
-    if (shouldShowAddressSection && requiresShipping && !selectedShipping) {
+    if (shouldShowAddressSection && !isPickup && requiresShipping && !selectedShipping) {
       setErrorMessage('Silakan lengkapi alamat dan pilih layanan kurir pengiriman yang tersedia.');
       return;
     }
@@ -1416,16 +1477,29 @@ function SingleProductContent() {
         productId: String(product.id || slug),
         productTitle: product.name,
         amount: totalAmount,
-        basePrice,
+        basePrice: productSubtotal,
+        unitPrice,
+        quantity,
         productDiscount,
         netProductPrice,
-        shippingCost: shouldShowAddressSection && requiresShipping ? baseShippingCost : 0,
-        shippingSubsidy: shouldShowAddressSection && requiresShipping ? shippingSubsidy : 0,
-        netShippingCost: shouldShowAddressSection && requiresShipping ? netShippingCost : 0,
-        shippingAddress: shouldShowAddressSection
-          ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
-          : undefined,
-        shippingCourier: shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined,
+        fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
+        pickupInfo: isPickup ? {
+          storeName: config.store_name || tenantData?.name || tenantData?.slug || tenant,
+          address: selfPickupConfig.pickupAddress,
+          mapsUrl: selfPickupConfig.pickupMapsUrl,
+          instructions: selfPickupConfig.pickupInstructions,
+        } : undefined,
+        shippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? baseShippingCost : 0,
+        shippingSubsidy: shouldShowAddressSection && requiresShipping && !isPickup ? shippingSubsidy : 0,
+        netShippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? netShippingCost : 0,
+        shippingAddress: isPickup
+          ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}`
+          : (shouldShowAddressSection
+            ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
+            : undefined),
+        shippingCourier: isPickup
+          ? 'Ambil Sendiri di Toko (Self-Pickup)'
+          : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined),
         productType,
         fulfillmentMetadata: {
           ...(product.fulfillment_metadata || {}),
@@ -1491,17 +1565,19 @@ function SingleProductContent() {
       return;
     }
 
-    if (shouldShowAddressSection && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
+    const isPickup = fulfillmentType === 'PICKUP';
+
+    if (shouldShowAddressSection && !isPickup && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
       setErrorMessage('Silakan lengkapi alamat, kota/kabupaten, kecamatan, dan kode pos pengiriman.');
       return;
     }
 
-    if (shouldShowAddressSection && requiresShipping && isShippingFnbBlocked) {
+    if (shouldShowAddressSection && !isPickup && requiresShipping && isShippingFnbBlocked) {
       setErrorMessage(shippingNotice || 'Tujuan pengiriman melebihi batas waktu aman pengiriman makanan segar (maksimal 2 hari).');
       return;
     }
 
-    if (shouldShowAddressSection && requiresShipping && !selectedShipping) {
+    if (shouldShowAddressSection && !isPickup && requiresShipping && !selectedShipping) {
       setErrorMessage('Silakan lengkapi alamat dan pilih layanan kurir pengiriman yang tersedia.');
       return;
     }
@@ -1525,16 +1601,29 @@ function SingleProductContent() {
         productId: String(product.id || slug),
         productTitle: product.name,
         amount: totalAmount,
-        basePrice,
+        basePrice: productSubtotal,
+        unitPrice,
+        quantity,
         productDiscount,
         netProductPrice,
-        shippingCost: shouldShowAddressSection && requiresShipping ? baseShippingCost : 0,
-        shippingSubsidy: shouldShowAddressSection && requiresShipping ? shippingSubsidy : 0,
-        netShippingCost: shouldShowAddressSection && requiresShipping ? netShippingCost : 0,
-        shippingAddress: shouldShowAddressSection
-          ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
-          : undefined,
-        shippingCourier: shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined,
+        fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
+        pickupInfo: isPickup ? {
+          storeName: config.store_name || tenantData?.name || tenantData?.slug || tenant,
+          address: selfPickupConfig.pickupAddress,
+          mapsUrl: selfPickupConfig.pickupMapsUrl,
+          instructions: selfPickupConfig.pickupInstructions,
+        } : undefined,
+        shippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? baseShippingCost : 0,
+        shippingSubsidy: shouldShowAddressSection && requiresShipping && !isPickup ? shippingSubsidy : 0,
+        netShippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? netShippingCost : 0,
+        shippingAddress: isPickup
+          ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}`
+          : (shouldShowAddressSection
+            ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
+            : undefined),
+        shippingCourier: isPickup
+          ? 'Ambil Sendiri di Toko (Self-Pickup)'
+          : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined),
         productType,
         fulfillmentMetadata: {
           ...(product.fulfillment_metadata || {}),
@@ -1586,6 +1675,8 @@ function SingleProductContent() {
         buyerPhone: buyerPhone.trim(),
         totalAmount,
         variant: selectedVariant,
+        quantity,
+        fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
       });
 
       setWaOrderSuccess({ token: refToken, url: waUrl || '' });
@@ -1604,6 +1695,7 @@ function SingleProductContent() {
   const handleSecondaryWhatsAppClick = async () => {
     if (buyerPhone.trim()) {
       const refToken = generateReferenceToken();
+      const isPickup = fulfillmentType === 'PICKUP';
       try {
         await createOrderAndInvoice({
           tenantSlug: tenant,
@@ -1613,9 +1705,18 @@ function SingleProductContent() {
           basePrice,
           productDiscount,
           netProductPrice,
-          shippingCost: shouldShowAddressSection && requiresShipping ? baseShippingCost : 0,
-          shippingSubsidy: shouldShowAddressSection && requiresShipping ? shippingSubsidy : 0,
-          netShippingCost: shouldShowAddressSection && requiresShipping ? netShippingCost : 0,
+          fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
+          pickupInfo: isPickup ? {
+            storeName: config.store_name || tenantData?.name || tenantData?.slug || tenant,
+            address: selfPickupConfig.pickupAddress,
+            mapsUrl: selfPickupConfig.pickupMapsUrl,
+            instructions: selfPickupConfig.pickupInstructions,
+          } : undefined,
+          shippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? baseShippingCost : 0,
+          shippingSubsidy: shouldShowAddressSection && requiresShipping && !isPickup ? shippingSubsidy : 0,
+          netShippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? netShippingCost : 0,
+          shippingAddress: isPickup ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}` : undefined,
+          shippingCourier: isPickup ? 'Ambil Sendiri di Toko (Self-Pickup)' : undefined,
           productType,
           paymentMethod: 'manual_transfer',
           customerName: buyerName.trim() || 'Pelanggan Toko',
@@ -1646,6 +1747,8 @@ function SingleProductContent() {
         buyerPhone: buyerPhone.trim(),
         totalAmount,
         variant: selectedVariant,
+        quantity,
+        fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
       });
       if (url && typeof window !== 'undefined') {
         window.open(url, '_blank', 'noopener,noreferrer');
@@ -1954,21 +2057,75 @@ function SingleProductContent() {
         <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
           <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
             <Package className="w-4 h-4 text-amber-700" />
-            <span>Alamat Pengiriman Produk Fisik</span>
+            <span>Alamat &amp; Metode Pengiriman</span>
           </div>
-          <div>
-            <label className="font-bold text-slate-700 block mb-1">
-              Alamat Lengkap Rumah / Kantor <span className="text-rose-500">*</span>
-            </label>
-            <textarea
-              rows={2}
-              required={shouldShowAddressSection}
-              placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan, Kecamatan"
-              value={shippingAddress}
-              onChange={(e) => setShippingAddress(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 text-xs"
-            />
-          </div>
+
+          {selfPickupConfig.isEnabled && (
+            <div className="grid grid-cols-2 gap-2 p-1 bg-white/80 border border-amber-200/80 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setFulfillmentType('DELIVERY')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  fulfillmentType === 'DELIVERY'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span>Kirim Ekspedisi</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFulfillmentType('PICKUP')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  fulfillmentType === 'PICKUP'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span>Ambil di Toko</span>
+              </button>
+            </div>
+          )}
+
+          {fulfillmentType === 'PICKUP' ? (
+            <div className="bg-white rounded-xl p-3 border border-emerald-300 text-xs space-y-1.5">
+              <div className="font-bold text-slate-900">
+                Lokasi Ambil: {config.store_name || tenantData?.name || tenant}
+              </div>
+              <p className="text-slate-600 text-[11px]">{selfPickupConfig.pickupAddress || 'Alamat toko utama'}</p>
+              {selfPickupConfig.pickupInstructions && (
+                <p className="text-slate-500 text-[10px]">⏰ {selfPickupConfig.pickupInstructions}</p>
+              )}
+              {selfPickupConfig.pickupMapsUrl && (
+                <a
+                  href={selfPickupConfig.pickupMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:underline"
+                >
+                  <MapPin className="w-3 h-3 text-blue-600" />
+                  <span>Buka Google Maps</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">
+                Alamat Lengkap Rumah / Kantor <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={2}
+                required={shouldShowAddressSection && fulfillmentType === 'DELIVERY'}
+                placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan, Kecamatan"
+                value={shippingAddress}
+                onChange={(e) => setShippingAddress(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 text-xs"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -2155,6 +2312,54 @@ function SingleProductContent() {
             </span>
           </div>
         ) : null}
+
+        {/* Kontrol Pemilihan Kuantiti / Stepper (- [ Qty ] +) */}
+        <div className="pt-2.5 border-t border-slate-200/70 flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-slate-700 block">Jumlah Kuantiti:</span>
+            <span className="text-[10px] text-slate-500">
+              {quantity > 1 ? (
+                <>Subtotal: <strong className="text-slate-900">Rp {productSubtotal.toLocaleString('id-ID')}</strong></>
+              ) : maxQuantity < 99 ? (
+                `Sisa stok: ${maxQuantity}`
+              ) : (
+                'Bebas tentukan jumlah'
+              )}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => handleQuantityChange(quantity - 1)}
+              disabled={quantity <= 1}
+              aria-label="Kurangi Jumlah"
+              className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+            <input
+              type="number"
+              min={1}
+              max={maxQuantity}
+              value={quantity}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val)) handleQuantityChange(val);
+              }}
+              className="w-10 text-center font-bold text-xs text-slate-900 bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            <button
+              type="button"
+              onClick={() => handleQuantityChange(quantity + 1)}
+              disabled={quantity >= maxQuantity}
+              aria-label="Tambah Jumlah"
+              className="w-7 h-7 flex items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Input Data Pembeli: Hanya 3 Field (Ultra-Lean Single Section) */}
@@ -2405,37 +2610,121 @@ function SingleProductContent() {
         <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
           <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
             <Package className="w-4 h-4 text-amber-700" />
-            <span>Alamat &amp; Ekspedisi Pengiriman Produk Fisik</span>
+            <span>Alamat &amp; Metode Pengiriman Produk Fisik</span>
           </div>
 
-          <div className="space-y-2">
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">
-                Alamat Lengkap Rumah / Kantor <span className="text-rose-500">*</span>
-              </label>
-              <textarea
-                rows={2}
-                required={shouldShowAddressSection}
-                placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan, Kecamatan"
-                value={shippingAddress}
-                onChange={(e) => setShippingAddress(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
-              />
+          {/* OPSI PICKUP / DELIVERY TABS (Universal Self-Pickup Engine) */}
+          {selfPickupConfig.isEnabled && (
+            <div className="grid grid-cols-2 gap-2 p-1 bg-white/80 border border-amber-200/80 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setFulfillmentType('DELIVERY')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  fulfillmentType === 'DELIVERY'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+                }`}
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span>Kirim via Ekspedisi</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFulfillmentType('PICKUP')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  fulfillmentType === 'PICKUP'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span>Ambil di Toko (Gratis)</span>
+              </button>
             </div>
+          )}
 
-            {/* Location Autocomplete / Dropdown Selector Resmi Biteship (Anti-Typo) */}
-            <div className="space-y-2 relative" ref={locationDropdownRef}>
+          {fulfillmentType === 'PICKUP' ? (
+            <div className="bg-white rounded-xl p-3.5 border border-emerald-300 shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                    <Store className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-slate-900 text-xs">Lokasi Pengambilan Toko:</h5>
+                    <p className="text-[11px] font-semibold text-emerald-700">
+                      {config.store_name || tenantData?.name || tenantData?.slug || tenant}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  Gratis Ongkir
+                </span>
+              </div>
+
+              <div className="text-xs text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-200/80 space-y-1.5">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Alamat Toko:</span>
+                  <div className="font-medium text-slate-900 mt-0.5">
+                    {selfPickupConfig.pickupAddress || 'Alamat toko utama merchant'}
+                  </div>
+                </div>
+                {selfPickupConfig.pickupInstructions && (
+                  <div className="text-[11px] text-slate-600 pt-1.5 border-t border-slate-200/60">
+                    <span className="font-bold text-slate-700">⏰ Jam Operasional / Instruksi: </span>
+                    {selfPickupConfig.pickupInstructions}
+                  </div>
+                )}
+              </div>
+
+              {selfPickupConfig.pickupMapsUrl && (
+                <div className="pt-0.5">
+                  <a
+                    href={selfPickupConfig.pickupMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg transition"
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>Buka Petunjuk Arah (Google Maps)</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+
+              <p className="text-[10px] text-slate-500 italic">
+                * Anda hanya perlu mengisi Nama &amp; No. WhatsApp di atas untuk verifikasi saat serah terima barang.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  Kecamatan &amp; Kota Tujuan <span className="text-rose-500">*</span>
+                  Alamat Lengkap Rumah / Kantor <span className="text-rose-500">*</span>
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    <MapPin className="w-3.5 h-3.5 text-blue-600" />
-                  </div>
-                  <input
-                    type="text"
-                    required={shouldShowAddressSection}
+                <textarea
+                  rows={2}
+                  required={shouldShowAddressSection && fulfillmentType === 'DELIVERY'}
+                  placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Kelurahan, Kecamatan"
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 text-xs"
+                />
+              </div>
+
+              {/* Location Autocomplete / Dropdown Selector Resmi Biteship (Anti-Typo) */}
+              <div className="space-y-2 relative" ref={locationDropdownRef}>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Kecamatan &amp; Kota Tujuan <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                    <input
+                      type="text"
+                      required={shouldShowAddressSection && fulfillmentType === 'DELIVERY'}
                     placeholder="Ketik min. 3 huruf (cth: Marpoyan, Buahbatu, Kebayoran, Pati)..."
                     value={locationQuery}
                     onChange={(e) => {
@@ -2716,8 +3005,9 @@ function SingleProductContent() {
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    )}
 
       {/* ── FITUR ORDER BUMP / CROSS-SELLING ADD-ON (Kondisional Murni) ── */}
       {activeOrderBumps.length > 0 && (
@@ -2851,9 +3141,16 @@ function SingleProductContent() {
       {/* Rincian Kalkulasi Pembayaran Presisi */}
       <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
         <div className="flex justify-between text-slate-600">
-          <span>Harga Dasar Produk</span>
-          <span className="font-semibold text-slate-900">Rp {basePrice.toLocaleString('id-ID')}</span>
+          <span>Harga Satuan Produk</span>
+          <span className="font-semibold text-slate-900">Rp {unitPrice.toLocaleString('id-ID')}</span>
         </div>
+
+        {quantity > 1 && (
+          <div className="flex justify-between text-slate-600">
+            <span>Subtotal Produk ({quantity}x)</span>
+            <span className="font-semibold text-slate-900">Rp {productSubtotal.toLocaleString('id-ID')}</span>
+          </div>
+        )}
 
         {selectedBumpItems.map((bump) => (
           <div key={bump.id} className="flex justify-between items-center text-amber-900 font-medium bg-amber-50/80 px-2.5 py-1.5 rounded-xl border border-amber-200/70">
@@ -2880,17 +3177,28 @@ function SingleProductContent() {
         )}
 
         {shouldShowAddressSection && requiresShipping && (
-          <div className="flex justify-between text-slate-600">
-            <span>Ongkos Kirim ({selectedShipping ? (selectedShipping.courier_name || selectedShipping.name) : 'Pilih Kurir'})</span>
-            <span className="font-semibold text-slate-900">Rp {baseShippingCost.toLocaleString('id-ID')}</span>
-          </div>
-        )}
-
-        {shouldShowAddressSection && requiresShipping && shippingSubsidy > 0 && (
-          <div className="flex justify-between text-emerald-600 font-semibold">
-            <span>Subsidi Bebas Ongkir</span>
-            <span>-Rp {shippingSubsidy.toLocaleString('id-ID')}</span>
-          </div>
+          fulfillmentType === 'PICKUP' ? (
+            <div className="flex justify-between text-slate-600">
+              <span className="flex items-center gap-1 text-emerald-700 font-medium">
+                <Store className="w-3.5 h-3.5" />
+                <span>Pengambilan (Ambil di Toko)</span>
+              </span>
+              <span className="font-semibold text-emerald-600">Rp 0 (Gratis)</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex justify-between text-slate-600">
+                <span>Ongkos Kirim ({selectedShipping ? (selectedShipping.courier_name || selectedShipping.name) : 'Pilih Kurir'})</span>
+                <span className="font-semibold text-slate-900">Rp {baseShippingCost.toLocaleString('id-ID')}</span>
+              </div>
+              {shippingSubsidy > 0 && (
+                <div className="flex justify-between text-emerald-600 font-semibold">
+                  <span>Subsidi Bebas Ongkir</span>
+                  <span>-Rp {shippingSubsidy.toLocaleString('id-ID')}</span>
+                </div>
+              )}
+            </>
+          )
         )}
 
         <div className="flex justify-between text-slate-600">

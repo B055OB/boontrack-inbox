@@ -44,6 +44,13 @@ export interface CreateOrderPayload {
   shippingCourier?: string;
   productType?: string;
   fulfillmentMetadata?: any;
+  fulfillmentType?: 'PICKUP' | 'DELIVERY';
+  pickupInfo?: {
+    storeName?: string;
+    address?: string;
+    mapsUrl?: string;
+    instructions?: string;
+  };
   briefing_url?: string;
   customer_briefing?: any;
   selectedOrderBumps?: Array<{
@@ -51,6 +58,8 @@ export interface CreateOrderPayload {
     name?: string;
     price?: number;
   }>;
+  quantity?: number;
+  unitPrice?: number;
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
@@ -120,7 +129,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   }
 
   const paymentMethod = payload.paymentMethod || 'qris';
-  const basePrice = payload.basePrice ?? payload.amount;
+  const orderQuantity = payload.quantity && payload.quantity > 0 ? payload.quantity : 1;
+  const unitPrice = payload.unitPrice ?? payload.basePrice ?? payload.amount;
+  const basePrice = payload.basePrice ?? (unitPrice * orderQuantity);
 
   // Validasi Voucher Snapshot (Server-Side)
   let verifiedProductDiscount = payload.productDiscount ?? 0;
@@ -202,6 +213,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     tenant_slug: payload.tenantSlug,
     product_id: payload.productId,
     product_title: payload.productTitle,
+    quantity: orderQuantity,
+    unit_price: unitPrice,
     gross_amount: grossAmount,
     base_price: basePrice,
     product_discount: productDiscount,
@@ -212,6 +225,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     voucher_code: verifiedVoucherCode,
     shipping_address: payload.shippingAddress || null,
     shipping_courier: shippingCourier,
+    fulfillment_type: payload.fulfillmentType || 'DELIVERY',
+    pickup_info: payload.pickupInfo || null,
     product_type: payload.productType || null,
     fulfillment_metadata: orderFulfillmentMeta,
     order_bumps: verifiedOrderBumps.length > 0 ? verifiedOrderBumps : undefined,
@@ -305,6 +320,8 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     tenant_id: resolvedTenantId,               // Selalu diisi: UUID toko (tidak boleh NULL)
     product_id: resolvedProductId,             // Wajib NOT NULL di skema PostgreSQL
     product_title: payload.productTitle,
+    quantity: orderQuantity,
+    unit_price: unitPrice,
     gross_amount: grossAmount,
     customer_name: payload.customerName,
     customer_phone: payload.customerPhone,
@@ -323,12 +340,18 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     status: "PENDING",
     payment_status: "PENDING",
     order_status: "PENDING",
+    fulfillment_type: payload.fulfillmentType || 'DELIVERY',
     metadata: {
       tracking_context: resolvedTrackingContext,
       city: resolvedCity,
       shipping_address: payload.shippingAddress || null,
       source_url: resolvedSourceUrl,
       reference_token: payload.reference_token || null,
+      fulfillment_type: payload.fulfillmentType || 'DELIVERY',
+      pickup_info: payload.pickupInfo || null,
+      quantity: orderQuantity,
+      unit_price: unitPrice,
+      product_subtotal: unitPrice * orderQuantity,
     },
     created_at: orderData.created_at,
     updated_at: orderData.created_at,
@@ -349,18 +372,26 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       tenant_id: resolvedTenantId,
       product_id: resolvedProductId,
       product_title: payload.productTitle,
+      quantity: orderQuantity,
+      unit_price: unitPrice,
       gross_amount: grossAmount,
       customer_name: payload.customerName,
       customer_phone: payload.customerPhone,
       briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
       customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
       status: "PENDING",
+      fulfillment_type: payload.fulfillmentType || 'DELIVERY',
       metadata: {
         tracking_context: resolvedTrackingContext,
         city: resolvedCity,
         shipping_address: payload.shippingAddress || null,
         source_url: resolvedSourceUrl,
         reference_token: payload.reference_token || null,
+        fulfillment_type: payload.fulfillmentType || 'DELIVERY',
+        pickup_info: payload.pickupInfo || null,
+        quantity: orderQuantity,
+        unit_price: unitPrice,
+        product_subtotal: unitPrice * orderQuantity,
       },
       created_at: orderData.created_at,
       updated_at: orderData.created_at,
@@ -385,8 +416,11 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         item_type: 'main',
         price: Math.max(0, netProductPrice - orderBumpsTotal),
         original_price: basePrice,
-        quantity: 1,
+        quantity: orderQuantity,
         metadata: {
+          quantity: orderQuantity,
+          unit_price: unitPrice,
+          product_subtotal: unitPrice * orderQuantity,
           product_discount: productDiscount,
           voucher_code: payload.voucherCode || null,
           tracking_context: resolvedTrackingContext,
