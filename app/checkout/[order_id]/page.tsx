@@ -206,18 +206,18 @@ export default function CheckoutPage({ params }: Props) {
 
               enriched = {
                 ...enriched,
-                link_digital: resolvedAccess || (isOrderPaid ? enriched.link_digital : null),
-                download_url: resolvedAccess || (isOrderPaid ? enriched.download_url : null),
-                access_url: resolvedAccess || (isOrderPaid ? enriched.access_url : null),
+                link_digital: isOrderPaid ? (resolvedAccess || enriched.link_digital) : null,
+                download_url: isOrderPaid ? (resolvedAccess || enriched.download_url) : null,
+                access_url: isOrderPaid ? (resolvedAccess || enriched.access_url) : null,
                 file_format: matchedProd.promo || matchedProd.format_file || matchedProd.fulfillment_metadata?.file_format || enriched.file_format,
                 promo: matchedProd.promo || enriched.promo,
                 variants: matchedProd.variants || enriched.variants,
                 button_text: matchedProd.button_text || matchedProd.fulfillment_metadata?.button_text || enriched.button_text,
-                fulfillment_metadata: resolvedFulfillment || (isOrderPaid ? enriched.fulfillment_metadata : null),
+                fulfillment_metadata: isOrderPaid ? (resolvedFulfillment || enriched.fulfillment_metadata) : null,
                 product_type: matchedProd.type || matchedProd.product_type || enriched.product_type,
               };
-            } else if (!enriched.fulfillment_metadata || (!enriched.download_url && !enriched.link_digital)) {
-              // Fallback jika belum ditemukan di tenant, coba cari di tabel products
+            } else if (isOrderPaid && (!enriched.fulfillment_metadata || (!enriched.download_url && !enriched.link_digital))) {
+              // Fallback jika belum ditemukan di tenant, coba cari di tabel products HANYA jika sudah PAID
               if (pIdStr) {
                 const { data: pData } = await supabase
                   .from('products')
@@ -242,6 +242,14 @@ export default function CheckoutPage({ params }: Props) {
                   };
                 }
               }
+            } else if (!isOrderPaid) {
+              enriched = {
+                ...enriched,
+                link_digital: null,
+                download_url: null,
+                access_url: null,
+                fulfillment_metadata: null,
+              };
             }
 
             setOrder(enriched);

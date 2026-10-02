@@ -530,7 +530,7 @@ BATASAN HAK AKSES TIER (§3.1 & §5.1):
         `3. **Orders**: Pantau pesanan masuk, settlement pembayaran QRIS, dan input resi.\n` +
         `4. **WhatsApp**: Kelola nomor CS, pesan sapaan otomatis, dan chat pelanggan via **BoonTrack Inbox**.\n` +
         `5. **Shipping**: Atur titik jemput gudang pengiriman dan kurir aktif.\n` +
-        `6. **Payments**: Setup QRIS statis 0% MDR dan rekening pencairan.\n` +
+        `6. **Payments**: Setup QRIS toko dan rekening pencairan.\n` +
         `7. **Ads**: Pasang Meta Pixel, TikTok Pixel, dan Server-Side CAPI.\n` +
         `8. **Settings**: Kelola profil toko, ganti email, dan PIN keamanan akun.\n\n` +
         `Ada hal yang ingin Kakak tanyakan atau butuh bantuan langkah berikutnya? Saya siap bantu, Kak!`;

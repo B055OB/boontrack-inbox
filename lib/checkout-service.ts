@@ -542,7 +542,7 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         qrString = generateDynamicQRIS(tenantStaticQris, grossAmount);
         qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
       } else if (tenantQrisImageUrl) {
-        // Fallback otomatis: jika tenant mengunggah gambar QRIS statis toko (0% MDR)
+        // Fallback otomatis: jika tenant mengunggah gambar QRIS statis toko langsung
         qrString = tenantQrisImageUrl;
         qrCodeUrl = tenantQrisImageUrl;
       } else {

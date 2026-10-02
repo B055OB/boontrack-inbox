@@ -455,7 +455,7 @@ export default function BoonPilotWidget({
         `- Tab 'Pengaturan' (Settings):`,
         `  * Sub-menu Profil: Logo toko, nama toko, bio toko, unduh QR meja cetak (.png).`,
         `  * Sub-menu WhatsApp: Nomor CS & Pesan Sapaan Otomatis Toko.`,
-        `  * Sub-menu Pembayaran: Upload barcode QRIS toko (BoonTrack Reader 0% MDR).`,
+        `  * Sub-menu Pembayaran: Upload barcode QRIS toko (BoonTrack Reader).`,
         `  * Sub-menu Pengiriman: Kota asal toko & ekspedisi kurir aktif.`,
         `\n[ATURAN NAVIGASI WAJIB]:`,
         `Saat merchant bertanya cara mengubah pengaturan toko, ganti teks sapaan WhatsApp, atau cari fitur, JANGAN menjelaskan arsitektur teknis atau persona AI. WAJIB pandu mereka dengan langkah klik menu visual sesuai Peta Navigasi UI di atas!`,
@@ -750,7 +750,7 @@ export default function BoonPilotWidget({
                   BoonPilot AI Copilot Terkunci
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Paket <strong>Checkout Lite</strong> difokuskan untuk Single Page Checkout &amp; Dynamic QRIS 0% MDR. Fitur konsultasi AI, rekomendasi katalog, dan WhatsApp Commerce AI tersedia pada paket <strong>Starter</strong> dan <strong>Pro Scale</strong>.
+                  Paket <strong>Checkout Lite</strong> difokuskan untuk Single Page Checkout &amp; Dynamic QRIS. Fitur konsultasi AI, rekomendasi katalog, dan WhatsApp Commerce AI tersedia pada paket <strong>Starter</strong> dan <strong>Pro Scale</strong>.
                 </p>
               </div>
 

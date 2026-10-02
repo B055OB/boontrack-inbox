@@ -101,7 +101,7 @@ Ekosistem BoonTrack meresmikan standarisasi paket komersial yang mengikat seluru
 
 | Nama Komersial (UI) | Tier PostgreSQL Enum | Durasi & Skema Harga | Hak Akses Fitur Utama |
 | :--- | :--- | :--- | :--- |
-| **Paket Checkout Lite (Entry)** | `CHECKOUT_LITE` | Rp 59.000 / bulan | Checkout engine instan, single product page checkout, maksimal 3 produk aktif, QRIS dinamis 0% MDR, notifikasi order ringkas, checkout digital & fisik (lazy shipping maks 1 ekspedisi), basic Browser Pixel tracking. Tanpa Meta CAPI, tanpa AI bot, tanpa multi-seat. |
+| **Paket Checkout Lite (Entry)** | `CHECKOUT_LITE` | Rp 59.000 / bulan | Checkout engine instan, single product page checkout, maksimal 3 produk aktif, QRIS dinamis, notifikasi order ringkas, checkout digital & fisik (lazy shipping maks 1 ekspedisi), basic Browser Pixel tracking. Tanpa Meta CAPI, tanpa AI bot, tanpa multi-seat. |
 | **Solo / Starter** | `STARTER` | Rp 0 (Trial 7 Hari Penuh) / Rp 199.000/bln | Storefront mandiri, katalog tanpa batas, cek ongkir multi-ekspedisi, QRIS dinamis, Bot WhatsApp auto-reply dasar. |
 | **Ads Performance** | `PRO_SCALE` | Rp 299.000 / bulan (Trial 7 Hari Promo) | Semua fitur STARTER + Meta & TikTok CAPI Server-Side, God Button konversi, 2 Seats CS Inbox, Advanced Analytics. |
 | **Team Scale** | `ENTERPRISE` | Rp 499.000 / bulan | Semua fitur PRO_SCALE + Unlimited Multi-Seat CS, Official Meta Cloud API (WABA), Broadcast WA, Custom Domain + SSL. |
@@ -176,11 +176,11 @@ flowchart TD
 Ekosistem BoonTrack (frontend registrasi, gateway onboarding, billing Xendit, dan database PostgreSQL) distandarisasi pada 4 tier resmi:
 0. **Paket Checkout Lite** (`tier = 'CHECKOUT_LITE'`)
    - Harga: Rp 59.000 / bulan (Entry tier / Instant Checkout Engine).
-   - Hak Akses: Single Page Checkout siap jual, maksimal 3 produk aktif, QRIS dinamis 0% MDR, notifikasi order ringkas WhatsApp, tracking browser (Meta & TikTok Pixel), pengiriman fisik dasar (lazy shipping maksimal 1 ekspedisi) dan produk digital.
+   - Hak Akses: Single Page Checkout siap jual, maksimal 3 produk aktif, QRIS dinamis, notifikasi order ringkas WhatsApp, tracking browser (Meta & TikTok Pixel), pengiriman fisik dasar (lazy shipping maksimal 1 ekspedisi) dan produk digital.
    - Pembatasan: Tanpa Server-Side CAPI, tanpa AI Conversational Bot, tanpa Multi-Seat CS Inbox, tanpa Broadcast WABA template, tanpa Advanced Analytics.
 1. **Solo / Starter** (`tier = 'STARTER'`)
    - Harga: Rp 0 (Reverse Trial 7 Hari), normal Rp 199.000 / bulan.
-   - Hak Akses: Storefront mandiri, katalog produk tanpa batas, kalkulasi ongkir multi-ekspedisi, QRIS dinamis 0% MDR, bot auto-reply dasar.
+   - Hak Akses: Storefront mandiri, katalog produk tanpa batas, kalkulasi ongkir multi-ekspedisi, QRIS dinamis, bot auto-reply dasar.
 2. **Ads Performance** (`tier = 'PRO_SCALE'`)
    - Harga: Rp 299.000 / bulan.
    - Hak Akses: Semua fitur Solo/Starter + Meta & TikTok CAPI Server-Side, God Button konversi, 2 Seats CS Inbox, Advanced Analytics.
@@ -377,7 +377,7 @@ Inbound Message (WhatsApp / Web Widget)
 â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
 â”‚ 4. ACTION DISPATCH & RESPONSE SYNTHESIS                â”‚
 â”‚    â€¢ Eksekusi mutasi DB (create order / reserve stock) â”‚
-â”‚    â€¢ Generate QRIS dinamis 0% MDR                      â”‚
+â”‚    â€¢ Generate QRIS dinamis                              â”‚
 â”‚    â€¢ Trigger Meta CAPI Event (InitiateCheckout, Lead)  â”‚
 â”‚    â€¢ Rangkai respon natural terarah ke call-to-action  â”‚
 â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
@@ -423,7 +423,7 @@ Untuk menghindari halusinasi dan tumpang tindih logika, seluruh data pengetahuan
 ### 8.9 Deterministic Commerce & Transaction Authority
 - **Pusat Kebenaran Finansial**: Database PostgreSQL Supabase adalah satu-satunya validator transaksi.
 - **Kalkulasi Tagihan**: Subtotal, diskon voucher, kode unik, dan ongkir dihitung murni menggunakan logika matematika di backend, bukan angka karangan AI.
-- **Kode Unik Dinamis**: Untuk memfasilitasi verifikasi transfer/QRIS tanpa biaya gateway (0% MDR), sistem menyematkan kode unik 3 digit acak/sekuensial pada total tagihan.
+- **Kode Unik Dinamis**: Untuk memfasilitasi verifikasi transfer/QRIS langsung ke rekening toko, sistem menyematkan kode unik 3 digit acak/sekuensial pada total tagihan.
 - **Penyelesaian Transaksi**: Status pesanan hanya dapat bermutasi menjadi `PAID` melalui:
   1. Notifikasi mutasi valid via aplikasi **BoonTrack Reader** dengan signature token terotentikasi.
   2. Webhook terverifikasi dari payment gateway (Xendit).
@@ -452,7 +452,7 @@ Khusus untuk vertikal `FIELD_SERVICE` dan `PROFESSIONAL_SERVICE`:
   - Halaman produk tidak memerlukan deretan teks FAQ panjang yang mengalihkan perhatian pembeli.
   - Fokus halaman toko adalah foto estetik, kejelasan manfaat, dan pemicu *impulse buying* (bundling promo).
   - Pertanyaan mendalam dan keraguan pembeli diselesaikan secara interaktif oleh bot WhatsApp.
-- **Otomasi QRIS 0% MDR**:
+- **Otomasi QRIS Toko Langsung**:
   - Merchant mengunggah gambar QRIS statis toko (BCA, DANA, GoPay, QRIS bank lain).
   - Sistem menyematkan kode unik nominal dan membaca notifikasi mutasi via BoonTrack Reader APK.
   - Transaksi lunas otomatis dalam hitungan detik tanpa potongan MDR pihak ketiga.
@@ -1113,7 +1113,7 @@ Untuk menjamin kepatuhan penuh terhadap regulasi Bank Indonesia, OJK, dan undang
 
 ### 17.1 Platform Subscriptions & Public SaaS (PJP Kategori 1 Official Partner)
 - **Cakupan**: Pembayaran biaya langganan software BoonTrack oleh merchant (`shop_subscriptions`), tier langganan (`CHECKOUT_LITE`, `STARTER`, `PRO_SCALE`, `ENTERPRISE`), dan penagihan add-on platform.
-- **Kepatuhan Regulasi**: Diproses 100% secara resmi melalui mitra Penyelenggara Jasa Pembayaran (PJP) Berlisensi Bank Indonesia Kategori 1 (**PT Sinar Digital Terdepan / Xendit**).
+- **Kepatuhan Regulasi**: Diproses 100% secara resmi melalui mitra Penyelenggara Jasa Pembayaran (PJP) resmi Kategori 1 (**PT Sinar Digital Terdepan / Xendit**).
 - BoonTrack tidak bertindak sebagai payment gateway publik independen tanpa izin; seluruh dana langganan SaaS disalurkan melalui rekening escrow dan gateway berlisensi resmi.
 
 ### 17.2 Merchant Store Direct-Settlement (BoonTrack Reader APK)
@@ -1810,7 +1810,7 @@ Sebagai pemandu navigasi operasional bagi merchant, BoonPilot Copilot mengacu pa
 3. **Tab Pesanan (`orders`)**: Daftar seluruh transaksi pesanan masuk, status pelunasan (QRIS Dinamis/Transfer Bank), data pembeli, dan pembaruan nomor resi logistik.
 4. **Tab WhatsApp (`whatsapp`)**: Status koneksi WhatsApp Gateway, scan QR Code, kustomisasi Pesan Sapaan Otomatis (Greeting Message), dan auto-reply AI.
 5. **Tab Pengiriman (`shipping`)**: Pengaturan integrasi logistik Biteship / kurir toko, penetapan titik jemput gudang (origin address), dan tarif ongkos kirim otomatis.
-6. **Tab Pembayaran (`payments`)**: Integrasi QRIS Otomatis (0% MDR via Xendit/Midtrans), rekening pencairan hasil penjualan toko, dan metode transfer manual.
+6. **Tab Pembayaran (`payments`)**: Integrasi QRIS Otomatis (via Xendit/Midtrans), rekening pencairan hasil penjualan toko, dan metode transfer manual.
 7. **Tab Iklan & Pelacakan (`ads` / `tracking`)**: Integrasi Ads Tracking Pro, Meta Pixel ID, Meta CAPI Access Token, TikTok Pixel ID, dan Google Tag Manager (GTM).
 8. **Tab Pengaturan (`settings`)**: Pengaturan profil toko (nama, logo, deskripsi, nomor WA admin, kustomisasi salam pembuka), domain kustom, tema storefront, dan manajemen akun tim.
 

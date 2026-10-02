@@ -95,7 +95,7 @@ export function mapProposalToPlaybook(proposal: BusinessConfigurationProposal): 
   // Payment Rules
   if (proposal.payment_rules) {
     const methods: string[] = [];
-    if (proposal.payment_rules.enable_qris) methods.push('QRIS Dinamis (0% MDR)');
+    if (proposal.payment_rules.enable_qris) methods.push('QRIS Dinamis');
     if (proposal.payment_rules.enable_manual_transfer) methods.push('Tunai/Transfer');
     if (methods.length > 0) {
       parts.push(`Metode Pembayaran Diterima: ${methods.join(', ')}.`);

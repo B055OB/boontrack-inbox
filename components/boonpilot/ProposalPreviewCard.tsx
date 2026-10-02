@@ -154,7 +154,7 @@ export default function ProposalPreviewCard({
           </p>
           <p>
             <strong className="text-slate-900">Metode Diterima:</strong>{' '}
-            {currentProposal.payment_rules?.enable_qris ? 'QRIS Otomatis (0% MDR)' : ''}
+            {currentProposal.payment_rules?.enable_qris ? 'QRIS Otomatis Dinamis' : ''}
             {currentProposal.payment_rules?.enable_manual_transfer ? ', Tunai (Cash ke Teknisi) / Transfer' : ''}
           </p>
         </div>

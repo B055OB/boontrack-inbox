@@ -81,7 +81,7 @@ export const PLATFORM_KNOWLEDGE_BASE: KnowledgeItem[] = [
 2. ⚡ **Langkah 2: Upload Barcode QRIS Statis (Pengaturan Pembayaran)**
    - Buka tab **Pengaturan** > **Pengaturan Pembayaran** (\`tenants.metadata.payment_settings\`).
    - Unggah gambar barcode QRIS toko Anda (BCA, DANA Bisnis, GoPay Usaha, ShopeePay, dll).
-   - **Otomasi EMVCo Dinamis:** Sistem BoonTrack secara otomatis mengekstrak payload string QRIS dan mentransformasikannya menjadi **Dynamic QRIS EMVCo** berstandar nasional dengan sistem kode unik diskon (**DOWNWARD**) untuk verifikasi instan tanpa fee gateway (0% MDR).
+   - **Otomasi EMVCo Dinamis:** Sistem BoonTrack secara otomatis mengekstrak payload string QRIS dan mentransformasikannya menjadi **Dynamic QRIS EMVCo** berstandar nasional dengan sistem kode unik diskon (**DOWNWARD**) untuk verifikasi instan langsung ke rekening merchant.
 
 3. 📦 **Langkah 3: Tambahkan Produk Aktif (Tab 'Katalog')**
    - Buka tab **Katalog** dan masukkan produk toko Anda (Nama, Foto, Deskripsi, dan Harga).
@@ -216,7 +216,7 @@ Bot AI akan langsung menyapa, menampilkan katalog, dan memandu checkout hingga Q
     category: 'COMMERCE',
     keywords: ['qris', 'reader', 'pembayaran', 'statis', 'mutasi'],
     title: 'Otomasi Pembayaran QRIS Dinamis (BoonTrack Reader)',
-    text: `⚡ **Otomasi Pembayaran QRIS Dinamis (BoonTrack Reader):**\n\n1. **Upload QRIS Toko:** Masuk ke tab **Pengaturan** dan unggah gambar QRIS Anda (BCA, DANA Bisnis, GoPay Usaha, dll).\n2. **Unduh BoonTrack Reader APK:** Pasang aplikasi Android BoonTrack Reader di HP yang menerima notifikasi mutasi rekening/e-wallet.\n3. **Otomasi Tanpa Fee (0% MDR):** Begitu pembeli scan kode QRIS unik di checkout, notifikasi mutasi dibaca oleh Reader dan status pesanan langsung berubah jadi **LUNAS** secara otomatis tanpa biaya potongan gateway!`,
+    text: `⚡ **Otomasi Pembayaran QRIS Dinamis (BoonTrack Reader):**\n\n1. **Upload QRIS Toko:** Masuk ke tab **Pengaturan** dan unggah gambar QRIS Anda (BCA, DANA Bisnis, GoPay Usaha, dll).\n2. **Unduh BoonTrack Reader APK:** Pasang aplikasi Android BoonTrack Reader di HP yang menerima notifikasi mutasi rekening/e-wallet.\n3. **Otomasi Pembayaran Langsung:** Begitu pembeli scan kode QRIS unik di checkout, notifikasi mutasi dibaca oleh Reader dan status pesanan langsung berubah jadi **LUNAS** secara otomatis tanpa biaya potongan gateway!`,
     quick_actions: [
       'SOP 3 Langkah Aktivasi Toko',
       '5 Checklist Wajib Siap Jual',

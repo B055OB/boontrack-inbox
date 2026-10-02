@@ -19,6 +19,7 @@ import type {
   PaymentConfirmationResult,
   PaymentEventType,
 } from '../payment-contracts';
+import { parseDanaNotification } from '../dana-reader';
 
 // ---------------------------------------------------------------------------
 // Internal parsing helpers (ported from payment-webhook-service.ts)
@@ -180,16 +181,30 @@ export class ReaderAdapter implements PaymentConfirmationProvider {
 
     let amount: number | null = explicitAmount > 0 ? explicitAmount : null;
     let detectedApp: string | null = null;
+    let isDanaCreditValid = true;
 
     if (notificationText) {
-      const parsedFromText = parseAmountFromText(notificationText);
-      if (!amount && parsedFromText) amount = parsedFromText;
       detectedApp = detectApp(notificationText);
+
+      if (detectedApp === 'DANA') {
+        const danaResult = parseDanaNotification(notificationText);
+        if (danaResult.isRejected || !danaResult.isValidCredit) {
+          isDanaCreditValid = false;
+          amount = null; // Strip invalid/rejected amount
+        } else {
+          amount = danaResult.amount;
+        }
+      } else {
+        const parsedFromText = parseAmountFromText(notificationText);
+        if (!amount && parsedFromText) amount = parsedFromText;
+      }
     }
 
     // 6. Determine event type
     let eventType: PaymentEventType = 'payment.pending';
-    if (isConfirmed || (amount !== null && amount > 0 && !rawStatus)) {
+    if (!isDanaCreditValid) {
+      eventType = 'payment.failed';
+    } else if (isConfirmed || (amount !== null && amount > 0 && !rawStatus)) {
       // Reader APK notifications without explicit status are treated as success
       // signals (they only fire on successful mutation events).
       eventType = 'payment.success';

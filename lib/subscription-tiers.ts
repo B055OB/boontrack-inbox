@@ -67,7 +67,7 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
     name: 'Solo / Starter',
     uiLabel: 'Solo / Starter (199k)',
     monthlyPrice: 199000,
-    description: 'Storefront mandiri, katalog tanpa batas, cek ongkir multi-ekspedisi, QRIS dinamis 0% MDR, auto-reply dasar.',
+    description: 'Storefront mandiri, katalog tanpa batas, cek ongkir multi-ekspedisi, QRIS dinamis, auto-reply dasar.',
     badgeClasses: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
     features: {
       has_capi: false,
@@ -86,7 +86,7 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
     name: 'Paket Checkout Lite',
     uiLabel: 'Checkout Lite (59k)',
     monthlyPrice: 59000,
-    description: 'Single Page Checkout instan, maks 3 produk aktif, QRIS dinamis 0% MDR, basic browser pixel.',
+    description: 'Single Page Checkout instan, maks 3 produk aktif, QRIS dinamis, basic browser pixel.',
     badgeClasses: 'bg-slate-500/20 text-slate-300 border-slate-500/40',
     features: {
       has_capi: false,

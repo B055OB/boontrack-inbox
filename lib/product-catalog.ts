@@ -747,7 +747,7 @@ export const DEFAULT_PRODUCTS: ProductItem[] = [
           id: "b1",
           title: "🎁 GRATIS Akses Akun SaaS BoonTrack Paket Ads Performance",
           value: 299000,
-          description: "Akses penuh fitur CAPI server-side, multi-rotator CS, dan Dynamic QRIS 0% MDR."
+          description: "Akses penuh fitur CAPI server-side, multi-rotator CS, dan Dynamic QRIS."
         },
         {
           id: "b2",

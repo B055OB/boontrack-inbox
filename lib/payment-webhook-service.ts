@@ -8,6 +8,7 @@ import { paymentEventService } from '@/lib/payment/payment-event-service';
 import { checkTrialQuota } from '@/lib/entitlements/trial-guard';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
+import { parseDanaNotification, validateOrderPaymentMatch } from '@/lib/payment/dana-reader';
 
 // In-memory diagnostic logs ring buffer (stores up to 50 latest webhook calls)
 export interface WebhookLogEntry {
@@ -65,8 +66,18 @@ export function parsePaymentNotification(rawText: string): {
   const lower = text.toLowerCase();
 
   let detectedApp: string | null = null;
-  if (lower.includes('dana')) detectedApp = 'DANA';
-  else if (lower.includes('bca') || lower.includes('klikbca') || lower.includes('mybca')) detectedApp = 'BCA';
+  if (lower.includes('dana')) {
+    detectedApp = 'DANA';
+    const danaCheck = parseDanaNotification(text);
+    if (danaCheck.isRejected || !danaCheck.isValidCredit) {
+      return { amount: null, detectedApp: 'DANA' };
+    }
+    return {
+      amount: danaCheck.amount,
+      detectedApp: 'DANA',
+      rawMatch: danaCheck.matchedPattern || undefined,
+    };
+  } else if (lower.includes('bca') || lower.includes('klikbca') || lower.includes('mybca')) detectedApp = 'BCA';
   else if (lower.includes('gopay') || lower.includes('gojek')) detectedApp = 'GOPAY';
   else if (lower.includes('mandiri') || lower.includes('livin')) detectedApp = 'MANDIRI';
   else if (lower.includes('bri') || lower.includes('brimo')) detectedApp = 'BRI';
@@ -302,17 +313,6 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
         if (exactMatch) {
           matchedOrder = exactMatch;
           matchStrategy = 'exact_gross_amount';
-        } else {
-          // 2.B: Cocokkan dengan Toleransi Kode Unik (1 s/d 999)
-          const toleranceMatch = pendingOrders.find((o) => {
-            const diff = Math.abs(Number(o.gross_amount) - parsedAmount);
-            return diff >= 1 && diff <= 999;
-          });
-
-          if (toleranceMatch) {
-            matchedOrder = toleranceMatch;
-            matchStrategy = 'unique_code_tolerance';
-          }
         }
       }
 
@@ -449,6 +449,37 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
       console.warn(`[Webhook Reader ${logId}] TRIAL_LIMIT_EXCEEDED: Order ${orderId} blocked for tenant ${webhookTenantId}`);
       return NextResponse.json(quotaExceededRes, { status: 402 });
     }
+  }
+
+  // VALIDASI KEAMANAN P0: Transaksi HANYA boleh dimutasi ke status 'PAID' jika nominal numerik match 100% dengan total tagihan order.
+  const orderGrossAmount = Number(matchedOrder.gross_amount ?? matchedOrder.total_amount ?? 0);
+  if (!isDirectPaid && parsedAmount && !validateOrderPaymentMatch(orderGrossAmount, parsedAmount)) {
+    const mismatchRes = {
+      success: false,
+      error: 'AMOUNT_MISMATCH',
+      message: `Nominal pembayaran Rp ${parsedAmount} tidak cocok 100% dengan total tagihan order #${orderId} (Rp ${orderGrossAmount}).`,
+      order_id: orderId,
+      gross_amount: orderGrossAmount,
+      parsed_amount: parsedAmount,
+      log_id: logId,
+    };
+    addWebhookLog({
+      id: logId,
+      timestamp: new Date().toISOString(),
+      endpoint: endpointSource,
+      method: 'POST',
+      headers: headersObj,
+      rawBody,
+      parsedAmount,
+      detectedApp,
+      tenantSlug,
+      matchedOrderId: orderId,
+      matchStrategy,
+      resultStatus: 400,
+      resultBody: mismatchRes,
+    });
+    console.warn(`[Webhook Reader ${logId}] AMOUNT_MISMATCH: Order ${orderId} Rp ${orderGrossAmount} != Notif Rp ${parsedAmount}`);
+    return NextResponse.json(mismatchRes, { status: 400 });
   }
 
   // UPDATE STATUS ORDER KE 'PAID' (Single Source of Truth: orders)

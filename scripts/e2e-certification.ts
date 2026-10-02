@@ -58,7 +58,7 @@ async function runCertification() {
       businessType: t.step1Presets[0] || 'Bisnis Reguler',
       businessDescription: 'Deskripsi operasional bisnis standar teruji',
       paymentTiming: t.paymentTimingOptions[0]?.title || '',
-      paymentMethods: ['QRIS Otomatis (0% MDR)', 'Transfer Bank Manual'],
+      paymentMethods: ['QRIS Otomatis', 'Transfer Bank Manual'],
       step4Requirements: t.step4Options.slice(0, 3),
       serviceAreaOrCity: 'Bandung & Sekitarnya',
       guaranteeOrReturnPolicy: 'Garansi resmi 30 hari',

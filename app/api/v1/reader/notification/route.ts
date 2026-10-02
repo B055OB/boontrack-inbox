@@ -5,6 +5,7 @@ import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
+import { parseDanaNotification, validateOrderPaymentMatch } from '@/lib/payment/dana-reader';
 
 export const dynamic = 'force-dynamic';
 
@@ -154,7 +155,33 @@ export async function POST(req: NextRequest) {
       body.amount ?? body.nominal ?? body.parsed_amount ?? body.gross_amount ?? null
     );
 
-    const parsedAmount = explicitAmount > 0 ? explicitAmount : extractAmountFromText(combinedText);
+    let parsedAmount = explicitAmount > 0 ? explicitAmount : extractAmountFromText(combinedText);
+
+    // DANA Notification Hardening (ACT-01): Regex Guard & Anti False-Positive
+    const isDanaApp =
+      combinedText.toLowerCase().includes('dana') ||
+      String(body.app || '').toUpperCase() === 'DANA' ||
+      String(body.package || body.package_name || '').toLowerCase().includes('dana');
+
+    if (isDanaApp && combinedText) {
+      const danaValidation = parseDanaNotification(combinedText);
+      if (danaValidation.isRejected || !danaValidation.isValidCredit) {
+        console.warn(`[BoonTrack Reader Webhook] DANA notification rejected: ${danaValidation.rejectionReason}`);
+        return NextResponse.json(
+          {
+            success: false,
+            matched: false,
+            rejected: true,
+            error: 'DANA_NOTIFICATION_REJECTED',
+            message: danaValidation.rejectionReason || 'Notifikasi DANA ditolak (bukan mutasi kredit resmi).',
+          },
+          { status: 400 }
+        );
+      }
+      if (danaValidation.amount && danaValidation.amount > 0) {
+        parsedAmount = danaValidation.amount;
+      }
+    }
 
     console.log(`[BoonTrack Reader Webhook] Extracted: candidateTenants=[${candidateTenantSlugs.join(', ')}], amount=${parsedAmount}, text='${combinedText.slice(0, 100)}'`);
 
@@ -270,29 +297,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // JALUR 4 (TOLERANSI KODE UNIK 1-999, MULTI-TENANT, 24 JAM):
-      // Jika gross_amount tersimpan sebelum potongan kode unik, toleransi selisih 1-999.
-      if (pendingOrders.length === 0) {
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const { data: allPending } = await supabase
-          .from('orders')
-          .select('*')
-          .in('status', PENDING_STATUSES)
-          .gte('created_at', twentyFourHoursAgo)
-          .order('created_at', { ascending: false })
-          .limit(100);
-
-        if (allPending && allPending.length > 0) {
-          const tolMatch = allPending.find((o) => {
-            const diff = Math.abs(Number(o.gross_amount) - parsedAmount);
-            return diff >= 1 && diff <= 999;
-          });
-          if (tolMatch) {
-            pendingOrders = [tolMatch];
-            matchStrategy = 'global_unique_code_tolerance';
-          }
-        }
-      }
+      // Note: Toleransi kode unik 1-999 DIHAPUS sesuai Security Invariant P0 (ACT-01).
+      // Transaksi HANYA boleh dimutasi ke status 'PAID' jika nominal numerik match 100% dengan total tagihan order.
 
       // Jika match ditemukan, hentikan loop retry
       if (pendingOrders.length > 0) {
@@ -324,6 +330,22 @@ export async function POST(req: NextRequest) {
 
     // Pilih order paling relevan
     const matchedOrder = pendingOrders[0];
+
+    // Validasi Keamanan P0: Wajibkan 100% exact numerical match sebelum mutasi status ke PAID
+    const orderGross = Number(matchedOrder.gross_amount ?? matchedOrder.total_amount ?? 0);
+    if (!validateOrderPaymentMatch(orderGross, parsedAmount)) {
+      console.warn(`[BoonTrack Reader Webhook] REJECT MUTATION: Order #${matchedOrder.id} gross_amount Rp ${orderGross} tidak match 100% dengan nominal notifikasi Rp ${parsedAmount}`);
+      return NextResponse.json(
+        {
+          success: false,
+          matched: false,
+          error: 'AMOUNT_MISMATCH',
+          message: `Nominal notifikasi Rp ${parsedAmount} tidak cocok 100% dengan total tagihan order #${matchedOrder.id} (Rp ${orderGross}).`,
+        },
+        { status: 400 }
+      );
+    }
+
     const paidAt = new Date().toISOString();
     const primaryTenantSlug = resolvedTenantSlugs[0] || 'default';
     const effectiveTenantSlug = matchedOrder.tenant_slug || primaryTenantSlug;

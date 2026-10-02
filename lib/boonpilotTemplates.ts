@@ -83,7 +83,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       businessType: 'Toko Retail & Fashion Pria/Wanita',
       businessDescription: 'Produk fashion berkualitas tinggi dengan bahan premium dan jahitan rapi untuk kebutuhan harian dan kerja.',
       paymentTiming: 'Lunas di awal sebelum pesanan dikemas & dikirim (Full Payment)',
-      paymentMethods: ['QRIS Otomatis (0% MDR)', 'Transfer Bank Manual'],
+      paymentMethods: ['QRIS Otomatis', 'Transfer Bank Manual'],
       step4Requirements: ['Nama Lengkap Penerima', 'Nomor WhatsApp Aktif', 'Alamat Lengkap (Jalan, RT/RW, No Rumah)', 'Kota / Kecamatan & Kode Pos'],
       serviceAreaOrCity: 'Jakarta & Pengiriman Seluruh Indonesia',
       guaranteeOrReturnPolicy: 'Garansi tukar size 7 hari jika barang cacat produksi atau ukuran tidak pas (ongkir ditanggung pembeli).',
@@ -110,7 +110,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       },
     ],
     paymentMethodOptions: [
-      { name: 'QRIS Otomatis (0% MDR)', hint: 'Verifikasi instan otomatis masuk ke rekening merchant.' },
+      { name: 'QRIS Otomatis', hint: 'Verifikasi instan otomatis masuk ke rekening merchant.' },
       { name: 'Transfer Bank Manual', hint: 'BCA, Mandiri, BRI, BNI dengan kode unik pencegah double transfer.' },
       { name: 'Bayar di Tempat (COD)', hint: 'Dukungan kurir COD via Biteship.' },
     ],
@@ -216,7 +216,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       businessType: 'Ecourse, Modul & Materi Digital',
       businessDescription: 'Materi panduan praktis, rekaman video, audio, dan e-book berkualitas tinggi untuk diakses secara digital tanpa pengiriman kurir fisik.',
       paymentTiming: 'Lunas 100% di awal sebelum link akses dibuka (Full Payment Instant Access)',
-      paymentMethods: ['QRIS Otomatis (0% MDR)', 'Transfer Bank Manual'],
+      paymentMethods: ['QRIS Otomatis', 'Transfer Bank Manual'],
       step4Requirements: [
         'Email Penerima Akses / Materi',
         'Nomor WhatsApp Pengiriman Link Instan',
@@ -245,7 +245,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       },
     ],
     paymentMethodOptions: [
-      { name: 'QRIS Otomatis (0% MDR)', hint: 'Link aktivasi langsung dikirim via WhatsApp bot detik itu juga.' },
+      { name: 'QRIS Otomatis', hint: 'Link aktivasi langsung dikirim via WhatsApp bot detik itu juga.' },
       { name: 'Transfer Bank Manual', hint: 'Verifikasi menggunakan nominal kode unik.' },
     ],
     step4Label: 'Format Materi & Data Penerima Akses Digital:',
@@ -349,7 +349,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       businessType: 'Jasa Cuci Toren & Pipa Saluran Air',
       businessDescription: 'Layanan spesialis kuras toren, pembersihan tandon air, dan instalasi pipa bebas lumut & endapan untuk rumah dan kantor.',
       paymentTiming: 'Setelah pengerjaan selesai di tempat (Pelunasan Pasca-Layanan)',
-      paymentMethods: ['QRIS Otomatis (0% MDR)', 'Tunai (Cash ke Teknisi)'],
+      paymentMethods: ['QRIS Otomatis', 'Tunai (Cash ke Teknisi)'],
       step4Requirements: ['Nama Lengkap', 'Nomor WhatsApp', 'Alamat Lengkap / Share Loc', 'Kapasitas / Tipe Unit', 'Pilihan Tanggal & Jam'],
       serviceAreaOrCity: 'Area Jabodetabek & Sekitarnya',
       guaranteeOrReturnPolicy: 'Garansi 30 hari pengerjaan tuntas & anti bocor gratis inspeksi ulang.',
@@ -376,7 +376,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       },
     ],
     paymentMethodOptions: [
-      { name: 'QRIS Otomatis (0% MDR)', hint: 'Scan QRIS langsung ke rekening Anda tanpa potongan biaya.' },
+      { name: 'QRIS Otomatis', hint: 'Scan QRIS langsung ke rekening Anda tanpa potongan biaya.' },
       { name: 'Tunai (Cash ke Teknisi)', hint: 'Pelanggan membayar langsung dengan uang tunai kepada staf di lokasi.' },
       { name: 'Transfer Bank Manual', hint: 'Transfer langsung via BCA/Mandiri/BRI dengan kode unik.' },
     ],
@@ -494,7 +494,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       businessType: 'Kuliner & Catering Makanan Rumahan',
       businessDescription: 'Sajian menu makanan higienis, bumbu rempah autentik, dan diolah segar setiap hari tanpa bahan pengawet.',
       paymentTiming: 'Lunas di awal sebelum pesanan dimasak / dikirim kurir instan',
-      paymentMethods: ['QRIS Otomatis (0% MDR)', 'Transfer Bank Manual'],
+      paymentMethods: ['QRIS Otomatis', 'Transfer Bank Manual'],
       step4Requirements: ['Nama Pemesan', 'Nomor WhatsApp', 'Alamat Lengkap Pengantaran', 'Pilihan Level Pedas / Varian Rasa', 'Waktu Jam Tiba yang Diinginkan'],
       serviceAreaOrCity: 'Radius 25 km dari Dapur Pusat (Pengiriman Grab/Gojek Instan)',
       guaranteeOrReturnPolicy: 'Jaminan makanan diantar dalam wadah tertutup rapat dan higienis. Garansi ganti baru jika tumpah atau basi saat tiba.',
@@ -517,7 +517,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       },
     ],
     paymentMethodOptions: [
-      { name: 'QRIS Otomatis (0% MDR)', hint: 'Pembeli cukup scan QRIS di layar WhatsApp.' },
+      { name: 'QRIS Otomatis', hint: 'Pembeli cukup scan QRIS di layar WhatsApp.' },
       { name: 'Transfer Bank Manual', hint: 'Transfer rekening bank dengan notifikasi instan.' },
     ],
     step4Label: 'Data yang Wajib Diminta Bot untuk Pengantaran Makanan:',
@@ -612,7 +612,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       businessType: 'Biro Travel Umroh & Konsultasi Profesional',
       businessDescription: 'Penyelenggara perjalanan ibadah umroh resmi, paket tour travel, serta pendampingan konsultasi bisnis berorientasi hasil.',
       paymentTiming: 'DP pendaftaran untuk amankan kuota seat, pelunasan 30 hari sebelum keberangkatan',
-      paymentMethods: ['Transfer Bank Manual', 'QRIS Otomatis (0% MDR)'],
+      paymentMethods: ['Transfer Bank Manual', 'QRIS Otomatis'],
       step4Requirements: [
         'Nama Lengkap (Sesuai KTP / Paspor)',
         'Nomor WhatsApp Aktif',
@@ -646,7 +646,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
     ],
     paymentMethodOptions: [
       { name: 'Transfer Bank Manual', hint: 'Invoicing resmi ke rekening perusahaan atau bank rekanan.' },
-      { name: 'QRIS Otomatis (0% MDR)', hint: 'Pembayaran instan untuk DP atau konsultasi cepat.' },
+      { name: 'QRIS Otomatis', hint: 'Pembayaran instan untuk DP atau konsultasi cepat.' },
     ],
     step4Label: 'Data Jamaah / Klien yang Wajib Dilengkapi:',
     step4Options: [
@@ -740,7 +740,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       businessType: 'Komunitas Kreator & VIP Member Channel',
       businessDescription: 'Ruang diskusi eksklusif, sharing insight mingguan, dan jejaring relasi bagi praktisi dan antusias konten.',
       paymentTiming: 'Lunas di awal untuk mendapatkan tautan undangan VIP (Instant Invite)',
-      paymentMethods: ['QRIS Otomatis (0% MDR)', 'Transfer Bank Manual'],
+      paymentMethods: ['QRIS Otomatis', 'Transfer Bank Manual'],
       step4Requirements: ['Nama / Panggilan', 'Nomor WhatsApp', 'Username Telegram / Discord'],
       serviceAreaOrCity: 'Online (Channel Telegram VIP / Discord Server)',
       guaranteeOrReturnPolicy: 'Akses diskusi aktif dan jadwal live sharing rutin setiap pekan.',
@@ -763,7 +763,7 @@ export const BUSINESS_TEMPLATES: Record<BusinessTemplateCode, BusinessTemplateDe
       },
     ],
     paymentMethodOptions: [
-      { name: 'QRIS Otomatis (0% MDR)', hint: 'Metode tercepat bagi audiens mobile.' },
+      { name: 'QRIS Otomatis', hint: 'Metode tercepat bagi audiens mobile.' },
       { name: 'Transfer Bank Manual', hint: 'Transfer rekening bank dengan kode verifikasi.' },
     ],
     step4Label: 'Data yang Diminta untuk Aktivasi Anggota Baru:',
