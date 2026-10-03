@@ -55,4 +55,30 @@ describe('Cart Policy Matrix & Multi-Tenant Isolation', () => {
       expect(policyFile).not.toContain(pattern);
     }
   });
+
+  describe('Catalog Storefront (app/[tenant]/page.tsx) Product Card & FloatingCartBar Integration', () => {
+    const catalogPagePath = path.join(process.cwd(), 'app/[tenant]/page.tsx');
+    let catalogPageCode: string;
+
+    beforeAll(() => {
+      catalogPageCode = fs.readFileSync(catalogPagePath, 'utf-8');
+    });
+
+    it('exposes [+ Keranjang] button on catalog product cards for physical & food products', () => {
+      expect(catalogPageCode).toContain('+ Keranjang');
+      expect(catalogPageCode).toContain('addToCart(p, e)');
+    });
+
+    it('exposes [Beli Langsung] quick buy button on catalog product cards for physical & food products', () => {
+      expect(catalogPageCode).toContain('Beli Langsung');
+      expect(catalogPageCode).toContain('setIsCheckoutOpen(true)');
+    });
+
+    it('mounts FloatingCartBar at bottom of page when cart has items', () => {
+      expect(catalogPageCode).toContain('import FloatingCartBar from "@/components/cart/FloatingCartBar"');
+      expect(catalogPageCode).toContain('<FloatingCartBar');
+      expect(catalogPageCode).toContain('cart.items.length > 0');
+    });
+  });
 });
+

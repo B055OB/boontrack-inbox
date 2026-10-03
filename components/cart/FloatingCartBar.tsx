@@ -48,3 +48,5 @@ export default function FloatingCartBar({
     </div>
   );
 }
+
+export { FloatingCartBar };

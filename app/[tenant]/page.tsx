@@ -16,8 +16,10 @@ import {
   PackageOpen, 
   Package,
   Check,
-  ExternalLink 
+  ExternalLink,
+  Zap
 } from "lucide-react";
+import FloatingCartBar from "@/components/cart/FloatingCartBar";
 import ShopClaimSection from "@/app/components/ShopClaimSection";
 import dynamic from 'next/dynamic';
 
@@ -1270,29 +1272,43 @@ export default function TenantStorefrontPage() {
                   const isPhysOrFood = isPhysicalOrFoodProduct(selectedProduct, tenantMetadata?.category || tenantCategory || tenant?.category);
                   if (isPhysOrFood) {
                     return (
-                      <button
-                        onClick={() => {
-                          trackInitiateCheckout(selectedProduct.name, selectedProduct.price);
-                          setProductForCheckout({
-                            id: String(selectedProduct.id),
-                            title: selectedProduct.name,
-                            price: selectedProduct.price,
-                            download_url: selectedProduct.download_url,
-                            category: selectedProduct.category,
-                            type: selectedProduct.type,
-                            product_type: selectedProduct.product_type || 'PHYSICAL',
-                            requires_shipping: true,
-                            slug: selectedProduct.slug,
-                            metadata: selectedProduct.metadata,
-                          });
-                          setSelectedProduct(null);
-                          setIsCheckoutOpen(true);
-                        }}
-                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <ShoppingBag className="w-4 h-4" />
-                        <span>Pesan Sekarang</span>
-                      </button>
+                      <div className="grid grid-cols-2 gap-2 w-full">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addToCart(selectedProduct);
+                            setSelectedProduct(null);
+                          }}
+                          className="w-full py-3 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 font-black text-xs rounded-xl shadow-xs active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4 text-emerald-600" />
+                          <span>+ Keranjang</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            trackInitiateCheckout(selectedProduct.name, selectedProduct.price);
+                            setProductForCheckout({
+                              id: String(selectedProduct.id),
+                              title: selectedProduct.name,
+                              price: selectedProduct.price,
+                              download_url: selectedProduct.download_url,
+                              category: selectedProduct.category,
+                              type: selectedProduct.type,
+                              product_type: selectedProduct.product_type || 'PHYSICAL',
+                              requires_shipping: true,
+                              slug: selectedProduct.slug,
+                              metadata: selectedProduct.metadata,
+                            });
+                            setSelectedProduct(null);
+                            setIsCheckoutOpen(true);
+                          }}
+                          className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+                          <span>Beli Langsung</span>
+                        </button>
+                      </div>
                     );
                   }
 
@@ -1328,6 +1344,16 @@ export default function TenantStorefrontPage() {
             isOpen={isScannerOpen}
             onClose={() => setIsScannerOpen(false)}
             onScanSuccess={handleBarcodeDetected}
+          />
+        )}
+
+        {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
+        {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && (
+          <FloatingCartBar
+            totalCount={totalCartCount}
+            subtotal={totalCartPrice}
+            onOpenCart={() => setShowCartModal(true)}
+            className="bottom-4 sm:bottom-6"
           />
         )}
       </>
@@ -1370,6 +1396,16 @@ export default function TenantStorefrontPage() {
             isOpen={isScannerOpen}
             onClose={() => setIsScannerOpen(false)}
             onScanSuccess={handleBarcodeDetected}
+          />
+        )}
+
+        {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
+        {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && (
+          <FloatingCartBar
+            totalCount={totalCartCount}
+            subtotal={totalCartPrice}
+            onOpenCart={() => setShowCartModal(true)}
+            className="bottom-4 sm:bottom-6"
           />
         )}
       </>
@@ -1563,31 +1599,51 @@ export default function TenantStorefrontPage() {
                       const isPhysOrFood = isPhysicalOrFoodProduct(p, tenantMetadata?.category || tenantCategory || tenant?.category);
                       if (isPhysOrFood) {
                         return (
-                          <button 
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (p) {
-                                trackInitiateCheckout(p.name, p.price);
-                                setProductForCheckout({
-                                  id: String(p.id),
-                                  title: p.name,
-                                  price: p.price,
-                                  download_url: p.download_url,
-                                  category: p.category,
-                                  type: p.type,
-                                  product_type: p.product_type || 'PHYSICAL',
-                                  requires_shipping: true,
-                                  slug: p.slug,
-                                  metadata: p.metadata,
-                                });
-                                setIsCheckoutOpen(true);
-                              }
-                            }} 
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
-                          >
-                            <ShoppingBag className="w-3.5 h-3.5" /> Pesan Sekarang
-                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            {/* Tombol Utama: [+ Keranjang] */}
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                if (p) {
+                                  addToCart(p, e);
+                                }
+                              }} 
+                              title="Tambah ke Keranjang"
+                              className="bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 text-xs font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>+ Keranjang</span>
+                            </button>
+
+                            {/* Tombol Cepat: [Beli Langsung / Pesan] */}
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (p) {
+                                  trackInitiateCheckout(p.name, p.price);
+                                  setProductForCheckout({
+                                    id: String(p.id),
+                                    title: p.name,
+                                    price: p.price,
+                                    download_url: p.download_url,
+                                    category: p.category,
+                                    type: p.type,
+                                    product_type: p.product_type || 'PHYSICAL',
+                                    requires_shipping: true,
+                                    slug: p.slug,
+                                    metadata: p.metadata,
+                                  });
+                                  setIsCheckoutOpen(true);
+                                }
+                              }} 
+                              title="Beli Langsung / Pesan"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
+                            >
+                              <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                              <span>Beli Langsung</span>
+                            </button>
+                          </div>
                         );
                       }
 
@@ -1886,29 +1942,43 @@ export default function TenantStorefrontPage() {
                 const isPhysOrFood = isPhysicalOrFoodProduct(selectedProduct, tenantMetadata?.category || tenantCategory || tenant?.category);
                 if (isPhysOrFood) {
                   return (
-                    <button
-                      onClick={() => {
-                        trackInitiateCheckout(selectedProduct.name, selectedProduct.price);
-                        setProductForCheckout({
-                          id: String(selectedProduct.id),
-                          title: selectedProduct.name,
-                          price: selectedProduct.price,
-                          download_url: selectedProduct.download_url,
-                          category: selectedProduct.category,
-                          type: selectedProduct.type,
-                          product_type: selectedProduct.product_type || 'PHYSICAL',
-                          requires_shipping: true,
-                          slug: selectedProduct.slug,
-                          metadata: selectedProduct.metadata,
-                        });
-                        setSelectedProduct(null);
-                        setIsCheckoutOpen(true);
-                      }}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <ShoppingBag className="w-4 h-4" />
-                      <span>Pesan Sekarang</span>
-                    </button>
+                    <div className="grid grid-cols-2 gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          addToCart(selectedProduct);
+                          setSelectedProduct(null);
+                        }}
+                        className="w-full py-3 bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 font-black text-xs rounded-xl shadow-xs active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4 text-emerald-600" />
+                        <span>+ Keranjang</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          trackInitiateCheckout(selectedProduct.name, selectedProduct.price);
+                          setProductForCheckout({
+                            id: String(selectedProduct.id),
+                            title: selectedProduct.name,
+                            price: selectedProduct.price,
+                            download_url: selectedProduct.download_url,
+                            category: selectedProduct.category,
+                            type: selectedProduct.type,
+                            product_type: selectedProduct.product_type || 'PHYSICAL',
+                            requires_shipping: true,
+                            slug: selectedProduct.slug,
+                            metadata: selectedProduct.metadata,
+                          });
+                          setSelectedProduct(null);
+                          setIsCheckoutOpen(true);
+                        }}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+                        <span>Beli Langsung</span>
+                      </button>
+                    </div>
                   );
                 }
 
@@ -2265,6 +2335,17 @@ export default function TenantStorefrontPage() {
           )}
         </div>
       )}
+
+      {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
+      {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && (
+        <FloatingCartBar
+          totalCount={totalCartCount}
+          subtotal={totalCartPrice}
+          onOpenCart={() => setShowCartModal(true)}
+          className="bottom-4 sm:bottom-6"
+        />
+      )}
+
       <footer className="py-8 px-4 text-center text-xs text-slate-500 bg-slate-900 border-t border-slate-800 mt-auto space-y-4">
         <div className="max-w-4xl mx-auto space-y-3">
           <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1 text-slate-400 font-medium">
