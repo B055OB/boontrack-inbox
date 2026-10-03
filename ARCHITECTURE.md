@@ -3600,87 +3600,134 @@ Setiap deduksi kredit dan transaksi top-up wajib dicatat secara terdesentralisas
 
 ---
 
-## 45. 3-Layer Payment Verification Engine (ADR 2026-10-04)
+## 45. Multi-Source Payment Detection & 4-Layer Defense Engine (ADR 2026-10-04)
 
-### 45.1 Architectural Hierarchy & Eliminasi Payment Gateway MDR
+### 45.1 Core Invariant: "Payment Evidence is not Payment Confirmation"
 
-Untuk mengeliminasi biaya potongan payment gateway konvensional (MDR 1.5% - 3% + Rp4.000/transaksi) yang membebani margin UMKM, BoonTrack menerapkan arsitektur verifikasi pembayaran langsung ke rekening merchant melalui **3-Layer Payment Verification Engine**:
+Sistem pembayaran BoonTrack memisahkan secara tegas antara **Sinyal Bukti Pembayaran (Payment Evidence/Observation)** dengan **Otoritas Konfirmasi Finansial (Payment Confirmation)**:
+
+> **Core Architectural Invariant**: *"Payment Evidence is not Payment Confirmation."*  
+> Sinyal dari notifikasi Reader, Cloudflare Email Worker, maupun AI Vision OCR hanyalah observasi bukti sementara (`payment_observations`). Satu-satunya pintu sah perubahan status transaksi menjadi `PAID` adalah melalui **Financial State Machine (FSM)** atomik di PostgreSQL + **Transactional Outbox** (`payment_outbox`).
+
+```
+  [ Reader APK Push ]     [ Cloudflare Email Worker ]     [ AI Vision OCR Struk ]
+         │                            │                             │
+         └────────────────────────────┼─────────────────────────────┘
+                                      │
+                                      ▼
+                      ┌───────────────────────────────┐
+                      │  payment_observations         │
+                      │  (UU PDP Minimized Log)       │
+                      └───────────────┬───────────────┘
+                                      │
+                                      ▼
+                      ┌───────────────────────────────┐
+                      │   FINANCIAL STATE MACHINE     │
+                      │   (processPaymentMatch)       │
+                      │   - Exact Match Mandatory     │
+                      │   - 30-Min Active Window      │
+                      │   - Atomic Conditional UPDATE │
+                      └───────────────┬───────────────┘
+                                      │
+               ┌──────────────────────┴──────────────────────┐
+               │ affected_rows == 1                          │ affected_rows == 0
+               ▼                                             ▼
+  ┌───────────────────────────────┐             ┌───────────────────────────────┐
+  │ 🚀 orders.status = 'PAID'     │             │ 🛡️ Safe NO-OP                 │
+  │ INSERT payment_outbox         │             │ (NOOP_ALREADY_PAID)           │
+  │ (PAYMENT_CONFIRMED)           │             │ Cegah Race Condition & Dobel  │
+  └───────────────┬───────────────┘             └───────────────────────────────┘
+                  │
+                  ▼
+  [ Transactional Outbox Workers: WhatsApp Resi, Email Seller/Buyer, Meta CAPI ]
+```
+
+- **Atomic State Transition**: Update status dieksekusi secara kondisional:
+  ```sql
+  UPDATE orders SET status = 'PAID', paid_at = NOW() WHERE id = :order_id AND status = 'PENDING';
+  ```
+- **Dua Hasil Eksekusi**:
+  1. `affected_rows == 1`: Transisi berhasil. Event `PAYMENT_CONFIRMED` di-insert ke tabel `payment_outbox` dalam transaksi yang sama.
+  2. `affected_rows == 0`: Safe NO-OP (`NOOP_ALREADY_PAID`). Order sudah diselesaikan oleh sumber sinyal lain secara bersamaan. Mencegah duplikasi notifikasi dan pengiriman ganda.
+
+---
+
+### 45.2 The 4-Layer Defense Architecture
+
+Untuk mengeliminasi kegagalan verifikasi akibat HP mati, notifikasi tertunda, atau gambar buram, platform dilindungi oleh 4 lapisan pertahanan berlapis:
 
 ```
                          [ Calon Pembeli Checkout ]
                                      │
                                      ▼
-               ┌───────────────────────────────────────────┐
-               │    Pemilihan Metode Pembayaran            │
-               └─────┬───────────────────────────────┬─────┘
-                     │                               │
-       Metode QRIS   │                               │ Transfer Manual
-                     ▼                               ▼
-     ┌───────────────────────────────┐ ┌───────────────────────────────┐
-     │ ⚡ LAYER 1: DYNAMIC QRIS      │ │ 👁️ LAYER 2: AI VISION OCR    │
-     │ - Payload EMVCo Dinamis       │ │ - Upload Bukti Struk Transfer │
-     │ - Kode Unik Diskon (Downward) │ │ - Multimodal Gemini 3.8 Flash │
-     │ - BoonTrack Reader (5-15s)    │ │ - Ekstraksi RRN & Nominal     │
-     └───────────────┬───────────────┘ └───────────────┬───────────────┘
-                     │                                 │
-            Mutasi Terdeteksi?               Data OCR Valid & Sesuai?
-            [ YA ]       [ TIDAK/Timeout ]   [ YA ]        [ ANOMALI/BURAM ]
-               │                 │              │                  │
-               │                 └──────────────┼──────────────────┘
-               │                                │
-               ▼                                ▼
-     ┌───────────────────┐            ┌────────────────────────────────┐
-     │ 🚀 PAID (LUNAS)   │            │ 🛡️ LAYER 3: MANUAL FALLBACK   │
-     │ Status Transaksi  │            │ - Antrean Verifikasi Dashboard │
-     │ Otomatis Update   │            │ - Review Struk vs Rekening     │
-     │ Notifikasi WA &   │            │ - God Button 1-Klik Approval   │
-     │ Resi Diterbitkan  │            └────────────────┬───────────────┘
-     └───────────────────┘                             │
-                                              Merchant Review
-                                            [ APPROVE ]    [ REJECT ]
-                                                │              │
-                                                ▼              ▼
-                                          [ PAID (Lunas) ] [ CANCELLED ]
+     ┌───────────────────────────────────────────────────────────────┐
+     │ ⚡ LAYER 1: BOONTRACK READER APK (Fast Path: 5–15 Detik)       │
+     │ - Push notification listener langsung di HP merchant          │
+     │ - Mendeteksi mutasi QRIS Dinamis & e-wallet tanpa delay       │
+     └───────────────────────────────┬───────────────────────────────┘
+                                     │ (Gagal / HP Offline / Delayed)
+                                     ▼
+     ┌───────────────────────────────────────────────────────────────┐
+     │ 📧 LAYER 2: INBOUND EMAIL WORKER (Fail-Safe: 30–90 Detik)     │
+     │ - Cloudflare Email Worker: alert-{tenant_slug}@inbound...     │
+     │ - Parser bank whitelist (BCA, Mandiri, BSI)                   │
+     └───────────────────────────────┬───────────────────────────────┘
+                                     │ (Transfer Rekening Manual)
+                                     ▼
+     ┌───────────────────────────────────────────────────────────────┐
+     │ 👁️ LAYER 3: AI BOONTRACK VISION OCR (Smart Struk Analyzer)   │
+     │ - Multimodal Gemini 3.8 Flash ekstraksi RRN & nominal         │
+     │ - Pre-flight anti-fraud & anti-replay hash                    │
+     └───────────────────────────────┬───────────────────────────────┘
+                                     │ (Bukti Buram / Selisih Nominal)
+                                     ▼
+     ┌───────────────────────────────────────────────────────────────┐
+     │ 🛡️ LAYER 4: FALLBACK & MANUAL REVIEW SELLER (Dashboard)       │
+     │ - Label LATE_MATCH_PENDING_REVIEW (Status TETAP PENDING)      │
+     │ - God Button 1-Klik Approval di Dashboard Pesanan             │
+     └───────────────────────────────────────────────────────────────┘
 ```
 
-### 45.2 Rincian Lapisan Verifikasi (The 3 Layers)
+1. **Layer 1: BoonTrack Reader APK (Fast Path, 5–15 Detik)**:
+   - Worker background di perangkat Android merchant menangkap notifikasi push mutasi perbankan/e-wallet secara instan.
+   - Mencakup QRIS Dinamis (BCA, Mandiri, BRI, BNI, GoPay, OVO, ShopeePay, DANA) dengan SLA 5–15 detik menuju status `PAID`.
+2. **Layer 2: Inbound Email Worker (Fail-Safe Backup, 30–90 Detik)**:
+   - Cadangan otomatis berbasis Cloudflare Email Worker yang menerima email notifikasi transaksi masuk dari bank resmi via alamat canonical `alert-{tenant_slug}@inbound.boontrack.com`.
+   - Menggunakan parser whitelist modular (`mandiriParser.ts`, `bsiParser.ts`, `bcaParser.ts`) untuk mengekstrak nominal dan nomor referensi tanpa bergantung pada koneksi HP merchant.
+3. **Layer 3: AI BoonTrack Vision OCR (Smart Receipt Verification)**:
+   - Diterapkan pada transfer manual rekening bank konvensional saat pembeli mengunggah berkas gambar/struk transfer.
+   - Gemini Multimodal mengekstrak data terstruktur (Bank, Rekening, Nominal, Waktu, dan RRN/Nomor Jurnal) dengan validasi pre-flight untuk mendeteksi struk palsu atau pengunggahan ulang (*anti-replay attack*).
+4. **Layer 4: Fallback & Manual Review Seller (Dashboard Review)**:
+   - Jika sinyal bukti buram, rusak, terlambat, atau memiliki selisih nominal, pesanan ditahan dengan label `notes: 'LATE_MATCH_PENDING_REVIEW'` dan status **TETAP PENDING**.
+   - Merchant/admin CS meninjau bukti transaksi berdampingan dengan mutasi rekening bank dan melakukan 1-klik approval (*God Button*) atau penolakan via chat WhatsApp.
 
-#### Layer 1: Dynamic QRIS + BoonTrack Reader (Auto-Mutation 5-15s)
-- **Peran & Otoritas**: Jalur Utama Otomatisasi (Instant Primary Rail).
-- **Mekanisme Kerja**:
-  1. Sistem membaca gambar QRIS statis merchant (`tenants.metadata.payment_settings`) dan mengekstrak payload string EMVCo nasional (NMID).
-  2. Saat checkout, sistem menginjeksikan nominal tagihan spesifik beserta **kode unik diskon (DOWNWARD)** (misal: total Rp100.000 menjadi Rp99.987). Sistem downward menjamin pembeli tidak pernah membayar lebih mahal dari harga etalase.
-  3. Pembeli memindai QRIS menggunakan aplikasi mobile banking (BCA, Mandiri, BRI, BNI) atau dompet digital (GoPay, OVO, ShopeePay, DANA).
-  4. Worker **BoonTrack Reader** membaca notifikasi mutasi rekening merchant secara realtime.
-  5. **SLA Verifikasi**: Dalam **5–15 detik** sejak pembeli menekan konfirmasi bayar di aplikasi bank, status pesanan otomatis berubah menjadi `PAID` tanpa pembeli perlu mengirimkan tangkapan layar atau bukti transfer apa pun.
+---
 
-#### Layer 2: AI BoonTrack Vision OCR (Smart Receipt Verification)
-- **Peran & Otoritas**: Mesin Akselerasi Ekstraksi Sinyal (Provisional Evidence Rail).
-- **Mekanisme Kerja**:
-  1. Digunakan untuk opsi pembayaran Transfer Bank Manual (non-QRIS) atau saat auto-mutasi memerlukan validasi pelengkap.
-  2. Pembeli mengunggah berkas foto atau tangkapan layar bukti transfer ke antarmuka storefront / chat WhatsApp bot.
-  3. Pre-flight guardrail memvalidasi ukuran berkas, resolusi, format MIME, dan rasio visual sebelum gambar dikirim ke model AI.
-  4. Pipeline **Gemini Multimodal Vision OCR** menganalisis gambar dan mengekstrak struktur data:
-     - Bank Pengirim & Bank Tujuan
-     - Nomor Rekening & Nama Pemilik Rekening
-     - Nominal Transfer Aktual
-     - Waktu & Tanggal Transaksi
-     - Nomor Referensi Bank / RRN (Retrieval Reference Number) unik.
-  5. Sistem membandingkan nominal OCR dengan nominal pesanan (toleransi kode unik). Jika RRN belum pernah dipakai sebelumnya (*anti-replay attack*) dan nominal klop, pesanan dapat otomatis diverifikasi atau dipersiapkan untuk konfirmasi akhir.
+### 45.3 Kebijakan Finansial & Regulasi (Sign-Off CFO & CTO)
 
-#### Layer 3: Manual Fallback Review (Pemberi Otoritas Terakhir di Dashboard)
-- **Peran & Otoritas**: Human-in-the-Loop & Fail-Safe Final Authority.
-- **Mekanisme Kerja**:
-  1. Aktif secara otomatis jika:
-     - Bukti transfer buram, terpotong, beresolusi rendah, atau gambar bukan struk bank asli.
-     - Terjadi selisih antara nominal transfer dengan total pesanan (misal: pembeli lupa menyertakan kode unik).
-     - Terjadi gangguan jaringan pada pihak perbankan / mutasi pending.
-  2. Pesanan masuk ke antrean **Manual Review** di menu pesanan (`/admin` atau `/orders`).
-  3. Merchant atau tim CS dapat membuka detail pesanan, melihat gambar struk asli berdampingan dengan catatan mutasi perbankan, dan melakukan tindakan:
-     - **Approval 1-Klik (God Button)**: Mengubah status menjadi `PAID` seketika dan memicu webhook fulfillment.
-     - **Tolak / Minta Struk Ulang**: Mengirim pesan klarifikasi ke WhatsApp pembeli secara instan.
+Untuk melindungi solvabilitas merchant, kepatuhan hukum, dan keandalan akuntansi, sistem wajib mematuhi 5 klausul finansial non-negosiasi berikut:
 
-### 45.3 Invarian Keamanan Finansial & Isolasi Tenant
-1. **Zero False-Positive Rule**: Status pesanan dilarang keras berubah menjadi `PAID` hanya berdasarkan estimasi spekulatif tanpa mutasi riil Layer 1, validasi sukses Layer 2, atau klik persetujuan merchant di Layer 3.
-2. **Anti-Replay Attack**: Nomor referensi bank (RRN / Transaction ID) yang diekstrak oleh Vision OCR disimpan dengan constraint unik per `tenant_id` untuk mencegah pengunggahan struk yang sama berulang kali oleh pembeli yang berbeda.
-3. **Tenant Boundary Isolation**: Setiap pembacaan mutasi dan penyimpanan bukti transfer terikat mutlak ke `tenant_id` masing-masing merchant.
+#### 1. Model Non-Custodial Mutlak: BYO Account (Bring Your Own Account)
+- Rekening perbankan, akun QRIS, dan email notifikasi adalah **100% milik masing-masing merchant**.
+- BoonTrack bertindak murni sebagai **Software Observer & Reconciliation Engine** (bukan Penyelenggara Jasa Pembayaran / PJP kustodian). Dana pembeli langsung masuk 100% utuh ke rekening merchant tanpa mengendap di platform (Zero Escrow, Zero MDR Fee).
+
+#### 2. Exact Match Mandatory (Nol Toleransi Selisih)
+- Pencocokan otomatis (*auto-settlement*) mewajibkan kesesuaian nominal 100% (`orders.total_amount == observation.amount`).
+- **Dilarang Keras** menerapkan toleransi selisih otomatis (misal $\pm$ Rp1.000). Setiap selisih dana (kurang bayar maupun lebih bayar) wajib dihentikan di status `PENDING` dan diflag dengan `LATE_MATCH_PENDING_REVIEW` untuk mencegah eksploitasi rekonsiliasi (*reconciliation exploit / underpayment attack*).
+
+#### 3. Deterministic Time Window
+- **30 Menit Jendela Aktif**: Pencocokan otomatis instan hanya berlaku jika mutasi terjadi dalam waktu $\le 30$ menit sejak pesanan dibuat (`created_at >= occurredAt - 30 minutes`).
+- **2 Jam Grace Period (Late Match Flagging)**: Jika mutasi valid tiba antara 30 menit hingga 2 jam, sistem **DILARANG** mengubah status menjadi `PAID` secara otomatis karena risiko stok fisik sudah dialokasikan ke pembeli lain. Sistem menandai order dengan `LATE_MATCH_PENDING_REVIEW`, status **TETAP PENDING**, memberi wewenang penuh kepada merchant untuk konfirmasi manual.
+- **> 2 Jam Expired**: Transaksi di atas 2 jam dianggap kedaluwarsa dan membutuhkan investigasi manual CS.
+
+#### 4. Whitelist Bank Phase 1
+- Tahap 1 mengunci parser notifikasi resmi pada 3 bank utama nasional:
+  * **Bank Central Asia (BCA)** (`bcaParser.ts`)
+  * **Bank Mandiri** (`mandiriParser.ts`)
+  * **Bank Syariah Indonesia (BSI)** (`bsiParser.ts`)
+- Bank lain dan dompet digital diarahkan melalui notifikasi push BoonTrack Reader APK atau AI Vision OCR struk transfer.
+
+#### 5. Kepatuhan UU PDP (Data Minimization Standard)
+- Sesuai amanat Undang-Undang Perlindungan Data Pribadi (UU PDP):
+  * Tabel `payment_observations` hanya merekam sinyal esensial: `amount`, `occurred_at`, `external_reference`, `provider`, `source`, dan `raw_event_hash` (SHA-256).
+  * **DILARANG KERAS** menyimpan raw body email penuh, total saldo rekening merchant, saldo akhir setelah mutasi, atau nomor rekening lengkap pembeli/penjual tanpa enkripsi/masking.
