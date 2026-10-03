@@ -83,6 +83,60 @@ export function resolveBindingCapabilities(
 }
 
 /**
+ * Strict Domain Whitelist Guard for Demo URLs.
+ * Validates that demo_url belongs to the boontrack.com ecosystem (e.g. shop.boontrack.com, boontrack.com).
+ * Rejects external domains (shopee, tokopedia, third-party biolinks).
+ */
+export function validateDemoUrl(urlStr?: string | null): {
+  valid: boolean;
+  normalizedUrl?: string;
+  error?: string;
+} {
+  if (!urlStr || !urlStr.trim()) {
+    return {
+      valid: true,
+      normalizedUrl: 'https://shop.boontrack.com/toko-demo',
+    };
+  }
+
+  const clean = urlStr.trim();
+
+  try {
+    const parsed = new URL(
+      clean.startsWith('http://') || clean.startsWith('https://')
+        ? clean
+        : `https://${clean}`
+    );
+
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Strict Domain Whitelist: must be exactly boontrack.com or end with .boontrack.com
+    const isBoontrack =
+      hostname === 'boontrack.com' || hostname.endsWith('.boontrack.com');
+
+    if (!isBoontrack) {
+      return {
+        valid: false,
+        error: 'Tautan demo wajib menggunakan ekosistem boontrack.com',
+      };
+    }
+
+    // Force https protocol
+    parsed.protocol = 'https:';
+
+    return {
+      valid: true,
+      normalizedUrl: parsed.toString(),
+    };
+  } catch {
+    return {
+      valid: false,
+      error: 'Tautan demo wajib menggunakan ekosistem boontrack.com',
+    };
+  }
+}
+
+/**
  * Resolves a ChannelBinding instance deterministically from inbound channel parameters.
  */
 export function resolveChannelBinding(params: ResolveBindingParams): ChannelBinding {
@@ -93,6 +147,10 @@ export function resolveChannelBinding(params: ResolveBindingParams): ChannelBind
     community_source_id,
     tenant_id,
     tenant_slug,
+    affiliate_id,
+    channel_name,
+    demo_url,
+    is_active,
     metadata,
     group_config,
   } = params;
@@ -107,6 +165,8 @@ export function resolveChannelBinding(params: ResolveBindingParams): ChannelBind
       groupConfig: group_config,
     });
 
+  const demoValidation = validateDemoUrl(demo_url);
+
   return {
     binding_id: bindingId,
     channel_type,
@@ -116,6 +176,10 @@ export function resolveChannelBinding(params: ResolveBindingParams): ChannelBind
     capabilities,
     tenant_id: tenant_id || null,
     tenant_slug: tenant_slug || null,
+    affiliate_id: affiliate_id || null,
+    channel_name: channel_name || null,
+    demo_url: demoValidation.normalizedUrl || 'https://shop.boontrack.com/toko-demo',
+    is_active: is_active !== false,
     metadata: metadata || {},
   };
 }

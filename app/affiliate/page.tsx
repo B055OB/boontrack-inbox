@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { BANK_OPTIONS } from '@/lib/partner-service';
 import { getSupabase } from '@/lib/supabaseClient';
+import CommunityPoolManager from './components/CommunityPoolManager';
 
 export interface LeadItem {
   id: string;
@@ -1528,6 +1529,12 @@ function AffiliatePortalContent() {
                 </div>
               </div>
             </div>
+
+            {/* ── MODUL OTOMASI KOLAM KOMUNITAS (BOONPILOT BOT) ── */}
+            <CommunityPoolManager
+              affiliateId={activeCode || data.affiliate.referral_code || data.affiliate.id}
+              affiliateName={data.affiliate.name}
+            />
 
             {/* ── CARD KUSTOMISASI KODE REFERRAL (FITUR EDIT SLUG) ── */}
             <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">

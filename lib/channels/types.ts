@@ -40,6 +40,10 @@ export interface ChannelBinding {
   capabilities: ChannelCapability[];
   tenant_id?: string | null;
   tenant_slug?: string | null;
+  affiliate_id?: string | null;
+  channel_name?: string | null;
+  demo_url?: string | null;
+  is_active?: boolean;
   metadata?: Record<string, any>;
 }
 
@@ -66,6 +70,10 @@ export interface ResolveBindingParams {
   binding_id?: string;
   tenant_id?: string | null;
   tenant_slug?: string | null;
+  affiliate_id?: string | null;
+  channel_name?: string | null;
+  demo_url?: string | null;
+  is_active?: boolean;
   metadata?: Record<string, any>;
   capabilities?: ChannelCapability[];
   group_config?: TelegramGroupConfig;

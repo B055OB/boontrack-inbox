@@ -437,6 +437,59 @@ export async function handleTelegramUpdate(
         return { handled: false, reason: 'group_rate_limited', chatId };
       }
 
+      // §43 & Task: Cek apakah grup ini terdaftar sebagai Kolam Komunitas di channel_bindings
+      let communityBinding: any = null;
+      if (supabase) {
+        try {
+          const { data: cb } = await supabase
+            .from('channel_bindings')
+            .select('*')
+            .eq('channel_type', 'telegram')
+            .eq('community_source_id', String(chatId))
+            .eq('is_active', true)
+            .maybeSingle();
+          communityBinding = cb;
+        } catch (dbErr) {
+          console.warn('[TELEGRAM] Community binding check warning:', dbErr);
+        }
+      }
+
+      // JIKA GRUP TERDAFTAR SEBAGAI KOLAM KOMUNITAS:
+      // Sajikan respon singkat + 2 call-to-action (Contoh Demo & Buka Toko Online)
+      if (communityBinding) {
+        const affiliateId = communityBinding.affiliate_id || 'ob';
+        const demoUrl = communityBinding.demo_url || 'https://shop.boontrack.com/toko-demo';
+        const registerUrl = `https://dashboard.boontrack.com/register?ref=${encodeURIComponent(affiliateId)}&src=${encodeURIComponent(chatId)}`;
+
+        const replyText =
+          `👋 *Halo dari BoonTrack!*\n` +
+          `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
+          `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
+          `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}\n\n` +
+          `_Coba gratis 7 hari tanpa kartu kredit!_`;
+
+        const buttons: TelegramButton[][] = [
+          [{ text: '🛍️ Cek Contoh Demo', url: demoUrl }],
+          [{ text: '🚀 Buka Toko Online / Coba Gratis', url: registerUrl }],
+        ];
+
+        await sendTelegramMessage(chatId, replyText, {
+          replyToMessageId: message.message_id,
+          parseMode: 'Markdown',
+          buttons,
+        });
+
+        recordGroupTrigger(chatId, fromId);
+        return {
+          handled: true,
+          chatId,
+          senderPhone: String(fromId),
+          reply: replyText,
+          role: 'AFFILIATE_ENGINE',
+          activeEngine: 'DUAL_TRIGGER_COMMUNITY_POOL',
+        };
+      }
+
       const targetSlug = (boonMatch[1] || matchedTenant?.slug || '').trim().toLowerCase();
       if (!targetSlug) {
         const hintText = 'ℹ️ Tentukan nama toko yang ingin dipromosikan, contoh: `@boon nama_toko`';

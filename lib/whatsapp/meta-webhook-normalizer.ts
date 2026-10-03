@@ -563,6 +563,35 @@ export async function processNormalizedMetaEvent(
         console.info(`[GROUP_GUARD] Official support ignoring general group chatter in '${rawFrom}' (no @boon mention).`);
         continue;
       }
+
+      // 1.2 CEK KOLAM KOMUNITAS AFILIASI DI CHANNEL_BINDINGS (§43)
+      try {
+        const { data: waBinding } = await supabase
+          .from('channel_bindings')
+          .select('*')
+          .eq('channel_type', 'whatsapp')
+          .eq('community_source_id', rawFrom)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (waBinding) {
+          const affId = waBinding.affiliate_id || 'ob';
+          const demoUrl = waBinding.demo_url || 'https://shop.boontrack.com/toko-demo';
+          const registerUrl = `https://dashboard.boontrack.com/register?ref=${encodeURIComponent(affId)}&src=${encodeURIComponent(rawFrom)}`;
+
+          const replyText =
+            `👋 *Halo dari BoonTrack!*\n` +
+            `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
+            `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
+            `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}`;
+
+          await sendWhatsAppSessionMessage(rawFrom, replyText);
+          processedMessages++;
+          continue;
+        }
+      } catch (waErr) {
+        console.warn('[WA Group Community Trigger Error]:', waErr);
+      }
     }
 
     // 2. Deteksi pola aktivasi platform (AKTIVASI BT-XXXX)
