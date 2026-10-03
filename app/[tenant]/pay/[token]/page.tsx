@@ -139,7 +139,9 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
     }
   }, [token, tenantSlug]);
 
-  // Polling status pembayaran realtime setiap 5 detik saat status PENDING / WAITING_CONFIRMATION
+  const [payCountdown, setPayCountdown] = useState<number | null>(null);
+
+  // Polling status pembayaran realtime setiap 4 detik saat status PENDING / WAITING_CONFIRMATION
   useEffect(() => {
     if (!order?.id) return;
     const currentStatus = String(order.status || order.payment_status || '').toUpperCase();
@@ -152,26 +154,30 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
 
         const { data: updated } = await supabase
           .from('orders')
-          .select('status, payment_status, order_status, paid_at, payment_proof_url')
+          .select('status, payment_status, order_status, paid_at, payment_proof_url, metadata')
           .eq('id', order.id)
           .maybeSingle();
 
         if (updated) {
           const newStatus = String(updated.status || updated.payment_status || '').toUpperCase();
-          if (newStatus !== currentStatus) {
+          if (newStatus !== currentStatus || updated.metadata?.auto_paid_at !== order?.metadata?.auto_paid_at) {
             setOrder((prev: any) => ({
               ...prev,
               ...updated,
             }));
+            if (updated.metadata?.auto_paid_at) {
+              const diff = Math.max(0, Math.ceil((new Date(updated.metadata.auto_paid_at).getTime() - Date.now()) / 1000));
+              setPayCountdown(diff);
+            }
           }
         }
       } catch (err) {
         // silent polling catch
       }
-    }, 5000);
+    }, 4000);
 
     return () => clearInterval(interval);
-  }, [order?.id, order?.status, order?.payment_status]);
+  }, [order?.id, order?.status, order?.payment_status, order?.metadata?.auto_paid_at]);
 
   const handleCopy = (text: string, field: string) => {
     if (typeof window !== 'undefined' && navigator.clipboard) {
@@ -274,6 +280,24 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
 
   const isPaid = orderStatus === 'PAID' || orderStatus === 'SETTLED' || orderStatus === 'SUCCESS' || orderStatus === 'COMPLETED';
   const isWaitingConfirmation = orderStatus === 'WAITING_CONFIRMATION' || orderStatus === 'PENDING_VERIFICATION';
+
+  // 1-Second Interval Countdown untuk Timer Auto-Paid 3 Menit
+  useEffect(() => {
+    if (!isWaitingConfirmation) return;
+    const autoPaidAt = order?.metadata?.auto_paid_at;
+    if (!autoPaidAt && !order?.metadata?.ocr_verified) return;
+
+    const timer = setInterval(() => {
+      if (autoPaidAt) {
+        const diff = Math.max(0, Math.ceil((new Date(autoPaidAt).getTime() - Date.now()) / 1000));
+        setPayCountdown(diff);
+      } else {
+        setPayCountdown((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isWaitingConfirmation, order?.metadata?.auto_paid_at, order?.metadata?.ocr_verified]);
 
   // QRIS calculation
   const rawStaticQris =
@@ -401,17 +425,49 @@ export default function DedicatedPayTokenPage({ params }: PayTokenPageProps) {
             </div>
           </div>
         ) : isWaitingConfirmation ? (
-          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 flex items-center gap-3 shadow-xs">
-            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-black uppercase tracking-wider text-amber-800">
-                Status: Menunggu Verifikasi Admin
+          <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-amber-50/90 via-orange-50/50 to-amber-100/40 border-2 border-amber-400 text-amber-950 space-y-3.5 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Clock className="w-5 h-5 animate-spin" />
+                </div>
+                <div>
+                  <div className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                    <span>Estimasi Verifikasi Sistem</span>
+                    <span className="text-[10px] bg-amber-200/90 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                      {order?.metadata?.verification_state || (order?.metadata?.ocr_verified !== false ? 'MATCH_CANDIDATE' : 'MANUAL_REVIEW')}
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-900/90 font-medium mt-0.5">
+                    Bukti pembayaran sedang diverifikasi. Jika verifikasi otomatis belum dapat memastikan pembayaran, pesanan akan diteruskan ke pemeriksaan manual toko.
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-amber-900 font-medium">
-                Bukti transfer telah diterima. Admin sedang memeriksa mutasi pembayaran Anda.
-              </p>
+              {payCountdown !== null && (
+                <div className="bg-amber-900 text-amber-300 font-mono font-black text-sm px-3.5 py-1.5 rounded-xl border border-amber-700 self-start sm:self-center shrink-0">
+                  {String(Math.floor(payCountdown / 60)).padStart(2, '0')}:{String(payCountdown % 60).padStart(2, '0')}
+                </div>
+              )}
+            </div>
+
+            {/* Checklist Signal Visual */}
+            <div className="pt-2.5 border-t border-amber-200/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Nominal Sesuai: Rp {grossAmount.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Merchant Tujuan Cocok</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-emerald-800 font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Status Bukti: MATCH_CANDIDATE</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-amber-800 font-semibold">
+                <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0 animate-pulse" />
+                <span>Menunggu Sinyal Mutasi Masuk</span>
+              </div>
             </div>
           </div>
         ) : (

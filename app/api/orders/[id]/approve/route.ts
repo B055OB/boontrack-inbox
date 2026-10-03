@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
-import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
+import { enqueueCAPIOutboxEvent, processCAPIOutboxQueue } from '@/lib/capi-outbox';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 
@@ -144,9 +144,26 @@ export async function POST(
       productType: order.product_type || (order.shipping_address ? 'PHYSICAL' : 'DIGITAL'),
     }).catch((emailErr) => console.warn('[Approve Order] Email fulfillment dispatch note:', emailErr));
 
-    // 5. Dispatch Meta CAPI Purchase & Affiliate Alerts
-    dispatchMetaCAPIPurchaseForOrder(String(orderId), supabase)
-      .catch((capiErr) => console.warn('[Approve Order] CAPI dispatch note:', capiErr));
+    // 5. Transactional Outbox Pattern: Enqueue Adtech CAPI Purchase Event (Hapus Fire-and-Forget)
+    await enqueueCAPIOutboxEvent({
+      orderId: String(orderId),
+      tenantId: order.tenant_id || tenantSlug,
+      tenantSlug,
+      eventName: 'Purchase',
+      grossAmount: Number(order.gross_amount || order.total_amount || 0),
+      currency: 'IDR',
+      customPayload: {
+        customer_name: order.customer_name,
+        customer_phone: customerPhone,
+        customer_email: order.customer_email,
+        product_title: order.product_title,
+      },
+    }, supabase);
+
+    // Trigger durable background processing
+    processCAPIOutboxQueue(5, supabase).catch((outboxErr) => {
+      console.warn('[Approve Order] CAPI Outbox worker note:', outboxErr);
+    });
 
     sendOrderCommissionAlert({
       orderId: String(orderId),

@@ -4,6 +4,7 @@ import { generateDynamicQRIS } from "@/lib/qris-dynamic";
 import { checkTrialQuota } from "@/lib/entitlements/trial-guard";
 import { resolveActiveOrderBumps, OrderBumpItem, getProductActiveVoucher, normalizeBriefingUrl } from "@/lib/product-catalog";
 import { sanitizeOrderPayload } from "@/lib/order-sanitizer";
+import { generateUniqueCodeForTenant } from "@/lib/unique-code-generator";
 
 export interface CreateOrderPayload {
   tenantSlug: string;
@@ -184,10 +185,14 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   // Biaya admin Rp0 untuk QRIS maupun Transfer Bank Manual (dana langsung masuk ke seller)
   const adminFee = 0;
   // Logika Dynamic QRIS: Potong nominal acak 3 digit ke bawah (1 - 999)
-  // Transfer manual: Tambah nominal unik verifikasi (1 - 999)
+  // Transfer manual: Tambah nominal unik verifikasi (1 - 999) dengan proteksi anti-duplikasi per tenant
   const uniqueCode = payload.uniqueCode !== undefined && payload.uniqueCode !== null
     ? payload.uniqueCode
-    : Math.floor(1 + Math.random() * 999);
+    : await generateUniqueCodeForTenant({
+        tenantSlug: payload.tenantSlug,
+        baseAmount: netProductPrice + netShippingCost,
+        paymentMethod: paymentMethod,
+      });
 
   let grossAmount = payload.amount;
   if (!grossAmount || verifiedOrderBumps.length > 0) {

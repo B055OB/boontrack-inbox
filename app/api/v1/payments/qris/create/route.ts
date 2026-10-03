@@ -6,6 +6,7 @@ import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
 import { orderEventBus } from '@/lib/email/order-event-bus';
 import { dispatchMetaCAPIInitiateCheckoutForOrder } from '@/lib/capi.service';
+import { generateUniqueCodeForTenant } from '@/lib/unique-code-generator';
 
 export async function POST(req: NextRequest) {
   try {
@@ -62,13 +63,15 @@ export async function POST(req: NextRequest) {
       ...bodyTrackingContext,
     };
 
-    // a. Hitung total transfer (Harga Produk + Kode Unik 3 digit)
-    const uniqueCode = Number(
-      body.unique_code ??
-      body.uniqueCode ??
-      metadata?.unique_code ??
-      Math.floor(100 + Math.random() * 900)
-    );
+    // a. Hitung total transfer (Harga Produk + Kode Unik 3 digit dengan proteksi anti-duplikasi)
+    const rawProvidedCode = body.unique_code ?? body.uniqueCode ?? metadata?.unique_code;
+    const uniqueCode = rawProvidedCode !== undefined && rawProvidedCode !== null
+      ? Number(rawProvidedCode)
+      : await generateUniqueCodeForTenant({
+          tenantSlug: cleanSlug,
+          baseAmount: Number(total_amount ?? amount ?? body.gross_amount ?? body.base_price ?? metadata?.base_price ?? 0),
+          paymentMethod: 'qris',
+        });
 
     let numAmount = Number(total_amount ?? amount ?? body.gross_amount ?? 0);
     if (!numAmount && (body.base_price || metadata?.base_price)) {

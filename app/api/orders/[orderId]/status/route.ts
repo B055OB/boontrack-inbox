@@ -85,10 +85,9 @@ export async function GET(
       );
     }
 
-    // 2. Tentukan status pembayaran secara akurat (Single Source of Truth)
-    const rawStatus = String(order.status || '').toUpperCase().trim();
-    const rawPaymentStatus = String(order.payment_status || '').toUpperCase().trim();
-    const rawOrderStatus = String(order.order_status || '').toUpperCase().trim();
+    const rawStatus = String(order.status || '').toUpperCase();
+    const rawPaymentStatus = String(order.payment_status || '').toUpperCase();
+    const rawOrderStatus = String(order.order_status || '').toUpperCase();
 
     const isPaid =
       ['PAID', 'SETTLED', 'SUCCESS', 'COMPLETED'].includes(rawStatus) ||
@@ -96,9 +95,35 @@ export async function GET(
       ['PAID', 'SETTLED', 'SUCCESS', 'COMPLETED'].includes(rawOrderStatus);
 
     const isWaitingConfirmation =
-      ['WAITING_CONFIRMATION', 'WAITING_VERIFICATION', 'IN_VERIFICATION'].includes(rawStatus) ||
-      ['WAITING_CONFIRMATION', 'WAITING_VERIFICATION', 'IN_VERIFICATION'].includes(rawPaymentStatus) ||
-      ['WAITING_CONFIRMATION', 'WAITING_VERIFICATION', 'IN_VERIFICATION'].includes(rawOrderStatus);
+      ['WAITING_CONFIRMATION', 'WAITING_VERIFICATION', 'IN_VERIFICATION', 'PENDING_PAYMENT_CONFIRMATION', 'PENDING_MANUAL_REVIEW'].includes(rawStatus) ||
+      ['WAITING_CONFIRMATION', 'WAITING_VERIFICATION', 'IN_VERIFICATION', 'PENDING_PAYMENT_CONFIRMATION', 'PENDING_MANUAL_REVIEW'].includes(rawPaymentStatus) ||
+      ['WAITING_CONFIRMATION', 'WAITING_VERIFICATION', 'IN_VERIFICATION', 'PENDING_PAYMENT_CONFIRMATION', 'PENDING_MANUAL_REVIEW'].includes(rawOrderStatus);
+
+    // 2. Evaluasi Sinyal Bukti Bayar & Estimasi Waktu Verifikasi (Payment Evidence ≠ Payment Confirmation)
+    // Doktrin: "Multimodal AI may accelerate verification; only the Financial State Machine may authorize payment."
+    const metadata = order.metadata || {};
+    const ocrVerified = Boolean(metadata.ocr_verified);
+    const proofUploadedAt = metadata.proof_uploaded_at ? new Date(metadata.proof_uploaded_at).getTime() : null;
+
+    let estimationRemainingSec = 0;
+    if (proofUploadedAt) {
+      const elapsedSec = Math.floor((Date.now() - proofUploadedAt) / 1000);
+      estimationRemainingSec = Math.max(0, 180 - elapsedSec);
+    } else if (metadata.auto_paid_at) {
+      estimationRemainingSec = Math.max(0, Math.ceil((new Date(metadata.auto_paid_at).getTime() - Date.now()) / 1000));
+    }
+
+    const evidenceStatus = metadata.evidence_status || (ocrVerified ? 'MATCH_CANDIDATE' : 'NEEDS_MANUAL_REVIEW');
+    const verificationState = isPaid
+      ? 'PAID'
+      : metadata.verification_state || (ocrVerified ? 'PENDING_PAYMENT_CONFIRMATION' : 'PENDING_MANUAL_REVIEW');
+
+    const signals = metadata.signals || {
+      nominal_matched: ocrVerified,
+      merchant_matched: ocrVerified,
+      reference_valid: Boolean(metadata.external_reference),
+      temporal_signal: 'TIMELY',
+    };
 
     const isExpired =
       ['EXPIRED', 'CANCELLED', 'FAILED'].includes(rawStatus) ||
@@ -190,6 +215,13 @@ export async function GET(
       shipping_cost: Number(order.shipping_cost || 0),
       unique_code: Number(order.unique_code || 0),
       payment_proof_url: order.payment_proof_url || null,
+      evidence_status: evidenceStatus,
+      verification_state: verificationState,
+      signals: signals,
+      ocr_verified: signals.nominal_matched && signals.merchant_matched,
+      verification_estimation_seconds: isPaid ? 0 : estimationRemainingSec,
+      verification_remaining_seconds: isPaid ? 0 : estimationRemainingSec,
+      metadata: order.metadata || null,
     };
 
     return NextResponse.json(responsePayload, {

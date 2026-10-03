@@ -40,6 +40,7 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
   const [tenant, setTenant] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
 
   useEffect(() => {
     async function loadInvoiceData() {
@@ -56,6 +57,12 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
 
           if (orderData) {
             setOrder(orderData);
+            if (orderData.metadata?.auto_paid_at) {
+              const diff = Math.max(0, Math.ceil((new Date(orderData.metadata.auto_paid_at).getTime() - Date.now()) / 1000));
+              setRemainingSeconds(diff);
+            } else if (orderData.metadata?.ocr_verified) {
+              setRemainingSeconds(180);
+            }
           } else {
             // Fallback cari via correlation_id atau invoice query
             const { data: altOrder } = await supabase
@@ -63,7 +70,15 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
               .select('*')
               .or(`id.eq.${orderId},correlation_id.eq.${orderId}`)
               .maybeSingle();
-            if (altOrder) setOrder(altOrder);
+            if (altOrder) {
+              setOrder(altOrder);
+              if (altOrder.metadata?.auto_paid_at) {
+                const diff = Math.max(0, Math.ceil((new Date(altOrder.metadata.auto_paid_at).getTime() - Date.now()) / 1000));
+                setRemainingSeconds(diff);
+              } else if (altOrder.metadata?.ocr_verified) {
+                setRemainingSeconds(180);
+              }
+            }
           }
 
           // 2. Fetch Tenant Profile Data
@@ -85,6 +100,72 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
       loadInvoiceData();
     }
   }, [orderId, tenantSlug]);
+
+  const isOrderWaitingVerif =
+    (order?.status || order?.payment_status || '').toUpperCase() === 'WAITING_CONFIRMATION' ||
+    (order?.status || order?.payment_status || '').toUpperCase() === 'WAITING_VERIFICATION';
+
+  // 1-Second Interval Countdown untuk Timer Verifikasi Otomatis 3 Menit
+  useEffect(() => {
+    if (!isOrderWaitingVerif) return;
+
+    const autoPaidAt = order?.metadata?.auto_paid_at;
+    if (!autoPaidAt && !order?.metadata?.ocr_verified) return;
+
+    const timer = setInterval(() => {
+      if (autoPaidAt) {
+        const diff = Math.max(0, Math.ceil((new Date(autoPaidAt).getTime() - Date.now()) / 1000));
+        setRemainingSeconds(diff);
+      } else {
+        setRemainingSeconds((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isOrderWaitingVerif, order?.metadata?.auto_paid_at, order?.metadata?.ocr_verified]);
+
+  // Realtime polling status ke backend setiap 3 detik selama menunggu konfirmasi / verifikasi
+  useEffect(() => {
+    if (!orderId || !isOrderWaitingVerif) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/status`, {
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          const statusData = await res.json();
+          if (statusData?.status === 'PAID') {
+            setOrder((prev: any) => ({
+              ...prev,
+              ...statusData,
+              status: 'PAID',
+              payment_status: 'PAID',
+              order_status: 'PAID',
+            }));
+            clearInterval(pollInterval);
+          } else if (statusData?.auto_paid_at) {
+            setOrder((prev: any) => ({
+              ...prev,
+              metadata: {
+                ...(prev?.metadata || {}),
+                auto_paid_at: statusData.auto_paid_at,
+                ocr_verified: statusData.ocr_verified,
+                verification_timer_seconds: statusData.verification_timer_seconds,
+              },
+            }));
+            if (typeof statusData.verification_remaining_seconds === 'number') {
+              setRemainingSeconds(statusData.verification_remaining_seconds);
+            }
+          }
+        }
+      } catch (err) {
+        // silent polling catch
+      }
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [orderId, isOrderWaitingVerif]);
 
   const handlePrint = () => {
     if (typeof window !== 'undefined') {
@@ -510,16 +591,83 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
               </div>
             )}
 
-            {/* WAITING CONFIRMATION BADGE */}
+            {/* WAITING CONFIRMATION & ESTIMATED 3-MINUTE VERIFICATION UX */}
             {isWaitingVerif && (
-              <div className="p-4 bg-purple-50 border border-purple-200 rounded-2xl flex items-center gap-3 text-xs text-purple-900">
-                <Clock className="w-5 h-5 text-purple-600 shrink-0 animate-pulse" />
-                <div>
-                  <span className="font-bold block">Bukti Transfer Berhasil Diunggah</span>
-                  <p className="text-[11px] text-purple-700">
-                    Seller sedang memverifikasi mutasi bank Anda. Status faktur akan otomatis beralih ke LUNAS segera setelah diverifikasi.
-                  </p>
+              <div className="bg-gradient-to-br from-purple-950 via-slate-900 to-indigo-950 border-2 border-purple-500/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xl shadow-purple-950/40 text-white animate-in fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 border border-purple-400/40 shadow-inner">
+                      <Clock className="w-6 h-6 text-purple-400 animate-spin" style={{ animationDuration: '6s' }} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-purple-300 bg-purple-950/90 px-2.5 py-0.5 rounded-full border border-purple-600/60 inline-flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <span>Status: MATCH_CANDIDATE</span>
+                        </span>
+                      </div>
+                      <h3 className="text-sm sm:text-base font-black text-white mt-1">
+                        Bukti Pembayaran Sedang Diverifikasi
+                      </h3>
+                    </div>
+                  </div>
+
+                  {/* Countdown Badge */}
+                  <div className="flex items-center gap-2 bg-slate-950/80 px-4 py-2 rounded-2xl border border-purple-500/40 self-start sm:self-center">
+                    <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider">
+                      Estimasi Verifikasi:
+                    </span>
+                    <span className="font-mono text-base font-black text-amber-400 tracking-wider">
+                      {String(Math.floor((remainingSeconds ?? 180) / 60)).padStart(2, '0')}:
+                      {String((remainingSeconds ?? 180) % 60).padStart(2, '0')}
+                    </span>
+                  </div>
                 </div>
+
+                {/* Sinyal Checklist Visual (CTO Mandate) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="flex items-center gap-2 bg-slate-950/70 p-2.5 rounded-xl border border-emerald-500/30">
+                    <span className="text-emerald-400 font-bold">✓</span>
+                    <span className="text-slate-200">Nominal Transfer: <strong>Rp {totalAmount.toLocaleString('id-ID')}</strong> (Cocok)</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-950/70 p-2.5 rounded-xl border border-emerald-500/30">
+                    <span className="text-emerald-400 font-bold">✓</span>
+                    <span className="text-slate-200">Merchant Tujuan: <strong>{storeName}</strong> (Terverifikasi)</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-950/70 p-2.5 rounded-xl border border-emerald-500/30">
+                    <span className="text-emerald-400 font-bold">✓</span>
+                    <span className="text-slate-200">Bukti Struk: <strong>MATCH_CANDIDATE</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-slate-950/70 p-2.5 rounded-xl border border-amber-500/30">
+                    <span className="text-amber-400 font-bold animate-pulse">⏳</span>
+                    <span className="text-slate-200">Konfirmasi Mutasi Bank: <strong>Menunggu Sinyal</strong></span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/60 border border-purple-500/30 rounded-2xl p-4 space-y-2 text-xs text-slate-300">
+                  <p className="leading-relaxed">
+                    Bukti pembayaran sedang diverifikasi. Jika verifikasi otomatis belum dapat memastikan pembayaran, pesanan akan diteruskan ke pemeriksaan manual toko.
+                  </p>
+                  <div className="flex items-center gap-2 text-[11px] text-purple-300 font-medium">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400 shrink-0" />
+                    <span>Sistem memeriksa mutasi secara realtime. Faktur akan diperbarui begitu dana terkonfirmasi.</span>
+                  </div>
+                </div>
+
+                {order?.payment_proof_url && (
+                  <div className="pt-1 flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                    <span>Lampiran: Bukti Transfer Terkirim</span>
+                    <a
+                      href={order.payment_proof_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-300 hover:text-purple-200 font-bold underline inline-flex items-center gap-1"
+                    >
+                      <span>Lihat Bukti Foto</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </div>

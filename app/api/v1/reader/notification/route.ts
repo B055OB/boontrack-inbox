@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
-import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
+import { enqueueCAPIOutboxEvent, processCAPIOutboxQueue } from '@/lib/capi-outbox';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { parseDanaNotification, validateOrderPaymentMatch } from '@/lib/payment/dana-reader';
 
@@ -505,14 +505,25 @@ export async function POST(req: NextRequest) {
       console.warn('[BoonTrack Reader Webhook] Non-fatal email fulfillment dispatch error:', emailErr);
     });
 
-    // Dispatch Meta CAPI Purchase (EMQ Optimization)
-    dispatchMetaCAPIPurchaseForOrder(String(matchedOrder.id), supabase)
-      .then((capiRes) => {
-        if (capiRes.success) {
-          console.log(`[BoonTrack Reader Webhook] Meta CAPI Purchase dispatched for order #${matchedOrder.id}`);
-        }
-      })
-      .catch((capiErr) => console.warn('[BoonTrack Reader Webhook] CAPI dispatch note:', capiErr));
+    // Transactional Outbox Pattern: Enqueue Adtech CAPI Purchase Event (Hapus Fire-and-Forget)
+    await enqueueCAPIOutboxEvent({
+      orderId: String(matchedOrder.id),
+      tenantId: matchedOrder.tenant_id || effectiveTenantSlug,
+      tenantSlug: effectiveTenantSlug,
+      eventName: 'Purchase',
+      grossAmount: Number(matchedOrder.gross_amount || matchedOrder.total_amount || 0),
+      currency: 'IDR',
+      customPayload: {
+        customer_name: matchedOrder.customer_name || matchedOrder.buyer_name,
+        customer_phone: customerPhone,
+        customer_email: matchedOrder.customer_email,
+        product_title: matchedOrder.product_title,
+      },
+    }, supabase);
+
+    processCAPIOutboxQueue(5, supabase).catch((outboxErr) => {
+      console.warn('[BoonTrack Reader Webhook] CAPI Outbox worker note:', outboxErr);
+    });
 
     // Dispatch Affiliate & AM Commission Alert (Non-blocking)
     sendOrderCommissionAlert({

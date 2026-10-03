@@ -659,12 +659,16 @@ Pairing berhasil tidak sama dengan gateway yang beroperasi sehat. Sistem memanta
 
 ---
 
-## 10. Core Adapter Engine & Unit Economics Architecture
+## 10. Core Adapter Engine, Temporal Architecture & Financial Invariants
+
+> **Doktrin Resmi CTO Office #3 (Financial Authority & Evidence Separation)**:  
+> *"Payment Evidence ≠ Payment Confirmation."*  
+> *"Multimodal AI may accelerate verification; only the Financial State Machine may authorize payment."*
 
 ### 10.1 Pluggable Payment Adapter Standard
 - Setiap tenant mengeksekusi pembayaran melalui `PaymentAdapterFactory` berdasarkan `tenants.metadata.payment_config`.
 - **Automated Gateway**: Menggunakan kontrak standar (`create_transaction`, `check_status`, `handle_webhook`) untuk Duitku, Xendit, dan Midtrans. State Machine masuk ke `WAITING_PAYMENT_WEBHOOK`.
-- **Manual Transfer / Static QRIS**: Menyajikan instruksi rekening manual atau URL QRIS statis. State Machine beralih ke alur `WAITING_TRANSFER_PROOF` (verifikasi bukti transfer visual via WhatsApp).
+- **Manual Transfer / Static QRIS**: Menyajikan instruksi rekening manual atau URL QRIS statis. State Machine beralih ke alur `WAITING_TRANSFER_PROOF` (verifikasi bukti transfer visual via WhatsApp atau Web Invoice).
 - **Zero Provider Hardcode**: Dilarang mengikat logic transaksi langsung ke SDK provider tertentu di luar direktori `app/services/payment/`.
 
 ### 10.2 Multi-Aggregator Shipping Standard
@@ -676,6 +680,65 @@ Pairing berhasil tidak sama dengan gateway yang beroperasi sehat. Sistem memanta
 - **AI Token Metering**: Setiap inferensi LLM wajib mencatat payload `{ tenant_id, session_id, prompt_tokens, candidate_tokens, model }` secara asinkron (non-blocking) untuk evaluasi margin per transaksi.
 - **WhatsApp Session Accounting**: Webhook gateway wajib mencatat counter volume arah pesan (`INBOUND` / `OUTBOUND`) serta klasifikasi sesi per `tenant_id`.
 - **CAPI Closed-Loop Integrity**: Event Meta CAPI `Purchase` wajib menyertakan `custom_data: { value: float, currency: 'IDR' }` riil dari transaksi guna menjamin akurasi perhitungan ROAS merchant.
+
+### 10.4 Temporal Architecture & Canonical Timezone Standard
+1. **Zero Tri-Zone Hack**: Dilarang keras menerapkan heuristik coba-coba offset waktu lokal (seperti `UTC+7`, `UTC+8`, `UTC+9`) pada core transaction/validation engine.
+2. **Canonical Time Invariant**:
+   - Seluruh timestamp di database PostgreSQL (`orders`, `payment_evidence`, `capi_outbox`) dan log audit WAJIB disimpan dalam format UTC (`timestamptz` / ISO-8601 UTC dengan akhiran `Z`).
+   - Seluruh event time untuk integrasi eksternal (termasuk Meta CAPI & TikTok CAPI) WAJIB berupa Unix Epoch UTC dalam detik (`Math.floor(Date.now() / 1000)`).
+3. **Tenant IANA Timezone Resolution**:
+   - Setiap tenant toko menyimpan zona waktu IANA resmi (`tenant.shop_timezone` atau `tenant.metadata.shop_timezone`), misalnya:
+     * `Asia/Jakarta` (WIB, UTC+7)
+     * `Asia/Makassar` (WITA, UTC+8)
+     * `Asia/Jayapura` (WIT, UTC+9)
+     * `Asia/Singapore`, `Asia/Hong_Kong`, `Asia/Manila` (Market Regional)
+   - Konversi dan representasi jam/tanggal lokal murni dieksekusi di edge presentation layer berbasis IANA timezone toko via `lib/timezone-canonical.ts` (`formatTenantDateTime`, `toTenantZonedDateTime`).
+
+### 10.5 Financial State Machine & Payment Evidence Invariants (Layer 2 Fix)
+1. **Pemisahan Konsep Mutlak: PaymentEvidence ≠ PaymentConfirmation**:
+   - Multimodal AI Vision (Gemini OCR) berfungsi sebagai mesin akselerasi ekstraksi sinyal bukti (`PaymentEvidence`), BUKAN otoritas pengubah status finansial.
+   - AI Vision OCR dilarang keras mengeset status transaksi langsung menjadi `PAID` / `SETTLED`.
+2. **Siklus State Machine Bukti Transfer**:
+   ```
+   ORDER_CREATED 
+         ↓
+   PAYMENT_PENDING
+         ↓ (Pelanggan Unggah Bukti Bayar)
+   OCR Parsing & Ekstraksi Sinyal
+         ↓ (Simpan ke tabel 'payment_evidence')
+   Status Bukti: MATCH_CANDIDATE
+         ↓
+   Evaluasi Threshold Matching:
+     ├── [Lolos Threshold Sinyal] ──→ AUTO_VERIFICATION ──→ Order: PENDING_PAYMENT_CONFIRMATION
+     │                                                     (Menunggu sinyal mutasi masuk / rekonsiliasi)
+     └── [Anomali / Beda Nominal]  ──→ MANUAL_REVIEW     ──→ Order: PENDING_MANUAL_REVIEW
+                                                           (Menunggu persetujuan manual merchant)
+   ```
+3. **Hak Otoritas Finansial Tunggal (FSM)**:
+   - HANYA Financial State Machine yang berhak mengubah status transaksi menjadi `PAID`:
+     * Melalui notifikasi mutasi kredit bank/e-wallet terotentikasi via **BoonTrack Reader APK** (`/api/v1/reader/notification`).
+     * Melalui webhook terverifikasi dari Payment Gateway resmi (Duitku, Xendit, Midtrans).
+     * Melalui persetujuan manual merchant berhak akses di dashboard dengan audit log immutable (`/api/orders/[id]/approve`).
+4. **Timestamp & Anti-Duplikasi Refinement**:
+   - Timestamp struk (`receipt_transaction_at`) diperlakukan sebagai **validation signal komparatif** terhadap waktu checkout (`checkout_created_at`) dengan toleransi waktu yang dapat dikonfigurasi (default 24 jam), bukan sebagai pembatalan keras otomatis jika melewati 5 menit.
+   - Ekstraksi kode referensi bank diabstraksikan melalui adapter: `external_reference` dan `reference_type` (`BANK_REF`, `QRIS_RRN`, `SLIP_JOURNAL`, `TELLER_SEQ`), bukan field `RRN` yang di-hardcode.
+   - Alokasi kode unik 3 digit diverifikasi anti-tabrakan (*collision check*) terhadap pesanan aktif di toko yang sama dalam rentang rolling window 24 jam.
+
+### 10.6 Adtech CAPI - Transactional Outbox Pattern
+1. **Hapus Pola Asinkron Fire-and-Forget**:
+   - Dilarang memicu panggilan HTTP langsung ke endpoint Meta Graph API / TikTok Events API secara asinkron tanpa persistensi saat checkout atau pelunasan.
+2. **Transactional Outbox Contract**:
+   - Saat transaksi resmi bertransisi ke status `PAID` (`PAYMENT_CONFIRMED`), backend menyimpan record event ke tabel `capi_outbox` dalam transaksi database yang sama (ACID guarantee).
+   - Skema outbox:
+     * `order_id`: ID pesanan terkait.
+     * `event_name`: `'Purchase'`.
+     * `event_time`: Unix Epoch UTC dalam detik.
+     * `business_event_id`: ID unik deterministik (`PURCHASE_{order_id}`) yang dibagi sama antara Browser Pixel dan Server CAPI untuk deduplikasi mutlak di sisi Meta/TikTok.
+     * `payload`: Data transaksi terenkripsi/terstruktur (nominal, mata uang, user data hash SHA-256).
+3. **Durable Worker, Retry, and Dead Letter Queue (DLQ)**:
+   - Worker background membaca antrean `capi_outbox` secara periodik atau terpicu event queue.
+   - Mekanisme retry menerapkan *exponential backoff* dengan jitter (hingga maksimal 5 kali percobaan).
+   - Jika kegagalan berulang melampaui batas maksimum, status outbox bertransisi ke `DLQ` (Dead Letter Queue) dan memicu peringatan telemetri operasional tanpa memblokir transaksi pembeli.
 
 ---
 

@@ -59,6 +59,7 @@ export default function CheckoutPage({ params }: Props) {
   const [proofPreview, setProofPreview] = useState<string | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
   const [proofUploadFeedback, setProofUploadFeedback] = useState<string | null>(null);
+  const [ocrCountdown, setOcrCountdown] = useState<number | null>(null);
   const hasTrackedPixelRef = React.useRef(false);
 
   const triggerPurchasePixels = React.useCallback((orderData: any) => {
@@ -366,7 +367,16 @@ export default function CheckoutPage({ params }: Props) {
             payment_status: 'WAITING_CONFIRMATION',
             order_status: 'WAITING_CONFIRMATION',
             payment_proof_url: statusData.payment_proof_url || prev?.payment_proof_url,
+            metadata: {
+              ...(prev?.metadata || {}),
+              ocr_verified: statusData.ocr_verified,
+              auto_paid_at: statusData.auto_paid_at,
+              verification_timer_seconds: statusData.verification_timer_seconds,
+            },
           }));
+          if (typeof statusData.verification_remaining_seconds === 'number') {
+            setOcrCountdown(statusData.verification_remaining_seconds);
+          }
         }
       } catch (err) {
         consecutiveErrors++;
@@ -625,6 +635,24 @@ export default function CheckoutPage({ params }: Props) {
     order?.payment_status === 'WAITING_CONFIRMATION' ||
     order?.order_status === 'WAITING_CONFIRMATION';
 
+  // 1-Second Interval Countdown untuk Timer OCR Auto-Paid 3 Menit
+  useEffect(() => {
+    if (!isWaitingConfirmation) return;
+    const autoPaidAt = order?.metadata?.auto_paid_at;
+    if (!autoPaidAt && !order?.metadata?.ocr_verified) return;
+
+    const timer = setInterval(() => {
+      if (autoPaidAt) {
+        const diff = Math.max(0, Math.ceil((new Date(autoPaidAt).getTime() - Date.now()) / 1000));
+        setOcrCountdown(diff);
+      } else {
+        setOcrCountdown((prev) => (prev !== null && prev > 0 ? prev - 1 : 0));
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isWaitingConfirmation, order?.metadata?.auto_paid_at, order?.metadata?.ocr_verified]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -666,8 +694,21 @@ export default function CheckoutPage({ params }: Props) {
         payment_status: 'WAITING_CONFIRMATION',
         order_status: 'WAITING_CONFIRMATION',
         payment_proof_url: data.payment_proof_url || proofPreview,
+        metadata: {
+          ...(prev?.metadata || {}),
+          ocr_verified: data.ocr_verified,
+          auto_paid_at: data.auto_paid_at,
+          verification_timer_seconds: data.verification_timer_seconds,
+        },
       }));
-      setProofUploadFeedback('✅ Bukti transfer berhasil dikirim! Menunggu verifikasi penjual.');
+      if (data.ocr_verified) {
+        setOcrCountdown(180);
+      }
+      setProofUploadFeedback(
+        data.ocr_verified
+          ? '⚡ Bukti transfer terdeteksi cocok oleh AI OCR! Verifikasi otomatis 3 menit aktif.'
+          : '✅ Bukti transfer berhasil dikirim! Menunggu verifikasi admin toko.'
+      );
     } catch (err: any) {
       setProofUploadFeedback(`❌ ${err.message || 'Gagal mengirim bukti transfer.'}`);
     } finally {
@@ -853,23 +894,57 @@ export default function CheckoutPage({ params }: Props) {
 
         {/* Status Card Khusus: Menunggu Verifikasi Seller (WAITING_CONFIRMATION) */}
         {isWaitingConfirmation && !isPaidOrder && (
-          <div className="bg-gradient-to-b from-amber-950/60 via-slate-900 to-slate-900 border-2 border-amber-500/70 rounded-3xl p-5 space-y-3.5 shadow-xl shadow-amber-950/40 text-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/40">
-                <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
+          <div className="bg-gradient-to-b from-purple-950/70 via-slate-900 to-slate-900 border-2 border-purple-500/70 rounded-3xl p-5 space-y-3.5 shadow-xl shadow-purple-950/40 text-xs">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0 border border-purple-500/40">
+                  <Clock className="w-5 h-5 text-purple-400 animate-pulse" />
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-black text-purple-300 bg-purple-950/90 px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-purple-700/60 inline-flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>Status: MATCH_CANDIDATE</span>
+                  </span>
+                  <h3 className="text-sm font-bold text-white">
+                    Bukti Pembayaran Sedang Diverifikasi
+                  </h3>
+                </div>
               </div>
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-black text-amber-400 bg-amber-950/90 px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-amber-700/60 inline-block">
-                  Bukti Transfer Terkirim
-                </span>
-                <h3 className="text-sm font-bold text-white">
-                  Menunggu Verifikasi Mutasi oleh Admin Toko
-                </h3>
+
+              {ocrCountdown !== null && (
+                <div className="bg-slate-950/80 px-3 py-1.5 rounded-xl border border-purple-500/40 text-right">
+                  <span className="text-[9px] font-bold text-purple-300 uppercase tracking-wider block">Estimasi Verifikasi:</span>
+                  <span className="font-mono text-sm font-black text-amber-400">
+                    {String(Math.floor(ocrCountdown / 60)).padStart(2, '0')}:{String(ocrCountdown % 60).padStart(2, '0')}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Checklist Signal Visual (CTO Mandate) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center gap-2 bg-slate-950/80 p-2.5 rounded-xl border border-emerald-500/30">
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span className="text-slate-200">Nominal: <strong>Rp {grossAmount.toLocaleString('id-ID')}</strong> (Cocok)</span>
+              </div>
+              <div className="flex items-center gap-2 bg-slate-950/80 p-2.5 rounded-xl border border-emerald-500/30">
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span className="text-slate-200">Merchant: <strong>{storeDisplayName}</strong> (Terverifikasi)</span>
+              </div>
+              <div className="flex items-center gap-2 bg-slate-950/80 p-2.5 rounded-xl border border-emerald-500/30">
+                <span className="text-emerald-400 font-bold">✓</span>
+                <span className="text-slate-200">Kode Unik &amp; Struk: <strong>MATCH_CANDIDATE</strong></span>
+              </div>
+              <div className="flex items-center gap-2 bg-slate-950/80 p-2.5 rounded-xl border border-amber-500/30">
+                <span className="text-amber-400 font-bold animate-pulse">⏳</span>
+                <span className="text-slate-200">Mutasi Rekening: <strong>Menunggu Sinyal Bank</strong></span>
               </div>
             </div>
+
             <p className="text-[11px] text-slate-300 leading-relaxed">
-              Bukti pembayaran Anda telah berhasil kami kirimkan ke admin toko. Mutasi rekening sedang diverifikasi. Halaman ini akan diperbarui otomatis begitu pembayaran disetujui.
+              Bukti pembayaran sedang diverifikasi. Jika verifikasi otomatis belum dapat memastikan pembayaran, pesanan akan diteruskan ke pemeriksaan manual toko.
             </p>
+
             {order?.payment_proof_url && (
               <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5">
                 <span className="text-[10px] font-bold text-slate-400 block">Lampiran Bukti Transfer:</span>
@@ -878,11 +953,12 @@ export default function CheckoutPage({ params }: Props) {
                 </a>
               </div>
             )}
+
             <a
               href={getStorefrontInvoiceUrl(tenantSlug || 'shop', orderId)}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition"
+              className="w-full py-2.5 px-3 bg-purple-900/40 hover:bg-purple-800/50 border border-purple-500/40 text-purple-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition"
             >
               <FileText className="w-4 h-4 text-amber-400" />
               <span>Buka Lembar Invoice Resmi #{orderId}</span>

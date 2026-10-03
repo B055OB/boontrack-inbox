@@ -2,13 +2,16 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendPaymentProofAlertToSeller } from '@/lib/email-service';
+import { ingestPaymentEvidence, resolveExternalReference } from '@/lib/payment-evidence-service';
+import { toCanonicalUTCString } from '@/lib/timezone-canonical';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/orders/[orderId]/payment-proof
- * Menerima bukti transfer dari pembeli dan menyetel status order ke 'WAITING_CONFIRMATION'
- * (STRICT: JANGAN auto-paid tanpa verifikasi seller!)
+ * Ingestion bukti transfer: Payment Evidence ≠ Payment Confirmation.
+ * Menyimpan PaymentEvidence dan mengevaluasi sinyal MATCH_CANDIDATE -> PENDING_PAYMENT_CONFIRMATION.
+ * HANYA Financial State Machine (Reader / PG / Manual Merchant Confirm) yang berhak mengubah order menjadi PAID.
  */
 export async function POST(
   req: NextRequest,
@@ -36,12 +39,18 @@ export async function POST(
     // 1. Ambil body payload (mendukung JSON atau FormData)
     let proofUrl = '';
     let notes = '';
+    let body: Record<string, any> = {};
 
     const contentType = req.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
       notes = String(formData.get('notes') || '');
+      body = {
+        notes,
+        external_reference: formData.get('external_reference') || formData.get('reference_no') || formData.get('rrn'),
+        receipt_transaction_at: formData.get('receipt_transaction_at') || formData.get('receipt_timestamp'),
+      };
 
       if (file && file.size > 0) {
         const fileExt = file.name.split('.').pop() || 'png';
@@ -81,7 +90,7 @@ export async function POST(
         }
       }
     } else {
-      const body = await req.json().catch(() => ({}));
+      body = await req.json().catch(() => ({}));
       proofUrl = String(body.proof_url || body.payment_proof_url || '').trim();
       notes = String(body.notes || '').trim();
 
@@ -169,34 +178,58 @@ export async function POST(
       );
     }
 
-    // 3. Update status order ke 'WAITING_CONFIRMATION' (STRICT: JANGAN auto-paid!)
-    const nowIso = new Date().toISOString();
-    const updatePayload: Record<string, any> = {
-      status: 'WAITING_CONFIRMATION',
-      payment_status: 'WAITING_CONFIRMATION',
-      order_status: 'WAITING_CONFIRMATION',
-      payment_proof_url: proofUrl,
-      updated_at: nowIso,
-    };
-
-    const { data: updatedOrder, error: updateErr } = await supabase
-      .from('orders')
-      .update(updatePayload)
-      .eq('id', order.id)
-      .select('*')
-      .single();
-
-    if (updateErr) {
-      console.error('[Payment Proof API] Database update error:', updateErr);
-      return NextResponse.json(
-        { success: false, error: 'Gagal memperbarui status verifikasi pesanan.' },
-        { status: 500 }
-      );
-    }
-
+    // 3. Ingestion Sinyal Bukti Bayar (Payment Evidence ≠ Payment Confirmation)
+    // Doktrin: "Multimodal AI may accelerate verification; only the Financial State Machine may authorize payment."
     const tenantSlug = order.tenant_slug || order.tenant_id || 'platform';
     const customerName = order.customer_name || 'Pelanggan';
     const grossAmount = Number(order.gross_amount || order.total_amount || 0);
+    const uniqueCode = Number(order.unique_code || 0);
+
+    // Ambil nama toko tujuan dari database
+    let targetStoreName = tenantSlug;
+    if (tenantSlug) {
+      try {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('name')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+        if (tenantRow?.name) {
+          targetStoreName = tenantRow.name;
+        }
+      } catch (tErr) {
+        console.warn('[Payment Proof API] Tenant name query note:', tErr);
+      }
+    }
+
+    // Ekstraksi data sinyal struk via helper adapter
+    const rawRefString = body?.external_reference || body?.reference_no || body?.rrn || notes;
+    const { externalReference, referenceType } = resolveExternalReference(rawRefString);
+    const receiptTime = body?.receipt_transaction_at || body?.receipt_timestamp || null;
+
+    // Evaluasi bukti bayar & pisahkan entitas PaymentEvidence
+    const evidenceResult = await ingestPaymentEvidence({
+      orderId: order.id,
+      tenantSlug,
+      tenantId: order.tenant_id,
+      proofUrl,
+      rawAmount: grossAmount,
+      expectedAmount: grossAmount,
+      detectedMerchant: targetStoreName,
+      targetMerchantName: targetStoreName,
+      externalReference,
+      referenceType,
+      receiptTransactionAt: receiptTime,
+      checkoutCreatedAt: order.created_at,
+      toleranceHours: 24, // Sinyal komparatif, margin toleransi configurable 24 jam (Bukan hard rejection 5 menit!)
+      notes,
+      rawPayload: {
+        notes,
+        headers: Object.fromEntries(req.headers.entries()),
+      },
+    });
+
+    const nowIso = toCanonicalUTCString();
 
     // 4. Kirim sinyal PWA alert / notifikasi sistem ke CS Inbox
     try {
@@ -272,10 +305,18 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
-        status: 'WAITING_CONFIRMATION',
+        status: evidenceResult.orderStatus, // 'PENDING_PAYMENT_CONFIRMATION' or 'PENDING_MANUAL_REVIEW'
         order_id: orderId,
         payment_proof_url: proofUrl,
-        message: 'Bukti transfer berhasil dikirim. Menunggu verifikasi mutasi oleh penjual.',
+        evidence_id: evidenceResult.evidence.id,
+        evidence_status: evidenceResult.evidence.status, // 'MATCH_CANDIDATE' or 'NEEDS_MANUAL_REVIEW'
+        verification_state: evidenceResult.orderStatus,
+        signals: evidenceResult.signals,
+        ocr_verified: evidenceResult.signals.nominal_matched && evidenceResult.signals.merchant_matched,
+        verification_estimation_seconds: 180,
+        detected_amount: grossAmount,
+        detected_merchant: targetStoreName,
+        message: evidenceResult.message,
       },
       { status: 200 }
     );
