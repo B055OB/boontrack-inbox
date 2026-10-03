@@ -948,12 +948,31 @@ export function resolveProductExternalUrl(item: any): string | null {
 
 /**
  * Resolves default smart CTA button text based on product vertical.
- * If digital/course -> "Daftar Sekarang", if service -> "Pesan Sekarang", if physical -> "Beli Sekarang".
+ * If food/culinary -> "Pesan Sekarang", if digital/course -> "Daftar Sekarang", if service -> "Pesan Sekarang", if physical -> "Beli Sekarang".
  */
 export function resolveProductDefaultCta(item: any): string {
   const normType = String(item?.product_type || item?.type || item?.category || '').toLowerCase();
   const nameLower = String(item?.name || item?.title || '').toLowerCase();
 
+  // Preset A: FOOD / FNB
+  if (
+    normType === 'food' ||
+    normType === 'fnb' ||
+    normType.includes('food') ||
+    normType.includes('fnb') ||
+    normType.includes('kuliner') ||
+    normType.includes('makanan') ||
+    normType.includes('minuman') ||
+    normType.includes('resto') ||
+    normType.includes('cafe') ||
+    nameLower.includes('frozen') ||
+    nameLower.includes('daging') ||
+    nameLower.includes('sei sapi')
+  ) {
+    return 'Pesan Sekarang';
+  }
+
+  // Preset C: DIGITAL / COURSE
   if (
     normType.includes('digital') ||
     normType.includes('course') ||
@@ -966,6 +985,7 @@ export function resolveProductDefaultCta(item: any): string {
     return 'Daftar Sekarang';
   }
 
+  // Preset C2: SERVICE / AGENCY
   if (
     normType.includes('service') ||
     normType.includes('jasa') ||
@@ -975,6 +995,7 @@ export function resolveProductDefaultCta(item: any): string {
     return 'Pesan Sekarang';
   }
 
+  // Preset B: PHYSICAL / RETAIL
   return 'Beli Sekarang';
 }
 
@@ -988,8 +1009,27 @@ export function resolveProductCtaLabel(item: any, isExternal?: boolean): string 
     return directCta.trim();
   }
 
+  const normType = String(item?.product_type || item?.type || item?.category || '').toLowerCase();
+  const nameLower = String(item?.name || item?.title || '').toLowerCase();
+  const isFood =
+    normType === 'food' ||
+    normType === 'fnb' ||
+    normType.includes('food') ||
+    normType.includes('fnb') ||
+    normType.includes('kuliner') ||
+    normType.includes('makanan') ||
+    normType.includes('minuman') ||
+    normType.includes('resto') ||
+    normType.includes('cafe') ||
+    nameLower.includes('frozen') ||
+    nameLower.includes('daging') ||
+    nameLower.includes('sei sapi');
+
   const price = Number(item?.price ?? item?.promo_price ?? 0);
   if (price === 0) {
+    if (isFood) {
+      return 'Tambah ke Pesanan';
+    }
     return 'Klaim Akses Gratis Sekarang';
   }
 

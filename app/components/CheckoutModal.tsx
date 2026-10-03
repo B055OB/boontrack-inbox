@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar, Zap, Upload, Image as ImageIcon, RefreshCw, Clock, Store, MapPin, Plus, Minus } from "lucide-react";
+import { X, ShieldCheck, QrCode, ArrowRight, Loader2, CheckCircle2, Building2, Lock, Copy, Check, MessageSquare, AlertTriangle, Download, ExternalLink, Package, Truck, Calendar, Zap, Upload, Image as ImageIcon, RefreshCw, Clock, Store, MapPin, Plus, Minus, Utensils } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { createOrderAndInvoice } from "@/lib/checkout-service";
 import { getActiveAffiliateCode, getTrackingData, getClientTrackingContext, trackLead, trackInitiateCheckout, trackClientPurchase, trackLeadFormSubmission, formatIndonesianWhatsAppNumber, initMetaPixel, initTikTokPixel } from "@/lib/tracking";
@@ -49,6 +49,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [briefingUrl, setBriefingUrl] = useState("");
+  const [kitchenNotes, setKitchenNotes] = useState("");
+  const [tableNumber, setTableNumber] = useState("");
+  const [foodDiningOption, setFoodDiningOption] = useState<'DINE_IN' | 'INSTANT' | 'PICKUP'>('INSTANT');
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingCity, setShippingCity] = useState("");
   const [shippingCost, setShippingCost] = useState(0);
@@ -201,9 +204,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
   const adminFee = 0;
   const isQris = paymentMethod === 'qris';
-  const isPickup = fulfillmentType === 'PICKUP';
+  const isPickup = isFood ? (foodDiningOption !== 'INSTANT') : (fulfillmentType === 'PICKUP');
   const currentUniqueCode = uniqueCode;
-  const currentShippingCost = isPhysical && !isPickup ? shippingCost : 0;
+  const currentShippingCost = isFood
+    ? (foodDiningOption === 'INSTANT' ? shippingCost : 0)
+    : (isPhysical && !isPickup ? shippingCost : 0);
   const totalAmount = isQris
     ? Math.max(1000, basePrice + adminFee + currentShippingCost - currentUniqueCode)
     : basePrice + adminFee + currentUniqueCode + currentShippingCost;
@@ -603,9 +608,17 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     setLoading(true);
     setErrorMessage("");
 
+    if (isFood && foodDiningOption === 'DINE_IN' && !tableNumber.trim()) {
+      setErrorMessage("Silakan lengkapi nomor meja resto Anda untuk pesanan makan di tempat.");
+      setLoading(false);
+      return;
+    }
+
     const trackingParams = getTrackingData();
     const resolvedProductType = isBookingOrService
       ? (product?.product_type || 'SERVICE')
+      : isFood
+      ? 'FOOD'
       : (isPhysical ? 'PHYSICAL' : 'DIGITAL');
 
     const resolvedAccessUrl =
@@ -643,7 +656,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
 
     const clientTrackingContext = getClientTrackingContext();
 
-    const cleanBriefingUrl = normalizeBriefingUrl(briefingUrl);
+    const cleanBriefingUrl = (!isFood && isDigital) ? normalizeBriefingUrl(briefingUrl) : null;
 
     try {
       const result = await createOrderAndInvoice({
@@ -668,19 +681,42 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           mapsUrl: selfPickupConfig.pickupMapsUrl,
           instructions: selfPickupConfig.pickupInstructions,
         } : undefined,
-        shippingAddress: isPhysical
+        shippingAddress: isFood
+          ? (foodDiningOption === 'DINE_IN'
+              ? `[DINE-IN MEJA ${tableNumber.trim()}]`
+              : foodDiningOption === 'PICKUP'
+              ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Resto'}`
+              : shippingAddress)
+          : isPhysical
           ? (isPickup ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}` : shippingAddress)
           : undefined,
-        shippingCourier: isPhysical
+        shippingCourier: isFood
+          ? (foodDiningOption === 'DINE_IN'
+              ? `Dine-in (Meja ${tableNumber.trim()})`
+              : foodDiningOption === 'PICKUP'
+              ? 'Ambil Sendiri di Resto (Self-Pickup)'
+              : shippingCourier)
+          : isPhysical
           ? (isPickup ? 'Ambil Sendiri di Toko (Self-Pickup)' : shippingCourier)
           : undefined,
-        shippingCost: isPhysical && !isPickup ? shippingCost : 0,
-        netShippingCost: isPhysical && !isPickup ? shippingCost : 0,
+        shippingCost: isFood
+          ? (foodDiningOption === 'INSTANT' ? shippingCost : 0)
+          : (isPhysical && !isPickup ? shippingCost : 0),
+        netShippingCost: isFood
+          ? (foodDiningOption === 'INSTANT' ? shippingCost : 0)
+          : (isPhysical && !isPickup ? shippingCost : 0),
         affiliateCode: undefined, // Murni direct store ke toko merchant
         tracking: trackingWithSlot,
         tracking_context: clientTrackingContext,
         productType: resolvedProductType,
-        fulfillmentMetadata: resolvedFulfillmentMetadata,
+        fulfillmentMetadata: {
+          ...(resolvedFulfillmentMetadata || {}),
+          ...(isFood ? {
+            dining_option: foodDiningOption,
+            table_number: foodDiningOption === 'DINE_IN' ? tableNumber.trim() : undefined,
+            kitchen_notes: kitchenNotes.trim() || undefined,
+          } : {}),
+        },
         briefing_url: cleanBriefingUrl || undefined,
         customer_briefing: cleanBriefingUrl ? {
           briefing_url: cleanBriefingUrl,
@@ -1457,8 +1493,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 </div>
               )}
 
-              {/* INPUT BRIEFING LINK (Google Docs / Drive / Notion) */}
-              {!isPhysical && (
+              {/* INPUT BRIEFING LINK (Google Docs / Drive / Notion) - HANYA UNTUK DIGITAL / SERVICE */}
+              {!isFood && isDigital && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-slate-400 font-medium">Link Dokumen Briefing (Opsional)</label>
@@ -1477,8 +1513,182 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                 </div>
               )}
 
-              {/* JIKA FISIK: Tampilkan Alamat Pengiriman, Kota/Kecamatan, dan Opsi Ongkir (Single Basic Courier) */}
-              {isPhysical && (
+              {/* CATATAN KHUSUS DAPUR / ALERGI (HANYA PRODUK KULINER/FOOD) */}
+              {isFood && (
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-medium">Catatan Khusus Dapur / Alergi (Opsional)</label>
+                  <textarea
+                    rows={2}
+                    value={kitchenNotes}
+                    onChange={(e) => setKitchenNotes(e.target.value)}
+                    placeholder="Contoh: Sambal dipisah, level pedas sedang, tanpa daun bawang/alergi udang..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-sm md:text-xs"
+                  />
+                </div>
+              )}
+
+              {/* ── METODE PENGANTARAN / PENYAJIAN MAKANAN (PRESET FOOD) ── */}
+              {isFood && (
+                <div className="bg-slate-900/90 rounded-2xl p-3.5 border border-emerald-500/40 text-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-100 text-xs">
+                      <Utensils className="w-4 h-4 text-emerald-400" />
+                      <span>Opsi Layanan &amp; Pengantaran Menu</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                      {foodDiningOption === 'DINE_IN' ? '🍽️ Makan di Meja' : foodDiningOption === 'INSTANT' ? '⚡ Kurir Instan' : '🏪 Ambil di Resto'}
+                    </span>
+                  </div>
+
+                  <div className="p-1 bg-slate-950 border border-slate-800 rounded-xl grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setFoodDiningOption('DINE_IN')}
+                      className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                        foodDiningOption === 'DINE_IN'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <Utensils className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Makan di Meja</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFoodDiningOption('INSTANT'); setCourierServiceType('instant'); }}
+                      className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                        foodDiningOption === 'INSTANT'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <Zap className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Kurir Instan</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFoodDiningOption('PICKUP')}
+                      className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                        foodDiningOption === 'PICKUP'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <Store className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Ambil di Resto</span>
+                    </button>
+                  </div>
+
+                  {/* Opsi 1: Dine-in Table Number */}
+                  {foodDiningOption === 'DINE_IN' && (
+                    <div className="bg-slate-950 rounded-xl p-3 border border-amber-500/40 text-xs space-y-2">
+                      <label className="font-bold text-slate-200 block text-xs">
+                        Nomor Meja Resto <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required={foodDiningOption === 'DINE_IN'}
+                        placeholder="Contoh: Meja 12 atau Meja VIP-3"
+                        value={tableNumber}
+                        onChange={(e) => setTableNumber(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500 text-xs font-bold"
+                      />
+                      <p className="text-[10px] text-slate-400">
+                        🍽️ Pesanan makanan akan disajikan langsung oleh pramusaji ke meja Anda tanpa biaya kirim.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Opsi 2: Ambil di Resto (Pickup) */}
+                  {foodDiningOption === 'PICKUP' && (
+                    <div className="bg-slate-950 rounded-xl p-3 border border-emerald-500/40 text-xs space-y-1.5">
+                      <div className="font-bold text-slate-100 text-xs">
+                        Lokasi Resto: {selfPickupConfig.storeName || tenantSlug}
+                      </div>
+                      <p className="text-slate-300 text-xs">{selfPickupConfig.pickupAddress || 'Resto / Dapur Utama'}</p>
+                      {selfPickupConfig.pickupInstructions && (
+                        <p className="text-slate-400 text-[11px]">⏰ {selfPickupConfig.pickupInstructions}</p>
+                      )}
+                      {selfPickupConfig.pickupMapsUrl && (
+                        <div className="pt-0.5">
+                          <a
+                            href={selfPickupConfig.pickupMapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-400 hover:text-blue-300 hover:underline"
+                          >
+                            <MapPin className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Buka Petunjuk Arah (Google Maps)</span>
+                            <ExternalLink className="w-3 h-3 text-blue-400" />
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Opsi 3: Kurir Instan (GoSend / Grab) */}
+                  {foodDiningOption === 'INSTANT' && (
+                    <div className="space-y-2.5 pt-0.5">
+                      <div className="space-y-1">
+                        <label className="text-slate-400 font-medium">Alamat Pengantaran Instan *</label>
+                        <textarea
+                          rows={2}
+                          required={foodDiningOption === 'INSTANT'}
+                          value={shippingAddress}
+                          onChange={(e) => setShippingAddress(e.target.value)}
+                          placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Patokan jelas..."
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-slate-400 font-medium">Kecamatan / Kota Tujuan *</label>
+                        <input
+                          type="text"
+                          required={foodDiningOption === 'INSTANT'}
+                          value={shippingCity}
+                          onChange={(e) => setShippingCity(e.target.value)}
+                          placeholder="Contoh: Sukasari, Kota Bandung"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-xs"
+                        />
+                      </div>
+
+                      {/* Kurir Instan Only */}
+                      <div className="p-3 rounded-2xl border border-emerald-500 bg-emerald-950/30">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                            <Zap className="w-4 h-4 text-amber-400" />
+                            <span>Kurir Dapur Instan</span>
+                          </div>
+                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                            Hari Ini (1-2 Jam)
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          {instantCourierName} (GoSend / Grab)
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] text-slate-300 pt-1.5 mt-1 border-t border-slate-900">
+                          <span>Ongkir:</span>
+                          <span className="font-bold text-white">
+                            {isLoadingShipping ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-blue-400" />
+                            ) : instantRate > 0 ? (
+                              `Rp ${instantRate.toLocaleString("id-ID")}`
+                            ) : shippingCity.trim().length >= 3 ? (
+                              "Rp 20.000"
+                            ) : (
+                              "-"
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── METODE PENGIRIMAN PRODUK FISIK NON-FOOD ── */}
+              {!isFood && isPhysical && (
                 <>
                   {/* Opsi Tab: Ekspedisi vs Ambil Sendiri */}
                   {selfPickupConfig.isEnabled && (
@@ -1587,7 +1797,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                         </span>
                       </div>
 
-                      {/* Opsi Ongkir: Instant vs Regular Courier */}
+                      {/* Opsi Ongkir: Instant vs Regular Courier (Produk Fisik Non-Food) */}
                       <div className="space-y-2">
                         <label className="text-slate-300 font-bold block">Pilih Opsi Pengiriman</label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1801,7 +2011,9 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
               ) : (
                 <>
                   <span>
-                    {isPhysical || isFood
+                    {isFood
+                      ? `Pesan Sekarang (Rp ${totalAmount.toLocaleString("id-ID")})`
+                      : isPhysical
                       ? `Konfirmasi & Lanjut ke WhatsApp / QRIS (Rp ${totalAmount.toLocaleString("id-ID")})`
                       : `Bayar Sekarang (Rp ${totalAmount.toLocaleString("id-ID")})`}
                   </span>

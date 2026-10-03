@@ -39,6 +39,7 @@ import {
   Store,
   Plus,
   Minus,
+  Utensils,
 } from 'lucide-react';
 import { getStoreShippingConfig } from '@/lib/shipping/self-pickup';
 import { syncAttributionSession } from '@/lib/attribution';
@@ -132,6 +133,8 @@ export function buildWabaStorefrontConsultationUrl(params: {
   variant?: string | null;
   fulfillmentType?: string | null;
   quantity?: number | null;
+  tableNumber?: string | null;
+  kitchenNotes?: string | null;
 }): { text: string; url: string; number: string } {
   const rawNumber = params.tenantWhatsApp || params.botNumber || '';
   const num = normalizeStorefrontWhatsAppNumber(rawNumber);
@@ -140,6 +143,8 @@ export function buildWabaStorefrontConsultationUrl(params: {
   const pSlug = params.productSlug || '';
   const refToken = (params.referenceToken || '').trim();
   const pickupLine = params.fulfillmentType === 'PICKUP' ? '\n- Metode: Ambil Sendiri di Toko (Self-Pickup)' : '';
+  const tableLine = params.tableNumber ? `\n- Makan di Tempat (Dine-in): Meja ${params.tableNumber}` : '';
+  const kitchenLine = params.kitchenNotes ? `\n- Catatan Dapur / Alergi: ${params.kitchenNotes}` : '';
   const qtyLine = params.quantity && params.quantity > 1 ? `\n- Jumlah (Qty): ${params.quantity} pcs` : '';
 
   let text: string;
@@ -173,7 +178,7 @@ export function buildWabaStorefrontConsultationUrl(params: {
       }
     } else {
       // Format standar: "Halo Admin, konfirmasi pesanan [Ref: BT-XXXXX]..."
-      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${qtyLine}${pickupLine}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
+      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${tableLine}${kitchenLine}${qtyLine}${pickupLine}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
     }
   } else if (params.customMessage && params.customMessage.trim()) {
     text = params.customMessage
@@ -751,10 +756,54 @@ function SingleProductContent() {
     )
   );
 
-  // Alamat & ekspedisi kurir HANYA ditampilkan jika produk membutuhkan pengiriman fisik murni (seperti retail, makanan, sabun cuci)
+  // ── TEMPLATE ROUTING & VERTICAL PRESET ISOLATION (FOOD vs PHYSICAL vs DIGITAL) ──
+  // Preset A: FOOD / FNB Preset
+  // Preset B: PHYSICAL / RETAIL Preset
+  // Preset C: DIGITAL Preset
+  const isFoodPreset = Boolean(
+    productType === 'FOOD' ||
+    product.product_type === 'FOOD' ||
+    rawProductType === 'FOOD' ||
+    rawProductType === 'FNB' ||
+    storeCat === 'FOOD' ||
+    storeCat === 'FNB' ||
+    tenantCategory === 'FOOD' ||
+    tenantCategory === 'FNB' ||
+    rawCategory.includes('food') ||
+    rawCategory.includes('kuliner') ||
+    rawCategory.includes('makanan') ||
+    rawCategory.includes('minuman')
+  );
+
+  const isDigitalPreset = Boolean(
+    !isFoodPreset && (
+      productType === 'DIGITAL' ||
+      productType === 'SERVICE' ||
+      productType === 'FIELD_SERVICE' ||
+      productType === 'PROFESSIONAL_SERVICE' ||
+      productType === 'AGENCY' ||
+      product.is_digital ||
+      (product as any).isDigital ||
+      config.hide_address_for_digital ||
+      isDigitalOrService
+    )
+  );
+
+  const isPhysicalPreset = Boolean(!isFoodPreset && !isDigitalPreset);
+
+  // Opsi Pengantaran & Meja Dine-in Khusus FOOD
+  const tableParam = searchParams.get('meja') || searchParams.get('table') || searchParams.get('nomor_meja') || searchParams.get('table_number') || '';
+  const [tableNumber, setTableNumber] = useState<string>(tableParam);
+  const [foodDiningOption, setFoodDiningOption] = useState<'DINE_IN' | 'INSTANT' | 'PICKUP'>(
+    tableParam ? 'DINE_IN' : 'INSTANT'
+  );
+  const [kitchenNotes, setKitchenNotes] = useState<string>('');
+  const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
+
+  // Alamat & ekspedisi kurir HANYA ditampilkan jika produk membutuhkan pengiriman fisik murni atau kurir instan FnB
   const shouldShowAddressSection = Boolean(
-    (requiresShipping || isExplicitShippingRequired || isStorePhysical || isStoreFnb) &&
-    !isDigitalOrService
+    (isFoodPreset && foodDiningOption === 'INSTANT') ||
+    (isPhysicalPreset && fulfillmentType === 'DELIVERY' && (requiresShipping || isExplicitShippingRequired))
   );
 
   // Status Pembayaran dari query param (jika redirect sukses dari invoice/gateway)
@@ -786,7 +835,6 @@ function SingleProductContent() {
   const [shippingCity, setShippingCity] = useState<string>('');
   const [shippingDistrict, setShippingDistrict] = useState<string>('');
   const [shippingPostalCode, setShippingPostalCode] = useState<string>('');
-  const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
   const [selfPickupConfig, setSelfPickupConfig] = useState<{
     isEnabled: boolean;
     pickupAddress: string;
@@ -1165,7 +1213,11 @@ function SingleProductContent() {
 
   // Dynamic CTA Button Label Resolution (Universal untuk Semua Template)
   const defaultCtaLabel = resolveProductDefaultCta(product);
-  const dynamicCtaPrefix = (product.metadata?.cta_text || config.cta_label || product.cta_label || defaultCtaLabel).trim();
+  const dynamicCtaPrefix = isFoodPreset
+    ? (product.metadata?.cta_text || config.cta_label || 'Pesan Sekarang').trim()
+    : isPhysicalPreset
+    ? (product.metadata?.cta_text || config.cta_label || 'Beli Sekarang').trim()
+    : (product.metadata?.cta_text || config.cta_label || product.cta_label || defaultCtaLabel).trim();
 
   // Sinkronisasi voucher otomatis HANYA jika seller mengaktifkan voucher promo
   useEffect(() => {
@@ -1442,7 +1494,12 @@ function SingleProductContent() {
     e.preventDefault();
     if (loading) return;
 
-    const isPickup = fulfillmentType === 'PICKUP';
+    const isPickup = isFoodPreset ? (foodDiningOption === 'PICKUP' || foodDiningOption === 'DINE_IN') : fulfillmentType === 'PICKUP';
+
+    if (isFoodPreset && foodDiningOption === 'DINE_IN' && !tableNumber.trim()) {
+      setErrorMessage('Silakan lengkapi nomor meja resto untuk pesanan makan di tempat (dine-in).');
+      return;
+    }
 
     if (shouldShowAddressSection && !isPickup && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
       setErrorMessage('Silakan lengkapi alamat, kota/kabupaten, kecamatan, dan kode pos pengiriman.');
@@ -1468,8 +1525,30 @@ function SingleProductContent() {
     const courierEtd = selectedShipping ? (selectedShipping.etd || (selectedShipping as any).eta || '') : '';
     const formattedCourier = courierEtd ? `${courierLabel} (${courierEtd})` : courierLabel;
 
-    const cleanBriefingUrl = normalizeBriefingUrl(briefingUrl);
+    const cleanBriefingUrl = isDigitalPreset ? normalizeBriefingUrl(briefingUrl) : null;
     const directRefToken = generateReferenceToken();
+
+    const effectiveShippingAddress = isFoodPreset
+      ? (foodDiningOption === 'DINE_IN'
+          ? `[DINE-IN MEJA ${tableNumber.trim()}]`
+          : foodDiningOption === 'PICKUP'
+          ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Resto'}`
+          : `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`)
+      : isPickup
+      ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}`
+      : (shouldShowAddressSection
+        ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
+        : undefined);
+
+    const effectiveShippingCourier = isFoodPreset
+      ? (foodDiningOption === 'DINE_IN'
+          ? `Dine-in (Meja ${tableNumber.trim()})`
+          : foodDiningOption === 'PICKUP'
+          ? 'Ambil Sendiri di Resto (Self-Pickup)'
+          : (selectedShipping ? formattedCourier : 'Kurir Instan'))
+      : isPickup
+      ? 'Ambil Sendiri di Toko (Self-Pickup)'
+      : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined);
 
     try {
       const result = await createOrderAndInvoice({
@@ -1492,14 +1571,8 @@ function SingleProductContent() {
         shippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? baseShippingCost : 0,
         shippingSubsidy: shouldShowAddressSection && requiresShipping && !isPickup ? shippingSubsidy : 0,
         netShippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? netShippingCost : 0,
-        shippingAddress: isPickup
-          ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}`
-          : (shouldShowAddressSection
-            ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
-            : undefined),
-        shippingCourier: isPickup
-          ? 'Ambil Sendiri di Toko (Self-Pickup)'
-          : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined),
+        shippingAddress: effectiveShippingAddress,
+        shippingCourier: effectiveShippingCourier,
         productType,
         fulfillmentMetadata: {
           ...(product.fulfillment_metadata || {}),
@@ -1509,6 +1582,11 @@ function SingleProductContent() {
           ...(destinationLatitude ? { destination_latitude: destinationLatitude } : {}),
           ...(destinationLongitude ? { destination_longitude: destinationLongitude } : {}),
           reference_token: directRefToken,
+          ...(isFoodPreset ? {
+            dining_option: foodDiningOption,
+            table_number: foodDiningOption === 'DINE_IN' ? tableNumber.trim() : undefined,
+            kitchen_notes: kitchenNotes.trim() || undefined,
+          } : {}),
         },
         selectedOrderBumps: selectedBumpItems.map((b) => ({
           id: b.id,
@@ -1522,7 +1600,7 @@ function SingleProductContent() {
         affiliateCommission: 0,
         customerName: buyerName,
         customerPhone: buyerPhone,
-        customerEmail: buyerEmail,
+        customerEmail: isDigitalPreset ? buyerEmail : (buyerEmail || undefined),
         reference_token: directRefToken,
         affiliateCode: undefined, // Murni direct store ke toko merchant
         tracking: trackingParams,
@@ -1565,7 +1643,12 @@ function SingleProductContent() {
       return;
     }
 
-    const isPickup = fulfillmentType === 'PICKUP';
+    const isPickup = isFoodPreset ? (foodDiningOption === 'PICKUP' || foodDiningOption === 'DINE_IN') : fulfillmentType === 'PICKUP';
+
+    if (isFoodPreset && foodDiningOption === 'DINE_IN' && !tableNumber.trim()) {
+      setErrorMessage('Silakan lengkapi nomor meja resto untuk pesanan makan di tempat (dine-in).');
+      return;
+    }
 
     if (shouldShowAddressSection && !isPickup && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
       setErrorMessage('Silakan lengkapi alamat, kota/kabupaten, kecamatan, dan kode pos pengiriman.');
@@ -1592,7 +1675,29 @@ function SingleProductContent() {
     const courierLabel = selectedShipping ? (selectedShipping.courier_name || (selectedShipping as any).name) : '';
     const courierEtd = selectedShipping ? (selectedShipping.etd || (selectedShipping as any).eta || '') : '';
     const formattedCourier = courierEtd ? `${courierLabel} (${courierEtd})` : courierLabel;
-    const cleanBriefingUrl = normalizeBriefingUrl(briefingUrl);
+    const cleanBriefingUrl = isDigitalPreset ? normalizeBriefingUrl(briefingUrl) : null;
+
+    const effectiveShippingAddress = isFoodPreset
+      ? (foodDiningOption === 'DINE_IN'
+          ? `[DINE-IN MEJA ${tableNumber.trim()}]`
+          : foodDiningOption === 'PICKUP'
+          ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Resto'}`
+          : `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`)
+      : isPickup
+      ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}`
+      : (shouldShowAddressSection
+        ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
+        : undefined);
+
+    const effectiveShippingCourier = isFoodPreset
+      ? (foodDiningOption === 'DINE_IN'
+          ? `Dine-in (Meja ${tableNumber.trim()})`
+          : foodDiningOption === 'PICKUP'
+          ? 'Ambil Sendiri di Resto (Self-Pickup)'
+          : (selectedShipping ? formattedCourier : 'Kurir Instan'))
+      : isPickup
+      ? 'Ambil Sendiri di Toko (Self-Pickup)'
+      : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined);
 
     try {
       // Simpan referensi token ini ke record pesanan di Supabase
@@ -1616,14 +1721,8 @@ function SingleProductContent() {
         shippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? baseShippingCost : 0,
         shippingSubsidy: shouldShowAddressSection && requiresShipping && !isPickup ? shippingSubsidy : 0,
         netShippingCost: shouldShowAddressSection && requiresShipping && !isPickup ? netShippingCost : 0,
-        shippingAddress: isPickup
-          ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}`
-          : (shouldShowAddressSection
-            ? `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`
-            : undefined),
-        shippingCourier: isPickup
-          ? 'Ambil Sendiri di Toko (Self-Pickup)'
-          : (shouldShowAddressSection && requiresShipping && selectedShipping ? formattedCourier : undefined),
+        shippingAddress: effectiveShippingAddress,
+        shippingCourier: effectiveShippingCourier,
         productType,
         fulfillmentMetadata: {
           ...(product.fulfillment_metadata || {}),
@@ -1632,6 +1731,11 @@ function SingleProductContent() {
           ...(selectedAreaId ? { destination_area_id: selectedAreaId } : {}),
           reference_token: refToken,
           checkout_action_mode: 'WHATSAPP',
+          ...(isFoodPreset ? {
+            dining_option: foodDiningOption,
+            table_number: foodDiningOption === 'DINE_IN' ? tableNumber.trim() : undefined,
+            kitchen_notes: kitchenNotes.trim() || undefined,
+          } : {}),
         },
         selectedOrderBumps: selectedBumpItems.map((b) => ({
           id: b.id,
@@ -1645,7 +1749,7 @@ function SingleProductContent() {
         affiliateCommission: 0,
         customerName: buyerName.trim(),
         customerPhone: buyerPhone.trim(),
-        customerEmail: buyerEmail.trim() || undefined,
+        customerEmail: isDigitalPreset ? buyerEmail.trim() : (buyerEmail.trim() || undefined),
         reference_token: refToken,
         tracking: trackingParams,
         briefing_url: cleanBriefingUrl || undefined,
@@ -1677,6 +1781,8 @@ function SingleProductContent() {
         variant: selectedVariant,
         quantity,
         fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
+        tableNumber: isFoodPreset && foodDiningOption === 'DINE_IN' ? tableNumber.trim() : undefined,
+        kitchenNotes: isFoodPreset && kitchenNotes.trim() ? kitchenNotes.trim() : undefined,
       });
 
       setWaOrderSuccess({ token: refToken, url: waUrl || '' });
@@ -1921,8 +2027,17 @@ function SingleProductContent() {
           />
           <div className="flex-1 min-w-0">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase mb-1">
-              <MessageCircle className="w-3 h-3 text-emerald-600" />
-              Order &amp; Konsultasi via WhatsApp
+              {isFoodPreset ? (
+                <>
+                  <Utensils className="w-3 h-3 text-emerald-600" />
+                  Pesan Menu via WhatsApp
+                </>
+              ) : (
+                <>
+                  <MessageCircle className="w-3 h-3 text-emerald-600" />
+                  Order &amp; Konsultasi via WhatsApp
+                </>
+              )}
             </span>
             <h4 className="font-bold text-slate-900 text-sm truncate">{product.name}</h4>
             <div className="flex items-center gap-2 mt-0.5">
@@ -1942,7 +2057,7 @@ function SingleProductContent() {
         {variantList.length > 1 ? (
           <div className="pt-2 border-t border-emerald-100">
             <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
-              Pilihan Varian / Paket yang Diminati:
+              {isFoodPreset ? 'Pilihan Varian / Level Pedas / Rasa:' : 'Pilihan Varian / Paket yang Diminati:'}
             </span>
             <div className="flex flex-wrap gap-1.5">
               {variantList.map((v, i) => (
@@ -1964,7 +2079,7 @@ function SingleProductContent() {
         ) : variantList.length === 1 ? (
           <div className="pt-2 border-t border-emerald-100 flex items-center justify-between text-xs">
             <span className="text-[11px] font-semibold text-slate-500">
-              Paket Terpilih:
+              {isFoodPreset ? 'Menu Terpilih:' : 'Paket Terpilih:'}
             </span>
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
               <Check className="w-3 h-3 text-emerald-600" />
@@ -2018,20 +2133,54 @@ function SingleProductContent() {
           )}
         </div>
 
-        <div>
-          <label className="font-bold text-slate-700 block mb-1">
-            Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional untuk backup)</span>
-          </label>
-          <input
-            type="email"
-            placeholder="nama@email.com"
-            value={buyerEmail}
-            onChange={(e) => setBuyerEmail(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm md:text-xs transition"
-          />
-        </div>
+        {/* Input Email: Wajib untuk DIGITAL, opsional untuk PHYSICAL, disembunyikan/opsional untuk FOOD */}
+        {isDigitalPreset ? (
+          <div>
+            <label className="font-bold text-slate-700 block mb-1">
+              Alamat Email <span className="text-rose-500">* (Wajib untuk Akses Link)</span>
+            </label>
+            <input
+              type="email"
+              required
+              placeholder="nama@email.com"
+              value={buyerEmail}
+              onChange={(e) => setBuyerEmail(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm md:text-xs transition"
+            />
+          </div>
+        ) : (
+          <div>
+            <label className="font-bold text-slate-700 block mb-1">
+              Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional untuk backup)</span>
+            </label>
+            <input
+              type="email"
+              placeholder="nama@email.com"
+              value={buyerEmail}
+              onChange={(e) => setBuyerEmail(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white text-sm md:text-xs transition"
+            />
+          </div>
+        )}
 
-        {(!requiresShipping || productType === 'SERVICE' || (product.fulfillment_metadata?.delivery_type === 'BRIEF_FORM')) && (
+        {/* Catatan Khusus Dapur / Alergi HANYA untuk Preset FOOD */}
+        {isFoodPreset && (
+          <div>
+            <label className="font-bold text-slate-700 block mb-1">
+              Catatan Khusus Dapur / Alergi <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
+            </label>
+            <textarea
+              rows={2}
+              placeholder="Contoh: Sambal dipisah, tidak pakai daun bawang, alergi udang/kacang..."
+              value={kitchenNotes}
+              onChange={(e) => setKitchenNotes(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white text-xs transition"
+            />
+          </div>
+        )}
+
+        {/* Link Dokumen Briefing HANYA untuk Preset DIGITAL / SERVICE */}
+        {isDigitalPreset && (!requiresShipping || productType === 'SERVICE' || (product.fulfillment_metadata?.delivery_type === 'BRIEF_FORM')) && (
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="font-bold text-slate-700">
@@ -2052,8 +2201,104 @@ function SingleProductContent() {
         )}
       </div>
 
-      {/* Alamat Pengiriman HANYA untuk Produk Fisik Murni */}
-      {shouldShowAddressSection && (
+      {/* Opsi Pengantaran Khusus FOOD / FNB (Dine-in / Kurir Instan / Pickup) */}
+      {isFoodPreset && (
+        <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
+          <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
+            <Utensils className="w-4 h-4 text-amber-700" />
+            <span>Opsi Penyajian &amp; Pengantaran Menu</span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5 p-1 bg-white/90 border border-amber-200/80 rounded-xl">
+            <button
+              type="button"
+              onClick={() => { setFoodDiningOption('DINE_IN'); setFulfillmentType('PICKUP'); }}
+              className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                foodDiningOption === 'DINE_IN'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Utensils className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Makan di Tempat</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFoodDiningOption('INSTANT'); setFulfillmentType('DELIVERY'); }}
+              className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                foodDiningOption === 'INSTANT'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Kurir Instan</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFoodDiningOption('PICKUP'); setFulfillmentType('PICKUP'); }}
+              className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                foodDiningOption === 'PICKUP'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Store className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Ambil Sendiri</span>
+            </button>
+          </div>
+
+          {foodDiningOption === 'DINE_IN' && (
+            <div className="bg-white rounded-xl p-3 border border-amber-300 text-xs space-y-2">
+              <label className="font-bold text-slate-800 block text-xs">
+                Nomor Meja Resto <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required={foodDiningOption === 'DINE_IN'}
+                placeholder="Contoh: Meja 12 atau Meja VIP-3"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600 text-xs font-bold"
+              />
+              <p className="text-[10px] text-slate-500">
+                🍽️ Pesanan makanan akan disajikan langsung oleh pramusaji ke meja Anda tanpa biaya kirim.
+              </p>
+            </div>
+          )}
+
+          {foodDiningOption === 'PICKUP' && (
+            <div className="bg-white rounded-xl p-3 border border-emerald-300 text-xs space-y-1.5">
+              <div className="font-bold text-slate-900">
+                Lokasi Ambil: {config.store_name || tenantData?.name || tenant}
+              </div>
+              <p className="text-slate-600 text-[11px]">{selfPickupConfig.pickupAddress || 'Resto / Dapur Utama'}</p>
+              {selfPickupConfig.pickupInstructions && (
+                <p className="text-slate-500 text-[10px]">⏰ {selfPickupConfig.pickupInstructions}</p>
+              )}
+            </div>
+          )}
+
+          {foodDiningOption === 'INSTANT' && (
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">
+                Alamat Pengantaran Instan (GoSend / GrabExpress) <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={2}
+                required={foodDiningOption === 'INSTANT'}
+                placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Patokan jelas..."
+                value={shippingAddress}
+                onChange={(e) => setShippingAddress(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 text-xs"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Alamat Pengiriman HANYA untuk Produk Fisik Murni (Bukan FnB, Bukan Digital) */}
+      {!isFoodPreset && isPhysicalPreset && shouldShowAddressSection && (
         <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
           <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
             <Package className="w-4 h-4 text-amber-700" />
@@ -2213,7 +2458,7 @@ function SingleProductContent() {
         ) : (
           <>
             <MessageCircle className="w-5 h-5 shrink-0" />
-            <span>{config.cta_label || 'Order & Kirim Pesanan via WhatsApp'}</span>
+            <span>{config.cta_label || (isFoodPreset ? 'Pesan Menu via WhatsApp' : 'Order & Kirim Pesanan via WhatsApp')}</span>
             <ArrowRight className="w-4 h-4 shrink-0" />
           </>
         )}
@@ -2406,21 +2651,55 @@ function SingleProductContent() {
           )}
         </div>
 
-        <div>
-          <label className="font-bold text-slate-700 block mb-1">
-            Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional untuk backup link)</span>
-          </label>
-          <input
-            type="email"
-            placeholder="nama@email.com"
-            value={buyerEmail}
-            onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
-            onChange={(e) => setBuyerEmail(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs transition"
-          />
-        </div>
+        {isDigitalPreset ? (
+          <div>
+            <label className="font-bold text-slate-700 block mb-1">
+              Alamat Email <span className="text-rose-500">* (Wajib untuk Pengiriman Akses)</span>
+            </label>
+            <input
+              type="email"
+              required
+              placeholder="nama@email.com"
+              value={buyerEmail}
+              onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
+              onChange={(e) => setBuyerEmail(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs transition"
+            />
+          </div>
+        ) : (
+          <div>
+            <label className="font-bold text-slate-700 block mb-1">
+              Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional untuk backup invoice)</span>
+            </label>
+            <input
+              type="email"
+              placeholder="nama@email.com"
+              value={buyerEmail}
+              onFocus={() => { triggerAddToCart(); triggerInitiateCheckout(); }}
+              onChange={(e) => setBuyerEmail(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white text-sm md:text-xs transition"
+            />
+          </div>
+        )}
 
-        {(!requiresShipping || productType === 'SERVICE' || (product.fulfillment_metadata?.delivery_type === 'BRIEF_FORM')) && (
+        {/* Catatan Khusus Dapur / Alergi HANYA untuk Preset FOOD */}
+        {isFoodPreset && (
+          <div>
+            <label className="font-bold text-slate-700 block mb-1">
+              Catatan Khusus Dapur / Alergi <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
+            </label>
+            <textarea
+              rows={2}
+              placeholder="Contoh: Sambal dipisah, level pedas sedang, alergi udang/kacang..."
+              value={kitchenNotes}
+              onChange={(e) => setKitchenNotes(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 focus:bg-white text-xs transition"
+            />
+          </div>
+        )}
+
+        {/* Link Dokumen Briefing HANYA untuk Preset DIGITAL / SERVICE */}
+        {isDigitalPreset && (!requiresShipping || productType === 'SERVICE' || (product.fulfillment_metadata?.delivery_type === 'BRIEF_FORM')) && (
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="font-bold text-slate-700">
@@ -2605,8 +2884,333 @@ function SingleProductContent() {
         )}
       </div>
 
-      {/* Khusus Produk yang Memerlukan Alamat: Alamat Pengiriman HANYA untuk Produk Fisik Murni */}
-      {shouldShowAddressSection && (
+      {/* ── METODE PENGANTARAN / PENYAJIAN MAKANAN (PRESET FOOD) ── */}
+      {isFoodPreset && (
+        <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-2xl p-3.5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 font-bold text-emerald-950 text-xs">
+              <Utensils className="w-4 h-4 text-emerald-700" />
+              <span>Opsi Layanan &amp; Pengantaran Menu</span>
+            </div>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+              {foodDiningOption === 'DINE_IN' ? '🍽️ Makan di Meja' : foodDiningOption === 'INSTANT' ? '⚡ Kurir Instan' : '🏪 Ambil di Resto'}
+            </span>
+          </div>
+
+          <div className="p-1 bg-white/90 border border-emerald-200/80 rounded-xl grid grid-cols-3 gap-1">
+            <button
+              type="button"
+              onClick={() => { setFoodDiningOption('DINE_IN'); setFulfillmentType('PICKUP'); setSelectedShippingId(''); }}
+              className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                foodDiningOption === 'DINE_IN'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
+            >
+              <Utensils className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Makan di Meja</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFoodDiningOption('INSTANT'); setFulfillmentType('DELIVERY'); }}
+              className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                foodDiningOption === 'INSTANT'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Kurir Instan</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFoodDiningOption('PICKUP'); setFulfillmentType('PICKUP'); setSelectedShippingId(''); }}
+              className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                foodDiningOption === 'PICKUP'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
+            >
+              <Store className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Ambil di Resto</span>
+            </button>
+          </div>
+
+          {/* Opsi 1: Dine-in Table Number */}
+          {foodDiningOption === 'DINE_IN' && (
+            <div className="bg-white rounded-xl p-3.5 border border-amber-300 shadow-2xs space-y-2">
+              <label className="font-bold text-slate-800 block text-xs">
+                Nomor Meja Resto <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required={foodDiningOption === 'DINE_IN'}
+                placeholder="Contoh: Meja 12 atau Meja VIP-3"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600 text-xs font-bold"
+              />
+              <p className="text-[11px] text-slate-500">
+                🍽️ Pesanan makanan akan disajikan langsung oleh pramusaji ke meja Anda tanpa biaya kirim.
+              </p>
+            </div>
+          )}
+
+          {/* Opsi 2: Ambil di Resto (Pickup) */}
+          {foodDiningOption === 'PICKUP' && (
+            <div className="bg-white rounded-xl p-3.5 border border-emerald-300 shadow-2xs space-y-2">
+              <div className="font-bold text-slate-900 text-xs">
+                Lokasi Resto: {config.store_name || tenantData?.name || tenantData?.slug || tenant}
+              </div>
+              <p className="text-slate-600 text-xs">{selfPickupConfig.pickupAddress || 'Resto / Dapur Utama'}</p>
+              {selfPickupConfig.pickupInstructions && (
+                <p className="text-slate-500 text-[11px]">⏰ {selfPickupConfig.pickupInstructions}</p>
+              )}
+              {selfPickupConfig.pickupMapsUrl && (
+                <div className="pt-0.5">
+                  <a
+                    href={selfPickupConfig.pickupMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg transition"
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>Petunjuk Arah (Google Maps)</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Opsi 3: Kurir Instan (GoSend / GrabExpress) */}
+          {foodDiningOption === 'INSTANT' && (
+            <div className="space-y-3 pt-1">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1 text-xs">
+                  Alamat Pengantaran Lengkap <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  required={foodDiningOption === 'INSTANT'}
+                  placeholder="Jl. Nama Jalan, No. Rumah, RT/RW, Patokan jelas..."
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 text-xs"
+                />
+              </div>
+
+              {/* Location Autocomplete / Dropdown Selector Resmi Biteship (Anti-Typo) */}
+              <div className="space-y-2 relative" ref={locationDropdownRef}>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1 text-xs">
+                    Kecamatan &amp; Kota Tujuan <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                    </div>
+                    <input
+                      type="text"
+                      required={foodDiningOption === 'INSTANT'}
+                      placeholder="Ketik min. 3 huruf (cth: Marpoyan, Buahbatu, Kebayoran, Pati)..."
+                      value={locationQuery}
+                      onChange={(e) => {
+                        setLocationQuery(e.target.value);
+                        if (selectedLocationObj) {
+                          setSelectedLocationObj(null);
+                          setSelectedAreaId('');
+                        }
+                      }}
+                      onFocus={() => {
+                        if (locationSuggestions.length > 0) setIsLocationDropdownOpen(true);
+                      }}
+                      className={`w-full bg-white border rounded-xl pl-9 pr-8 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none text-xs transition shadow-xs ${
+                        selectedLocationObj
+                          ? 'border-emerald-500 bg-emerald-50/20 text-emerald-950 font-medium'
+                          : 'border-slate-200 focus:border-emerald-600'
+                      }`}
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center">
+                      {isLoadingLocations ? (
+                        <Loader2 className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
+                      ) : selectedLocationObj ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedLocationObj(null);
+                            setSelectedAreaId('');
+                            setLocationQuery('');
+                            setShippingCity('');
+                            setShippingDistrict('');
+                            setShippingPostalCode('');
+                          }}
+                          className="text-slate-400 hover:text-rose-500 p-0.5 rounded-full"
+                          title="Hapus / Ubah Lokasi"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Dropdown Hasil Pencarian Lokasi Resmi Biteship */}
+                  {isLocationDropdownOpen && locationSuggestions.length > 0 && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-2xl divide-y divide-slate-100">
+                      <div className="p-2 bg-slate-50 text-[10px] text-slate-500 font-semibold uppercase tracking-wider flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Search className="w-3 h-3 text-emerald-600" />
+                          Pilih Lokasi Resmi (Biteship Database)
+                        </span>
+                        <span>{locationSuggestions.length} Opsi</span>
+                      </div>
+                      {locationSuggestions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleSelectLocation(item)}
+                          className="w-full text-left p-2.5 hover:bg-emerald-50/80 transition flex items-center justify-between gap-2 text-xs group"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900 group-hover:text-emerald-700 truncate">
+                              Kec. {item.district}, {item.city}
+                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {item.province}
+                            </p>
+                          </div>
+                          <span className="shrink-0 font-mono text-[11px] font-bold bg-slate-100 group-hover:bg-emerald-100 text-slate-700 group-hover:text-emerald-800 px-2 py-0.5 rounded">
+                            {item.postal_code}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Status Lokasi Terkunci */}
+                {selectedLocationObj ? (
+                  <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <p className="font-bold text-[11px] text-emerald-950">
+                            Lokasi Terkunci: Kec. {shippingDistrict}, {shippingCity}
+                          </p>
+                          <p className="text-[10px] text-emerald-700">
+                            Kode Pos: <span className="font-mono font-bold">{shippingPostalCode}</span> • Area ID: <span className="font-mono">{selectedAreaId}</span> (Terverifikasi Resmi)
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedLocationObj(null);
+                          setSelectedAreaId('');
+                          setLocationQuery('');
+                          setShippingCity('');
+                          setShippingDistrict('');
+                          setShippingPostalCode('');
+                          setDestinationLatitude(null);
+                          setDestinationLongitude(null);
+                          setGpsStatusNotice(null);
+                          setShippingDistanceKm(null);
+                        }}
+                        className="text-[10px] text-emerald-700 underline font-semibold hover:text-emerald-900 shrink-0 ml-2 cursor-pointer"
+                      >
+                        Ubah
+                      </button>
+                    </div>
+
+                    <div className="pt-1.5 border-t border-emerald-200/70 flex flex-wrap items-center justify-between gap-1.5 text-[10px]">
+                      <span className="text-emerald-800 flex items-center gap-1 font-mono">
+                        📍 Titik Antar: {destinationLatitude ? `${destinationLatitude.toFixed(4)}, ${destinationLongitude?.toFixed(4)}` : 'Sesuai Pusat Distrik'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleDetectGpsCoordinates}
+                        disabled={isDetectingGps}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[9px] transition cursor-pointer"
+                      >
+                        {isDetectingGps ? (
+                          <>
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" /> Mendeteksi...
+                          </>
+                        ) : (
+                          '🎯 Gunakan GPS Presisi'
+                        )}
+                      </button>
+                    </div>
+                    {gpsStatusNotice && (
+                      <p className="text-[9px] text-emerald-700 font-medium italic">{gpsStatusNotice}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-slate-500">
+                    💡 Ketik nama kecamatan atau kota pengantaran di atas untuk menghitung ongkir instan.
+                  </div>
+                )}
+              </div>
+
+              {/* Kurir Instan Biteship (GoSend / Grab) HANYA INSTAN UNTUK MAKANAN */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 block text-xs">Pilih Layanan Kurir Instan</label>
+                  {isLoadingShippingRates && (
+                    <span className="text-[10px] text-emerald-600 flex items-center gap-1 font-semibold animate-pulse">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Menghubungkan ke API Kurir...
+                    </span>
+                  )}
+                </div>
+
+                {shippingDistanceKm !== null && shippingDistanceKm > 30 && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+                    📍 Jarak pengantaran: <span className="font-bold">{shippingDistanceKm} km</span>. Melebihi radius kurir instan (maks 30 km).
+                  </div>
+                )}
+
+                {instantCouriers.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {instantCouriers.map((opt) => (
+                      <div
+                        key={opt.id}
+                        onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
+                        className={`p-2.5 rounded-xl border cursor-pointer transition ${
+                          selectedShippingId === opt.id
+                            ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs'
+                            : 'bg-white border-emerald-200 hover:border-emerald-400'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 text-[11px]">{opt.courier_name}</span>
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                            {opt.etd}
+                          </span>
+                        </div>
+                        <div className="text-xs font-black text-emerald-700 mt-1 flex items-center justify-between">
+                          <span>Rp {opt.price.toLocaleString('id-ID')}</span>
+                          <span className="text-[9px] text-emerald-600 font-semibold">{opt.badge || 'Instan'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : !isLoadingShippingRates && (
+                  <div className="p-3 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                    <p className="text-xs font-medium text-slate-600">🛵 Masukkan alamat &amp; kecamatan di atas</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Tarif kurir instan (GoSend / GrabExpress) akan dihitung otomatis agar hidangan tiba hangat &amp; higienis.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── METODE PENGIRIMAN PRODUK FISIK NON-FOOD ── */}
+      {!isFoodPreset && isPhysicalPreset && shouldShowAddressSection && (
         <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
           <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
             <Package className="w-4 h-4 text-amber-700" />
@@ -2725,28 +3329,96 @@ function SingleProductContent() {
                     <input
                       type="text"
                       required={shouldShowAddressSection && fulfillmentType === 'DELIVERY'}
-                    placeholder="Ketik min. 3 huruf (cth: Marpoyan, Buahbatu, Kebayoran, Pati)..."
-                    value={locationQuery}
-                    onChange={(e) => {
-                      setLocationQuery(e.target.value);
-                      if (selectedLocationObj) {
-                        setSelectedLocationObj(null);
-                        setSelectedAreaId('');
-                      }
-                    }}
-                    onFocus={() => {
-                      if (locationSuggestions.length > 0) setIsLocationDropdownOpen(true);
-                    }}
-                    className={`w-full bg-white border rounded-xl pl-9 pr-8 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none text-xs transition shadow-xs ${
-                      selectedLocationObj
-                        ? 'border-emerald-500 bg-emerald-50/20 text-emerald-950 font-medium'
-                        : 'border-slate-200 focus:border-blue-600'
-                    }`}
-                  />
-                  <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center">
-                    {isLoadingLocations ? (
-                      <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
-                    ) : selectedLocationObj ? (
+                      placeholder="Ketik min. 3 huruf (cth: Marpoyan, Buahbatu, Kebayoran, Pati)..."
+                      value={locationQuery}
+                      onChange={(e) => {
+                        setLocationQuery(e.target.value);
+                        if (selectedLocationObj) {
+                          setSelectedLocationObj(null);
+                          setSelectedAreaId('');
+                        }
+                      }}
+                      onFocus={() => {
+                        if (locationSuggestions.length > 0) setIsLocationDropdownOpen(true);
+                      }}
+                      className={`w-full bg-white border rounded-xl pl-9 pr-8 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none text-xs transition shadow-xs ${
+                        selectedLocationObj
+                          ? 'border-emerald-500 bg-emerald-50/20 text-emerald-950 font-medium'
+                          : 'border-slate-200 focus:border-blue-600'
+                      }`}
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center">
+                      {isLoadingLocations ? (
+                        <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                      ) : selectedLocationObj ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedLocationObj(null);
+                            setSelectedAreaId('');
+                            setLocationQuery('');
+                            setShippingCity('');
+                            setShippingDistrict('');
+                            setShippingPostalCode('');
+                          }}
+                          className="text-slate-400 hover:text-rose-500 p-0.5 rounded-full"
+                          title="Hapus / Ubah Lokasi"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Dropdown Hasil Pencarian Lokasi Resmi Biteship / Distrik Indonesia */}
+                  {isLocationDropdownOpen && locationSuggestions.length > 0 && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-2xl divide-y divide-slate-100">
+                      <div className="p-2 bg-slate-50 text-[10px] text-slate-500 font-semibold uppercase tracking-wider flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Search className="w-3 h-3 text-blue-600" />
+                          Pilih Lokasi Resmi (Biteship Database)
+                        </span>
+                        <span>{locationSuggestions.length} Opsi</span>
+                      </div>
+                      {locationSuggestions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleSelectLocation(item)}
+                          className="w-full text-left p-2.5 hover:bg-blue-50/80 transition flex items-center justify-between gap-2 text-xs group"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900 group-hover:text-blue-700 truncate">
+                              Kec. {item.district}, {item.city}
+                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {item.province}
+                            </p>
+                          </div>
+                          <span className="shrink-0 font-mono text-[11px] font-bold bg-slate-100 group-hover:bg-blue-100 text-slate-700 group-hover:text-blue-800 px-2 py-0.5 rounded">
+                            {item.postal_code}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Status Lokasi Terkunci (Anti-Typo Confirmation & Precision Coordinates) */}
+                {selectedLocationObj ? (
+                  <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <p className="font-bold text-[11px] text-emerald-950">
+                            Lokasi Terkunci: Kec. {shippingDistrict}, {shippingCity}
+                          </p>
+                          <p className="text-[10px] text-emerald-700">
+                            Kode Pos: <span className="font-mono font-bold">{shippingPostalCode}</span> • Area ID: <span className="font-mono">{selectedAreaId}</span> (Terverifikasi Resmi)
+                          </p>
+                        </div>
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
@@ -2756,258 +3428,159 @@ function SingleProductContent() {
                           setShippingCity('');
                           setShippingDistrict('');
                           setShippingPostalCode('');
+                          setDestinationLatitude(null);
+                          setDestinationLongitude(null);
+                          setGpsStatusNotice(null);
+                          setShippingDistanceKm(null);
                         }}
-                        className="text-slate-400 hover:text-rose-500 p-0.5 rounded-full"
-                        title="Hapus / Ubah Lokasi"
+                        className="text-[10px] text-emerald-700 underline font-semibold hover:text-emerald-900 shrink-0 ml-2 cursor-pointer"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        Ubah
                       </button>
-                    ) : null}
-                  </div>
-                </div>
-
-                {/* Dropdown Hasil Pencarian Lokasi Resmi Biteship / Distrik Indonesia */}
-                {isLocationDropdownOpen && locationSuggestions.length > 0 && (
-                  <div className="absolute z-50 left-0 right-0 mt-1 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-2xl divide-y divide-slate-100">
-                    <div className="p-2 bg-slate-50 text-[10px] text-slate-500 font-semibold uppercase tracking-wider flex items-center justify-between">
-                      <span className="flex items-center gap-1">
-                        <Search className="w-3 h-3 text-blue-600" />
-                        Pilih Lokasi Resmi (Biteship Database)
-                      </span>
-                      <span>{locationSuggestions.length} Opsi</span>
                     </div>
-                    {locationSuggestions.map((item) => (
+
+                    {/* Koordinat Presisi untuk Driver Penjemput / Pengantar */}
+                    <div className="pt-1.5 border-t border-emerald-200/70 flex flex-wrap items-center justify-between gap-1.5 text-[10px]">
+                      <span className="text-emerald-800 flex items-center gap-1 font-mono">
+                        📍 Titik Antar: {destinationLatitude ? `${destinationLatitude.toFixed(4)}, ${destinationLongitude?.toFixed(4)}` : 'Sesuai Pusat Distrik'}
+                      </span>
                       <button
-                        key={item.id}
                         type="button"
-                        onClick={() => handleSelectLocation(item)}
-                        className="w-full text-left p-2.5 hover:bg-blue-50/80 transition flex items-center justify-between gap-2 text-xs group"
+                        onClick={handleDetectGpsCoordinates}
+                        disabled={isDetectingGps}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[9px] transition cursor-pointer"
                       >
-                        <div className="min-w-0">
-                          <p className="font-bold text-slate-900 group-hover:text-blue-700 truncate">
-                            Kec. {item.district}, {item.city}
-                          </p>
-                          <p className="text-[10px] text-slate-500 truncate">
-                            {item.province}
-                          </p>
-                        </div>
-                        <span className="shrink-0 font-mono text-[11px] font-bold bg-slate-100 group-hover:bg-blue-100 text-slate-700 group-hover:text-blue-800 px-2 py-0.5 rounded">
-                          {item.postal_code}
-                        </span>
+                        {isDetectingGps ? (
+                          <>
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" /> Mendeteksi...
+                          </>
+                        ) : (
+                          '🎯 Gunakan GPS Presisi'
+                        )}
                       </button>
-                    ))}
+                    </div>
+                    {gpsStatusNotice && (
+                      <p className="text-[9px] text-emerald-700 font-medium italic">{gpsStatusNotice}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-slate-500">
+                    💡 Ketik nama kecamatan atau kota pembeli di atas. Dropdown resmi akan otomatis mengunci kode pos &amp; area ID yang valid tanpa risiko typo.
                   </div>
                 )}
               </div>
 
-              {/* Status Lokasi Terkunci (Anti-Typo Confirmation & Precision Coordinates) */}
-              {selectedLocationObj ? (
-                <div className="p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 text-xs space-y-2">
+              {/* OPSI KURIR HANYA UNTUK PRODUK FISIK NON-FOOD */}
+              {requiresShipping && (
+                <div className="space-y-2.5 pt-1">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <div>
-                        <p className="font-bold text-[11px] text-emerald-950">
-                          Lokasi Terkunci: Kec. {shippingDistrict}, {shippingCity}
-                        </p>
-                        <p className="text-[10px] text-emerald-700">
-                          Kode Pos: <span className="font-mono font-bold">{shippingPostalCode}</span> • Area ID: <span className="font-mono">{selectedAreaId}</span> (Terverifikasi Resmi)
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedLocationObj(null);
-                        setSelectedAreaId('');
-                        setLocationQuery('');
-                        setShippingCity('');
-                        setShippingDistrict('');
-                        setShippingPostalCode('');
-                        setDestinationLatitude(null);
-                        setDestinationLongitude(null);
-                        setGpsStatusNotice(null);
-                        setShippingDistanceKm(null);
-                      }}
-                      className="text-[10px] text-emerald-700 underline font-semibold hover:text-emerald-900 shrink-0 ml-2 cursor-pointer"
-                    >
-                      Ubah
-                    </button>
+                    <label className="font-bold text-slate-700 block text-xs">Pilih Layanan Kurir</label>
+                    {isLoadingShippingRates && (
+                      <span className="text-[10px] text-blue-600 flex items-center gap-1 font-semibold animate-pulse">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Menghubungkan ke API Kurir...
+                      </span>
+                    )}
                   </div>
 
-                  {/* Koordinat Presisi untuk Driver Penjemput / Pengantar */}
-                  <div className="pt-1.5 border-t border-emerald-200/70 flex flex-wrap items-center justify-between gap-1.5 text-[10px]">
-                    <span className="text-emerald-800 flex items-center gap-1 font-mono">
-                      📍 Titik Antar: {destinationLatitude ? `${destinationLatitude.toFixed(4)}, ${destinationLongitude?.toFixed(4)}` : 'Sesuai Pusat Distrik'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleDetectGpsCoordinates}
-                      disabled={isDetectingGps}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[9px] transition cursor-pointer"
-                    >
-                      {isDetectingGps ? (
-                        <>
-                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Mendeteksi...
-                        </>
-                      ) : (
-                        '🎯 Gunakan GPS Presisi'
-                      )}
-                    </button>
-                  </div>
-                  {gpsStatusNotice && (
-                    <p className="text-[9px] text-emerald-700 font-medium italic">{gpsStatusNotice}</p>
+                  {/* Notifikasi Batas Radius Kurir Instan (30 KM) */}
+                  {shippingDistanceKm !== null && shippingDistanceKm > 30 && (
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs flex items-center justify-between">
+                      <span className="text-[11px]">
+                        📍 Jarak pengiriman: <span className="font-bold">{shippingDistanceKm} km</span> (Di luar radius kurir instan maks 30 km).
+                      </span>
+                      <span className="text-[10px] bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded-full">
+                        Tersedia Kurir Reguler &amp; Kargo
+                      </span>
+                    </div>
                   )}
-                </div>
-              ) : (
-                <div className="text-[10px] text-slate-500">
-                  💡 Ketik nama kecamatan atau kota pembeli di atas. Dropdown resmi akan otomatis mengunci kode pos &amp; area ID yang valid tanpa risiko typo.
+
+                  {/* Prompt jika kota / kode pos belum diisi */}
+                  {!isLoadingShippingRates && dynamicShippingRates.length === 0 && (
+                    <div className="p-3 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                      <p className="text-xs font-medium text-slate-600">🚚 Masukkan Kota &amp; Kode Pos tujuan di atas</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        Tarif resmi kurir reguler (JNE, J&amp;T, SiCepat) dan kurir instan dihitung secara presisi sesuai kecamatan &amp; kota pembeli.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 1. Kurir Instan & Sameday Biteship (Jika Ada & Terjangkau) */}
+                  {instantCouriers.length > 0 && (
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                          <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
+                          Kurir Instan Biteship
+                        </span>
+                        <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                          Tiba Hari Ini (1-2 Jam)
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {instantCouriers.map((opt) => (
+                          <div
+                            key={opt.id}
+                            onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
+                            className={`p-2.5 rounded-xl border cursor-pointer transition ${
+                              selectedShippingId === opt.id
+                                ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs'
+                                : 'bg-white border-emerald-200 hover:border-emerald-400'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-900 text-[11px]">{opt.courier_name}</span>
+                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                                {opt.etd}
+                              </span>
+                            </div>
+                            <div className="text-xs font-black text-emerald-700 mt-1 flex items-center justify-between">
+                              <span>Rp {opt.price.toLocaleString('id-ID')}</span>
+                              <span className="text-[9px] text-emerald-600 font-semibold">{opt.badge || 'Instan'}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. Kurir Reguler, Express & Kargo (Tarif Real-Time HANYA untuk Produk Fisik Murni) */}
+                  {regularCouriers.length > 0 && (
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                          Kurir Reguler &amp; Kargo (Tarif Real-Time)
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {regularCouriers.map((opt) => (
+                          <div
+                            key={opt.id}
+                            onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
+                            className={`p-2.5 rounded-xl border cursor-pointer transition ${
+                              selectedShippingId === opt.id
+                                ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
+                                : 'bg-white border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="font-bold text-slate-900 text-[11px] truncate">{opt.courier_name}</div>
+                            <div className="text-[10px] text-slate-500">{opt.etd}</div>
+                            <div className="text-xs font-black text-blue-600 mt-1 flex items-center justify-between">
+                              <span>Rp {opt.price.toLocaleString('id-ID')}</span>
+                              {opt.badge && (
+                                <span className="text-[9px] text-slate-400 font-normal">{opt.badge}</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-
-            {/* OPSI KURIR HANYA UNTUK PRODUK FISIK / REQUIRES_SHIPPING */}
-            {requiresShipping && (
-              <div className="space-y-2.5 pt-1">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700 block text-xs">Pilih Layanan Kurir</label>
-                  {isLoadingShippingRates && (
-                    <span className="text-[10px] text-blue-600 flex items-center gap-1 font-semibold animate-pulse">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Menghubungkan ke API Kurir...
-                    </span>
-                  )}
-                </div>
-
-                {/* Notifikasi Batas Radius Kurir Instan (30 KM) */}
-                {shippingDistanceKm !== null && shippingDistanceKm > 30 && (
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs flex items-center justify-between">
-                    <span className="text-[11px]">
-                      📍 Jarak pengiriman: <span className="font-bold">{shippingDistanceKm} km</span> (Di luar radius kurir instan maks 30 km).
-                    </span>
-                    <span className="text-[10px] bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded-full">
-                      Tersedia Kurir Reguler &amp; Kargo
-                    </span>
-                  </div>
-                )}
-
-                {/* Proteksi Kesegaran Produk Makanan (FnB) */}
-                {isFnbProduct && (
-                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-start gap-2">
-                    <span className="text-base leading-none">🥗</span>
-                    <div>
-                      <span className="font-bold block">Proteksi Kesegaran Produk Makanan (FnB):</span>
-                      <span className="text-[10px] text-amber-800 block mt-0.5">
-                        {shippingNotice || 'Kurir berdurasi lebih dari 2 hari otomatis disaring agar produk tiba dalam kondisi segar dan tidak basi.'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Warning jika produk FnB terblokir karena rute > 2 hari */}
-                {isShippingFnbBlocked && (
-                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-bold">Pengiriman Tidak Tersedia</p>
-                      <p className="text-[11px] text-rose-700 mt-0.5">
-                        {shippingNotice || 'Alamat tujuan melebihi batas waktu aman pengiriman makanan segar (maksimal 2 hari).'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Prompt jika kota / kode pos belum diisi */}
-                {!isLoadingShippingRates && dynamicShippingRates.length === 0 && !isShippingFnbBlocked && (
-                  <div className="p-3 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
-                    <p className="text-xs font-medium text-slate-600">🚚 Masukkan Kota &amp; Kode Pos tujuan di atas</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      Tarif resmi kurir reguler (JNE, J&amp;T, SiCepat) dan kurir instan dihitung secara presisi sesuai kecamatan &amp; kota pembeli.
-                    </p>
-                  </div>
-                )}
-
-                {/* 1. Kurir Instan & Sameday Biteship (Jika Ada & Terjangkau) */}
-                {instantCouriers.length > 0 && (
-                  <div className="space-y-1.5 pt-0.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
-                        <Zap className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" />
-                        Kurir Instan Biteship
-                      </span>
-                      <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-                        Tiba Hari Ini (1-2 Jam)
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {instantCouriers.map((opt) => (
-                        <div
-                          key={opt.id}
-                          onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
-                          className={`p-2.5 rounded-xl border cursor-pointer transition ${
-                            selectedShippingId === opt.id
-                              ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/30 shadow-xs'
-                              : 'bg-white border-emerald-200 hover:border-emerald-400'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-900 text-[11px]">{opt.courier_name}</span>
-                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                              {opt.etd}
-                            </span>
-                          </div>
-                          <div className="text-xs font-black text-emerald-700 mt-1 flex items-center justify-between">
-                            <span>Rp {opt.price.toLocaleString('id-ID')}</span>
-                            <span className="text-[9px] text-emerald-600 font-semibold">{opt.badge || 'Instan'}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* 2. Kurir Reguler, Express & Kargo (Tarif Real-Time) */}
-                {regularCouriers.length > 0 && (
-                  <div className="space-y-1.5 pt-0.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                        Kurir Reguler &amp; Kargo (Tarif Real-Time)
-                      </span>
-                      {isFnbProduct && (
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                          ✓ Maksimal 2 Hari Aman
-                        </span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {regularCouriers.map((opt) => (
-                        <div
-                          key={opt.id}
-                          onClick={() => { setSelectedShippingId(opt.id); triggerAddPaymentInfo(); }}
-                          className={`p-2.5 rounded-xl border cursor-pointer transition ${
-                            selectedShippingId === opt.id
-                              ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500/30'
-                              : 'bg-white border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className="font-bold text-slate-900 text-[11px] truncate">{opt.courier_name}</div>
-                          <div className="text-[10px] text-slate-500">{opt.etd}</div>
-                          <div className="text-xs font-black text-blue-600 mt-1 flex items-center justify-between">
-                            <span>Rp {opt.price.toLocaleString('id-ID')}</span>
-                            {opt.badge && (
-                              <span className="text-[9px] text-slate-400 font-normal">{opt.badge}</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    )}
+          )}
+        </div>
+      )}
 
       {/* ── FITUR ORDER BUMP / CROSS-SELLING ADD-ON (Kondisional Murni) ── */}
       {activeOrderBumps.length > 0 && (
@@ -3252,7 +3825,7 @@ function SingleProductContent() {
             <Lock className="w-4 h-4" />
             <span>
               {totalAmount === 0
-                ? (product.metadata?.cta_text || 'Akses Gratis Sekarang')
+                ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Akses Gratis Sekarang'))
                 : `${dynamicCtaPrefix} - Rp ${totalAmount.toLocaleString('id-ID')}`}
             </span>
             <ArrowRight className="w-4 h-4" />
@@ -3330,7 +3903,9 @@ function SingleProductContent() {
                   </span>
                 )}
                 <span className="text-xs font-black text-rose-600 bg-rose-50 border border-rose-200/60 px-2.5 py-0.5 rounded-full">
-                  {basePrice === 0 ? 'Akses Gratis / Freebie' : 'Diskon Spesial Hari Ini'}
+                  {basePrice === 0 
+                    ? (isFoodPreset ? 'Porsi Promo Spesial' : 'Akses Gratis / Freebie') 
+                    : (isFoodPreset ? 'Harga Promo Kuliner' : 'Diskon Spesial Hari Ini')}
                 </span>
               </div>
 
@@ -3347,10 +3922,14 @@ function SingleProductContent() {
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5 font-bold text-amber-950">
                       <Flame className="w-4 h-4 text-amber-600 animate-bounce" />
-                      <span>BATCH INTENSIF: KUOTA HANYA {product.stock} SEAT</span>
+                      <span>
+                        {isFoodPreset
+                          ? `PERSEDIAAN TERBATAS: SISA ${product.stock} PORSI SIAP SAJI`
+                          : `BATCH INTENSIF: KUOTA HANYA ${product.stock} SEAT`}
+                      </span>
                     </div>
                     <span className="font-extrabold text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-full border border-amber-300 text-[11px]">
-                      Sisa {product.stock} Kursi
+                      {isFoodPreset ? `Sisa ${product.stock} Porsi` : `Sisa ${product.stock} Kursi`}
                     </span>
                   </div>
                   <div className="w-full bg-slate-200/80 rounded-full h-2.5 overflow-hidden">
@@ -3360,7 +3939,11 @@ function SingleProductContent() {
                     />
                   </div>
                   <p className="text-[10px] text-amber-800 font-medium flex items-center justify-between">
-                    <span>⚡ Pendaftaran otomatis ditutup setelah kuota {product.stock} seat terpenuhi.</span>
+                    <span>
+                      {isFoodPreset
+                        ? `⚡ Pesanan ditutup hari ini jika kuota ${product.stock} porsi habis terjual.`
+                        : `⚡ Pendaftaran otomatis ditutup setelah kuota ${product.stock} seat terpenuhi.`}
+                    </span>
                     <span className="font-bold text-rose-600">Sisa Sedikit</span>
                   </p>
                 </div>
@@ -3387,7 +3970,7 @@ function SingleProductContent() {
                   >
                     <span>
                       {basePrice === 0
-                        ? (product.metadata?.cta_text || 'Klaim Akses Gratis Sekarang')
+                        ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Akses Gratis Sekarang'))
                         : `${dynamicCtaPrefix} - Rp ${basePrice.toLocaleString('id-ID')}`}
                     </span>
                     <ArrowDown className="w-4 h-4" />
@@ -3765,9 +4348,9 @@ function SingleProductContent() {
           dynamicCtaPrefix={dynamicCtaPrefix}
           ctaText={
             actionMode === 'WHATSAPP'
-              ? (config.cta_label || 'Order via WhatsApp')
+              ? (config.cta_label || (isFoodPreset ? 'Pesan Menu via WhatsApp' : 'Order via WhatsApp'))
               : totalAmount === 0
-              ? (product.metadata?.cta_text || 'Klaim Sekarang (Gratis)')
+              ? (product.metadata?.cta_text || (isFoodPreset ? 'Tambah ke Pesanan' : 'Klaim Sekarang (Gratis)'))
               : undefined
           }
           isAffiliateProduct={isAffiliateProduct}
