@@ -1347,6 +1347,65 @@ export default function TenantStorefrontPage() {
           />
         )}
 
+
+        {/* MODAL KERANJANG / PILIHAN LAYANAN */}
+        {showCartModal && (
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
+            <div className="bg-white max-w-md w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
+              <button onClick={() => setShowCartModal(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
+                <X className="w-5 h-5" />
+              </button>
+              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-blue-600" /> Ringkasan Pesanan Produk
+              </h2>
+              {cart.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-6">Belum ada produk yang dipilih.</p>
+              ) : (
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {cart.map((item) => (
+                    <div key={item.product.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="flex-1 pr-2">
+                        <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{item.product.name}</h4>
+                        <span className="text-xs text-blue-600 font-bold">Rp {((Number(item.product?.price) || 0) * (Number(item.qty) || 1)).toLocaleString('id-ID')}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
+                          <Minus className="w-3 h-3 text-slate-600" />
+                        </button>
+                        <span className="text-xs font-bold text-slate-800">{item.qty}</span>
+                        <button onClick={() => updateCartQty(item.product.id, 1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
+                          <Plus className="w-3 h-3 text-slate-600" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {cart.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex justify-between items-center text-xs font-black text-slate-900">
+                    <span>Total Biaya</span>
+                    <span className="text-sm text-blue-600">Rp {Number(totalCartPrice || 0).toLocaleString('id-ID')}</span>
+                  </div>
+                  <button
+                    onClick={handleCartCheckout}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>Konfirmasi Pemesanan</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCartModal(false)}
+                    className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-800 py-2.5 mt-1 transition-colors cursor-pointer"
+                  >
+                    + Pilih Produk Lain
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
         {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && (
           <FloatingCartBar
@@ -1400,6 +1459,65 @@ export default function TenantStorefrontPage() {
           />
         )}
 
+
+        {/* MODAL KERANJANG / PILIHAN LAYANAN */}
+        {showCartModal && (
+          <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 min-h-[100dvh] overflow-y-auto safe-pb">
+            <div className="bg-white max-w-md w-full rounded-3xl border border-slate-200 p-6 shadow-2xl space-y-4 relative max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
+              <button onClick={() => setShowCartModal(false)} className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100">
+                <X className="w-5 h-5" />
+              </button>
+              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-blue-600" /> Ringkasan Pesanan Produk
+              </h2>
+              {cart.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-6">Belum ada produk yang dipilih.</p>
+              ) : (
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {cart.map((item) => (
+                    <div key={item.product.id} className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <div className="flex-1 pr-2">
+                        <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{item.product.name}</h4>
+                        <span className="text-xs text-blue-600 font-bold">Rp {((Number(item.product?.price) || 0) * (Number(item.qty) || 1)).toLocaleString('id-ID')}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => updateCartQty(item.product.id, -1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
+                          <Minus className="w-3 h-3 text-slate-600" />
+                        </button>
+                        <span className="text-xs font-bold text-slate-800">{item.qty}</span>
+                        <button onClick={() => updateCartQty(item.product.id, 1)} className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200">
+                          <Plus className="w-3 h-3 text-slate-600" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {cart.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex justify-between items-center text-xs font-black text-slate-900">
+                    <span>Total Biaya</span>
+                    <span className="text-sm text-blue-600">Rp {Number(totalCartPrice || 0).toLocaleString('id-ID')}</span>
+                  </div>
+                  <button
+                    onClick={handleCartCheckout}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>Konfirmasi Pemesanan</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCartModal(false)}
+                    className="w-full text-center text-sm font-medium text-slate-500 hover:text-slate-800 py-2.5 mt-1 transition-colors cursor-pointer"
+                  >
+                    + Pilih Produk Lain
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
         {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && (
           <FloatingCartBar

@@ -19,10 +19,14 @@ export default function FloatingCartBar({
   if (totalCount <= 0) return null;
 
   return (
-    <div className={`fixed bottom-4 inset-x-0 z-40 px-4 max-w-lg mx-auto pointer-events-none ${className}`}>
+    <div className={`fixed bottom-4 inset-x-0 z-50 px-4 max-w-lg mx-auto pointer-events-none ${className}`}>
       <button
         type="button"
-        onClick={onOpenCart}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          onOpenCart();
+        }}
         className="pointer-events-auto w-full bg-slate-900/95 hover:bg-slate-950 text-white rounded-2xl p-3 shadow-2xl backdrop-blur-md border border-slate-700/60 flex items-center justify-between transition-all transform active:scale-98 cursor-pointer group animate-in slide-in-from-bottom duration-300"
       >
         <div className="flex items-center gap-2.5">
