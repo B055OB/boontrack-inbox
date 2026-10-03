@@ -1,3 +1,4 @@
+import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
 /**
  * lib/whatsapp/evolution-webhook-handler.ts
  * Ingress Webhook Processor for WhatsApp Evolution API v2.
@@ -329,7 +330,8 @@ export async function processEvolutionWebhookEvent(
         item.message?.extendedTextMessage?.text ||
         item.message?.imageMessage?.caption ||
         '';
-      const hasMention = /@(boon|boontrack|081215567168)\b/i.test(rawText);
+      const wakeWord = isBoonPilotWakeWordTriggered(rawText, true, 'WHATSAPP');
+      const hasMention = wakeWord.triggered;
       if (!hasMention) {
         continue;
       }

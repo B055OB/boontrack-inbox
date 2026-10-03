@@ -1,3 +1,4 @@
+import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
 /**
  * lib/whatsapp/meta-webhook-normalizer.ts
  * Inbound Event Normalizer & Handshake Verification for Meta WhatsApp Cloud API.
@@ -556,10 +557,8 @@ export async function processNormalizedMetaEvent(
       }
 
       // HANYA nomor official +6281215567168 yang diizinkan memproses mention @boon di dalam grup
-      const hasBoonMention =
-        /@boon\b/i.test(textContent) ||
-        /@boontrack\b/i.test(textContent) ||
-        /@081215567168\b/i.test(textContent);
+      const wakeWord = isBoonPilotWakeWordTriggered(textContent, true, 'WHATSAPP');
+      const hasBoonMention = wakeWord.triggered;
       if (!hasBoonMention) {
         console.info(`[GROUP_GUARD] Official support ignoring general group chatter in '${rawFrom}' (no @boon mention).`);
         continue;

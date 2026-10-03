@@ -33,7 +33,7 @@ function getEngineSupabase() {
 
 export interface ProcessMessagePayload {
   tenant_id: string;
-  channel: 'WEBCHAT' | 'WHATSAPP';
+  channel: 'WEBCHAT' | 'WHATSAPP' | 'TELEGRAM';
   session_id: string;
   user_identifier: string;
   message: string;
@@ -44,7 +44,7 @@ export interface ProcessMessagePayload {
     title?: string;
     type?: string;
   };
-  channel_type?: 'WABA' | 'WAHA';
+  channel_type?: 'WABA' | 'WAHA' | 'TELEGRAM';
 }
 
 export interface EngineResult {
@@ -157,7 +157,7 @@ export class ConversationEngine {
           senderPhone: user_identifier || session_id,
           message: cleanMsg,
           sessionId: session_id,
-          channel_type: payload.channel_type || (payload.channel === 'WHATSAPP' ? 'WABA' : 'WAHA'),
+          channel_type: payload.channel_type || (payload.channel === 'WHATSAPP' ? 'WABA' : payload.channel === 'TELEGRAM' ? 'TELEGRAM' : 'WAHA'),
           interactive_reply: payload.interactive_reply,
         },
         supabase
@@ -189,7 +189,7 @@ export class ConversationEngine {
       ? metadata.interactive_menus
       : [];
     const botMode: 'STATIC' | 'HYBRID' | 'AI' = String(metadata.bot_mode || 'HYBRID').toUpperCase() as any;
-    const channelType: 'WABA' | 'WAHA' = payload.channel_type || (payload.channel === 'WHATSAPP' ? 'WABA' : 'WAHA');
+    const channelType: 'WABA' | 'WAHA' = (payload.channel_type === 'WABA' || payload.channel_type === 'WAHA') ? payload.channel_type : 'WAHA';
 
     // Identifikasi Active Engine: SALES_REP_V1 sebagai Global Default
     const rawVertical = String(
