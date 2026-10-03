@@ -37,7 +37,7 @@ export function buildPaymentConfirmedSellerHtml(
   const formattedAmount = formatRupiah(payload.total_amount);
   const formattedDate = formatIndonesianDateTime(payload.paid_at);
   const storeName = branding.store_name || payload.tenant_slug;
-  const dashboardUrl = payload.dashboard_url || `https://shop.boontrack.com/${payload.tenant_slug}/dashboard/orders`;
+  const dashboardUrl = payload.dashboard_url || `https://dashboard.boontrack.com/${payload.tenant_slug}?tab=orders`;
 
   const itemsHtml = payload.items
     .map(
@@ -119,7 +119,7 @@ export function buildPaymentConfirmedSellerText(
   const storeName = branding.store_name || payload.tenant_slug;
   const formattedAmount = formatRupiah(payload.total_amount);
   const formattedDate = formatIndonesianDateTime(payload.paid_at);
-  const dashboardUrl = payload.dashboard_url || `https://shop.boontrack.com/${payload.tenant_slug}/dashboard/orders`;
+  const dashboardUrl = payload.dashboard_url || `https://dashboard.boontrack.com/${payload.tenant_slug}?tab=orders`;
 
   return [
     `Halo Merchant ${storeName},`,

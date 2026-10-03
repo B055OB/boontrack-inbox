@@ -52,6 +52,7 @@ export type DashboardTab =
   | 'whatsapp'
   | 'auto_reply'
   | 'rotator'
+  | 'telegram_alerts'
   | 'settings';
 
 export interface ConversationMessage {
@@ -1201,7 +1202,10 @@ export function useTenantDashboard() {
         else if (tabParam === 'products' || tabParam === 'catalog') setActiveTab('catalog');
         else if (tabParam === 'orders' || tabParam === 'pesanan') setActiveTab('orders');
         else if (tabParam === 'overview' || tabParam === 'analytics' || tabParam === 'finance' || tabParam === 'laporan') setActiveTab('finance');
-        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'shipping', 'broadcast', 'whatsapp', 'auto_reply', 'rotator', 'microsite', 'settings'].includes(tabParam)) {
+        else if (tabParam === 'telegram' || tabParam === 'alerts' || tabParam === 'telegram_alerts') {
+          setActiveTab('telegram_alerts');
+        }
+        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'shipping', 'broadcast', 'whatsapp', 'auto_reply', 'rotator', 'telegram_alerts', 'microsite', 'settings'].includes(tabParam)) {
           setActiveTab(tabParam as DashboardTab);
         }
       }

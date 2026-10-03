@@ -236,7 +236,7 @@ export default function MerchantManagerDashboard() {
                               <span>Chat WA</span>
                             </a>
                             <a
-                              href={`https://shop.boontrack.com/${m.tenant_slug}/dashboard`}
+                              href={`https://dashboard.boontrack.com/${m.tenant_slug}`}
                               target="_blank"
                               rel="noreferrer"
                               className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold inline-flex items-center gap-1 border border-slate-700 transition cursor-pointer"

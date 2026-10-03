@@ -505,6 +505,45 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
+  // ── REDIRECT DASHBOARD ACCESS ON STOREFRONT DOMAIN (shop.boontrack.com) TO DASHBOARD DOMAIN (ARCHITECTURE.md §21 & §25) ──
+  const isShopHost =
+    hostClean === 'shop.boontrack.com' ||
+    hostClean.startsWith('shop.') ||
+    subdomain === 'shop';
+
+  if (isShopHost) {
+    const shopDashboardMatch = pathname.match(/^\/([^/]+)\/dashboard(?:\/(.*))?$/);
+    const isShopGenericDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+
+    if (shopDashboardMatch) {
+      const targetSlug = shopDashboardMatch[1];
+      const subPath = shopDashboardMatch[2] ? `/${shopDashboardMatch[2]}` : '';
+      const isProd = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
+      const dashboardBase = isProd
+        ? 'https://dashboard.boontrack.com'
+        : `${req.nextUrl.protocol}//dashboard.${hostClean.replace(/^shop\./, '')}${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`;
+
+      const targetUrl = new URL(`${dashboardBase}/${targetSlug}${subPath}`);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        targetUrl.searchParams.set(key, val);
+      });
+      return NextResponse.redirect(targetUrl, 302);
+    }
+
+    if (isShopGenericDashboard) {
+      const isProd = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
+      const dashboardBase = isProd
+        ? 'https://dashboard.boontrack.com'
+        : `${req.nextUrl.protocol}//dashboard.${hostClean.replace(/^shop\./, '')}${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`;
+
+      const targetUrl = new URL(`${dashboardBase}/login`);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        targetUrl.searchParams.set(key, val);
+      });
+      return NextResponse.redirect(targetUrl, 302);
+    }
+  }
+
   // === AUTH GUARD: RUTE DASHBOARD TENANT (/:tenant/dashboard) ===
   const dashboardMatch = pathname.match(/^\/([^/]+)\/dashboard(?:\/.*)?$/);
   const isGenericDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/');

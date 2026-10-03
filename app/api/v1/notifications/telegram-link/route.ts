@@ -27,11 +27,12 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { slug, telegram_chat_id } = body || {};
+    const { slug, tenant_id, telegram_chat_id } = body || {};
+    const tenantRef = (slug || tenant_id || '').trim();
 
-    if (!slug || typeof slug !== 'string') {
+    if (!tenantRef) {
       return NextResponse.json(
-        { success: false, error: 'Parameter "slug" wajib diisi.' },
+        { success: false, error: 'Parameter "slug" atau "tenant_id" wajib diisi.' },
         { status: 400 }
       );
     }
@@ -45,11 +46,11 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
-    // 1. Pastikan tenant ada
+    // 1. Pastikan tenant ada (cari berdasarkan slug atau id)
     const { data: tenant, error: fetchErr } = await supabase
       .from('tenants')
-      .select('slug, metadata')
-      .eq('slug', slug)
+      .select('id, name, slug, telegram_chat_id, metadata')
+      .or(`slug.eq.${tenantRef},id.eq.${tenantRef}`)
       .maybeSingle();
 
     if (fetchErr) {
@@ -61,12 +62,12 @@ export async function POST(req: NextRequest) {
 
     if (!tenant) {
       return NextResponse.json(
-        { success: false, error: `Tenant "${slug}" tidak ditemukan.` },
+        { success: false, error: `Tenant "${tenantRef}" tidak ditemukan.` },
         { status: 404 }
       );
     }
 
-    // 2. Merge telegram_chat_id ke metadata
+    // 2. Simpan telegram_chat_id ke kolom tabel & metadata JSONB
     const updatedMetadata = {
       ...(tenant.metadata || {}),
       telegram_chat_id: telegram_chat_id.trim(),
@@ -74,8 +75,11 @@ export async function POST(req: NextRequest) {
 
     const { error: updateErr } = await supabase
       .from('tenants')
-      .update({ metadata: updatedMetadata })
-      .eq('slug', slug);
+      .update({
+        telegram_chat_id: telegram_chat_id.trim(),
+        metadata: updatedMetadata,
+      })
+      .eq('id', tenant.id);
 
     if (updateErr) {
       return NextResponse.json(
@@ -117,11 +121,11 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const slug = searchParams.get('slug') || '';
+    const tenantParam = searchParams.get('slug') || searchParams.get('tenant_id') || searchParams.get('tenant') || '';
 
-    if (!slug) {
+    if (!tenantParam) {
       return NextResponse.json(
-        { success: false, error: 'Query param "slug" wajib diisi.' },
+        { success: false, error: 'Query param "slug" atau "tenant_id" wajib diisi.' },
         { status: 400 }
       );
     }
@@ -129,8 +133,8 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabaseAdmin();
     const { data: tenant, error } = await supabase
       .from('tenants')
-      .select('slug, metadata')
-      .eq('slug', slug)
+      .select('id, name, slug, telegram_chat_id, metadata')
+      .or(`slug.eq.${tenantParam},id.eq.${tenantParam}`)
       .maybeSingle();
 
     if (error) {
@@ -141,11 +145,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Tenant not found' }, { status: 404 });
     }
 
-    const chatId = tenant.metadata?.telegram_chat_id || null;
+    const chatId = tenant.telegram_chat_id || tenant.metadata?.telegram_chat_id || null;
 
     return NextResponse.json({
       success: true,
-      slug,
+      tenant_id: tenant.id,
+      slug: tenant.slug,
+      tenant_name: tenant.name,
       telegram_chat_id: chatId,
       is_linked: Boolean(chatId),
     });

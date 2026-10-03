@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { enqueueCAPIOutboxEvent, processCAPIOutboxQueue } from '@/lib/capi-outbox';
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
+import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,28 +24,34 @@ export async function POST(
       );
     }
 
-    const supabase = getSupabaseAdmin() || getSupabase();
+    const supabase = getSupabaseAdmin();
     if (!supabase) {
       return NextResponse.json(
-        { success: false, error: 'Database client unreachable' },
+        { success: false, error: 'Database admin client unreachable' },
         { status: 500 }
       );
     }
 
     // 1. Fetch current order
-    let { data: order } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('id', orderId)
-      .maybeSingle();
-
-    if (!order) {
-      const { data: altOrder } = await supabase
+    let order: any = null;
+    try {
+      const { data: byId } = await supabase
         .from('orders')
         .select('*')
-        .or(`id.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+        .eq('id', orderId)
         .maybeSingle();
-      if (altOrder) order = altOrder;
+      if (byId) order = byId;
+    } catch {}
+
+    if (!order) {
+      try {
+        const { data: altOrder } = await supabase
+          .from('orders')
+          .select('*')
+          .or(`order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+          .maybeSingle();
+        if (altOrder) order = altOrder;
+      } catch {}
     }
 
     if (!order) {
@@ -87,11 +94,10 @@ export async function POST(
         // Single Source of Truth Fallback: tenants.metadata.products
         const targetSlug = order.tenant_slug || order.tenant_id;
         if (!fulfillmentMeta.access_url && targetSlug) {
-          const { data: tenantRow } = await supabase
-            .from('tenants')
-            .select('metadata')
-            .or(`slug.eq.${targetSlug},id.eq.${targetSlug}`)
-            .maybeSingle();
+          const tenantQuery = supabase.from('tenants').select('metadata');
+          const { data: tenantRow } = typeof (tenantQuery as any).or === 'function'
+            ? await (tenantQuery as any).or(`slug.eq.${targetSlug},id.eq.${targetSlug}`).maybeSingle()
+            : await tenantQuery.eq('slug', targetSlug).maybeSingle();
 
           const prods = tenantRow?.metadata?.products;
           if (Array.isArray(prods)) {
@@ -123,7 +129,17 @@ export async function POST(
       }
     }
 
-    // 2. Update order to PAID & COMPLETED
+    // 2. Update order to PAID & COMPLETED atomik
+    const currentMeta = (typeof order.metadata === 'object' && order.metadata) ? order.metadata : {};
+    const updatedMeta = {
+      ...currentMeta,
+      payment_confirmation_source: 'MANUAL_CONFIRMATION',
+      payment_source: 'MANUAL_CONFIRMATION',
+      paid_at: paidAt,
+      fulfillment_metadata: fulfillmentMeta,
+      download_url: fulfillmentMeta.access_url || order.download_url || null,
+    };
+
     const { data: updatedOrder, error: updateErr } = await supabase
       .from('orders')
       .update({
@@ -133,6 +149,7 @@ export async function POST(
         paid_at: paidAt,
         fulfillment_metadata: fulfillmentMeta,
         download_url: fulfillmentMeta.access_url || order.download_url || null,
+        metadata: updatedMeta,
         updated_at: paidAt,
       })
       .eq('id', order.id)
@@ -142,9 +159,41 @@ export async function POST(
     if (updateErr) {
       console.error('[Approve Order API] Error updating status:', updateErr);
       return NextResponse.json(
-        { success: false, error: 'Gagal memperbarui status pesanan' },
+        { success: false, error: 'Gagal memperbarui status pesanan: ' + updateErr.message },
         { status: 500 }
       );
+    }
+
+    // 2a. Record immutable audit trail in order_audit_logs (ARCHITECTURE.md §7.3)
+    try {
+      const clientIp =
+        req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        req.headers.get('cf-connecting-ip') ||
+        '127.0.0.1';
+      const userAgent = req.headers.get('user-agent') || 'Dashboard/Merchant';
+
+      const auditTable = supabase.from('order_audit_logs');
+      if (auditTable && typeof auditTable.insert === 'function') {
+        await auditTable.insert({
+          order_id: String(order.id || orderId),
+          tenant_id: order.tenant_id ? String(order.tenant_id) : null,
+          tenant_slug: order.tenant_slug || null,
+          actor_id: 'merchant_admin',
+          action: 'ORDER_APPROVED_PAID',
+          previous_status: String(order.status || order.payment_status || 'PENDING'),
+          new_status: 'PAID',
+          reason: 'Approval bukti bayar manual via API approve order',
+          ip_address: clientIp,
+          user_agent: userAgent,
+          metadata: {
+            invoice_no: order.invoice_no || null,
+            gross_amount: order.gross_amount || order.total_amount || 0,
+            paid_at: paidAt,
+          },
+        });
+      }
+    } catch (auditErr) {
+      console.warn('[Approve Order API] Non-fatal order_audit_logs note:', auditErr);
     }
 
     const accessUrl = fulfillmentMeta.access_url || updatedOrder.download_url;
@@ -242,6 +291,23 @@ export async function POST(
       affiliateCode: order.affiliate_code || null,
       directCommission: Number(order.affiliate_commission) || undefined,
     }).catch(() => {});
+
+    dispatchOrderTelegramAlert({
+      order: {
+        id: orderId,
+        tenant_id: order.tenant_id,
+        tenant_slug: tenantSlug,
+        product_title: order.product_title || 'Pesanan Produk',
+        gross_amount: Number(order.gross_amount) || 0,
+        payment_method: order.payment_method || 'QRIS Dinamis',
+        customer_name: order.customer_name || order.buyer_name,
+        customer_phone: customerPhone,
+      },
+      event: 'payment_confirmed',
+      supabaseClient: supabase,
+    }).catch((tgErr) => {
+      console.warn('[Approve Order API] Telegram alert note:', tgErr);
+    });
 
     return NextResponse.json({
       success: true,

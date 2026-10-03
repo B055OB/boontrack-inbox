@@ -201,5 +201,38 @@ describe('dashboard.boontrack.com Subdomain Routing & Security Middleware', () =
     const location = res.headers.get('location');
     expect(location).toBe('https://shop.boontrack.com/tanev-food/invoice/ORD-9999?source=wa');
   });
+
+  it('15. [ARCHITECTURE.md §21 & §25] Redirects shop.boontrack.com/:slug/dashboard to https://dashboard.boontrack.com/:slug with 302', async () => {
+    const req = new NextRequest('https://shop.boontrack.com/buzzerukm/dashboard?tab=orders&filter=paid', {
+      headers: { host: 'shop.boontrack.com' },
+    });
+
+    const res = await middleware(req);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location');
+    expect(location).toBe('https://dashboard.boontrack.com/buzzerukm?tab=orders&filter=paid');
+  });
+
+  it('16. [ARCHITECTURE.md §21 & §25] Redirects shop.boontrack.com/:slug/dashboard/subpath to https://dashboard.boontrack.com/:slug/subpath with 302', async () => {
+    const req = new NextRequest('https://shop.boontrack.com/solusi-ads/dashboard/settings', {
+      headers: { host: 'shop.boontrack.com' },
+    });
+
+    const res = await middleware(req);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location');
+    expect(location).toBe('https://dashboard.boontrack.com/solusi-ads/settings');
+  });
+
+  it('17. [ARCHITECTURE.md §21 & §25] Redirects shop.boontrack.com/dashboard to https://dashboard.boontrack.com/login with 302', async () => {
+    const req = new NextRequest('https://shop.boontrack.com/dashboard', {
+      headers: { host: 'shop.boontrack.com' },
+    });
+
+    const res = await middleware(req);
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location');
+    expect(location).toBe('https://dashboard.boontrack.com/login');
+  });
 });
 

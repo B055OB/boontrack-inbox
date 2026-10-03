@@ -41,6 +41,7 @@ import BiteshipCourierConfig from './components/BiteshipCourierConfig';
 import WhatsAppBroadcastManager from './components/WhatsAppBroadcastManager';
 import WhatsAppAutoReplyManager from './components/WhatsAppAutoReplyManager';
 import WhatsAppRotatorManager from './components/WhatsAppRotatorManager';
+import TelegramAlertManager from './components/TelegramAlertManager';
 import BoonPilotWidget from '@/components/BoonPilotWidget';
 import StoreBioLinkWidget from './components/StoreBioLinkWidget';
 import ProductFormModal from './components/ProductFormModal';
@@ -919,10 +920,10 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB 5: WHATSAPP & BROADCAST UNIFIED HUB */}
-      {(activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply' || activeTab === 'rotator') && (
+      {(activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply' || activeTab === 'rotator' || activeTab === 'telegram_alerts') && (
         <div className="flex-1 flex flex-col">
           {/* Sub Navigation Hub */}
-          <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center justify-between gap-3">
+          <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center justify-between gap-3 overflow-x-auto">
             <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 items-center">
               <button
                 type="button"
@@ -967,6 +968,17 @@ export default function TenantDashboardPage() {
                 }`}
               >
                 <span>🔄 CS / WhatsApp Rotator</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('telegram_alerts')}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'telegram_alerts'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>🔔 Notifikasi Telegram</span>
               </button>
             </div>
             <span className="text-[11px] text-slate-500 hidden sm:inline">
@@ -1051,6 +1063,17 @@ export default function TenantDashboardPage() {
                 }}
               />
             ))}
+
+          {activeTab === 'telegram_alerts' && (
+            <TelegramAlertManager
+              tenantSlug={tenantSlug}
+              displayName={displayName}
+              onSaved={(msg) => {
+                setSaveFeedback(msg);
+                setTimeout(() => setSaveFeedback(null), 4000);
+              }}
+            />
+          )}
         </div>
       )}
 

@@ -34,13 +34,13 @@ describe('BoonPilot Persona, Escalation & Upsell Engine', () => {
     expect(res.reply).toContain('Multi-Seat');
   });
 
-  it('guides non-merchants to trial registration at https://dashboard.boontrack.com with feature education', async () => {
+  it('guides non-merchants to trial registration at https://shop.boontrack.com with feature education', async () => {
     const res = await processBoonPilotPlatformChat({
       senderPhone: '08999999999',
       message: 'Bagaimana cara mulai uji coba dan apa saja fiturnya?',
     });
 
-    expect(res.reply).toContain('https://dashboard.boontrack.com');
+    expect(res.reply).toContain('https://shop.boontrack.com');
     expect(res.reply).toContain('QRIS');
     expect(res.reply).toContain('WhatsApp');
   });

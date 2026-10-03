@@ -14,6 +14,7 @@
 import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
 import { ConversationEngine } from '@/lib/conversationEngine';
 import { getPlatformBaseUrl } from '@/lib/platform-urls';
+import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 
 export function getTelegramBotToken(): string {
   return (
@@ -23,7 +24,7 @@ export function getTelegramBotToken(): string {
 }
 
 export function getTelegramBotUsername(): string {
-  return process.env.TELEGRAM_BOT_USERNAME || 'boontrack_bot';
+  return process.env.TELEGRAM_BOT_USERNAME || 'boonshop_bot';
 }
 
 export interface TelegramButton {
@@ -245,14 +246,85 @@ export async function handleTelegramUpdate(
     return { handled: false, reason: 'missing_chat_or_text' };
   }
 
-  // ── COMMAND HANDLER: /start, /id, /myid ──────────────────────────────────
-  // Jika user kirim /start, /id, atau /myid, balas dengan chat_id mereka
-  // agar dapat disalin ke Pengaturan Profil Dashboard BoonTrack.
-  if (
-    /^\/start(?:\s|$)/i.test(rawText) ||
-    /^\/id(?:\s|$)/i.test(rawText) ||
-    /^\/myid(?:\s|$)/i.test(rawText)
-  ) {
+  // ── DEEP LINKING & COMMAND HANDLERS ──────────────────────────────────────
+  // 1. Deep linking handler: /start link_{tenant_id}
+  const deepLinkMatch = rawText.match(/^\/start\s+link_([a-zA-Z0-9_\-]+)/i);
+  if (deepLinkMatch) {
+    const tenantRef = deepLinkMatch[1].trim();
+    try {
+      const supabase = getSupabaseAdmin() || getSupabase();
+      if (supabase) {
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('id, name, slug, telegram_chat_id, metadata')
+          .or(`id.eq.${tenantRef},slug.eq.${tenantRef}`)
+          .maybeSingle();
+
+        if (tenant) {
+          const updatedMeta = {
+            ...(tenant.metadata || {}),
+            telegram_chat_id: String(chatId),
+          };
+
+          await supabase
+            .from('tenants')
+            .update({
+              telegram_chat_id: String(chatId),
+              metadata: updatedMeta,
+            })
+            .eq('id', tenant.id);
+
+          const tenantName = tenant.name || tenant.slug || 'Toko Anda';
+          const replyText =
+            `🎉 *Berhasil terhubung!*\n\n` +
+            `Notifikasi penjualan dan mutasi untuk toko *${tenantName}* akan dikirimkan ke chat ini secara real-time.`;
+
+          await sendTelegramMessage(chatId, replyText, { parseMode: 'Markdown' });
+
+          return {
+            handled: true,
+            chatId,
+            senderPhone: String(fromId),
+            reply: replyText,
+            role: 'COMMAND_HANDLER',
+            activeEngine: 'DEEP_LINK_TENANT_BIND',
+          };
+        }
+      }
+    } catch (dbErr) {
+      console.error('[TELEGRAM DEEP LINK BIND ERROR]:', dbErr);
+    }
+
+    const errorReply = `⚠️ Toko dengan ID/Slug \`${tenantRef}\` tidak ditemukan di platform BoonTrack. Pastikan tautan sambungan valid.`;
+    await sendTelegramMessage(chatId, errorReply, { parseMode: 'Markdown' });
+
+    return {
+      handled: true,
+      chatId,
+      senderPhone: String(fromId),
+      reply: errorReply,
+      role: 'COMMAND_HANDLER',
+      activeEngine: 'DEEP_LINK_ERROR',
+    };
+  }
+
+  // 2. Command: /id atau /myid (berlaku di chat pribadi maupun grup)
+  if (/^\/(?:id|myid)(?:\s|$)/i.test(rawText)) {
+    const replyText = `Chat ID ini: \`${chatId}\`.`;
+    await sendTelegramMessage(chatId, replyText, { parseMode: 'Markdown' });
+
+    return {
+      handled: true,
+      chatId,
+      senderPhone: String(fromId),
+      reply: replyText,
+      role: 'COMMAND_HANDLER',
+      activeEngine: 'BUILTIN_COMMAND_ID',
+    };
+  }
+
+  // 3. Command: /start standar (tanpa deep linking)
+  if (/^\/start(?:\s|$)/i.test(rawText)) {
     const replyText =
       `Halo! ID Telegram kamu adalah: \`${chatId}\`\n\n` +
       `Salin nomor ID di atas dan masukkan ke menu *Pengaturan Profil Toko* / *Dashboard Affiliate* untuk mengaktifkan notifikasi order dan komisi instan.`;
@@ -265,10 +337,10 @@ export async function handleTelegramUpdate(
       senderPhone: String(fromId),
       reply: replyText,
       role: 'COMMAND_HANDLER',
-      activeEngine: 'BUILTIN_COMMAND',
+      activeEngine: 'BUILTIN_COMMAND_START',
     };
   }
-  // ── END COMMAND HANDLER ───────────────────────────────────────────────────
+  // ── END COMMAND HANDLERS ──────────────────────────────────────────────────
 
   // 1. EVALUASI WAKE WORD / MENTION RULES:
   // - Grup: HANYA merespons jika pesan diawali/mengandung "boon", "@boon", atau "@boontrack_bot"

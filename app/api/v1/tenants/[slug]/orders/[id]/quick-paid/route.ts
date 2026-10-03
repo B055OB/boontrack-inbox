@@ -6,9 +6,10 @@ import { sendOrderPaidNotification, sendOrderFulfillmentNotification } from '@/l
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { dispatchMetaCAPIPurchaseForOrder } from '@/lib/capi.service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
+import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string; id: string }> }
 ) {
   try {
@@ -22,26 +23,30 @@ export async function POST(
       );
     }
 
-    const supabase = getSupabaseAdmin() || getSupabase();
+    const supabase = getSupabaseAdmin();
     if (!supabase) {
       return NextResponse.json(
-        { success: false, error: 'Database client unreachable' },
+        { success: false, error: 'Database admin client unreachable' },
         { status: 500 }
       );
     }
 
-    // 1. Fetch current order
-    let { data: order, error: fetchErr } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('id', orderId)
-      .maybeSingle();
+    // 1. Fetch current order safely (checking UUID validity to avoid Postgres syntax error)
+    let order: any = null;
+    if (isValidUuid(orderId)) {
+      const { data: byId } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .maybeSingle();
+      if (byId) order = byId;
+    }
 
     if (!order) {
       const { data: altOrder } = await supabase
         .from('orders')
         .select('*')
-        .or(`id.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+        .or(`order_id.eq.${orderId},invoice_no.eq.${orderId}`)
         .maybeSingle();
       if (altOrder) order = altOrder;
     }
@@ -83,7 +88,17 @@ export async function POST(
       }
     }
 
-    // 2. Update order to PAID & COMPLETED
+    // 2. Update order to PAID & COMPLETED atomik
+    const currentMeta = (typeof order.metadata === 'object' && order.metadata) ? order.metadata : {};
+    const updatedMeta = {
+      ...currentMeta,
+      payment_confirmation_source: 'MANUAL_CONFIRMATION',
+      payment_source: 'MANUAL_CONFIRMATION',
+      paid_at: paidAt,
+      fulfillment_metadata: fulfillmentMeta,
+      download_url: fulfillmentMeta.access_url || order.download_url || null,
+    };
+
     const { data: updatedOrder, error: updateErr } = await supabase
       .from('orders')
       .update({
@@ -93,6 +108,7 @@ export async function POST(
         paid_at: paidAt,
         fulfillment_metadata: fulfillmentMeta,
         download_url: fulfillmentMeta.access_url || order.download_url || null,
+        metadata: updatedMeta,
         updated_at: paidAt,
       })
       .eq('id', order.id)
@@ -102,9 +118,38 @@ export async function POST(
     if (updateErr) {
       console.error('[Quick-Paid Error]:', updateErr);
       return NextResponse.json(
-        { success: false, error: 'Failed to update order status' },
+        { success: false, error: 'Failed to update order status: ' + updateErr.message },
         { status: 500 }
       );
+    }
+
+    // 2a. Record immutable audit trail in order_audit_logs (ARCHITECTURE.md §7.3)
+    try {
+      const clientIp =
+        req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        req.headers.get('cf-connecting-ip') ||
+        '127.0.0.1';
+      const userAgent = req.headers.get('user-agent') || 'Dashboard/Merchant';
+
+      await supabase.from('order_audit_logs').insert({
+        order_id: String(order.id || orderId),
+        tenant_id: order.tenant_id ? String(order.tenant_id) : null,
+        tenant_slug: slug,
+        actor_id: 'merchant_admin',
+        action: 'QUICK_PAID_APPROVED',
+        previous_status: String(order.status || order.payment_status || 'PENDING'),
+        new_status: 'PAID',
+        reason: 'Konfirmasi bayar manual oleh admin toko via Quick-Paid',
+        ip_address: clientIp,
+        user_agent: userAgent,
+        metadata: {
+          invoice_no: order.invoice_no || null,
+          gross_amount: order.gross_amount || order.total_amount || 0,
+          paid_at: paidAt,
+        },
+      });
+    } catch (auditErr) {
+      console.warn('[Quick-Paid] Non-fatal order_audit_logs note:', auditErr);
     }
 
     // Dispatch Affiliate & AM Commission Alert (Non-blocking)
@@ -171,7 +216,7 @@ export async function POST(
         channel: 'order_fulfillment',
         text: `Pembayaran pesanan #${orderId} (${order.product_title || 'Produk Digital'}) telah terverifikasi LUNAS (PAID). ${fulfillmentNotice}`,
       });
-    } catch {}
+    } catch { }
 
     // 4. Kirim notifikasi WhatsApp akses produk ke customer_phone
     const customerPhone = order.customer_phone || order.phone || order.whatsapp_number;
@@ -229,6 +274,23 @@ export async function POST(
     } catch (emailErr) {
       console.warn('[Quick-Paid Route] Order fulfillment email dispatch error:', emailErr);
     }
+
+    dispatchOrderTelegramAlert({
+      order: {
+        id: orderId,
+        tenant_id: order.tenant_id,
+        tenant_slug: slug,
+        product_title: order.product_title || order.product_name || 'Pesanan Produk',
+        gross_amount: Number(order.gross_amount || order.total_amount || order.amount || 0),
+        payment_method: order.payment_method || 'QRIS Dinamis (Otomatis)',
+        customer_name: order.customer_name || order.buyer_name,
+        customer_phone: customerPhone,
+      },
+      event: 'payment_confirmed',
+      supabaseClient: supabase,
+    }).catch((tgErr) => {
+      console.warn('[Quick-Paid Route] Telegram alert note:', tgErr);
+    });
 
     return NextResponse.json({
       success: true,

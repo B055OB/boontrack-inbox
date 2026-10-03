@@ -310,8 +310,10 @@ export default function OrdersTab({
       e.stopPropagation();
     }
     setIsConfirmingPayment(true);
+    const previousOrders = [...internalOrders];
+    const previousSelected = selectedOrder ? { ...selectedOrder } : null;
+
     try {
-      const nowIso = new Date().toISOString();
       // 1. Optimistic update ke state lokal tabel
       const updatedOrder: OrderItem = {
         ...order,
@@ -327,22 +329,39 @@ export default function OrdersTab({
         setSelectedOrder((prev) => (prev ? { ...prev, payment_status: 'PAID', status: 'PAID' } : null));
       }
 
-      onOrderUpdated?.(updatedOrder);
+      // 2. Request ke Next.js Quick-Paid API (menggunakan Service Role Supabase Admin, mutasi atomik & order_audit_logs)
+      const res = await fetch(
+        `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(order.id)}/quick-paid`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
 
-      // 2. Request ke Next.js Quick-Paid API (memproses fulfillment & notifikasi WhatsApp)
-      try {
-        await fetch(
-          `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(order.id)}/quick-paid`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          }
-        );
-      } catch (e) {
-        console.warn('[OrdersTab] quick-paid endpoint note:', e);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Server menolak mutasi pembayaran (HTTP ${res.status})`);
       }
 
-      // 3. Request ke Core Backend status update endpoint (memicu event Purchase Meta CAPI)
+      // Pastikan state lokal mencerminkan order hasil mutasi database
+      const confirmedOrder: OrderItem = data.order
+        ? {
+            ...updatedOrder,
+            ...data.order,
+            status: 'PAID',
+            payment_status: 'PAID',
+          }
+        : updatedOrder;
+
+      setInternalOrders((prev) =>
+        prev.map((o) => (o.id === order.id || o.invoice_no === order.invoice_no ? confirmedOrder : o))
+      );
+      if (selectedOrder?.id === order.id || selectedOrder?.invoice_no === order.invoice_no) {
+        setSelectedOrder(confirmedOrder);
+      }
+      onOrderUpdated?.(confirmedOrder);
+
+      // 3. Request ke Core Backend status update endpoint (memicu event Purchase Meta CAPI jika online)
       try {
         await fetch(`https://api.boontrack.com/api/v1/orders/${encodeURIComponent(order.id)}/status`, {
           method: 'PATCH',
@@ -355,30 +374,7 @@ export default function OrdersTab({
         });
       } catch {}
 
-      // 4. Update langsung ke database Supabase dengan nilai enum valid
-      const supabase = getSupabase();
-      if (supabase) {
-        try {
-          const { error: sbErr } = await supabase
-            .from('orders')
-            .update({
-              status: 'PAID',
-              payment_status: 'PAID',
-              order_status: 'COMPLETED',
-              paid_at: nowIso,
-              updated_at: nowIso,
-            })
-            .eq('id', order.id);
-
-          if (sbErr) {
-            console.warn('[OrdersTab] Supabase update warning:', sbErr);
-          }
-        } catch (sbErr) {
-          console.warn('[OrdersTab] Supabase update note:', sbErr);
-        }
-      }
-
-      // 5. Tampilkan toast notifikasi sukses
+      // 4. Tampilkan toast notifikasi sukses
       setToast({
         message: `Pesanan #${order.invoice_no || order.id.slice(0, 8)} berhasil dikonfirmasi LUNAS!`,
         type: 'success',
@@ -390,11 +386,17 @@ export default function OrdersTab({
       setOrderToConfirm(null);
     } catch (err: unknown) {
       console.error('[OrdersTab] Failed to confirm payment:', err);
+      // ROLLBACK OPTIMISTIC STATE PADA KEGAGALAN MUTASI
+      setInternalOrders(previousOrders);
+      if (previousSelected) {
+        setSelectedOrder(previousSelected);
+      }
+      const errMsg = err instanceof Error ? err.message : 'Gagal mengonfirmasi pembayaran.';
       setToast({
-        message: 'Gagal mengonfirmasi pembayaran. Silakan coba lagi.',
+        message: `Gagal: ${errMsg}. Silakan coba lagi.`,
         type: 'error',
       });
-      setTimeout(() => setToast(null), 4000);
+      setTimeout(() => setToast(null), 5000);
     } finally {
       setIsConfirmingPayment(false);
     }
@@ -408,8 +410,10 @@ export default function OrdersTab({
     const currentIsPaid = order.payment_status === 'PAID' || order.status === 'PAID';
     const newStatus = currentIsPaid ? 'UNPAID' : 'PAID';
     setTogglingId(order.id);
+    const previousOrders = [...internalOrders];
+    const previousSelected = selectedOrder ? { ...selectedOrder } : null;
+
     try {
-      const nowIso = new Date().toISOString();
       const updatedOrder: OrderItem = {
         ...order,
         payment_status: newStatus,
@@ -423,51 +427,41 @@ export default function OrdersTab({
       if (selectedOrder?.id === order.id || selectedOrder?.invoice_no === order.invoice_no) {
         setSelectedOrder((prev) => prev ? { ...prev, payment_status: newStatus, status: newStatus } : null);
       }
-      onOrderUpdated?.(updatedOrder);
 
-      // 2. Persist ke Supabase dengan status enum valid
-      const supabase = getSupabase();
-      if (supabase) {
-        const updatePayload: Record<string, any> = {
-          payment_status: newStatus,
-          status: newStatus,
-          updated_at: nowIso,
-        };
-        if (newStatus === 'PAID') {
-          updatePayload.paid_at = nowIso;
-          updatePayload.order_status = 'COMPLETED';
-        } else {
-          updatePayload.paid_at = null;
-          updatePayload.order_status = 'PENDING';
-        }
-        await supabase
-          .from('orders')
-          .update(updatePayload)
-          .eq('id', order.id);
-      }
-
-      // If newStatus is PAID, trigger quick-paid endpoint
+      // If newStatus is PAID, trigger quick-paid endpoint (server-side admin mutation)
       if (newStatus === 'PAID') {
-        try {
-          await fetch(
-            `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(order.id)}/quick-paid`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-            }
+        const res = await fetch(
+          `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(order.id)}/quick-paid`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Gagal mengubah status menjadi PAID di server');
+        }
+        if (data.order) {
+          const finalOrder = { ...updatedOrder, ...data.order, status: 'PAID', payment_status: 'PAID' };
+          setInternalOrders((prev) =>
+            prev.map((o) => (o.id === order.id || o.invoice_no === order.invoice_no ? finalOrder : o))
           );
-        } catch (e) {
-          console.warn('[OrdersTab] quick-paid endpoint note:', e);
+          onOrderUpdated?.(finalOrder);
+        } else {
+          onOrderUpdated?.(updatedOrder);
         }
       } else {
         // fallback API route for UNPAID
-        try {
-          await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${order.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ payment_status: newStatus, status: newStatus, paid_at: null }),
-          });
-        } catch {}
+        const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${order.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_status: newStatus, status: newStatus, paid_at: null }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Gagal mengubah status menjadi UNPAID di server');
+        }
+        onOrderUpdated?.(updatedOrder);
       }
 
       setToast({
@@ -475,14 +469,17 @@ export default function OrdersTab({
         type: 'success',
       });
       setTimeout(() => setToast(null), 3000);
-    } catch (err) {
+    } catch (err: unknown) {
       console.warn('[OrdersTab] Error toggling payment_status:', err);
+      // Rollback
+      setInternalOrders(previousOrders);
+      if (previousSelected) setSelectedOrder(previousSelected);
+      const errMsg = err instanceof Error ? err.message : 'Gagal mengubah status pesanan.';
       setToast({
-        message: `Gagal mengubah status pesanan #${order.invoice_no}.`,
+        message: `Gagal: ${errMsg}`,
         type: 'error',
       });
-      setTimeout(() => setToast(null), 3000);
-      await fetchOrders();
+      setTimeout(() => setToast(null), 4000);
     } finally {
       setTogglingId(null);
     }

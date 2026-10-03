@@ -111,7 +111,7 @@ describe('BoonPilot Sender Identity Resolver & Dual-Branch Engine', () => {
       expect(result.activeEngine).toBe('BOONPILOT_GUEST_ONBOARDING');
       expect(result.reply).toContain('BoonPilot');
       expect(result.reply).toContain('Onboarding Specialist');
-      expect(result.reply).toContain('https://dashboard.boontrack.com/register');
+      expect(result.reply).toContain('https://shop.boontrack.com/register');
       expect(result.quick_actions).toContain('🚀 Cara Daftar Toko');
     });
 
@@ -126,7 +126,7 @@ describe('BoonPilot Sender Identity Resolver & Dual-Branch Engine', () => {
       );
 
       expect(result.role).toBe('GUEST');
-      expect(result.reply).toContain('https://dashboard.boontrack.com/register');
+      expect(result.reply).toContain('https://shop.boontrack.com/register');
       expect(result.reply).toContain('Langkah Pendaftaran');
     });
 
@@ -143,7 +143,7 @@ describe('BoonPilot Sender Identity Resolver & Dual-Branch Engine', () => {
       expect(result.role).toBe('GUEST');
       expect(result.reply).toContain('Paket Solo');
       expect(result.reply).toContain('Paket Pro Scale');
-      expect(result.reply).toContain('https://dashboard.boontrack.com/register');
+      expect(result.reply).toContain('https://shop.boontrack.com/register');
     });
 
     it('handles MERCHANT greeting: greets owner by name & store, strictly omits registration link', async () => {
@@ -162,7 +162,7 @@ describe('BoonPilot Sender Identity Resolver & Dual-Branch Engine', () => {
       expect(result.reply).toContain('PT Solusi Group Barokah');
       expect(result.reply).toContain('PRO_SCALE');
       // STRICT INVARIANT: Do NOT pitch new store registration to existing merchant!
-      expect(result.reply).not.toContain('https://dashboard.boontrack.com/register');
+      expect(result.reply).not.toContain('https://shop.boontrack.com/register');
       expect(result.quick_actions).toContain('📊 Cek Ringkasan Toko');
     });
 
@@ -179,7 +179,7 @@ describe('BoonPilot Sender Identity Resolver & Dual-Branch Engine', () => {
       expect(result.role).toBe('MERCHANT');
       expect(result.reply).toContain('Pesanan (Orders)');
       expect(result.reply).toContain('PT Solusi Group Barokah');
-      expect(result.reply).not.toContain('https://dashboard.boontrack.com/register');
+      expect(result.reply).not.toContain('https://shop.boontrack.com/register');
     });
   });
 
@@ -194,7 +194,7 @@ describe('BoonPilot Sender Identity Resolver & Dual-Branch Engine', () => {
 
       expect(prompt).toContain('Onboarding & Platform Specialist');
       expect(prompt).toContain('ZERO-DATA-LEAKAGE');
-      expect(prompt).toContain('https://dashboard.boontrack.com/register');
+      expect(prompt).toContain('https://shop.boontrack.com/register');
     });
 
     it('builds tailored MERCHANT prompt with store name, tier, and anti-registration guard', () => {

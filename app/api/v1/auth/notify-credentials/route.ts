@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
                 <div style="background: #f8fafc; padding: 16px; border-radius: 12px; margin: 20px 0; border: 1px solid #cbd5e1;">
                   <p style="margin: 0 0 8px 0; font-size: 14px;"><strong>Domain Toko:</strong> shop.boontrack.com/${tenant_slug}</p>
                   <p style="margin: 0 0 8px 0; font-size: 14px;"><strong>PIN / Password Akses:</strong> <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${pin || '******'}</code></p>
-                  <p style="margin: 0; font-size: 14px;"><strong>Dashboard:</strong> <a href="https://shop.boontrack.com/" style="color: #2563eb;">Masuk ke Dashboard Toko</a></p>
+                  <p style="margin: 0; font-size: 14px;"><strong>Dashboard:</strong> <a href="https://dashboard.boontrack.com/${tenant_slug}" style="color: #2563eb;">Masuk ke Dashboard Toko</a></p>
                 </div>
                 <p style="color: #64748b; font-size: 12px;">Simpan email ini untuk keamanan dan login toko Anda berikutnya.</p>
               </div>

@@ -178,7 +178,7 @@ export async function GET(
         microsite: metadata.microsite || { buttons: [] },
         rotator: metadata.rotator || null,
         total_omzet: metadata.total_omzet || null,
-        telegram_chat_id: metadata.telegram_chat_id || null,
+        telegram_chat_id: tenantRow.telegram_chat_id || metadata.telegram_chat_id || null,
       },
     });
   } catch (err: unknown) {
@@ -376,14 +376,20 @@ export async function PUT(
       ...(telegram_chat_id !== undefined ? { telegram_chat_id: telegram_chat_id || null } : {}),
     };
 
+    const updateFields: Record<string, any> = {
+      name: effectiveStoreName || existing.name,
+      category: category || existing.category,
+      tier: updatedTier,
+      metadata: updatedMetadata,
+      updated_at: new Date().toISOString(),
+    };
+    if (telegram_chat_id !== undefined) {
+      updateFields.telegram_chat_id = telegram_chat_id || null;
+    }
+
     const { error: updateError } = await supabase
       .from('tenants')
-      .update({
-        name: effectiveStoreName || existing.name,
-        category: category || existing.category,
-        tier: updatedTier,
-        metadata: updatedMetadata,
-      })
+      .update(updateFields)
       .eq('slug', slug);
 
     if (updateError) {

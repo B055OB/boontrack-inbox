@@ -6,6 +6,7 @@ import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
 import { extractOrderAmount } from '@/lib/finance-engine';
 import { orderEventBus } from '@/lib/email/order-event-bus';
 import { normalizeBriefingUrl } from '@/lib/product-catalog';
+import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -355,6 +356,22 @@ export async function POST(req: NextRequest) {
             })
             .catch((err) => console.warn('[Orders API] Order created email dispatch note:', err));
         }
+
+        // Asynchronously dispatch ORDER_CREATED / PENDING notification to Telegram (Non-blocking)
+        dispatchOrderTelegramAlert({
+          order: {
+            id: orderId,
+            tenant_id: body.tenant_id || null,
+            tenant_slug: body.tenant_slug || '',
+            product_title: body.product_title || body.product_name || 'Pesanan Produk',
+            gross_amount: gross,
+            payment_method: body.payment_method || 'Transfer Bank / QRIS',
+            customer_name: body.customer_name || 'Pelanggan Toko',
+            customer_phone: body.customer_phone || '',
+          },
+          event: 'new_order',
+          supabaseClient: supabase,
+        }).catch((err) => console.warn('[Orders API] Order created telegram alert note:', err));
 
         return NextResponse.json({
           success: true,

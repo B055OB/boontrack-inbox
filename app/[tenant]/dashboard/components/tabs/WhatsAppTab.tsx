@@ -16,6 +16,7 @@ import {
   Save,
 } from 'lucide-react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
+import TelegramAlertManager from '../TelegramAlertManager';
 
 interface WhatsAppTabProps {
   tenantSlug: string;
@@ -551,6 +552,17 @@ export default function WhatsAppTab({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* INTEGRASI NOTIFIKASI TELEGRAM MULTI-TENANT */}
+      <div className="pt-2">
+        <TelegramAlertManager
+          tenantSlug={tenantSlug}
+          displayName={displayName}
+          onSaved={(msg) => {
+            if (setSaveFeedback) setSaveFeedback(msg);
+          }}
+        />
       </div>
     </div>
   );

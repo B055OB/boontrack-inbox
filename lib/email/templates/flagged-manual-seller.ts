@@ -39,7 +39,7 @@ export function buildFlaggedManualSellerHtml(
   const storeName = branding.store_name || payload.tenant_slug;
   const approvalUrl =
     payload.approval_url ||
-    `https://shop.boontrack.com/${payload.tenant_slug}/dashboard/orders?tab=pending-verification&orderId=${payload.order_id}`;
+    `https://dashboard.boontrack.com/${payload.tenant_slug}?tab=orders&filter=pending-verification&orderId=${payload.order_id}`;
 
   return `<!DOCTYPE html>
 <html lang="id">
@@ -130,7 +130,7 @@ export function buildFlaggedManualSellerText(
   const formattedAmount = formatRupiah(payload.total_amount);
   const approvalUrl =
     payload.approval_url ||
-    `https://shop.boontrack.com/${payload.tenant_slug}/dashboard/orders?tab=pending-verification&orderId=${payload.order_id}`;
+    `https://dashboard.boontrack.com/${payload.tenant_slug}?tab=orders&filter=pending-verification&orderId=${payload.order_id}`;
 
   return [
     `Halo Merchant ${storeName},`,

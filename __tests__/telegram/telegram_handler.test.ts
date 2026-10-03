@@ -106,4 +106,40 @@ describe('BoonPilot Telegram Handler', () => {
       expect(result.reply).toBeDefined();
     });
   });
+
+  describe('Commands & Deep Linking Handlers', () => {
+    it('replies directly to /id command with chat ID in both private and groups', async () => {
+      const update = {
+        update_id: 1006,
+        message: {
+          message_id: 55,
+          chat: { id: -100987654321, type: 'group' },
+          from: { id: 123456789, first_name: 'Seller' },
+          text: '/id',
+        },
+      };
+
+      const result = await handleTelegramUpdate(update);
+      expect(result.handled).toBe(true);
+      expect(result.chatId).toBe(-100987654321);
+      expect(result.reply).toBe('Chat ID ini: `-100987654321`.');
+    });
+
+    it('replies with dashboard instructions when receiving plain /start', async () => {
+      const update = {
+        update_id: 1007,
+        message: {
+          message_id: 56,
+          chat: { id: 987654321, type: 'private' },
+          from: { id: 987654321, first_name: 'Seller' },
+          text: '/start',
+        },
+      };
+
+      const result = await handleTelegramUpdate(update);
+      expect(result.handled).toBe(true);
+      expect(result.chatId).toBe(987654321);
+      expect(result.reply).toContain('Halo! ID Telegram kamu adalah: `987654321`');
+    });
+  });
 });
