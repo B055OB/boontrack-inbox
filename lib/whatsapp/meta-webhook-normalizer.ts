@@ -598,9 +598,9 @@ export async function processNormalizedMetaEvent(
 
         const affId = waBinding?.affiliate_id || 'boon';
         const demoUrl = waBinding?.demo_url || 'https://shop.boontrack.com/boon';
-        const registerUrl = waBinding
-          ? `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}&src=${encodeURIComponent(rawFrom)}`
-          : `https://shop.boontrack.com/register`;
+        const registerUrl =
+          (waBinding?.metadata as Record<string, string>)?.register_url ||
+          `https://${affId}.boontrack.com/register`;
 
         const replyText =
           `👋 *Halo dari BoonTrack!*\n` +
