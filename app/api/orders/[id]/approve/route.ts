@@ -57,31 +57,70 @@ export async function POST(
     const paidAt = new Date().toISOString();
     let fulfillmentMeta = order.fulfillment_metadata || {};
 
-    // If fulfillment access_url not set, attempt to resolve from catalog
-    if (!fulfillmentMeta.access_url && !order.download_url && order.product_id) {
+    // If fulfillment access_url not set, attempt to resolve from catalog (products table & tenant metadata)
+    if (!fulfillmentMeta.access_url && !order.download_url) {
       try {
-        const { data: prod } = await supabase
-          .from('products')
-          .select('link_digital, asset_reference, fulfillment_metadata')
-          .eq('id', order.product_id)
-          .maybeSingle();
+        if (order.product_id) {
+          const { data: prod } = await supabase
+            .from('products')
+            .select('link_digital, asset_reference, fulfillment_metadata')
+            .eq('id', order.product_id)
+            .maybeSingle();
 
-        const resolvedAccess =
-          prod?.fulfillment_metadata?.access_url ||
-          prod?.link_digital ||
-          prod?.asset_reference;
+          const resolvedAccess =
+            prod?.fulfillment_metadata?.access_url ||
+            prod?.link_digital ||
+            prod?.asset_reference;
 
-        if (resolvedAccess) {
-          fulfillmentMeta = {
-            ...fulfillmentMeta,
-            delivery_type: 'DOWNLOAD_LINK',
-            access_url: resolvedAccess,
-            instructions:
-              prod?.fulfillment_metadata?.instructions ||
-              'Akses materi digital Anda telah aktif secara instan.',
-          };
+          if (resolvedAccess) {
+            fulfillmentMeta = {
+              ...fulfillmentMeta,
+              delivery_type: 'DOWNLOAD_LINK',
+              access_url: resolvedAccess,
+              instructions:
+                prod?.fulfillment_metadata?.instructions ||
+                'Akses materi digital Anda telah aktif secara instan.',
+            };
+          }
         }
-      } catch {}
+
+        // Single Source of Truth Fallback: tenants.metadata.products
+        const targetSlug = order.tenant_slug || order.tenant_id;
+        if (!fulfillmentMeta.access_url && targetSlug) {
+          const { data: tenantRow } = await supabase
+            .from('tenants')
+            .select('metadata')
+            .or(`slug.eq.${targetSlug},id.eq.${targetSlug}`)
+            .maybeSingle();
+
+          const prods = tenantRow?.metadata?.products;
+          if (Array.isArray(prods)) {
+            const matched = prods.find((p: any) =>
+              (order.product_id && (p.id === order.product_id || p.slug === order.product_id)) ||
+              (order.product_title && p.title?.toLowerCase() === order.product_title.toLowerCase()) ||
+              p.title?.toLowerCase().includes('ctwa')
+            );
+            const tenantAccess =
+              matched?.link_digital ||
+              matched?.fulfillment_metadata?.access_url ||
+              matched?.download_url ||
+              matched?.asset_reference;
+
+            if (tenantAccess) {
+              fulfillmentMeta = {
+                ...fulfillmentMeta,
+                delivery_type: 'DOWNLOAD_LINK',
+                access_url: tenantAccess,
+                instructions:
+                  matched?.fulfillment_metadata?.instructions ||
+                  'Akses materi digital Anda telah aktif secara instan.',
+              };
+            }
+          }
+        }
+      } catch (catErr) {
+        console.warn('[Approve Order API] Catalog access resolution note:', catErr);
+      }
     }
 
     // 2. Update order to PAID & COMPLETED
@@ -111,6 +150,16 @@ export async function POST(
     const accessUrl = fulfillmentMeta.access_url || updatedOrder.download_url;
     const customerPhone = order.customer_phone || order.phone || order.whatsapp_number;
     const tenantSlug = order.tenant_slug || 'platform';
+    const customerEmail =
+      order.customer_email ||
+      order.email ||
+      order.buyer_email ||
+      order.metadata?.customer_email ||
+      order.metadata?.email ||
+      order.metadata?.buyer_email ||
+      fulfillmentMeta.customer_email ||
+      fulfillmentMeta.email ||
+      null;
 
     // 3. Dispatch WhatsApp Notification (Non-blocking)
     if (customerPhone) {
@@ -127,22 +176,38 @@ export async function POST(
       }).catch((waErr) => console.warn('[Approve Order] WhatsApp fulfillment dispatch note:', waErr));
     }
 
-    // 4. Dispatch Dual Transactional Emails (Buyer Receipt + Merchant Alert)
-    const emailPromise = sendOrderFulfillmentEmails({
-      orderId: String(orderId),
-      tenantSlug,
-      tenantId: order.tenant_id,
-      customerName: order.customer_name || 'Pelanggan Setia',
-      customerEmail: order.customer_email || null,
-      customerPhone: customerPhone || null,
-      productTitle: order.product_title || 'Pesanan Produk',
-      grossAmount: Number(order.gross_amount || order.total_amount || 0),
-      paymentMethod: order.payment_method || 'QRIS Dinamis (Otomatis)',
-      paidAt,
-      accessUrl: accessUrl || undefined,
-      instructions: fulfillmentMeta.instructions || undefined,
-      productType: order.product_type || (order.shipping_address ? 'PHYSICAL' : 'DIGITAL'),
-    }).catch((emailErr) => console.warn('[Approve Order] Email fulfillment dispatch note:', emailErr));
+    // 4. Deterministic Dual Transactional Emails Dispatch (Buyer Receipt + Merchant Alert)
+    console.log(`[Approve Order API] Initiating deterministic email dispatch for order #${orderId}, buyer: ${customerEmail || '(no-email)'}, accessUrl: ${accessUrl ? 'available' : 'none'}`);
+    let emailResult = { success: false, buyerEmailSent: false, merchantEmailSent: false, errors: [] as string[] };
+    try {
+      emailResult = await sendOrderFulfillmentEmails({
+        orderId: String(orderId),
+        tenantSlug,
+        tenantId: order.tenant_id,
+        customerName: order.customer_name || order.buyer_name || 'Pelanggan Setia',
+        customerEmail: customerEmail || null,
+        customerPhone: customerPhone || null,
+        productTitle: order.product_title || 'Pesanan Produk',
+        grossAmount: Number(order.gross_amount || order.total_amount || 0),
+        paymentMethod: order.payment_method || 'QRIS Dinamis (Otomatis)',
+        paidAt,
+        accessUrl: accessUrl || undefined,
+        instructions: fulfillmentMeta.instructions || undefined,
+        productType: order.product_type || (order.shipping_address ? 'PHYSICAL' : 'DIGITAL'),
+        forceBuyerEmail: customerEmail || undefined,
+      });
+
+      console.log('[Approve Order API] Email dispatch completed:', {
+        orderId,
+        customerEmail,
+        success: emailResult.success,
+        buyerEmailSent: emailResult.buyerEmailSent,
+        merchantEmailSent: emailResult.merchantEmailSent,
+        errors: emailResult.errors,
+      });
+    } catch (emailErr: any) {
+      console.error('[Approve Order API] Fatal exception during email fulfillment dispatch:', emailErr);
+    }
 
     // 5. Transactional Outbox Pattern: Enqueue Adtech CAPI Purchase Event (Hapus Fire-and-Forget)
     await enqueueCAPIOutboxEvent({
@@ -178,16 +243,10 @@ export async function POST(
       directCommission: Number(order.affiliate_commission) || undefined,
     }).catch(() => {});
 
-    // Tunggu pengiriman email selesai atau timeout cepat
-    const emailResult = await Promise.race([
-      emailPromise,
-      new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
-    ]);
-
     return NextResponse.json({
       success: true,
       order: updatedOrder,
-      email_dispatched: Boolean(emailResult),
+      email_dispatched: Boolean(emailResult?.success || emailResult?.buyerEmailSent),
       message: 'Pesanan berhasil disetujui (PAID) dan notifikasi multi-channel terkirim.',
     });
   } catch (err: unknown) {

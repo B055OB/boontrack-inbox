@@ -546,7 +546,7 @@ export default function TenantDashboardPage() {
                   ? 'bg-emerald-600 text-white border-emerald-600'
                   : 'bg-slate-50 text-slate-700 border-slate-200'
               }`}
-              title="Pesanan"
+              title="Daftar Pesanan Toko"
             >
               <ShoppingBag className="w-4 h-4" />
             </button>
@@ -573,10 +573,10 @@ export default function TenantDashboardPage() {
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                   : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
               }`}
-              title="Akses Pesanan & Order"
+              title="Daftar Pesanan Toko"
             >
               <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Pesanan &amp; Order</span>
+              <span>Daftar Pesanan Toko</span>
               {transactions?.length > 0 && (
                 <span
                   className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${

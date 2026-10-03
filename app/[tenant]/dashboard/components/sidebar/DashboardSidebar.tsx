@@ -621,7 +621,7 @@ export default function DashboardSidebar({
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
                     <ShoppingBag className="w-4 h-4" />
                   </div>
-                  <span className="truncate">Pesanan Masuk</span>
+                  <span className="truncate">Daftar Pesanan Toko</span>
                 </div>
                 {orderCount > 0 ? (
                   <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-600 text-white">
@@ -1000,7 +1000,7 @@ export default function DashboardSidebar({
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
                       <ShoppingBag className="w-4 h-4" />
                     </div>
-                    <span className="truncate">Pesanan &amp; Order</span>
+                    <span className="truncate">Daftar Pesanan Toko</span>
                   </div>
                   {orderCount > 0 ? (
                     <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-600 text-white">

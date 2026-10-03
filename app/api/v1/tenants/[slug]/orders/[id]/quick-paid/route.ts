@@ -190,21 +190,45 @@ export async function POST(
     }
 
     // 5. Dual Email Confirmation & Invoice Dispatch (Buyer Invoice + Merchant Alert)
-    sendOrderFulfillmentEmails({
-      orderId: String(orderId),
-      tenantSlug: slug,
-      tenantId: order.tenant_id,
-      customerName: order.customer_name || order.buyer_name || 'Pelanggan Setia',
-      customerEmail: order.customer_email || null,
-      customerPhone: customerPhone || null,
-      productTitle: order.product_title || order.product_name || 'Pesanan Produk',
-      grossAmount: Number(order.gross_amount || order.total_amount || order.amount || 0),
-      paymentMethod: order.payment_method || 'QRIS Dinamis (Otomatis)',
-      paidAt,
-      accessUrl: accessUrl || undefined,
-      instructions: fulfillmentMeta.instructions || undefined,
-      productType: order.product_type || (order.shipping_address ? 'PHYSICAL' : 'DIGITAL'),
-    }).catch((emailErr) => console.warn('[EmailService] Order fulfillment email dispatch note:', emailErr));
+    const effectiveBuyerEmail =
+      order.customer_email ||
+      order.email ||
+      order.buyer_email ||
+      order.metadata?.customer_email ||
+      order.metadata?.email ||
+      order.metadata?.buyer_email ||
+      fulfillmentMeta.customer_email ||
+      fulfillmentMeta.email ||
+      null;
+
+    try {
+      const emailResult = await sendOrderFulfillmentEmails({
+        orderId: String(orderId),
+        tenantSlug: slug,
+        tenantId: order.tenant_id,
+        customerName: order.customer_name || order.buyer_name || 'Pelanggan Setia',
+        customerEmail: effectiveBuyerEmail || null,
+        customerPhone: customerPhone || null,
+        productTitle: order.product_title || order.product_name || 'Pesanan Produk',
+        grossAmount: Number(order.gross_amount || order.total_amount || order.amount || 0),
+        paymentMethod: order.payment_method || 'QRIS Dinamis (Otomatis)',
+        paidAt,
+        accessUrl: accessUrl || undefined,
+        instructions: fulfillmentMeta.instructions || undefined,
+        productType: order.product_type || (order.shipping_address ? 'PHYSICAL' : 'DIGITAL'),
+        forceBuyerEmail: effectiveBuyerEmail || undefined,
+      });
+
+      console.log('[Quick-Paid Route] Email dispatch completed:', {
+        orderId,
+        effectiveBuyerEmail,
+        success: emailResult.success,
+        buyerEmailSent: emailResult.buyerEmailSent,
+        merchantEmailSent: emailResult.merchantEmailSent,
+      });
+    } catch (emailErr) {
+      console.warn('[Quick-Paid Route] Order fulfillment email dispatch error:', emailErr);
+    }
 
     return NextResponse.json({
       success: true,

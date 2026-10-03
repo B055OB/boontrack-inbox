@@ -315,18 +315,21 @@ async function dispatchResendEmail(params: {
   }
 
   // Verified BoonTrack senders with automatic fallback
-  const senders = [
-    process.env.RESEND_FROM || 'BoonTrack Official <orders@boontrack.com>',
+  const senders = Array.from(new Set([
+    process.env.RESEND_FROM || 'Boon Pilot <pilot@boontrack.com>',
+    process.env.RESEND_FROM_FALLBACK || 'Boon Pilot <affiliate@boontrack.com>',
+    'BoonTrack Official <orders@boontrack.com>',
     'BoonTrack Orders <billing@boontrack.com>',
     'BoonTrack <pilot@boontrack.com>',
     'BoonTrack Onboarding <onboarding@boontrack.com>',
     'onboarding@resend.dev',
-  ];
+  ])).filter(Boolean) as string[];
 
   let lastError = '';
 
   for (const sender of senders) {
     try {
+      console.log(`[EmailService] Attempting dispatch to ${params.to} using sender '${sender}'...`);
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -345,17 +348,19 @@ async function dispatchResendEmail(params: {
 
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.id) {
+        console.log(`[EmailService] Successfully sent email to ${params.to} via '${sender}' (ID: ${data.id})`);
         return { success: true, id: data.id };
       }
 
       lastError = data.message || `HTTP ${res.status}`;
-      console.warn(`[EmailService] Sender '${sender}' failed: ${lastError}. Trying next...`);
+      console.warn(`[EmailService] Sender '${sender}' failed for ${params.to}: ${lastError}. Trying next sender...`);
     } catch (networkErr: unknown) {
       lastError = networkErr instanceof Error ? networkErr.message : String(networkErr);
       console.warn(`[EmailService] Network warning for sender '${sender}': ${lastError}`);
     }
   }
 
+  console.error(`[EmailService] All email senders failed for recipient ${params.to}: ${lastError}`);
   return { success: false, error: lastError || 'All Resend senders exhausted.' };
 }
 
@@ -418,7 +423,10 @@ export async function sendOrderFulfillmentEmails(
             (p: any) =>
               p.id === 'c7ba0001-7de7-4888-9999-000000000001' ||
               p.title?.toLowerCase().includes('ctwa') ||
-              p.id === options.orderId
+              p.id === options.orderId ||
+              (options.productTitle && p.title?.toLowerCase() === options.productTitle.toLowerCase()) ||
+              (options.productTitle && options.productTitle.toLowerCase().includes(p.title?.toLowerCase())) ||
+              (options.productTitle && p.title && options.productTitle.toLowerCase().includes(p.title.toLowerCase().slice(0, 10)))
           );
           if (matchedProd) {
             resolvedAccessUrl =
@@ -450,8 +458,9 @@ export async function sendOrderFulfillmentEmails(
     const effectivePaymentMethod = options.paymentMethod || 'QRIS Dinamis (Otomatis)';
 
     // 2. Dispatch Email to Buyer (if email is available or forceBuyerEmail set)
-    const targetBuyerEmail = options.forceBuyerEmail || options.customerEmail;
+    const targetBuyerEmail = (options.forceBuyerEmail || options.customerEmail || '').trim();
     if (targetBuyerEmail && targetBuyerEmail.includes('@')) {
+      console.log(`[EmailService] Preparing buyer receipt email for ${targetBuyerEmail}, order #${options.orderId}`);
       const buyerHtml = buildBuyerReceiptHtml({
         storeName,
         orderId: options.orderId,
@@ -493,9 +502,10 @@ export async function sendOrderFulfillmentEmails(
         console.log(`[EmailService] Buyer invoice successfully sent to ${targetBuyerEmail} (ID: ${buyerRes.id})`);
       } else {
         result.errors.push(`Buyer email failed: ${buyerRes.error}`);
+        console.error(`[EmailService] Failed to dispatch buyer invoice to ${targetBuyerEmail}:`, buyerRes.error);
       }
     } else {
-      console.log(`[EmailService] Skipping buyer email: customer_email is not present for order #${options.orderId}`);
+      console.warn(`[EmailService] Skipping buyer email: customer_email is empty/invalid ('${targetBuyerEmail}') for order #${options.orderId}`);
     }
 
     // 3. Dispatch Email to Merchant

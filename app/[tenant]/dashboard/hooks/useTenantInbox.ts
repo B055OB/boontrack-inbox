@@ -269,7 +269,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
 
           const timeStr = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')} WIB`;
 
-          uniqueMsgs.push({
+            uniqueMsgs.push({
             id: msgId,
             external_id: m.external_id || undefined,
             created_at: m.created_at,
@@ -277,6 +277,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
             senderName: m.user_name || (isBot ? 'BoonPilot AI' : isAgent ? 'Live CS Agent' : undefined),
             text,
             time: timeStr,
+            deliveryStatus: (m.delivery_status || m.status === 'read' ? 'read' : m.status === 'sent' ? 'sent' : 'delivered') as any,
             isQris: m.payload?.is_qris || m.raw_payload?.is_qris,
             qrisData: m.payload?.qris_data || m.raw_payload?.qris_data,
             isBankTransfer: m.payload?.is_bank_transfer || m.raw_payload?.is_bank_transfer,
@@ -363,6 +364,8 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
                         lastMessage: updated.last_message || c.lastMessage,
                         time: formatInboxTime(updated.last_message_at || updated.updated_at),
                         unreadCount: updated.unread_count ?? c.unreadCount,
+                        isBotActive: updated.bot_paused === true ? false : (updated.bot_mode === 'HUMAN_ACTIVE' ? false : true),
+                        status: updated.status === 'resolved' ? 'offline' : 'online',
                       }
                     : c
                 );
@@ -377,56 +380,65 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'messages',
         },
         (payload: any) => {
-          const newMsg = payload.new;
-          if (newMsg && newMsg.conversation_id === activeConversationId) {
-            const isCust = newMsg.sender_type === 'customer' || newMsg.sender === 'user' || newMsg.sender === 'customer';
-            const isBot = newMsg.sender_type === 'bot' || newMsg.sender === 'bot';
-            const isAgent = newMsg.sender_type === 'agent' || newMsg.sender === 'agent';
-            const ts = newMsg.created_at ? new Date(newMsg.created_at) : new Date();
+          const msg = payload.new;
+          if (!msg) return;
+
+          if (msg.conversation_id === activeConversationId) {
+            const isCust = msg.sender_type === 'customer' || msg.sender === 'user' || msg.sender === 'customer';
+            const isBot = msg.sender_type === 'bot' || msg.sender === 'bot';
+            const isAgent = msg.sender_type === 'agent' || msg.sender === 'agent';
+            const ts = msg.created_at ? new Date(msg.created_at) : new Date();
             const timeStr = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')} WIB`;
-            const incomingText = (newMsg.message_body || newMsg.text || '').trim();
+            const incomingText = (msg.message_body || msg.text || '').trim();
             const incomingSender = isCust ? 'customer' : isBot ? 'bot' : isAgent ? 'agent' : 'system';
 
             const incoming: ConversationMessage = {
-              id: newMsg.id,
-              external_id: newMsg.external_id || undefined,
-              created_at: newMsg.created_at,
+              id: msg.id,
+              external_id: msg.external_id || undefined,
+              created_at: msg.created_at,
               sender: incomingSender,
-              senderName: newMsg.user_name || (isBot ? 'BoonPilot AI' : isAgent ? 'Live CS Agent' : undefined),
+              senderName: msg.user_name || (isBot ? 'BoonPilot AI' : isAgent ? 'Live CS Agent' : undefined),
               text: incomingText,
               time: timeStr,
-              isQris: newMsg.payload?.is_qris || newMsg.raw_payload?.is_qris,
-              qrisData: newMsg.payload?.qris_data || newMsg.raw_payload?.qris_data,
-              isBankTransfer: newMsg.payload?.is_bank_transfer || newMsg.raw_payload?.is_bank_transfer,
-              bankData: newMsg.payload?.bank_data || newMsg.raw_payload?.bank_data,
+              deliveryStatus: (msg.delivery_status || (msg.status === 'read' ? 'read' : msg.status === 'sent' ? 'sent' : 'delivered')) as any,
+              isQris: msg.payload?.is_qris || msg.raw_payload?.is_qris,
+              qrisData: msg.payload?.qris_data || msg.raw_payload?.qris_data,
+              isBankTransfer: msg.payload?.is_bank_transfer || msg.raw_payload?.is_bank_transfer,
+              bankData: msg.payload?.bank_data || msg.raw_payload?.bank_data,
               isLocation:
-                newMsg.type === 'LOCATION' ||
-                newMsg.payload?.is_location ||
-                newMsg.raw_payload?.is_location ||
-                Boolean(newMsg.metadata?.location || newMsg.payload?.location || newMsg.raw_payload?.location),
+                msg.type === 'LOCATION' ||
+                msg.payload?.is_location ||
+                msg.raw_payload?.is_location ||
+                Boolean(msg.metadata?.location || msg.payload?.location || msg.raw_payload?.location),
               locationData:
-                newMsg.metadata?.location ||
-                newMsg.payload?.location ||
-                newMsg.raw_payload?.location ||
-                (newMsg.metadata?.coordinates
-                  ? { latitude: newMsg.metadata.coordinates.latitude, longitude: newMsg.metadata.coordinates.longitude }
+                msg.metadata?.location ||
+                msg.payload?.location ||
+                msg.raw_payload?.location ||
+                (msg.metadata?.coordinates
+                  ? { latitude: msg.metadata.coordinates.latitude, longitude: msg.metadata.coordinates.longitude }
                   : undefined),
             };
 
             setMessages((prev) => {
-              if (
-                prev.some(
-                  (m) =>
-                    m.id === incoming.id ||
-                    (m.external_id && incoming.external_id && m.external_id === incoming.external_id) ||
-                    (m.text.trim() === incomingText && m.sender === incomingSender)
-                )
-              ) {
+              const existingIdx = prev.findIndex(
+                (m) =>
+                  m.id === incoming.id ||
+                  (m.external_id && incoming.external_id && m.external_id === incoming.external_id)
+              );
+
+              if (existingIdx !== -1) {
+                // Update existing message (e.g. deliveryStatus update)
+                const copy = [...prev];
+                copy[existingIdx] = { ...copy[existingIdx], ...incoming };
+                return copy;
+              }
+
+              if (prev.some((m) => m.text.trim() === incomingText && m.sender === incomingSender)) {
                 return prev;
               }
               return [...prev, incoming];
@@ -473,6 +485,8 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
           channel: 'whatsapp',
           user_name: 'Anda (Live CS)',
           user_phone: customerPhone,
+          delivery_status: 'sent',
+          status: 'sent',
           created_at: nowIso,
         });
 
@@ -494,7 +508,7 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
             .from('whatsapp_connections')
             .select('instance_name, credential_ref')
             .or(`tenant_id.eq.${effectiveTenantId},tenant_slug.eq.${effectiveTenantSlug},tenant_id.eq.${effectiveTenantSlug}`)
-            .eq('status', 'open')
+            .or('status.eq.CONNECTED,status.eq.open,is_connected.eq.true')
             .maybeSingle();
 
           if (conn?.instance_name) {

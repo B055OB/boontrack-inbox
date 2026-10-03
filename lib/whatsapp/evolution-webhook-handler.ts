@@ -594,23 +594,71 @@ export async function processEvolutionWebhookEvent(
       continue;
     }
 
-    // 6.3. Active Pause Gate (Auto-Mute: Balasan Otomatis Ditahan jika is_paused == true)
+    // 6.3. Active Pause Gate (Auto-Mute: Balasan Otomatis Ditahan jika is_paused == true / bot_paused == true)
     if (supabase) {
       try {
-        const { data: activeSession } = await supabase
+        const cleanSender = senderPhone.replace(/\D/g, '');
+        const phone62 = cleanSender.startsWith('0') ? '62' + cleanSender.slice(1) : cleanSender;
+        const phone08 = cleanSender.startsWith('62') ? '0' + cleanSender.slice(2) : cleanSender;
+        const phoneVariants = Array.from(new Set([senderPhone, cleanSender, phone62, phone08])).filter(Boolean);
+        const tenantTokens = Array.from(new Set([tenantId, tenantSlug].filter(Boolean))) as string[];
+
+        // A. Cek tabel conversations (Toggle Jeda Bot di Menu Inbox)
+        let isConvPaused = false;
+        let convPauseReason = '';
+
+        const convQuery = supabase
+          .from('conversations')
+          .select('id, bot_paused, bot_mode, status, is_bot_active')
+          .or(`tenant_id.in.(${tenantTokens.join(',')}),tenant_slug.in.(${tenantTokens.join(',')})`)
+          .in('customer_phone', phoneVariants)
+          .limit(5);
+
+        const { data: convData } = await convQuery;
+        if (Array.isArray(convData) && convData.length > 0) {
+          const pausedConv = convData.find((c: any) =>
+            c.bot_paused === true ||
+            c.is_bot_paused === true ||
+            c.is_bot_active === false ||
+            c.bot_mode === 'HUMAN_ACTIVE' ||
+            c.status === 'paused' ||
+            c.status === 'human_takeover'
+          );
+
+          if (pausedConv) {
+            isConvPaused = true;
+            convPauseReason = `conversations table (id: ${pausedConv.id}, bot_paused: ${pausedConv.bot_paused}, bot_mode: ${pausedConv.bot_mode}, status: ${pausedConv.status})`;
+          }
+        }
+
+        // B. Cek tabel conversation_sessions (Session Level Pause / Handover)
+        let isSessionPaused = false;
+        let sessionPauseReason = '';
+
+        const sessQuery = supabase
           .from('conversation_sessions')
-          .select('current_state, is_paused, paused_until, paused_at, paused_by')
-          .eq('tenant_id', tenantId)
-          .eq('user_identifier', senderPhone)
-          .maybeSingle();
+          .select('current_state, is_paused, paused_until, paused_at, paused_by, metadata')
+          .in('tenant_id', tenantTokens)
+          .in('user_identifier', phoneVariants)
+          .limit(5);
 
-        const isStatePaused = activeSession?.current_state === 'HANDOVER_TO_HUMAN' || activeSession?.current_state === 'PAUSED';
-        const isFlagPaused = Boolean(activeSession?.is_paused);
-        const pUntil = activeSession?.paused_until ? new Date(activeSession.paused_until) : null;
-        const isLocked = (isStatePaused || isFlagPaused) && (!pUntil || pUntil.getTime() > Date.now());
+        const { data: sessData } = await sessQuery;
+        if (Array.isArray(sessData) && sessData.length > 0) {
+          const pausedSess = sessData.find((s: any) => {
+            const isStatePaused = s.current_state === 'HANDOVER_TO_HUMAN' || s.current_state === 'PAUSED' || s.current_state === 'human_takeover';
+            const isFlagPaused = Boolean(s.is_paused) || Boolean(s.metadata?.is_bot_paused);
+            const pUntil = s.paused_until ? new Date(s.paused_until) : null;
+            return (isStatePaused || isFlagPaused) && (!pUntil || pUntil.getTime() > Date.now());
+          });
 
-        if (isLocked) {
-          console.info(`[Evolution Webhook Muted] Sesi untuk '${senderPhone}' sedang dijeda (HANDOVER_TO_HUMAN/PAUSED by ${activeSession?.paused_by || 'unknown'}). Balasan bot ditahan.`);
+          if (pausedSess) {
+            isSessionPaused = true;
+            sessionPauseReason = `conversation_sessions table (state: ${pausedSess.current_state}, paused_by: ${pausedSess.paused_by || 'admin'})`;
+          }
+        }
+
+        if (isConvPaused || isSessionPaused) {
+          console.info(`[Evolution Webhook Muted] Chat WhatsApp dari '${senderPhone}' sedang DIJEDA (${convPauseReason || sessionPauseReason}). AI Bot tidak boleh membalas (Bypass LLM & Outbound).`);
           processedCount++;
           continue;
         }

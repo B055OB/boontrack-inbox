@@ -84,6 +84,7 @@ export interface MultimodalChatResult {
   active_engine?: string;
   interactive_payload?: any;
   silent?: boolean;
+  bot_paused?: boolean;
   error?: string;
 }
 
@@ -177,6 +178,60 @@ export async function processMultimodalChat(
         .maybeSingle();
       if (bp) {
         botProfileRow = bp;
+      }
+      // Guard Check: Apakah obrolan/kontak ini berstatus is_bot_paused === true atau human takeover?
+      const targetPhone = input.sender_phone || input.user_identifier;
+      if (targetPhone) {
+        const cleanSender = targetPhone.replace(/\D/g, '');
+        const phone62 = cleanSender.startsWith('0') ? '62' + cleanSender.slice(1) : cleanSender;
+        const phone08 = cleanSender.startsWith('62') ? '0' + cleanSender.slice(2) : cleanSender;
+        const phoneVariants = Array.from(new Set([targetPhone, cleanSender, phone62, phone08])).filter(Boolean);
+        const tenantTokens = Array.from(new Set([slug, t?.id, t?.slug].filter(Boolean))) as string[];
+
+        // 1. Cek conversations table
+        const { data: convData } = await supabase
+          .from('conversations')
+          .select('id, bot_paused, bot_mode, status, is_bot_active')
+          .or(`tenant_id.in.(${tenantTokens.join(',')}),tenant_slug.in.(${tenantTokens.join(',')})`)
+          .in('customer_phone', phoneVariants)
+          .limit(5);
+
+        const pausedConv = (convData || []).find((c: any) =>
+          c.bot_paused === true ||
+          c.is_bot_paused === true ||
+          c.is_bot_active === false ||
+          c.bot_mode === 'HUMAN_ACTIVE' ||
+          c.status === 'paused' ||
+          c.status === 'human_takeover'
+        );
+
+        // 2. Cek conversation_sessions table
+        const { data: sessData } = await supabase
+          .from('conversation_sessions')
+          .select('current_state, is_paused, paused_until, metadata')
+          .in('tenant_id', tenantTokens)
+          .in('user_identifier', phoneVariants)
+          .limit(5);
+
+        const pausedSess = (sessData || []).find((s: any) => {
+          const isStatePaused = s.current_state === 'HANDOVER_TO_HUMAN' || s.current_state === 'PAUSED' || s.current_state === 'human_takeover';
+          const isFlagPaused = Boolean(s.is_paused) || Boolean(s.metadata?.is_bot_paused);
+          const pUntil = s.paused_until ? new Date(s.paused_until) : null;
+          return (isStatePaused || isFlagPaused) && (!pUntil || pUntil.getTime() > Date.now());
+        });
+
+        if (pausedConv || pausedSess) {
+          console.info(`[Multimodal Chat Muted] Kontak '${targetPhone}' sedang dalam status JEDA BOT / HUMAN TAKEOVER. Bypass response.`);
+          return {
+            success: true,
+            reply: '',
+            tenant_id: t?.id || slug,
+            tenant_slug: t?.slug || slug,
+            silent: true,
+            bot_paused: true,
+            error: 'Bot is paused by CS agent / human takeover',
+          };
+        }
       }
     }
   } catch (dbErr) {

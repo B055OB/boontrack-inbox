@@ -5,6 +5,7 @@ import {
   MessageSquare,
   Lock,
   Users,
+  Check,
   CheckCheck,
   Send,
   Plus,
@@ -51,6 +52,7 @@ export interface ConversationMessage {
   senderName?: string;
   text: string;
   time: string;
+  deliveryStatus?: 'sending' | 'sent' | 'delivered' | 'read';
   isQris?: boolean;
   qrisData?: {
     orderId: string;
@@ -231,7 +233,7 @@ export default function TeamChatTab({
   }, [inbox.messages, currentConversation?.messages]);
 
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [filterTab, setFilterTab] = useState<'all' | 'mine' | 'unassigned'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'followup' | 'paused' | 'mine' | 'unassigned'>('all');
   const [localReplyText, setLocalReplyText] = useState('');
   const [displayLimit, setDisplayLimit] = useState(60);
 
@@ -674,7 +676,23 @@ export default function TeamChatTab({
   const filteredConversations = useMemo(() => {
     return conversationsList.filter((c) => {
       // Filter by tab
-      if (filterTab === 'mine') {
+      if (filterTab === 'unread') {
+        if ((c.unreadCount || 0) <= 0) return false;
+      } else if (filterTab === 'followup') {
+        const isFollowup =
+          c.tag === 'Follow-up' ||
+          c.tag === 'Konfirmasi Bayar' ||
+          c.tag === 'Hot Lead' ||
+          (c as any).status === 'followup';
+        if (!isFollowup) return false;
+      } else if (filterTab === 'paused') {
+        const isPaused =
+          c.isBotActive === false ||
+          (c as any).status === 'paused' ||
+          (c as any).bot_paused === true ||
+          (c as any).bot_mode === 'HUMAN_ACTIVE';
+        if (!isPaused) return false;
+      } else if (filterTab === 'mine') {
         if (c.assignedTo !== 'my_chat') return false;
       } else if (filterTab === 'unassigned') {
         if (c.assignedTo && c.assignedTo !== 'unassigned') return false;
@@ -700,9 +718,22 @@ export default function TeamChatTab({
   // Counts for filter pills
   const counts = useMemo(() => {
     const all = conversationsList.length;
+    const unread = conversationsList.filter((c) => (c.unreadCount || 0) > 0).length;
+    const followup = conversationsList.filter((c) =>
+      c.tag === 'Follow-up' ||
+      c.tag === 'Konfirmasi Bayar' ||
+      c.tag === 'Hot Lead' ||
+      (c as any).status === 'followup'
+    ).length;
+    const paused = conversationsList.filter((c) =>
+      c.isBotActive === false ||
+      (c as any).status === 'paused' ||
+      (c as any).bot_paused === true ||
+      (c as any).bot_mode === 'HUMAN_ACTIVE'
+    ).length;
     const mine = conversationsList.filter((c) => c.assignedTo === 'my_chat').length;
     const unassigned = conversationsList.filter((c) => !c.assignedTo || c.assignedTo === 'unassigned').length;
-    return { all, mine, unassigned };
+    return { all, unread, followup, paused, mine, unassigned };
   }, [conversationsList]);
 
   // Select conversation handler
@@ -720,8 +751,18 @@ export default function TeamChatTab({
     const isPaused = !newBotState;
     const nowIso = new Date().toISOString();
     const pausedUntilIso = isPaused ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
-    const cleanPhone = (currentConversation.customerPhone || '').replace(/\D/g, '');
+    const rawPhone = currentConversation.customerPhone || '';
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    let altPhone = cleanPhone;
+    if (cleanPhone.startsWith('62')) {
+      altPhone = '0' + cleanPhone.slice(2);
+    } else if (cleanPhone.startsWith('0')) {
+      altPhone = '62' + cleanPhone.slice(1);
+    }
     const cleanSlug = resolvedTenant || 'boon';
+
+    // Optimistic update
+    currentConversation.isBotActive = newBotState;
 
     try {
       const supabase = getSupabase();
@@ -731,32 +772,43 @@ export default function TeamChatTab({
             .from('conversations')
             .update({
               bot_paused: isPaused,
+              is_bot_paused: isPaused,
+              is_bot_active: newBotState,
               bot_mode: newBotState ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
+              status: isPaused ? 'paused' : 'open',
               updated_at: nowIso,
             })
             .eq('id', currentConversation.id);
         }
 
-        if (cleanPhone) {
-          await supabase
-            .from('conversation_sessions')
-            .upsert({
-              tenant_id: cleanSlug,
-              session_id: `wa_${cleanSlug}_${cleanPhone}`,
-              channel: 'WHATSAPP',
-              user_identifier: cleanPhone,
-              current_state: isPaused ? 'HANDOVER_TO_HUMAN' : 'ACTIVE',
-              is_paused: isPaused,
-              paused_at: isPaused ? nowIso : null,
-              paused_by: 'admin_command',
-              paused_until: pausedUntilIso,
-              metadata: {
-                manual_toggle: isPaused ? 'PAUSE' : 'RESUME',
-                paused_by: 'admin_command',
-                paused_at: isPaused ? nowIso : null,
-              },
-              updated_at: nowIso,
-            }, { onConflict: 'tenant_id,user_identifier' });
+        const phoneVariants = Array.from(new Set([cleanPhone, altPhone, rawPhone].filter(Boolean)));
+        const tenantVariants = Array.from(new Set([cleanSlug, tenantId].filter((t): t is string => Boolean(t))));
+
+        for (const tId of tenantVariants) {
+          for (const ph of phoneVariants) {
+            await supabase
+              .from('conversation_sessions')
+              .upsert(
+                {
+                  tenant_id: tId,
+                  session_id: `wa_${tId}_${ph}`,
+                  channel: 'WHATSAPP',
+                  user_identifier: ph,
+                  current_state: isPaused ? 'HANDOVER_TO_HUMAN' : 'ACTIVE',
+                  is_paused: isPaused,
+                  paused_at: isPaused ? nowIso : null,
+                  paused_by: 'admin_command',
+                  paused_until: pausedUntilIso,
+                  metadata: {
+                    manual_toggle: isPaused ? 'PAUSE' : 'RESUME',
+                    paused_by: 'admin_command',
+                    paused_at: isPaused ? nowIso : null,
+                  },
+                  updated_at: nowIso,
+                },
+                { onConflict: 'tenant_id,user_identifier' }
+              );
+          }
         }
       }
       await inbox.refreshConversations();
@@ -882,7 +934,7 @@ export default function TeamChatTab({
             .from('whatsapp_connections')
             .select('instance_name, credential_ref')
             .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
-            .eq('status', 'open')
+            .or('status.eq.CONNECTED,status.eq.open,is_connected.eq.true')
             .maybeSingle();
 
           if (conn?.instance_name) {
@@ -974,7 +1026,7 @@ export default function TeamChatTab({
             .from('whatsapp_connections')
             .select('instance_name, credential_ref')
             .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
-            .eq('status', 'open')
+            .or('status.eq.CONNECTED,status.eq.open,is_connected.eq.true')
             .maybeSingle();
 
           if (conn?.instance_name) {
@@ -1105,7 +1157,7 @@ export default function TeamChatTab({
             .from('whatsapp_connections')
             .select('instance_name, credential_ref')
             .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
-            .eq('status', 'open')
+            .or('status.eq.CONNECTED,status.eq.open,is_connected.eq.true')
             .maybeSingle();
 
           if (conn?.instance_name) {
@@ -1251,7 +1303,7 @@ export default function TeamChatTab({
             .from('whatsapp_connections')
             .select('instance_name, credential_ref')
             .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
-            .eq('status', 'open')
+            .or('status.eq.CONNECTED,status.eq.open,is_connected.eq.true')
             .maybeSingle();
 
           if (conn?.instance_name && custPhone) {
@@ -1605,16 +1657,17 @@ export default function TeamChatTab({
               />
             </div>
 
-            {/* Filter Tabs Pills (Semua, Chat Saya, Belum Ditugaskan) */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+            {/* Filter Tabs Pills (Semua, Belum Dibaca, Follow-up, Paused) */}
+            <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-xl">
               <button
                 type="button"
                 onClick={() => setFilterTab('all')}
-                className={`flex-1 py-1 px-1.5 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   filterTab === 'all'
                     ? 'bg-white text-slate-900 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
+                title="Semua percakapan"
               >
                 <span>Semua</span>
                 <span className="text-[9px] px-1 rounded-full bg-slate-200/70 text-slate-600">
@@ -1624,33 +1677,88 @@ export default function TeamChatTab({
 
               <button
                 type="button"
-                onClick={() => setFilterTab('mine')}
-                className={`flex-1 py-1 px-1.5 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                  filterTab === 'mine'
-                    ? 'bg-white text-emerald-700 shadow-xs'
+                onClick={() => setFilterTab('unread')}
+                className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                  filterTab === 'unread'
+                    ? 'bg-white text-blue-700 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
+                title="Pesan belum dibaca"
               >
-                <span>Chat Saya</span>
-                <span className="text-[9px] px-1 rounded-full bg-emerald-100 text-emerald-700">
-                  {counts.mine}
+                <span>Unread</span>
+                <span
+                  className={`text-[9px] px-1 rounded-full ${
+                    counts.unread > 0 ? 'bg-blue-100 text-blue-700 font-extrabold' : 'bg-slate-200/70 text-slate-600'
+                  }`}
+                >
+                  {counts.unread}
                 </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setFilterTab('unassigned')}
-                className={`flex-1 py-1 px-1.5 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                  filterTab === 'unassigned'
+                onClick={() => setFilterTab('followup')}
+                className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                  filterTab === 'followup'
+                    ? 'bg-white text-purple-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Chat butuh follow up / hot leads"
+              >
+                <span>Follow-up</span>
+                <span className="text-[9px] px-1 rounded-full bg-purple-100 text-purple-700">
+                  {counts.followup}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFilterTab('paused')}
+                className={`py-1 px-1 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                  filterTab === 'paused'
                     ? 'bg-white text-amber-700 shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
+                title="Chat dengan bot dijeda / CS takeover"
               >
-                <span>Unassigned</span>
-                <span className="text-[9px] px-1 rounded-full bg-amber-100 text-amber-700">
-                  {counts.unassigned}
+                <span>Paused</span>
+                <span
+                  className={`text-[9px] px-1 rounded-full ${
+                    counts.paused > 0 ? 'bg-amber-100 text-amber-800 font-extrabold' : 'bg-slate-200/70 text-slate-600'
+                  }`}
+                >
+                  {counts.paused}
                 </span>
               </button>
+            </div>
+
+            {/* Sub-Filter Penugasan CS */}
+            <div className="flex items-center justify-between text-[10px] font-bold px-1 text-slate-400">
+              <span className="text-[9px] uppercase tracking-wider">Penugasan:</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setFilterTab(filterTab === 'mine' ? 'all' : 'mine')}
+                  className={`px-2 py-0.5 rounded-lg transition cursor-pointer border ${
+                    filterTab === 'mine'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : 'bg-white text-slate-500 border-slate-200 hover:text-slate-800'
+                  }`}
+                >
+                  Chat Saya ({counts.mine})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab(filterTab === 'unassigned' ? 'all' : 'unassigned')}
+                  className={`px-2 py-0.5 rounded-lg transition cursor-pointer border ${
+                    filterTab === 'unassigned'
+                      ? 'bg-amber-50 text-amber-700 border-amber-300'
+                      : 'bg-white text-slate-500 border-slate-200 hover:text-slate-800'
+                  }`}
+                >
+                  Unassigned ({counts.unassigned})
+                </button>
+              </div>
             </div>
           </div>
 
@@ -2212,7 +2320,30 @@ export default function TeamChatTab({
                             }`}
                           >
                             <span>{msg.time}</span>
-                            {!isCustomer && <CheckCheck className="w-3 h-3" />}
+                            {!isCustomer && (
+                              <span
+                                title={
+                                  msg.deliveryStatus === 'sending'
+                                    ? 'Mengirim...'
+                                    : msg.deliveryStatus === 'sent'
+                                    ? 'Terkirim (Sent)'
+                                    : msg.deliveryStatus === 'read'
+                                    ? 'Dibaca (Read)'
+                                    : 'Sampai (Delivered)'
+                                }
+                                className="inline-flex items-center"
+                              >
+                                {msg.deliveryStatus === 'sending' ? (
+                                  <Clock className="w-2.5 h-2.5 opacity-70 animate-pulse" />
+                                ) : msg.deliveryStatus === 'sent' ? (
+                                  <Check className="w-3 h-3 opacity-80" />
+                                ) : msg.deliveryStatus === 'read' ? (
+                                  <CheckCheck className="w-3 h-3 text-sky-400" />
+                                ) : (
+                                  <CheckCheck className="w-3 h-3 opacity-80" />
+                                )}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
