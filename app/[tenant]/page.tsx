@@ -1381,6 +1381,7 @@ export default function TenantStorefrontPage() {
             setIsCheckoutOpen(true);
           }}
           onOutboundClick={handleOutboundClick}
+          onAddToCart={(p, e) => addToCart(p, e)}
         />
 
         {/* MODAL CHECKOUT QRIS & WHATSAPP SYNC */}

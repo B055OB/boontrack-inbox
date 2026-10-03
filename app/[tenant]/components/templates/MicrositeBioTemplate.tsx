@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ArrowUpRight, ArrowRight, ShoppingBag, Sparkles, Download, QrCode, ExternalLink } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, ShoppingBag, Sparkles, Download, QrCode, ExternalLink, Plus } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
 import { sanitizeImageUrl } from '@/lib/image-utils';
@@ -342,6 +342,8 @@ interface MicrositeBioTemplateProps {
   }) => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onOutboundClick: (url: string, label: string) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onAddToCart?: (product: any, e: React.MouseEvent) => void;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -358,6 +360,7 @@ export default function MicrositeBioTemplate({
   chatEnabled,
   onInitiateCheckout,
   onOutboundClick,
+  onAddToCart,
 }: MicrositeBioTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
 
@@ -778,7 +781,47 @@ export default function MicrositeBioTemplate({
                       <ExternalLink className="w-3 h-3" />
                       <span>{ctaLabel}</span>
                     </a>
+                  ) : !isDigitalCatalog && onAddToCart ? (
+                    // Split-button untuk produk FOOD / PHYSICAL
+                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {/* Tombol + Keranjang */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          onAddToCart(item, e);
+                        }}
+                        title="Tambah ke Keranjang"
+                        className="bg-white/20 hover:bg-white/30 backdrop-blur-sm border border-white/30 text-[inherit] text-[10px] font-bold px-2 py-1.5 rounded-lg flex items-center gap-1 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>+ Keranjang</span>
+                      </button>
+
+                      {/* Tombol Pesan */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          trackInitiateCheckout({ name: item.name, price: Number(item.price), id: item.id });
+                          onInitiateCheckout({
+                            id: String(item.id),
+                            title: item.name,
+                            price: Number(item.price),
+                            download_url: item.download_url,
+                            link_digital: (item as any).link_digital,
+                            type: item.type,
+                            category: item.category,
+                            fulfillment_metadata: (item as any).fulfillment_metadata,
+                          });
+                        }}
+                        className={`shrink-0 flex items-center gap-1.5 cursor-pointer transition active:scale-95 ${themeStyles.productBadge}`}
+                      >
+                        <QrCode className="w-3 h-3" />
+                        <span>{Number(item.price) === 0 ? 'Klaim' : 'Pesan'}</span>
+                      </button>
+                    </div>
                   ) : (
+                    // Tombol tunggal untuk DIGITAL / akses
                     <button
                       type="button"
                       onClick={(e) => {
