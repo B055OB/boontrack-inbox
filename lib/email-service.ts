@@ -510,7 +510,7 @@ export async function sendOrderFulfillmentEmails(
 
     // 3. Dispatch Email to Merchant
     if (merchantEmail && merchantEmail.includes('@')) {
-      const dashboardUrl = `https://dashboard.boontrack.com/${encodeURIComponent(options.tenantSlug)}`;
+      const dashboardUrl = `https://shop.boontrack.com/${encodeURIComponent(options.tenantSlug)}`;
       const merchantHtml = buildMerchantAlertHtml({
         storeName,
         orderId: options.orderId,
@@ -709,7 +709,7 @@ export async function sendPaymentProofAlertToSeller(
       return { success: false, error: 'Merchant email not configured.' };
     }
 
-    const dashboardUrl = `https://dashboard.boontrack.com/${encodeURIComponent(options.tenantSlug)}?tab=orders&orderId=${encodeURIComponent(options.orderId)}`;
+    const dashboardUrl = `https://shop.boontrack.com/${encodeURIComponent(options.tenantSlug)}?tab=orders&orderId=${encodeURIComponent(options.orderId)}`;
     const subject = `Bukti Transfer Masuk - Segera verifikasi mutasi untuk Order #${options.orderId}`;
 
     const html = buildSellerProofAlertHtml({
@@ -814,7 +814,7 @@ export async function sendWelcomeActivationEmail(
   options: WelcomeActivationEmailOptions
 ): Promise<{ success: boolean; id?: string; error?: string }> {
   const storeUrl = `https://shop.boontrack.com/${options.slug}`;
-  const dashboardUrl = options.loginUrl || `https://dashboard.boontrack.com/${options.slug}`;
+  const dashboardUrl = options.loginUrl || `https://shop.boontrack.com/${options.slug}`;
   const owner = options.ownerName || 'Sahabat Merchant';
 
   const html = `<!DOCTYPE html>
@@ -933,7 +933,7 @@ export async function sendMagicLinkLoginEmail(
 export async function sendTrialExpiringWarningEmail(
   options: TrialExpiringWarningEmailOptions
 ): Promise<{ success: boolean; id?: string; error?: string }> {
-  const billingUrl = `https://dashboard.boontrack.com/${options.slug}?tab=billing`;
+  const billingUrl = `https://shop.boontrack.com/${options.slug}?tab=billing`;
   const owner = options.ownerName || 'Sahabat Merchant';
 
   const html = `<!DOCTYPE html>
@@ -996,7 +996,7 @@ export async function sendTrialExpiringWarningEmail(
 export async function sendTrialExpiredDay0Email(
   options: TrialExpiredDay0EmailOptions
 ): Promise<{ success: boolean; id?: string; error?: string }> {
-  const billingUrl = `https://dashboard.boontrack.com/${options.slug}?tab=billing`;
+  const billingUrl = `https://shop.boontrack.com/${options.slug}?tab=billing`;
   const owner = options.ownerName || 'Sahabat Merchant';
 
   const html = `<!DOCTYPE html>
@@ -1104,7 +1104,7 @@ export async function sendSaaSSubscriptionReceiptEmail(
       </table>
 
       <div style="text-align: center; margin-top: 24px;">
-        <a href="https://dashboard.boontrack.com/${options.slug}" style="display: inline-block; background: #0f172a; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 13px; font-weight: 700;">Buka Dashboard Toko &rarr;</a>
+        <a href="https://shop.boontrack.com/${options.slug}" style="display: inline-block; background: #0f172a; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 13px; font-weight: 700;">Buka Dashboard Toko &rarr;</a>
       </div>
     </div>
     <div style="background: #f8fafc; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0;">

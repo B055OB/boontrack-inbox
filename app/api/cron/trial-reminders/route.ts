@@ -93,7 +93,7 @@ async function handleTrialReminders(req: NextRequest) {
       const storeName = tenant.name || tenant.slug;
       const merchantEmail = tenant.metadata?.email;
       const merchantPhone = tenant.metadata?.whatsapp_number || tenant.metadata?.phone;
-      const dashboardUrl = `https://dashboard.boontrack.com/${tenant.slug}`;
+      const dashboardUrl = `https://shop.boontrack.com/`;
 
       let eventType: 'TRIAL_REMINDER_H3' | 'TRIAL_REMINDER_H1' | 'TRIAL_EXPIRED' | null = null;
       let notificationSubject = '';

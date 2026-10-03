@@ -207,7 +207,7 @@ export default function CockpitControlPlane() {
                     </td>
                     <td className="py-4 px-6 text-right space-x-2">
                       <a
-                        href={`https://dashboard.boontrack.com/${t.slug}`}
+                        href={`https://shop.boontrack.com/${t.slug}`}
                         target="_blank"
                         rel="noreferrer"
                         className="px-2.5 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600 text-slate-200"

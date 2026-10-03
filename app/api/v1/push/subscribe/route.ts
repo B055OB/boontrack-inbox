@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getPlatformBaseUrl } from '@/lib/platform-urls';
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,8 +32,8 @@ export async function POST(req: NextRequest) {
     const userAgent = req.headers.get('user-agent') || '';
     const origin =
       clientOrigin ||
-      (host.includes('dashboard.boontrack.com')
-        ? 'https://dashboard.boontrack.com'
+      (host.includes('dashboard.boontrack.com') || host.includes('shop.boontrack.com')
+        ? getPlatformBaseUrl()
         : `https://${host}`);
 
     const p256dh = subscription.keys?.p256dh || '';
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Push subscription successfully bound to dashboard.boontrack.com',
+      message: 'Push subscription successfully bound to BoonTrack platform',
       data,
     });
   } catch (err: any) {
@@ -96,6 +97,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     success: true,
     public_key: vapidPublicKey,
-    origin: 'https://dashboard.boontrack.com',
+    origin: getPlatformBaseUrl(),
   });
 }

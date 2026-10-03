@@ -178,6 +178,7 @@ export async function GET(
         microsite: metadata.microsite || { buttons: [] },
         rotator: metadata.rotator || null,
         total_omzet: metadata.total_omzet || null,
+        telegram_chat_id: metadata.telegram_chat_id || null,
       },
     });
   } catch (err: unknown) {
@@ -240,6 +241,7 @@ export async function PUT(
       shipping_config,
       lincah_config,
       shipping_settings,
+      telegram_chat_id,
     } = body;
 
     const supabase = getSupabase();
@@ -371,6 +373,7 @@ export async function PUT(
       ...(shipping_config !== undefined ? { shipping_config } : {}),
       ...(lincah_config !== undefined ? { lincah_config } : {}),
       ...(shipping_settings !== undefined ? { shipping_settings } : {}),
+      ...(telegram_chat_id !== undefined ? { telegram_chat_id: telegram_chat_id || null } : {}),
     };
 
     const { error: updateError } = await supabase

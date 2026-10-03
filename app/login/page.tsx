@@ -139,7 +139,7 @@ export default function MerchantLoginPage() {
         let dest = `/${cleanSlug}/dashboard`;
         if (typeof window !== 'undefined') {
           const isDashboardHost =
-            window.location.hostname === 'dashboard.boontrack.com' ||
+            window.location.hostname === 'shop.boontrack.com' ||
             window.location.hostname.startsWith('dashboard.');
           if (isDashboardHost) {
             dest = `/${cleanSlug}`;

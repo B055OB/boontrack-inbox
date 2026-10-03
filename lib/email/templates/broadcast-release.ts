@@ -65,8 +65,8 @@ export function buildBroadcastEmailHtml(payload: BroadcastEmailPayload): string 
   const features = payload.features && payload.features.length > 0 ? payload.features : DEFAULT_FEATURES;
 
   const dashboardBase = payload.tenantSlug
-    ? `https://dashboard.boontrack.com/${encodeURIComponent(payload.tenantSlug.trim())}`
-    : 'https://dashboard.boontrack.com';
+    ? `https://shop.boontrack.com/${encodeURIComponent(payload.tenantSlug.trim())}`
+    : 'https://shop.boontrack.com';
 
   const primaryCtaText = escapeHtml(payload.primaryCtaText || 'Buka Dashboard Toko Sekarang &rarr;').replace(/&amp;rarr;/g, '&rarr;');
   const primaryCtaUrl = payload.primaryCtaUrl || dashboardBase;
@@ -320,8 +320,8 @@ export function buildBroadcastEmailText(payload: BroadcastEmailPayload): string 
   const features = payload.features && payload.features.length > 0 ? payload.features : DEFAULT_FEATURES;
 
   const dashboardBase = payload.tenantSlug
-    ? `https://dashboard.boontrack.com/${encodeURIComponent(payload.tenantSlug.trim())}`
-    : 'https://dashboard.boontrack.com';
+    ? `https://shop.boontrack.com/${encodeURIComponent(payload.tenantSlug.trim())}`
+    : 'https://shop.boontrack.com';
 
   const primaryCtaText = payload.primaryCtaText || 'Buka Dashboard Toko Sekarang';
   const primaryCtaUrl = payload.primaryCtaUrl || dashboardBase;

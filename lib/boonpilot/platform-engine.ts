@@ -20,6 +20,7 @@ import {
   BoonPilotSenderTenant,
   resolveBoonPilotSender,
 } from './sender-resolver';
+import { getPlatformBaseUrl, getRegisterUrl } from '@/lib/platform-urls';
 
 export interface BoonPilotPlatformChatInput {
   senderPhone: string;
@@ -83,7 +84,7 @@ PERAN & TUGAS UTAMA (NON-MERCHANT):
    - Verifikasi pembayaran otomatis real-time (QRIS dinamis 0% MDR & transfer bank manual).
    - Single-Page Checkout instan tanpa pembeli perlu install aplikasi atau registrasi akun.
    - Agregator Kurir multi-ekspedisi BYOK (Lincah, Biteship, JNE, SiCepat, J&T).
-2. Memandu calon pengguna untuk mendaftar uji coba gratis ke https://dashboard.boontrack.com (atau https://dashboard.boontrack.com/register).
+2. Memandu calon pengguna untuk mendaftar uji coba gratis ke ${getPlatformBaseUrl()} (atau ${getRegisterUrl()}).
 3. Menganalisis gambar publik: Jika pengguna mengirimkan screenshot website atau materi onboarding, jelaskan fiturnya dengan ramah.
 
 PANDUAN ESKALASI & UPSELL:
@@ -94,7 +95,7 @@ PANDUAN ESKALASI & UPSELL:
 ATURAN MUTLAK KEAMANAN (STRICT SECURITY & ZERO-DATA-LEAKAGE):
 - DILARANG KERAS membocorkan data, transaksi, katalog, omset, atau nama pembeli dari toko privat tenant lain.
 - Jangan pernah mengarang data transaksi milik toko tertentu.
-- Selalu berikan panduan daftar uji coba resmi: https://dashboard.boontrack.com/register (atau https://dashboard.boontrack.com).`;
+- Selalu berikan panduan daftar uji coba resmi: ${getRegisterUrl()} (atau ${getPlatformBaseUrl()}).`;
 }
 
 /**
@@ -156,7 +157,7 @@ export async function processBoonPilotPlatformChat(
       `• Notifikasi order ringkas via WhatsApp\n` +
       `• Dukungan produk fisik & digital\n\n` +
       `Sangat pas untuk pemula yang ingin langsung mulai transaksi tanpa beban biaya besar!\n\n` +
-      `👉 *Daftar Uji Coba Sekarang:* https://dashboard.boontrack.com (atau https://dashboard.boontrack.com/register)`;
+      `👉 *Daftar Uji Coba Sekarang:* ${getPlatformBaseUrl()} (atau ${getRegisterUrl()})`;
 
     return {
       reply,
@@ -179,7 +180,7 @@ export async function processBoonPilotPlatformChat(
       `• Multi-Seat CS Inbox tanpa batas\n` +
       `• Koneksi Official WhatsApp Cloud API (WABA) & broadcast promo\n` +
       `• Prioritas server & kuota pesan tak terbatas\n\n` +
-      `👉 *Pelajari & Upgrade di Dashboard:* https://dashboard.boontrack.com`;
+      `👉 *Pelajari & Upgrade di Dashboard:* https://shop.boontrack.com`;
 
     return {
       reply,
@@ -311,7 +312,7 @@ export async function processBoonPilotPlatformChat(
     const reply =
       `Halo! Saya *BoonPilot*, Asisten AI resmi BoonTrack.\n\n` +
       `Untuk memulai uji coba gratis dan mendaftarkan toko baru di *BoonTrack*, silakan buka tautan resmi kami:\n\n` +
-      `👉 *Link Registrasi Toko:*\nhttps://dashboard.boontrack.com/register (atau https://dashboard.boontrack.com)\n\n` +
+      `👉 *Link Registrasi Toko:*\n${getRegisterUrl()} (atau ${getPlatformBaseUrl()})\n\n` +
       `*Langkah Pendaftaran:*\n` +
       `1. Masukkan nama lengkap, nomor WhatsApp, dan tentukan nama toko Anda.\n` +
       `2. Selesaikan aktivasi instan melalui kode WhatsApp.\n` +
@@ -337,7 +338,7 @@ export async function processBoonPilotPlatformChat(
       `   Paling diminati untuk pengiklan Meta & TikTok CAPI server-side, custom domain, dan 2 Seats CS Inbox.\n\n` +
       `3️⃣ *Paket Team Scale (Enterprise - Rp 499.000 / bln)*\n` +
       `   CS Inbox tanpa batas, integrasi WhatsApp Cloud API (WABA) resmi, dan broadcast promo.\n\n` +
-      `👉 *Daftar & Coba Sekarang:* https://dashboard.boontrack.com/register (atau https://dashboard.boontrack.com)`;
+      `👉 *Daftar & Coba Sekarang:* https://shop.boontrack.com/register (atau https://shop.boontrack.com)`;
     return {
       reply,
       role: 'GUEST',
@@ -354,7 +355,7 @@ export async function processBoonPilotPlatformChat(
       `💳 *QRIS Dinamis & Bank Otomatis*: Verifikasi pembayaran real-time 24 jam dengan integrasi QRIS dan transfer bank manual.\n` +
       `📲 *WhatsApp Commerce*: Notifikasi faktur dan update resi otomatis terkirim ke WhatsApp pembeli dan notifikasi penjualan ke seller.\n` +
       `🚚 *Agregator Kurir BYOK*: Cek ongkir otomatis multi-ekspedisi (JNE, SiCepat, J&T, Lion, POS) hingga kurir instan.\n\n` +
-      `👉 *Daftar Toko Gratis*: https://dashboard.boontrack.com/register (https://dashboard.boontrack.com)`;
+      `👉 *Daftar Toko Gratis*: ${getRegisterUrl()} (${getPlatformBaseUrl()})`;
     return {
       reply,
       role: 'GUEST',
@@ -369,7 +370,7 @@ export async function processBoonPilotPlatformChat(
       `Halo! Saya *BoonPilot*. Berikut *Layanan Pengiriman Terintegrasi BoonTrack:* 🚚\n\n` +
       `BoonTrack mendukung perhitungan ongkir real-time ke seluruh kecamatan di Indonesia melalui ekspedisi reguler (JNE, SiCepat, J&T, Lion Parcel, POS) serta kurir instan/sameday (Grab/Gojek).\n\n` +
       `Anda dapat menggunakan fitur BYOK (Bring Your Own Key) untuk menghubungkan akun ekspedisi Lincah atau Biteship langsung ke dashboard toko Anda.\n\n` +
-      `👉 *Daftar Toko Anda Sekarang:* https://dashboard.boontrack.com/register (https://dashboard.boontrack.com)`;
+      `👉 *Daftar Toko Anda Sekarang:* ${getRegisterUrl()} (${getPlatformBaseUrl()})`;
     return {
       reply,
       role: 'GUEST',
@@ -387,7 +388,7 @@ export async function processBoonPilotPlatformChat(
     `2️⃣ *Pilihan Paket Langganan* (Checkout Lite, Solo, Pro Scale, Team Scale)\n` +
     `3️⃣ *Setup Toko Terima Beres (DFY)* (Toko siap pakai tanpa pusing setup teknis)\n` +
     `4️⃣ *Cara Mendaftar Toko Baru (Panduan Uji Coba)*\n\n` +
-    `👉 *Daftar Toko Gratis*: https://dashboard.boontrack.com/register (https://dashboard.boontrack.com)`;
+    `👉 *Daftar Toko Gratis*: ${getRegisterUrl()} (${getPlatformBaseUrl()})`;
 
   return {
     reply: defaultGuestReply,

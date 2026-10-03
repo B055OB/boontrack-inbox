@@ -4,13 +4,16 @@
  *
  * Implements:
  * 1. Wake word / mention detection for groups vs private DM.
- * 2. Forwarding queries to the unified BoonPilot ConversationEngine pipeline (identical to WhatsApp).
- * 3. Outbound message formatting, chunking (4096 char limit), inline keyboard, and markdown fallback.
- * 4. Polling worker & Webhook update processor.
+ * 2. /start & /id command handlers — returns {chat_id} for dashboard binding.
+ * 3. Forwarding queries to the unified BoonPilot ConversationEngine pipeline (identical to WhatsApp).
+ * 4. Outbound message formatting, chunking (4096 char limit), inline keyboard, and markdown fallback.
+ * 5. sendTelegramNotification() — utility for server-side push notifications.
+ * 6. Polling worker & Webhook update processor.
  */
 
 import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
 import { ConversationEngine } from '@/lib/conversationEngine';
+import { getPlatformBaseUrl } from '@/lib/platform-urls';
 
 export function getTelegramBotToken(): string {
   return (
@@ -130,6 +133,56 @@ export async function sendTelegramMessage(
 }
 
 /**
+ * sendTelegramNotification — Utility untuk server-side push notification ke Telegram.
+ *
+ * Digunakan oleh:
+ * - Notifikasi transaksi order (pembayaran masuk, order baru)
+ * - Notifikasi komisi afiliasi
+ * - Alert trial expiring (H-1)
+ * - Notifikasi sistem platform lainnya
+ *
+ * @param chatId  Telegram chat_id pengguna (tersimpan di metadata.telegram_chat_id)
+ * @param message Pesan teks notifikasi (Markdown diperbolehkan)
+ * @returns       { ok: boolean; error?: string }
+ */
+export async function sendTelegramNotification(
+  chatId: string | number,
+  message: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (!chatId || !message) {
+    return { ok: false, error: 'chatId and message are required' };
+  }
+  const result = await sendTelegramMessage(chatId, message, { parseMode: 'Markdown' });
+  return { ok: result.ok, error: result.error };
+}
+
+/**
+ * setTelegramWebhook — Mendaftarkan URL webhook ke Telegram Bot API.
+ * Digunakan saat deploy production untuk menggantikan polling.
+ *
+ * @param webhookUrl URL lengkap endpoint webhook (contoh: https://shop.boontrack.com/api/webhooks/telegram)
+ */
+export async function setTelegramWebhook(
+  webhookUrl: string
+): Promise<{ ok: boolean; result?: any; error?: string }> {
+  const token = getTelegramBotToken();
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${token}/setWebhook`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: webhookUrl }),
+      }
+    );
+    const data = await res.json();
+    return { ok: Boolean(data.ok), result: data };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
  * Sends chat action (e.g. typing) to Telegram.
  */
 export async function sendTelegramChatAction(
@@ -191,6 +244,31 @@ export async function handleTelegramUpdate(
   if (!chatId || !rawText) {
     return { handled: false, reason: 'missing_chat_or_text' };
   }
+
+  // ── COMMAND HANDLER: /start, /id, /myid ──────────────────────────────────
+  // Jika user kirim /start, /id, atau /myid, balas dengan chat_id mereka
+  // agar dapat disalin ke Pengaturan Profil Dashboard BoonTrack.
+  if (
+    /^\/start(?:\s|$)/i.test(rawText) ||
+    /^\/id(?:\s|$)/i.test(rawText) ||
+    /^\/myid(?:\s|$)/i.test(rawText)
+  ) {
+    const replyText =
+      `Halo! ID Telegram kamu adalah: \`${chatId}\`\n\n` +
+      `Salin nomor ID di atas dan masukkan ke menu *Pengaturan Profil Toko* / *Dashboard Affiliate* untuk mengaktifkan notifikasi order dan komisi instan.`;
+
+    await sendTelegramMessage(chatId, replyText, { parseMode: 'Markdown' });
+
+    return {
+      handled: true,
+      chatId,
+      senderPhone: String(fromId),
+      reply: replyText,
+      role: 'COMMAND_HANDLER',
+      activeEngine: 'BUILTIN_COMMAND',
+    };
+  }
+  // ── END COMMAND HANDLER ───────────────────────────────────────────────────
 
   // 1. EVALUASI WAKE WORD / MENTION RULES:
   // - Grup: HANYA merespons jika pesan diawali/mengandung "boon", "@boon", atau "@boontrack_bot"
