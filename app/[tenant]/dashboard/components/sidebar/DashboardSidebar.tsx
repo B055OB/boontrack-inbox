@@ -1017,7 +1017,7 @@ export default function DashboardSidebar({
       {/* ======================================================== */}
       {/* 3. BOTTOM SECTION: BOONTRACK HUB LOGO & FOOTER (BAWAH)  */}
       {/* ======================================================== */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2">
+      <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2.5">
         {/* Tombol Install App / PWA Selalu Tampil di Sidebar Mobile & Desktop */}
         <PwaInstallPrompt
           tenantSlug={tenantSlug}
@@ -1027,22 +1027,23 @@ export default function DashboardSidebar({
           }}
         />
 
-        <div className="flex items-center gap-2.5 px-1.5 py-1">
+        <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl bg-white/60 border border-slate-200/50 shadow-2xs">
           <div className="w-8 h-8 shrink-0 flex items-center justify-center">
             <Image
               src="/logo-master.png"
               alt="BoonTrack"
               width={32}
               height={32}
-              className="w-full h-full object-contain"
+              priority
+              className="w-full h-full object-contain drop-shadow-2xs"
             />
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1 leading-none">
+          <div className="min-w-0 flex-1 flex flex-col justify-center">
+            <div className="flex items-center gap-1 leading-tight">
               <span className="text-xs font-black text-slate-900 tracking-tight">BoonTrack</span>
               <span className="text-xs font-extrabold text-blue-600">Shop</span>
             </div>
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mt-0.5">
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mt-0.5 leading-none">
               COMMERCE ENGINE
             </p>
           </div>

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import React from 'react';
@@ -6,6 +7,22 @@ type Props = {
   children: React.ReactNode;
   params: Promise<{ tenant: string }>;
 };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { tenant } = await params;
+  const cleanTenant = (tenant || '').toLowerCase().trim();
+  return {
+    title: `Dashboard Toko - ${cleanTenant} | BoonTrack Shop`,
+    description: `Merchant management dashboard for ${cleanTenant} on BoonTrack Commerce Engine.`,
+    icons: {
+      icon: [
+        { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+        { url: '/favicon.ico', sizes: 'any' },
+      ],
+      apple: '/apple-touch-icon.png',
+    },
+  };
+}
 
 const RESERVED_SLUGS = new Set([
   'login',

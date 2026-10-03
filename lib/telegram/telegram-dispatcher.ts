@@ -9,7 +9,7 @@
  */
 
 import { sendTelegramNotification } from '@/lib/telegram/boonpilot-telegram';
-import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
 
 export interface DispatchOrderTelegramParams {
   order: {
@@ -54,8 +54,25 @@ function nowWib(): string {
 }
 
 /**
+ * Mask buyer name according to §42.3:
+ * Format: "{NamaDepan} {HurufAwalBelakang}****". Contoh: "Siti Rahayu" -> "Siti R****"
+ */
+export function maskBuyerName(name: string): string {
+  const clean = (name || '').trim();
+  if (!clean) return 'Pelanggan';
+  const parts = clean.split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0].length <= 2 ? `${parts[0]}****` : `${parts[0].slice(0, 2)}****`;
+  }
+  const firstName = parts[0];
+  const secondInitial = parts[1][0] || '';
+  return `${firstName} ${secondInitial}****`;
+}
+
+/**
  * Dispatches an order alert to the tenant's Telegram chat/group,
  * with graceful fallback to BOONPILOT_TG_SELLER_CHAT_ID.
+ * Strictly enforces §42.2 and §42.3 privacy filtering and masking for group chats.
  */
 export async function dispatchOrderTelegramAlert(
   params: DispatchOrderTelegramParams
@@ -65,19 +82,29 @@ export async function dispatchOrderTelegramAlert(
     const supabase = supabaseClient || getSupabaseAdmin() || getSupabase();
 
     const tenantRef = (order.tenant_id || order.tenant_slug || '').trim();
+    let tenantData: any = null;
     let targetChatId: string | null = null;
     let resolvedTenantName: string = order.tenant_name || '';
 
     // 1. Query telegram_chat_id milik tenant terkait
     if (tenantRef && supabase) {
       try {
-        const { data: tenant } = await supabase
+        let tenantQuery = supabase
           .from('tenants')
-          .select('id, name, slug, telegram_chat_id, metadata')
-          .or(`id.eq.${tenantRef},slug.eq.${tenantRef}`)
-          .maybeSingle();
+          .select('id, name, slug, telegram_chat_id, metadata');
+
+        if (isValidUuid(tenantRef)) {
+          tenantQuery = tenantQuery.or(`id.eq.${tenantRef},slug.eq.${tenantRef}`);
+        } else if (typeof tenantQuery.ilike === 'function') {
+          tenantQuery = tenantQuery.ilike('slug', tenantRef);
+        } else {
+          tenantQuery = tenantQuery.eq('slug', tenantRef.toLowerCase());
+        }
+
+        const { data: tenant } = await tenantQuery.maybeSingle();
 
         if (tenant) {
+          tenantData = tenant;
           if (!resolvedTenantName) {
             resolvedTenantName = tenant.name || tenant.slug || '';
           }
@@ -101,6 +128,35 @@ export async function dispatchOrderTelegramAlert(
       return { dispatched: false, error: 'no_target_chat_id' };
     }
 
+    const isGroup = String(targetChatId).startsWith('-');
+
+    // 3. §42.2 & §42.3 — Fail-Safe Privacy Defaults & Filtering for Group Notifications
+    const DEFAULT_GROUP_CONFIG = {
+      notify_new_order: false,
+      notify_paid: true,
+      show_product_name: true,
+      show_price: false,
+      mask_buyer_name: true,
+      hide_buyer_contact: true,
+    };
+
+    const groupConfig = {
+      ...DEFAULT_GROUP_CONFIG,
+      ...(tenantData?.metadata?.telegram_group_config || {}),
+    };
+
+    if (isGroup) {
+      // Filter push alerts by event
+      if ((event === 'new_order' || event === 'order_pending') && !groupConfig.notify_new_order) {
+        console.log('[TELEGRAM DISPATCHER] Group notification for new_order is disabled by group config (§42.2). Skipped.');
+        return { dispatched: false, targetChatId, error: 'skipped_by_group_config' };
+      }
+      if ((event === 'payment_confirmed' || event === 'order_paid') && !groupConfig.notify_paid) {
+        console.log('[TELEGRAM DISPATCHER] Group notification for paid order is disabled by group config (§42.2). Skipped.');
+        return { dispatched: false, targetChatId, error: 'skipped_by_group_config' };
+      }
+    }
+
     const orderId = String(order.id || order.order_id || order.invoice_no || 'N/A');
     const storeName = resolvedTenantName || order.tenant_slug || order.tenant_id || 'BoonTrack Store';
     const productName = order.product_title || order.product_name || 'Pesanan Produk';
@@ -109,7 +165,22 @@ export async function dispatchOrderTelegramAlert(
     const paymentMethod = order.payment_method || 'QRIS Dinamis (Otomatis)';
     const buyerName = order.customer_name || order.buyer_name || 'Pelanggan';
     const buyerPhone = order.customer_phone || order.buyer_phone || '';
-    const buyerLine = buyerPhone ? `${buyerName} | ${buyerPhone}` : buyerName;
+
+    // Masking & privacy controls
+    let buyerDisplay = buyerName;
+    if (isGroup) {
+      if (groupConfig.mask_buyer_name) {
+        buyerDisplay = maskBuyerName(buyerName);
+      }
+      if (!groupConfig.hide_buyer_contact && buyerPhone) {
+        buyerDisplay = `${buyerDisplay} | ${buyerPhone}`;
+      }
+    } else {
+      buyerDisplay = buyerPhone ? `${buyerName} | ${buyerPhone}` : buyerName;
+    }
+
+    const showProduct = !isGroup || groupConfig.show_product_name;
+    const showPrice = !isGroup || groupConfig.show_price;
 
     let messageText = '';
 
@@ -119,10 +190,10 @@ export async function dispatchOrderTelegramAlert(
         `━━━━━━━━━━━━━━━\n` +
         `🏪 Toko: *${storeName}*\n` +
         `🧾 Invoice: #${orderId}\n` +
-        `📦 Produk: ${productName}\n` +
-        `💰 Tagihan: *${formattedAmount}*\n` +
+        (showProduct ? `📦 Produk: ${productName}\n` : '') +
+        (showPrice ? `💰 Tagihan: *${formattedAmount}*\n` : '') +
         `💳 Metode: ${paymentMethod}\n` +
-        `👤 Pembeli: ${buyerLine}\n` +
+        `👤 Pembeli: ${buyerDisplay}\n` +
         `🕒 Waktu: ${nowWib()}\n` +
         `━━━━━━━━━━━━━━━\n` +
         `👉 *Segera siapkan pesanan!* Customer sedang menunggu konfirmasi. 🚀`;
@@ -134,10 +205,10 @@ export async function dispatchOrderTelegramAlert(
         `━━━━━━━━━━━━━━━\n` +
         `🏪 Toko: *${storeName}*\n` +
         `🧾 Invoice: #${orderId}\n` +
-        `📦 Produk: ${productName}\n` +
-        `💰 Nominal Diterima: *${formattedAmount}*\n` +
+        (showProduct ? `📦 Produk: ${productName}\n` : '') +
+        (showPrice ? `💰 Nominal Diterima: *${formattedAmount}*\n` : '') +
         `💳 Via: ${paymentMethod}\n` +
-        `👤 Pembeli: ${buyerLine}\n` +
+        `👤 Pembeli: ${buyerDisplay}\n` +
         `${refLine}` +
         `🕒 Waktu: ${nowWib()}\n` +
         `━━━━━━━━━━━━━━━\n` +

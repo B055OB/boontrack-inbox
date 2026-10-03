@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { getSupabaseAdmin, isValidUuid } from '@/lib/supabaseClient';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -47,11 +47,20 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     // 1. Pastikan tenant ada (cari berdasarkan slug atau id)
-    const { data: tenant, error: fetchErr } = await supabase
+    const cleanRef = tenantRef.trim();
+    let tenantQuery = supabase
       .from('tenants')
-      .select('id, name, slug, telegram_chat_id, metadata')
-      .or(`slug.eq.${tenantRef},id.eq.${tenantRef}`)
-      .maybeSingle();
+      .select('id, name, slug, telegram_chat_id, metadata');
+
+    if (isValidUuid(cleanRef)) {
+      tenantQuery = tenantQuery.or(`id.eq.${cleanRef},slug.eq.${cleanRef}`);
+    } else if (typeof tenantQuery.ilike === 'function') {
+      tenantQuery = tenantQuery.ilike('slug', cleanRef);
+    } else {
+      tenantQuery = tenantQuery.eq('slug', cleanRef.toLowerCase());
+    }
+
+    const { data: tenant, error: fetchErr } = await tenantQuery.maybeSingle();
 
     if (fetchErr) {
       return NextResponse.json(
@@ -67,16 +76,40 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const cleanChatId = telegram_chat_id.trim();
+
+    // §42.5 — Tenant Isolation: Satu grup Telegram hanya dapat terhubung ke satu tenant.
+    // Jika merchant lain mencoba menghubungkan grup yang sama, tolak dengan 409 Conflict.
+    if (cleanChatId.startsWith('-')) {
+      const { data: conflictTenant } = await supabase
+        .from('tenants')
+        .select('id, name, slug')
+        .eq('telegram_chat_id', cleanChatId)
+        .neq('id', tenant.id)
+        .maybeSingle();
+
+      if (conflictTenant) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Grup Telegram ini sudah terhubung dengan toko "${conflictTenant.name || conflictTenant.slug}". Satu grup Telegram hanya dapat terhubung ke satu toko.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     // 2. Simpan telegram_chat_id ke kolom tabel & metadata JSONB
     const updatedMetadata = {
       ...(tenant.metadata || {}),
-      telegram_chat_id: telegram_chat_id.trim(),
+      telegram_chat_id: cleanChatId,
+      ...(body.telegram_group_config !== undefined ? { telegram_group_config: body.telegram_group_config } : {}),
     };
 
     const { error: updateErr } = await supabase
       .from('tenants')
       .update({
-        telegram_chat_id: telegram_chat_id.trim(),
+        telegram_chat_id: cleanChatId,
         metadata: updatedMetadata,
       })
       .eq('id', tenant.id);
@@ -131,11 +164,20 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
-    const { data: tenant, error } = await supabase
+    const cleanParam = tenantParam.trim();
+    let query = supabase
       .from('tenants')
-      .select('id, name, slug, telegram_chat_id, metadata')
-      .or(`slug.eq.${tenantParam},id.eq.${tenantParam}`)
-      .maybeSingle();
+      .select('id, name, slug, telegram_chat_id, metadata');
+
+    if (isValidUuid(cleanParam)) {
+      query = query.or(`id.eq.${cleanParam},slug.eq.${cleanParam}`);
+    } else if (typeof query.ilike === 'function') {
+      query = query.ilike('slug', cleanParam);
+    } else {
+      query = query.eq('slug', cleanParam.toLowerCase());
+    }
+
+    const { data: tenant, error } = await query.maybeSingle();
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -146,6 +188,7 @@ export async function GET(req: NextRequest) {
     }
 
     const chatId = tenant.telegram_chat_id || tenant.metadata?.telegram_chat_id || null;
+    const groupConfig = tenant.metadata?.telegram_group_config || null;
 
     return NextResponse.json({
       success: true,
@@ -153,6 +196,7 @@ export async function GET(req: NextRequest) {
       slug: tenant.slug,
       tenant_name: tenant.name,
       telegram_chat_id: chatId,
+      telegram_group_config: groupConfig,
       is_linked: Boolean(chatId),
     });
   } catch (err: unknown) {

@@ -179,6 +179,7 @@ export async function GET(
         rotator: metadata.rotator || null,
         total_omzet: metadata.total_omzet || null,
         telegram_chat_id: tenantRow.telegram_chat_id || metadata.telegram_chat_id || null,
+        telegram_group_config: metadata.telegram_group_config || null,
       },
     });
   } catch (err: unknown) {
@@ -242,6 +243,7 @@ export async function PUT(
       lincah_config,
       shipping_settings,
       telegram_chat_id,
+      telegram_group_config,
     } = body;
 
     const supabase = getSupabase();
@@ -374,6 +376,9 @@ export async function PUT(
       ...(lincah_config !== undefined ? { lincah_config } : {}),
       ...(shipping_settings !== undefined ? { shipping_settings } : {}),
       ...(telegram_chat_id !== undefined ? { telegram_chat_id: telegram_chat_id || null } : {}),
+      ...(telegram_group_config !== undefined || body.telegram_group_config !== undefined
+        ? { telegram_group_config: telegram_group_config ?? body.telegram_group_config }
+        : {}),
     };
 
     const updateFields: Record<string, any> = {
@@ -476,6 +481,8 @@ export async function PUT(
           logo_url !== undefined
             ? logo_url
             : (existing.metadata?.logo_url || null),
+        telegram_group_config: updatedMetadata.telegram_group_config || null,
+        telegram_chat_id: updateFields.telegram_chat_id ?? (existing.telegram_chat_id || null),
       },
     });
   } catch (err: unknown) {

@@ -3328,4 +3328,98 @@ Ekosistem komunikasi email BoonTrack diatur oleh standar arsitektur deterministi
    - Wajib menggunakan logo resmi transparan BoonTrack (`https://shop.boontrack.com/logo-horizontal.png`).
    - Diproses melalui background worker dengan pembagian chunking dan jeda minimal 150ms antar-pengiriman (*rate-limit protection*) guna mencegah *spam throttling* dari penyedia mailbox (Google Workspace, Yahoo, Microsoft 365).
 
+---
 
+## 41. Telegram Alert Manager — Arsitektur UI & Data Flow
+
+Komponen `TelegramAlertManager.tsx` adalah antarmuka sentralisasi konfigurasi notifikasi Telegram per-tenant di dalam dashboard merchant.
+
+### 41.1 Dua Mode Koneksi
+
+| Mode | Mekanisme | Target Audience |
+| :--- | :--- | :--- |
+| **Opsi 1: Personal (1-Klik)** | Deep link `t.me/boonshop_bot?start=link_{tenantId}` membuka Telegram dan mengautentikasi akun merchant secara otomatis. Tidak ada token bot yang perlu dikelola merchant. | Pemilik toko tunggal |
+| **Opsi 2: Group Chat ID** | Merchant memasukkan ID grup Telegram (format: `-100xxxxxxx`). Bot `@boonshop_bot` harus diundang dan dijadikan admin grup tersebut. | Tim operasional / karyawan |
+
+### 41.2 Endpoint Backend
+
+| Method | Endpoint | Fungsi |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/notifications/telegram-link?slug={slug}` | Ambil `telegram_chat_id`, `tenant_id`, dan `telegram_group_config` dari Supabase. |
+| `POST` | `/api/v1/notifications/telegram-link` | Simpan `telegram_chat_id` baru ke kolom `telegram_chat_id` tenant. |
+| `PUT` | `/api/v1/tenants/{slug}/settings` | Simpan field generik (termasuk `telegram_group_config` dan `telegram_chat_id: ''` untuk disconnect). |
+
+### 41.3 Aturan Tampilan Checkbox
+
+- Blok "Pengaturan Privasi Notifikasi Grup" **HANYA muncul** apabila field `groupChatIdInput` tidak kosong (artinya merchant telah mengisi Group Chat ID).
+- Jika Group Chat ID dihapus/dikosongkan, blok konfigurasi tersembunyi secara otomatis.
+
+---
+
+## 42. Telegram Community Engine & Dual-Trigger Protocol (ADR 2026-10-03)
+
+### 42.1 Konsep Arsitektur
+
+Telegram Community Engine memisahkan dua jenis interaksi bot dalam satu grup:
+
+1. **Notifikasi Unidireksional (Push Alert)**: BoonTrack mengirim alert real-time ke grup ketika terjadi transaksi (order baru, pembayaran lunas). Difilter oleh `metadata.telegram_group_config`.
+2. **Dual-Trigger Conversational (Mention-Based)**: Anggota grup dapat mem-mention bot untuk memicu aksi komersial:
+   - **`@boon`** → Trigger referral / affiliate
+   - **`@{slug}`** → Trigger etalase interaktif toko (katalog produk)
+
+### 42.2 Skema `metadata.telegram_group_config`
+
+Disimpan di kolom `metadata` (JSONB) tabel `tenants` di Supabase. **DILARANG membaca dari sumber lain.**
+
+```json
+{
+  "telegram_group_config": {
+    "notify_new_order": false,
+    "notify_paid": true,
+    "show_product_name": true,
+    "show_price": false,
+    "mask_buyer_name": true,
+    "hide_buyer_contact": true
+  }
+}
+```
+
+| Field | Default | Keterangan |
+| :--- | :---: | :--- |
+| `notify_new_order` | `false` | Kirim alert ke grup saat order baru masuk (status Pending/Belum Bayar). |
+| `notify_paid` | `true` | Kirim alert ke grup saat pembayaran terkonfirmasi (PAID/Verified). |
+| `show_product_name` | `true` | Sertakan nama produk/layanan yang dibeli di dalam pesan notifikasi. |
+| `show_price` | `false` | Sertakan nilai nominal transaksi (Rp) di dalam pesan notifikasi. |
+| `mask_buyer_name` | `true` | Sensor nama pembeli; format: `"Budi S****"` (nama depan + sensor sisa). |
+| `hide_buyer_contact` | `true` | Sembunyikan nomor HP pembeli dari pesan notifikasi grup. |
+
+### 42.3 Aturan Privasi Grup (Non-Negotiable)
+
+1. **Fail-Safe Privacy Default**: Bila `telegram_group_config` tidak ditemukan di `metadata`, sistem WAJIB menggunakan nilai default tabel di §42.2 (bukan membaca dari sumber lain atau menampilkan semua data).
+2. **Sensor Nama**: Format masking nama pembeli adalah `"{NamaDepan} {HurufAwalBelakang}****"`. Contoh: `"Siti Rahayu"` → `"Siti R****"`.
+3. **Zero Data Leak**: Nomor HP dan data kontak pembeli **tidak boleh** muncul di pesan grup dalam keadaan apapun apabila `hide_buyer_contact: true`.
+
+### 42.4 Dual-Trigger Protocol — Spesifikasi Bot
+
+#### Trigger 1: `@boon` (Referral / Affiliate Engine)
+
+- **Pemicu**: Anggota grup mengetik pesan yang mengandung mention `@boon` beserta nama toko, misal: `@boon onlineboost`.
+- **Respons Bot**: Bot membalas dengan tautan afiliasi personal anggota yang mem-mention, mencakup:
+  - Link storefront toko yang dimaksud: `https://shop.boontrack.com/{slug}?ref={referralCode}`
+  - Komisi afiliasi yang berlaku (jika merchant mengaktifkan program afiliasi).
+- **Aturan**: Bot WAJIB membaca `slug` dari database secara dinamis. DILARANG hardcode daftar `ALLOWED_SLUGS`.
+
+#### Trigger 2: `@{slug}` (Etalase Interaktif)
+
+- **Pemicu**: Anggota grup mengetik mention yang cocok dengan slug toko terdaftar, misal: `@onlineboost`.
+- **Respons Bot**: Bot membalas dengan preview etalase mini toko tersebut:
+  - Nama toko (dari `tenants.name`)
+  - 3 produk terlaris/terbaru (dari `tenants.metadata.products`)
+  - Tombol inline keyboard: `[🛒 Buka Toko] [📦 Lihat Produk]`
+- **Aturan**: Slug matching wajib berbasis query database real-time. Produk yang ditampilkan adalah produk aktif dari `metadata.products`, **bukan dummy data**.
+
+### 42.5 Keamanan & Isolasi Tenant
+
+- **Bot ID Validation**: Bot `@boonshop_bot` hanya memproses pesan dari grup yang `chat_id`-nya terdaftar di kolom `telegram_chat_id` salah satu tenant. Pesan dari grup tidak terdaftar di-drop tanpa respons.
+- **Rate Limit**: Maks 1 trigger respons per anggota per 30 detik per grup untuk mencegah spam.
+- **Tenant Isolation**: Satu grup hanya dapat terhubung ke **satu** tenant. Jika merchant lain mencoba mendaftarkan grup yang sama, sistem mengembalikan error `409 Conflict`.

@@ -16,6 +16,7 @@ import {
   Zap,
   Info,
   Radio,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface TelegramAlertManagerProps {
@@ -31,6 +32,7 @@ export default function TelegramAlertManager({
 }: TelegramAlertManagerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [telegramChatId, setTelegramChatId] = useState<string | null>(null);
   const [groupChatIdInput, setGroupChatIdInput] = useState('');
@@ -38,34 +40,104 @@ export default function TelegramAlertManager({
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // §42 — Granular privacy config for group notifications
+  const [groupConfig, setGroupConfig] = useState({
+    notify_new_order: false,       // Notifikasi Order Baru (Pending/Belum Bayar)
+    notify_paid: true,             // Notifikasi Pembayaran Lunas (PAID/Verified)
+    show_product_name: true,       // Tampilkan Nama Produk
+    show_price: false,             // Tampilkan Nominal / Harga Transaksi
+    mask_buyer_name: true,         // Sensor Nama Pembeli
+    hide_buyer_contact: true,      // Sembunyikan Kontak / Nomor HP Pembeli
+  });
+
   const botUsername = 'boonshop_bot';
   const deepLinkTarget = tenantId || tenantSlug;
   const connectTelegramUrl = `https://t.me/${botUsername}?start=link_${encodeURIComponent(deepLinkTarget)}`;
 
-  const fetchStatus = useCallback(async () => {
-    setIsLoading(true);
+  const fetchStatus = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
-      const res = await fetch(`/api/v1/notifications/telegram-link?slug=${encodeURIComponent(tenantSlug)}`);
+      // 1. Primary query: /api/v1/notifications/telegram-link
+      const res = await fetch(`/api/v1/notifications/telegram-link?slug=${encodeURIComponent(tenantSlug)}`, {
+        cache: 'no-store',
+      });
       const data = await res.json();
-      if (data.success) {
-        setTelegramChatId(data.telegram_chat_id || null);
+      if (data.success && data.telegram_chat_id) {
+        setTelegramChatId(data.telegram_chat_id);
         if (data.tenant_id) {
           setTenantId(data.tenant_id);
         }
-        if (data.telegram_chat_id && String(data.telegram_chat_id).startsWith('-')) {
+        if (String(data.telegram_chat_id).startsWith('-')) {
           setGroupChatIdInput(data.telegram_chat_id);
         }
+        // §42 — Load persisted group privacy config from metadata
+        if (data.telegram_group_config && typeof data.telegram_group_config === 'object') {
+          setGroupConfig((prev) => ({ ...prev, ...data.telegram_group_config }));
+        }
+        return;
+      }
+
+      // 2. Secondary fallback: /api/v1/tenants/{tenantSlug}/settings
+      const settingsRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        cache: 'no-store',
+      });
+      const settingsData = await settingsRes.json();
+      if (settingsData.success && settingsData.settings) {
+        const s = settingsData.settings;
+        const tgId = s.telegram_chat_id || s.metadata?.telegram_chat_id || null;
+        setTelegramChatId(tgId);
+        if (tgId && String(tgId).startsWith('-')) {
+          setGroupChatIdInput(tgId);
+        }
+        const cfg = s.telegram_group_config || s.metadata?.telegram_group_config;
+        if (cfg && typeof cfg === 'object') {
+          setGroupConfig((prev) => ({ ...prev, ...cfg }));
+        }
+      } else if (data.success) {
+        setTelegramChatId(data.telegram_chat_id || null);
+        if (data.tenant_id) setTenantId(data.tenant_id);
       }
     } catch (err: any) {
       console.warn('[TelegramAlertManager] Fetch error:', err);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [tenantSlug]);
 
+  // 1. Initial fetch on mount
   useEffect(() => {
-    fetchStatus();
+    fetchStatus(false);
   }, [fetchStatus]);
+
+  // 2. Revalidate on window focus & document visibility change (user returns from Telegram)
+  useEffect(() => {
+    const handleRevalidate = () => {
+      if (document.visibilityState === 'visible') {
+        fetchStatus(true);
+      }
+    };
+
+    window.addEventListener('focus', handleRevalidate);
+    document.addEventListener('visibilitychange', handleRevalidate);
+
+    return () => {
+      window.removeEventListener('focus', handleRevalidate);
+      document.removeEventListener('visibilitychange', handleRevalidate);
+    };
+  }, [fetchStatus]);
+
+  // 3. Lightweight auto-poll while status is not connected (every 3s when tab is active)
+  useEffect(() => {
+    if (telegramChatId) return;
+
+    const pollTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchStatus(true);
+      }
+    }, 3000);
+
+    return () => clearInterval(pollTimer);
+  }, [telegramChatId, fetchStatus]);
 
   const showNotice = (type: 'success' | 'error', text: string) => {
     setFeedback({ type, text });
@@ -104,6 +176,28 @@ export default function TelegramAlertManager({
       showNotice('error', err.message || 'Terjadi kesalahan sistem.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // §42 — Save granular group privacy config to metadata.telegram_group_config
+  const handleSaveGroupConfig = async () => {
+    setIsSavingConfig(true);
+    try {
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_group_config: groupConfig }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showNotice('success', 'Pengaturan privasi notifikasi grup berhasil disimpan!');
+      } else {
+        showNotice('error', data.error || 'Gagal menyimpan konfigurasi privasi.');
+      }
+    } catch (err: any) {
+      showNotice('error', err.message || 'Terjadi kesalahan sistem.');
+    } finally {
+      setIsSavingConfig(false);
     }
   };
 
@@ -188,7 +282,7 @@ export default function TelegramAlertManager({
 
           <button
             type="button"
-            onClick={fetchStatus}
+            onClick={() => fetchStatus(false)}
             disabled={isLoading}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-medium backdrop-blur-xs border border-white/20 transition cursor-pointer"
           >
@@ -366,6 +460,123 @@ export default function TelegramAlertManager({
             </div>
           </div>
         </div>
+
+        {/* §42 — Granular Privacy Checkbox Config (visible when group chat ID is set) */}
+        {groupChatIdInput && (
+          <div className="pt-5 border-t border-slate-100">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+                <SlidersHorizontal className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Pengaturan Privasi Notifikasi Grup</h3>
+                <p className="text-[11px] text-slate-500">Kendalikan informasi apa yang tampil di pesan grup komunitas Anda.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {([
+                {
+                  key: 'notify_new_order' as const,
+                  label: 'Notifikasi Order Baru',
+                  desc: 'Pending / Belum Bayar',
+                  defaultOff: true,
+                  color: 'amber',
+                },
+                {
+                  key: 'notify_paid' as const,
+                  label: 'Notifikasi Pembayaran Lunas',
+                  desc: 'PAID / Verified',
+                  defaultOff: false,
+                  color: 'emerald',
+                },
+                {
+                  key: 'show_product_name' as const,
+                  label: 'Tampilkan Nama Produk',
+                  desc: 'Nama item yang dibeli',
+                  defaultOff: false,
+                  color: 'sky',
+                },
+                {
+                  key: 'show_price' as const,
+                  label: 'Tampilkan Nominal / Harga',
+                  desc: 'Nilai transaksi dalam rupiah',
+                  defaultOff: true,
+                  color: 'orange',
+                },
+                {
+                  key: 'mask_buyer_name' as const,
+                  label: 'Sensor Nama Pembeli',
+                  desc: 'Contoh: "Budi S****"',
+                  defaultOff: false,
+                  color: 'violet',
+                },
+                {
+                  key: 'hide_buyer_contact' as const,
+                  label: 'Sembunyikan Kontak Pembeli',
+                  desc: 'Nomor HP tidak ditampilkan',
+                  defaultOff: false,
+                  color: 'violet',
+                },
+              ] as const).map(({ key, label, desc, defaultOff, color }) => (
+                <label
+                  key={key}
+                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition select-none ${
+                    groupConfig[key]
+                      ? 'bg-indigo-50 border-indigo-300'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="relative flex-shrink-0 mt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={groupConfig[key]}
+                      onChange={(e) =>
+                        setGroupConfig((prev) => ({ ...prev, [key]: e.target.checked }))
+                      }
+                      className="sr-only"
+                    />
+                    <div
+                      className={`w-4.5 h-4.5 rounded flex items-center justify-center border-2 transition ${
+                        groupConfig[key]
+                          ? 'bg-indigo-600 border-indigo-600'
+                          : 'bg-white border-slate-300'
+                      }`}
+                    >
+                      {groupConfig[key] && (
+                        <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                      )}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-800 leading-snug">{label}</div>
+                    <div className="text-[11px] text-slate-500 leading-tight mt-0.5">{desc}</div>
+                    {defaultOff && !groupConfig[key] && (
+                      <span className="inline-block mt-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                        Default: Nonaktif
+                      </span>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <p className="text-[11px] text-slate-500 leading-relaxed max-w-sm">
+                Konfigurasi ini tersimpan di <code className="font-mono bg-slate-100 px-1 rounded">metadata.telegram_group_config</code> dan dibaca secara real-time oleh bot saat mengirim notifikasi ke grup.
+              </p>
+              <button
+                type="button"
+                onClick={handleSaveGroupConfig}
+                disabled={isSavingConfig}
+                className="flex-shrink-0 inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition cursor-pointer disabled:opacity-50"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                {isSavingConfig ? 'Menyimpan...' : 'Simpan Konfigurasi'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Disconnect Option if Connected */}
         {isConnected && (

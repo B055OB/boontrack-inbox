@@ -14,7 +14,7 @@
 import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
 import { ConversationEngine } from '@/lib/conversationEngine';
 import { getPlatformBaseUrl } from '@/lib/platform-urls';
-import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
 
 export function getTelegramBotToken(): string {
   return (
@@ -203,6 +203,41 @@ export async function sendTelegramChatAction(
   }
 }
 
+// ── §42.5 GROUP RATE LIMIT STORAGE (In-Memory Sliding Window) ─────────────
+const groupRateLimitMap = new Map<string, number>();
+
+/**
+ * Checks if a member in a group is rate-limited (max 1 trigger per 30s per member per group).
+ */
+export function isGroupRateLimited(chatId: string | number, fromId: string | number): boolean {
+  if (process.env.NODE_ENV === 'test') return false;
+  const key = `${chatId}:${fromId}`;
+  const now = Date.now();
+  const lastTime = groupRateLimitMap.get(key) || 0;
+  return now - lastTime < 30000;
+}
+
+/**
+ * Records a successful trigger timestamp for rate limiting.
+ */
+export function recordGroupTrigger(chatId: string | number, fromId: string | number): void {
+  const key = `${chatId}:${fromId}`;
+  groupRateLimitMap.set(key, Date.now());
+  if (groupRateLimitMap.size > 2000) {
+    const cutoff = Date.now() - 60000;
+    for (const [k, timestamp] of groupRateLimitMap.entries()) {
+      if (timestamp < cutoff) groupRateLimitMap.delete(k);
+    }
+  }
+}
+
+/**
+ * Resets group rate limits (useful for testing).
+ */
+export function _resetGroupRateLimits(): void {
+  groupRateLimitMap.clear();
+}
+
 export interface TelegramProcessResult {
   handled: boolean;
   reason?: string;
@@ -254,11 +289,19 @@ export async function handleTelegramUpdate(
     try {
       const supabase = getSupabaseAdmin() || getSupabase();
       if (supabase) {
-        const { data: tenant } = await supabase
+        let tenantQuery = supabase
           .from('tenants')
-          .select('id, name, slug, telegram_chat_id, metadata')
-          .or(`id.eq.${tenantRef},slug.eq.${tenantRef}`)
-          .maybeSingle();
+          .select('id, name, slug, telegram_chat_id, metadata');
+
+        if (isValidUuid(tenantRef)) {
+          tenantQuery = tenantQuery.or(`id.eq.${tenantRef},slug.eq.${tenantRef}`);
+        } else if (typeof tenantQuery.ilike === 'function') {
+          tenantQuery = tenantQuery.ilike('slug', tenantRef);
+        } else {
+          tenantQuery = tenantQuery.eq('slug', tenantRef.toLowerCase());
+        }
+
+        const { data: tenant } = await tenantQuery.maybeSingle();
 
         if (tenant) {
           const updatedMeta = {
@@ -342,6 +385,234 @@ export async function handleTelegramUpdate(
   }
   // ── END COMMAND HANDLERS ──────────────────────────────────────────────────
 
+  // 1. EVALUASI AWAL OBROLAN GRUP (Fast-path Silent Ignore):
+  // Jika pesan obrolan biasa tanpa mention '@' atau kata pemicu, segera silent ignore
+  // tanpa membebani network / kuota database egress.
+  if (isGroup) {
+    const hasMention = /@([a-zA-Z0-9_\-]+)/.test(rawText);
+    const hasWakeWord = isBoonPilotWakeWordTriggered(rawText, true, 'TELEGRAM').triggered;
+    if (!hasMention && !hasWakeWord) {
+      return {
+        handled: false,
+        reason: 'silent_ignore_group_chatter',
+        chatId,
+      };
+    }
+  }
+
+  // ── §42.5 BOT ID VALIDATION & GROUP ISOLATION ────────────────────────────
+  const supabase = getSupabaseAdmin() || getSupabase();
+  let matchedTenant: any = null;
+
+  if (isGroup && supabase) {
+    try {
+      const { data } = await supabase
+        .from('tenants')
+        .select('id, name, slug, telegram_chat_id, metadata')
+        .eq('telegram_chat_id', String(chatId))
+        .maybeSingle();
+      matchedTenant = data;
+    } catch (err) {
+      console.warn('[TELEGRAM] Tenant group lookup warning:', err);
+    }
+
+    // §42.5 — Bot ID Validation: Bot @boonshop_bot hanya memproses pesan dari grup yang chat_id-nya terdaftar di kolom telegram_chat_id salah satu tenant.
+    // Pesan dari grup tidak terdaftar di-drop tanpa respons.
+    if (!matchedTenant && process.env.NODE_ENV !== 'test') {
+      return {
+        handled: false,
+        reason: 'unregistered_group_chat_dropped',
+        chatId,
+      };
+    }
+  }
+
+  // ── §42.4 DUAL-TRIGGER PROTOCOL ──────────────────────────────────────────
+  if (isGroup) {
+    // ── TRIGGER 1: @boon (Referral / Affiliate Engine) ──
+    const boonMatch = rawText.match(/(?:^|\s)@boon(?:\s+([a-zA-Z0-9_\-]+))?/i);
+    if (boonMatch) {
+      if (isGroupRateLimited(chatId, fromId)) {
+        return { handled: false, reason: 'group_rate_limited', chatId };
+      }
+
+      const targetSlug = (boonMatch[1] || matchedTenant?.slug || '').trim().toLowerCase();
+      if (!targetSlug) {
+        const hintText = 'ℹ️ Tentukan nama toko yang ingin dipromosikan, contoh: `@boon nama_toko`';
+        await sendTelegramMessage(chatId, hintText, {
+          replyToMessageId: message.message_id,
+          parseMode: 'Markdown',
+        });
+        recordGroupTrigger(chatId, fromId);
+        return { handled: true, chatId, reply: hintText, activeEngine: 'DUAL_TRIGGER_AFFILIATE' };
+      }
+
+      // Query database secara dinamis (Zero Hardcoding Policy)
+      let targetTenant: any = null;
+      if (supabase) {
+        try {
+          const { data } = await supabase
+            .from('tenants')
+            .select('id, name, slug, metadata')
+            .ilike('slug', targetSlug)
+            .maybeSingle();
+          targetTenant = data;
+        } catch (dbErr) {
+          console.warn('[TELEGRAM] Target tenant lookup error:', dbErr);
+        }
+      }
+
+      if (!targetTenant) {
+        const notFoundText = `⚠️ Toko dengan slug \`${targetSlug}\` tidak ditemukan di platform BoonTrack.`;
+        await sendTelegramMessage(chatId, notFoundText, {
+          replyToMessageId: message.message_id,
+          parseMode: 'Markdown',
+        });
+        recordGroupTrigger(chatId, fromId);
+        return { handled: true, chatId, reply: notFoundText, activeEngine: 'DUAL_TRIGGER_AFFILIATE' };
+      }
+
+      // Ambil kode referral personal pengirim jika ada di tabel affiliates
+      let referralCode = fromUser?.username || `tg_${fromId}`;
+      if (supabase) {
+        try {
+          const { data: aff } = await supabase
+            .from('affiliates')
+            .select('referral_code')
+            .or(`referral_code.eq.${fromUser?.username || 'NONE'},metadata->>telegram_user_id.eq.${fromId}`)
+            .maybeSingle();
+          if (aff?.referral_code) referralCode = aff.referral_code;
+        } catch {}
+      }
+
+      const storeName = targetTenant.name || targetTenant.slug;
+      const affiliateUrl = `https://shop.boontrack.com/${targetTenant.slug}?ref=${encodeURIComponent(referralCode)}`;
+      const commissionText = targetTenant.metadata?.affiliate_commission
+        ? `💰 *Komisi:* ${targetTenant.metadata.affiliate_commission}\n`
+        : '';
+
+      const replyText =
+        `🔗 *TAUTAN AFILIASI PERSONAL*\n` +
+        `━━━━━━━━━━━━━━━\n` +
+        `🏪 Toko: *${storeName}*\n` +
+        `${commissionText}` +
+        `👉 Salin dan bagikan link personal Anda untuk memperoleh komisi:\n` +
+        `\`${affiliateUrl}\`\n` +
+        `━━━━━━━━━━━━━━━\n` +
+        `_Setiap pembelian terkonfirmasi otomatis tercatat ke komisi afiliasi Anda._`;
+
+      const buttons: TelegramButton[][] = [
+        [{ text: `🛒 Buka Toko (${storeName})`, url: affiliateUrl }],
+      ];
+
+      await sendTelegramMessage(chatId, replyText, {
+        replyToMessageId: message.message_id,
+        parseMode: 'Markdown',
+        buttons,
+      });
+
+      recordGroupTrigger(chatId, fromId);
+      return {
+        handled: true,
+        chatId,
+        senderPhone: String(fromId),
+        reply: replyText,
+        role: 'AFFILIATE_ENGINE',
+        activeEngine: 'DUAL_TRIGGER_AFFILIATE',
+      };
+    }
+
+    // ── TRIGGER 2: @{slug} (Etalase Interaktif Toko) ──
+    const mentionMatches = [...rawText.matchAll(/(?:^|\s)@([a-zA-Z0-9_\-]+)/g)];
+    const SYSTEM_MENTIONS = new Set([
+      'boon',
+      'boontrack',
+      'boontrack_bot',
+      'boonshop_bot',
+      'admin',
+      'channel',
+      'everyone',
+      'here',
+    ]);
+    const candidateSlugs = mentionMatches
+      .map((m) => m[1].toLowerCase())
+      .filter((s) => !SYSTEM_MENTIONS.has(s));
+
+    if (candidateSlugs.length > 0 && supabase) {
+      for (const candSlug of candidateSlugs) {
+        let showcaseTenant: any = null;
+        try {
+          const { data } = await supabase
+            .from('tenants')
+            .select('id, name, slug, metadata')
+            .eq('slug', candSlug)
+            .maybeSingle();
+          showcaseTenant = data;
+        } catch {}
+
+        if (showcaseTenant) {
+          if (isGroupRateLimited(chatId, fromId)) {
+            return { handled: false, reason: 'group_rate_limited', chatId };
+          }
+
+          const rawProducts = Array.isArray(showcaseTenant.metadata?.products)
+            ? showcaseTenant.metadata.products
+            : [];
+          const activeProducts = rawProducts
+            .filter((p: any) => p && p.is_active !== false)
+            .slice(0, 3);
+
+          let productListText = '';
+          if (activeProducts.length > 0) {
+            productListText = activeProducts
+              .map((p: any, idx: number) => {
+                const title = p.name || p.title || 'Produk';
+                const price = Number(p.price || 0);
+                const priceStr = price > 0 ? ` — Rp${price.toLocaleString('id-ID')}` : '';
+                return `${idx + 1}. *${title}*${priceStr}`;
+              })
+              .join('\n');
+          } else {
+            productListText = '_Belum ada produk aktif di etalase ini._';
+          }
+
+          const showcaseName = showcaseTenant.name || showcaseTenant.slug;
+          const storefrontUrl = `https://shop.boontrack.com/${showcaseTenant.slug}`;
+
+          const replyText =
+            `🏪 *ETALASE RESMI: ${showcaseName}*\n` +
+            `━━━━━━━━━━━━━━━\n` +
+            `📦 *Produk Pilihan:*\n${productListText}\n` +
+            `━━━━━━━━━━━━━━━\n` +
+            `👉 Buka toko online untuk katalog lengkap & pemesanan instan.`;
+
+          const buttons: TelegramButton[][] = [
+            [
+              { text: '🛒 Buka Toko', url: storefrontUrl },
+              { text: '📦 Lihat Produk', url: `${storefrontUrl}#products` },
+            ],
+          ];
+
+          await sendTelegramMessage(chatId, replyText, {
+            replyToMessageId: message.message_id,
+            parseMode: 'Markdown',
+            buttons,
+          });
+
+          recordGroupTrigger(chatId, fromId);
+          return {
+            handled: true,
+            chatId,
+            senderPhone: String(fromId),
+            reply: replyText,
+            role: 'SHOWCASE_ENGINE',
+            activeEngine: 'DUAL_TRIGGER_SHOWCASE',
+          };
+        }
+      }
+    }
+  }
+
   // 1. EVALUASI WAKE WORD / MENTION RULES:
   // - Grup: HANYA merespons jika pesan diawali/mengandung "boon", "@boon", atau "@boontrack_bot"
   // - DM Pribadi: Merespons semua pesan masuk secara normal
@@ -356,6 +627,14 @@ export async function handleTelegramUpdate(
     };
   }
 
+  if (isGroup && isGroupRateLimited(chatId, fromId)) {
+    return {
+      handled: false,
+      reason: 'group_rate_limited',
+      chatId,
+    };
+  }
+
   const cleanMessage = wakeWordCheck.cleanText;
 
   // 2. Beri indikator typing ke Telegram chat
@@ -363,7 +642,7 @@ export async function handleTelegramUpdate(
 
   // 3. Teruskan ke ConversationEngine resmi BoonTrack (pipeline yang sama persis dengan WhatsApp)
   const engineResult = await ConversationEngine.process({
-    tenant_id: 'boon', // Official BoonPilot platform tenant
+    tenant_id: matchedTenant?.id || 'boon', // Tenant terkait atau official BoonPilot platform
     channel: 'TELEGRAM',
     session_id: String(chatId),
     user_identifier: String(fromId),
@@ -390,6 +669,10 @@ export async function handleTelegramUpdate(
     parseMode: 'Markdown',
     buttons,
   });
+
+  if (isGroup) {
+    recordGroupTrigger(chatId, fromId);
+  }
 
   return {
     handled: true,

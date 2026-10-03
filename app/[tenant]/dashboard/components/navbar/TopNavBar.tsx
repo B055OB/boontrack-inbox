@@ -40,7 +40,8 @@ export default function TopNavBar({
               alt="BoonTrack"
               width={28}
               height={28}
-              className="w-full h-full object-contain"
+              priority
+              className="w-full h-full object-contain drop-shadow-2xs"
             />
           </div>
           <div>
