@@ -22,17 +22,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const categoryCheck = String(body.category || body.business_category || body.business_type || '').toUpperCase();
-    if (categoryCheck === 'FNB' || categoryCheck === 'FOOD' || categoryCheck === 'KULINER') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Kategori Kuliner & F&B (Food & Beverage) saat ini berstatus Coming Soon. Silakan pilih kategori lainnya.',
-        },
-        { status: 400 }
-      );
-    }
-
     // 1. Forward trigger ke Core Backend Notification Service (Railway / api.boontrack.com)
     try {
       await fetch('https://api.boontrack.com/api/v1/shop/subscriptions/notify', {

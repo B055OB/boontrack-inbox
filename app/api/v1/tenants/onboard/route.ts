@@ -5,6 +5,7 @@ import { getBackendApiUrl } from '@/lib/api-config';
 import { sendBoonPilotVerificationEmail } from '@/lib/boonpilot-email';
 import { sendNewStoreReferralNotification } from '@/lib/affiliate-notification-service';
 import { buildDefaultIndustryMenu } from '@/lib/zero-ai-engine';
+import { saveStoreShippingConfig } from '@/lib/shipping/self-pickup';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -287,7 +288,7 @@ export async function POST(req: NextRequest) {
           access_password: pin,
           metadata: {
             ...existingMeta,
-            template,
+            template: isFood ? 'FOOD' : (body.template || existingMeta.template || template),
             onboarding_mode: onboardingMode,
             merchant_name: merchantName,
             whatsapp_number: formattedWa,
@@ -369,8 +370,69 @@ export async function POST(req: NextRequest) {
               inbox: dbTier === 'ENTERPRISE',
               ai_bot: true,
               shipping: isPhysicalStore,
+              fnb: isFood,
               booking: isServiceStore,
               digital_fulfillment: isDigital,
+            },
+            fnb_settings: isFood ? {
+              is_enabled: true,
+              dine_in_enabled: true,
+              instant_delivery_enabled: true,
+              self_pickup_enabled: true,
+              kitchen_notes_enabled: true,
+              instant_provider: 'GOSEND_GRAB',
+              max_radius_km: 30,
+              kitchen_hours: '08:00 - 21:00 WIB',
+              kitchen_address: 'Dapur Utama / Outlet Resto',
+              ...(existingMeta.fnb_settings || {}),
+            } : existingMeta.fnb_settings || undefined,
+            fulfillment_settings: isFood ? {
+              dine_in: true,
+              instant_delivery: true,
+              self_pickup: true,
+              allow_table_number: true,
+              kitchen_notes: true,
+              ...(existingMeta.fulfillment_settings || {}),
+            } : existingMeta.fulfillment_settings || undefined,
+            self_pickup_config: isFood ? {
+              is_enabled: true,
+              pickup_address: 'Dapur Utama / Outlet Resto',
+              pickup_operational_hours: '08:00 - 21:00 WIB',
+              pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor meja/nota saat mengambil pesanan.',
+              ...(existingMeta.self_pickup_config || {}),
+            } : existingMeta.self_pickup_config || undefined,
+            shipping_config: {
+              ...(existingMeta.shipping_config || {}),
+              ...(isFood ? {
+                is_self_pickup_enabled: true,
+                pickup_address: 'Dapur Utama / Outlet Resto',
+                pickup_operational_hours: '08:00 - 21:00 WIB',
+                pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor meja/nota saat mengambil pesanan.',
+                fnb_settings: {
+                  is_enabled: true,
+                  dine_in_enabled: true,
+                  instant_delivery_enabled: true,
+                  self_pickup_enabled: true,
+                  kitchen_notes_enabled: true,
+                  instant_provider: 'GOSEND_GRAB',
+                  max_radius_km: 30,
+                  kitchen_hours: '08:00 - 21:00 WIB',
+                  ...(existingMeta.shipping_config?.fnb_settings || {}),
+                },
+              } : {}),
+            },
+            single_page_config: {
+              ...(existingMeta.single_page_config || {}),
+              ...(isFood ? {
+                template: 'FOOD',
+                product_preset: 'FOOD',
+                is_digital: false,
+                hide_address_for_digital: false,
+                requires_kitchen_notes: true,
+                allow_dine_in: true,
+                allow_instant_delivery: true,
+                allow_pickup: true,
+              } : {}),
             },
             // Clean state: Katalog toko baru harus 100% kosong (tanpa produk tiruan / mock)
             products: [],
@@ -407,8 +469,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Simpan record atribusi referral ke tabel attributions
     const effectiveTenantId = upsertedTenant?.id;
+
+    if (isFood) {
+      try {
+        await saveStoreShippingConfig({
+          tenant_slug: generatedSlug,
+          tenant_id: effectiveTenantId,
+          is_self_pickup_enabled: true,
+          pickup_address: 'Dapur Utama / Outlet Resto',
+          pickup_operational_hours: '08:00 - 21:00 WIB',
+          pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor meja/nota saat mengambil pesanan.',
+        }, supabase);
+      } catch (shipErr) {
+        console.warn('[Onboard] Non-fatal saveStoreShippingConfig for F&B note:', shipErr);
+      }
+    }
+
+    // 2. Simpan record atribusi referral ke tabel attributions
     if (effectiveTenantId && (matchedAffiliateId || cleanRef)) {
       try {
         await supabase.from('attributions').insert({

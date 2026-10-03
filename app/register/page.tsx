@@ -42,7 +42,7 @@ const STATIC_QRIS =
   process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
   "00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1";
 
-const CATEGORIES = [
+export const CATEGORIES = [
   {
     id: "PHYSICAL",
     label: "Retail & Produk Fisik",
@@ -60,7 +60,6 @@ const CATEGORIES = [
     label: "Food & Beverage (Kuliner)",
     desc: "Frozen food, makanan, camilan, minuman",
     icon: UtensilsCrossed,
-    comingSoon: true,
   },
   {
     id: "FIELD_SERVICE",
@@ -978,7 +977,7 @@ export default function RegisterShopPage() {
       const rawCategoryParam = (params.get("category") || params.get("type") || params.get("vertical") || "").trim();
       if (rawCategoryParam) {
         const mapped = VERTICAL_MAP[rawCategoryParam] || VERTICAL_MAP[rawCategoryParam.toLowerCase()];
-        if (mapped && mapped !== 'FOOD') {
+        if (mapped) {
           setCategory(mapped);
         }
       }
@@ -1115,12 +1114,6 @@ export default function RegisterShopPage() {
 
     if (!formattedPhone || formattedPhone.length < 10 || !formattedPhone.startsWith('628')) {
       setPayError("Nomor WhatsApp aktif wajib diisi dengan format valid (contoh: 0812xxx atau 628xxx).");
-      setLoadingPay(false);
-      return;
-    }
-
-    if (category === "fnb" || VERTICAL_MAP[category] === "FOOD") {
-      setPayError("Kategori Kuliner & F&B saat ini berstatus Coming Soon (dalam tahap pengembangan). Silakan pilih kategori bisnis lainnya.");
       setLoadingPay(false);
       return;
     }
@@ -1486,7 +1479,7 @@ export default function RegisterShopPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                   {CATEGORIES.map((cat) => {
                     const Icon = cat.icon;
-                    const isComingSoon = Boolean((cat as any).comingSoon || cat.id === "FOOD" || cat.id === "fnb");
+                    const isComingSoon = Boolean((cat as any).comingSoon);
                     const canonicalSelected = resolveCanonicalCategory(category);
                     const isSelected =
                       !isComingSoon &&
@@ -1510,7 +1503,9 @@ export default function RegisterShopPage() {
                           isComingSoon
                             ? "border-slate-200/90 bg-slate-100/80 text-slate-400 opacity-70 cursor-not-allowed select-none shadow-none pointer-events-none"
                             : isSelected
-                            ? cat.id === "PROFESSIONAL_SERVICE" || cat.id === "professional_consult"
+                            ? cat.id === "FOOD" || cat.id === "fnb"
+                              ? "border-amber-600 bg-amber-50/70 text-amber-950 font-bold shadow-xs ring-1 ring-amber-600 cursor-pointer"
+                              : cat.id === "PROFESSIONAL_SERVICE" || cat.id === "professional_consult"
                               ? "border-indigo-600 bg-indigo-50/70 text-indigo-950 font-bold shadow-xs ring-1 ring-indigo-600 cursor-pointer"
                               : cat.id === "FIELD_SERVICE" || cat.id === "local_service"
                               ? "border-amber-500 bg-amber-50/70 text-amber-950 font-bold shadow-xs ring-1 ring-amber-500 cursor-pointer"
@@ -1528,7 +1523,9 @@ export default function RegisterShopPage() {
                               isComingSoon
                                 ? "text-slate-400"
                                 : isSelected
-                                ? cat.id === "PROFESSIONAL_SERVICE" || cat.id === "professional_consult"
+                                ? cat.id === "FOOD" || cat.id === "fnb"
+                                  ? "text-amber-600"
+                                  : cat.id === "PROFESSIONAL_SERVICE" || cat.id === "professional_consult"
                                   ? "text-indigo-600"
                                   : cat.id === "FIELD_SERVICE" || cat.id === "local_service"
                                   ? "text-amber-600"
@@ -1547,7 +1544,9 @@ export default function RegisterShopPage() {
                           ) : isSelected && (
                             <span
                               className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide ${
-                                vertical === "PROFESSIONAL_SERVICE"
+                                vertical === "FOOD"
+                                  ? "bg-amber-100 text-amber-800 border border-amber-300"
+                                  : vertical === "PROFESSIONAL_SERVICE"
                                   ? "bg-indigo-100 text-indigo-800 border border-indigo-300"
                                   : vertical === "FIELD_SERVICE"
                                   ? "bg-amber-100 text-amber-700 border border-amber-300"

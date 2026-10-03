@@ -7,6 +7,7 @@ import {
   normalizeWhatsAppNumber,
 } from '@/lib/whatsapp';
 import { buildDefaultIndustryMenu } from '@/lib/zero-ai-engine';
+import { saveStoreShippingConfig } from '@/lib/shipping/self-pickup';
 
 export const dynamic = 'force-dynamic';
 
@@ -206,7 +207,8 @@ export async function POST(req: NextRequest) {
     const waDeepLink = `https://wa.me/${officialWaNumber}?text=${encodeURIComponent(activationMessage)}`;
 
     // Persiapkan industry menu standar untuk bot
-    const defaultMenu = buildDefaultIndustryMenu(shopName, rawCategory);
+    const isFood = ['FOOD', 'FNB', 'KULINER'].some(k => String(rawCategory || '').toUpperCase().includes(k));
+    const defaultMenu = buildDefaultIndustryMenu(rawCategory, { name: shopName, slug: baseSlug });
 
     // Simpan ke tabel tenants dengan status 'PENDING'
     const tenantPayload = {
@@ -254,6 +256,65 @@ export async function POST(req: NextRequest) {
         is_bot_active: true,
         created_via: 'wa_user_initiated_register',
         initiated_at: new Date().toISOString(),
+        template: isFood ? 'FOOD' : 'COMMERCE_TEMPLATE',
+        capabilities: {
+          inbox: (planConfig.dbTier as any) === 'ENTERPRISE',
+          ai_bot: true,
+          shipping: true,
+          fnb: isFood,
+          booking: false,
+          digital_fulfillment: false,
+        },
+        fnb_settings: isFood ? {
+          is_enabled: true,
+          dine_in_enabled: true,
+          instant_delivery_enabled: true,
+          self_pickup_enabled: true,
+          kitchen_notes_enabled: true,
+          instant_provider: 'GOSEND_GRAB',
+          max_radius_km: 30,
+          kitchen_hours: '08:00 - 21:00 WIB',
+          kitchen_address: 'Dapur Utama / Outlet Resto',
+        } : undefined,
+        fulfillment_settings: isFood ? {
+          dine_in: true,
+          instant_delivery: true,
+          self_pickup: true,
+          allow_table_number: true,
+          kitchen_notes: true,
+        } : undefined,
+        self_pickup_config: isFood ? {
+          is_enabled: true,
+          pickup_address: 'Dapur Utama / Outlet Resto',
+          pickup_operational_hours: '08:00 - 21:00 WIB',
+          pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor meja/nota saat mengambil pesanan.',
+        } : undefined,
+        shipping_config: isFood ? {
+          is_self_pickup_enabled: true,
+          pickup_address: 'Dapur Utama / Outlet Resto',
+          pickup_operational_hours: '08:00 - 21:00 WIB',
+          pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor meja/nota saat mengambil pesanan.',
+          fnb_settings: {
+            is_enabled: true,
+            dine_in_enabled: true,
+            instant_delivery_enabled: true,
+            self_pickup_enabled: true,
+            kitchen_notes_enabled: true,
+            instant_provider: 'GOSEND_GRAB',
+            max_radius_km: 30,
+            kitchen_hours: '08:00 - 21:00 WIB',
+          },
+        } : undefined,
+        single_page_config: isFood ? {
+          template: 'FOOD',
+          product_preset: 'FOOD',
+          is_digital: false,
+          hide_address_for_digital: false,
+          requires_kitchen_notes: true,
+          allow_dine_in: true,
+          allow_instant_delivery: true,
+          allow_pickup: true,
+        } : undefined,
         products: [],
         product: null,
       },
@@ -274,6 +335,17 @@ export async function POST(req: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    if (isFood && upsertedTenant?.slug) {
+      saveStoreShippingConfig({
+        tenant_slug: upsertedTenant.slug,
+        tenant_id: upsertedTenant.id,
+        is_self_pickup_enabled: true,
+        pickup_address: 'Dapur Utama / Outlet Resto',
+        pickup_operational_hours: '08:00 - 21:00 WIB',
+        pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor meja/nota saat mengambil pesanan.',
+      }, supabase).catch(() => null);
     }
 
     return NextResponse.json({

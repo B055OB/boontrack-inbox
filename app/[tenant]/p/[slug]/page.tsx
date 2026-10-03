@@ -769,6 +769,10 @@ function SingleProductContent() {
     storeCat === 'FNB' ||
     tenantCategory === 'FOOD' ||
     tenantCategory === 'FNB' ||
+    tenantData?.metadata?.template === 'FOOD' ||
+    tenantData?.metadata?.product_preset === 'FOOD' ||
+    (config as any)?.template === 'FOOD' ||
+    (config as any)?.product_preset === 'FOOD' ||
     rawCategory.includes('food') ||
     rawCategory.includes('kuliner') ||
     rawCategory.includes('makanan') ||
