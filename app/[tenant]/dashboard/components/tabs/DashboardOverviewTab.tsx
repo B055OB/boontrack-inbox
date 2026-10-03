@@ -27,6 +27,7 @@ import {
   Layers,
   ShoppingBag,
   MessageCircle,
+  Compass,
 } from 'lucide-react';
 import { ProductItem } from '@/lib/product-catalog';
 import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
@@ -347,7 +348,7 @@ export default function DashboardOverviewTab({
     const onboardingPrompt = 'Halo BoonPilot, saya baru buka toko. Tolong bantu dan tuntun saya langkah demi langkah dari awal buka toko sampai live di BoonTrack Shop!';
     const onboardingGuideMessage = `Halo! Saya **BoonPilot AI**, co-pilot resmi toko Anda di BoonTrack Shop. 🚀
 
-Saya siap menuntun Anda dari langkah awal hingga toko live dan siap closing order otomatis 24/7. Berikut adalah **7 Langkah Praktis Onboarding Toko** yang perlu Anda lengkapi:
+Saya siap menuntun Anda dari langkah awal hingga toko live dan siap closing order otomatis 24/7. Berikut adalah **8 Langkah Praktis Onboarding Toko** yang perlu Anda lengkapi:
 
 ### 1. 🏪 Isi Profil Toko
 Lengkapi identitas toko Anda di tab **Pengaturan Toko**: nama toko, unggah logo resmi, dan tentukan kategori bisnis Anda agar etalase tampil profesional dan terpercaya di mata calon pelanggan.
@@ -368,7 +369,10 @@ Tambahkan minimal 1 produk, katalog jasa, atau aset digital di menu **Produk**. 
 Klik tombol **Setup Terpadu** di tab Otomasi/BoonPilot untuk **menyambungkan otak AI toko**. Di sini AI akan mempelajari playbook penjualan, aturan diskon, dan knowledge toko Anda agar siap membalas chat seperti CS profesional.
 
 ### 7. 📲 Konek WhatsApp Toko
-Langkah terakhir! Buka tab **WhatsApp**, scan barcode QR dengan WhatsApp bisnis Anda, dan toko resmi live! Bot AI langsung aktif menyapa calon pembeli, menerima pesanan, dan menerbitkan QRIS dinamis otomatis.
+Buka tab **WhatsApp**, scan barcode QR dengan WhatsApp bisnis Anda untuk aktivasi CS bot otomatis 24/7 dalam melayani chat pembeli dan menerbitkan QRIS dinamis.
+
+### 8. 🔔 Notifikasi Real-time Telegram Toko
+Langkah pamungkas! Sambungkan bot Telegram **@boonshop_bot** agar notifikasi pesanan baru & bukti transfer QRIS lunas berdering seketika di HP Anda (instant push, bebas delay dibandingkan email).
 
 ---
 💡 **Mau mulai dari langkah mana dulu?** Anda bisa langsung tanyakan ke saya jika ada bagian yang ingin dipandu secara spesifik!`;
@@ -422,6 +426,41 @@ Mari kita bedah dan evaluasi performa bisnis toko **${activeStoreName}**:
 3. 💡 **Rekomendasi Optimasi Funnel**: Langkah taktis perbaikan halaman produk, CTA etalase, dan retensi pelanggan untuk mendongkrak omzet toko.
 
 Silakan sebutkan metrik atau target penjualan yang ingin kita analisa lebih lanjut!`;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('open-boonpilot', {
+          detail: {
+            prompt,
+            initialAssistantMessage,
+          },
+        })
+      );
+    }
+  };
+
+  const handleOpenMenuTour = () => {
+    const prompt = 'Halo BoonPilot, saya ingin panduan Tur Singkat untuk mengenal fungsi menu-menu penting di BoonTrack.';
+    const initialAssistantMessage = `🎉 **Selamat Datang di Tur Interaktif 10 Menu Utama BoonTrack!** 🧭
+
+Berikut adalah peta 10 menu & ekosistem utama toko Anda:
+
+1. 📊 **Dashboard (Overview)**: Monitoring performa trafik etalase, sesi chat, dan transaksi harian secara realtime.
+2. 📦 **Produk & Jasa**: Manajemen katalog fisik, modul digital, layanan jasa, varian, dan stok otomatis.
+3. 🚚 **Pengiriman & Kurir**: Integrasi agregator kurir lincah dan setup titik gudang/dapur penjemputan (ongkir akurat otomatis).
+4. 🎨 **Tampilan & Tema**: 3 opsi gaya etalase depan (Katalog Standar, Microsite Bio-link ala Linktree modern, dan Personal Brand).
+5. 🧠 **AI Knowledge & Bot**: Pusat latihan otak bot toko (FAQ, SOP retur, knowledge produk, gaya bicara CS).
+6. 💬 **WhatsApp & Broadcast**: Dual-gateway WhatsApp (Direct Gateway vs Official Meta Centang Biru) serta Telegram Sales Bot di grup jualan.
+7. 📥 **BoonTrack Inbox**: Fitur balas pesan keroyokan oleh tim CS dan otomasi penembakan sinyal purchase event ke media iklan.
+8. 🎯 **Ads Tracking Pro**: Pelacak presisi multi-channel (Facebook CAPI, TikTok Pixel, Google Ads) lengkap dengan opsi dipandu step-by-step.
+9. 💰 **Laporan Keuangan**: Rekap pembukuan otomatis yang eksklusif mencatat transaksi berstatus PAID (lunas).
+10. 📝 **Daftar Pesanan Toko**: Mekanisme mutasi instan QRIS (otomatis berstatus PAID dalam 5-15 detik) vs penanganan status UNPAID beserta pesan follow-up otomatis.
+
+---
+💡 **Tahukah Anda?**
+Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, WhatsApp broadcast, AI CS bot, kurir otomatis, dan multi-channel ads tracking, biayanya bisa mencapai **Rp 1,5 jt – Rp 3 jt per bulan**! Di BoonTrack, seluruh senjata penjualan ini sudah **menyatu sempurna dalam 1 ekosistem** terpadu. 🚀
+
+👇 **Silakan pilih menu yang ingin Anda pelajari detailnya:**`;
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
@@ -494,28 +533,42 @@ Silakan sebutkan metrik atau target penjualan yang ingin kita analisa lebih lanj
           {/* Tombol CTA Interaktif BoonPilot AI */}
           <div className="pt-1">
             {hasCompletedSetup ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
-                {/* Tombol 1: Diskusikan Strategi Penjualan */}
-                <button
-                  type="button"
-                  onClick={handleOpenSalesStrategy}
-                  className="inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:via-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-indigo-600/30 border border-indigo-400/40 hover:border-indigo-300 transition-all duration-200 cursor-pointer active:scale-98 group"
-                >
-                  <span className="text-base">🎯</span>
-                  <span>Diskusikan Strategi Penjualan</span>
-                  <ArrowRight className="w-4 h-4 text-indigo-200 group-hover:translate-x-1 transition-transform" />
-                </button>
+              <div className="space-y-2.5 w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                  {/* Tombol 1: Diskusikan Strategi Penjualan */}
+                  <button
+                    type="button"
+                    onClick={handleOpenSalesStrategy}
+                    className="inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:via-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-indigo-600/30 border border-indigo-400/40 hover:border-indigo-300 transition-all duration-200 cursor-pointer active:scale-98 group"
+                  >
+                    <span className="text-base">🎯</span>
+                    <span>Diskusikan Strategi Penjualan</span>
+                    <ArrowRight className="w-4 h-4 text-indigo-200 group-hover:translate-x-1 transition-transform" />
+                  </button>
 
-                {/* Tombol 2: Analisa & Evaluasi Performa Bisnis */}
-                <button
-                  type="button"
-                  onClick={handleOpenPerformanceEvaluation}
-                  className="inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-700 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-600 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-600/30 border border-blue-400/40 hover:border-blue-300 transition-all duration-200 cursor-pointer active:scale-98 group"
-                >
-                  <span className="text-base">📊</span>
-                  <span>Analisa &amp; Evaluasi Performa Bisnis</span>
-                  <ArrowRight className="w-4 h-4 text-blue-200 group-hover:translate-x-1 transition-transform" />
-                </button>
+                  {/* Tombol 2: Analisa & Evaluasi Performa Bisnis */}
+                  <button
+                    type="button"
+                    onClick={handleOpenPerformanceEvaluation}
+                    className="inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-700 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-600 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-600/30 border border-blue-400/40 hover:border-blue-300 transition-all duration-200 cursor-pointer active:scale-98 group"
+                  >
+                    <span className="text-base">📊</span>
+                    <span>Analisa &amp; Evaluasi Performa Bisnis</span>
+                    <ArrowRight className="w-4 h-4 text-blue-200 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
+
+                {/* Tautan Tur Singkat Pasca-Onboarding */}
+                <div className="pt-1 text-center sm:text-left">
+                  <button
+                    type="button"
+                    onClick={handleOpenMenuTour}
+                    className="inline-flex items-center gap-1.5 text-xs text-indigo-300 hover:text-white font-semibold transition hover:underline cursor-pointer"
+                  >
+                    <Compass className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>🧭 Mau keliling lagi? Klik untuk tur fungsi menu bersama BoonPilot</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <button

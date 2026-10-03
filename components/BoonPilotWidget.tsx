@@ -19,6 +19,7 @@ import {
   FileSpreadsheet,
   FileText,
   Lock,
+  Compass,
 } from 'lucide-react';
 import { searchPlatformKnowledge } from '@/lib/boonpilotKnowledge';
 import type { BusinessConfigurationProposal } from '@/types/boonpilot';
@@ -70,11 +71,19 @@ interface BoonPilotWidgetProps {
 
 const STARTER_CHIPS = [
   {
-    label: '🎯 SOP 3 Langkah Aktivasi Toko & WhatsApp Commerce',
+    label: '🧭 Mulai Tur Menu',
+    icon: Compass,
+  },
+  {
+    label: '🚀 Rekomendasi Landing Page',
     icon: Sparkles,
   },
   {
-    label: '🎯 Mulai Guided Setup Toko (AI Interview)',
+    label: '📲 Notifikasi Telegram Toko',
+    icon: Zap,
+  },
+  {
+    label: '🎯 SOP 3 Langkah Aktivasi Toko & WhatsApp Commerce',
     icon: Sparkles,
   },
   {
