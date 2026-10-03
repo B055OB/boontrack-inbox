@@ -110,9 +110,22 @@ export default function DashboardOverviewTab({
     return 'Malam';
   }, []);
 
-  // Fetch active storefront template from Supabase
+  const [hasCompletedSetup, setHasCompletedSetup] = useState<boolean>(false);
+
+  // Fetch active storefront template & persistent onboarding status from Supabase / localStorage
   useEffect(() => {
     let isMounted = true;
+
+    // 1. Initial check from localStorage (instant, zero flicker)
+    try {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem(`boontrack_${tenantSlug}_onboarding_completed`);
+        if (cached === 'true') {
+          setHasCompletedSetup(true);
+        }
+      }
+    } catch {}
+
     async function loadTenantData() {
       try {
         const supabase = getSupabase();
@@ -120,7 +133,7 @@ export default function DashboardOverviewTab({
 
         const tenantRes = await supabase
           .from('tenants')
-          .select('metadata')
+          .select('id, metadata')
           .eq('slug', tenantSlug)
           .maybeSingle();
 
@@ -137,6 +150,36 @@ export default function DashboardOverviewTab({
           } else {
             setActiveTemplate('default');
           }
+
+          // Evaluate persistent onboarding completion
+          const isPersistedInDb = Boolean(meta.onboarding_completed || meta.has_completed_setup);
+          const isCriteriaMet = Boolean(
+            isPersistedInDb ||
+            (products && products.length > 0 && (
+              (storeQrisUrl && storeQrisUrl.trim() !== '') ||
+              waStatus === 'CONNECTED' ||
+              Boolean(connectedPhone) ||
+              (transactions && transactions.length > 0)
+            ))
+          );
+
+          if (isCriteriaMet) {
+            setHasCompletedSetup(true);
+            try {
+              if (typeof window !== 'undefined') {
+                localStorage.setItem(`boontrack_${tenantSlug}_onboarding_completed`, 'true');
+              }
+            } catch {}
+
+            // Persist to Supabase if not yet marked
+            if (!isPersistedInDb && tenantRes.data?.id) {
+              const updatedMeta = { ...meta, onboarding_completed: true };
+              await supabase
+                .from('tenants')
+                .update({ metadata: updatedMeta })
+                .eq('id', tenantRes.data.id);
+            }
+          }
         }
       } catch (err) {
         console.warn('Gagal memuat konfigurasi tenant di dashboard:', err);
@@ -146,7 +189,7 @@ export default function DashboardOverviewTab({
     return () => {
       isMounted = false;
     };
-  }, [tenantSlug]);
+  }, [tenantSlug, products, storeQrisUrl, waStatus, connectedPhone, transactions]);
 
   // Handle template selection
   const handleSelectTemplate = async (templateKey: 'default' | 'microsite' | 'personal') => {
@@ -342,9 +385,59 @@ Langkah terakhir! Buka tab **WhatsApp**, scan barcode QR dengan WhatsApp bisnis 
     }
   };
 
+  const handleOpenSalesStrategy = () => {
+    const prompt = `Halo BoonPilot, tolong berikan analisis dan saran strategi penjualan terbaik untuk toko saya (${activeStoreName}). Bantu rancang formula penawaran produk, promo menarik, dan copywriting closing yang efektif.`;
+    const initialAssistantMessage = `Halo! Saya **BoonPilot AI Sales Strategist**. 🎯
+
+Saya siap membantu merancang strategi penjualan dan copywriting terbaik untuk toko **${activeStoreName}**.
+
+Beberapa fokus strategi yang bisa kita optimalkan:
+1. 🎁 **Formula Penawaran & Bundling Promo**: Buat paket bundling produk agar nilai rata-rata keranjang belanja pelanggan (AOV) meningkat.
+2. ✍️ **Copywriting Pesan Otomatis WhatsApp**: Rancang template pesan sapaan dan follow-up bot yang persuasif untuk memicu closing instan.
+3. ⚡ **Penetapan Harga & Flash Promo**: Strategi diskon dinamis yang menjaga margin keuntungan tetap sehat.
+4. 🎯 **Penargetan Segmen Pelanggan**: Trik menaikkan repeat order dari pelanggan lama.
+
+Bagian mana yang ingin kita prioritaskan dan rancang bersama sekarang?`;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('open-boonpilot', {
+          detail: {
+            prompt,
+            initialAssistantMessage,
+          },
+        })
+      );
+    }
+  };
+
+  const handleOpenPerformanceEvaluation = () => {
+    const prompt = `Halo BoonPilot, tolong lakukan evaluasi dan analisa performa bisnis toko saya (${activeStoreName}). Berikan insight mengenai arus omzet, tren konversi pesanan, dan saran perbaikan funnel penjualan.`;
+    const initialAssistantMessage = `Halo! Saya **BoonPilot Business Intelligence**. 📊
+
+Mari kita bedah dan evaluasi performa bisnis toko **${activeStoreName}**:
+
+1. 📈 **Evaluasi Omzet & Tren Transaksi**: Analisa riwayat penjualan, rata-rata nilai order, dan pergerakan tren 7 hari terakhir.
+2. 🔄 **Efisiensi Konversi Chat ke Order**: Evaluasi efektivitas interaksi WhatsApp bot dan rasio calon pembeli yang menyelesaikan checkout QRIS.
+3. 💡 **Rekomendasi Optimasi Funnel**: Langkah taktis perbaikan halaman produk, CTA etalase, dan retensi pelanggan untuk mendongkrak omzet toko.
+
+Silakan sebutkan metrik atau target penjualan yang ingin kita analisa lebih lanjut!`;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('open-boonpilot', {
+          detail: {
+            prompt,
+            initialAssistantMessage,
+          },
+        })
+      );
+    }
+  };
+
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
-      {/* ── BANNER PANDUAN PEMULA (BIRU/UNGU) PALING ATAS ── */}
+      {/* ── BANNER PANDUAN PEMULA / PUSAT KENDALI (BIRU/UNGU) PALING ATAS ── */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 text-white p-5 sm:p-7 md:p-8 border border-indigo-700/40 shadow-xl space-y-6">
         {/* Ambient background glow decoration */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-purple-500/15 blur-3xl pointer-events-none" />
@@ -355,7 +448,11 @@ Langkah terakhir! Buka tab **WhatsApp**, scan barcode QR dengan WhatsApp bisnis 
           <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/25 text-indigo-300 border border-indigo-400/30 backdrop-blur-xs">
               <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
-              <span>Panduan Pemula &bull; Setup Toko Otomatis</span>
+              <span>
+                {hasCompletedSetup
+                  ? 'Pusat Kendali Toko • Operasional Aktif'
+                  : 'Panduan Pemula • Setup Toko Otomatis'}
+              </span>
             </span>
             <span
               className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
@@ -388,21 +485,49 @@ Langkah terakhir! Buka tab **WhatsApp**, scan barcode QR dengan WhatsApp bisnis 
               Selamat {timeGreeting}, <span className="bg-gradient-to-r from-white via-indigo-100 to-purple-200 bg-clip-text text-transparent">{activeStoreName}</span> 👋
             </h1>
             <p className="text-xs sm:text-sm text-indigo-200/90 w-full leading-relaxed">
-              Selamat datang di pusat kendali toko online Anda! Ikuti panduan praktis di bawah untuk menyiapkan produk, mengaktifkan AI Sales WhatsApp, atau dapatkan bantuan langsung dari tim kami sampai toko live.
+              {hasCompletedSetup
+                ? 'Toko Anda telah aktif beroperasi. Gunakan asisten AI BoonPilot di bawah untuk mendiskusikan strategi penjualan dan mengevaluasi performa bisnis Anda secara berkala.'
+                : 'Selamat datang di pusat kendali toko online Anda! Ikuti panduan praktis di bawah untuk menyiapkan produk, mengaktifkan AI Sales WhatsApp, atau dapatkan bantuan langsung dari tim kami sampai toko live.'}
             </p>
           </div>
 
           {/* Tombol CTA Interaktif BoonPilot AI */}
           <div className="pt-1">
-            <button
-              type="button"
-              onClick={handleOpenBoonPilotOnboarding}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:via-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-indigo-600/30 border border-indigo-400/40 hover:border-indigo-300 transition-all duration-200 cursor-pointer active:scale-98 group"
-            >
-              <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
-              <span>✨ Tanya BoonPilot: Saya siap bantu &amp; tuntun Anda dari awal buka toko sampai live di BoonTrack Shop!</span>
-              <ArrowRight className="w-4 h-4 text-indigo-200 group-hover:translate-x-1 transition-transform" />
-            </button>
+            {hasCompletedSetup ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+                {/* Tombol 1: Diskusikan Strategi Penjualan */}
+                <button
+                  type="button"
+                  onClick={handleOpenSalesStrategy}
+                  className="inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:via-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-indigo-600/30 border border-indigo-400/40 hover:border-indigo-300 transition-all duration-200 cursor-pointer active:scale-98 group"
+                >
+                  <span className="text-base">🎯</span>
+                  <span>Diskusikan Strategi Penjualan</span>
+                  <ArrowRight className="w-4 h-4 text-indigo-200 group-hover:translate-x-1 transition-transform" />
+                </button>
+
+                {/* Tombol 2: Analisa & Evaluasi Performa Bisnis */}
+                <button
+                  type="button"
+                  onClick={handleOpenPerformanceEvaluation}
+                  className="inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-700 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-600 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-600/30 border border-blue-400/40 hover:border-blue-300 transition-all duration-200 cursor-pointer active:scale-98 group"
+                >
+                  <span className="text-base">📊</span>
+                  <span>Analisa &amp; Evaluasi Performa Bisnis</span>
+                  <ArrowRight className="w-4 h-4 text-blue-200 group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpenBoonPilotOnboarding}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:via-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-indigo-600/30 border border-indigo-400/40 hover:border-indigo-300 transition-all duration-200 cursor-pointer active:scale-98 group"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
+                <span>✨ Tanya BoonPilot: Saya siap bantu &amp; tuntun Anda dari awal buka toko sampai live di BoonTrack Shop!</span>
+                <ArrowRight className="w-4 h-4 text-indigo-200 group-hover:translate-x-1 transition-transform" />
+              </button>
+            )}
           </div>
         </div>
 
