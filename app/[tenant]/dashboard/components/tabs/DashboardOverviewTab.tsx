@@ -300,6 +300,48 @@ export default function DashboardOverviewTab({
     return totalOmzet > 0 ? totalOmzet : 0;
   }, [transactions, totalOmzet]);
 
+  const handleOpenBoonPilotOnboarding = () => {
+    const onboardingPrompt = 'Halo BoonPilot, saya baru buka toko. Tolong bantu dan tuntun saya langkah demi langkah dari awal buka toko sampai live di BoonTrack Shop!';
+    const onboardingGuideMessage = `Halo! Saya **BoonPilot AI**, co-pilot resmi toko Anda di BoonTrack Shop. 🚀
+
+Saya siap menuntun Anda dari langkah awal hingga toko live dan siap closing order otomatis 24/7. Berikut adalah **7 Langkah Praktis Onboarding Toko** yang perlu Anda lengkapi:
+
+### 1. 🏪 Isi Profil Toko
+Lengkapi identitas toko Anda di tab **Pengaturan Toko**: nama toko, unggah logo resmi, dan tentukan kategori bisnis Anda agar etalase tampil profesional dan terpercaya di mata calon pelanggan.
+
+### 2. 💳 Isi Pembayaran & QRIS (BoonTrack Reader)
+Unggah barcode QRIS toko Anda. **BoonTrack Reader** bertugas mendeteksi mutasi transfer dan pembayaran QRIS pelanggan secara **otomatis realtime**, sehingga Anda tidak perlu lagi repot cek manual mutasi m-banking satu per satu!
+
+### 3. 📍 Isi Alamat Usaha / Domisili Toko
+Tentukan lokasi domisili atau alamat operasional usaha Anda. *(Bagi penyedia produk digital, e-course, atau jasa konsultasi online, bagian ini menjadi domisili resmi toko tanpa perlu setting kurir fisik)*.
+
+### 4. 📦 Isi Titik Gudang & Penjemputan *(Khusus Toko Fisik & F&B)*
+Jika Anda menjual barang fisik atau kuliner, masukkan alamat titik jemput gudang/dapur agar integrasi kurir instan dan multi-ekspedisi (JNE, J&T, SiCepat, dll.) dapat menghitung estimasi ongkir otomatis.
+
+### 5. 🛍️ Upload Produk Pertama
+Tambahkan minimal 1 produk, katalog jasa, atau aset digital di menu **Produk**. Berikan foto menarik, harga normal & promo, serta deskripsi singkat yang menggugah selera belanja.
+
+### 6. 🧠 Setup Bot via "Setup Terpadu"
+Klik tombol **Setup Terpadu** di tab Otomasi/BoonPilot untuk **menyambungkan otak AI toko**. Di sini AI akan mempelajari playbook penjualan, aturan diskon, dan knowledge toko Anda agar siap membalas chat seperti CS profesional.
+
+### 7. 📲 Konek WhatsApp Toko
+Langkah terakhir! Buka tab **WhatsApp**, scan barcode QR dengan WhatsApp bisnis Anda, dan toko resmi live! Bot AI langsung aktif menyapa calon pembeli, menerima pesanan, dan menerbitkan QRIS dinamis otomatis.
+
+---
+💡 **Mau mulai dari langkah mana dulu?** Anda bisa langsung tanyakan ke saya jika ada bagian yang ingin dipandu secara spesifik!`;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('open-boonpilot', {
+          detail: {
+            prompt: onboardingPrompt,
+            initialAssistantMessage: onboardingGuideMessage,
+          },
+        })
+      );
+    }
+  };
+
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full space-y-6 sm:space-y-8 animate-in fade-in duration-200">
       {/* ── BANNER PANDUAN PEMULA (BIRU/UNGU) PALING ATAS ── */}
@@ -308,93 +350,59 @@ export default function DashboardOverviewTab({
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-purple-500/15 blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-blue-500/15 blur-3xl pointer-events-none" />
 
-        {/* Header: Sapaan Interaktif & Quick Action Bar */}
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-5 border-b border-indigo-800/50 pb-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/25 text-indigo-300 border border-indigo-400/30 backdrop-blur-xs">
-                <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
-                <span>Panduan Pemula &bull; Setup Toko Otomatis</span>
-              </span>
-              <span
-                className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
-                  tierLabel && tierLabel.toLowerCase().includes('grant')
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
-                    : isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
-                    : isTeamScale || (tierLabel && tierLabel.toLowerCase().includes('team'))
-                    ? 'bg-purple-500/20 text-purple-300 border-purple-400/40'
-                    : isAdsPerformance || (tierLabel && (tierLabel.toLowerCase().includes('ads') || tierLabel.toLowerCase().includes('performance')))
-                    ? 'bg-blue-500/20 text-blue-300 border-blue-400/40'
-                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
-                }`}
-              >
-                {tierLabel ||
-                  (isCheckoutLite
-                    ? 'Paket Checkout'
-                    : isTeamScale
-                    ? 'Team Scale'
-                    : isAdsPerformance
-                    ? isTrialActive || trialDaysLeft !== null
-                      ? 'Ads Performance Trial'
-                      : 'Ads Performance'
-                    : 'Paket Solo')}
-              </span>
-            </div>
+        {/* Header: Sapaan Interaktif Melebar Penuh (w-full) */}
+        <div className="relative z-10 w-full space-y-4 border-b border-indigo-800/50 pb-6">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/25 text-indigo-300 border border-indigo-400/30 backdrop-blur-xs">
+              <Sparkles className="w-3 h-3 text-amber-300 animate-pulse" />
+              <span>Panduan Pemula &bull; Setup Toko Otomatis</span>
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
+                tierLabel && tierLabel.toLowerCase().includes('grant')
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                  : isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-400/40'
+                  : isTeamScale || (tierLabel && tierLabel.toLowerCase().includes('team'))
+                  ? 'bg-purple-500/20 text-purple-300 border-purple-400/40'
+                  : isAdsPerformance || (tierLabel && (tierLabel.toLowerCase().includes('ads') || tierLabel.toLowerCase().includes('performance')))
+                  ? 'bg-blue-500/20 text-blue-300 border-blue-400/40'
+                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
+              }`}
+            >
+              {tierLabel ||
+                (isCheckoutLite
+                  ? 'Paket Checkout'
+                  : isTeamScale
+                  ? 'Team Scale'
+                  : isAdsPerformance
+                  ? isTrialActive || trialDaysLeft !== null
+                    ? 'Ads Performance Trial'
+                    : 'Ads Performance'
+                  : 'Paket Solo')}
+            </span>
+          </div>
 
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight">
+          <div className="space-y-1.5 w-full">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight w-full">
               Selamat {timeGreeting}, <span className="bg-gradient-to-r from-white via-indigo-100 to-purple-200 bg-clip-text text-transparent">{activeStoreName}</span> 👋
             </h1>
-            <p className="text-xs sm:text-sm text-indigo-200/90 max-w-2xl leading-relaxed">
+            <p className="text-xs sm:text-sm text-indigo-200/90 w-full leading-relaxed">
               Selamat datang di pusat kendali toko online Anda! Ikuti panduan praktis di bawah untuk menyiapkan produk, mengaktifkan AI Sales WhatsApp, atau dapatkan bantuan langsung dari tim kami sampai toko live.
             </p>
           </div>
 
-          {/* Quick Action Buttons */}
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0 flex-wrap">
+          {/* Tombol CTA Interaktif BoonPilot AI */}
+          <div className="pt-1">
             <button
               type="button"
-              onClick={handleCopyStoreLink}
-              className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/15 backdrop-blur-xs transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+              onClick={handleOpenBoonPilotOnboarding}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:via-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-indigo-600/30 border border-indigo-400/40 hover:border-indigo-300 transition-all duration-200 cursor-pointer active:scale-98 group"
             >
-              {hasCopiedUrl ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-300">Tersalin!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5 text-indigo-300" />
-                  <span>Salin Tautan</span>
-                </>
-              )}
+              <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
+              <span>✨ Tanya BoonPilot: Saya siap bantu &amp; tuntun Anda dari awal buka toko sampai live di BoonTrack Shop!</span>
+              <ArrowRight className="w-4 h-4 text-indigo-200 group-hover:translate-x-1 transition-transform" />
             </button>
-
-            <button
-              type="button"
-              onClick={() => onNavigateTab('orders')}
-              className="px-3.5 sm:px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-md shadow-emerald-500/20 transition flex items-center gap-1.5 cursor-pointer active:scale-95"
-              title="Akses Langsung Pesanan & Order"
-            >
-              <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Pesanan &amp; Order</span>
-              {transactions.length > 0 && (
-                <span className="px-1.5 py-0.5 bg-slate-950 text-emerald-300 text-[10px] font-black rounded-full leading-none">
-                  {transactions.length}
-                </span>
-              )}
-            </button>
-
-            <a
-              href={storePublicUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-md shadow-indigo-600/30"
-            >
-              <Store className="w-3.5 h-3.5" />
-              <span>Kunjungi Etalase</span>
-              <ExternalLink className="w-3 h-3 opacity-80" />
-            </a>
           </div>
         </div>
 

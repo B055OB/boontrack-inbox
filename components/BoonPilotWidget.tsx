@@ -541,15 +541,38 @@ export default function BoonPilotWidget({
 
   useEffect(() => {
     const handleOpenEvent = (e: Event) => {
-      const customEvent = e as CustomEvent<{ prompt?: string }>;
+      const customEvent = e as CustomEvent<{ prompt?: string; initialAssistantMessage?: string }>;
       setIsOpen(true);
-      if (customEvent.detail?.prompt) {
+      if (customEvent.detail?.initialAssistantMessage) {
+        const msgsToAdd: ChatMessage[] = [];
+        if (customEvent.detail?.prompt) {
+          msgsToAdd.push({
+            id: `usr_${Date.now()}`,
+            sender: 'user',
+            text: customEvent.detail.prompt,
+            timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
+        msgsToAdd.push({
+          id: `ast_${Date.now() + 1}`,
+          sender: 'assistant',
+          text: customEvent.detail.initialAssistantMessage,
+          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        });
+        setMessages((prev) => {
+          const next = [...prev, ...msgsToAdd];
+          try {
+            sessionStorage.setItem(storageKey, JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+      } else if (customEvent.detail?.prompt) {
         handleSendMessage(customEvent.detail.prompt);
       }
     };
     window.addEventListener('open-boonpilot', handleOpenEvent);
     return () => window.removeEventListener('open-boonpilot', handleOpenEvent);
-  }, [handleSendMessage]);
+  }, [handleSendMessage, storageKey]);
 
   const handleActionDecision = async (
     messageId: string,
