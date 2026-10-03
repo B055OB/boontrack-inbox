@@ -77,6 +77,7 @@ export interface TenantConfig {
   pricing: PricingConfig;
   features: FeatureFlagsConfig;
   secrets: SecretsConfig;
+  telegram_groups?: import('@/types/telegram').TelegramGroupMapping[];
   updated_at: string;
 }
 
@@ -85,7 +86,7 @@ export interface TenantConfigHistory {
   tenant_slug: string;
   timestamp: string;
   actor: string;
-  category: 'persona' | 'operational_hours' | 'pricing' | 'features' | 'secrets' | 'general';
+  category: 'persona' | 'operational_hours' | 'pricing' | 'features' | 'secrets' | 'telegram' | 'general';
   summary: string;
   diff?: Record<string, { old: unknown; new: unknown }> | string;
 }

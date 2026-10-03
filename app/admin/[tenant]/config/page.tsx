@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Lock,
   AlertTriangle,
+  Send,
 } from 'lucide-react';
 import {
   getTenantConfig,
@@ -31,8 +32,9 @@ import {
   TenantConfigHistory,
   CustomPackage,
 } from '@/lib/tenant-config';
+import TelegramGroupMappingSection from '@/app/admin/components/TelegramGroupMappingSection';
 
-type TabType = 'persona' | 'operational_hours' | 'pricing' | 'features' | 'secrets' | 'history';
+type TabType = 'persona' | 'operational_hours' | 'pricing' | 'features' | 'secrets' | 'telegram' | 'history';
 
 const DAYS_LIST = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
 
@@ -349,6 +351,17 @@ export default function TenantConfigEditorPage() {
           >
             <Lock className="w-4 h-4" />
             <span>API & Security Guardrail</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('telegram')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition inline-flex items-center gap-2 shrink-0 ${
+              activeTab === 'telegram'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <Send className="w-4 h-4 text-sky-400" />
+            <span>Telegram Kolam / Group Bot</span>
           </button>
           <button
             onClick={() => setActiveTab('history')}
@@ -1159,7 +1172,16 @@ export default function TenantConfigEditorPage() {
           </div>
         )}
 
-        {/* Tab 6: History Tab (Audit Trail) */}
+        {/* Tab 6: Telegram Kolam / Group Bot */}
+        {activeTab === 'telegram' && (
+          <TelegramGroupMappingSection
+            tenantSlug={tenantSlug}
+            tenantName={config.name}
+            tenantId={config.slug}
+          />
+        )}
+
+        {/* Tab 7: History Tab (Audit Trail) */}
         {activeTab === 'history' && (
           <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 md:p-8 space-y-6 shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">

@@ -30,9 +30,11 @@ import {
   Layers,
   UploadCloud,
   Upload,
+  Send,
 } from 'lucide-react';
 import { BankAccount, PaymentConfig, ShippingConfig } from '@/app/api/v1/admin/tenants/[slug]/config/route';
 import { getSupabase } from '@/lib/supabaseClient';
+import TelegramGroupMappingSection from '@/app/admin/components/TelegramGroupMappingSection';
 
 const MASTER_PIN = '998877';
 
@@ -82,7 +84,7 @@ export default function ShopConfigPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tenant, setTenant] = useState<TenantData | null>(null);
-  const [activeTab, setActiveTab] = useState<'payment' | 'shipping'>('payment');
+  const [activeTab, setActiveTab] = useState<'payment' | 'shipping' | 'telegram'>('payment');
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
@@ -643,6 +645,21 @@ export default function ShopConfigPage() {
             <span>Ekspedisi &amp; Ongkir (Shipping Logistics)</span>
             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-500/20 text-purple-300 hidden sm:inline">
               Multi-Kurir
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('telegram')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'telegram'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+            }`}
+          >
+            <Send className="w-4 h-4 text-sky-400" />
+            <span>Telegram Kolam / Group Bot</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-500/20 text-sky-300 hidden sm:inline">
+              Bot Gateway
             </span>
           </button>
         </div>
@@ -1391,39 +1408,52 @@ export default function ShopConfigPage() {
               </div>
             )}
 
+            {/* ======================================================== */}
+            {/* TAB 3: TELEGRAM KOLAM / GROUP BOT */}
+            {/* ======================================================== */}
+            {activeTab === 'telegram' && (
+              <TelegramGroupMappingSection
+                tenantSlug={tenant?.slug || shopId}
+                tenantName={tenant?.name}
+                tenantId={tenant?.id}
+              />
+            )}
+
             {/* Bottom Save Action Bar */}
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl backdrop-blur-md">
-              <div className="text-xs text-slate-400">
-                <span>Perubahan akan langsung disinkronkan ke Supabase database.</span>
-              </div>
+            {activeTab !== 'telegram' && (
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl backdrop-blur-md">
+                <div className="text-xs text-slate-400">
+                  <span>Perubahan akan langsung disinkronkan ke Supabase database.</span>
+                </div>
 
-              <div className="flex items-center gap-3">
-                <Link
-                  href="/admin/shops"
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold transition border border-slate-700 cursor-pointer"
-                >
-                  Batal
-                </Link>
+                <div className="flex items-center gap-3">
+                  <Link
+                    href="/admin/shops"
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold transition border border-slate-700 cursor-pointer"
+                  >
+                    Batal
+                  </Link>
 
-                <button
-                  onClick={handleSaveConfig}
-                  disabled={saving || loading}
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 inline-flex items-center gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {saving ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Menyimpan Konfigurasi...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      <span>Simpan Konfigurasi</span>
-                    </>
-                  )}
-                </button>
+                  <button
+                    onClick={handleSaveConfig}
+                    disabled={saving || loading}
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 inline-flex items-center gap-2 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {saving ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Menyimpan Konfigurasi...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        <span>Simpan Konfigurasi</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
       </div>
