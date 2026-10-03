@@ -43,8 +43,8 @@ export function isBoonPilotWakeWordTriggered(
     };
   }
 
-  // Regex pemicu: diawali atau mengandung "boon", "@boon", "@boontrack_bot", "@boontrack", "@081215567168"
-  const triggerPattern = /(?:^|\s|[^\w@])(@boontrack_bot|@boontrack|@boon|@081215567168|@6281215567168|\bboon\b)/i;
+  // Regex pemicu: diawali atau mengandung "boon", "@boon", "@boonshop_bot", "@boontrack_bot", "@boontrack", "@081215567168"
+  const triggerPattern = /(?:^|\s|[^\w@])(@boonshop_bot|@boontrack_bot|@boontrack|@boon|@081215567168|@6281215567168|\bboon\b)/i;
   const match = triggerPattern.exec(raw);
 
   if (!match) {
@@ -58,6 +58,7 @@ export function isBoonPilotWakeWordTriggered(
 
   // Bersihkan token mention dari teks agar AI engine menerima prompt yang bersih
   let clean = raw
+    .replace(/@boonshop_bot\b/gi, '')
     .replace(/@boontrack_bot\b/gi, '')
     .replace(/@boontrack\b/gi, '')
     .replace(/@boon\b/gi, '')
