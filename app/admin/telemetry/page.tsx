@@ -220,6 +220,12 @@ export default function SuperAdminTelemetryPage() {
             >
               💰 Unit Economics
             </Link>
+            <Link
+              href="/admin/ai-economics"
+              className="px-3 py-2 bg-violet-900/50 hover:bg-violet-800/60 text-violet-300 text-xs font-semibold rounded-xl border border-violet-700/50 transition"
+            >
+              🤖 AI Cost Telemetry
+            </Link>
           </div>
         </div>
 
