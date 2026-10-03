@@ -4325,11 +4325,12 @@ function SingleProductContent() {
       )}
 
       {/* Floating Cart Bar if items exist in cart */}
-      {cartPolicy.showStickyCart && cartState.totalQuantity > 0 && !cartState.isDrawerOpen && (
+      {cartPolicy.showStickyCart && cartState.totalQuantity > 0 && !cartState.isDrawerOpen && !checkoutOpen && (
         <FloatingCartBar
           totalCount={cartState.totalQuantity}
           subtotal={cartState.subtotal}
           onOpenCart={cartState.openCart}
+          onCheckout={cartState.openCart}
           className="bottom-20"
         />
       )}

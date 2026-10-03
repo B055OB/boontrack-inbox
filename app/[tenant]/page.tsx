@@ -1407,11 +1407,12 @@ export default function TenantStorefrontPage() {
           </div>
         )}
         {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
-        {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && (
+        {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && !isCheckoutOpen && (
           <FloatingCartBar
             totalCount={totalCartCount}
             subtotal={totalCartPrice}
             onOpenCart={() => setShowCartModal(true)}
+            onCheckout={() => setShowCartModal(true)}
             className="bottom-4 sm:bottom-6"
           />
         )}
@@ -1519,11 +1520,12 @@ export default function TenantStorefrontPage() {
           </div>
         )}
         {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
-        {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && (
+        {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && !isCheckoutOpen && (
           <FloatingCartBar
             totalCount={totalCartCount}
             subtotal={totalCartPrice}
             onOpenCart={() => setShowCartModal(true)}
+            onCheckout={() => setShowCartModal(true)}
             className="bottom-4 sm:bottom-6"
           />
         )}
@@ -2456,11 +2458,12 @@ export default function TenantStorefrontPage() {
       )}
 
       {/* FLOATING CART BAR (Muncul di layer bawah halaman saat cart.items.length > 0) */}
-      {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && (
+      {(cart.length > 0 || (cart as any)?.items?.length > 0 || totalCartCount > 0) && !showCartModal && !isCheckoutOpen && (
         <FloatingCartBar
           totalCount={totalCartCount}
           subtotal={totalCartPrice}
           onOpenCart={() => setShowCartModal(true)}
+          onCheckout={() => setShowCartModal(true)}
           className="bottom-4 sm:bottom-6"
         />
       )}
