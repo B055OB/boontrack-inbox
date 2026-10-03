@@ -23,6 +23,8 @@ import {
   persistInboundMessage,
   persistOutboundMessage,
 } from '@/lib/whatsapp/inbox-persistence';
+import { resolveBoonPilotSender } from '@/lib/boonpilot/sender-resolver';
+import { processBoonPilotPlatformChat } from '@/lib/boonpilot/platform-engine';
 
 const EVOLUTION_API_URL =
   process.env.EVOLUTION_API_URL ||
@@ -318,6 +320,7 @@ export async function processEvolutionWebhookEvent(
         tenantId === 'boon' ||
         tenantId === '52967979-4760-4cea-b686-cdbdb389c0e1' ||
         instanceName === 'boontrack-shop' ||
+        instanceName === 'boontrack-app-shop' ||
         senderPhone === '6281215567168';
 
       if (!isOfficial) {
@@ -334,6 +337,36 @@ export async function processEvolutionWebhookEvent(
       const hasMention = wakeWord.triggered;
       if (!hasMention) {
         continue;
+      }
+
+      // CEK KOLAM KOMUNITAS AFILIASI DI CHANNEL_BINDINGS (§43)
+      if (supabase) {
+        try {
+          const { data: waBinding } = await supabase
+            .from('channel_bindings')
+            .select('*')
+            .eq('community_source_id', rawFrom)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (waBinding) {
+            const affId = waBinding.affiliate_id || 'ob';
+            const demoUrl = waBinding.demo_url || 'https://shop.boontrack.com/toko-demo';
+            const registerUrl = `https://dashboard.boontrack.com/register?ref=${encodeURIComponent(affId)}&src=${encodeURIComponent(rawFrom)}`;
+
+            const replyText =
+              `👋 *Halo dari BoonTrack!*\n` +
+              `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
+              `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
+              `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}`;
+
+            await sendEvolutionTextMessage(instanceName, rawFrom, replyText, resolvedApiKey);
+            processedCount++;
+            continue;
+          }
+        } catch (waErr) {
+          console.warn('[Evolution WA Group Community Trigger Error]:', waErr);
+        }
       }
     }
 
@@ -669,12 +702,53 @@ export async function processEvolutionWebhookEvent(
       }
     }
 
-    // 7. Teruskan ke Engine Chat / Gemini Multimodal Pipeline
+    // 7. Teruskan ke Engine Chat / Dual-Role Platform / Gemini Multimodal Pipeline
     const promptText = hasImage
       ? caption.trim() || 'Tolong analisa gambar ini sesuai konteks toko.'
       : textBody;
 
     if (!promptText && !hasImage) {
+      continue;
+    }
+
+    const isOfficialBot =
+      instanceName === 'boontrack-app-shop' ||
+      instanceName === 'boontrack-shop' ||
+      (tenantId === 'boon' && !instanceName.includes('gateway'));
+
+    if (isOfficialBot && !isGroup && !hasImage) {
+      const resolution = await resolveBoonPilotSender(senderPhone, supabase);
+      const chatRes = await processBoonPilotPlatformChat(
+        {
+          senderPhone,
+          message: promptText,
+          image_base64: base64Data || undefined,
+          mime_type: mimeType,
+        },
+        supabase
+      );
+
+      if (chatRes.reply && chatRes.reply.trim()) {
+        await sendEvolutionTextMessage(
+          instanceName,
+          senderPhone,
+          chatRes.reply.trim(),
+          resolvedApiKey
+        );
+
+        await persistOutboundMessage({
+          tenantId: resolution.tenant?.id || tenantId,
+          tenantSlug: resolution.tenant?.slug || tenantSlug || tenantId,
+          customerPhone: senderPhone,
+          senderType: 'bot',
+          senderName: resolution.role === 'MERCHANT' ? 'BoonPilot Toko' : 'BoonTrack Concierge',
+          messageBody: chatRes.reply.trim(),
+          externalId: item.key?.id ? `bot_reply_${item.key.id}` : undefined,
+          rawPayload: { trigger: 'boonpilot_platform_dual_role', role: resolution.role },
+        });
+      }
+
+      processedCount++;
       continue;
     }
 
