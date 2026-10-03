@@ -1,8 +1,5 @@
-/**
- * WhatsApp Cloud API (WABA) Client & Utility Notification Helper
- * Mendukung pengiriman session messages (free tier 1.000 sesi/bulan)
- * dan Utility Template resmi Meta: order_notification_v1.
- */
+import { resolveChannelBinding, hasCapability } from '@/lib/channels';
+
 
 export interface OrderNotificationParams {
   phone: string;
@@ -419,6 +416,19 @@ export async function sendOrderFulfillmentNotification(
 
   if (!normalizedTo) {
     return { success: false, error: 'Nomor WhatsApp penerima kosong / tidak valid' };
+  }
+
+  // §43.1 / §43.2 Context-Capability Check: STORE_CONTEXT -> payment_notification
+  const channelBinding = resolveChannelBinding({
+    channel_type: 'whatsapp',
+    external_identifier: normalizedTo,
+    context: 'STORE_CONTEXT',
+    tenant_id: params.tenantId,
+    tenant_slug: params.storeName,
+  });
+
+  if (!hasCapability(channelBinding, 'payment_notification')) {
+    return { success: false, error: 'Channel binding lacks payment_notification capability (§43.1)' };
   }
 
   try {

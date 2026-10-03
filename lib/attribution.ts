@@ -13,6 +13,7 @@ export function getOrCreateSessionId(): string {
 export async function syncAttributionSession(tenantId: string, searchParams: URLSearchParams) {
   const sessionId = getOrCreateSessionId();
   const ref = searchParams.get('ref') || searchParams.get('aff');
+  const src = searchParams.get('src') || searchParams.get('source') || searchParams.get('community_source_id');
   const utm_source = searchParams.get('utm_source');
   const utm_medium = searchParams.get('utm_medium');
   const utm_campaign = searchParams.get('utm_campaign');
@@ -24,9 +25,12 @@ export async function syncAttributionSession(tenantId: string, searchParams: URL
   if (ref) {
     localStorage.setItem(`bt_ref_${tenantId}`, ref.toUpperCase());
   }
+  if (src) {
+    localStorage.setItem(`bt_src_${tenantId}`, src.trim());
+  }
 
   // Jika ada parameter pelacakan, tulis langsung ke Supabase tabel attributions
-  if (ref || utm_source || fbclid || ttclid) {
+  if (ref || src || utm_source || fbclid || ttclid) {
     try {
       const supabase = getSupabase();
       if (!supabase) return sessionId;
@@ -51,8 +55,8 @@ export async function syncAttributionSession(tenantId: string, searchParams: URL
           tenant_id: tenantId,
           session_id: sessionId,
           affiliate_id: affiliateId,
-          utm_source: utm_source || null,
-          utm_medium: utm_medium || null,
+          utm_source: utm_source || (src ? `community_${src}` : null),
+          utm_medium: utm_medium || (src ? 'channel_community' : null),
           utm_campaign: utm_campaign || null,
           utm_content: utm_content || null,
           utm_term: utm_term || null,

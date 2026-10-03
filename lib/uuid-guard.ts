@@ -11,7 +11,7 @@ export const LOOSE_UUID_REGEX =
  * Validates whether a value is a valid UUID string.
  * Rejects undefined, null, empty strings, and non-UUID formats.
  */
-export function isValidUuid(val: unknown): val is string {
+export function isValidUuid(val: unknown): boolean {
   if (typeof val !== 'string') return false;
   const trimmed = val.trim();
   if (!trimmed || trimmed === 'undefined' || trimmed === 'null' || trimmed === '[object Object]') {
@@ -24,5 +24,5 @@ export function isValidUuid(val: unknown): val is string {
  * Returns trimmed UUID string if valid, otherwise null.
  */
 export function safeUuidOrNull(val: unknown): string | null {
-  return isValidUuid(val) ? val.trim() : null;
+  return isValidUuid(val) ? (val as string).trim() : null;
 }

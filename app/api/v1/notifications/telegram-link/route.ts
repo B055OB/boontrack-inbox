@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Pastikan tenant ada (cari berdasarkan slug atau id)
     const cleanRef = tenantRef.trim();
-    let tenantQuery = supabase
+    let tenantQuery: any = supabase
       .from('tenants')
       .select('id, name, slug, telegram_chat_id, metadata');
 
@@ -165,7 +165,7 @@ export async function GET(req: NextRequest) {
 
     const supabase = getSupabaseAdmin();
     const cleanParam = tenantParam.trim();
-    let query = supabase
+    let query: any = supabase
       .from('tenants')
       .select('id, name, slug, telegram_chat_id, metadata');
 

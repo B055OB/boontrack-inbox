@@ -15,6 +15,7 @@ import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
 import { ConversationEngine } from '@/lib/conversationEngine';
 import { getPlatformBaseUrl } from '@/lib/platform-urls';
 import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
+import { resolveChannelBinding, hasCapability, buildGranularReferralUrl } from '@/lib/channels';
 
 export function getTelegramBotToken(): string {
   return (
@@ -485,8 +486,28 @@ export async function handleTelegramUpdate(
         } catch {}
       }
 
+      // §43.1 & §43.2 Context-Capability Check: AFFILIATE_CONTEXT
+      const affiliateBinding = resolveChannelBinding({
+        channel_type: 'telegram',
+        external_identifier: String(chatId),
+        context: 'AFFILIATE_CONTEXT',
+        community_source_id: isGroup ? String(chatId) : null,
+        tenant_id: targetTenant.id,
+        tenant_slug: targetTenant.slug,
+        metadata: targetTenant.metadata,
+      });
+
+      if (!hasCapability(affiliateBinding, 'referral_acquisition')) {
+        return { handled: false, reason: 'lacks_referral_acquisition_capability', chatId };
+      }
+
       const storeName = targetTenant.name || targetTenant.slug;
-      const affiliateUrl = `https://shop.boontrack.com/${targetTenant.slug}?ref=${encodeURIComponent(referralCode)}`;
+      // §43.3 Granular Attribution Engine: ?ref={affiliate_id}&src={community_source_id}
+      const affiliateUrl = buildGranularReferralUrl({
+        slug: targetTenant.slug,
+        affiliateId: referralCode,
+        communitySourceId: affiliateBinding.community_source_id,
+      });
       const commissionText = targetTenant.metadata?.affiliate_commission
         ? `💰 *Komisi:* ${targetTenant.metadata.affiliate_commission}\n`
         : '';
@@ -553,6 +574,21 @@ export async function handleTelegramUpdate(
         if (showcaseTenant) {
           if (isGroupRateLimited(chatId, fromId)) {
             return { handled: false, reason: 'group_rate_limited', chatId };
+          }
+
+          // §43.1 & §43.2 Context-Capability Check: STORE_CONTEXT
+          const storeBinding = resolveChannelBinding({
+            channel_type: 'telegram',
+            external_identifier: String(chatId),
+            context: 'STORE_CONTEXT',
+            community_source_id: isGroup ? String(chatId) : null,
+            tenant_id: showcaseTenant.id,
+            tenant_slug: showcaseTenant.slug,
+            metadata: showcaseTenant.metadata,
+          });
+
+          if (!hasCapability(storeBinding, 'catalog')) {
+            continue;
           }
 
           const rawProducts = Array.isArray(showcaseTenant.metadata?.products)

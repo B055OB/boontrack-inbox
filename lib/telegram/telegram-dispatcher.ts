@@ -10,6 +10,7 @@
 
 import { sendTelegramNotification } from '@/lib/telegram/boonpilot-telegram';
 import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
+import { resolveChannelBinding, hasCapability } from '@/lib/channels';
 
 export interface DispatchOrderTelegramParams {
   order: {
@@ -89,7 +90,7 @@ export async function dispatchOrderTelegramAlert(
     // 1. Query telegram_chat_id milik tenant terkait
     if (tenantRef && supabase) {
       try {
-        let tenantQuery = supabase
+        let tenantQuery: any = supabase
           .from('tenants')
           .select('id, name, slug, telegram_chat_id, metadata');
 
@@ -130,7 +131,7 @@ export async function dispatchOrderTelegramAlert(
 
     const isGroup = String(targetChatId).startsWith('-');
 
-    // 3. §42.2 & §42.3 — Fail-Safe Privacy Defaults & Filtering for Group Notifications
+    // 3. §42.2 & §42.3 — Fail-Safe Privacy Defaults & Configuration
     const DEFAULT_GROUP_CONFIG = {
       notify_new_order: false,
       notify_paid: true,
@@ -145,14 +146,27 @@ export async function dispatchOrderTelegramAlert(
       ...(tenantData?.metadata?.telegram_group_config || {}),
     };
 
-    if (isGroup) {
-      // Filter push alerts by event
-      if ((event === 'new_order' || event === 'order_pending') && !groupConfig.notify_new_order) {
-        console.log('[TELEGRAM DISPATCHER] Group notification for new_order is disabled by group config (§42.2). Skipped.');
+    // 4. §43.1 & §43.2 — Context-Capability Binding Resolution
+    const channelBinding = resolveChannelBinding({
+      channel_type: 'telegram',
+      external_identifier: String(targetChatId),
+      context: 'STORE_CONTEXT',
+      community_source_id: isGroup ? String(targetChatId) : null,
+      tenant_id: tenantData?.id,
+      tenant_slug: tenantData?.slug || order.tenant_slug,
+      metadata: tenantData?.metadata,
+      group_config: isGroup ? groupConfig : undefined,
+    });
+
+    // Evaluate Capability Policy (No hardcoded group-type branching)
+    if (event === 'new_order' || event === 'order_pending') {
+      if (!hasCapability(channelBinding, 'order_notification')) {
+        console.log('[TELEGRAM DISPATCHER] Channel binding lacks order_notification capability (§43.1). Skipped.');
         return { dispatched: false, targetChatId, error: 'skipped_by_group_config' };
       }
-      if ((event === 'payment_confirmed' || event === 'order_paid') && !groupConfig.notify_paid) {
-        console.log('[TELEGRAM DISPATCHER] Group notification for paid order is disabled by group config (§42.2). Skipped.');
+    } else if (event === 'payment_confirmed' || event === 'order_paid') {
+      if (!hasCapability(channelBinding, 'payment_notification')) {
+        console.log('[TELEGRAM DISPATCHER] Channel binding lacks payment_notification capability (§43.1). Skipped.');
         return { dispatched: false, targetChatId, error: 'skipped_by_group_config' };
       }
     }

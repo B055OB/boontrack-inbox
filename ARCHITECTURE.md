@@ -3423,3 +3423,60 @@ Disimpan di kolom `metadata` (JSONB) tabel `tenants` di Supabase. **DILARANG mem
 - **Bot ID Validation**: Bot `@boonshop_bot` hanya memproses pesan dari grup yang `chat_id`-nya terdaftar di kolom `telegram_chat_id` salah satu tenant. Pesan dari grup tidak terdaftar di-drop tanpa respons.
 - **Rate Limit**: Maks 1 trigger respons per anggota per 30 detik per grup untuk mencegah spam.
 - **Tenant Isolation**: Satu grup hanya dapat terhubung ke **satu** tenant. Jika merchant lain mencoba mendaftarkan grup yang sama, sistem mengembalikan error `409 Conflict`.
+
+---
+
+## 43. Context-Capability Pattern & Granular Channel Attribution Engine (ADR 2026-10-03)
+
+### 43.1 Channel Invariant: Pure Transport Adapter Architecture
+- **Inbound Event Pipeline**:
+  `Inbound Event -> Channel Adapter -> Channel Binding -> Context -> Capability/Policy -> Shared Core`
+- **Zero Group-Type Branching Policy**:
+  DILARANG KERAS menggunakan percabangan hardcode berbasis tipe grup fisik di dispatcher (contoh terlarang: `if (isGroup)`, `if (group_type === 'community')`, atau `if (remoteJid.includes('@g.us'))`).
+- Semua dispatcher saluran (Telegram, WhatsApp, dsb.) WAJIB bertindak sebagai **Transport Adapter murni**. Evaluasi izin pengiriman pesan, notifikasi, maupun trigger wajib didelegasikan ke policy check kapabilitas:
+  `hasCapability(binding, 'order_notification')` atau `hasCapability(binding, 'referral_acquisition')`.
+
+### 43.2 Channel Binding Contract & Capabilities
+Setiap saluran komunikasi (chat personal, grup merchant, komunitas afiliasi) direpresentasikan oleh entitas kontrak terpadu: **`ChannelBinding`**.
+
+```typescript
+export interface ChannelBinding {
+  binding_id: string;
+  channel_type: 'telegram' | 'whatsapp';
+  external_identifier: string; // chat_id / group_jid
+  context: 'STORE_CONTEXT' | 'AFFILIATE_CONTEXT';
+  community_source_id?: string | null;
+  capabilities: ChannelCapability[];
+  tenant_id?: string | null;
+  tenant_slug?: string | null;
+  metadata?: Record<string, any>;
+}
+```
+
+#### Capability Matrix by Context
+
+| Context | Capabilities | Deskripsi Fungsional |
+| :--- | :--- | :--- |
+| **`STORE_CONTEXT`** | `order_notification` | Notifikasi transaksi pending/baru masuk ke merchant |
+| | `payment_notification` | Notifikasi pembayaran lunas terverifikasi |
+| | `catalog` | Etalase interaktif & akses etalase toko (`@{slug}`) |
+| **`AFFILIATE_CONTEXT`** | `referral_acquisition` | Pembagian tautan referral personal (`@boon`) |
+| | `registration_link` | Tautan pendaftaran member/reseller/afiliasi baru |
+| | `affiliate_notification` | Alert komisi & rekap performa promosi afiliasi |
+
+- **Kebijakan Granular Override**:
+  Dalam `STORE_CONTEXT`, kapabilitas dapat dibatasi secara granular oleh preferensi privasi merchant (`metadata.telegram_group_config`). Misalnya jika merchant menonaktifkan `notify_new_order: false`, maka kapabilitas `order_notification` dieksklusikan dari binding saat runtime.
+
+### 43.3 Granular Attribution Engine
+Untuk pelacakan komisi dan efektivitas promosi yang akurat, sistem memisahkan identitas afiliasi (`affiliate_id` / `referral_code`) dari sumber komunitas (`community_source_id`).
+
+1. **Parameter Kontrak URL**:
+   - `ref`: Kode / ID afiliasi personal yang mereferensikan transaksi.
+   - `src`: Identitas sumber komunitas / grup channel tempat tautan dibagikan (`community_source_id`, misal chat_id grup Telegram atau group_jid WhatsApp).
+   - Format: `https://shop.boontrack.com/{slug}?ref={affiliate_id}&src={community_source_id}`.
+2. **Deterministic Resolution**:
+   - Jika tautan dibuat di ruang obrolan 1-on-1 personal (bukan komunitas), `community_source_id` bernilai `null` dan parameter `src` tidak disertakan (`?ref={affiliate_id}`).
+   - Jika tautan dibuat di grup/komunitas, `community_source_id` diisi dengan ID grup sehingga platform dapat melacak konversi per kolam komunitas secara granular.
+3. **Storefront & Attribution Ingestion**:
+   - Helper `syncAttributionSession` otomatis mengekstrak `src` dan menyimpannya di browser session storage / local storage (`bt_src_{tenantId}`) serta merekamnya ke log atribusi database Supabase.
+
