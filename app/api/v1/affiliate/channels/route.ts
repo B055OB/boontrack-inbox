@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const validatedDemoUrl = demoValidation.normalizedUrl || 'https://shop.boontrack.com/toko-demo';
+    const validatedDemoUrl = demoValidation.normalizedUrl || 'https://shop.boontrack.com/boon';
     const affRefCode = affiliate.referral_code || affiliate.id;
     const bindingId = `${channel_type}:${cleanSourceId}:affiliate_context`;
 

@@ -95,7 +95,7 @@ export function validateDemoUrl(urlStr?: string | null): {
   if (!urlStr || !urlStr.trim()) {
     return {
       valid: true,
-      normalizedUrl: 'https://shop.boontrack.com/toko-demo',
+      normalizedUrl: 'https://shop.boontrack.com/boon',
     };
   }
 
@@ -178,7 +178,7 @@ export function resolveChannelBinding(params: ResolveBindingParams): ChannelBind
     tenant_slug: tenant_slug || null,
     affiliate_id: affiliate_id || null,
     channel_name: channel_name || null,
-    demo_url: demoValidation.normalizedUrl || 'https://shop.boontrack.com/toko-demo',
+    demo_url: demoValidation.normalizedUrl || 'https://shop.boontrack.com/boon',
     is_active: is_active !== false,
     metadata: metadata || {},
   };

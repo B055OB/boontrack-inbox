@@ -454,12 +454,27 @@ export async function handleTelegramUpdate(
         }
       }
 
+      // FITUR CEK ID INSTAN TELEGRAM (@boon id)
+      const tTextTrim = rawText.trim().toLowerCase();
+      if (tTextTrim === '@boon id' || tTextTrim.startsWith('@boon id')) {
+        const idReply = `🆔 *ID Grup Telegram Ini:*\n\`${chatId}\`\n\nSalin ID di atas untuk dimasukkan ke dashboard affiliate.`;
+        await sendTelegramMessage(chatId, idReply, { parseMode: 'Markdown' });
+        return {
+          handled: true,
+          chatId,
+          senderPhone: String(fromId),
+          reply: idReply,
+          role: 'COMMAND_HANDLER',
+          activeEngine: 'BUILTIN_COMMAND_ID',
+        };
+      }
+
       // JIKA GRUP TERDAFTAR SEBAGAI KOLAM KOMUNITAS:
       // Sajikan respon singkat + 2 call-to-action (Contoh Demo & Buka Toko Online)
       if (communityBinding) {
-        const affiliateId = communityBinding.affiliate_id || 'ob';
-        const demoUrl = communityBinding.demo_url || 'https://shop.boontrack.com/toko-demo';
-        const registerUrl = `https://dashboard.boontrack.com/register?ref=${encodeURIComponent(affiliateId)}&src=${encodeURIComponent(chatId)}`;
+        const affiliateId = communityBinding.affiliate_id || 'boon';
+        const demoUrl = communityBinding.demo_url || 'https://shop.boontrack.com/boon';
+        const registerUrl = `https://shop.boontrack.com/register?ref=${encodeURIComponent(affiliateId)}&src=${encodeURIComponent(chatId)}`;
 
         const replyText =
           `👋 *Halo dari BoonTrack!*\n` +

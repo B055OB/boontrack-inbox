@@ -25,11 +25,11 @@ describe('§43 Community Pool Automation & Domain Guard', () => {
       }
     });
 
-    it('should default to https://shop.boontrack.com/toko-demo when empty or null', () => {
-      expect(validateDemoUrl('').normalizedUrl).toBe('https://shop.boontrack.com/toko-demo');
-      expect(validateDemoUrl('   ').normalizedUrl).toBe('https://shop.boontrack.com/toko-demo');
-      expect(validateDemoUrl(null).normalizedUrl).toBe('https://shop.boontrack.com/toko-demo');
-      expect(validateDemoUrl(undefined).normalizedUrl).toBe('https://shop.boontrack.com/toko-demo');
+    it('should default to https://shop.boontrack.com/boon when empty or null', () => {
+      expect(validateDemoUrl('').normalizedUrl).toBe('https://shop.boontrack.com/boon');
+      expect(validateDemoUrl('   ').normalizedUrl).toBe('https://shop.boontrack.com/boon');
+      expect(validateDemoUrl(null).normalizedUrl).toBe('https://shop.boontrack.com/boon');
+      expect(validateDemoUrl(undefined).normalizedUrl).toBe('https://shop.boontrack.com/boon');
     });
 
     it('should strictly reject external third-party domains with standard error message', () => {
@@ -84,7 +84,7 @@ describe('§43 Community Pool Automation & Domain Guard', () => {
         channel_name: 'WA Group Mentoring',
       });
 
-      expect(binding.demo_url).toBe('https://shop.boontrack.com/toko-demo');
+      expect(binding.demo_url).toBe('https://shop.boontrack.com/boon');
     });
   });
 
@@ -92,9 +92,9 @@ describe('§43 Community Pool Automation & Domain Guard', () => {
     it('should construct correct Register URL with ref and src parameters', () => {
       const affiliateId = 'ob';
       const communitySourceId = '-10099887766';
-      const registerUrl = `https://dashboard.boontrack.com/register?ref=${encodeURIComponent(affiliateId)}&src=${encodeURIComponent(communitySourceId)}`;
+      const registerUrl = `https://shop.boontrack.com/register?ref=${encodeURIComponent(affiliateId)}&src=${encodeURIComponent(communitySourceId)}`;
 
-      expect(registerUrl).toBe('https://dashboard.boontrack.com/register?ref=ob&src=-10099887766');
+      expect(registerUrl).toBe('https://shop.boontrack.com/register?ref=ob&src=-10099887766');
     });
   });
 });

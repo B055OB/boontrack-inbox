@@ -333,9 +333,31 @@ export async function processEvolutionWebhookEvent(
         item.message?.extendedTextMessage?.text ||
         item.message?.imageMessage?.caption ||
         '';
+      const rawTrimmed = rawText.trim().toLowerCase();
+      const isDirectIdCommand = rawTrimmed === '/id' || rawTrimmed === '!id' || rawTrimmed === '@boon id';
+
       const wakeWord = isBoonPilotWakeWordTriggered(rawText, true, 'WHATSAPP');
-      const hasMention = wakeWord.triggered;
+      const hasMention = wakeWord.triggered || isDirectIdCommand;
       if (!hasMention) {
+        continue;
+      }
+
+      // FITUR CEK ID INSTAN (@boon id / /id / !id)
+      const cleanLower = wakeWord.cleanText.trim().toLowerCase();
+      const isIdCommand =
+        isDirectIdCommand ||
+        cleanLower === 'id' ||
+        cleanLower === '/id' ||
+        cleanLower === '!id' ||
+        cleanLower === 'cek id' ||
+        rawTrimmed.startsWith('@boon id') ||
+        rawTrimmed.startsWith('/id') ||
+        rawTrimmed.startsWith('!id');
+
+      if (isIdCommand) {
+        const idReply = `🆔 *ID Grup WhatsApp Ini:*\n\`${rawFrom}\`\n\nSalin ID di atas untuk dimasukkan ke dashboard affiliate.`;
+        await sendEvolutionTextMessage(instanceName, rawFrom, idReply, resolvedApiKey);
+        processedCount++;
         continue;
       }
 
@@ -349,21 +371,21 @@ export async function processEvolutionWebhookEvent(
             .eq('is_active', true)
             .maybeSingle();
 
-          if (waBinding) {
-            const affId = waBinding.affiliate_id || 'ob';
-            const demoUrl = waBinding.demo_url || 'https://shop.boontrack.com/toko-demo';
-            const registerUrl = `https://dashboard.boontrack.com/register?ref=${encodeURIComponent(affId)}&src=${encodeURIComponent(rawFrom)}`;
+          const affId = waBinding?.affiliate_id || 'boon';
+          const demoUrl = waBinding?.demo_url || 'https://shop.boontrack.com/boon';
+          const registerUrl = waBinding
+            ? `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}&src=${encodeURIComponent(rawFrom)}`
+            : `https://shop.boontrack.com/register`;
 
-            const replyText =
-              `👋 *Halo dari BoonTrack!*\n` +
-              `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
-              `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
-              `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}`;
+          const replyText =
+            `👋 *Halo dari BoonTrack!*\n` +
+            `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
+            `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
+            `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}`;
 
-            await sendEvolutionTextMessage(instanceName, rawFrom, replyText, resolvedApiKey);
-            processedCount++;
-            continue;
-          }
+          await sendEvolutionTextMessage(instanceName, rawFrom, replyText, resolvedApiKey);
+          processedCount++;
+          continue;
         } catch (waErr) {
           console.warn('[Evolution WA Group Community Trigger Error]:', waErr);
         }

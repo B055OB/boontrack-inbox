@@ -557,10 +557,32 @@ export async function processNormalizedMetaEvent(
       }
 
       // HANYA nomor official +6281215567168 yang diizinkan memproses mention @boon di dalam grup
+      const rawTextTrim = textContent.trim().toLowerCase();
+      const isDirectIdCommand = rawTextTrim === '/id' || rawTextTrim === '!id' || rawTextTrim === '@boon id';
+
       const wakeWord = isBoonPilotWakeWordTriggered(textContent, true, 'WHATSAPP');
-      const hasBoonMention = wakeWord.triggered;
+      const hasBoonMention = wakeWord.triggered || isDirectIdCommand;
       if (!hasBoonMention) {
         console.info(`[GROUP_GUARD] Official support ignoring general group chatter in '${rawFrom}' (no @boon mention).`);
+        continue;
+      }
+
+      // FITUR CEK ID INSTAN (@boon id / /id / !id)
+      const cleanLower = wakeWord.cleanText.trim().toLowerCase();
+      const isIdCommand =
+        isDirectIdCommand ||
+        cleanLower === 'id' ||
+        cleanLower === '/id' ||
+        cleanLower === '!id' ||
+        cleanLower === 'cek id' ||
+        rawTextTrim.startsWith('@boon id') ||
+        rawTextTrim.startsWith('/id') ||
+        rawTextTrim.startsWith('!id');
+
+      if (isIdCommand) {
+        const idReply = `🆔 *ID Grup WhatsApp Ini:*\n\`${rawFrom}\`\n\nSalin ID di atas untuk dimasukkan ke dashboard affiliate.`;
+        await sendWhatsAppSessionMessage(rawFrom, idReply);
+        processedMessages++;
         continue;
       }
 
@@ -574,21 +596,21 @@ export async function processNormalizedMetaEvent(
           .eq('is_active', true)
           .maybeSingle();
 
-        if (waBinding) {
-          const affId = waBinding.affiliate_id || 'ob';
-          const demoUrl = waBinding.demo_url || 'https://shop.boontrack.com/toko-demo';
-          const registerUrl = `https://dashboard.boontrack.com/register?ref=${encodeURIComponent(affId)}&src=${encodeURIComponent(rawFrom)}`;
+        const affId = waBinding?.affiliate_id || 'boon';
+        const demoUrl = waBinding?.demo_url || 'https://shop.boontrack.com/boon';
+        const registerUrl = waBinding
+          ? `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}&src=${encodeURIComponent(rawFrom)}`
+          : `https://shop.boontrack.com/register`;
 
-          const replyText =
-            `👋 *Halo dari BoonTrack!*\n` +
-            `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
-            `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
-            `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}`;
+        const replyText =
+          `👋 *Halo dari BoonTrack!*\n` +
+          `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
+          `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
+          `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}`;
 
-          await sendWhatsAppSessionMessage(rawFrom, replyText);
-          processedMessages++;
-          continue;
-        }
+        await sendWhatsAppSessionMessage(rawFrom, replyText);
+        processedMessages++;
+        continue;
       } catch (waErr) {
         console.warn('[WA Group Community Trigger Error]:', waErr);
       }
