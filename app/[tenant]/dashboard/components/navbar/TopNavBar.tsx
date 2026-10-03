@@ -36,8 +36,8 @@ export default function TopNavBar({
         <div className="hidden lg:flex items-center gap-2 pr-3 border-r border-slate-200 shrink-0">
           <div className="w-7 h-7 shrink-0 flex items-center justify-center">
             <Image
-              src="/icon-shop.png"
-              alt="BoonTrack Shop"
+              src="/logo-master.png"
+              alt="BoonTrack"
               width={28}
               height={28}
               className="w-full h-full object-contain"

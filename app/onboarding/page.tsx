@@ -12,8 +12,8 @@ export default function OnboardingHubPage() {
           <Link href="/" className="flex items-center gap-3 group cursor-pointer">
             <div className="w-10 h-10 shrink-0 group-hover:scale-105 transition-transform flex items-center justify-center">
               <Image
-                src="/icon-shop.png"
-                alt="BoonTrack Shop"
+                src="/logo-master.png"
+                alt="BoonTrack"
                 width={40}
                 height={40}
                 priority

@@ -1107,9 +1107,9 @@ export default function TenantStorefrontPage() {
     tenantMetadata?.avatar_url ||
     tenant?.logo_url ||
     tenant?.avatar_url ||
-    "/icon-shop.png";
+    "/logo-master.png";
   const sanitizedActiveLogo = sanitizeImageUrl(activeLogo) || activeLogo;
-  const storeLogoUrl = sanitizedActiveLogo === "/icon-shop.png" || sanitizedActiveLogo === "/logo.png" ? "" : sanitizedActiveLogo;
+  const storeLogoUrl = sanitizedActiveLogo === "/icon-shop.png" || sanitizedActiveLogo === "/logo-master.png" || sanitizedActiveLogo === "/logo.png" ? "" : sanitizedActiveLogo;
   const displayAvatar = sanitizedActiveLogo;
 
   // ── RESERVED SYSTEM SLUGS CHECK ──
@@ -1367,7 +1367,7 @@ export default function TenantStorefrontPage() {
       <header className={`${defaultThemeConfig.header} border-b sticky top-0 z-30 shadow-xs transition-colors duration-200`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {displayAvatar && displayAvatar !== "/icon-shop.png" && displayAvatar !== "/logo.png" ? (
+            {displayAvatar && displayAvatar !== "/icon-shop.png" && displayAvatar !== "/logo-master.png" && displayAvatar !== "/logo.png" ? (
               <img
                 src={displayAvatar}
                 alt={storeName || displayName}
@@ -1375,8 +1375,8 @@ export default function TenantStorefrontPage() {
               />
             ) : (
               <img
-                src="/icon-shop.png"
-                alt="BoonTrack Shop"
+                src="/logo-master.png"
+                alt="BoonTrack"
                 className="w-9 h-9 object-contain"
               />
             )}
@@ -2022,7 +2022,7 @@ export default function TenantStorefrontPage() {
                 {/* Drawer Header */}
                 <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/90 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2.5">
-                    {displayAvatar && displayAvatar !== "/icon-shop.png" && displayAvatar !== "/logo.png" ? (
+                    {displayAvatar && displayAvatar !== "/icon-shop.png" && displayAvatar !== "/logo-master.png" && displayAvatar !== "/logo.png" ? (
                       <img
                         src={displayAvatar}
                         alt={storeName || displayName}
@@ -2030,8 +2030,8 @@ export default function TenantStorefrontPage() {
                       />
                     ) : (
                       <img
-                        src="/icon-shop.png"
-                        alt="BoonTrack Shop"
+                        src="/logo-master.png"
+                        alt="BoonTrack"
                         className="w-8 h-8 object-contain"
                       />
                     )}

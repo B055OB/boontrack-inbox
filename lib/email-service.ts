@@ -127,7 +127,7 @@ export function buildBuyerReceiptHtml(data: {
     <div class="wrapper">
       <!-- HEADER -->
       <div class="header">
-        <img src="https://dashboard.boontrack.com/logo-master.jpg" alt="BoonTrack Shop" width="120" style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" />
+        <img src="https://shop.boontrack.com/logo-horizontal.png" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
         <span class="header-badge">✓ Terverifikasi Otomatis</span>
         <h1>${data.storeName.toUpperCase()}</h1>
         <p>Bukti Transaksi &amp; Invoice Resmi Pembayaran</p>
@@ -268,7 +268,7 @@ export function buildMerchantAlertHtml(data: {
 <body>
   <div class="wrapper">
     <div class="header">
-      <img src="https://dashboard.boontrack.com/logo-master.jpg" alt="BoonTrack Shop" width="120" style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" />
+      <img src="https://shop.boontrack.com/logo-horizontal.png" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
       <span class="badge">Pesanan Baru Lunas (PAID)</span>
       <h2 style="margin: 10px 0 0 0; font-size: 20px;">Toko: ${data.storeName}</h2>
     </div>
@@ -617,7 +617,7 @@ export function buildSellerProofAlertHtml(data: {
 <body>
   <div class="wrapper">
     <div class="header">
-      <img src="https://dashboard.boontrack.com/logo-master.jpg" alt="BoonTrack Shop" width="120" style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" />
+      <img src="https://shop.boontrack.com/logo-horizontal.png" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
       <span class="badge">Perlu Verifikasi Seller</span>
       <h2 style="margin: 8px 0 0 0; font-size: 18px;">Bukti Transfer Pembayaran Masuk</h2>
       <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">${data.storeName.toUpperCase()} &bull; Order #${data.orderId}</p>
@@ -739,4 +739,463 @@ export async function sendPaymentProofAlertToSeller(
     return { success: false, error: msg };
   }
 }
+
+// ============================================================================
+// § 40. PLATFORM LIFECYCLE EMAILS & SYSTEM BROADCAST ENGINE
+// ============================================================================
+
+export const BOONTRACK_OFFICIAL_EMAIL_LOGO = 'https://shop.boontrack.com/logo-horizontal.png';
+
+export interface WelcomeActivationEmailOptions {
+  to: string;
+  ownerName?: string;
+  storeName: string;
+  slug: string;
+  loginUrl?: string;
+  tempPassword?: string;
+}
+
+export interface MagicLinkEmailOptions {
+  to: string;
+  ownerName?: string;
+  loginUrl: string;
+  expiresInMinutes?: number;
+}
+
+export interface TrialExpiringWarningEmailOptions {
+  to: string;
+  ownerName?: string;
+  storeName: string;
+  slug: string;
+  daysLeft: 1 | 2;
+  expiryDateFormatted: string;
+}
+
+export interface TrialExpiredDay0EmailOptions {
+  to: string;
+  ownerName?: string;
+  storeName: string;
+  slug: string;
+}
+
+export interface SaaSSubscriptionReceiptEmailOptions {
+  to: string;
+  ownerName?: string;
+  storeName: string;
+  slug: string;
+  invoiceId: string;
+  planName: 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' | string;
+  durationMonths: number;
+  amountPaid: number;
+  periodEndsAtFormatted: string;
+  paymentMethod?: string;
+}
+
+export interface SystemBroadcastBatchItem {
+  to: string;
+  ownerName?: string;
+  storeName?: string;
+}
+
+export interface SystemBroadcastBatchOptions {
+  recipients: SystemBroadcastBatchItem[];
+  subject: string;
+  announcementTitle: string;
+  announcementBodyHtml: string;
+  ctaUrl?: string;
+  ctaText?: string;
+  batchDelayMs?: number; // default 150ms batch delay
+}
+
+/**
+ * 1. Welcome & Aktivasi Akun Toko Baru
+ */
+export async function sendWelcomeActivationEmail(
+  options: WelcomeActivationEmailOptions
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  const storeUrl = `https://shop.boontrack.com/${options.slug}`;
+  const dashboardUrl = options.loginUrl || `https://dashboard.boontrack.com/${options.slug}`;
+  const owner = options.ownerName || 'Sahabat Merchant';
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Selamat Datang di BoonTrack!</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; }
+    .wrapper { max-width: 580px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 24px; text-align: center; color: #ffffff; }
+    .content { padding: 32px 28px; }
+    .cta-btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; text-align: center; }
+    .box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <img src="${BOONTRACK_OFFICIAL_EMAIL_LOGO}" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
+      <h2 style="margin: 0; font-size: 20px; font-weight: 800;">Selamat Datang di BoonTrack! 🚀</h2>
+      <p style="margin: 6px 0 0 0; font-size: 13px; color: #94a3b8;">Toko online Anda telah berhasil disiapkan &amp; aktif</p>
+    </div>
+    <div class="content">
+      <p>Halo <strong>${owner}</strong>,</p>
+      <p>Terima kasih telah bergabung di ekosistem BoonTrack. Toko online Anda <strong>${options.storeName}</strong> sudah siap digunakan untuk transaksi langsung via WhatsApp dan QRIS otomatis.</p>
+      
+      <div class="box">
+        <div style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 10px;">Informasi Kredensial Toko</div>
+        <p style="margin: 4px 0; font-size: 13px;"><strong>Nama Toko:</strong> ${options.storeName}</p>
+        <p style="margin: 4px 0; font-size: 13px;"><strong>Etalase Pembeli:</strong> <a href="${storeUrl}" style="color: #2563eb;">${storeUrl}</a></p>
+        <p style="margin: 4px 0; font-size: 13px;"><strong>Email Terdaftar:</strong> ${options.to}</p>
+        ${options.tempPassword ? `<p style="margin: 4px 0; font-size: 13px;"><strong>Password Sementara:</strong> <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${options.tempPassword}</code></p>` : ''}
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${dashboardUrl}" class="cta-btn">Masuk ke Dashboard Toko &rarr;</a>
+      </div>
+
+      <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
+        Silakan lengkapi profil rekening bank / QRIS toko Anda di menu Pengaturan agar pembeli dapat langsung menyelesaikan pembayaran secara instan.
+      </p>
+    </div>
+    <div style="background: #f8fafc; padding: 18px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+      &copy; BoonTrack Platform &bull; Natural Conversation, Deterministic Commerce
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return dispatchResendEmail({
+    to: options.to,
+    subject: `Selamat Datang di BoonTrack! Toko ${options.storeName} Siap Jualan 🚀`,
+    html,
+  });
+}
+
+/**
+ * 2. Magic Link Login Instan
+ */
+export async function sendMagicLinkLoginEmail(
+  options: MagicLinkEmailOptions
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  const expiresIn = options.expiresInMinutes || 15;
+  const owner = options.ownerName || 'Sahabat Merchant';
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Tautan Masuk Instan (Magic Link)</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; }
+    .wrapper { max-width: 580px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: #0f172a; padding: 28px; text-align: center; color: #ffffff; }
+    .content { padding: 32px 28px; }
+    .cta-btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <img src="${BOONTRACK_OFFICIAL_EMAIL_LOGO}" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
+      <h2 style="margin: 0; font-size: 20px; font-weight: 800;">Tautan Masuk Instan</h2>
+      <p style="margin: 6px 0 0 0; font-size: 13px; color: #94a3b8;">Magic link autentikasi satu klik</p>
+    </div>
+    <div class="content">
+      <p>Halo <strong>${owner}</strong>,</p>
+      <p>Kami menerima permintaan untuk masuk ke dashboard BoonTrack menggunakan email Anda. Klik tombol di bawah untuk langsung masuk tanpa perlu memasukkan password:</p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${options.loginUrl}" class="cta-btn">Masuk ke Dashboard &rarr;</a>
+      </div>
+
+      <p style="font-size: 12px; color: #64748b;">
+        Tautan ini hanya berlaku selama <strong>${expiresIn} menit</strong> dan hanya dapat digunakan satu kali. Jika Anda tidak meminta tautan ini, abaikan email ini secara aman.
+      </p>
+    </div>
+    <div style="background: #f8fafc; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+      &copy; BoonTrack Platform Security Guard
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return dispatchResendEmail({
+    to: options.to,
+    subject: `Tautan Masuk Instan ke Dashboard BoonTrack`,
+    html,
+  });
+}
+
+/**
+ * 3. Peringatan Masa Trial Habis (D-2 & D-1)
+ */
+export async function sendTrialExpiringWarningEmail(
+  options: TrialExpiringWarningEmailOptions
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  const billingUrl = `https://dashboard.boontrack.com/${options.slug}?tab=billing`;
+  const owner = options.ownerName || 'Sahabat Merchant';
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Peringatan Masa Trial Toko Anda</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; }
+    .wrapper { max-width: 580px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: #0f172a; padding: 28px; text-align: center; color: #ffffff; }
+    .badge { background: #d97706; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 999px; text-transform: uppercase; }
+    .content { padding: 32px 28px; }
+    .alert-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 16px; margin: 20px 0; color: #92400e; }
+    .cta-btn { display: inline-block; background: #059669; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <img src="${BOONTRACK_OFFICIAL_EMAIL_LOGO}" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
+      <span class="badge">Sisa ${options.daysLeft} Hari Lagi</span>
+      <h2 style="margin: 10px 0 0 0; font-size: 20px; font-weight: 800;">Masa Uji Coba (Trial) Segera Berakhir</h2>
+      <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">Toko: ${options.storeName}</p>
+    </div>
+    <div class="content">
+      <p>Halo <strong>${owner}</strong>,</p>
+      <p>Masa uji coba gratis toko <strong>${options.storeName}</strong> akan berakhir pada <strong>${options.expiryDateFormatted}</strong> (kurang dari ${options.daysLeft * 24} jam lagi).</p>
+
+      <div class="alert-box">
+        <strong style="display: block; font-size: 13px; margin-bottom: 4px;">Jangan Biarkan Transaksi Terhenti!</strong>
+        <span style="font-size: 12px;">Untuk memastikan auto-reply WhatsApp bot, verifikasi QRIS dinamis, dan sinkronisasi pesanan tetap aktif tanpa gangguan, perpanjang paket langganan Anda sekarang.</span>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${billingUrl}" class="cta-btn">Perpanjang Langganan Sekarang &rarr;</a>
+      </div>
+
+      <p style="font-size: 12px; color: #64748b; line-height: 1.5;">
+        Tersedia pilihan paket Starter, Pro Scale (Ads Performance), dan Team Scale dengan diskon hingga 20% untuk durasi tahunan.
+      </p>
+    </div>
+    <div style="background: #f8fafc; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+      &copy; BoonTrack Billing Engine &bull; Menjaga Toko Anda Tetap Terhubung
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return dispatchResendEmail({
+    to: options.to,
+    subject: `⚠️ Sisa ${options.daysLeft} Hari: Masa Trial Toko ${options.storeName} Segera Berakhir`,
+    html,
+  });
+}
+
+/**
+ * 4. Notifikasi Masa Trial Berakhir (Day 0)
+ */
+export async function sendTrialExpiredDay0Email(
+  options: TrialExpiredDay0EmailOptions
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  const billingUrl = `https://dashboard.boontrack.com/${options.slug}?tab=billing`;
+  const owner = options.ownerName || 'Sahabat Merchant';
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Masa Trial Telah Berakhir</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; }
+    .wrapper { max-width: 580px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: #0f172a; padding: 28px; text-align: center; color: #ffffff; }
+    .badge { background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 999px; text-transform: uppercase; }
+    .content { padding: 32px 28px; }
+    .box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px; margin: 20px 0; color: #991b1b; font-size: 13px; }
+    .cta-btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <img src="${BOONTRACK_OFFICIAL_EMAIL_LOGO}" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
+      <span class="badge">Trial Expired</span>
+      <h2 style="margin: 10px 0 0 0; font-size: 20px; font-weight: 800;">Masa Trial Toko Anda Telah Berakhir</h2>
+      <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">Toko: ${options.storeName}</p>
+    </div>
+    <div class="content">
+      <p>Halo <strong>${owner}</strong>,</p>
+      <p>Masa uji coba gratis untuk toko <strong>${options.storeName}</strong> telah selesai hari ini. Akun Anda saat ini telah dialihkan ke mode dasar.</p>
+
+      <div class="box">
+        <strong>Status Toko Saat Ini:</strong>
+        <p style="margin: 6px 0 0 0;">Katalog produk dan riwayat transaksi Anda tetap aman 100%. Namun respon otomatis AI bot dan fitur premium lainnya sementara dinonaktifkan hingga langganan diaktifkan.</p>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${billingUrl}" class="cta-btn">Aktifkan Langganan Toko &rarr;</a>
+      </div>
+
+      <p style="font-size: 12px; color: #64748b; line-height: 1.5;">
+        Butuh opsi hemat biaya agar etalase tetap aktif? Pilih paket <strong>Checkout Lite</strong> hanya Rp 59.000 / bulan di menu Billing.
+      </p>
+    </div>
+    <div style="background: #f8fafc; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+      &copy; BoonTrack Billing Lifecycle &bull; Re-activate anytime
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return dispatchResendEmail({
+    to: options.to,
+    subject: `Masa Trial Toko ${options.storeName} Telah Berakhir - Aktifkan Paket Langganan`,
+    html,
+  });
+}
+
+/**
+ * 5. Kwitansi / Bukti Bayar Tagihan SaaS
+ */
+export async function sendSaaSSubscriptionReceiptEmail(
+  options: SaaSSubscriptionReceiptEmailOptions
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  const formattedAmount = formatRupiah(options.amountPaid);
+  const owner = options.ownerName || 'Sahabat Merchant';
+
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Bukti Pembayaran Langganan SaaS #${options.invoiceId}</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; }
+    .wrapper { max-width: 580px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: #0f172a; padding: 28px; text-align: center; color: #ffffff; }
+    .badge { background: #10b981; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 999px; text-transform: uppercase; }
+    .content { padding: 32px 28px; }
+    .meta-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 20px 0; }
+    .meta-table td { padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+    .amount-box { text-align: center; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <img src="${BOONTRACK_OFFICIAL_EMAIL_LOGO}" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
+      <span class="badge">Pembayaran Lunas</span>
+      <h2 style="margin: 10px 0 0 0; font-size: 20px; font-weight: 800;">Kwitansi Pembayaran Langganan</h2>
+      <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">Faktur #${options.invoiceId}</p>
+    </div>
+    <div class="content">
+      <p>Halo <strong>${owner}</strong>,</p>
+      <p>Pembayaran langganan platform BoonTrack untuk toko <strong>${options.storeName}</strong> telah berhasil diverifikasi.</p>
+
+      <div class="amount-box">
+        <span style="font-size: 12px; color: #15803d; font-weight: 700;">TOTAL DIBAYAR</span>
+        <div style="font-size: 26px; font-weight: 900; color: #0f172a; margin: 4px 0;">${formattedAmount}</div>
+        <span style="font-size: 12px; color: #64748b;">Paket: <strong>${options.planName}</strong> (${options.durationMonths} Bulan)</span>
+      </div>
+
+      <table class="meta-table">
+        <tr><td style="color: #64748b;">Nomor Faktur</td><td style="text-align: right; font-weight: 700;">${options.invoiceId}</td></tr>
+        <tr><td style="color: #64748b;">Nama Toko</td><td style="text-align: right; font-weight: 700;">${options.storeName}</td></tr>
+        <tr><td style="color: #64748b;">Metode Pembayaran</td><td style="text-align: right; font-weight: 700;">${options.paymentMethod || 'QRIS Dinamis / Bank'}</td></tr>
+        <tr><td style="color: #64748b;">Masa Aktif Hingga</td><td style="text-align: right; font-weight: 700; color: #2563eb;">${options.periodEndsAtFormatted}</td></tr>
+      </table>
+
+      <div style="text-align: center; margin-top: 24px;">
+        <a href="https://dashboard.boontrack.com/${options.slug}" style="display: inline-block; background: #0f172a; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 13px; font-weight: 700;">Buka Dashboard Toko &rarr;</a>
+      </div>
+    </div>
+    <div style="background: #f8fafc; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+      &copy; PT Solusi Digital Barokah &bull; Kwitansi Elektronik Sah
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return dispatchResendEmail({
+    to: options.to,
+    subject: `Bukti Pembayaran Langganan BoonTrack #${options.invoiceId} - Lunas`,
+    html,
+  });
+}
+
+/**
+ * 6. Broadcast Rilis & Pengumuman Sistem (dengan batch delay 150ms)
+ */
+export async function dispatchSystemBroadcastBatch(
+  options: SystemBroadcastBatchOptions
+): Promise<{ total: number; sent: number; failed: number; errors: string[] }> {
+  const delayMs = typeof options.batchDelayMs === 'number' ? options.batchDelayMs : 150;
+  let sent = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < options.recipients.length; i++) {
+    const item = options.recipients[i];
+    const owner = item.ownerName || item.storeName || 'Merchant BoonTrack';
+
+    const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>${options.announcementTitle}</title>
+  <style>
+    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; }
+    .wrapper { max-width: 580px; margin: 24px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: #0f172a; padding: 28px; text-align: center; color: #ffffff; }
+    .content { padding: 32px 28px; font-size: 14px; line-height: 1.6; }
+    .cta-btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; text-align: center; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <img src="${BOONTRACK_OFFICIAL_EMAIL_LOGO}" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
+      <h2 style="margin: 0; font-size: 20px; font-weight: 800;">${options.announcementTitle}</h2>
+      <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;">Pengumuman &amp; Update Sistem BoonTrack</p>
+    </div>
+    <div class="content">
+      <p>Halo <strong>${owner}</strong>,</p>
+      <div>${options.announcementBodyHtml}</div>
+      ${options.ctaUrl ? `
+      <div style="text-align: center;">
+        <a href="${options.ctaUrl}" class="cta-btn">${options.ctaText || 'Pelajari Selengkapnya &rarr;'}</a>
+      </div>` : ''}
+    </div>
+    <div style="background: #f8fafc; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0;">
+      &copy; BoonTrack Platform Announcements &bull; Unsubscribe via Settings
+    </div>
+  </div>
+</body>
+</html>`;
+
+    try {
+      const res = await dispatchResendEmail({
+        to: item.to,
+        subject: options.subject,
+        html,
+      });
+
+      if (res.success) {
+        sent++;
+      } else {
+        failed++;
+        errors.push(`${item.to}: ${res.error}`);
+      }
+    } catch (e: unknown) {
+      failed++;
+      errors.push(`${item.to}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    // Rate-limiting delay 150ms between dispatches
+    if (i < options.recipients.length - 1 && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return { total: options.recipients.length, sent, failed, errors };
+}
+
 

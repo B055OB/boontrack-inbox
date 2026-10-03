@@ -57,7 +57,7 @@ export default function LegalPageLayout({
             <div className="h-5 w-px bg-slate-200" />
             <Link href="/" className="flex items-center gap-2">
               <Image
-                src="/icon-shop.png"
+                src="/logo-master.png"
                 alt="BoonTrack"
                 width={28}
                 height={28}

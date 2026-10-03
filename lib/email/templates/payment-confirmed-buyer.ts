@@ -92,7 +92,7 @@ export function buildPaymentConfirmedBuyerHtml(
     <div class="wrapper">
       <!-- HEADER -->
       <div class="header">
-        ${branding.logo_url ? `<img src="${branding.logo_url}" alt="${storeName}" style="max-height: 44px; margin-bottom: 12px; border-radius: 6px;" /><br>` : '<img src="https://dashboard.boontrack.com/logo-master.jpg" alt="BoonTrack Shop" width="120" style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" />'}
+        ${branding.logo_url ? `<img src="${branding.logo_url}" alt="${storeName}" style="max-height: 44px; margin-bottom: 12px; border-radius: 6px;" /><br>` : '<img src="https://shop.boontrack.com/logo-horizontal.png" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />'}
         <span class="header-badge">✓ Terverifikasi Sah</span>
         <h1>${storeName.toUpperCase()}</h1>
         <p>Bukti Transaksi &amp; Invoice Resmi Pembayaran</p>

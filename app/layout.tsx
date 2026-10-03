@@ -22,7 +22,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#ff6b00",
+  themeColor: "#0f172a",
 };
 
 export const metadata: Metadata = {
@@ -37,10 +37,10 @@ export const metadata: Metadata = {
     siteName: "BoonTrack Shop",
     images: [
       {
-        url: '/icon-shop.png',
-        width: 512,
-        height: 512,
-        alt: 'BoonTrack Shop',
+        url: '/logo-master.png',
+        width: 1024,
+        height: 1024,
+        alt: 'BoonTrack Platform',
       },
     ],
     locale: 'id_ID',
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     card: 'summary',
     title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
     description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
-    images: ['/icon-shop.png'],
+    images: ['/logo-master.png'],
   },
   appleWebApp: {
     capable: true,
@@ -59,12 +59,16 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/favicon-512.png", sizes: "512x512", type: "image/png" },
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/favicon.ico" },
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/android-chrome-512x512.png", sizes: "512x512", type: "image/png" },
     ],
     shortcut: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
   },
 };
 

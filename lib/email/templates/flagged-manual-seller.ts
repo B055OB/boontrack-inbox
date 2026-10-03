@@ -61,7 +61,7 @@ export function buildFlaggedManualSellerHtml(
 <body>
   <div class="wrapper">
     <div class="header">
-      <img src="https://dashboard.boontrack.com/logo-master.jpg" alt="BoonTrack Shop" width="120" style="display:block; margin: 0 auto 16px auto; max-height: 48px; object-fit: contain;" />
+      <img src="https://shop.boontrack.com/logo-horizontal.png" alt="BoonTrack" width="140" style="display:block; margin: 0 auto 16px auto; max-height: 42px; object-fit: contain;" />
       <span class="badge">⚠️ Perlu Verifikasi Bukti Transfer</span>
       <h2 style="margin: 10px 0 0 0; font-size: 20px; font-weight: 800;">Toko: ${storeName}</h2>
     </div>

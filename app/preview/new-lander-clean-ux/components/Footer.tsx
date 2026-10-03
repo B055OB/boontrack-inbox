@@ -16,22 +16,14 @@ export default function Footer({ referralCode }: FooterProps) {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand Col with Official Transparent Logo */}
           <div className="space-y-3 md:col-span-2">
-            <Link href="/" className="inline-flex items-center gap-2.5 group cursor-pointer">
+            <Link href="/" className="inline-flex items-center group cursor-pointer">
               <Image
-                src="/icon-shop.png"
-                alt="BoonTrack Shop"
-                width={36}
-                height={36}
-                className="w-9 h-9 object-contain group-hover:scale-105 transition-transform"
+                src="/logo-horizontal.png"
+                alt="BoonTrack"
+                width={160}
+                height={42}
+                className="h-8 w-auto object-contain brightness-0 invert group-hover:opacity-90 transition-opacity"
               />
-              <div>
-                <span className="font-black text-lg tracking-tight text-white block leading-tight">
-                  BoonTrack <span className="text-blue-400 font-bold text-sm">Shop</span>
-                </span>
-                <span className="text-[10px] text-slate-400 font-semibold block uppercase tracking-wider">
-                  Commerce Engine
-                </span>
-              </div>
             </Link>
             <p className="text-slate-400 text-xs leading-relaxed max-w-sm">
               Sistem operasi WhatsApp Commerce &amp; etalase toko online otomatis dengan checkout QRIS langsung toko dan sinkronisasi server-side Meta Conversions API.

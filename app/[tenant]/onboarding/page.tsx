@@ -38,8 +38,8 @@ export default function TenantOnboardingPage() {
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 shrink-0 flex items-center justify-center">
               <Image
-                src="/icon-shop.png"
-                alt="BoonTrack Shop"
+                src="/logo-master.png"
+                alt="BoonTrack"
                 width={36}
                 height={36}
                 priority

@@ -47,8 +47,8 @@ export default function ShopLandingPage() {
       <header className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-40">
         <div className="flex items-center gap-2">
           <img
-            src="/icon-shop.png"
-            alt="BoonTrack Shop"
+            src="/logo-master.png"
+            alt="BoonTrack"
             className="w-8 h-8 object-contain"
           />
           <span className="font-extrabold text-lg tracking-tight text-slate-900">

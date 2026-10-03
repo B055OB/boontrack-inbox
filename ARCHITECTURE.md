@@ -265,6 +265,19 @@ BoonTrack memisahkan **Durasi Kontrak Langganan (`expires_at`)** dengan **Siklus
 5. **Circuit Breaker / Depleted Fallback**:
    - Ketika kuota sesi habis (0), sistem secara otomatis mengaktifkan mode **Fallback Assistant Mode (Menu Statis)** agar percakapan tetap dilayani dengan menu tombol WhatsApp tanpa menyebabkan kegagalan API LLM ataupun pembengkakan biaya.
 
+#### 5.2.4 Notifikasi WhatsApp Resmi H-1 Trial Expiring (085181830080)
+- **Scheduler Harian (09.00 WIB)**:
+  * Cron automation / background worker terjadwal berjalan setiap hari pada pukul **09.00 WIB**.
+  * Memfilter seluruh tenant bersatus `TRIAL` dengan masa aktif yang tersisa `<= 24 jam` (`expires_at <= (now() AT TIME ZONE 'Asia/Jakarta') + interval '24 hours'`).
+- **WABA Transactional Dispatcher (085181830080)**:
+  * Pesan dikirimkan melalui nomor resmi WhatsApp Business Account transaksional platform: `085181830080` (`+62 851-8183-0080`).
+  * **Bypass LLM Mutlak**: Pesan berbentuk template transaksional statis resmi tanpa melalui prompt probabilistik AI guna memastikan reliabilitas 100%.
+  * **Idempotensi & Anti-Duplikasi**: Setiap pengiriman mencatat stempel waktu pengiriman `metadata.trial_h1_notified_at` di tabel `shop_subscriptions` atau entri audit log sehingga tidak akan pernah terkirim lebih dari satu kali per siklus trial.
+- **Isi Notifikasi & Call to Action (CTA)**:
+  * Memberitahukan bahwa masa uji coba gratis tersisa <24 jam dan toko akan dialihkan ke mode dasar jika tidak diperpanjang.
+  * Mengarahkan merchant langsung ke menu Billing di dashboard resmi mereka:  
+    `https://dashboard.boontrack.com/{slug}?tab=billing`
+
 ---
 
 ## 6. Media Storage
@@ -1842,10 +1855,11 @@ Sebelum integrasi provider Meta Cloud API dinyatakan siap (*production-ready*) u
 > **Core Principle**: *"Platform WABA is Platform Assistant + Transactional, NEVER Tenant Business Logic. LLM proposes intent; Tool Gateway enforces authority; Core executes mutation."*
 
 ### 26.1 Dual Role of Platform WABA
-Nomor resmi WhatsApp Business Account milik platform BoonTrack (`ownership_domain = 'PLATFORM'`) memegang peran ganda (*dual role*) yang terisolasi secara hierarki prioritas:
+Nomor resmi WhatsApp Business Account milik platform BoonTrack (`ownership_domain = 'PLATFORM'`, nomor resmi: `085181830080` / `+62 851-8183-0080`) memegang peran ganda (*dual role*) yang terisolasi secara hierarki prioritas:
 1. **System / Transactional Dispatcher (Priority 0 - Highest)**:
-   - Mengirimkan pesan transaksional inti platform: OTP otentikasi merchant, aktivasi toko, tagihan langganan paket, dan peringatan darurat sistem.
-   - Alur ini **mem-bypass seluruh pipeline AI / LLM** dan langsung di-dispatch melalui Outbox Worker untuk menjamin latensi <3 detik.
+   - Mengirimkan pesan transaksional inti platform: OTP otentikasi merchant, aktivasi toko, tagihan langganan paket, **notifikasi harian H-1 masa trial berakhir (09.00 WIB)**, dan peringatan darurat sistem.
+   - Alur ini **mem-bypass seluruh pipeline AI / LLM**, bersifat deterministik, dan di-dispatch secara idempotent untuk menjamin latensi <3 detik dan zero duplicate.
+   - Peringatan H-1 trial expiring memfilter tenant bersisa aktif <= 24 jam dan mengarahkan langsung ke portal billing: `https://dashboard.boontrack.com/{slug}?tab=billing`.
 2. **Showroom Platform Assistant & Inbound Marketer (Priority 1)**:
    - Melayani calon merchant yang masuk melalui iklan Meta Click-to-WhatsApp (CTWA), organic referral, atau tombol kontak di landing page `boontrack.id`.
    - Menjadi *living showroom* yang memperagakan keunggulan AI BoonPilot secara interaktif.
@@ -2482,26 +2496,29 @@ Otomatis: UPDATE tenants.tier + INSERT shop_subscriptions
 Konfirmasi email otomatis ke merchant
 ```
 
-### 24.3 Professional Services Flow (Jasa BoonTrack)
+### 24.3 Professional Services Flow & Sentralisasi IT Support (081977655099)
 
-Produk jasa BoonTrack (tenant slug: `boon`) dioperasikan **semi-manual**:
+Produk jasa BoonTrack (tenant slug: `boon`, etalase resmi: `https://shop.boontrack.com/boon`) dioperasikan secara **semi-manual** dengan satu pintu kontak terpusat:
 
-| Produk | Harga | Slug |
-| :--- | :--- | :--- |
-| Jasa Update & Perapian Konten Toko | Rp 15.000 | `jasa-update-konten` |
-| Setup AI Sales Rep Siap Jualan | Rp 49.000 | `setup-ai-sales-rep` |
-| Paket Toko Terima Beres | Rp 149.000 | `paket-toko-terima-beres` |
+| Produk Layanan Jasa | Estimasi Biaya | Slug Produk | Deskripsi & Ruang Lingkup |
+| :--- | :--- | :--- | :--- |
+| **Setup Toko Tinggal Pakai** | Rp 149.000 | `setup-toko-tinggal-pakai` | Input katalog awal (hingga 15 SKU), setting rekening bank/QRIS, dan penataan etalase terima beres. |
+| **Setup Bot AI Siap Jualan** | Rp 49.000 | `setup-ai-sales-rep` | Konfigurasi persona bot, training knowledge base toko, testing flow negosiasi dan closing. |
+| **Jasa Single Page Checkout** | Rp 99.000 | `jasa-single-page` | Desain landing page checkout konversi tinggi berkecepatan tinggi khusus produk hero. |
+| **Kustom Desain Frontpage** | Rp 199.000 | `kustom-desain-frontpage` | Kustomisasi visual frontpage toko dengan banner premium, copywriting, dan navigasi kategori. |
 
-**Alur Fulfillment Manual**:
-1. Client checkout di `shop.boontrack.com/boon/{slug}`
-2. Pembayaran via QRIS dinamis BoonTrack
-3. Tim BoonTrack menerima notifikasi pesanan di `dashboard.boontrack.com/boon`
-4. Tim menghubungi client via WhatsApp dalam 1Ã—24 jam
-5. Admin menekan "Approve & Deliver" â†’ email konfirmasi dikirim ke client
+**Sentralisasi Kontak Eksekusi (CS Manusia Jasa)**:
+- **Satu-satunya Kontak Resmi**: Nomor WhatsApp `081977655099` (`+62 819-7765-5099`) resmi menjadi satu-satunya kontak CS manusia untuk melayani dan mengeksekusi pesanan layanan jasa di `https://shop.boontrack.com/boon`.
+- **Alur Fulfillment Terpadu**:
+  1. Client checkout di `https://shop.boontrack.com/boon/{slug}`
+  2. Pembayaran via QRIS dinamis / transfer manual BoonTrack
+  3. Tim BoonTrack menerima notifikasi pesanan di `dashboard.boontrack.com/boon`
+  4. Tim IT Support & Eksekusi Jasa menghubungi client via WhatsApp `081977655099` dalam kurun waktu 1×24 jam
+  5. Admin menekan "Approve & Deliver" → email konfirmasi & akses diserahkan ke client
 
 ### 24.4 Aturan Wajib
 - Revenue SaaS dan revenue jasa DILARANG KERAS dicampur dalam satu laporan transaksi yang sama.
-- Gateway WhatsApp operasional (`081215567168`) DILARANG digunakan untuk keperluan di luar session WA aktif tenant yang bersangkutan. Komunikasi fulfillment jasa BoonTrack menggunakan nomor operasional terpisah.
+- Gateway WhatsApp operasional (`081215567168`) DILARANG digunakan untuk keperluan di luar session WA aktif tenant yang bersangkutan. Seluruh komunikasi fulfillment jasa BoonTrack WAJIB menggunakan nomor sentral IT Support resmi: `081977655099`.
 - Setiap produk jasa `boon` yang diinsert ke tabel `products` wajib menggunakan `product_type = 'SERVICE'` dan `asset_reference = 'service:{slug}'`.
 
 ---
@@ -3130,12 +3147,12 @@ Ekosistem BoonTrack menegakkan pemisahan mutlak nomor WhatsApp berdasarkan peran
 
 | Peran Infrastruktur | Nomor Telepon Resmi | Format Internasional | Domain Kepemilikan | Tanggung Jawab & Batasan Arsitektur |
 | :--- | :--- | :--- | :--- | :--- |
-| **Storefront CS Manual Toko** | `081977655099` | `+62 819-7765-5099` | `MERCHANT_SUPPORT` | Nomor kontak customer service resmi tim Boon Shop untuk asistensi manual, konsultasi pesanan pembeli, dan fallback toko. |
-| **WABA Core Gateway** | `081581830080` | `+62 815-8183-0080` | `PLATFORM_SYSTEM` | Dispatcher notifikasi transaksional sistem (P0 priority): OTP aktivasi merchant, faktur langganan platform, reset kredensial, dan alert insiden sistem. Dilarang keras digunakan untuk chat umum atau promosi toko. |
-| **BoonPilot Dedicated AI Engine** | `081215567168` | `+62 812-1556-7168` | `PLATFORM_AI` | Gateway resmi WhatsApp AI BoonPilot & Platform Support. Menangani percakapan inbound publik, showroom kapabilitas platform, dan Co-Pilot merchant dengan arsitektur Dual-Branch. |
+| **Storefront CS Manual & IT Support Tim Jasa** | `081977655099` | `+62 819-7765-5099` | `MERCHANT_SUPPORT & SERVICES_SUPPORT` | Satu-satunya nomor kontak CS manusia resmi untuk asistensi manual toko dan pemenuhan/eksekusi pesanan layanan jasa di `https://shop.boontrack.com/boon` (Setup Toko Tinggal Pakai, Setup Bot AI, Jasa Single Page, Kustom Desain Frontpage). |
+| **WABA Core Gateway** | `085181830080` | `+62 851-8183-0080` | `PLATFORM_SYSTEM` | Dispatcher notifikasi transaksional sistem (P0 priority): OTP aktivasi merchant, **notifikasi harian H-1 trial expiring (09.00 WIB)**, faktur langganan platform, reset kredensial, dan alert insiden sistem. Bypass LLM mutlak. Dilarang keras digunakan untuk chat umum atau promosi toko. |
+| **BoonPilot Dedicated AI Engine** | `081215567168` | `+62 812-1556-7168` | `PLATFORM_AI` | Gateway resmi WhatsApp AI BoonPilot & Platform Support. Menangani percakapan inbound publik, showroom kapabilitas platform, Co-Pilot merchant, dan mesin rekomendasi cross-selling/upselling pintar dengan arsitektur Dual-Branch. |
 
 > **Reputation Guard Invariant**:  
-> Gateway WhatsApp operasional (`081215567168`) DILARANG digunakan untuk keperluan di luar session WA aktif tenant yang bersangkutan. Alur notifikasi darurat dan OTP wajib melalui nomor terpisah (`081581830080`).
+> Gateway WhatsApp operasional (`081215567168`) DILARANG digunakan untuk keperluan di luar session WA aktif tenant yang bersangkutan. Alur notifikasi darurat, H-1 trial expiring, dan OTP wajib melalui nomor WABA terpisah (`085181830080`).
 
 ---
 
@@ -3229,6 +3246,30 @@ Nomor gateway platform `081215567168` mengadopsi pola routing berbasis pengenala
 - **Strict Anti-Registration Invariant**:
   - DILARANG KERAS menyodorkan formulir registrasi awal atau memberikan tautan pendaftaran akun (`/register`) kepada merchant terdaftar. Sistem mengakui toko mereka telah aktif di BoonTrack.
 
+### 38.3 Smart Recommendation & Commercial Guidance Engine (Cross-Selling, Upselling, Downselling)
+
+Nomor AI Gateway `081215567168` mengintegrasikan mesin rekomendasi komersial cerdas berbasis kebutuhan riil pengguna:
+
+1. **Non-Merchant (Guest) - Platform Sales Representative**:
+   - Bertindak proaktif sebagai Sales Representative platform resmi.
+   - Menjelaskan fitur-fitur platform (katalog responsif, checkout WhatsApp instan, QRIS otomatis, auto-inbox multi-agen).
+   - Mengarahkan calon pengguna untuk registrasi toko baru di `https://dashboard.boontrack.com/register`.
+
+2. **Merchant Terdaftar - Operational Co-Pilot**:
+   - Berperan sebagai Co-Pilot operasional toko yang memahami konteks tenant.
+   - Memandu operasional harian, cek pesanan pending, dan tips optimasi konversi.
+
+3. **Logika Rekomendasi Pintar**:
+   - **Cross-Selling (Layanan Jasa Setup Toko & Bot Terima Beres)**:
+     * *Trigger*: Merchant mengungkapkan keterbatasan waktu, kendala teknis input produk, atau kebutuhan desain halaman toko dan pengaturan knowledge bot yang mendesak.
+     * *Action*: Rekomendasikan katalog layanan jasa resmi di `https://shop.boontrack.com/boon` atau tautkan langsung ke kontak WhatsApp IT Support & Eksekusi Jasa resmi di `https://wa.me/6281977655099` (081977655099).
+   - **Upselling (Upgrade Paket Langganan)**:
+     * *Trigger*: Kuota sesi percakapan AI toko mendekati habis, merchant memerlukan penambahan kursi customer service (Multi-Seat CS Inbox), atau membutuhkan integrasi server-side Meta/TikTok CAPI untuk scaling kampanye iklan berbayar.
+     * *Action*: Sarankan upgrade ke paket **Pro Scale** (Rp 299k/bln) atau **Team Scale** (Rp 499k/bln) melalui menu Billing di `https://dashboard.boontrack.com/{slug}?tab=billing`.
+   - **Downselling (Penyelamatan Churn / Opsi Ekonomis)**:
+     * *Trigger*: Merchant berencana menonaktifkan toko atau mengeluhkan anggaran langganan bulanan.
+     * *Action*: Tawarkan paket hemat **Checkout Lite** (Rp 59.000 / bulan) agar etalase toko, integrasi QRIS, dan pencatatan order tetap aktif online tanpa beban biaya tinggi.
+
 ---
 
 ## 39. Group Context Awareness & Dynamic Affiliate Readiness
@@ -3251,4 +3292,40 @@ Nomor gateway platform `081215567168` mengadopsi pola routing berbasis pengenala
    - Mencegah hilangnya hak atribusi komisi mitra pembina komunitas saat audiens grup berinteraksi dengan AI platform.
 3. **Sterilitas Backend**:
    - AI dilarang membocorkan aturan internal komisi, token database, atau skema pembagian margin platform di dalam obrolan grup publik.
+
+---
+
+## 40. Platform Lifecycle Emails, Asset Branding & Broadcast Architecture
+
+Ekosistem komunikasi email BoonTrack diatur oleh standar arsitektur deterministik untuk menjamin keterkiriman tinggi (*high deliverability*), reputasi sender domain yang terlindungi, dan keseragaman visual merek (*brand integrity*).
+
+### 40.1 Standar Visual Branding & Logo Header
+1. **Logo Transparan Resmi**: Seluruh header email resmi platform WAJIB menggunakan logo PNG transparan horizontal resmi BoonTrack yang di-host di CDN/URL publik produksi:
+   `https://shop.boontrack.com/logo-horizontal.png`
+2. **Larangan Mutlak Format Lama**: Dilarang keras menggunakan gambar JPEG berlatar hitam, icon belanja usang, atau logo favicon oranye lama di dalam header email transaksi maupun broadcast.
+3. **Standar Styling Header**: Lebar maksimal 140px, tinggi proporsional (`max-height: 42px`), `display: block; margin: 0 auto 16px auto; object-fit: contain;` di atas header container bernuansa dark gradient `#0f172a` ke `#1e293b`.
+
+### 40.2 Taksonomi 6 Email Resmi Platform
+
+| No | Jenis Email Resmi | Pemicu (Trigger Point) | Sasaran Pengguna | Prioritas & Karakteristik |
+| :--- | :--- | :--- | :--- | :--- |
+| **1** | **Welcome & Aktivasi Akun Toko Baru** | Registrasi berhasil di `/register` | Merchant Baru | Berisi kredensial toko, URL etalase publik (`shop.boontrack.com/{slug}`), dan tautan direct ke dashboard. |
+| **2** | **Token / Magic Link Login Instan** | Permintaan login passwordless | Merchant / Admin | Tautan akses instan sekali pakai dengan masa berlaku 15 menit. |
+| **3** | **Peringatan Masa Trial Habis (D-2 & D-1)** | Sisa waktu trial 48 jam & 24 jam | Merchant Trial | Menampilkan countdown sisa hari, rekap pentingnya automasi toko, dan tombol CTA perpanjangan ke menu Billing. |
+| **4** | **Notifikasi Masa Trial Berakhir (Day 0)** | Masa trial habis (`expires_at`) | Merchant Terkait | Menginformasikan transisi aman ke mode dasar (katalog tetap aktif, AI dinonaktifkan sementara) dan opsi Checkout Lite (Rp 59k/bln). |
+| **5** | **Kwitansi / Bukti Bayar Tagihan SaaS** | Pembayaran subscription terverifikasi | Merchant Aktif | Faktur resmi pelunasan (Nomor invoice, durasi paket, nominal rupiah, metode pembayaran, masa aktif baru). |
+| **6** | **Broadcast Rilis & Pengumuman Sistem** | Pengumuman fitur / update platform | Seluruh Merchant | Menggunakan background worker dengan jeda deterministik (**batch delay 150ms**) antar-email. |
+
+### 40.3 Pemisahan Jalur Transaksional vs Broadcast
+
+1. **Jalur Email Transaksional Order Toko (Priority 0 - Real-time)**:
+   - Dipicu langsung oleh peristiwa pembelian (Order Baru, Bukti Transfer Masuk, Pembayaran Terkonfirmasi, Resi Terbit).
+   - Menggunakan logo toko milik merchant jika tersedia (dengan fallback aman ke logo transparan BoonTrack).
+   - Prioritas pemrosesan tertinggi (P0) tanpa antrean penundaan, dikirim dalam hitungan detik.
+
+2. **Jalur Email Broadcast & Sistem Platform (Background Queue & Chunking)**:
+   - Dipicu oleh lifecycle engine dan pengumuman sistem.
+   - Wajib menggunakan logo resmi transparan BoonTrack (`https://shop.boontrack.com/logo-horizontal.png`).
+   - Diproses melalui background worker dengan pembagian chunking dan jeda minimal 150ms antar-pengiriman (*rate-limit protection*) guna mencegah *spam throttling* dari penyedia mailbox (Google Workspace, Yahoo, Microsoft 365).
+
 
