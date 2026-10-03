@@ -3,9 +3,21 @@ import { getSupabaseAdmin } from '@/lib/supabaseClient';
 
 const MASTER_PIN = '998877';
 
+// ── Shared type for tenant audit rows ────────────────────────────────────────
+interface TenantAuditRow {
+  tenant_slug: string;
+  tenant_name?: string;
+  tier?: string;
+  total_tokens: number;
+  total_cost_idr: number;
+  event_count: number;
+  p95_latency_ms: number | null;
+  source?: string;
+}
+
 // Cost constants
 const IDR_PER_USD = 16200;
-// Gemini 2.5 Flash blended: input $0.075/1M, output $0.30/1M → blended ~$0.175/1M
+// Gemini 2.5 Flash blended: input $0.075/1M, output $0.30/1M
 const GEMINI_COST_PER_MILLION_USD = 0.175;
 const META_FEE_PER_MSG_IDR = 350;
 
@@ -121,7 +133,7 @@ export async function GET(req: NextRequest) {
 
     // ── 5. Fallback: if tables are empty, enrich from tenants.metadata ────
     // (Graceful degradation while credit_consumption_events is being populated)
-    let enrichedTenantAudit = tenantAudit;
+    let enrichedTenantAudit: TenantAuditRow[] = tenantAudit;
     if (tenantAudit.length === 0) {
       const { data: tenantRows } = await supabase
         .from('tenants')
