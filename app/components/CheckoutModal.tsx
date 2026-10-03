@@ -50,8 +50,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   const [customerEmail, setCustomerEmail] = useState("");
   const [briefingUrl, setBriefingUrl] = useState("");
   const [kitchenNotes, setKitchenNotes] = useState("");
-  const [tableNumber, setTableNumber] = useState("");
-  const [foodDiningOption, setFoodDiningOption] = useState<'DINE_IN' | 'INSTANT' | 'PICKUP'>('INSTANT');
+  const [foodDiningOption, setFoodDiningOption] = useState<'INSTANT' | 'PICKUP'>('INSTANT');
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingCity, setShippingCity] = useState("");
   const [shippingCost, setShippingCost] = useState(0);
@@ -168,26 +167,30 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
   // Resolver Context Fulfillment Digital vs Fisik vs Food vs Booking/Service
   const rawProductType = (product?.product_type || product?.type || (product?.category === 'fisik' || product?.category === 'physical' ? 'physical' : 'digital')).toLowerCase();
   const rawCategory = (product?.category || '').toLowerCase();
+  const isBookingOrService =
+    rawProductType === 'service' ||
+    rawProductType === 'booking' ||
+    rawProductType === 'consultation' ||
+    rawProductType === 'jasa' ||
+    rawProductType === 'reservasi' ||
+    Boolean(product?.slot);
   const isFood =
-    rawProductType === 'food' ||
+    !isBookingOrService &&
+    (rawProductType === 'food' ||
     rawProductType === 'fnb' ||
     rawProductType.includes('food') ||
     rawProductType.includes('fnb') ||
     rawCategory.includes('food') ||
-    rawCategory.includes('kuliner');
+    rawCategory.includes('kuliner'));
   const isPhysical =
-    rawProductType === 'physical' ||
+    !isBookingOrService &&
+    (rawProductType === 'physical' ||
     rawProductType === 'fisik' ||
     rawProductType === 'food' ||
     rawProductType === 'fnb' ||
     isFood ||
     Boolean((product as any)?.requires_shipping) ||
-    Boolean((product as any)?.requiresShipping);
-  const isBookingOrService =
-    rawProductType === 'service' ||
-    rawProductType === 'booking' ||
-    rawProductType === 'consultation' ||
-    Boolean(product?.slot);
+    Boolean((product as any)?.requiresShipping));
   const isDigital = !isPhysical && !isBookingOrService;
 
   const handleCopy = (text: string, field: string) => {
@@ -608,11 +611,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     setLoading(true);
     setErrorMessage("");
 
-    if (isFood && foodDiningOption === 'DINE_IN' && !tableNumber.trim()) {
-      setErrorMessage("Silakan lengkapi nomor meja resto Anda untuk pesanan makan di tempat.");
-      setLoading(false);
-      return;
-    }
 
     const trackingParams = getTrackingData();
     const resolvedProductType = isBookingOrService
@@ -682,18 +680,14 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           instructions: selfPickupConfig.pickupInstructions,
         } : undefined,
         shippingAddress: isFood
-          ? (foodDiningOption === 'DINE_IN'
-              ? `[DINE-IN MEJA ${tableNumber.trim()}]`
-              : foodDiningOption === 'PICKUP'
+          ? (foodDiningOption === 'PICKUP'
               ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Resto'}`
               : shippingAddress)
           : isPhysical
           ? (isPickup ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Toko'}` : shippingAddress)
           : undefined,
         shippingCourier: isFood
-          ? (foodDiningOption === 'DINE_IN'
-              ? `Dine-in (Meja ${tableNumber.trim()})`
-              : foodDiningOption === 'PICKUP'
+          ? (foodDiningOption === 'PICKUP'
               ? 'Ambil Sendiri di Resto (Self-Pickup)'
               : shippingCourier)
           : isPhysical
@@ -713,7 +707,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           ...(resolvedFulfillmentMetadata || {}),
           ...(isFood ? {
             dining_option: foodDiningOption,
-            table_number: foodDiningOption === 'DINE_IN' ? tableNumber.trim() : undefined,
             kitchen_notes: kitchenNotes.trim() || undefined,
           } : {}),
         },
@@ -1536,27 +1529,15 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                       <span>Opsi Layanan &amp; Pengantaran Menu</span>
                     </div>
                     <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                      {foodDiningOption === 'DINE_IN' ? '🍽️ Makan di Meja' : foodDiningOption === 'INSTANT' ? '⚡ Kurir Instan' : '🏪 Ambil di Resto'}
+                      {foodDiningOption === 'INSTANT' ? '⚡ Kurir Instan' : '🏪 Ambil di Resto'}
                     </span>
                   </div>
 
-                  <div className="p-1 bg-slate-950 border border-slate-800 rounded-xl grid grid-cols-3 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setFoodDiningOption('DINE_IN')}
-                      className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                        foodDiningOption === 'DINE_IN'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <Utensils className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Makan di Meja</span>
-                    </button>
+                  <div className="p-1 bg-slate-950 border border-slate-800 rounded-xl grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
                       onClick={() => { setFoodDiningOption('INSTANT'); setCourierServiceType('instant'); }}
-                      className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                      className={`py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                         foodDiningOption === 'INSTANT'
                           ? 'bg-emerald-600 text-white shadow-xs'
                           : 'text-slate-400 hover:text-slate-200'
@@ -1568,7 +1549,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                     <button
                       type="button"
                       onClick={() => setFoodDiningOption('PICKUP')}
-                      className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                      className={`py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                         foodDiningOption === 'PICKUP'
                           ? 'bg-emerald-600 text-white shadow-xs'
                           : 'text-slate-400 hover:text-slate-200'
@@ -1578,26 +1559,6 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
                       <span className="truncate">Ambil di Resto</span>
                     </button>
                   </div>
-
-                  {/* Opsi 1: Dine-in Table Number */}
-                  {foodDiningOption === 'DINE_IN' && (
-                    <div className="bg-slate-950 rounded-xl p-3 border border-amber-500/40 text-xs space-y-2">
-                      <label className="font-bold text-slate-200 block text-xs">
-                        Nomor Meja Resto <span className="text-rose-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required={foodDiningOption === 'DINE_IN'}
-                        placeholder="Contoh: Meja 12 atau Meja VIP-3"
-                        value={tableNumber}
-                        onChange={(e) => setTableNumber(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500 text-xs font-bold"
-                      />
-                      <p className="text-[10px] text-slate-400">
-                        🍽️ Pesanan makanan akan disajikan langsung oleh pramusaji ke meja Anda tanpa biaya kirim.
-                      </p>
-                    </div>
-                  )}
 
                   {/* Opsi 2: Ambil di Resto (Pickup) */}
                   {foodDiningOption === 'PICKUP' && (

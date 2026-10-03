@@ -133,7 +133,6 @@ export function buildWabaStorefrontConsultationUrl(params: {
   variant?: string | null;
   fulfillmentType?: string | null;
   quantity?: number | null;
-  tableNumber?: string | null;
   kitchenNotes?: string | null;
 }): { text: string; url: string; number: string } {
   const rawNumber = params.tenantWhatsApp || params.botNumber || '';
@@ -142,8 +141,7 @@ export function buildWabaStorefrontConsultationUrl(params: {
   const tSlug = params.tenantSlug || '';
   const pSlug = params.productSlug || '';
   const refToken = (params.referenceToken || '').trim();
-  const pickupLine = params.fulfillmentType === 'PICKUP' ? '\n- Metode: Ambil Sendiri di Toko (Self-Pickup)' : '';
-  const tableLine = params.tableNumber ? `\n- Makan di Tempat (Dine-in): Meja ${params.tableNumber}` : '';
+  const pickupLine = params.fulfillmentType === 'PICKUP' ? '\n- Metode: Ambil Sendiri di Resto (Self-Pickup)' : '';
   const kitchenLine = params.kitchenNotes ? `\n- Catatan Dapur / Alergi: ${params.kitchenNotes}` : '';
   const qtyLine = params.quantity && params.quantity > 1 ? `\n- Jumlah (Qty): ${params.quantity} pcs` : '';
 
@@ -178,7 +176,7 @@ export function buildWabaStorefrontConsultationUrl(params: {
       }
     } else {
       // Format standar: "Halo Admin, konfirmasi pesanan [Ref: BT-XXXXX]..."
-      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${tableLine}${kitchenLine}${qtyLine}${pickupLine}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
+      text = `Halo Admin, konfirmasi pesanan [Ref: ${refToken}] untuk ${pName}.\n\nDetail Pemesan:\n- Nama: ${params.buyerName || '-'}\n- WhatsApp: ${params.buyerPhone || '-'}${params.variant ? `\n- Varian: ${params.variant}` : ''}${kitchenLine}${qtyLine}${pickupLine}${params.totalAmount !== undefined && params.totalAmount !== null ? `\n- Estimasi Total: Rp ${params.totalAmount.toLocaleString('id-ID')}` : ''}\n\nMohon dibantu proses pesanannya, terima kasih!`;
     }
   } else if (params.customMessage && params.customMessage.trim()) {
     text = params.customMessage
@@ -795,12 +793,8 @@ function SingleProductContent() {
 
   const isPhysicalPreset = Boolean(!isFoodPreset && !isDigitalPreset);
 
-  // Opsi Pengantaran & Meja Dine-in Khusus FOOD
-  const tableParam = searchParams.get('meja') || searchParams.get('table') || searchParams.get('nomor_meja') || searchParams.get('table_number') || '';
-  const [tableNumber, setTableNumber] = useState<string>(tableParam);
-  const [foodDiningOption, setFoodDiningOption] = useState<'DINE_IN' | 'INSTANT' | 'PICKUP'>(
-    tableParam ? 'DINE_IN' : 'INSTANT'
-  );
+  // Opsi Pemenuhan Khusus FOOD (Kurir Instan / Ambil Sendiri di Resto)
+  const [foodDiningOption, setFoodDiningOption] = useState<'INSTANT' | 'PICKUP'>('INSTANT');
   const [kitchenNotes, setKitchenNotes] = useState<string>('');
   const [fulfillmentType, setFulfillmentType] = useState<'DELIVERY' | 'PICKUP'>('DELIVERY');
 
@@ -1498,12 +1492,7 @@ function SingleProductContent() {
     e.preventDefault();
     if (loading) return;
 
-    const isPickup = isFoodPreset ? (foodDiningOption === 'PICKUP' || foodDiningOption === 'DINE_IN') : fulfillmentType === 'PICKUP';
-
-    if (isFoodPreset && foodDiningOption === 'DINE_IN' && !tableNumber.trim()) {
-      setErrorMessage('Silakan lengkapi nomor meja resto untuk pesanan makan di tempat (dine-in).');
-      return;
-    }
+    const isPickup = isFoodPreset ? foodDiningOption === 'PICKUP' : fulfillmentType === 'PICKUP';
 
     if (shouldShowAddressSection && !isPickup && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
       setErrorMessage('Silakan lengkapi alamat, kota/kabupaten, kecamatan, dan kode pos pengiriman.');
@@ -1533,9 +1522,7 @@ function SingleProductContent() {
     const directRefToken = generateReferenceToken();
 
     const effectiveShippingAddress = isFoodPreset
-      ? (foodDiningOption === 'DINE_IN'
-          ? `[DINE-IN MEJA ${tableNumber.trim()}]`
-          : foodDiningOption === 'PICKUP'
+      ? (foodDiningOption === 'PICKUP'
           ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Resto'}`
           : `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`)
       : isPickup
@@ -1545,9 +1532,7 @@ function SingleProductContent() {
         : undefined);
 
     const effectiveShippingCourier = isFoodPreset
-      ? (foodDiningOption === 'DINE_IN'
-          ? `Dine-in (Meja ${tableNumber.trim()})`
-          : foodDiningOption === 'PICKUP'
+      ? (foodDiningOption === 'PICKUP'
           ? 'Ambil Sendiri di Resto (Self-Pickup)'
           : (selectedShipping ? formattedCourier : 'Kurir Instan'))
       : isPickup
@@ -1588,7 +1573,6 @@ function SingleProductContent() {
           reference_token: directRefToken,
           ...(isFoodPreset ? {
             dining_option: foodDiningOption,
-            table_number: foodDiningOption === 'DINE_IN' ? tableNumber.trim() : undefined,
             kitchen_notes: kitchenNotes.trim() || undefined,
           } : {}),
         },
@@ -1647,12 +1631,7 @@ function SingleProductContent() {
       return;
     }
 
-    const isPickup = isFoodPreset ? (foodDiningOption === 'PICKUP' || foodDiningOption === 'DINE_IN') : fulfillmentType === 'PICKUP';
-
-    if (isFoodPreset && foodDiningOption === 'DINE_IN' && !tableNumber.trim()) {
-      setErrorMessage('Silakan lengkapi nomor meja resto untuk pesanan makan di tempat (dine-in).');
-      return;
-    }
+    const isPickup = isFoodPreset ? foodDiningOption === 'PICKUP' : fulfillmentType === 'PICKUP';
 
     if (shouldShowAddressSection && !isPickup && (!shippingAddress.trim() || !shippingCity.trim() || !shippingDistrict.trim() || !shippingPostalCode.trim())) {
       setErrorMessage('Silakan lengkapi alamat, kota/kabupaten, kecamatan, dan kode pos pengiriman.');
@@ -1682,9 +1661,7 @@ function SingleProductContent() {
     const cleanBriefingUrl = isDigitalPreset ? normalizeBriefingUrl(briefingUrl) : null;
 
     const effectiveShippingAddress = isFoodPreset
-      ? (foodDiningOption === 'DINE_IN'
-          ? `[DINE-IN MEJA ${tableNumber.trim()}]`
-          : foodDiningOption === 'PICKUP'
+      ? (foodDiningOption === 'PICKUP'
           ? `[SELF-PICKUP] ${selfPickupConfig.pickupAddress || 'Ambil Sendiri di Resto'}`
           : `${shippingAddress.trim()}, Kec. ${shippingDistrict.trim()}, ${shippingCity.trim()} ${shippingPostalCode.trim()}`)
       : isPickup
@@ -1694,9 +1671,7 @@ function SingleProductContent() {
         : undefined);
 
     const effectiveShippingCourier = isFoodPreset
-      ? (foodDiningOption === 'DINE_IN'
-          ? `Dine-in (Meja ${tableNumber.trim()})`
-          : foodDiningOption === 'PICKUP'
+      ? (foodDiningOption === 'PICKUP'
           ? 'Ambil Sendiri di Resto (Self-Pickup)'
           : (selectedShipping ? formattedCourier : 'Kurir Instan'))
       : isPickup
@@ -1737,7 +1712,6 @@ function SingleProductContent() {
           checkout_action_mode: 'WHATSAPP',
           ...(isFoodPreset ? {
             dining_option: foodDiningOption,
-            table_number: foodDiningOption === 'DINE_IN' ? tableNumber.trim() : undefined,
             kitchen_notes: kitchenNotes.trim() || undefined,
           } : {}),
         },
@@ -1785,7 +1759,6 @@ function SingleProductContent() {
         variant: selectedVariant,
         quantity,
         fulfillmentType: isPickup ? 'PICKUP' : 'DELIVERY',
-        tableNumber: isFoodPreset && foodDiningOption === 'DINE_IN' ? tableNumber.trim() : undefined,
         kitchenNotes: isFoodPreset && kitchenNotes.trim() ? kitchenNotes.trim() : undefined,
       });
 
@@ -2205,31 +2178,24 @@ function SingleProductContent() {
         )}
       </div>
 
-      {/* Opsi Pengantaran Khusus FOOD / FNB (Dine-in / Kurir Instan / Pickup) */}
+      {/* Opsi Pengantaran Khusus FOOD / FNB (Kurir Instan / Ambil Sendiri di Resto) */}
       {isFoodPreset && (
         <div className="bg-amber-50/70 border border-amber-200/70 rounded-2xl p-3.5 space-y-3">
-          <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
-            <Utensils className="w-4 h-4 text-amber-700" />
-            <span>Opsi Penyajian &amp; Pengantaran Menu</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
+              <Utensils className="w-4 h-4 text-amber-700" />
+              <span>Opsi Layanan &amp; Pengantaran Menu</span>
+            </div>
+            <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+              {foodDiningOption === 'INSTANT' ? '⚡ Kurir Instan' : '🏪 Ambil di Resto'}
+            </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-white/90 border border-amber-200/80 rounded-xl">
-            <button
-              type="button"
-              onClick={() => { setFoodDiningOption('DINE_IN'); setFulfillmentType('PICKUP'); }}
-              className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                foodDiningOption === 'DINE_IN'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Utensils className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Makan di Tempat</span>
-            </button>
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-white/90 border border-amber-200/80 rounded-xl">
             <button
               type="button"
               onClick={() => { setFoodDiningOption('INSTANT'); setFulfillmentType('DELIVERY'); }}
-              className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+              className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 foodDiningOption === 'INSTANT'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -2241,35 +2207,16 @@ function SingleProductContent() {
             <button
               type="button"
               onClick={() => { setFoodDiningOption('PICKUP'); setFulfillmentType('PICKUP'); }}
-              className={`py-1.5 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+              className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 foodDiningOption === 'PICKUP'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Store className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Ambil Sendiri</span>
+              <span className="truncate">Ambil Sendiri di Resto</span>
             </button>
           </div>
-
-          {foodDiningOption === 'DINE_IN' && (
-            <div className="bg-white rounded-xl p-3 border border-amber-300 text-xs space-y-2">
-              <label className="font-bold text-slate-800 block text-xs">
-                Nomor Meja Resto <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required={foodDiningOption === 'DINE_IN'}
-                placeholder="Contoh: Meja 12 atau Meja VIP-3"
-                value={tableNumber}
-                onChange={(e) => setTableNumber(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600 text-xs font-bold"
-              />
-              <p className="text-[10px] text-slate-500">
-                🍽️ Pesanan makanan akan disajikan langsung oleh pramusaji ke meja Anda tanpa biaya kirim.
-              </p>
-            </div>
-          )}
 
           {foodDiningOption === 'PICKUP' && (
             <div className="bg-white rounded-xl p-3 border border-emerald-300 text-xs space-y-1.5">
@@ -2897,27 +2844,15 @@ function SingleProductContent() {
               <span>Opsi Layanan &amp; Pengantaran Menu</span>
             </div>
             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
-              {foodDiningOption === 'DINE_IN' ? '🍽️ Makan di Meja' : foodDiningOption === 'INSTANT' ? '⚡ Kurir Instan' : '🏪 Ambil di Resto'}
+              {foodDiningOption === 'INSTANT' ? '⚡ Kurir Instan' : '🏪 Ambil di Resto'}
             </span>
           </div>
 
-          <div className="p-1 bg-white/90 border border-emerald-200/80 rounded-xl grid grid-cols-3 gap-1">
-            <button
-              type="button"
-              onClick={() => { setFoodDiningOption('DINE_IN'); setFulfillmentType('PICKUP'); setSelectedShippingId(''); }}
-              className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                foodDiningOption === 'DINE_IN'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              <Utensils className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Makan di Meja</span>
-            </button>
+          <div className="p-1 bg-white/90 border border-emerald-200/80 rounded-xl grid grid-cols-2 gap-1">
             <button
               type="button"
               onClick={() => { setFoodDiningOption('INSTANT'); setFulfillmentType('DELIVERY'); }}
-              className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+              className={`py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 foodDiningOption === 'INSTANT'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
@@ -2929,7 +2864,7 @@ function SingleProductContent() {
             <button
               type="button"
               onClick={() => { setFoodDiningOption('PICKUP'); setFulfillmentType('PICKUP'); setSelectedShippingId(''); }}
-              className={`py-2 px-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+              className={`py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 foodDiningOption === 'PICKUP'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
@@ -2939,26 +2874,6 @@ function SingleProductContent() {
               <span className="truncate">Ambil di Resto</span>
             </button>
           </div>
-
-          {/* Opsi 1: Dine-in Table Number */}
-          {foodDiningOption === 'DINE_IN' && (
-            <div className="bg-white rounded-xl p-3.5 border border-amber-300 shadow-2xs space-y-2">
-              <label className="font-bold text-slate-800 block text-xs">
-                Nomor Meja Resto <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required={foodDiningOption === 'DINE_IN'}
-                placeholder="Contoh: Meja 12 atau Meja VIP-3"
-                value={tableNumber}
-                onChange={(e) => setTableNumber(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-amber-600 text-xs font-bold"
-              />
-              <p className="text-[11px] text-slate-500">
-                🍽️ Pesanan makanan akan disajikan langsung oleh pramusaji ke meja Anda tanpa biaya kirim.
-              </p>
-            </div>
-          )}
 
           {/* Opsi 2: Ambil di Resto (Pickup) */}
           {foodDiningOption === 'PICKUP' && (

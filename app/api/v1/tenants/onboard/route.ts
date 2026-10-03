@@ -376,7 +376,6 @@ export async function POST(req: NextRequest) {
             },
             fnb_settings: isFood ? {
               is_enabled: true,
-              dine_in_enabled: true,
               instant_delivery_enabled: true,
               self_pickup_enabled: true,
               kitchen_notes_enabled: true,
@@ -387,10 +386,8 @@ export async function POST(req: NextRequest) {
               ...(existingMeta.fnb_settings || {}),
             } : existingMeta.fnb_settings || undefined,
             fulfillment_settings: isFood ? {
-              dine_in: true,
               instant_delivery: true,
               self_pickup: true,
-              allow_table_number: true,
               kitchen_notes: true,
               ...(existingMeta.fulfillment_settings || {}),
             } : existingMeta.fulfillment_settings || undefined,
@@ -398,7 +395,7 @@ export async function POST(req: NextRequest) {
               is_enabled: true,
               pickup_address: 'Dapur Utama / Outlet Resto',
               pickup_operational_hours: '08:00 - 21:00 WIB',
-              pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor meja/nota saat mengambil pesanan.',
+              pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor nota saat mengambil pesanan.',
               ...(existingMeta.self_pickup_config || {}),
             } : existingMeta.self_pickup_config || undefined,
             shipping_config: {
@@ -407,10 +404,9 @@ export async function POST(req: NextRequest) {
                 is_self_pickup_enabled: true,
                 pickup_address: 'Dapur Utama / Outlet Resto',
                 pickup_operational_hours: '08:00 - 21:00 WIB',
-                pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor meja/nota saat mengambil pesanan.',
+                pickup_instructions: 'Silakan sebutkan nama pemesan atau nomor nota saat mengambil pesanan.',
                 fnb_settings: {
                   is_enabled: true,
-                  dine_in_enabled: true,
                   instant_delivery_enabled: true,
                   self_pickup_enabled: true,
                   kitchen_notes_enabled: true,
@@ -429,7 +425,6 @@ export async function POST(req: NextRequest) {
                 is_digital: false,
                 hide_address_for_digital: false,
                 requires_kitchen_notes: true,
-                allow_dine_in: true,
                 allow_instant_delivery: true,
                 allow_pickup: true,
               } : {}),
