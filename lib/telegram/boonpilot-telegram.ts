@@ -476,7 +476,7 @@ export async function handleTelegramUpdate(
         const demoUrl = communityBinding.demo_url || 'https://shop.boontrack.com/boon';
         const registerUrl =
           (communityBinding.metadata as Record<string, string>)?.register_url ||
-          `https://${affiliateId}.boontrack.com/register`;
+          `https://shop.boontrack.com/register?ref=${encodeURIComponent(affiliateId)}`;
 
         const replyText =
           `👋 *Halo dari BoonTrack!*\n` +
