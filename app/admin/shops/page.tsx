@@ -23,12 +23,19 @@ import {
   Video,
   Trash2,
   ShieldCheck,
+  Filter,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import GrantAccessModal from '@/app/admin/components/GrantAccessModal';
 import { getRemainingDays } from '@/lib/subscription-tiers';
 
 const MASTER_PIN = '998877';
+
+export type StatusFilterKey = 'ALL' | 'ACTIVE' | 'SUSPENDED';
+
+export function isShopActive(s: any): boolean {
+  return s.is_active !== false && s.status !== 'SUSPENDED' && s.status !== 'INACTIVE';
+}
 
 export type VerticalFilterKey =
   | 'ALL'
@@ -256,6 +263,7 @@ export default function SuperAdminShopDirectory() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeVertical, setActiveVertical] = useState<VerticalFilterKey>('ALL');
+  const [activeStatusFilter, setActiveStatusFilter] = useState<StatusFilterKey>('ACTIVE');
   const [updatingSlug, setUpdatingSlug] = useState<string | null>(null);
 
   // Grant Access Modal & Quick Extension State
@@ -496,10 +504,33 @@ export default function SuperAdminShopDirectory() {
     }
   }, [isAdminAuth]);
 
-  // Filtered Shops based on active vertical tab and instant search query
+  // Status counts (overall)
+  const activeCount = shops.filter(isShopActive).length;
+  const suspendedCount = shops.filter((s) => !isShopActive(s)).length;
+  const totalCount = shops.length;
+
+  // Shops filtered by active status (used for vertical category counts)
+  const statusFilteredShops = shops.filter((s) => {
+    const isActive = isShopActive(s);
+    return activeStatusFilter === 'ALL'
+      ? true
+      : activeStatusFilter === 'ACTIVE'
+      ? isActive
+      : !isActive;
+  });
+
+  // Filtered Shops based on active vertical tab, status filter, and instant search query
   const filteredShops = shops.filter((s) => {
     const matchVertical =
       activeVertical === 'ALL' || s.resolved_vertical === activeVertical;
+
+    const isActive = isShopActive(s);
+    const matchStatus =
+      activeStatusFilter === 'ALL'
+        ? true
+        : activeStatusFilter === 'ACTIVE'
+        ? isActive
+        : !isActive;
 
     const query = search.toLowerCase().trim();
     const matchSearch = query
@@ -509,18 +540,18 @@ export default function SuperAdminShopDirectory() {
         (s.metadata?.store_name || '').toLowerCase().includes(query)
       : true;
 
-    return matchVertical && matchSearch;
+    return matchVertical && matchStatus && matchSearch;
   });
 
-  // Vertical counts
+  // Vertical counts (reflecting active status filter)
   const verticalCounts: Record<VerticalFilterKey, number> = {
-    ALL: shops.length,
-    PHYSICAL: shops.filter((s) => s.resolved_vertical === 'PHYSICAL').length,
-    DIGITAL: shops.filter((s) => s.resolved_vertical === 'DIGITAL').length,
-    CREATOR: shops.filter((s) => s.resolved_vertical === 'CREATOR').length,
-    FIELD_SERVICE: shops.filter((s) => s.resolved_vertical === 'FIELD_SERVICE').length,
-    PROFESSIONAL_SERVICE: shops.filter((s) => s.resolved_vertical === 'PROFESSIONAL_SERVICE').length,
-    FOOD_BEVERAGE: shops.filter((s) => s.resolved_vertical === 'FOOD_BEVERAGE').length,
+    ALL: statusFilteredShops.length,
+    PHYSICAL: statusFilteredShops.filter((s) => s.resolved_vertical === 'PHYSICAL').length,
+    DIGITAL: statusFilteredShops.filter((s) => s.resolved_vertical === 'DIGITAL').length,
+    CREATOR: statusFilteredShops.filter((s) => s.resolved_vertical === 'CREATOR').length,
+    FIELD_SERVICE: statusFilteredShops.filter((s) => s.resolved_vertical === 'FIELD_SERVICE').length,
+    PROFESSIONAL_SERVICE: statusFilteredShops.filter((s) => s.resolved_vertical === 'PROFESSIONAL_SERVICE').length,
+    FOOD_BEVERAGE: statusFilteredShops.filter((s) => s.resolved_vertical === 'FOOD_BEVERAGE').length,
   };
 
   if (!isAdminAuth) {
@@ -669,10 +700,10 @@ export default function SuperAdminShopDirectory() {
           </Link>
         </div>
 
-        {/* 6 Kancing Filter Vertikal (Pills Filter) & Search Bar Toolbar */}
+        {/* Kancing Filter Vertikal, Filter Status Toko & Search Bar Toolbar */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-4 shadow-xl space-y-3.5">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            {/* 6 Filter Pills */}
+            {/* Filter Pills Kategori Vertikal */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none flex-wrap">
               {VERTICAL_TABS.map((tab) => {
                 const Icon = tab.icon;
@@ -720,24 +751,148 @@ export default function SuperAdminShopDirectory() {
               )}
             </div>
           </div>
+
+          {/* Sub Toolbar: Filter Status Toko (Button Pills) */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5 mr-1">
+                <Filter className="w-3.5 h-3.5 text-slate-500" />
+                <span>Filter Status:</span>
+              </span>
+
+              <div className="inline-flex items-center gap-1 bg-slate-950/80 p-1 rounded-2xl border border-slate-800">
+                {/* 1. Active Saja (Default) */}
+                <button
+                  type="button"
+                  onClick={() => setActiveStatusFilter('ACTIVE')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    activeStatusFilter === 'ACTIVE'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                  title="Tampilkan hanya toko merchant aktif (sembunyikan yang suspended / dummy)"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      activeStatusFilter === 'ACTIVE' ? 'bg-white' : 'bg-emerald-400'
+                    } animate-pulse`}
+                  />
+                  <span>Active Saja</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                      activeStatusFilter === 'ACTIVE' ? 'bg-white/20 text-white' : 'bg-slate-800 text-emerald-400'
+                    }`}
+                  >
+                    {activeCount}
+                  </span>
+                </button>
+
+                {/* 2. Suspended / Inactive */}
+                <button
+                  type="button"
+                  onClick={() => setActiveStatusFilter('SUSPENDED')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    activeStatusFilter === 'SUSPENDED'
+                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                  title="Tampilkan toko yang statusnya SUSPENDED atau Inactive"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      activeStatusFilter === 'SUSPENDED' ? 'bg-white' : 'bg-amber-400'
+                    }`}
+                  />
+                  <span>Suspended / Inactive</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                      activeStatusFilter === 'SUSPENDED' ? 'bg-white/20 text-white' : 'bg-slate-800 text-amber-400'
+                    }`}
+                  >
+                    {suspendedCount}
+                  </span>
+                </button>
+
+                {/* 3. Semua Status */}
+                <button
+                  type="button"
+                  onClick={() => setActiveStatusFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    activeStatusFilter === 'ALL'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                  title="Tampilkan semua toko tanpa filter status"
+                >
+                  <span>Semua Status</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-md font-mono ${
+                      activeStatusFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {totalCount}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-400 hidden md:flex items-center gap-2">
+              {activeStatusFilter === 'ACTIVE' && (
+                <span className="text-emerald-400/90 flex items-center gap-1 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Menyembunyikan toko suspended &amp; sandbox dummy
+                </span>
+              )}
+              {activeStatusFilter === 'SUSPENDED' && (
+                <span className="text-amber-400/90 flex items-center gap-1 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  Hanya menampilkan merchant berstatus SUSPENDED
+                </span>
+              )}
+              {activeStatusFilter === 'ALL' && (
+                <span className="text-slate-400 flex items-center gap-1">
+                  Menampilkan seluruh merchant (aktif maupun suspended)
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Data Table Container */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400">
+          <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
             <div className="flex items-center gap-2">
               <span className="font-bold text-white">Daftar Toko Merchant</span>
               <span>&bull;</span>
               <span>
                 Menampilkan <strong className="text-white">{filteredShops.length}</strong> dari{' '}
                 <strong className="text-white">{shops.length}</strong> merchant
+                {activeStatusFilter === 'ACTIVE' && (
+                  <span className="ml-1 text-[11px] text-emerald-400 font-semibold">(Active Saja)</span>
+                )}
+                {activeStatusFilter === 'SUSPENDED' && (
+                  <span className="ml-1 text-[11px] text-amber-400 font-semibold">(Suspended Saja)</span>
+                )}
               </span>
             </div>
-            {activeVertical !== 'ALL' && (
-              <span className="text-[10px] font-semibold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
-                Filter: {activeVertical}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {activeStatusFilter !== 'ALL' && (
+                <span
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                    activeStatusFilter === 'ACTIVE'
+                      ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                      : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                  }`}
+                >
+                  Status: {activeStatusFilter === 'ACTIVE' ? 'Active Saja' : 'Suspended / Inactive'}
+                </span>
+              )}
+              {activeVertical !== 'ALL' && (
+                <span className="text-[10px] font-semibold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                  Kategori: {activeVertical}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -768,8 +923,20 @@ export default function SuperAdminShopDirectory() {
                       <Store className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                       <p className="font-semibold text-white">Tidak ada toko merchant ditemukan.</p>
                       <p className="text-[11px] mt-1 text-slate-400">
-                        {search ? `Tidak ada hasil pencarian untuk "${search}"` : 'Belum ada merchant di kategori ini.'}
+                        {search
+                          ? `Tidak ada hasil pencarian untuk "${search}"`
+                          : activeStatusFilter === 'SUSPENDED'
+                          ? 'Tidak ada toko yang sedang berstatus SUSPENDED.'
+                          : 'Belum ada merchant yang sesuai filter saat ini.'}
                       </p>
+                      {activeStatusFilter !== 'ALL' && (
+                        <button
+                          onClick={() => setActiveStatusFilter('ALL')}
+                          className="mt-3 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl font-medium transition cursor-pointer"
+                        >
+                          Tampilkan Semua Status
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ) : (
