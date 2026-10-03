@@ -3511,3 +3511,176 @@ Untuk pelacakan komisi dan efektivitas promosi yang akurat, sistem memisahkan id
   | WhatsApp | `120363430879517540@g.us` (OPTIMASI IKLAN CT) | `https://shop.boontrack.com/buzzerukm/p/ctwa-mastery-7day` | `https://buzzerukm.boontrack.com/register` |
   | WhatsApp | `120363418879517@g.us` (Optimasi CTWA) | `https://shop.boontrack.com/buzzerukm/p/ctwa-mastery-7day` | `https://buzzerukm.boontrack.com/register` |
   | Telegram | `-1001910259389` (WAITINGLIST PRODUK DIGITAL - MAFIASAKTI) | `https://shop.boontrack.com/buzzerukm/p/ctwa-mastery-7day` | `https://buzzerukm.boontrack.com/register` |
+
+---
+
+## 44. AI Credit Lifecycle & FIFO Consumption Engine (ADR 2026-10-04)
+
+### 44.1 Dual-Credit Balance Architecture & Lifecycle Invariant
+
+Untuk memfasilitasi penggunaan fitur AI berbiaya komputasi token (WhatsApp Sales Bot, Vision OCR Struk Transfer, Generator Single-Page Checkout, dan Copywriting Produk) dengan unit economics yang sehat, platform mengadopsi model **Dual-Credit Balance** yang tersimpan di kolom `tenants.metadata.ai_credits`:
+
+```typescript
+export interface TenantAICredits {
+  monthly_base_quota: number;     // Kuota bulanan bawaan paket langganan
+  monthly_remaining: number;      // Sisa kuota bulanan periode berjalan
+  topup_balance: number;          // Saldo kredit akumulatif hasil pembelian add-on
+  last_monthly_reset_at: string;  // Timestamp ISO reset kuota bulanan terakhir
+  next_monthly_reset_at: string;  // Timestamp ISO jadwal reset kuota berikutnya
+  total_consumed_lifetime: number;// Total kredit terpakai sepanjang masa
+}
+```
+
+#### Lifecycle Rules by Credit Type
+
+| Tipe Kredit | Sumber Perolehan | Masa Berlaku & Kebijakan Rollover | Frekuensi Reset |
+| :--- | :--- | :--- | :--- |
+| **Monthly Subscription Quota** | Bawaan paket tier langganan (SOLO, PRO_SCALE, ADS_PERFORMANCE, ENTERPRISE) | **Use-it-or-lose-it (Hangus di akhir siklus)**. Sisa kuota bulanan tidak diakumulasikan ke bulan berikutnya. | Setiap 30 hari / awal siklus tagihan baru. |
+| **Top-Up Purchased Credits** | Pembelian mandiri paket add-on kredit AI via invoice top-up | **No Expiry / Lifetime Rollover (Akumulatif)**. Tidak memiliki masa kedaluwarsa dan tidak pernah di-reset oleh billing cycle bulanan. | Tersimpan permanen hingga habis terpakai. |
+
+### 44.2 FIFO Consumption Policy & Order of Deduction
+
+Setiap kali terjadi eksekusi AI (misal: webhook WhatsApp memanggil Gemini atau OCR bukti transfer), sistem konsumsi kredit menjalankan urutan deduksi deterministik berbasis **FIFO Priority** (First-In, First-Out prioritas kuota berbatas waktu):
+
+```
+                                 [ Inbound AI Request ]
+                                            │
+                                            ▼
+                           ┌─────────────────────────────────┐
+                           │   Cek Monthly Base Quota        │
+                           │   (monthly_remaining > 0 ?)     │
+                           └────────────────┬────────────────┘
+                                            │
+                     ┌──────────────────────┴──────────────────────┐
+                     │ YA                                          │ TIDAK (0)
+                     ▼                                             ▼
+        ┌───────────────────────────┐                ┌───────────────────────────┐
+        │ Potong Kuota Bulanan      │                │ Cek Saldo Top-Up Mandiri  │
+        │ monthly_remaining -= cost │                │ (topup_balance > 0 ?)     │
+        └─────────────┬─────────────┘                └─────────────┬─────────────┘
+                      │                                            │
+                      │                             ┌──────────────┴──────────────┐
+                      │                             │ YA                          │ TIDAK (0)
+                      │                             ▼                             ▼
+                      │               ┌───────────────────────────┐  ┌───────────────────────────┐
+                      │               │ Potong Saldo Top-Up       │  │ THROW INSUFFICIENT CREDITS│
+                      │               │ topup_balance -= cost     │  │ (Fail-Closed, Block AI)   │
+                      │               └─────────────┬─────────────┘  └───────────────────────────┘
+                      │                             │
+                      ▼                             ▼
+        ┌─────────────────────────────────────────────────────────┐
+        │  Catat Event ke credit_consumption_events               │
+        │  (tenant_id, feature, token_count, latency_ms, cost_idr)│
+        └─────────────────────────────────────────────────────────┘
+```
+
+1. **Prioritas 1: Monthly Base Quota First**
+   - Sistem wajib memotong sisa kuota bulanan (`monthly_remaining`) terlebih dahulu karena memiliki batas waktu aktif (*use-it-or-lose-it*).
+2. **Prioritas 2: Top-Up Balance Second**
+   - Saldo top-up (`topup_balance`) hanya akan dipotong setelah `monthly_remaining` bernilai `0`.
+   - Ini menjamin merchant tidak dirugikan: kuota yang berpotensi hangus selalu dimaksimalkan terlebih dahulu, sedangkan saldo top-up yang dibeli terpisah tetap aman dan awet.
+3. **Prioritas 3: Fail-Closed Guardrail**
+   - Jika kedua saldo bernilai `0`, sistem menolak eksekusi AI dengan error kode `INSUFFICIENT_AI_CREDITS` dan mengirimkan tawaran top-up otomatis kepada merchant, mencegah defisit biaya infrastruktur token.
+
+### 44.3 Telemetry & Financial Ledger Invariant
+
+Setiap deduksi kredit dan transaksi top-up wajib dicatat secara terdesentralisasi namun terpusat melalui tabel ledger Supabase (lihat migrasi `supabase/migrations/20261004_create_credit_ledger_tables.sql` dan helper `lib/creditLedger.ts`):
+
+- **Tabel `credit_consumption_events`**: Menyimpan log audit granular per eksekusi AI:
+  - `feature`: `'WHATSAPP_BOT' | 'VISION_SCAN' | 'LANDING_PAGE_GEN' | 'PRODUCT_COPYWRITING'`
+  - `model`: `'gemini-2.5-flash' | 'gemini-3.8-flash'`
+  - `input_tokens` & `output_tokens`
+  - `cost_idr`: Biaya komputasi aktual riil berbasis kurs USD/IDR dan tarif resmi Google Gemini.
+  - `latency_ms`: Durasi eksekusi untuk pemantauan metrik P95 latency platform.
+- **Tabel `credit_transactions`**: Menyimpan pergerakan finansial top-up dan alokasi kuota paket:
+  - `type`: `'SUBSCRIPTION_GRANT' | 'TOPUP_PURCHASE' | 'USAGE_DEDUCTION' | 'MONTHLY_EXPIRE_RESET' | 'MANUAL_ADJUSTMENT'`
+  - `credits_amount`: Jumlah unit kredit.
+  - `amount_paid_idr`: Nilai nominal pembayaran merchant.
+  - `status`: `'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED'`
+
+---
+
+## 45. 3-Layer Payment Verification Engine (ADR 2026-10-04)
+
+### 45.1 Architectural Hierarchy & Eliminasi Payment Gateway MDR
+
+Untuk mengeliminasi biaya potongan payment gateway konvensional (MDR 1.5% - 3% + Rp4.000/transaksi) yang membebani margin UMKM, BoonTrack menerapkan arsitektur verifikasi pembayaran langsung ke rekening merchant melalui **3-Layer Payment Verification Engine**:
+
+```
+                         [ Calon Pembeli Checkout ]
+                                     │
+                                     ▼
+               ┌───────────────────────────────────────────┐
+               │    Pemilihan Metode Pembayaran            │
+               └─────┬───────────────────────────────┬─────┘
+                     │                               │
+       Metode QRIS   │                               │ Transfer Manual
+                     ▼                               ▼
+     ┌───────────────────────────────┐ ┌───────────────────────────────┐
+     │ ⚡ LAYER 1: DYNAMIC QRIS      │ │ 👁️ LAYER 2: AI VISION OCR    │
+     │ - Payload EMVCo Dinamis       │ │ - Upload Bukti Struk Transfer │
+     │ - Kode Unik Diskon (Downward) │ │ - Multimodal Gemini 3.8 Flash │
+     │ - BoonTrack Reader (5-15s)    │ │ - Ekstraksi RRN & Nominal     │
+     └───────────────┬───────────────┘ └───────────────┬───────────────┘
+                     │                                 │
+            Mutasi Terdeteksi?               Data OCR Valid & Sesuai?
+            [ YA ]       [ TIDAK/Timeout ]   [ YA ]        [ ANOMALI/BURAM ]
+               │                 │              │                  │
+               │                 └──────────────┼──────────────────┘
+               │                                │
+               ▼                                ▼
+     ┌───────────────────┐            ┌────────────────────────────────┐
+     │ 🚀 PAID (LUNAS)   │            │ 🛡️ LAYER 3: MANUAL FALLBACK   │
+     │ Status Transaksi  │            │ - Antrean Verifikasi Dashboard │
+     │ Otomatis Update   │            │ - Review Struk vs Rekening     │
+     │ Notifikasi WA &   │            │ - God Button 1-Klik Approval   │
+     │ Resi Diterbitkan  │            └────────────────┬───────────────┘
+     └───────────────────┘                             │
+                                              Merchant Review
+                                            [ APPROVE ]    [ REJECT ]
+                                                │              │
+                                                ▼              ▼
+                                          [ PAID (Lunas) ] [ CANCELLED ]
+```
+
+### 45.2 Rincian Lapisan Verifikasi (The 3 Layers)
+
+#### Layer 1: Dynamic QRIS + BoonTrack Reader (Auto-Mutation 5-15s)
+- **Peran & Otoritas**: Jalur Utama Otomatisasi (Instant Primary Rail).
+- **Mekanisme Kerja**:
+  1. Sistem membaca gambar QRIS statis merchant (`tenants.metadata.payment_settings`) dan mengekstrak payload string EMVCo nasional (NMID).
+  2. Saat checkout, sistem menginjeksikan nominal tagihan spesifik beserta **kode unik diskon (DOWNWARD)** (misal: total Rp100.000 menjadi Rp99.987). Sistem downward menjamin pembeli tidak pernah membayar lebih mahal dari harga etalase.
+  3. Pembeli memindai QRIS menggunakan aplikasi mobile banking (BCA, Mandiri, BRI, BNI) atau dompet digital (GoPay, OVO, ShopeePay, DANA).
+  4. Worker **BoonTrack Reader** membaca notifikasi mutasi rekening merchant secara realtime.
+  5. **SLA Verifikasi**: Dalam **5–15 detik** sejak pembeli menekan konfirmasi bayar di aplikasi bank, status pesanan otomatis berubah menjadi `PAID` tanpa pembeli perlu mengirimkan tangkapan layar atau bukti transfer apa pun.
+
+#### Layer 2: AI BoonTrack Vision OCR (Smart Receipt Verification)
+- **Peran & Otoritas**: Mesin Akselerasi Ekstraksi Sinyal (Provisional Evidence Rail).
+- **Mekanisme Kerja**:
+  1. Digunakan untuk opsi pembayaran Transfer Bank Manual (non-QRIS) atau saat auto-mutasi memerlukan validasi pelengkap.
+  2. Pembeli mengunggah berkas foto atau tangkapan layar bukti transfer ke antarmuka storefront / chat WhatsApp bot.
+  3. Pre-flight guardrail memvalidasi ukuran berkas, resolusi, format MIME, dan rasio visual sebelum gambar dikirim ke model AI.
+  4. Pipeline **Gemini Multimodal Vision OCR** menganalisis gambar dan mengekstrak struktur data:
+     - Bank Pengirim & Bank Tujuan
+     - Nomor Rekening & Nama Pemilik Rekening
+     - Nominal Transfer Aktual
+     - Waktu & Tanggal Transaksi
+     - Nomor Referensi Bank / RRN (Retrieval Reference Number) unik.
+  5. Sistem membandingkan nominal OCR dengan nominal pesanan (toleransi kode unik). Jika RRN belum pernah dipakai sebelumnya (*anti-replay attack*) dan nominal klop, pesanan dapat otomatis diverifikasi atau dipersiapkan untuk konfirmasi akhir.
+
+#### Layer 3: Manual Fallback Review (Pemberi Otoritas Terakhir di Dashboard)
+- **Peran & Otoritas**: Human-in-the-Loop & Fail-Safe Final Authority.
+- **Mekanisme Kerja**:
+  1. Aktif secara otomatis jika:
+     - Bukti transfer buram, terpotong, beresolusi rendah, atau gambar bukan struk bank asli.
+     - Terjadi selisih antara nominal transfer dengan total pesanan (misal: pembeli lupa menyertakan kode unik).
+     - Terjadi gangguan jaringan pada pihak perbankan / mutasi pending.
+  2. Pesanan masuk ke antrean **Manual Review** di menu pesanan (`/admin` atau `/orders`).
+  3. Merchant atau tim CS dapat membuka detail pesanan, melihat gambar struk asli berdampingan dengan catatan mutasi perbankan, dan melakukan tindakan:
+     - **Approval 1-Klik (God Button)**: Mengubah status menjadi `PAID` seketika dan memicu webhook fulfillment.
+     - **Tolak / Minta Struk Ulang**: Mengirim pesan klarifikasi ke WhatsApp pembeli secara instan.
+
+### 45.3 Invarian Keamanan Finansial & Isolasi Tenant
+1. **Zero False-Positive Rule**: Status pesanan dilarang keras berubah menjadi `PAID` hanya berdasarkan estimasi spekulatif tanpa mutasi riil Layer 1, validasi sukses Layer 2, atau klik persetujuan merchant di Layer 3.
+2. **Anti-Replay Attack**: Nomor referensi bank (RRN / Transaction ID) yang diekstrak oleh Vision OCR disimpan dengan constraint unik per `tenant_id` untuk mencegah pengunggahan struk yang sama berulang kali oleh pembeli yang berbeda.
+3. **Tenant Boundary Isolation**: Setiap pembacaan mutasi dan penyimpanan bukti transfer terikat mutlak ke `tenant_id` masing-masing merchant.
