@@ -83,6 +83,10 @@ import {
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import StickyBuyButton from '@/components/storefront/StickyBuyButton';
+import { useCart } from '@/lib/cart/use-cart';
+import { evaluateCartPolicy } from '@/lib/cart/cart-policy';
+import CartDrawer from '@/components/cart/CartDrawer';
+import FloatingCartBar from '@/components/cart/FloatingCartBar';
 
 // Nomor Resmi WABA Holding BoonTrack: 6285181830080 (Khusus Platform Concierge / Enterprise)
 export const WABA_HOLDING_NUMBER = '6285181830080';
@@ -1243,6 +1247,26 @@ function SingleProductContent() {
     : (product.price && product.price > unitPrice)
     ? product.price
     : (product.promo_price && product.promo_price > 0 ? Math.round(unitPrice * 1.5) : unitPrice);
+
+  const cartState = useCart(tenant);
+  const cartPolicy = useMemo(() => {
+    return evaluateCartPolicy({
+      businessType: tenantData?.metadata?.category || (tenantData as any)?.business_type,
+      productType: product.product_type || product.type,
+      category: product.category,
+      requiresShipping,
+    });
+  }, [tenantData, product, requiresShipping]);
+
+  const handleAddToCart = async () => {
+    await cartState.addItem({
+      product_id: String(product.id),
+      quantity: quantity,
+      unit_price_snapshot: unitPrice,
+      selected_modifiers: kitchenNotes.trim() ? [{ name: 'Catatan', option_name: kitchenNotes.trim() }] : [],
+    });
+    cartState.openCart();
+  };
 
   const handleApplyVoucher = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -3752,6 +3776,19 @@ function SingleProductContent() {
         )}
       </button>
 
+      {/* Secondary Add to Cart Button for multi-item catalogs (FOOD / PHYSICAL) */}
+      {cartPolicy.allowAddToCart && (
+        <button
+          type="button"
+          onClick={handleAddToCart}
+          disabled={loading}
+          className="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-[0.99]"
+        >
+          <ShoppingBag className="w-4 h-4 text-emerald-600" />
+          <span>+ Tambah ke Keranjang Belanja</span>
+        </button>
+      )}
+
       {/* ── CTA KONSULTASI WHATSAPP SEKUNDER (Jalur Chat-to-Close) ── */}
       {wabaConsultationUrl && actionMode === 'HYBRID' ? (
         <button
@@ -4282,8 +4319,35 @@ function SingleProductContent() {
           whatsAppUrl={wabaConsultationUrl}
           onWhatsAppClick={handleWhatsAppConsultation}
           disabled={loading}
+          allowAddToCart={cartPolicy.allowAddToCart}
+          onAddToCart={handleAddToCart}
         />
       )}
+
+      {/* Floating Cart Bar if items exist in cart */}
+      {cartPolicy.showStickyCart && cartState.totalQuantity > 0 && !cartState.isDrawerOpen && (
+        <FloatingCartBar
+          totalCount={cartState.totalQuantity}
+          subtotal={cartState.subtotal}
+          onOpenCart={cartState.openCart}
+          className="bottom-20"
+        />
+      )}
+
+      {/* Cart Drawer */}
+      <CartDrawer
+        isOpen={cartState.isDrawerOpen}
+        onClose={cartState.closeCart}
+        cart={cartState.cart}
+        onUpdateQty={cartState.updateQuantity}
+        onRemoveItem={cartState.removeItem}
+        onCheckout={() => {
+          cartState.closeCart();
+          if (cartState.cart && cartState.cart.items.length > 0) {
+            setCheckoutOpen(true);
+          }
+        }}
+      />
 
       {/* 5. Instant Checkout Modal Fallback */}
       {checkoutOpen && (

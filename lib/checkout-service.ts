@@ -61,6 +61,17 @@ export interface CreateOrderPayload {
   }>;
   quantity?: number;
   unitPrice?: number;
+  cartId?: string | null;
+  items?: Array<{
+    productId: string;
+    productTitle: string;
+    unitPrice: number;
+    quantity: number;
+    weightGrams?: number;
+    variantId?: string | null;
+    variantName?: string | null;
+    selectedModifiers?: any[];
+  }>;
 }
 
 export async function createOrderAndInvoice(payload: CreateOrderPayload) {
@@ -412,27 +423,51 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   // 1b. Catat line item utama dan add-on ke tabel order_items (menyimpan snapshot item & tracking_context)
   try {
     const lineItems = [
-      {
-        order_id: orderId,
-        tenant_id: resolvedTenantId,
-        tenant_slug: payload.tenantSlug,
-        product_id: resolvedProductId,
-        product_title: payload.productTitle,
-        item_type: 'main',
-        price: Math.max(0, netProductPrice - orderBumpsTotal),
-        original_price: basePrice,
-        quantity: orderQuantity,
-        metadata: {
-          quantity: orderQuantity,
-          unit_price: unitPrice,
-          product_subtotal: unitPrice * orderQuantity,
-          product_discount: productDiscount,
-          voucher_code: payload.voucherCode || null,
-          tracking_context: resolvedTrackingContext,
-          briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
-          customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
-        },
-      },
+      ...(payload.items && payload.items.length > 0
+        ? payload.items.map((it) => ({
+            order_id: orderId,
+            tenant_id: resolvedTenantId,
+            tenant_slug: payload.tenantSlug,
+            product_id: it.productId,
+            product_title: it.productTitle,
+            item_type: 'main',
+            price: it.unitPrice,
+            original_price: it.unitPrice,
+            quantity: it.quantity,
+            metadata: {
+              quantity: it.quantity,
+              unit_price: it.unitPrice,
+              product_subtotal: it.unitPrice * it.quantity,
+              variant_id: it.variantId || null,
+              variant_name: it.variantName || null,
+              selected_modifiers: it.selectedModifiers || [],
+              weight_grams: it.weightGrams,
+              tracking_context: resolvedTrackingContext,
+            },
+          }))
+        : [
+            {
+              order_id: orderId,
+              tenant_id: resolvedTenantId,
+              tenant_slug: payload.tenantSlug,
+              product_id: resolvedProductId,
+              product_title: payload.productTitle,
+              item_type: 'main',
+              price: Math.max(0, netProductPrice - orderBumpsTotal),
+              original_price: basePrice,
+              quantity: orderQuantity,
+              metadata: {
+                quantity: orderQuantity,
+                unit_price: unitPrice,
+                product_subtotal: unitPrice * orderQuantity,
+                product_discount: productDiscount,
+                voucher_code: payload.voucherCode || null,
+                tracking_context: resolvedTrackingContext,
+                briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
+                customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
+              },
+            },
+          ]),
       ...verifiedOrderBumps.map((b) => ({
         order_id: orderId,
         tenant_id: resolvedTenantId,

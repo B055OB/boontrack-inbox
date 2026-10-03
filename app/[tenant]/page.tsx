@@ -375,6 +375,9 @@ export default function TenantStorefrontPage() {
     slug?: string;
     metadata?: any;
     fulfillment_metadata?: any;
+    items?: Array<any>;
+    weight_grams?: number;
+    cartId?: string | null;
     slot?: {
       slotDate: string;
       startTime: string;
@@ -891,14 +894,26 @@ export default function TenantStorefrontPage() {
     trackInitiateCheckout(combinedTitles, totalCartPrice);
 
     const hasPhysicalOrFood = cart.some(c => isPhysicalOrFoodProduct(c.product, tenantMetadata?.category || tenantCategory || tenant?.category));
+    const totalPackageWeight = cart.reduce((sum, c) => {
+      const w = Number((c.product as any).weight_grams || (c.product as any).weight || 250);
+      return sum + (w * (c.qty || 1));
+    }, 0);
 
     setProductForCheckout({
-      id: `CART-MULTI-${Date.now()}`,
+      id: `CART-${Date.now()}`,
       title: combinedTitles,
       price: totalCartPrice,
       requires_shipping: hasPhysicalOrFood,
       product_type: hasPhysicalOrFood ? 'PHYSICAL' : 'DIGITAL',
       type: hasPhysicalOrFood ? 'physical' : 'digital',
+      items: cart.map(c => ({
+        productId: String(c.product.id),
+        productTitle: c.product.name,
+        unitPrice: c.product.price,
+        quantity: c.qty,
+        weightGrams: Number((c.product as any).weight_grams || (c.product as any).weight || 250),
+      })),
+      weight_grams: totalPackageWeight,
     });
     setShowCartModal(false);
     setIsCheckoutOpen(true);

@@ -35,6 +35,9 @@ interface CheckoutModalProps {
     cta_label?: string;
     meta_pixel_id_override?: string;
     tiktok_pixel_id_override?: string;
+    items?: Array<any>;
+    weight_grams?: number;
+    cartId?: string | null;
     slot?: {
       slotDate: string;
       startTime: string;
@@ -42,9 +45,10 @@ interface CheckoutModalProps {
       businessTopic: string;
     };
   } | null;
+  checkoutContext?: any | null;
 }
 
-export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: CheckoutModalProps) {
+export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, checkoutContext }: CheckoutModalProps) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -201,8 +205,11 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
     }
   };
 
-  const unitPrice = product?.price || 0;
-  const productSubtotal = unitPrice * quantity;
+  const resolvedItems = checkoutContext?.items || (product as any)?.items || [];
+  const isMultiItem = Array.isArray(resolvedItems) && resolvedItems.length > 1;
+  const packageTotalWeight = checkoutContext?.totalWeightGrams || (product as any)?.weight_grams || 1000;
+  const unitPrice = isMultiItem ? (checkoutContext?.subtotal || product?.price || 0) : (product?.price || 0);
+  const productSubtotal = isMultiItem ? unitPrice : (unitPrice * quantity);
   const basePrice = productSubtotal;
   // Biaya admin Rp0 untuk QRIS maupun Transfer Manual (dana langsung masuk ke seller)
   const adminFee = 0;
@@ -296,7 +303,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
           body: JSON.stringify({
             destination_city: trimmedDest,
             tenant_slug: tenantSlug,
-            weight_grams: 1000,
+            weight_grams: packageTotalWeight,
+            items: isMultiItem ? resolvedItems : undefined,
           }),
         });
 
@@ -660,11 +668,28 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
       const result = await createOrderAndInvoice({
         tenantSlug,
         productId: product.id,
-        productTitle: product.title,
+        productTitle: isMultiItem
+          ? resolvedItems.map((i: any) => `${i.productTitle || i.title || i.name} (${i.quantity || 1}x)`).join(', ')
+          : product.title,
         amount: totalAmount,
         basePrice: productSubtotal,
         unitPrice,
-        quantity,
+        quantity: isMultiItem
+          ? resolvedItems.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 1), 0)
+          : quantity,
+        cartId: checkoutContext?.cartId || (product as any)?.cartId || null,
+        items: isMultiItem
+          ? resolvedItems.map((it: any) => ({
+              productId: String(it.productId || it.product_id || it.id),
+              productTitle: it.productTitle || it.title || it.name,
+              unitPrice: Number(it.unitPrice || it.price || 0),
+              quantity: Number(it.quantity || 1),
+              weightGrams: Number(it.weightGrams || it.weight_grams || 0),
+              variantId: it.variantId || it.variant_id || null,
+              variantName: it.variantName || null,
+              selectedModifiers: it.selectedModifiers || it.selected_modifiers || [],
+            }))
+          : undefined,
         adminFee,
         uniqueCode: currentUniqueCode,
         paymentMethod,
@@ -1361,65 +1386,101 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product }: 
         ) : (
           /* Form Data Pembeli (Ultra-Lean Single Section) */
           <form onSubmit={handleCheckout} className="space-y-4 text-xs">
-            {/* Ringkasan Produk & Quantity Stepper */}
-            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
-              <div className="flex justify-between items-start font-bold text-white">
-                <span className="line-clamp-1">{product.title}</span>
-                <span className="text-emerald-400 shrink-0 ml-2">
-                  Rp {unitPrice.toLocaleString("id-ID")}
-                </span>
-              </div>
-
-              {/* Kontrol Pemilihan Kuantiti / Stepper (- [ Qty ] +) */}
-              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] font-bold text-slate-300 block">Jumlah Kuantiti:</span>
-                  {quantity > 1 && (
-                    <span className="text-[10px] text-slate-400">
-                      Subtotal: <strong className="text-emerald-400 font-mono">Rp {productSubtotal.toLocaleString("id-ID")}</strong>
-                    </span>
-                  )}
+            {/* Ringkasan Produk & Paket */}
+            {isMultiItem ? (
+              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
+                <div className="flex justify-between items-center text-xs font-bold text-white border-b border-slate-800 pb-2">
+                  <span className="flex items-center gap-1.5 text-emerald-400">
+                    <Package className="w-4 h-4" />
+                    <span>Paket Belanja ({resolvedItems.length} Produk)</span>
+                  </span>
+                  <span className="text-slate-400 font-mono text-[11px]">{packageTotalWeight} gr</span>
                 </div>
-
-                <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl p-1 shadow-2xs">
-                  <button
-                    type="button"
-                    onClick={() => handleQuantityChange(quantity - 1)}
-                    disabled={quantity <= 1}
-                    aria-label="Kurangi Jumlah"
-                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-                  <input
-                    type="number"
-                    min={1}
-                    max={maxQuantity}
-                    value={quantity}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val)) handleQuantityChange(val);
-                    }}
-                    className="w-10 text-center font-bold text-xs text-white bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleQuantityChange(quantity + 1)}
-                    disabled={quantity >= maxQuantity}
-                    aria-label="Tambah Jumlah"
-                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  {resolvedItems.map((it: any, idx: number) => (
+                    <div key={idx} className="flex justify-between items-center text-xs py-1 border-b border-slate-900/60 last:border-0">
+                      <div className="truncate mr-2">
+                        <span className="text-slate-200 font-medium">{it.productTitle || it.title || it.name}</span>
+                        <span className="text-emerald-400 font-bold ml-1.5">x{it.quantity}</span>
+                        {it.selectedModifiers && it.selectedModifiers.length > 0 && (
+                          <span className="text-[10px] text-amber-400/90 block">
+                            {it.selectedModifiers.map((m: any) => m.option_name || m.name).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-slate-300 font-bold shrink-0">
+                        Rp {((it.unitPrice || it.price) * it.quantity).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-xs font-bold text-white">
+                  <span className="text-slate-300">Subtotal Produk:</span>
+                  <span className="text-emerald-400 font-mono font-black">
+                    Rp {productSubtotal.toLocaleString('id-ID')}
+                  </span>
                 </div>
               </div>
+            ) : (
+              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
+                <div className="flex justify-between items-start font-bold text-white">
+                  <span className="line-clamp-1">{product?.title || ''}</span>
+                  <span className="text-emerald-400 shrink-0 ml-2">
+                    Rp {unitPrice.toLocaleString("id-ID")}
+                  </span>
+                </div>
+
+                {/* Kontrol Pemilihan Kuantiti / Stepper (- [ Qty ] +) */}
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-300 block">Jumlah Kuantiti:</span>
+                    {quantity > 1 && (
+                      <span className="text-[10px] text-slate-400">
+                        Subtotal: <strong className="text-emerald-400 font-mono">Rp {productSubtotal.toLocaleString("id-ID")}</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl p-1 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => handleQuantityChange(quantity - 1)}
+                      disabled={quantity <= 1}
+                      aria-label="Kurangi Jumlah"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={maxQuantity}
+                      value={quantity}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) handleQuantityChange(val);
+                      }}
+                      className="w-10 text-center font-bold text-xs text-white bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleQuantityChange(quantity + 1)}
+                      disabled={quantity >= maxQuantity}
+                      aria-label="Tambah Jumlah"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
               {affiliateCode && (
                 <div className="text-[10px] text-indigo-400 font-mono flex items-center gap-1 pt-1">
                   <ShieldCheck className="w-3 h-3" /> Reff: {affiliateCode} (Komisi 30%: Rp {affiliateCommission.toLocaleString("id-ID")})
                 </div>
               )}
-            </div>
 
             {/* Slot Booking Card jika checkout membawa slot jadwal */}
             {product.slot && (

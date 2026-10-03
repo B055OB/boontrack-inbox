@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ArrowRight, ExternalLink, MessageCircle } from 'lucide-react';
+import { ArrowRight, ExternalLink, MessageCircle, ShoppingBag } from 'lucide-react';
 
 export interface StickyBuyButtonProps {
   totalAmount: number;
@@ -18,6 +18,8 @@ export interface StickyBuyButtonProps {
   isWhatsAppMode?: boolean;
   whatsAppUrl?: string;
   onWhatsAppClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
+  allowAddToCart?: boolean;
+  onAddToCart?: () => void;
 }
 
 /**
@@ -45,6 +47,8 @@ export function StickyBuyButton({
   isWhatsAppMode = false,
   whatsAppUrl,
   onWhatsAppClick,
+  allowAddToCart = false,
+  onAddToCart,
 }: StickyBuyButtonProps) {
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -128,44 +132,65 @@ export function StickyBuyButton({
           </span>
         </div>
 
-        {/* Right: CTA Button */}
-        {hasValidWhatsAppUrl ? (
-          <a
-            href={whatsAppUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={handleWhatsAppClick}
-            id="sticky-whatsapp-button"
-            data-testid="sticky-whatsapp-button"
-            className="flex-1 max-w-xs py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition cursor-pointer text-center no-underline"
-          >
-            <MessageCircle className="w-4 h-4 shrink-0" />
-            <span className="truncate">{resolvedCtaLabel}</span>
-          </a>
-        ) : hasValidExternalUrl ? (
-          <a
-            href={externalAffiliateUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={handleAnchorClick}
-            className="flex-1 max-w-xs py-3.5 px-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition cursor-pointer text-center"
-          >
-            <span className="truncate">{affiliateCtaLabel}</span>
-            <ExternalLink className="w-4 h-4 shrink-0" />
-          </a>
-        ) : (
-          <button
-            type="button"
-            id="sticky-buy-button"
-            data-testid="sticky-buy-button"
-            onClick={handleClick}
-            disabled={disabled}
-            className="flex-1 max-w-xs py-3.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition cursor-pointer text-center"
-          >
-            <span className="truncate">{resolvedCtaLabel}</span>
-            <ArrowRight className="w-4 h-4 shrink-0" />
-          </button>
-        )}
+        {/* Right: CTA Actions (Direct Buy & Optional Add to Cart) */}
+        <div className="flex items-center gap-2 flex-1 max-w-sm justify-end">
+          {allowAddToCart && onAddToCart && !hasValidWhatsAppUrl && !hasValidExternalUrl && (
+            <button
+              type="button"
+              id="sticky-cart-button"
+              data-testid="sticky-cart-button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onAddToCart();
+              }}
+              disabled={disabled}
+              className="py-3 px-3 sm:px-3.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-300 transition cursor-pointer shrink-0"
+              title="Tambah ke Keranjang"
+            >
+              <ShoppingBag className="w-4 h-4 text-emerald-600" />
+              <span className="hidden sm:inline">+ Keranjang</span>
+            </button>
+          )}
+
+          {hasValidWhatsAppUrl ? (
+            <a
+              href={whatsAppUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleWhatsAppClick}
+              id="sticky-whatsapp-button"
+              data-testid="sticky-whatsapp-button"
+              className="flex-1 py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition cursor-pointer text-center no-underline"
+            >
+              <MessageCircle className="w-4 h-4 shrink-0" />
+              <span className="truncate">{resolvedCtaLabel}</span>
+            </a>
+          ) : hasValidExternalUrl ? (
+            <a
+              href={externalAffiliateUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleAnchorClick}
+              className="flex-1 py-3.5 px-4 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition cursor-pointer text-center"
+            >
+              <span className="truncate">{affiliateCtaLabel}</span>
+              <ExternalLink className="w-4 h-4 shrink-0" />
+            </a>
+          ) : (
+            <button
+              type="button"
+              id="sticky-buy-button"
+              data-testid="sticky-buy-button"
+              onClick={handleClick}
+              disabled={disabled}
+              className="flex-1 py-3.5 px-4 bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition cursor-pointer text-center"
+            >
+              <span className="truncate">{resolvedCtaLabel}</span>
+              <ArrowRight className="w-4 h-4 shrink-0" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

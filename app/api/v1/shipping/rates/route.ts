@@ -209,8 +209,19 @@ export async function POST(req: NextRequest) {
     const destinationDistrict = (body.destination_district || body.district || '').trim();
     const destinationPostalCode = (body.destination_postal_code || body.postal_code || '').trim();
     const destinationAreaId = (body.destination_area_id || body.area_id || '').trim();
-    const destinationDistrictCode = (body.destination_district_code || body.district_code || '32.04.10').trim();
-    const weightInGrams = Math.max(100, Number(body.weight || body.weight_grams || 1000));
+    const destinationDistrictCode = (body.destination_district_code || body.destination_subdistrict_id || body.subdistrict_id || '').trim();
+    let rawWeight = Number(body.weight || body.weight_grams || 0);
+    if (Array.isArray(body.items) && body.items.length > 0) {
+      const itemsWeight = body.items.reduce((sum: number, it: any) => {
+        const itemWeight = Number(it.weight_grams || it.weight || 0);
+        const itemQty = Number(it.quantity || 1);
+        return sum + (itemWeight * itemQty);
+      }, 0);
+      if (itemsWeight > 0) {
+        rawWeight = itemsWeight;
+      }
+    }
+    const weightInGrams = Math.max(100, rawWeight || 1000);
     const weightInKg = Math.ceil(weightInGrams / 1000);
 
     // Ekstraksi parameter koordinat tujuan (latitude & longitude)
@@ -228,7 +239,7 @@ export async function POST(req: NextRequest) {
         ? Number(body.longitude)
         : null;
 
-    // Deteksi apakah produk adalah FnB / makanan segar mudah basi
+    // Deteksi apakah produk adalah FnB / makanan segar mudah basi (termasuk jika ada item paket FnB)
     const isFnb = Boolean(
       body.is_fnb ||
       body.isFnb ||
@@ -237,7 +248,12 @@ export async function POST(req: NextRequest) {
       String(body.category || '').toLowerCase().includes('fnb') ||
       String(body.category || '').toLowerCase().includes('food') ||
       String(body.category || '').toLowerCase().includes('kuliner') ||
-      String(body.category || '').toLowerCase().includes('makanan')
+      String(body.category || '').toLowerCase().includes('makanan') ||
+      (Array.isArray(body.items) && body.items.some((it: any) => {
+        const cat = String(it.category || '').toLowerCase();
+        const pt = String(it.product_type || it.type || '').toLowerCase();
+        return it.is_fnb || cat.includes('fnb') || cat.includes('food') || cat.includes('kuliner') || pt === 'food' || pt === 'fnb';
+      }))
     );
 
     // 1. Ambil Konfigurasi Kurir & Origin Toko Tenant dari Supabase

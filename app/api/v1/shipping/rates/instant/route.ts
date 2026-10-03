@@ -78,7 +78,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const weightInGrams = Math.max(100, Number(body.weight || body.weight_grams || 1000));
+    let rawWeight = Number(body.weight || body.weight_grams || 0);
+    if (Array.isArray(body.items) && body.items.length > 0) {
+      const itemsWeight = body.items.reduce((sum: number, it: any) => {
+        const itemWeight = Number(it.weight_grams || it.weight || 0);
+        const itemQty = Number(it.quantity || 1);
+        return sum + (itemWeight * itemQty);
+      }, 0);
+      if (itemsWeight > 0) {
+        rawWeight = itemsWeight;
+      }
+    }
+    const weightInGrams = Math.max(100, rawWeight || 1000);
 
     // 1. Validasi Coverage / Konfigurasi & Ambil Dynamic Origin dari Supabase
     let isShippingActive = true;
