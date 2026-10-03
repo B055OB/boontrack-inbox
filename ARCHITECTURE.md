@@ -3480,3 +3480,34 @@ Untuk pelacakan komisi dan efektivitas promosi yang akurat, sistem memisahkan id
 3. **Storefront & Attribution Ingestion**:
    - Helper `syncAttributionSession` otomatis mengekstrak `src` dan menyimpannya di browser session storage / local storage (`bt_src_{tenantId}`) serta merekamnya ke log atribusi database Supabase.
 
+### 43.4 Registration URL Resolution & AM Branded Subdomain Exception
+
+- **Aturan Universal (General Affiliate)**:
+  Semua affiliate platform wajib menggunakan standar kanonikal:
+  ```
+  https://shop.boontrack.com/register?ref={affiliateId}&src={community_source_id}
+  ```
+  Hal ini wajib guna menjamin konsistensi tracking cookie browser dan mencegah error DNS/SSL pada subdomain yang belum terdaftar di Vercel.
+  Parameter `src` bersifat opsional — hanya disertakan bila pesan berasal dari grup/komunitas (`community_source_id` tidak null).
+
+- **Pengecualian Eksklusif Master AM (Kang Sakti / buzzerukm)**:
+  Branded subdomain `https://buzzerukm.boontrack.com/register` adalah pengecualian khusus untuk Master AM yang telah dipetakan di Cloudflare & Vercel.
+  Pengaturan ini disimpan secara deklaratif di `channel_bindings.metadata.register_url`.
+  Sistem runtime membaca URL ini secara dinamis dari database Supabase dan **dilarang** membuat asumsi otomatis untuk affiliate lain.
+
+- **Implementasi Runtime (3 Handler)**:
+  ```typescript
+  // boonpilot-telegram.ts | evolution-webhook-handler.ts | meta-webhook-normalizer.ts
+  const registerUrl =
+    (binding.metadata as Record<string, string>)?.register_url ||
+    `https://shop.boontrack.com/register?ref=${encodeURIComponent(affiliateId)}`;
+  ```
+  **Dilarang keras** menggunakan pola `` `https://${affiliateId}.boontrack.com/register` `` sebagai fallback — akan merusak cookie tracking dan menyebabkan DNS/SSL error untuk affiliate umum yang subdomainnya belum dikonfigurasi.
+
+- **Channel Bindings Terdaftar (buzzerukm)**:
+
+  | Channel | community_source_id | demo_url | register_url (metadata) |
+  | :--- | :--- | :--- | :--- |
+  | WhatsApp | `120363430879517540@g.us` (OPTIMASI IKLAN CT) | `https://shop.boontrack.com/buzzerukm/p/ctwa-mastery-7day` | `https://buzzerukm.boontrack.com/register` |
+  | WhatsApp | `120363418879517@g.us` (Optimasi CTWA) | `https://shop.boontrack.com/buzzerukm/p/ctwa-mastery-7day` | `https://buzzerukm.boontrack.com/register` |
+  | Telegram | `-1001910259389` (WAITINGLIST PRODUK DIGITAL - MAFIASAKTI) | `https://shop.boontrack.com/buzzerukm/p/ctwa-mastery-7day` | `https://buzzerukm.boontrack.com/register` |
