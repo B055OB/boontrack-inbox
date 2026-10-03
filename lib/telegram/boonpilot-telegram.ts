@@ -746,6 +746,75 @@ export async function handleTelegramUpdate(
   // 2. Beri indikator typing ke Telegram chat
   sendTelegramChatAction(chatId, 'typing').catch(() => {});
 
+  // ── AFFILIATE CONTEXT INTERCEPT ─────────────────────────────────────────
+  // Jika grup ini terdaftar sebagai AFFILIATE_CONTEXT di channel_bindings,
+  // sajikan kartu promo affiliate — JANGAN teruskan ke ConversationEngine
+  // (yang akan menampilkan template toko default / "Cara Menghubungkan Toko").
+  if (isGroup && supabase) {
+    let affiliateCommunityBinding: any = null;
+    try {
+      const { data: acb } = await supabase
+        .from('channel_bindings')
+        .select('*')
+        .eq('channel_type', 'telegram')
+        .eq('community_source_id', String(chatId))
+        .eq('is_active', true)
+        .maybeSingle();
+      if (
+        acb &&
+        (acb.context === 'AFFILIATE_CONTEXT' ||
+          (Array.isArray(acb.capabilities) && acb.capabilities.includes('referral_acquisition')))
+      ) {
+        affiliateCommunityBinding = acb;
+      }
+    } catch (dbErr) {
+      console.warn('[TELEGRAM] Affiliate context intercept check warning:', dbErr);
+    }
+
+    if (affiliateCommunityBinding) {
+      if (isGroupRateLimited(chatId, fromId)) {
+        return { handled: false, reason: 'group_rate_limited', chatId };
+      }
+
+      const affId = affiliateCommunityBinding.affiliate_id || 'boon';
+      const demoUrl =
+        affiliateCommunityBinding.demo_url ||
+        'https://shop.boontrack.com/boon';
+      const registerUrl =
+        (affiliateCommunityBinding.metadata as Record<string, string>)?.register_url ||
+        `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}`;
+
+      const promoText =
+        `🎓 *Halo dari BoonTrack!*\n` +
+        `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
+        `🛍️ *Lihat Demo Langsung:*\n${demoUrl}\n\n` +
+        `📝 *Daftar Akun Resmi Sekarang:*\n${registerUrl}\n\n` +
+        `_Coba gratis 7 hari, tanpa kartu kredit!_`;
+
+      const promoButtons: TelegramButton[][] = [
+        [{ text: '🛍️ Lihat Demo Sekarang', url: demoUrl }],
+        [{ text: '📝 Daftar Akun Resmi', url: registerUrl }],
+      ];
+
+      await sendTelegramMessage(chatId, promoText, {
+        replyToMessageId: message.message_id,
+        parseMode: 'Markdown',
+        buttons: promoButtons,
+      });
+
+      recordGroupTrigger(chatId, fromId);
+      return {
+        handled: true,
+        chatId,
+        senderPhone: String(fromId),
+        reply: promoText,
+        role: 'AFFILIATE_ENGINE',
+        activeEngine: 'AFFILIATE_CONTEXT_INTERCEPT',
+      };
+    }
+  }
+  // ── END AFFILIATE CONTEXT INTERCEPT ─────────────────────────────────────
+
   // 3. Teruskan ke ConversationEngine resmi BoonTrack (pipeline yang sama persis dengan WhatsApp)
   const engineResult = await ConversationEngine.process({
     tenant_id: matchedTenant?.id || 'boon', // Tenant terkait atau official BoonPilot platform
