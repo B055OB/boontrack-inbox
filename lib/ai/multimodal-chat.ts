@@ -10,6 +10,7 @@ import { getSupabase } from '@/lib/supabaseClient';
 import { getBackendApiUrl } from '@/lib/api-config';
 import { getTenantActionUrl } from '@/lib/checkout-link';
 import { processFunnelBookingMessage } from '@/lib/booking-extraction-service';
+import { processConsultationLeadFunnel } from '@/lib/funnel/consultation-lead-funnel';
 import {
   InteractiveMenu,
   findMenuResponseAcrossMenus,
@@ -133,15 +134,19 @@ export async function processMultimodalChat(
   try {
     const supabase = getSupabase();
     if (supabase) {
-      const { data: tById } = await supabase
-        .from('tenants')
-        .select('id, slug, name, category, business_type, metadata')
-        .eq('id', slug)
-        .maybeSingle();
+      const isIdUuid = isUuid(slug);
+      if (isIdUuid) {
+        const { data: tById } = await supabase
+          .from('tenants')
+          .select('id, slug, name, category, business_type, metadata')
+          .eq('id', slug)
+          .maybeSingle();
+        if (tById?.id || tById?.slug) {
+          t = tById;
+        }
+      }
 
-      if (tById?.id || tById?.slug) {
-        t = tById;
-      } else {
+      if (!t) {
         const { data: tBySlug } = await supabase
           .from('tenants')
           .select('id, slug, name, category, business_type, metadata')
@@ -218,14 +223,36 @@ export async function processMultimodalChat(
         const phone08 = cleanSender.startsWith('62') ? '0' + cleanSender.slice(2) : cleanSender;
         const phoneVariants = Array.from(new Set([targetPhone, cleanSender, phone62, phone08])).filter(Boolean);
         const tenantTokens = Array.from(new Set([slug, t?.id, t?.slug].filter(Boolean))) as string[];
+        const uuidTokens = tenantTokens.filter(tok => /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(tok));
+        const slugTokens = tenantTokens.filter(tok => !/^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(tok));
+
+        let convOrClause = '';
+        if (uuidTokens.length > 0 && slugTokens.length > 0) {
+          convOrClause = `tenant_id.in.(${uuidTokens.join(',')}),tenant_slug.in.(${slugTokens.join(',')})`;
+        } else if (uuidTokens.length > 0) {
+          convOrClause = `tenant_id.in.(${uuidTokens.join(',')})`;
+        } else {
+          convOrClause = `tenant_slug.in.(${slugTokens.join(',')})`;
+        }
 
         // 1. Cek conversations table
-        const { data: convData } = await supabase
+        let convQuery: any = supabase
           .from('conversations')
-          .select('id, bot_paused, bot_mode, status, is_bot_active')
-          .or(`tenant_id.in.(${tenantTokens.join(',')}),tenant_slug.in.(${tenantTokens.join(',')})`)
-          .in('customer_phone', phoneVariants)
-          .limit(5);
+          .select('id, bot_paused, bot_mode, status');
+
+        if (typeof convQuery.or === 'function') {
+          convQuery = convQuery.or(convOrClause);
+        }
+        if (typeof convQuery.in === 'function') {
+          convQuery = convQuery.in('customer_phone', phoneVariants);
+        } else if (typeof convQuery.eq === 'function') {
+          convQuery = convQuery.eq('customer_phone', phoneVariants[0] || targetPhone);
+        }
+        if (typeof convQuery.limit === 'function') {
+          convQuery = convQuery.limit(5);
+        }
+
+        const { data: convData } = await convQuery;
 
         const pausedConv = (convData || []).find((c: any) =>
           c.bot_paused === true ||
@@ -237,12 +264,26 @@ export async function processMultimodalChat(
         );
 
         // 2. Cek conversation_sessions table
-        const { data: sessData } = await supabase
+        let sessQuery: any = supabase
           .from('conversation_sessions')
-          .select('current_state, is_paused, paused_until, metadata')
-          .in('tenant_id', tenantTokens)
-          .in('user_identifier', phoneVariants)
-          .limit(5);
+          .select('current_state, is_paused, paused_until, metadata');
+
+        if (typeof sessQuery.in === 'function') {
+          sessQuery = sessQuery.in('tenant_id', tenantTokens);
+          if (typeof sessQuery?.in === 'function') {
+            sessQuery = sessQuery.in('user_identifier', phoneVariants);
+          }
+        } else if (typeof sessQuery.eq === 'function') {
+          sessQuery = sessQuery.eq('tenant_id', tenantTokens[0] || slug);
+          if (typeof sessQuery?.eq === 'function') {
+            sessQuery = sessQuery.eq('user_identifier', phoneVariants[0] || targetPhone);
+          }
+        }
+        if (typeof sessQuery.limit === 'function') {
+          sessQuery = sessQuery.limit(5);
+        }
+
+        const { data: sessData } = await sessQuery;
 
         const pausedSess = (sessData || []).find((s: any) => {
           const isStatePaused = s.current_state === 'HANDOVER_TO_HUMAN' || s.current_state === 'PAUSED' || s.current_state === 'human_takeover';
@@ -417,17 +458,23 @@ export async function processMultimodalChat(
         interactive_reply: input.interactive_reply,
         channel_type: channel === 'WABA' ? 'WABA' : 'WAHA',
       });
-      return {
-        success: true,
-        reply: platformRes.reply,
-        tenant_id: slug,
-        tenant_slug: slug,
-        checkout_url: checkoutUrl,
-        type: platformRes.role === 'MERCHANT' ? 'MERCHANT_COPILOT' : 'GUEST_ONBOARDING',
-        quick_actions: platformRes.quick_actions,
-        active_engine: platformRes.activeEngine,
-        interactive_payload: platformRes.interactive_payload,
-      };
+
+      // Only return early for deterministic fast-path matches.
+      // Non-deterministic fallbacks (isDeterministicMatch === false) fall through
+      // to the Gemini AI reasoning pipeline below for an intelligent answer.
+      if (platformRes.isDeterministicMatch !== false) {
+        return {
+          success: true,
+          reply: platformRes.reply,
+          tenant_id: slug,
+          tenant_slug: slug,
+          checkout_url: checkoutUrl,
+          type: platformRes.role === 'MERCHANT' ? 'MERCHANT_COPILOT' : 'GUEST_ONBOARDING',
+          quick_actions: platformRes.quick_actions,
+          active_engine: platformRes.activeEngine,
+          interactive_payload: platformRes.interactive_payload,
+        };
+      }
     }
 
     // 1. Funnel Booking Auto-Extraction
@@ -447,6 +494,29 @@ export async function processMultimodalChat(
         checkout_url: checkoutUrl,
         type: funnelRes.isBookingCreated ? 'BOOKING_CONFIRMED' : 'TEXT',
         booking: funnelRes.bookingData,
+        quick_actions: defaultQuickActions,
+        active_engine: activeEngine,
+      };
+    }
+
+    // 1.1. Consultation, Lead Filtering & Service Order Gatekeeper Funnel
+    const consultFunnelRes = await processConsultationLeadFunnel({
+      tenant: t,
+      tenantSlug: slug,
+      message,
+      senderPhone,
+      conversationHistory: input.conversation_history,
+      hasPreviousGreeting: Boolean(input.context?.hasPreviousBotGreeting),
+    });
+
+    if (consultFunnelRes.handled && consultFunnelRes.reply) {
+      return {
+        success: true,
+        reply: consultFunnelRes.reply,
+        tenant_id: t?.id || slug,
+        tenant_slug: t?.slug || slug,
+        checkout_url: consultFunnelRes.checkoutUrl || checkoutUrl,
+        type: consultFunnelRes.type,
         quick_actions: defaultQuickActions,
         active_engine: activeEngine,
       };
@@ -837,10 +907,28 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
   if (!reply) {
     if (hasImage) {
       reply = `Terima kasih banyak Kak! Foto yang Kakak kirimkan sudah kami terima dengan baik. 🙏\n\nTim admin kami di *${storeName}* sedang memverifikasi detail foto/bukti transaksi Kakak. Mohon ditunggu sebentar ya Kak, kami segera proses! ✨`;
-    } else if (q.includes('qris') || q.includes('bayar') || q.includes('beli') || q.includes('order')) {
-      reply = `Pembayaran di *${storeName}* dapat dilakukan secara praktis dan otomatis melalui QRIS 24 jam.\n\n👉 *Link Checkout Resmi:*\n${checkoutUrl}`;
     } else {
-      reply = `Halo! Terima kasih sudah menghubungi *${storeName}* ✨ Ada yang bisa kami bantu seputar produk atau pesanan Kakak?`;
+      const fallbackFunnel = await processConsultationLeadFunnel({
+        tenant: t,
+        tenantSlug: slug,
+        message,
+        senderPhone,
+        conversationHistory: input.conversation_history,
+        hasPreviousGreeting: true,
+      });
+
+      const isCheckoutUrlUuid = /[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}/i.test(checkoutUrl);
+      const cleanCheckoutUrl = !isCheckoutUrlUuid && checkoutUrl ? checkoutUrl : '';
+
+      if (fallbackFunnel.handled && fallbackFunnel.reply) {
+        reply = fallbackFunnel.reply;
+      } else if (q.includes('qris') || q.includes('bayar') || q.includes('beli') || q.includes('order')) {
+        reply = `Pembayaran di *${storeName}* dapat dilakukan secara praktis dan otomatis melalui QRIS 24 jam.` +
+          (cleanCheckoutUrl ? `\n\n👉 *Link Checkout Resmi:*\n${cleanCheckoutUrl}` : '');
+      } else {
+        reply = `Halo Kak! Ada yang bisa kami bantu seputar produk atau layanan di *${storeName}*?` +
+          (cleanCheckoutUrl ? `\n\n👉 *Kunjungi Etalase & Pendaftaran Resmi:*\n${cleanCheckoutUrl}` : '');
+      }
     }
   }
 

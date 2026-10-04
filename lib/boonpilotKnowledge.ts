@@ -492,3 +492,40 @@ export function searchPlatformKnowledge(query: string): KnowledgeItem | null {
 export function getPlatformKnowledgeByCategory(category: KnowledgeCategory): KnowledgeItem[] {
   return PLATFORM_KNOWLEDGE_BASE.filter((item) => item.category === category);
 }
+
+/**
+ * Structured Knowledge Base for Payment & Notification features in BoonTrack ecosystem.
+ * Injected into BoonPilot prompt context for intelligent AI Q&A.
+ */
+export function getBoonPilotPaymentNotificationKnowledge(): string {
+  return `KNOWLEDGE BASE RESMI EKOSISTEM BOONTRACK (PAYMENT & NOTIFIKASI):
+
+1. SISTEM & FITUR PEMBAYARAN (PAYMENT ARCHITECTURE):
+- Non-Custodial 0% MDR (BYO Account 100% Aman):
+  Uang hasil penjualan masuk 100% langsung ke rekening bank atau QRIS pribadi/bisnis merchant tanpa potongan pihak ketiga (MDR 0%) dan tanpa dana mengendap di platform BoonTrack. BoonTrack murni bertindak sebagai software observer.
+- Dynamic QRIS EMVCo:
+  Merchant cukup mengunggah 1 barcode QRIS statis (BCA, DANA Bisnis, GoPay Usaha, ShopeePay, dll) di dashboard. BoonTrack secara otomatis membaca tag EMVCo (ID 00 sampai 63) dan mentransformasikannya menjadi Dynamic QRIS EMVCo standar nasional (Tag 01=12 dinamis, Tag 54 nominal tagihan presisi).
+- Kode Diskon Unik (DOWNWARD):
+  Verifikasi pembayaran otomatis menggunakan pengurangan acak unik (misal Rp100.000 menjadi Rp99.988). Pembeli membayar lebih hemat (diskon mikro) dan sistem mencocokkan pembayaran secara 100% presisi tanpa biaya admin tambahan.
+- Keamanan 4 Lapis Verifikasi Pembayaran (4-Layer Defense Engine):
+  * Layer 1: BoonTrack Reader APK (Fast Path: 5–15 Detik): Listener notifikasi push real-time di smartphone Android merchant yang membaca mutasi QRIS & e-wallet (BCA, Mandiri, BRI, BNI, GoPay, OVO, ShopeePay, DANA) dan seketika mengubah order jadi PAID (Lunas).
+  * Layer 2: Inbound Email Worker (Fail-Safe: 30–90 Detik): Cloudflare Email Worker (alert-{tenant_slug}@inbound.boontrack.com) yang otomatis memproses email resmi mutasi dari bank (BCA, Mandiri, BSI) jika HP merchant mati, kehabisan baterai, atau offline.
+  * Layer 3: AI BoonTrack Vision OCR (Smart Struk Analyzer): Pipeline AI multimodal untuk transfer bank manual yang mengekstrak nominal, nama bank, tanggal, dan nomor referensi (RRN) dengan proteksi anti-struk palsu.
+  * Layer 4: Fallback & Manual Review Seller (Dashboard Review): Approval 1-Klik (God Button) di menu Pesanan jika bukti transfer buram atau nominal tidak sesuai (pesanan aman ditahan berstatus PENDING/LATE_MATCH_PENDING_REVIEW untuk dicek seller).
+- Rekomendasi Bank Utama:
+  BCA (Bank Central Asia), Bank Mandiri (Livin' by Mandiri), dan BSI (Bank Syariah Indonesia) untuk pengalaman verifikasi otomatis tercepat dan anti-pending. Namun semua rekening bank dan e-wallet di Indonesia tetap didukung penuh.
+
+2. SALURAN NOTIFIKASI TRANSAKSI & OPERASIONAL (NOTIFICATION CHANNELS):
+Jika pengguna menanyakan "notifikasi payment via apa aja", "notifikasi via apa saja", atau seputar saluran notifikasi toko, jelaskan secara lengkap dan jelas:
+- WhatsApp Real-time (Otomatis & 2-Arah):
+  * Untuk Pembeli: Notifikasi invoice/faktur pesanan baru, notifikasi konfirmasi pembayaran lunas (PAID), dan notifikasi update nomor resi pengiriman otomatis disertai link live tracking kurir.
+  * Untuk Penjual/Merchant: Notifikasi alert pesanan baru masuk dan alert konfirmasi pembayaran lunas (PAID) secara instan ke nomor WhatsApp admin/seller.
+- Telegram Instant Push (@boonshop_bot):
+  * Bot resmi Telegram @boonshop_bot (https://t.me/boonshop_bot).
+  * Memberikan notifikasi instan super cepat tanpa delay (instant push) ke HP atau grup Telegram merchant, berdering seketika ada pesanan baru atau QRIS terbayar (jauh lebih cepat dan andal dibanding email).
+- Email Notifikasi (Resend / Cloudflare Inbound):
+  * Mengirimkan email tanda terima transaksi & faktur resmi ke pembeli dan merchant.
+  * Email alert mutasi bank otomatis untuk memverifikasi pembayaran.
+- Multi-CS Inbox Console:
+  * Console dashboard web terpadu untuk tim admin/CS memantau riwayat notifikasi, status pesanan, status pembayaran, serta membalas chat pembeli secara keroyokan tanpa bertabrakan (dengan auto-pause bot saat CS membalas manual).`;
+}

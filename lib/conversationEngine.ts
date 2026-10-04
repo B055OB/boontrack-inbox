@@ -19,6 +19,7 @@ import {
   isOfficialPlatformIdentifier,
 } from '@/lib/boonpilot/sender-resolver';
 import { processBoonPilotPlatformChat } from '@/lib/boonpilot/platform-engine';
+import { processConsultationLeadFunnel } from '@/lib/funnel/consultation-lead-funnel';
 
 function getEngineSupabase() {
   const existing = getSupabaseAdmin() || getSupabase();
@@ -86,15 +87,17 @@ export class ConversationEngine {
 
     // 0. Ambil Data Tenant & Konfigurasi Interactive Menu / Bot Mode
     let tenant: any = null;
-    const { data: tById } = await supabase
-      .from('tenants')
-      .select('id, slug, name, category, business_type, metadata')
-      .eq('id', tenant_id)
-      .maybeSingle();
+    const isIdUuid = Boolean(tenant_id && /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(tenant_id));
+    if (isIdUuid) {
+      const { data: tById } = await supabase
+        .from('tenants')
+        .select('id, slug, name, category, business_type, metadata')
+        .eq('id', tenant_id)
+        .maybeSingle();
+      if (tById?.id || tById?.slug) tenant = tById;
+    }
 
-    if (tById?.id || tById?.slug) {
-      tenant = tById;
-    } else {
+    if (!tenant) {
       const { data: tBySlug } = await supabase
         .from('tenants')
         .select('id, slug, name, category, business_type, metadata')
@@ -281,25 +284,54 @@ export class ConversationEngine {
     }
 
     // 1. Ambil Sesi & State Saat Ini
-    let { data: session } = await supabase
-      .from('conversation_sessions')
-      .select('*')
-      .eq('tenant_id', tenant_id)
-      .eq('session_id', session_id)
-      .maybeSingle();
+    const tenantTokens = Array.from(new Set([tenant_id, tenant?.id, tenant?.slug].filter(Boolean)));
+    const cleanUser = (user_identifier || session_id || '').replace(/\D/g, '');
+    const phoneVariants = Array.from(
+      new Set([
+        user_identifier,
+        session_id,
+        cleanUser,
+        cleanUser.startsWith('0') ? '62' + cleanUser.slice(1) : cleanUser,
+        cleanUser.startsWith('62') ? '0' + cleanUser.slice(2) : cleanUser,
+      ])
+    ).filter(Boolean);
+
+    let session: any = null;
+    const baseQuery = supabase.from('conversation_sessions').select('*');
+    if (typeof (baseQuery as any).in === 'function') {
+      const { data } = await (baseQuery as any)
+        .in('tenant_id', tenantTokens)
+        .in('user_identifier', phoneVariants)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      session = data;
+    } else {
+      const { data } = await (baseQuery as any)
+        .eq('tenant_id', tenant_id)
+        .eq('session_id', session_id)
+        .maybeSingle();
+      session = data;
+    }
 
     if (!session) {
+      const nowIso = new Date().toISOString();
+      const insertTenantId = tenant?.slug || tenant?.id || tenant_id;
       const { data: newSession } = await supabase
         .from('conversation_sessions')
-        .insert({
-          tenant_id,
-          session_id,
-          channel,
-          user_identifier,
-          current_state: 'GREETING'
-        })
+        .upsert(
+          {
+            tenant_id: insertTenantId,
+            session_id: session_id || `wa_${insertTenantId}_${user_identifier}`,
+            channel,
+            user_identifier: user_identifier || session_id,
+            current_state: 'GREETING',
+            updated_at: nowIso,
+          },
+          { onConflict: 'tenant_id,user_identifier' }
+        )
         .select()
-        .single();
+        .maybeSingle();
       session = newSession || { current_state: 'GREETING' };
     } else {
       // Inbound Message Drop saat Paused / Handover to Human
@@ -323,10 +355,18 @@ export class ConversationEngine {
 
       if (session.current_state === 'GREETING') {
         // Advance ke ACTIVE agar pesan lanjutan dirouting ke Sales Rep / Engine, bukan looping greeting
-        await supabase
-          .from('conversation_sessions')
-          .update({ current_state: 'ACTIVE' })
-          .eq('session_id', session_id);
+        const nowIso = new Date().toISOString();
+        if (session.id) {
+          await supabase
+            .from('conversation_sessions')
+            .update({ current_state: 'ACTIVE', updated_at: nowIso })
+            .eq('id', session.id);
+        } else if (session.session_id) {
+          await supabase
+            .from('conversation_sessions')
+            .update({ current_state: 'ACTIVE', updated_at: nowIso })
+            .eq('session_id', session.session_id);
+        }
         session = { ...session, current_state: 'ACTIVE' };
         trace.push('AUTO_ADVANCE_GREETING_TO_ACTIVE');
       }
@@ -483,6 +523,27 @@ export class ConversationEngine {
       const products: any[] = Array.isArray(metadata.products) ? metadata.products : [];
       const aiKnowledge = metadata.ai_knowledge || {};
       const salesPolicy = metadata.sales_policy || metadata.playbook || {};
+
+      // Check Consultation & Lead Filtering Funnel (Sales Flow & Order Gatekeeper)
+      const consultFunnelRes = await processConsultationLeadFunnel({
+        tenant,
+        tenantSlug: tenantDomainInfo.slug,
+        message: cleanMsg,
+        senderPhone: user_identifier || session_id,
+        hasPreviousGreeting: session.current_state !== 'GREETING',
+      });
+
+      if (consultFunnelRes.handled && consultFunnelRes.reply) {
+        trace.push(`CONSULTATION_FUNNEL_${consultFunnelRes.type}`);
+        return {
+          reply: consultFunnelRes.reply,
+          next_state: consultFunnelRes.nextState || 'ACTIVE',
+          state_trace: trace,
+          entities: { ...entities, lead_data: consultFunnelRes.leadData },
+          is_booking_ready: false,
+          active_engine: 'SALES_REP_V1',
+        };
+      }
 
       // 1. GREETING STATE (Sapaan Awal Ramah & Consultative)
       if (session.current_state === 'GREETING') {

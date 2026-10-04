@@ -21,6 +21,7 @@ import {
   resolveBoonPilotSender,
 } from './sender-resolver';
 import { getPlatformBaseUrl, getRegisterUrl } from '@/lib/platform-urls';
+import { getBoonPilotPaymentNotificationKnowledge } from '@/lib/boonpilotKnowledge';
 
 export interface BoonPilotPlatformChatInput {
   senderPhone: string;
@@ -43,12 +44,15 @@ export interface BoonPilotPlatformChatResult {
   tenant?: BoonPilotSenderTenant;
   quick_actions?: string[];
   interactive_payload?: any;
+  isDeterministicMatch?: boolean;
 }
 
 /**
  * Builds the customized LLM System Prompt for Gemini based on sender registration resolution.
  */
 export function buildBoonPilotSystemPrompt(resolution: BoonPilotSenderResolution): string {
+  const paymentNotificationKb = getBoonPilotPaymentNotificationKnowledge();
+
   if (resolution.role === 'MERCHANT' && resolution.tenant) {
     const t = resolution.tenant;
     const ownerName = t.owner_name || 'Owner';
@@ -62,6 +66,8 @@ PERAN & TUGAS UTAMA (MERCHANT):
 1. Bantuan operasional toko, cek status order, dan panduan fitur 8 tab dashboard BoonTrack (Overview, Katalog Produk, Pesanan, WhatsApp Gateway, Pengiriman, Pembayaran/QRIS, Tim CS, Pengaturan Toko).
 2. Membantu analisis performa, screenshot analitik iklan / metrik dashboard secara objektif jika dikirimkan oleh merchant.
 3. Membantu pemecahan masalah operasional toko (checkout, ongkir, QRIS, notifikasi WhatsApp).
+
+${paymentNotificationKb}
 
 PANDUAN ESKALASI & UPSELL:
 - Kesulitan setup / minta terima beres: Tawarkan paket DFY (Done-For-You / Setup Toko Terima Beres) di https://shop.boontrack.com/boon atau arahkan untuk menghubungi IT Support resmi di https://wa.me/6281977655099.
@@ -86,6 +92,8 @@ PERAN & TUGAS UTAMA (NON-MERCHANT):
    - Agregator Kurir multi-ekspedisi BYOK (Lincah, Biteship, JNE, SiCepat, J&T).
 2. Memandu calon pengguna untuk mendaftar uji coba gratis ke ${getPlatformBaseUrl()} (atau ${getRegisterUrl()}).
 3. Menganalisis gambar publik: Jika pengguna mengirimkan screenshot website atau materi onboarding, jelaskan fiturnya dengan ramah.
+
+${paymentNotificationKb}
 
 PANDUAN ESKALASI & UPSELL:
 - Kesulitan setup / minta terima beres: Tawarkan paket DFY (Done-For-You) di https://shop.boontrack.com/boon atau hubungi IT Support resmi: https://wa.me/6281977655099.
@@ -144,6 +152,7 @@ export async function processBoonPilotPlatformChat(
       activeEngine: resolution.role === 'MERCHANT' ? 'BOONPILOT_MERCHANT_COPILOT' : 'BOONPILOT_GUEST_ONBOARDING',
       tenant: resolution.tenant,
       quick_actions: ['🚀 Cek Paket DFY', '📞 Kontak IT Support'],
+      isDeterministicMatch: true,
     };
   }
 
@@ -165,6 +174,7 @@ export async function processBoonPilotPlatformChat(
       activeEngine: resolution.role === 'MERCHANT' ? 'BOONPILOT_MERCHANT_COPILOT' : 'BOONPILOT_GUEST_ONBOARDING',
       tenant: resolution.tenant,
       quick_actions: ['💡 Info Checkout Lite', '🚀 Daftar Uji Coba'],
+      isDeterministicMatch: true,
     };
   }
 
@@ -188,6 +198,7 @@ export async function processBoonPilotPlatformChat(
       activeEngine: resolution.role === 'MERCHANT' ? 'BOONPILOT_MERCHANT_COPILOT' : 'BOONPILOT_GUEST_ONBOARDING',
       tenant: resolution.tenant,
       quick_actions: ['🚀 Cek Paket Pro Scale', '🏢 Cek Team Scale'],
+      isDeterministicMatch: true,
     };
   }
 
@@ -213,6 +224,7 @@ export async function processBoonPilotPlatformChat(
         activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
         tenant,
         quick_actions: merchantQuickActions,
+        isDeterministicMatch: true,
       };
     }
 
@@ -229,6 +241,7 @@ export async function processBoonPilotPlatformChat(
         activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
         tenant,
         quick_actions: merchantQuickActions,
+        isDeterministicMatch: true,
       };
     }
 
@@ -244,6 +257,7 @@ export async function processBoonPilotPlatformChat(
         activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
         tenant,
         quick_actions: merchantQuickActions,
+        isDeterministicMatch: true,
       };
     }
 
@@ -259,6 +273,7 @@ export async function processBoonPilotPlatformChat(
         activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
         tenant,
         quick_actions: merchantQuickActions,
+        isDeterministicMatch: true,
       };
     }
 
@@ -280,6 +295,7 @@ export async function processBoonPilotPlatformChat(
         activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
         tenant,
         quick_actions: merchantQuickActions,
+        isDeterministicMatch: true,
       };
     }
 
@@ -300,6 +316,7 @@ export async function processBoonPilotPlatformChat(
       activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
       tenant,
       quick_actions: merchantQuickActions,
+      isDeterministicMatch: false,
     };
   }
 
@@ -323,6 +340,7 @@ export async function processBoonPilotPlatformChat(
       role: 'GUEST',
       activeEngine: 'BOONPILOT_GUEST_ONBOARDING',
       quick_actions: guestQuickActions,
+      isDeterministicMatch: true,
     };
   }
 
@@ -344,6 +362,7 @@ export async function processBoonPilotPlatformChat(
       role: 'GUEST',
       activeEngine: 'BOONPILOT_GUEST_ONBOARDING',
       quick_actions: guestQuickActions,
+      isDeterministicMatch: true,
     };
   }
 
@@ -361,6 +380,7 @@ export async function processBoonPilotPlatformChat(
       role: 'GUEST',
       activeEngine: 'BOONPILOT_GUEST_ONBOARDING',
       quick_actions: guestQuickActions,
+      isDeterministicMatch: true,
     };
   }
 
@@ -376,6 +396,7 @@ export async function processBoonPilotPlatformChat(
       role: 'GUEST',
       activeEngine: 'BOONPILOT_GUEST_ONBOARDING',
       quick_actions: guestQuickActions,
+      isDeterministicMatch: true,
     };
   }
 
@@ -395,5 +416,6 @@ export async function processBoonPilotPlatformChat(
     role: 'GUEST',
     activeEngine: 'BOONPILOT_GUEST_ONBOARDING',
     quick_actions: guestQuickActions,
+    isDeterministicMatch: false,
   };
 }

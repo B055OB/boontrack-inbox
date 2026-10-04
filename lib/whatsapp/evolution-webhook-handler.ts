@@ -361,36 +361,84 @@ export async function processEvolutionWebhookEvent(
         continue;
       }
 
-      // CEK KOLAM KOMUNITAS AFILIASI DI CHANNEL_BINDINGS (§43)
-      if (supabase) {
-        try {
-          const { data: waBinding } = await supabase
-            .from('channel_bindings')
-            .select('*')
-            .eq('community_source_id', rawFrom)
-            .eq('is_active', true)
-            .maybeSingle();
+      // CEK APAKAH PESAN MERUPAKAN PERTANYAAN NYATA ATAU HANYA SALAM SINGKAT
+      const cleanQuery = (wakeWord.cleanText || '').trim();
+      const isJustGreeting =
+        !cleanQuery ||
+        /^(halo|hai|hi|hello|p|ping|start|test|tes|yo|bro|kak|min|mimin|gan|boss|assalamualaikum|waalaikumsalam|apa kabar|selamat pagi|selamat siang|selamat malam)[\.\!\?]?$/i.test(cleanQuery);
 
-          const affId = waBinding?.affiliate_id || 'boon';
-          const demoUrl = waBinding?.demo_url || 'https://shop.boontrack.com/boon';
-          const registerUrl =
-            (waBinding?.metadata as Record<string, string>)?.register_url ||
-            `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}`;
+      if (isJustGreeting) {
+        // CEK KOLAM KOMUNITAS AFILIASI DI CHANNEL_BINDINGS (§43) → static greeting
+        if (supabase) {
+          try {
+            const { data: waBinding } = await supabase
+              .from('channel_bindings')
+              .select('*')
+              .eq('community_source_id', rawFrom)
+              .eq('is_active', true)
+              .maybeSingle();
 
-          const replyText =
-            `👋 *Halo dari BoonTrack!*\n` +
-            `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
-            `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
-            `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}`;
+            const affId = waBinding?.affiliate_id || 'boon';
+            const demoUrl = waBinding?.demo_url || 'https://shop.boontrack.com/boon';
+            const registerUrl =
+              (waBinding?.metadata as Record<string, string>)?.register_url ||
+              `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}`;
 
-          await sendEvolutionTextMessage(instanceName, rawFrom, replyText, resolvedApiKey);
-          processedCount++;
-          continue;
-        } catch (waErr) {
-          console.warn('[Evolution WA Group Community Trigger Error]:', waErr);
+            const replyText =
+              `👋 *Halo dari BoonTrack!*\n` +
+              `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
+              `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
+              `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}`;
+
+            await sendEvolutionTextMessage(instanceName, rawFrom, replyText, resolvedApiKey);
+            processedCount++;
+            continue;
+          } catch (waErr) {
+            console.warn('[Evolution WA Group Community Trigger Error]:', waErr);
+          }
         }
+        // If supabase unavailable, fall through to Gemini below with group context
       }
+
+      // PERTANYAAN NYATA → Kirim ke Gemini AI & balas ke Grup (rawFrom = group JID)
+      try {
+        const groupAiResult = await processMultimodalChat({
+          tenant_slug: tenantSlug || tenantId,
+          tenant_id: tenantId,
+          message: cleanQuery || rawText,
+          text: cleanQuery || rawText,
+          sender_phone: senderPhone,
+          user_identifier: senderPhone,
+          channel: 'WHATSAPP',
+          context: {
+            isGroupChat: true,
+            groupJid: rawFrom,
+            storeName: 'BoonTrack',
+          },
+        });
+
+        if (groupAiResult.reply && groupAiResult.reply.trim()) {
+          await sendEvolutionTextMessage(instanceName, rawFrom, groupAiResult.reply.trim(), resolvedApiKey);
+
+          await persistOutboundMessage({
+            tenantId,
+            tenantSlug: tenantSlug || tenantId,
+            customerPhone: rawFrom,
+            senderType: 'bot',
+            senderName: 'BoonPilot Grup',
+            messageBody: groupAiResult.reply.trim(),
+            externalId: item.key?.id ? `bot_group_reply_${item.key.id}` : undefined,
+            rawPayload: { trigger: 'boonpilot_group_gemini', groupJid: rawFrom, senderPhone },
+          });
+        }
+      } catch (groupAiErr) {
+        console.warn('[Evolution WA Group AI Error]:', groupAiErr);
+      }
+
+      processedCount++;
+      continue;
     }
+
 
     // 3.5. Deteksi Pesan Lokasi (Location Message)
     const rawMsg = item.message || {};
@@ -672,10 +720,22 @@ export async function processEvolutionWebhookEvent(
         let isConvPaused = false;
         let convPauseReason = '';
 
+        const uuidTokens = tenantTokens.filter(tok => /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(tok));
+        const slugTokens = tenantTokens.filter(tok => !/^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(tok));
+
+        let convOrClause = '';
+        if (uuidTokens.length > 0 && slugTokens.length > 0) {
+          convOrClause = `tenant_id.in.(${uuidTokens.join(',')}),tenant_slug.in.(${slugTokens.join(',')})`;
+        } else if (uuidTokens.length > 0) {
+          convOrClause = `tenant_id.in.(${uuidTokens.join(',')})`;
+        } else {
+          convOrClause = `tenant_slug.in.(${slugTokens.join(',')})`;
+        }
+
         const convQuery = supabase
           .from('conversations')
-          .select('id, bot_paused, bot_mode, status, is_bot_active')
-          .or(`tenant_id.in.(${tenantTokens.join(',')}),tenant_slug.in.(${tenantTokens.join(',')})`)
+          .select('id, bot_paused, bot_mode, status')
+          .or(convOrClause)
           .in('customer_phone', phoneVariants)
           .limit(5);
 
@@ -758,28 +818,34 @@ export async function processEvolutionWebhookEvent(
         supabase
       );
 
-      if (chatRes.reply && chatRes.reply.trim()) {
-        await sendEvolutionTextMessage(
-          instanceName,
-          senderPhone,
-          chatRes.reply.trim(),
-          resolvedApiKey
-        );
+      // Only short-circuit if platform engine matched a deterministic fast-path.
+      // Non-deterministic fallback (isDeterministicMatch === false) falls through
+      // to Gemini AI for an intelligent answer with full Knowledge Base context.
+      if (chatRes.isDeterministicMatch !== false) {
+        if (chatRes.reply && chatRes.reply.trim()) {
+          await sendEvolutionTextMessage(
+            instanceName,
+            senderPhone,
+            chatRes.reply.trim(),
+            resolvedApiKey
+          );
 
-        await persistOutboundMessage({
-          tenantId: resolution.tenant?.id || tenantId,
-          tenantSlug: resolution.tenant?.slug || tenantSlug || tenantId,
-          customerPhone: senderPhone,
-          senderType: 'bot',
-          senderName: resolution.role === 'MERCHANT' ? 'BoonPilot Toko' : 'BoonTrack Concierge',
-          messageBody: chatRes.reply.trim(),
-          externalId: item.key?.id ? `bot_reply_${item.key.id}` : undefined,
-          rawPayload: { trigger: 'boonpilot_platform_dual_role', role: resolution.role },
-        });
+          await persistOutboundMessage({
+            tenantId: resolution.tenant?.id || tenantId,
+            tenantSlug: resolution.tenant?.slug || tenantSlug || tenantId,
+            customerPhone: senderPhone,
+            senderType: 'bot',
+            senderName: resolution.role === 'MERCHANT' ? 'BoonPilot Toko' : 'BoonTrack Concierge',
+            messageBody: chatRes.reply.trim(),
+            externalId: item.key?.id ? `bot_reply_${item.key.id}` : undefined,
+            rawPayload: { trigger: 'boonpilot_platform_dual_role', role: resolution.role },
+          });
+        }
+
+        processedCount++;
+        continue;
       }
-
-      processedCount++;
-      continue;
+      // isDeterministicMatch === false → fall through to Gemini AI below
     }
 
     const isUuid = (val?: string | null) =>
@@ -791,6 +857,80 @@ export async function processEvolutionWebhookEvent(
         ? tenantSlug.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
         : 'Toko Kami');
 
+    let conversationHistory: Array<{ role: 'user' | 'model'; text: string }> = [];
+    let hasPreviousBotGreeting = false;
+
+    if (supabase) {
+      try {
+        const cleanSender = senderPhone.replace(/\D/g, '');
+        const phoneVariants = Array.from(
+          new Set([
+            senderPhone,
+            cleanSender,
+            cleanSender.startsWith('0') ? '62' + cleanSender.slice(1) : cleanSender,
+            cleanSender.startsWith('62') ? '0' + cleanSender.slice(2) : cleanSender,
+          ])
+        ).filter(Boolean);
+        const tenantTokens = Array.from(new Set([tenantId, tenantSlug].filter(Boolean))) as string[];
+
+        // Check if there are existing messages in this conversation
+        let msgQuery = supabase
+          .from('messages')
+          .select('sender, text, created_at')
+          .order('created_at', { ascending: false })
+          .limit(8);
+
+        if (convId) {
+          msgQuery = msgQuery.eq('conversation_id', convId);
+        } else {
+          const uuidTokens = tenantTokens.filter(tok => /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(tok));
+          const slugTokens = tenantTokens.filter(tok => !/^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(tok));
+
+          let msgOrClause = '';
+          if (uuidTokens.length > 0 && slugTokens.length > 0) {
+            msgOrClause = `tenant_id.in.(${uuidTokens.join(',')}),tenant_slug.in.(${slugTokens.join(',')})`;
+          } else if (uuidTokens.length > 0) {
+            msgOrClause = `tenant_id.in.(${uuidTokens.join(',')})`;
+          } else {
+            msgOrClause = `tenant_slug.in.(${slugTokens.join(',')})`;
+          }
+
+          msgQuery = msgQuery
+            .or(msgOrClause)
+            .in('customer_phone', phoneVariants);
+        }
+
+        const { data: recentMsgs } = await msgQuery;
+
+        if (recentMsgs && recentMsgs.length > 0) {
+          hasPreviousBotGreeting = recentMsgs.some(
+            (m: any) => m.sender === 'bot' || (m as any).sender_type === 'bot'
+          );
+
+          conversationHistory = recentMsgs
+            .reverse()
+            .map((m: any) => ({
+              role: (m.sender === 'customer' || m.sender === 'user' ? 'user' : 'model') as 'user' | 'model',
+              text: m.text || '',
+            }));
+        }
+
+        // Also check conversation_sessions state
+        const { data: sessRow } = await supabase
+          .from('conversation_sessions')
+          .select('current_state')
+          .in('tenant_id', tenantTokens)
+          .in('user_identifier', phoneVariants)
+          .maybeSingle();
+
+        if (sessRow?.current_state && sessRow.current_state !== 'GREETING') {
+          hasPreviousBotGreeting = true;
+        }
+      } catch (histErr) {
+        console.warn('[Evolution Webhook] Error fetching conversation history:', histErr);
+      }
+    }
+
     const aiResult = await processMultimodalChat({
       tenant_slug: tenantSlug || tenantId,
       tenant_id: tenantId,
@@ -801,8 +941,10 @@ export async function processEvolutionWebhookEvent(
       sender_phone: senderPhone,
       user_identifier: senderPhone,
       channel: 'WHATSAPP',
+      conversation_history: conversationHistory,
       context: {
         storeName: storeDisplayName,
+        hasPreviousBotGreeting,
       },
     });
 
@@ -826,6 +968,25 @@ export async function processEvolutionWebhookEvent(
         externalId: item.key?.id ? `bot_reply_${item.key.id}` : undefined,
         rawPayload: { trigger: 'gemini_multimodal' },
       });
+
+      // Update session state to ACTIVE in conversation_sessions
+      if (supabase) {
+        try {
+          const nowIso = new Date().toISOString();
+          const targetTenantId = tenantSlug || tenantId;
+          await supabase.from('conversation_sessions').upsert(
+            {
+              tenant_id: targetTenantId,
+              session_id: `wa_${targetTenantId}_${senderPhone}`,
+              channel: 'WHATSAPP',
+              user_identifier: senderPhone,
+              current_state: 'ACTIVE',
+              updated_at: nowIso,
+            },
+            { onConflict: 'tenant_id,user_identifier' }
+          );
+        } catch (_) {}
+      }
     }
 
     processedCount++;

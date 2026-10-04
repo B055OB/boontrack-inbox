@@ -794,7 +794,10 @@ export async function processZeroAiMessage(
     business_type: tenant.business_type,
   };
 
-  let actionUrl = getTenantActionUrl(tenantDomainInfo, primaryProduct);
+  let actionUrl =
+    meta.primary_checkout_url ||
+    meta.primary_product_url ||
+    getTenantActionUrl(tenantDomainInfo, primaryProduct);
 
   // 5. INTENT DISPATCHER (ZERO-TOKEN DETERMINISTIC LOGIC)
 
@@ -935,7 +938,11 @@ export async function processZeroAiMessage(
     cleanMsg.includes('tarif') ||
     cleanMsg.includes('paket') ||
     cleanMsg.includes('layanan') ||
-    cleanMsg.includes('solusi')
+    cleanMsg.includes('solusi') ||
+    cleanMsg.includes('jasa') ||
+    cleanMsg.includes('service') ||
+    cleanMsg.includes('agency') ||
+    /1\s*on\s*1|1-on-1|1on1|one\s*on\s*one/i.test(cleanMsg)
   ) {
     let productLines: string[] = [];
 
@@ -1078,7 +1085,13 @@ export async function processZeroAiMessage(
     cleanMsg.includes('jadwal') ||
     cleanMsg.includes('konsultasi') ||
     cleanMsg.includes('janji temu') ||
-    cleanMsg.includes('audit')
+    cleanMsg.includes('audit') ||
+    cleanMsg.includes('konsul') ||
+    cleanMsg.includes('brief') ||
+    cleanMsg.includes('form') ||
+    cleanMsg.includes('order jasa') ||
+    cleanMsg.includes('daftar jasa') ||
+    /1\s*on\s*1|1-on-1|1on1|one\s*on\s*one/i.test(cleanMsg)
   ) {
     const customHowTo = meta.policies?.how_to_order || meta.how_to_order;
 
