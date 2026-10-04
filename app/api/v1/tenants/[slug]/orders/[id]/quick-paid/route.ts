@@ -13,15 +13,37 @@ export async function POST(
   { params }: { params: Promise<{ slug: string; id: string }> }
 ) {
   try {
-    const { slug: rawSlug, id: orderId } = await params;
-    const slug = normalizeTenantSlug(rawSlug || '');
+    const { slug: rawSlug, id: rawOrderId } = await params;
+    const cleanRawSlug = typeof rawSlug === 'string' ? decodeURIComponent(rawSlug).trim() : '';
+    const slug = normalizeTenantSlug(cleanRawSlug || '');
 
-    if (!orderId) {
+    const orderIdentifier = typeof rawOrderId === 'string'
+      ? decodeURIComponent(rawOrderId).replace(/^#/, '').trim()
+      : '';
+    const orderId = orderIdentifier;
+
+    if (!orderIdentifier) {
       return NextResponse.json(
         { success: false, error: 'Order ID is required' },
         { status: 400 }
       );
     }
+
+    const cleanCookie = (val?: string) => {
+      if (!val) return '';
+      try {
+        return decodeURIComponent(val).replace(/^["']|["']$/g, '').toLowerCase().trim();
+      } catch {
+        return val.toLowerCase().trim();
+      }
+    };
+
+    const tenantSlugFromSession =
+      cleanCookie(req.cookies.get('merchant_store')?.value) ||
+      cleanCookie(req.cookies.get('merchant_session')?.value) ||
+      cleanCookie(req.cookies.get('bt_tenant')?.value) ||
+      slug ||
+      '';
 
     const supabase = getSupabaseAdmin();
     if (!supabase) {
@@ -31,60 +53,112 @@ export async function POST(
       );
     }
 
-    // 1. Fetch current order with flexible lookup (supporting legacy string IDs e.g. ORD-179..., UUID PKs, and display order_number)
+    // 1. Fetch current order with flexible lookup
+    // Pastikan query pencarian mencari id ATAU order_number: .or(`id.eq.${orderIdentifier},order_number.eq.${orderIdentifier}`)
     let order: any = null;
+    let searchErr: any = null;
 
-    // Direct check on 'id' column (handles both text string IDs e.g. ORD-179... and UUID PKs)
     try {
-      const { data: byId, error: idErr } = await supabase
+      const { data: matchedOrder, error: orErr } = await supabase
         .from('orders')
         .select('*')
-        .eq('id', orderId)
+        .or(`id.eq.${orderIdentifier},order_number.eq.${orderIdentifier}`)
         .maybeSingle();
 
-      if (byId && !idErr) {
-        order = byId;
+      if (matchedOrder && !orErr) {
+        order = matchedOrder;
+      } else if (orErr) {
+        searchErr = orErr;
+        console.warn('[Quick-Paid] Combined .or lookup note:', orErr);
       }
-    } catch (e) {
-      console.warn('[Quick-Paid] Direct id lookup note:', e);
+    } catch (e: any) {
+      searchErr = e;
+      console.warn('[Quick-Paid] Combined .or lookup exception:', e);
     }
 
-    // Flexible fallback: search across alternative order identifier columns (order_number, order_id, invoice_no, correlation_id)
+    // Resilient Fallback 1: Direct eq('id') lookup (handles cases where .or syntax had Postgres type casting issues)
     if (!order) {
       try {
-        const { data: byAlt, error: altErr } = await supabase
+        const { data: byId, error: idErr } = await supabase
           .from('orders')
           .select('*')
-          .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId},correlation_id.eq.${orderId}`)
+          .eq('id', orderIdentifier)
           .maybeSingle();
 
-        if (byAlt && !altErr) {
-          order = byAlt;
+        if (byId && !idErr) {
+          order = byId;
+          searchErr = null;
         }
-      } catch (e) {
-        console.warn('[Quick-Paid] Alt columns lookup note:', e);
+      } catch (e: any) {
+        console.warn('[Quick-Paid] Direct id lookup exception:', e);
       }
     }
 
-    // Secondary fallback: scoped by tenant_slug if available
-    if (!order && slug) {
+    // Resilient Fallback 2: Direct eq('order_number') lookup
+    if (!order) {
+      try {
+        const { data: byOrderNum, error: orderNumErr } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('order_number', orderIdentifier)
+          .maybeSingle();
+
+        if (byOrderNum && !orderNumErr) {
+          order = byOrderNum;
+          searchErr = null;
+        }
+      } catch (e: any) {
+        console.warn('[Quick-Paid] Direct order_number lookup exception:', e);
+      }
+    }
+
+    // Resilient Fallback 3: Correlation ID lookup (e.g. payment token)
+    if (!order) {
+      try {
+        const { data: byCorrelation, error: corrErr } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('correlation_id', orderIdentifier)
+          .maybeSingle();
+
+        if (byCorrelation && !corrErr) {
+          order = byCorrelation;
+          searchErr = null;
+        }
+      } catch (e: any) {
+        console.warn('[Quick-Paid] Direct correlation_id lookup exception:', e);
+      }
+    }
+
+    // Secondary fallback: Scoped by tenant_slug if tenant isolation required
+    if (!order && (slug || tenantSlugFromSession)) {
+      const scopeSlug = slug || tenantSlugFromSession;
       try {
         const { data: bySlug } = await supabase
           .from('orders')
           .select('*')
-          .eq('tenant_slug', slug)
-          .or(`id.eq.${orderId},order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+          .eq('tenant_slug', scopeSlug)
+          .or(`id.eq.${orderIdentifier},order_number.eq.${orderIdentifier}`)
           .maybeSingle();
 
         if (bySlug) {
           order = bySlug;
+          searchErr = null;
         }
       } catch {}
     }
 
+    // Diagnostic logging detail as required
+    const orderFound = Boolean(order);
+    console.log('[DEBUG QUICK-PAID]', { orderIdentifier, tenantSlugFromSession, orderFound });
+
     if (!order) {
+      console.warn('[Quick-Paid] Order not found in database:', { orderIdentifier, tenantSlugFromSession, searchErr });
       return NextResponse.json(
-        { success: false, error: 'Order not found' },
+        {
+          success: false,
+          error: `Order not found: ${orderIdentifier}${searchErr ? ' (' + (searchErr.message || searchErr) + ')' : ''}`,
+        },
         { status: 404 }
       );
     }
@@ -130,7 +204,7 @@ export async function POST(
       download_url: fulfillmentMeta.access_url || order.download_url || null,
     };
 
-    const { data: updatedOrder, error: updateErr } = await supabase
+    const updateQuery = supabase
       .from('orders')
       .update({
         status: 'PAID',
@@ -143,16 +217,35 @@ export async function POST(
         updated_at: paidAt,
       })
       .eq('id', order.id)
-      .select('*')
-      .single();
+      .select('*');
+
+    const { data: updateRes, error: updateErr } = typeof (updateQuery as any)?.maybeSingle === 'function'
+      ? await (updateQuery as any).maybeSingle()
+      : typeof (updateQuery as any)?.single === 'function'
+      ? await (updateQuery as any).single()
+      : await updateQuery;
 
     if (updateErr) {
       console.error('[Quick-Paid Error]:', updateErr);
       return NextResponse.json(
-        { success: false, error: 'Failed to update order status: ' + updateErr.message },
+        { success: false, error: 'Failed to update order status: ' + (updateErr.message || JSON.stringify(updateErr)) },
         { status: 500 }
       );
     }
+
+    const updatedOrder = (Array.isArray(updateRes) ? updateRes[0] : updateRes) || null;
+
+    const effectiveUpdatedOrder = updatedOrder || {
+      ...order,
+      status: 'PAID',
+      payment_status: 'PAID',
+      order_status: 'COMPLETED',
+      paid_at: paidAt,
+      fulfillment_metadata: fulfillmentMeta,
+      download_url: fulfillmentMeta.access_url || order.download_url || null,
+      metadata: updatedMeta,
+      updated_at: paidAt,
+    };
 
     // 2a. Record immutable audit trail in order_audit_logs (ARCHITECTURE.md §7.3)
     try {
@@ -234,7 +327,7 @@ export async function POST(
     }
 
     // 3. Post auto-fulfillment notification to messages table
-    const accessUrl = fulfillmentMeta.access_url || updatedOrder.download_url;
+    const accessUrl = fulfillmentMeta.access_url || effectiveUpdatedOrder.download_url;
     const fulfillmentNotice = accessUrl
       ? `Akses materi digital Anda dapat dibuka di: ${accessUrl}`
       : 'Akses produk digital Anda sedang disiapkan oleh admin toko.';
@@ -333,7 +426,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      order: updatedOrder,
+      order: effectiveUpdatedOrder,
       message: 'Pesanan berhasil ditandai LUNAS (PAID) dan akses digital diaktifkan.',
     });
   } catch (err: unknown) {

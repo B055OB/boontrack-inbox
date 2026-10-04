@@ -83,9 +83,10 @@ export interface OrdersTabProps {
 }
 
 export function mapRawOrder(o: any): OrderItem {
+  const displayId = String(o.order_number || o.id || o.order_id || o.invoice_no || '');
   return {
-    id: String(o.order_id || o.id || o.invoice_no || ''),
-    invoice_no: String(o.order_id || o.invoice_no || o.invoice_number || o.id || ''),
+    id: String(o.id || o.order_number || o.order_id || o.invoice_no || ''),
+    invoice_no: displayId,
     customer_name: o.customer_name || 'Pelanggan Toko',
     customer_phone: o.customer_phone || '',
     customer_email: o.customer_email || '',
@@ -330,7 +331,7 @@ export default function OrdersTab({
       }
 
       // 2. Request ke Next.js Quick-Paid API (menggunakan Service Role Supabase Admin, mutasi atomik & order_audit_logs)
-      const targetOrderId = (order.id || order.invoice_no || '').trim();
+      const targetOrderId = (order.id || (order as any).order_number || order.invoice_no || '').trim();
       const res = await fetch(
         `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(targetOrderId)}/quick-paid`,
         {
@@ -431,7 +432,7 @@ export default function OrdersTab({
 
       // If newStatus is PAID, trigger quick-paid endpoint (server-side admin mutation)
       if (newStatus === 'PAID') {
-        const targetOrderId = (order.id || order.invoice_no || '').trim();
+        const targetOrderId = (order.id || (order as any).order_number || order.invoice_no || '').trim();
         const res = await fetch(
           `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(targetOrderId)}/quick-paid`,
           {

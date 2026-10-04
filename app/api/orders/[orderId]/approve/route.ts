@@ -32,25 +32,47 @@ export async function POST(
       );
     }
 
-    // 1. Fetch current order
+    // 1. Fetch current order with flexible lookup
     let order: any = null;
     try {
-      const { data: byId } = await supabase
+      const { data: matchedOrder } = await supabase
         .from('orders')
         .select('*')
-        .eq('id', orderId)
+        .or(`id.eq.${orderId},order_number.eq.${orderId}`)
         .maybeSingle();
-      if (byId) order = byId;
+      if (matchedOrder) order = matchedOrder;
     } catch {}
 
     if (!order) {
       try {
-        const { data: altOrder } = await supabase
+        const { data: byId } = await supabase
           .from('orders')
           .select('*')
-          .or(`order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+          .eq('id', orderId)
           .maybeSingle();
-        if (altOrder) order = altOrder;
+        if (byId) order = byId;
+      } catch {}
+    }
+
+    if (!order) {
+      try {
+        const { data: byOrderNum } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('order_number', orderId)
+          .maybeSingle();
+        if (byOrderNum) order = byOrderNum;
+      } catch {}
+    }
+
+    if (!order) {
+      try {
+        const { data: byCorrelation } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('correlation_id', orderId)
+          .maybeSingle();
+        if (byCorrelation) order = byCorrelation;
       } catch {}
     }
 

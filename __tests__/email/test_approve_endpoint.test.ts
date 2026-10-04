@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { POST as approveHandler } from '@/app/api/orders/[id]/approve/route';
+import { POST as approveHandler } from '@/app/api/orders/[orderId]/approve/route';
 
 jest.mock('@/lib/whatsapp', () => ({
   sendOrderFulfillmentNotification: jest.fn(async () => ({ success: true })),

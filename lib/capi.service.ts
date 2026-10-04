@@ -315,30 +315,52 @@ export async function checkAdsTrackingEntitlement(supabase: any, tenantId: strin
  * lalu menembakkan Purchase event dengan deduplikasi 100% (PURCHASE_${orderId}).
  */
 export async function dispatchMetaCAPIPurchaseForOrder(
-  orderId: string,
+  orderIdOrPayload: string | {
+    orderId: string;
+    tenantSlug?: string;
+    amount?: number;
+    customerPhone?: string;
+    customerName?: string;
+    contentName?: string;
+    currency?: string;
+    [key: string]: any;
+  },
   supabaseClient?: any
 ): Promise<{ success: boolean; result?: any; skipped?: boolean; reason?: string }> {
+  const orderId = typeof orderIdOrPayload === 'string' ? orderIdOrPayload : orderIdOrPayload?.orderId;
   try {
     const supabase = supabaseClient || getSupabaseAdmin() || getSupabase();
     if (!supabase || !orderId) {
       return { success: false, skipped: true, reason: 'Missing supabase client or orderId' };
     }
 
-    // 1. Ambil data order aktual (mendukung id, order_number, order_id, invoice_no)
+    // 1. Ambil data order aktual (mendukung id dan order_number)
     let { data: order, error: orderErr } = await supabase
       .from('orders')
       .select('*')
-      .eq('id', orderId)
+      .or(`id.eq.${orderId},order_number.eq.${orderId}`)
       .maybeSingle();
 
     if (!order) {
-      const { data: altOrder } = await supabase
+      const { data: byId } = await supabase
         .from('orders')
         .select('*')
-        .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+        .eq('id', orderId)
         .maybeSingle();
-      if (altOrder) {
-        order = altOrder;
+      if (byId) {
+        order = byId;
+        orderErr = null;
+      }
+    }
+
+    if (!order) {
+      const { data: byOrderNum } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('order_number', orderId)
+        .maybeSingle();
+      if (byOrderNum) {
+        order = byOrderNum;
         orderErr = null;
       }
     }
@@ -529,17 +551,29 @@ export async function dispatchMetaCAPIInitiateCheckoutForOrder(
     let { data: order, error: orderErr } = await supabase
       .from('orders')
       .select('*')
-      .eq('id', orderId)
+      .or(`id.eq.${orderId},order_number.eq.${orderId}`)
       .maybeSingle();
 
     if (!order) {
-      const { data: altOrder } = await supabase
+      const { data: byId } = await supabase
         .from('orders')
         .select('*')
-        .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+        .eq('id', orderId)
         .maybeSingle();
-      if (altOrder) {
-        order = altOrder;
+      if (byId) {
+        order = byId;
+        orderErr = null;
+      }
+    }
+
+    if (!order) {
+      const { data: byOrderNum } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('order_number', orderId)
+        .maybeSingle();
+      if (byOrderNum) {
+        order = byOrderNum;
         orderErr = null;
       }
     }

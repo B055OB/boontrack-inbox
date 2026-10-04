@@ -30,6 +30,9 @@ import CheckoutModal from "@/app/components/CheckoutModal";
 import PersonalAuthorityTemplate from './components/templates/PersonalAuthorityTemplate';
 import MicrositeBioTemplate from './components/templates/MicrositeBioTemplate';
 import PublicServicePortalTemplate from './components/templates/PublicServicePortalTemplate';
+import StorefrontTemplate from './components/templates/StorefrontTemplate';
+import ControlledProvisioningError from '@/components/ControlledProvisioningError';
+import { resolveTenantRuntime } from '@/lib/resolvers/tenant-runtime-resolver';
 import {
   captureAffiliateReferral,
   initSellerTracking,
@@ -1189,28 +1192,20 @@ export default function TenantStorefrontPage() {
     }
   }, [currentVisualTheme]);
 
-  const isPublicService =
-    resolvedCategory.toUpperCase() === 'PUBLIC_SERVICE' ||
-    tenantMetadata?.business_type === 'B2G' ||
-    tenantMetadata?.category === 'public_service' ||
-    tenant?.category === 'public_service';
+  // ── CANONICAL TENANT RUNTIME BOUNDARY RESOLUTION (CTO Mandate) ──
+  const [host, setHost] = useState("");
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setHost(window.location.host);
+    }
+  }, []);
 
-  const rawTemplate =
-    tenantMetadata?.selected_template ||
-    tenantMetadata?.storefront_template ||
-    tenantMetadata?.template ||
-    currentTheme.template ||
-    (isPublicService ? 'public_service' : 'default');
-
-  // Kunci Template: pastikan public_service, microsite, personal, atau default
-  const currentTemplate =
-    rawTemplate === 'microsite'
-      ? 'microsite'
-      : rawTemplate === 'personal'
-        ? 'personal'
-        : rawTemplate === 'public_service' || isPublicService
-          ? 'public_service'
-          : 'default';
+  const runtime = resolveTenantRuntime({
+    host: host || (typeof window !== "undefined" ? window.location.host : ""),
+    tenant: tenant
+      ? { ...tenant, slug: tenantSlug, metadata: tenantMetadata }
+      : { slug: tenantSlug, metadata: tenantMetadata },
+  });
 
   // Guard Web Chat Widget: strictly check toggle status (boolean / string)
   const rawChatEnabled =
@@ -1302,11 +1297,37 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // ── CONDITIONAL TEMPLATE: PUBLIC SERVICE (Kelurahan / Civic Portal) ──
-  if (currentTemplate === 'public_service') {
+  // ── DOMAIN BOUNDARY GUARD (CTO Mandate) ──
+  if (!runtime.isAllowedHost && runtime.statusCode === 404) {
     return (
-      <>
+      <div className="min-h-[100dvh] bg-slate-50 py-16 px-4 flex flex-col items-center justify-center text-center">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-slate-200 shadow-xl space-y-5">
+          <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto border border-rose-100">
+            <Store className="w-7 h-7" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-slate-900">404 - Halaman Tidak Ditemukan</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              {runtime.errorMessage || `Alamat toko shop.boontrack.com/${tenantSlug} tidak dapat diakses di domain ini.`}
+            </p>
+          </div>
+          <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-left space-y-1">
+            <span className="text-[11px] font-bold text-slate-700 block">Domain Routing Boundary</span>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Portal layanan publik atau aplikasi kustom tidak tersedia pada domain katalog commerce (shop.boontrack.com). Silakan akses melalui portal resmi.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── TEMPLATE ROUTING BOUNDARY: SWITCH CASE BERDASARKAN runtime.templateCode (CTO Mandate) ──
+  switch (runtime.templateCode) {
+    case 'PUBLIC_SERVICE_V1':
+      return (
         <PublicServicePortalTemplate
+          context={runtime}
           tenantSlug={tenantSlug}
           storeName={storeName}
           displayName={displayName}
@@ -1323,28 +1344,16 @@ export default function TenantStorefrontPage() {
           }}
           onOutboundClick={handleOutboundClick}
         />
+      );
 
-        {/* MODAL CHECKOUT QRIS & WHATSAPP SYNC */}
-        <CheckoutModal
-          isOpen={isCheckoutOpen}
-          onClose={() => setIsCheckoutOpen(false)}
-          tenantSlug={tenantSlug}
-          product={productForCheckout}
-        />
-        {/* Modal Barcode Scanner */}
-        {isScannerOpen && (
-          <BarcodeScannerModal
-            isOpen={isScannerOpen}
-            onClose={() => setIsScannerOpen(false)}
-            onScanSuccess={handleBarcodeDetected}
-          />
-        )}
-      </>
-    );
-  }
+    case 'SHOP_V1': {
+      const selectedSubVariant =
+        tenantMetadata?.selected_template ||
+        tenantMetadata?.storefront_template ||
+        currentTheme.template;
 
-  // ── CONDITIONAL TEMPLATE: PERSONAL (Authority / Personal Brand) ──
-  if (currentTemplate === 'personal') {
+      // ── SUB-VARIANT: PERSONAL (Authority / Personal Brand) ──
+      if (selectedSubVariant === 'personal') {
     return (
       <>
         <PersonalAuthorityTemplate
@@ -1568,8 +1577,8 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // ── CONDITIONAL TEMPLATE: MICROSITE (Bio-Funnel) ──
-  if (currentTemplate === 'microsite') {
+      // ── SUB-VARIANT: MICROSITE (Bio-Funnel) ──
+      if (selectedSubVariant === 'microsite') {
     return (
       <>
         <MicrositeBioTemplate
@@ -1681,8 +1690,9 @@ export default function TenantStorefrontPage() {
     );
   }
 
-  // ── TEMPLATE 1: DEFAULT (Katalog Commerce) ──
-  return (
+      // ── DEFAULT COMMERCE STOREFRONT (SHOP_V1) ──
+      return (
+        <StorefrontTemplate context={runtime}>
     <div className={`min-h-[100dvh] ${defaultThemeConfig.wrapper} font-sans flex flex-col antialiased transition-colors duration-200`}>
       <header className={`${defaultThemeConfig.header} border-b sticky top-0 z-30 shadow-xs transition-colors duration-200`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -2635,6 +2645,18 @@ export default function TenantStorefrontPage() {
           </p>
         </div>
       </footer>
-    </div>
-  );
+          </div>
+        </StorefrontTemplate>
+      );
+    }
+
+    default:
+      return (
+        <ControlledProvisioningError
+          templateCode={runtime.tenant?.template_code || runtime.templateCode}
+          tenantSlug={tenantSlug}
+          errorMessage={runtime.errorMessage}
+        />
+      );
+  }
 }

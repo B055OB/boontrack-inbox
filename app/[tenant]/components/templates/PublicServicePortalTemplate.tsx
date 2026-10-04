@@ -32,7 +32,10 @@ import {
 } from 'lucide-react';
 import type { Product, StoreChatMessage } from '@/app/[tenant]/page';
 
+import type { TenantRuntimeContext } from '@/lib/types/tenant-runtime';
+
 interface PublicServicePortalTemplateProps {
+  context?: TenantRuntimeContext;
   tenantSlug: string;
   storeName: string;
   displayName: string;
@@ -79,6 +82,7 @@ interface NewsModalData {
 }
 
 export default function PublicServicePortalTemplate({
+  context,
   tenantSlug,
   storeName,
   displayName,

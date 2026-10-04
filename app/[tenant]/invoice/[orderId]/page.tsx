@@ -60,12 +60,12 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
           } catch {}
 
           if (!orderData) {
-            // Fallback cari via order_number, order_id, invoice_no, atau correlation_id
+            // Fallback cari via id, order_number, atau correlation_id
             try {
               const { data: altOrder, error: altErr } = await supabase
                 .from('orders')
                 .select('*')
-                .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId},correlation_id.eq.${orderId}`)
+                .or(`id.eq.${orderId},order_number.eq.${orderId},correlation_id.eq.${orderId}`)
                 .maybeSingle();
               if (altOrder && !altErr) orderData = altOrder;
             } catch {}

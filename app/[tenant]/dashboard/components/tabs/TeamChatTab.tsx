@@ -56,6 +56,7 @@ export interface ConversationMessage {
   isQris?: boolean;
   qrisData?: {
     orderId: string;
+    orderNumber?: string;
     amount: number;
     description: string;
     qrValue: string;
@@ -64,6 +65,7 @@ export interface ConversationMessage {
   isBankTransfer?: boolean;
   bankData?: {
     orderId: string;
+    orderNumber?: string;
     amount: number;
     baseAmount: number;
     uniqueCode: number;
@@ -1274,31 +1276,43 @@ export default function TeamChatTab({
       let custPhone = currentConversation?.customerPhone || '';
       let displayOrderNum = orderId;
       let effectiveOrderId = orderId;
+      let ordRow: any = null;
 
       if (supabase) {
         try {
-          const { data: byId, error: idErr } = await supabase
+          const { data: byOr, error: orErr } = await supabase
             .from('orders')
-            .select('id, order_number, order_id, invoice_no, gross_amount, product_title, customer_phone, customer_name')
-            .eq('id', orderId)
+            .select('id, order_number, gross_amount, product_title, customer_phone, customer_name')
+            .or(`id.eq.${orderId},order_number.eq.${orderId}`)
             .maybeSingle();
-          if (byId && !idErr) ordRow = byId;
+          if (byOr && !orErr) ordRow = byOr;
         } catch {}
 
         if (!ordRow) {
           try {
-            const { data: byAlt, error: altErr } = await supabase
+            const { data: byId } = await supabase
               .from('orders')
-              .select('id, order_number, order_id, invoice_no, gross_amount, product_title, customer_phone, customer_name')
-              .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+              .select('id, order_number, gross_amount, product_title, customer_phone, customer_name')
+              .eq('id', orderId)
               .maybeSingle();
-            if (byAlt && !altErr) ordRow = byAlt;
+            if (byId) ordRow = byId;
+          } catch {}
+        }
+
+        if (!ordRow) {
+          try {
+            const { data: byOrderNum } = await supabase
+              .from('orders')
+              .select('id, order_number, gross_amount, product_title, customer_phone, customer_name')
+              .eq('order_number', orderId)
+              .maybeSingle();
+            if (byOrderNum) ordRow = byOrderNum;
           } catch {}
         }
 
         if (ordRow) {
-          effectiveOrderId = ordRow.id;
-          displayOrderNum = ordRow.order_number || ordRow.order_id || ordRow.invoice_no || ordRow.id;
+          effectiveOrderId = ordRow.id || ordRow.order_number || orderId;
+          displayOrderNum = ordRow.order_number || ordRow.id;
           orderGrossAmount = Number(ordRow.gross_amount) || 0;
           orderTitle = ordRow.product_title || orderTitle;
           if (ordRow.customer_phone) custPhone = ordRow.customer_phone;

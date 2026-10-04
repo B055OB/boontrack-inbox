@@ -14,7 +14,7 @@
  */
 import { NextRequest } from 'next/server';
 import { POST as quickPaidRoute } from '@/app/api/v1/tenants/[slug]/orders/[id]/quick-paid/route';
-import { POST as approveRoute } from '@/app/api/orders/[id]/approve/route';
+import { POST as approveRoute } from '@/app/api/orders/[orderId]/approve/route';
 
 let mockOrdersDatabase: any[] = [];
 let mockAuditLogsDatabase: any[] = [];
@@ -71,11 +71,13 @@ const mockSupabaseAdmin: any = {
           }),
           or: (cond: string) => ({
             maybeSingle: async () => {
-              // Parse order_id.eq.xxx,invoice_no.eq.xxx
-              const match = cond.match(/(?:order_id|invoice_no)\.eq\.([^,]+)/);
-              const searchVal = match ? match[1] : '';
-              const row = mockOrdersDatabase.find(
-                (o) => o.id === searchVal || o.order_id === searchVal || o.invoice_no === searchVal
+              // Parse id.eq.xxx,order_number.eq.xxx,order_id.eq.xxx,invoice_no.eq.xxx
+              const matches = cond.match(/(?:id|order_number|order_id|invoice_no)\.eq\.([^,]+)/g);
+              const searchVals = (matches || []).map((m) => m.split('.eq.')[1]);
+              const row = mockOrdersDatabase.find((o) =>
+                searchVals.some(
+                  (val) => o.id === val || o.order_number === val || o.order_id === val || o.invoice_no === val
+                )
               );
               return { data: row ? { ...row } : null, error: null };
             },
@@ -88,6 +90,17 @@ const mockSupabaseAdmin: any = {
                 const idx = mockOrdersDatabase.findIndex((o) => o[col] === val);
                 if (idx === -1) {
                   return { data: null, error: { message: 'Order not found for update' } };
+                }
+                mockOrdersDatabase[idx] = {
+                  ...mockOrdersDatabase[idx],
+                  ...updateFields,
+                };
+                return { data: { ...mockOrdersDatabase[idx] }, error: null };
+              },
+              maybeSingle: async () => {
+                const idx = mockOrdersDatabase.findIndex((o) => o[col] === val);
+                if (idx === -1) {
+                  return { data: null, error: null };
                 }
                 mockOrdersDatabase[idx] = {
                   ...mockOrdersDatabase[idx],
@@ -273,6 +286,78 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
       const storedOrder = mockOrdersDatabase.find((o) => o.id === legacyId);
       expect(storedOrder.status).toBe('PAID');
     });
+
+    it('successfully marks PAID for tenant buzzerukm with string ID ORD-1790483266787-7715', async () => {
+      const buzzerOrderId = 'ORD-1790483266787-7715';
+      mockOrdersDatabase.push({
+        id: buzzerOrderId,
+        order_number: null,
+        tenant_slug: 'buzzerukm',
+        tenant_id: 'edd76758-2792-4602-8c99-be37735e9de1',
+        product_title: 'Jasa Buzzer & Review UMKM',
+        gross_amount: 150000,
+        status: 'PENDING',
+        payment_status: 'PENDING',
+        order_status: 'PENDING',
+        paid_at: null,
+      });
+
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/buzzerukm/orders/${buzzerOrderId}/quick-paid`, {
+        method: 'POST',
+        headers: {
+          cookie: 'merchant_store=buzzerukm; merchant_session=buzzerukm',
+        },
+      });
+
+      const res = await quickPaidRoute(req, {
+        params: Promise.resolve({ slug: 'buzzerukm', id: buzzerOrderId }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.order.status).toBe('PAID');
+      expect(json.order.payment_status).toBe('PAID');
+
+      const stored = mockOrdersDatabase.find((o) => o.id === buzzerOrderId);
+      expect(stored.status).toBe('PAID');
+    });
+
+    it('successfully marks PAID when query identifier matches display order_number instead of UUID id', async () => {
+      const internalId = '8f7e6d5c-4b3a-2109-8765-43210fedcba9';
+      const displayOrderNum = 'ORD-POS-261005-A1B2C3';
+      mockOrdersDatabase.push({
+        id: internalId,
+        order_number: displayOrderNum,
+        tenant_slug: 'buzzerukm',
+        tenant_id: 'edd76758-2792-4602-8c99-be37735e9de1',
+        product_title: 'POS Order Paket',
+        gross_amount: 350000,
+        status: 'PENDING',
+        payment_status: 'PENDING',
+        order_status: 'PENDING',
+        paid_at: null,
+      });
+
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/buzzerukm/orders/${displayOrderNum}/quick-paid`, {
+        method: 'POST',
+        headers: {
+          cookie: 'merchant_store=buzzerukm',
+        },
+      });
+
+      const res = await quickPaidRoute(req, {
+        params: Promise.resolve({ slug: 'buzzerukm', id: displayOrderNum }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.order.status).toBe('PAID');
+
+      const stored = mockOrdersDatabase.find((o) => o.id === internalId);
+      expect(stored.status).toBe('PAID');
+    });
   });
 
   describe('2. POST /api/orders/[id]/approve', () => {
@@ -304,6 +389,25 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
       expect(mockAuditLogsDatabase[0].action).toBe('ORDER_APPROVED_PAID');
       expect(mockAuditLogsDatabase[0].new_status).toBe('PAID');
       expect(mockAuditLogsDatabase[0].ip_address).toBe('198.51.100.42');
+    });
+  });
+
+  describe('3. POST /api/v1/orders/[id]/quick-paid (Direct Route Gateway)', () => {
+    it('successfully marks PAID when accessed via direct /api/v1/orders/[id]/quick-paid', async () => {
+      const directRoute = (await import('@/app/api/v1/orders/[id]/quick-paid/route')).POST;
+      const orderUuid = 'c1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d';
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/orders/${orderUuid}/quick-paid`, {
+        method: 'POST',
+      });
+
+      const res = await directRoute(req, {
+        params: Promise.resolve({ id: orderUuid }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.order.status).toBe('PAID');
     });
   });
 });
