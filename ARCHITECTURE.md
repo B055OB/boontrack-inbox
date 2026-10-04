@@ -3796,3 +3796,69 @@ Untuk melindungi solvabilitas merchant, kepatuhan hukum, dan keandalan akuntansi
 - Sesuai amanat Undang-Undang Perlindungan Data Pribadi (UU PDP):
   * Tabel `payment_observations` hanya merekam sinyal esensial: `amount`, `occurred_at`, `external_reference`, `provider`, `source`, dan `raw_event_hash` (SHA-256).
   * **DILARANG KERAS** menyimpan raw body email penuh, total saldo rekening merchant, saldo akhir setelah mutasi, atau nomor rekening lengkap pembeli/penjual tanpa enkripsi/masking.
+
+---
+
+## WhatsApp Gateway, Inbox & Meta CAPI Architecture (Audit Oct 2026)
+
+Menindaklanjuti audit menyeluruh dan persetujuan CTO atas integrasi **BoonTrack Inbox**, **Evolution API v2**, **BoonPilot AI Multimodal State Machine**, serta pipeline **Meta Conversions API (CAPI)**, berikut adalah 3 pilar arsitektur kanonikal yang menjadi sumber kebenaran teknis platform:
+
+### 1. WhatsApp Data Model: Single source of truth di tabel whatsapp_connections
+
+1. **Pusat Kebenaran Konfigurasi**:
+   - Tabel `whatsapp_connections` di Supabase adalah **satu-satunya sumber kebenaran (Single Source of Truth)** untuk data koneksi WhatsApp setiap tenant.
+   - Kolom utama: `instance_name`, `phone_number`, `credential_ref`, `tenant_id`, `tenant_slug`, `status` (`CONNECTED`, `CONNECTING`, `DISCONNECTED`, `refused`), dan `ownership_domain`.
+2. **Dynamic Tenant Resolution (Zero Hardcoding)**:
+   - Dilarang keras melakukan hardcoding atau pemetaan statis berdasarkan slug toko (contoh terlarang: `if (slug === 'toko-x')`).
+   - Setiap webhook ingress (`messages.upsert`, `connection.update`) memanggil fungsi kanonikal `resolveTenantFromConnection` di `lib/whatsapp/inbox-persistence.ts`.
+   - Resolusi mengevaluasi kombinasi `instanceName`, `ownerPhone`, dan `phoneNumberId` terhadap tabel `whatsapp_connections`.
+3. **Fail-Closed & Quarantine Invariant**:
+   - Jika `tenant_id` tidak dapat di-resolve atau relasi tenant dengan instance tidak valid, ingress webhook **WAJIB diam (silent drop)** dengan respons `{ success: true, processed: 0, status: 'quarantine' }`.
+   - DILARANG memanggil LLM Gemini, dilarang mengirim template toko sembarang, dan dilarang mengirim pesan balasan ke nomor pengirim guna menjamin isolasi data absolut (Anti Data-Leak).
+
+---
+
+### 2. Bot State Machine & Human Takeover: Aturan 3-state, sliding window 24 jam berbasis last_human_activity saat CS balas via HP, serta Outbound Registry guard untuk cegah false self-pause. Transaksi (order/payment) wajib tetap berjalan 100% saat bot paused.
+
+1. **Aturan Model 3-State**:
+   Sistem percakapan WhatsApp tenant beroperasi di bawah 3 status kontrol terisolasi:
+   - `BOT_ACTIVE` / `AI_ACTIVE`: Bot AI (Gemini 3.8 Flash) aktif merespons pertanyaan produk, rekomendasi katalog, dan konsultasi pembeli.
+   - `HUMAN_PAUSED`: Bot berada dalam status jeda aktif setelah CS manusia membalas chat secara manual dari ponsel/web WhatsApp atau admin mengeksekusi perintah `#pause`. AI dibisukan (*silent listener*), namun balasan CS dicatat ke ledger `messages`.
+   - `HANDOVER` / `HANDOVER_TO_HUMAN`: Sesi dialihkan ke penanganan manusia akibat permintaan eksplisit pembeli (*buyer escalation*) atau penugasan tiket CS.
+2. **Outbound Registry Guard (Pencegahan False Self-Pause)**:
+   - **Akar Masalah**: Saat bot mengirimkan balasan otomatis via Evolution API `/message/sendText/{instance}`, Evolution API memancarkan kembali webhook event `messages.upsert` dengan atribut `key.fromMe = true`. Tanpa guard, sistem salah menganggap pesan bot sebagai pesan CS handphone, sehingga bot mem-pause dirinya sendiri (*self-pause loop*).
+   - **Solusi Kanonikal**: Modul in-memory `lib/whatsapp/outbound-registry.ts` dengan TTL 10 menit melacak pesan keluar yang dipicu bot/sistem:
+     * Pra-registrasi nomor penerima dan snippet teks sebelum HTTP fetch.
+     * Pencatatan `messageId` resmi yang dikembalikan oleh respons Evolution API.
+     * Pada blok `key.fromMe === true`, fungsi `isBotOutbound(...)` memverifikasi apakah event tersebut merupakan echo pesan bot sendiri. Jika cocok, webhook langsung di-bypass tanpa memicu pause.
+3. **Sliding Window 24 Jam Berbasis last_human_activity**:
+   - Ketika pesan `fromMe === true` terbukti diketik manual oleh CS dari handphone (bukan bot registry dan bukan perintah admin), status sesi diset ke `current_state = 'HUMAN_PAUSED'` dan `is_paused = true`.
+   - **Sliding Window**: Kolom `paused_until` dihitung dinamis: `paused_until = now + 24 jam`. Setiap balasan baru dari CS handphone memundurkan (*slides*) batas waktu kedaluwarsa 24 jam ke depan berdasarkan `last_human_activity`.
+   - **Pencegahan Permanent Lock**: Pada Active Pause Gate, jika `paused_until <= now` (timeout telah habis tanpa aktivitas CS), sistem secara otomatis melakukan auto-resume (`is_paused = false`, `current_state = 'ACTIVE'`, `conversations.bot_paused = false`, `conversations.status = 'active'`).
+4. **Invariance Transaksi: Order & Payment Tetap 100% Berjalan Saat Bot Paused**:
+   - State pause bot HANYA membisukan respon percakapan umum berbasis LLM / AI.
+   - Blok **Order Interceptor Gatekeeper** (`isManualOrderMessage`) dan blok **Payment Mutation Parser** (`parsePaymentNotification`) dieksekusi **SEBELUM** Active Pause Gate.
+   - Jika pembeli mengirim konfirmasi transfer ("Total Nominal: Rp 149.000...") atau notifikasi mutasi masuk dari bank/e-wallet (DANA, BCA, QRIS), sistem tetap memproses pesanan, memutasi status order menjadi `PAID`, mencatat log audit, dan mengirim pesan konfirmasi transaksi terverifikasi secara deterministik 100%.
+
+---
+
+### 3. POS Order & Meta CAPI: Pemisahan UUID (internal machine PK) dan order_number untuk display (format ORD-POS-YYMMDD-HEX6), serta dedup CAPI Purchase tunggal canonical via backend route /quick-paid.
+
+1. **Pemisahan Dual-ID: Internal Machine PK (UUID) vs Display Order Number (format ORD-POS-YYMMDD-HEX6)**:
+   - **Internal Machine PK (`orders.id`)**: Wajib berupa `UUID` v4 valid untuk PostgreSQL guna mematuhi schema integrity, foreign key constraint, dan mencegah PostgreSQL syntax error (`invalid input syntax for type uuid`).
+   - **Display Order Number (`orders.order_number`)**: Berformat kanonikal bebas tabrakan (*collision-proof*):
+     $$\text{Format: } \mathbf{ORD-POS-YYMMDD-HEX6}$$
+     *(Contoh: `ORD-POS-261004-9B3E2F`)*
+     Dihasilkan melalui generator kriptografis (`crypto.getRandomValues`), menghasilkan lebih dari 16,7 juta kombinasi acak per hari. Mengeliminasi total cacat desain lama (`Date.now().slice(-6)`) yang berulang setiap 16,6 menit.
+   - Kolom `order_number`, `order_id`, dan `invoice_no` disimpan konsisten pada tabel `orders`, index `idx_orders_order_number`, serta metadata pesan QRIS.
+   - Halaman invoice `/invoice/[orderId]` dan API routes dilengkapi guard `isValidUuid(orderId)` untuk resolusi transparan baik via internal UUID maupun display order number.
+2. **Canonical Meta CAPI Purchase Dispatch & Deduplikasi Tunggal**:
+   - Aksi "Tandai Lunas" (`handleMarkPaid`) di Inbox dashboard **HANYA** mengirim satu panggilan ke backend route terpusat:
+     `POST /api/v1/tenants/[slug]/orders/[id]/quick-paid`
+   - Route `/quick-paid` bertindak sebagai *Single Source of Truth* yang mengorkestrasi:
+     * Pembaruan status pesanan menjadi `PAID` dan pengisian `paid_at`.
+     * Pencatatan log audit immutable ke `order_audit_logs`.
+     * Pengiriman email fulfillment kepada pembeli dan notifikasi ke merchant.
+     * Pengiriman event `Purchase` Meta Conversions API (CAPI) dengan enkripsi SHA-256 EMQ (*Event Quality Match*) via `dispatchMetaCAPIPurchaseForOrder`.
+   - Pemanggilan duplikat paralel dari client browser ke `/api/v1/tracking/capi` telah **dihapus total**, mengeliminasi over-reporting ganda dan anomaly warning di Meta Events Manager.
+

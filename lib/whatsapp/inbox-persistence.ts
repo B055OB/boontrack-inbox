@@ -12,6 +12,7 @@
 
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { sendInstantShippingRecommendation } from '@/lib/shipping/instant-shipping-service';
+import { registerBotOutbound } from '@/lib/whatsapp/outbound-registry';
 
 export interface TenantRuntimeContext {
   tenantId: string;
@@ -502,6 +503,15 @@ export async function persistOutboundMessage(
 
   const phone = cleanCustomerPhone(rawPhone);
   if (!phone) return;
+
+  // Track in Outbound Registry to prevent bot self-pause when Evolution webhook echoes with fromMe = true
+  if (senderType === 'bot' || senderType === 'system') {
+    registerBotOutbound({
+      messageId: params.externalId,
+      recipientPhone: phone,
+      text: messageBody,
+    });
+  }
 
   const nowIso = new Date().toISOString();
 

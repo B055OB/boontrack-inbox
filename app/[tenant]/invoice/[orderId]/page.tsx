@@ -18,7 +18,7 @@ import {
   AlertTriangle,
   Loader2
 } from 'lucide-react';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
 import { 
   resolveFulfillmentRequirements, 
   normalizeBriefingUrl 
@@ -48,12 +48,26 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
       try {
         const supabase = getSupabase();
         if (supabase) {
-          // 1. Fetch Order Data
-          const { data: orderData } = await supabase
-            .from('orders')
-            .select('*')
-            .eq('id', orderId)
-            .maybeSingle();
+          // 1. Fetch Order Data safely
+          let orderData: any = null;
+          if (isValidUuid(orderId)) {
+            const { data: byId } = await supabase
+              .from('orders')
+              .select('*')
+              .eq('id', orderId)
+              .maybeSingle();
+            if (byId) orderData = byId;
+          }
+
+          if (!orderData) {
+            // Fallback cari via order_number, order_id, invoice_no, atau correlation_id
+            const { data: altOrder } = await supabase
+              .from('orders')
+              .select('*')
+              .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId},correlation_id.eq.${orderId}`)
+              .maybeSingle();
+            if (altOrder) orderData = altOrder;
+          }
 
           if (orderData) {
             setOrder(orderData);
@@ -62,22 +76,6 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
               setRemainingSeconds(diff);
             } else if (orderData.metadata?.ocr_verified) {
               setRemainingSeconds(180);
-            }
-          } else {
-            // Fallback cari via correlation_id atau invoice query
-            const { data: altOrder } = await supabase
-              .from('orders')
-              .select('*')
-              .or(`id.eq.${orderId},correlation_id.eq.${orderId}`)
-              .maybeSingle();
-            if (altOrder) {
-              setOrder(altOrder);
-              if (altOrder.metadata?.auto_paid_at) {
-                const diff = Math.max(0, Math.ceil((new Date(altOrder.metadata.auto_paid_at).getTime() - Date.now()) / 1000));
-                setRemainingSeconds(diff);
-              } else if (altOrder.metadata?.ocr_verified) {
-                setRemainingSeconds(180);
-              }
             }
           }
 

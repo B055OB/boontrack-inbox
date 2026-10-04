@@ -26,6 +26,11 @@ import {
 } from '@/lib/whatsapp/inbox-persistence';
 import { resolveBoonPilotSender } from '@/lib/boonpilot/sender-resolver';
 import { processBoonPilotPlatformChat } from '@/lib/boonpilot/platform-engine';
+import {
+  registerBotOutbound,
+  isBotOutbound,
+} from '@/lib/whatsapp/outbound-registry';
+import { parsePaymentNotification } from '@/lib/payment-webhook-service';
 
 const EVOLUTION_API_URL =
   process.env.EVOLUTION_API_URL ||
@@ -125,6 +130,12 @@ export async function sendEvolutionTextMessage(
     cleanNumber = '62' + cleanNumber;
   }
 
+  // Pre-register in Outbound Registry to eliminate race condition with immediate webhook echo
+  registerBotOutbound({
+    recipientPhone: cleanNumber,
+    text: text.trim(),
+  });
+
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -138,6 +149,20 @@ export async function sendEvolutionTextMessage(
       }),
       signal: AbortSignal.timeout(8000),
     });
+
+    if (res.ok) {
+      try {
+        const data = await res.json();
+        const returnedId = data?.key?.id || data?.id || data?.messageId;
+        if (returnedId) {
+          registerBotOutbound({
+            messageId: returnedId,
+            recipientPhone: cleanNumber,
+            text: text.trim(),
+          });
+        }
+      } catch (_) {}
+    }
 
     return res.ok;
   } catch (err) {
@@ -268,9 +293,23 @@ export async function processEvolutionWebhookEvent(
     ).trim();
     const cleanCmdLower = textBodyEarly.toLowerCase();
 
-    // 2B. Admin Command Override (fromMe == true)
+    // 2B. Admin Command Override & Outbound fromMe Handling
     if (key.fromMe === true) {
       if (!isGroup && senderPhone) {
+        // STEP 1: Cek Outbound Registry. Jika pesan ini dikirim oleh bot/sistem kita sendiri, abaikan (BYPASS / JANGAN SELF-PAUSE).
+        if (
+          isBotOutbound({
+            messageId: key.id || undefined,
+            recipientPhone: senderPhone,
+            text: textBodyEarly,
+          })
+        ) {
+          console.info(
+            `[Evolution Webhook] Bot outbound echo detected for ${senderPhone} (msgId: ${key.id || 'n/a'}). Bypassing auto-pause.`
+          );
+          continue;
+        }
+
         const nowIso = new Date().toISOString();
         if (cleanCmdLower === 'pause' || cleanCmdLower === '#pause') {
           console.info('[Evolution Admin Override] PAUSE for ' + senderPhone + ' on tenant ' + tenantId);
@@ -282,18 +321,19 @@ export async function processEvolutionWebhookEvent(
                 session_id: 'wa_' + tenantId + '_' + senderPhone,
                 channel: 'WHATSAPP',
                 user_identifier: senderPhone,
-                current_state: 'HANDOVER_TO_HUMAN',
+                current_state: 'HUMAN_PAUSED',
                 is_paused: true,
                 paused_at: nowIso,
                 paused_by: 'admin_command',
                 paused_until: pausedUntilIso,
-                metadata: { manual_toggle: 'PAUSE', paused_by: 'admin_command', paused_at: nowIso },
+                metadata: { manual_toggle: 'PAUSE', paused_by: 'admin_command', paused_at: nowIso, paused_until: pausedUntilIso },
                 updated_at: nowIso,
               }, { onConflict: 'tenant_id,user_identifier' });
 
               await supabase.from('conversations').update({
                 bot_paused: true,
                 bot_mode: 'HUMAN_ACTIVE',
+                status: 'HUMAN_PAUSED',
                 updated_at: nowIso,
               }).or('tenant_slug.eq.' + tenantId + ',tenant_id.eq.' + tenantId).eq('phone_number', senderPhone);
             } catch (sErr) {
@@ -323,6 +363,7 @@ export async function processEvolutionWebhookEvent(
               await supabase.from('conversations').update({
                 bot_paused: false,
                 bot_mode: 'AI_ACTIVE',
+                status: 'active',
                 updated_at: nowIso,
               }).or('tenant_slug.eq.' + tenantId + ',tenant_id.eq.' + tenantId).eq('phone_number', senderPhone);
             } catch (sErr) {
@@ -332,10 +373,11 @@ export async function processEvolutionWebhookEvent(
           processedCount++;
           continue;
         } else {
-          // Auto-Pause via Mobile: Pesan keluar dari HP (fromMe === true non-command) wajib mengubah
-          // conversation_sessions.is_paused = true (HANDOVER_TO_HUMAN) dan mencatat balasan CS ke tabel messages.
+          // Auto-Pause via Mobile: Pesan keluar dari HP (fromMe === true bukan bot registry dan bukan admin command)
+          // Berasal dari CS Manual mengetik di WhatsApp HP / WhatsApp Web resmi toko.
+          // Wajib mengubah status ke HUMAN_PAUSED dengan sliding window paused_until = now + 24 jam.
           const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-          console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Auto-pausing bot.`);
+          console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Setting status to HUMAN_PAUSED (24h sliding window).`);
           if (supabase) {
             try {
               const csTable = supabase.from('conversation_sessions');
@@ -345,7 +387,7 @@ export async function processEvolutionWebhookEvent(
                   session_id: `wa_${tenantId}_${senderPhone}`,
                   channel: 'WHATSAPP',
                   user_identifier: senderPhone,
-                  current_state: 'HANDOVER_TO_HUMAN',
+                  current_state: 'HUMAN_PAUSED',
                   is_paused: true,
                   paused_at: nowIso,
                   paused_by: 'cs_mobile_outbound',
@@ -354,6 +396,7 @@ export async function processEvolutionWebhookEvent(
                     auto_pause: true,
                     triggered_by: 'cs_mobile_outbound',
                     paused_at: nowIso,
+                    paused_until: pausedUntilIso,
                   },
                   updated_at: nowIso,
                 }, { onConflict: 'tenant_id,user_identifier' });
@@ -365,7 +408,7 @@ export async function processEvolutionWebhookEvent(
                 let uQ = convTable.update({
                   bot_paused: true,
                   bot_mode: 'HUMAN_ACTIVE',
-                  status: 'paused',
+                  status: 'HUMAN_PAUSED',
                   last_message: textBodyEarly || 'Pesan terkirim dari CS',
                   last_message_at: nowIso,
                   updated_at: nowIso,
@@ -734,6 +777,105 @@ export async function processEvolutionWebhookEvent(
       continue; // JANGAN panggil AI / Gemini / OpenAI prompt!
     }
 
+    // 6.1B. PARSER NOTIFIKASI PEMBAYARAN / MUTASI GATEWAY (TETAP BERJALAN SAAT STATUS BOT PAUSED)
+    // Cek apakah isi pesan merupakan notifikasi transfer/QRIS/e-wallet (BCA, Mandiri, BRI, DANA, GoPay, ShopeePay, dll.)
+    const paymentParsed = parsePaymentNotification(textBody);
+    if (paymentParsed.amount && paymentParsed.amount > 0 && supabase) {
+      console.info(
+        `[PAYMENT_INTERCEPTOR] Detected payment notification amount Rp ${paymentParsed.amount} (${paymentParsed.detectedApp || 'GATEWAY'}) from ${senderPhone} on tenant '${tenantId}'. Processing mutation...`
+      );
+      try {
+        const phoneVariants = [senderPhone, cleanCustomerPhone(senderPhone)].filter(Boolean);
+        let orderQuery: any = supabase
+          .from('orders')
+          .select('id, order_number, order_id, invoice_no, gross_amount, customer_phone, customer_name, product_title')
+          .or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantSlug || tenantId}`)
+          .or('status.eq.PENDING,status.eq.WAITING_PAYMENT,status.eq.UNPAID,payment_status.eq.PENDING');
+
+        if (phoneVariants.length > 0 && typeof orderQuery?.in === 'function') {
+          orderQuery = orderQuery.in('customer_phone', phoneVariants);
+        }
+        if (typeof orderQuery?.order === 'function') {
+          orderQuery = orderQuery.order('created_at', { ascending: false });
+        }
+        if (typeof orderQuery?.limit === 'function') {
+          orderQuery = orderQuery.limit(10);
+        }
+
+        const { data: candidateOrders } = await orderQuery;
+        const matchedOrder = candidateOrders?.find(
+          (o: any) => Number(o.gross_amount) === paymentParsed.amount
+        );
+
+        if (matchedOrder) {
+          const nowIso = new Date().toISOString();
+          const targetOrderId = matchedOrder.id;
+          const displayOrderNum =
+            matchedOrder.order_number || matchedOrder.order_id || matchedOrder.invoice_no || targetOrderId;
+
+          await supabase
+            .from('orders')
+            .update({
+              status: 'PAID',
+              payment_status: 'PAID',
+              paid_at: nowIso,
+              updated_at: nowIso,
+            })
+            .eq('id', targetOrderId);
+
+          try {
+            await supabase.from('order_audit_logs').insert({
+              order_id: targetOrderId,
+              action: 'PAYMENT_VERIFIED_VIA_WHATSAPP_MUTATION',
+              actor_type: 'SYSTEM',
+              actor_name: `WhatsApp Payment Parser (${paymentParsed.detectedApp || 'Gateway'})`,
+              notes: `Pembayaran terverifikasi otomatis melalui parsing notifikasi: Rp ${paymentParsed.amount}`,
+              created_at: nowIso,
+            });
+          } catch (_) {}
+
+          try {
+            const { dispatchMetaCAPIPurchaseForOrder } = await import('@/lib/capi.service');
+            await dispatchMetaCAPIPurchaseForOrder({
+              tenantSlug: tenantSlug || tenantId,
+              orderId: targetOrderId,
+              amount: paymentParsed.amount,
+              customerPhone: senderPhone,
+              customerName: matchedOrder.customer_name,
+              contentName: matchedOrder.product_title,
+              currency: 'IDR',
+            });
+          } catch (cErr) {
+            console.warn('[Payment Interceptor] CAPI dispatch error:', cErr);
+          }
+
+          const replyText =
+            `🎉 *PEMBAYARAN DITERIMA & DIVERIFIKASI!*\n\n` +
+            `Halo Kak! Pembayaran sebesar *Rp ${paymentParsed.amount.toLocaleString('id-ID')}* (${paymentParsed.detectedApp || 'Pembayaran'}) untuk pesanan *#${displayOrderNum}* telah berhasil diverifikasi.\n\n` +
+            `📦 *Layanan:* ${matchedOrder.product_title || 'Pesanan Anda'}\n` +
+            `✅ *Status:* LUNAS (PAID)\n\n` +
+            `Terima kasih! Pesanan Anda segera diproses. 🙏`;
+
+          await sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey);
+
+          await persistOutboundMessage({
+            tenantId,
+            tenantSlug: tenantSlug || tenantId,
+            customerPhone: senderPhone,
+            senderType: 'bot',
+            senderName: 'PaymentGatekeeper',
+            messageBody: replyText,
+            rawPayload: { trigger: 'payment_mutation_matched', order_id: targetOrderId, amount: paymentParsed.amount },
+          });
+
+          processedCount++;
+          continue; // JANGAN panggil AI / Gemini / OpenAI prompt!
+        }
+      } catch (pErr) {
+        console.warn('[Payment Interceptor] Error processing payment mutation:', pErr);
+      }
+    }
+
     // 6.2. Deteksi Buyer Escalation Intent (Kunci Sesi & Alihkan ke Admin Manusia)
     const BUYER_ESCALATION_PATTERN = /\b(admin|cs|manusia|human|operator|bicara dengan orang|bantuan orang|ngobrol sama admin|mau cs|kang sakti|owner|pemilik|live cs|hubungi cs|chat cs|bantuan admin)\b/i;
     if (BUYER_ESCALATION_PATTERN.test(textBody)) {
@@ -841,7 +983,11 @@ export async function processEvolutionWebhookEvent(
         const { data: sessData } = await (sessQuery || Promise.resolve({ data: null }));
         if (Array.isArray(sessData) && sessData.length > 0) {
           for (const s of sessData) {
-            const isStatePaused = s.current_state === 'HANDOVER_TO_HUMAN' || s.current_state === 'PAUSED' || s.current_state === 'human_takeover';
+            const isStatePaused =
+              s.current_state === 'HUMAN_PAUSED' ||
+              s.current_state === 'HANDOVER_TO_HUMAN' ||
+              s.current_state === 'PAUSED' ||
+              s.current_state === 'human_takeover';
             const isFlagPaused = Boolean(s.is_paused) || Boolean(s.metadata?.is_bot_paused);
 
             if (isStatePaused || isFlagPaused) {
@@ -899,7 +1045,8 @@ export async function processEvolutionWebhookEvent(
               c.is_bot_active === false ||
               c.bot_mode === 'HUMAN_ACTIVE' ||
               c.status === 'paused' ||
-              c.status === 'human_takeover'
+              c.status === 'human_takeover' ||
+              c.status === 'HUMAN_PAUSED'
             );
 
             if (pausedConv) {

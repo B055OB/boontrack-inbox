@@ -851,8 +851,19 @@ export default function TeamChatTab({
       const mm = String(now.getMonth() + 1).padStart(2, '0');
       const dd = String(now.getDate()).padStart(2, '0');
       const datePart = `${yy}${mm}${dd}`;
-      const hexPart = Math.random().toString(16).substring(2, 8).toUpperCase().padEnd(6, '0');
-      const realOrderId = `ORD-POS-${datePart}-${hexPart}`;
+      const hexPart = typeof crypto !== 'undefined' && crypto.getRandomValues
+        ? Array.from(crypto.getRandomValues(new Uint8Array(3)))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('')
+            .toUpperCase()
+        : Math.random().toString(16).substring(2, 8).toUpperCase().padEnd(6, '0');
+      const displayOrderNumber = `ORD-POS-${datePart}-${hexPart}`;
+      const internalOrderId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = (Math.random() * 16) | 0;
+            return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+          });
       const nowIso = now.toISOString();
 
       // 1. Ekstraksi string static QRIS tenant & konversi ke Dynamic QRIS terkunci angka pas
@@ -873,13 +884,19 @@ export default function TeamChatTab({
       const rawPayUrl = getStorefrontPayUrl(resolvedTenant, paymentToken);
       const payUrl = rawPayUrl.startsWith('http') ? rawPayUrl : `https://shop.boontrack.com${rawPayUrl}`;
 
-      // 2. Simpan order ke Supabase orders table (dengan 1:1 conversation linkage)
+      // 2. Simpan order ke Supabase orders table (dengan internal UUID dan order_number untuk display)
       const supabase = getSupabase();
       if (supabase) {
         await supabase.from('orders').insert({
-          id: realOrderId,
+          id: internalOrderId,
+          order_number: displayOrderNumber,
+          order_id: displayOrderNumber,
+          invoice_no: displayOrderNumber,
           correlation_id: paymentToken,
           metadata: {
+            order_number: displayOrderNumber,
+            order_id: displayOrderNumber,
+            internal_id: internalOrderId,
             conversation_id: currentConversation.id,
             public_payment_token: paymentToken,
             payment_token: paymentToken,
@@ -901,12 +918,12 @@ export default function TeamChatTab({
         });
 
         // 3. Simpan pesan chat di tabel messages
-        const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, realOrderId);
+        const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, displayOrderNumber);
         const qrisChatText = `🧾 *TAGIHAN QRIS DINAMIS KESEPAKATAN*\n\n` +
           `Halo Kak! Berikut rincian tagihan kesepakatan:\n` +
           `📦 *Layanan / Proyek:* ${itemName}\n` +
           `💰 *Total Nominal:* *Rp ${num.toLocaleString('id-ID')}*\n` +
-          `🔖 *No. Pesanan:* ${realOrderId}\n\n` +
+          `🔖 *No. Pesanan:* ${displayOrderNumber}\n\n` +
           `Barcode QRIS telah dikunci pas otomatis senilai Rp ${num.toLocaleString('id-ID')}.\n\n` +
           `Silakan selesaikan pembayaran invoice Anda melalui tautan resmi ini:\n` +
           `👉 ${payUrl}\n\n` +
@@ -927,7 +944,8 @@ export default function TeamChatTab({
           payload: {
             is_qris: true,
             qris_data: {
-              orderId: realOrderId,
+              orderId: internalOrderId,
+              orderNumber: displayOrderNumber,
               paymentToken,
               payUrl,
               amount: num,
@@ -940,7 +958,7 @@ export default function TeamChatTab({
         });
 
         await supabase.from('conversations').update({
-          last_message: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${realOrderId})`,
+          last_message: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${displayOrderNumber})`,
           last_message_at: nowIso,
         }).eq('id', currentConversation.id);
 
@@ -970,7 +988,7 @@ export default function TeamChatTab({
           body: JSON.stringify({
             tenantSlug: resolvedTenant,
             eventName: 'InitiateCheckout',
-            orderId: realOrderId,
+            orderId: displayOrderNumber,
             amount: num,
             customerPhone: currentConversation.customerPhone,
             customerName: currentConversation.customerName,
@@ -982,7 +1000,7 @@ export default function TeamChatTab({
       }
 
       await inbox.refreshConversations();
-      setQrisFeedback(`✅ Tagihan QRIS Dinamis (${realOrderId}) & CAPI InitiateCheckout terkirim!`);
+      setQrisFeedback(`✅ Tagihan QRIS Dinamis (${displayOrderNumber}) & CAPI InitiateCheckout terkirim!`);
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
       setQrisFeedback(`❌ Gagal: ${err.message || 'Error membuat tagihan'}`);
@@ -1082,8 +1100,19 @@ export default function TeamChatTab({
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
     const datePart = `${yy}${mm}${dd}`;
-    const hexPart = Math.random().toString(16).substring(2, 8).toUpperCase().padEnd(6, '0');
-    const realOrderId = `ORD-POS-${datePart}-${hexPart}`;
+    const hexPart = typeof crypto !== 'undefined' && crypto.getRandomValues
+      ? Array.from(crypto.getRandomValues(new Uint8Array(3)))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('')
+          .toUpperCase()
+      : Math.random().toString(16).substring(2, 8).toUpperCase().padEnd(6, '0');
+    const displayOrderNumber = `ORD-POS-${datePart}-${hexPart}`;
+    const internalOrderId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+        });
     const nowIso = now.toISOString();
 
     setIsSendingBankInfo(true);
@@ -1093,7 +1122,7 @@ export default function TeamChatTab({
       const paymentToken = generatePaymentToken();
       const rawPayUrl = getStorefrontPayUrl(resolvedTenant, paymentToken);
       const payUrl = rawPayUrl.startsWith('http') ? rawPayUrl : `https://shop.boontrack.com${rawPayUrl}`;
-      const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, realOrderId);
+      const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, displayOrderNumber);
       const bankText =
         `💳 *TAGIHAN TRANSFER BANK MANUAL*\n\n` +
         `Halo Kak! Berikut rincian tagihan kesepakatan:\n` +
@@ -1103,21 +1132,25 @@ export default function TeamChatTab({
         `👤 *Atas Nama:* ${selectedBank.account_holder}\n\n` +
         `💰 *Total Nominal:* *Rp ${totalWithCode.toLocaleString('id-ID')}*\n` +
         `*(Termasuk 3 digit kode unik transfer: +${uniqueCode})*\n\n` +
-        `🔖 *No. Pesanan:* ${realOrderId}\n\n` +
+        `🔖 *No. Pesanan:* ${displayOrderNumber}\n\n` +
         `Silakan selesaikan pembayaran invoice Anda melalui tautan resmi ini:\n` +
         `👉 ${payUrl}\n\n` +
         `📄 *Invoice Digital:* ${invoiceLink}\n\n` +
         `⚠️ *Penting:* Harap transfer tepat hingga digit terakhir agar verifikasi otomatis berjalan lancar. Anda juga dapat mengunggah bukti transfer langsung lewat tautan invoice resmi di atas. Terima kasih! 🙏`;
 
-      // Simpan pesanan di tabel orders Supabase (dengan 1:1 conversation linkage)
+      // Simpan pesanan di tabel orders Supabase (dengan internal UUID dan order_number untuk display)
       const supabase = getSupabase();
       if (supabase) {
         await supabase.from('orders').insert({
-          id: realOrderId,
-          order_id: realOrderId,
-          invoice_no: realOrderId,
+          id: internalOrderId,
+          order_id: displayOrderNumber,
+          order_number: displayOrderNumber,
+          invoice_no: displayOrderNumber,
           correlation_id: paymentToken,
           metadata: {
+            order_number: displayOrderNumber,
+            order_id: displayOrderNumber,
+            internal_id: internalOrderId,
             conversation_id: currentConversation.id,
             public_payment_token: paymentToken,
             payment_token: paymentToken,
@@ -1158,7 +1191,8 @@ export default function TeamChatTab({
           payload: {
             is_bank_transfer: true,
             bank_data: {
-              orderId: realOrderId,
+              orderId: internalOrderId,
+              orderNumber: displayOrderNumber,
               paymentToken,
               payUrl,
               amount: totalWithCode,
@@ -1175,7 +1209,7 @@ export default function TeamChatTab({
         });
 
         await supabase.from('conversations').update({
-          last_message: `Tagihan Transfer Rp ${totalWithCode.toLocaleString('id-ID')} (${realOrderId})`,
+          last_message: `Tagihan Transfer Rp ${totalWithCode.toLocaleString('id-ID')} (${displayOrderNumber})`,
           last_message_at: nowIso,
         }).eq('id', currentConversation.id);
 
@@ -1205,7 +1239,7 @@ export default function TeamChatTab({
           body: JSON.stringify({
             tenantSlug: resolvedTenant,
             eventName: 'InitiateCheckout',
-            orderId: realOrderId,
+            orderId: displayOrderNumber,
             amount: totalWithCode,
             customerPhone: currentConversation.customerPhone,
             customerName: currentConversation.customerName,
@@ -1217,7 +1251,7 @@ export default function TeamChatTab({
       }
 
       await inbox.refreshConversations();
-      setQrisFeedback(`✅ Rekening Bank & Tagihan (${realOrderId}) terkirim ke chat & WA!`);
+      setQrisFeedback(`✅ Rekening Bank & Tagihan (${displayOrderNumber}) terkirim ke chat & WA!`);
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
       setQrisFeedback(`❌ Gagal: ${err.message || 'Error mengirim info rekening'}`);
@@ -1226,7 +1260,7 @@ export default function TeamChatTab({
     }
   };
 
-  // Manual Transaction: Tandai Lunas & Dispatch Meta CAPI Purchase + WhatsApp Confirmation
+  // Manual Transaction: Tandai Lunas via Single Source of Truth (/quick-paid route)
   const handleMarkPaid = async (orderId: string) => {
     if (!orderId) return;
     setMarkingPaidOrderId(orderId);
@@ -1234,19 +1268,36 @@ export default function TeamChatTab({
       const nowIso = new Date().toISOString();
       const supabase = getSupabase();
 
-      // 1. Fetch current order info
+      // 1. Fetch current order info safely (supporting internal UUID and display order number)
       let orderGrossAmount = 0;
       let orderTitle = 'Layanan / Proyek';
       let custPhone = currentConversation?.customerPhone || '';
+      let displayOrderNum = orderId;
+      let effectiveOrderId = orderId;
 
       if (supabase) {
-        const { data: ordRow } = await supabase
-          .from('orders')
-          .select('gross_amount, product_title, customer_phone, customer_name')
-          .eq('id', orderId)
-          .maybeSingle();
+        let ordRow: any = null;
+        if (isValidUuid(orderId)) {
+          const { data: byId } = await supabase
+            .from('orders')
+            .select('id, order_number, order_id, invoice_no, gross_amount, product_title, customer_phone, customer_name')
+            .eq('id', orderId)
+            .maybeSingle();
+          if (byId) ordRow = byId;
+        }
+
+        if (!ordRow) {
+          const { data: byAlt } = await supabase
+            .from('orders')
+            .select('id, order_number, order_id, invoice_no, gross_amount, product_title, customer_phone, customer_name')
+            .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+            .maybeSingle();
+          if (byAlt) ordRow = byAlt;
+        }
 
         if (ordRow) {
+          effectiveOrderId = ordRow.id;
+          displayOrderNum = ordRow.order_number || ordRow.order_id || ordRow.invoice_no || ordRow.id;
           orderGrossAmount = Number(ordRow.gross_amount) || 0;
           orderTitle = ordRow.product_title || orderTitle;
           if (ordRow.customer_phone) custPhone = ordRow.customer_phone;
@@ -1256,7 +1307,7 @@ export default function TeamChatTab({
       // 2. Dispatch to Next.js Quick-Paid route (Single Source of Truth: updates DB, dispatches Meta CAPI Purchase with EMQ hashing, & sends email)
       try {
         const qpRes = await fetch(
-          `/api/v1/tenants/${encodeURIComponent(resolvedTenant)}/orders/${encodeURIComponent(orderId)}/quick-paid`,
+          `/api/v1/tenants/${encodeURIComponent(resolvedTenant)}/orders/${encodeURIComponent(effectiveOrderId)}/quick-paid`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1269,23 +1320,12 @@ export default function TeamChatTab({
         console.warn('[Mark Paid] Quick-paid dispatch note:', qpErr);
       }
 
-      // 4. Update Supabase orders table & send WhatsApp confirmation
+      // 3. Send WhatsApp confirmation and append to chat messages ledger
       if (supabase) {
-        await supabase
-          .from('orders')
-          .update({
-            status: 'PAID',
-            payment_status: 'PAID',
-            order_status: 'COMPLETED',
-            paid_at: nowIso,
-            updated_at: nowIso,
-          })
-          .eq('id', orderId);
-
-        const invoiceUrl = getStorefrontInvoiceUrl(resolvedTenant, orderId);
+        const invoiceUrl = getStorefrontInvoiceUrl(resolvedTenant, displayOrderNum);
         const confirmationText =
           `🎉 *PEMBAYARAN DIVERIFIKASI LUNAS!*\n\n` +
-          `Halo Kak! Pembayaran untuk pesanan *#${orderId}* senilai *Rp ${orderGrossAmount.toLocaleString('id-ID')}* telah diverifikasi LUNAS oleh tim CS.\n\n` +
+          `Halo Kak! Pembayaran untuk pesanan *#${displayOrderNum}* senilai *Rp ${orderGrossAmount.toLocaleString('id-ID')}* telah diverifikasi LUNAS oleh tim CS.\n\n` +
           `📦 *Layanan:* ${orderTitle}\n` +
           `✅ *Status:* LUNAS (PAID)\n` +
           `📄 *Invoice Lunas Resmi:* ${invoiceUrl}\n\n` +
@@ -1305,7 +1345,7 @@ export default function TeamChatTab({
         });
 
         await supabase.from('conversations').update({
-          last_message: `LUNAS: Tagihan ${orderId}`,
+          last_message: `LUNAS: Tagihan ${displayOrderNum}`,
           last_message_at: nowIso,
         }).eq('id', currentConversation?.id);
 
@@ -1328,7 +1368,7 @@ export default function TeamChatTab({
       }
 
       await inbox.refreshConversations();
-      setQrisFeedback(`✅ Tagihan ${orderId} LUNAS, CAPI Purchase & WA Konfirmasi terkirim!`);
+      setQrisFeedback(`✅ Tagihan ${displayOrderNum} LUNAS, CAPI Purchase & WA Konfirmasi terkirim!`);
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
       alert(`Gagal menandai lunas: ${err.message || 'Terjadi kesalahan sistem'}`);
@@ -2081,7 +2121,7 @@ export default function TeamChatTab({
                                     Rp {msg.qrisData.amount.toLocaleString('id-ID')}
                                   </p>
                                   <p className="text-[9px] text-slate-400 font-mono mt-0.5">
-                                    Ref: {msg.qrisData.orderId}
+                                    Ref: {msg.qrisData.orderNumber || msg.qrisData.orderId}
                                   </p>
                                 </div>
                               </div>
@@ -2116,9 +2156,12 @@ export default function TeamChatTab({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (typeof window !== 'undefined' && msg.qrisData?.orderId) {
-                                    const invUrl = getStorefrontInvoiceUrl(resolvedTenant, msg.qrisData.orderId);
-                                    window.open(invUrl, '_blank', 'noopener,noreferrer');
+                                  if (typeof window !== 'undefined') {
+                                    const invRef = msg.qrisData?.orderNumber || msg.qrisData?.orderId;
+                                    if (invRef) {
+                                      const invUrl = getStorefrontInvoiceUrl(resolvedTenant, invRef);
+                                      window.open(invUrl, '_blank', 'noopener,noreferrer');
+                                    }
                                   }
                                 }}
                                 className="w-full mt-1.5 py-1 px-2.5 bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 font-bold text-[10px] rounded-lg transition flex items-center justify-center gap-1 border border-slate-200 hover:border-indigo-200 cursor-pointer"
@@ -2172,7 +2215,7 @@ export default function TeamChatTab({
                                   <span className="text-slate-500 text-[10px]">Total (+Kode Unik):</span>
                                   <span className="font-extrabold text-emerald-700 text-sm">Rp {msg.bankData.amount.toLocaleString('id-ID')}</span>
                                 </div>
-                                <div className="text-[9px] text-slate-400 font-mono">Ref: {msg.bankData.orderId}</div>
+                                <div className="text-[9px] text-slate-400 font-mono">Ref: {msg.bankData.orderNumber || msg.bankData.orderId}</div>
                               </div>
 
                               {/* Tombol Aksi Tandai Lunas jika belum dibayar */}
@@ -2205,9 +2248,12 @@ export default function TeamChatTab({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (typeof window !== 'undefined' && msg.bankData?.orderId) {
-                                    const invUrl = getStorefrontInvoiceUrl(resolvedTenant, msg.bankData.orderId);
-                                    window.open(invUrl, '_blank', 'noopener,noreferrer');
+                                  if (typeof window !== 'undefined') {
+                                    const invRef = msg.bankData?.orderNumber || msg.bankData?.orderId;
+                                    if (invRef) {
+                                      const invUrl = getStorefrontInvoiceUrl(resolvedTenant, invRef);
+                                      window.open(invUrl, '_blank', 'noopener,noreferrer');
+                                    }
                                   }
                                 }}
                                 className="w-full mt-1.5 py-1 px-2.5 bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-700 font-bold text-[10px] rounded-lg transition flex items-center justify-center gap-1 border border-slate-200 hover:border-blue-200 cursor-pointer"
@@ -2759,7 +2805,7 @@ export default function TeamChatTab({
                                 Rp {bData.amount.toLocaleString('id-ID')}
                               </span>
                             </div>
-                            <p className="text-[9px] text-slate-400 font-mono">Ref: {bData.orderId}</p>
+                            <p className="text-[9px] text-slate-400 font-mono">Ref: {bData.orderNumber || bData.orderId}</p>
                             {!isPaid ? (
                               <button
                                 type="button"
@@ -2789,9 +2835,12 @@ export default function TeamChatTab({
                             <button
                               type="button"
                               onClick={() => {
-                                if (typeof window !== 'undefined' && bData.orderId) {
-                                  const invUrl = getStorefrontInvoiceUrl(resolvedTenant, bData.orderId);
-                                  window.open(invUrl, '_blank', 'noopener,noreferrer');
+                                if (typeof window !== 'undefined') {
+                                  const invRef = bData.orderNumber || bData.orderId;
+                                  if (invRef) {
+                                    const invUrl = getStorefrontInvoiceUrl(resolvedTenant, invRef);
+                                    window.open(invUrl, '_blank', 'noopener,noreferrer');
+                                  }
                                 }
                               }}
                               className="w-full mt-1 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"

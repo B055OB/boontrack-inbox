@@ -46,7 +46,7 @@ export async function POST(
       const { data: altOrder } = await supabase
         .from('orders')
         .select('*')
-        .or(`order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+        .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
         .maybeSingle();
       if (altOrder) order = altOrder;
     }
