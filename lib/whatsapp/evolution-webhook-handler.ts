@@ -545,15 +545,23 @@ export async function processEvolutionWebhookEvent(
       console.info(`[ORDER_GATEKEEPER] Intercepted manual order from ${senderPhone} on tenant '${tenantId}'. Bypassing AI/LLM.`);
       const nowIso = new Date().toISOString();
 
-      let storeName = 'Admin Toko';
-      if (supabase) {
+      const isUuid = (val?: string | null) =>
+        Boolean(val && /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(String(val).trim()));
+
+      let storeName =
+        (resolvedTenant.tenantName && !isUuid(resolvedTenant.tenantName) ? resolvedTenant.tenantName.trim() : '') ||
+        (tenantSlug && !isUuid(tenantSlug)
+          ? tenantSlug.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+          : 'Admin Toko');
+
+      if (supabase && (!storeName || storeName === 'Admin Toko')) {
         try {
           const { data: tRow } = await supabase
             .from('tenants')
             .select('name')
-            .eq('slug', tenantId)
+            .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`)
             .maybeSingle();
-          if (tRow?.name) storeName = tRow.name;
+          if (tRow?.name && !isUuid(tRow.name)) storeName = tRow.name.trim();
         } catch {}
       }
 
@@ -774,8 +782,17 @@ export async function processEvolutionWebhookEvent(
       continue;
     }
 
+    const isUuid = (val?: string | null) =>
+      Boolean(val && /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(String(val).trim()));
+
+    const storeDisplayName =
+      (resolvedTenant.tenantName && !isUuid(resolvedTenant.tenantName) ? resolvedTenant.tenantName.trim() : '') ||
+      (tenantSlug && !isUuid(tenantSlug)
+        ? tenantSlug.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+        : 'Toko Kami');
+
     const aiResult = await processMultimodalChat({
-      tenant_slug: tenantId,
+      tenant_slug: tenantSlug || tenantId,
       tenant_id: tenantId,
       message: promptText,
       text: promptText,
@@ -784,6 +801,9 @@ export async function processEvolutionWebhookEvent(
       sender_phone: senderPhone,
       user_identifier: senderPhone,
       channel: 'WHATSAPP',
+      context: {
+        storeName: storeDisplayName,
+      },
     });
 
     // 8. Kirim Balasan AI ke Pelanggan via Evolution API

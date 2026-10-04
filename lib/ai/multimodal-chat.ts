@@ -113,7 +113,6 @@ export async function processMultimodalChat(
   const message = typeof rawMessage === 'string' ? rawMessage.trim() : String(rawMessage);
   const q = message.toLowerCase();
 
-  const storeName = input.context?.storeName || slug.replace(/[-_]/g, ' ').toUpperCase();
   const product = input.product_context || input.context?.product || {};
   const packages = input.context?.packages || [];
   let category = input.context?.category || 'retail';
@@ -121,13 +120,22 @@ export async function processMultimodalChat(
   let tenantMetadata: any = {};
   let botProfileRow: any = null;
 
+  const isUuid = (val?: string | null) =>
+    Boolean(val && /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(String(val).trim()));
+
+  // storeName safe initialization — never leak raw UUID as display name
+  let storeName = input.context?.storeName && !isUuid(input.context.storeName)
+    ? input.context.storeName.trim()
+    : (!isUuid(slug) ? slug.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Toko Kami');
+
+  let t: any = null;
+
   try {
     const supabase = getSupabase();
     if (supabase) {
-      let t: any = null;
       const { data: tById } = await supabase
         .from('tenants')
-        .select('id, slug, category, business_type, metadata')
+        .select('id, slug, name, category, business_type, metadata')
         .eq('id', slug)
         .maybeSingle();
 
@@ -136,7 +144,7 @@ export async function processMultimodalChat(
       } else {
         const { data: tBySlug } = await supabase
           .from('tenants')
-          .select('id, slug, category, business_type, metadata')
+          .select('id, slug, name, category, business_type, metadata')
           .eq('slug', slug)
           .maybeSingle();
         if (tBySlug?.id || tBySlug?.slug) {
@@ -163,12 +171,35 @@ export async function processMultimodalChat(
       }
 
       tenantDomainInfo = {
-        slug: t.slug || slug,
-        custom_domain: t.metadata?.custom_domain || null,
+        slug: t?.slug || slug,
+        custom_domain: t?.metadata?.custom_domain || null,
       };
-      tenantMetadata = t.metadata || {};
-      if (t.category || t.business_type) {
+      tenantMetadata = t?.metadata || {};
+      if (t?.category || t?.business_type) {
         category = t.category || t.business_type;
+      }
+
+      // Resolve human-readable store name: tenant.name -> metadata -> formatted slug -> 'Toko Kami' (Never UUID)
+      const candidateName = (t?.name || '').trim();
+      const candidateMetaStore = (tenantMetadata.store_name || '').trim();
+      const candidateMetaBusiness = (tenantMetadata.business_name || '').trim();
+      const candidateMetaBrand = (tenantMetadata.brand_name || '').trim();
+      const rawSlug = (t?.slug || (!isUuid(slug) ? slug : '') || '').trim();
+
+      if (candidateName && !isUuid(candidateName)) {
+        storeName = candidateName;
+      } else if (candidateMetaStore && !isUuid(candidateMetaStore)) {
+        storeName = candidateMetaStore;
+      } else if (candidateMetaBusiness && !isUuid(candidateMetaBusiness)) {
+        storeName = candidateMetaBusiness;
+      } else if (candidateMetaBrand && !isUuid(candidateMetaBrand)) {
+        storeName = candidateMetaBrand;
+      } else if (rawSlug && !isUuid(rawSlug)) {
+        storeName = rawSlug
+          .replace(/[-_]/g, ' ')
+          .replace(/\b\w/g, (c: string) => c.toUpperCase());
+      } else if (!storeName || isUuid(storeName)) {
+        storeName = 'Toko Kami';
       }
 
       const { data: bp } = await supabase
@@ -775,24 +806,27 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
       });
 
       const aiModel = process.env.AI_MODEL_NAME || 'gemini-3.8-flash';
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: geminiMessages }),
-        }
-      );
+      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '';
+      if (geminiApiKey) {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiApiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: geminiMessages }),
+          }
+        );
 
-      if (geminiRes.ok) {
-        const gData = await geminiRes.json();
-        const candidateText = gData.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (candidateText && candidateText.trim().length > 0) {
-          reply = candidateText.trim();
+        if (geminiRes.ok) {
+          const gData = await geminiRes.json();
+          const candidateText = gData.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (candidateText && candidateText.trim().length > 0) {
+            reply = candidateText.trim();
+          }
+        } else {
+          const errText = await geminiRes.text().catch(() => '');
+          console.warn(`[MultimodalChat] Gemini API returned ${geminiRes.status}:`, errText);
         }
-      } else {
-        const errText = await geminiRes.text().catch(() => '');
-        console.warn(`[MultimodalChat] Gemini API returned ${geminiRes.status}:`, errText);
       }
     } catch (geminiErr) {
       console.warn('[MultimodalChat] Gemini multimodal call failed, falling back:', geminiErr);
@@ -813,8 +847,8 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
   return {
     success: true,
     reply,
-    tenant_id: slug,
-    tenant_slug: slug,
+    tenant_id: t?.id || slug,
+    tenant_slug: t?.slug || slug,
     checkout_url: checkoutUrl,
     quick_actions: defaultQuickActions,
     active_engine: activeEngine,

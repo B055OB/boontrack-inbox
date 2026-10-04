@@ -127,7 +127,19 @@ export class ConversationEngine {
     // Cek apakah isi pesan mengandung pola order manual: "Total Nominal:", "Metode: Transfer Bank", "Mohon dicek dan aktivasi akses", atau "Masterclass CPM"
     if (isManualOrderMessage(cleanMsg)) {
       trace.push('MANUAL_ORDER_INTERCEPTED');
-      const storeName = tenant?.name || tenant_id;
+      const isUuid = (val?: string | null) =>
+        Boolean(val && /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(String(val).trim()));
+
+      const storeName =
+        (tenant?.name && !isUuid(tenant.name) ? tenant.name.trim() : '') ||
+        tenant?.metadata?.store_name ||
+        tenant?.metadata?.business_name ||
+        tenant?.metadata?.brand_name ||
+        (tenant?.slug && !isUuid(tenant.slug)
+          ? tenant.slug.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+          : (!isUuid(tenant_id)
+            ? tenant_id.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+            : 'Toko Kami'));
       const orderConfirmReply = getOrderConfirmationReply(storeName);
 
       await markSessionAsPendingVerification({
@@ -450,7 +462,19 @@ export class ConversationEngine {
     // ROUTE 1: SALES_REP_V1 (GLOBAL DEFAULT CONVERSATIONAL SALES AGENT)
     // =========================================================================
     if (activeEngine === 'SALES_REP_V1') {
-      const storeName = tenant?.name || metadata.store_name || tenant_id;
+      const isUuid = (val?: string | null) =>
+        Boolean(val && /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(String(val).trim()));
+
+      const storeName =
+        (tenant?.name && !isUuid(tenant.name) ? tenant.name.trim() : '') ||
+        metadata.store_name ||
+        metadata.business_name ||
+        metadata.brand_name ||
+        (tenant?.slug && !isUuid(tenant.slug)
+          ? tenant.slug.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+          : (!isUuid(tenant_id)
+            ? tenant_id.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+            : 'Toko Kami'));
       const tenantDomainInfo = {
         slug: tenant?.slug || tenant_id,
         custom_domain: metadata.custom_domain || null,
