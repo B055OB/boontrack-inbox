@@ -324,12 +324,24 @@ export async function dispatchMetaCAPIPurchaseForOrder(
       return { success: false, skipped: true, reason: 'Missing supabase client or orderId' };
     }
 
-    // 1. Ambil data order aktual
-    const { data: order, error: orderErr } = await supabase
+    // 1. Ambil data order aktual (mendukung id, order_number, order_id, invoice_no)
+    let { data: order, error: orderErr } = await supabase
       .from('orders')
       .select('*')
       .eq('id', orderId)
       .maybeSingle();
+
+    if (!order) {
+      const { data: altOrder } = await supabase
+        .from('orders')
+        .select('*')
+        .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+        .maybeSingle();
+      if (altOrder) {
+        order = altOrder;
+        orderErr = null;
+      }
+    }
 
     if (orderErr || !order) {
       return { success: false, skipped: true, reason: `Order #${orderId} not found` };
@@ -514,11 +526,23 @@ export async function dispatchMetaCAPIInitiateCheckoutForOrder(
       return { success: false, skipped: true, reason: 'Missing supabase client or orderId' };
     }
 
-    const { data: order, error: orderErr } = await supabase
+    let { data: order, error: orderErr } = await supabase
       .from('orders')
       .select('*')
       .eq('id', orderId)
       .maybeSingle();
+
+    if (!order) {
+      const { data: altOrder } = await supabase
+        .from('orders')
+        .select('*')
+        .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+        .maybeSingle();
+      if (altOrder) {
+        order = altOrder;
+        orderErr = null;
+      }
+    }
 
     if (orderErr || !order) {
       return { success: false, skipped: true, reason: `Order #${orderId} not found` };

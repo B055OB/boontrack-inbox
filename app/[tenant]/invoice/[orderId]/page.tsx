@@ -48,25 +48,27 @@ export default function UniversalInvoicePage({ params }: InvoicePageProps) {
       try {
         const supabase = getSupabase();
         if (supabase) {
-          // 1. Fetch Order Data safely
+          // 1. Fetch Order Data safely (supporting legacy string IDs e.g. ORD-179... and UUID PKs)
           let orderData: any = null;
-          if (isValidUuid(orderId)) {
-            const { data: byId } = await supabase
+          try {
+            const { data: byId, error: idErr } = await supabase
               .from('orders')
               .select('*')
               .eq('id', orderId)
               .maybeSingle();
-            if (byId) orderData = byId;
-          }
+            if (byId && !idErr) orderData = byId;
+          } catch {}
 
           if (!orderData) {
             // Fallback cari via order_number, order_id, invoice_no, atau correlation_id
-            const { data: altOrder } = await supabase
-              .from('orders')
-              .select('*')
-              .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId},correlation_id.eq.${orderId}`)
-              .maybeSingle();
-            if (altOrder) orderData = altOrder;
+            try {
+              const { data: altOrder, error: altErr } = await supabase
+                .from('orders')
+                .select('*')
+                .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId},correlation_id.eq.${orderId}`)
+                .maybeSingle();
+              if (altOrder && !altErr) orderData = altOrder;
+            } catch {}
           }
 
           if (orderData) {

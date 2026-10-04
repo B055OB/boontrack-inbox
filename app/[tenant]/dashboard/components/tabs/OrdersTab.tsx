@@ -330,8 +330,9 @@ export default function OrdersTab({
       }
 
       // 2. Request ke Next.js Quick-Paid API (menggunakan Service Role Supabase Admin, mutasi atomik & order_audit_logs)
+      const targetOrderId = (order.id || order.invoice_no || '').trim();
       const res = await fetch(
-        `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(order.id)}/quick-paid`,
+        `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(targetOrderId)}/quick-paid`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -430,8 +431,9 @@ export default function OrdersTab({
 
       // If newStatus is PAID, trigger quick-paid endpoint (server-side admin mutation)
       if (newStatus === 'PAID') {
+        const targetOrderId = (order.id || order.invoice_no || '').trim();
         const res = await fetch(
-          `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(order.id)}/quick-paid`,
+          `/api/v1/tenants/${encodeURIComponent(tenantSlug)}/orders/${encodeURIComponent(targetOrderId)}/quick-paid`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

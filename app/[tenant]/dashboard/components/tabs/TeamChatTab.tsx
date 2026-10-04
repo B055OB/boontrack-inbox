@@ -1276,23 +1276,24 @@ export default function TeamChatTab({
       let effectiveOrderId = orderId;
 
       if (supabase) {
-        let ordRow: any = null;
-        if (isValidUuid(orderId)) {
-          const { data: byId } = await supabase
+        try {
+          const { data: byId, error: idErr } = await supabase
             .from('orders')
             .select('id, order_number, order_id, invoice_no, gross_amount, product_title, customer_phone, customer_name')
             .eq('id', orderId)
             .maybeSingle();
-          if (byId) ordRow = byId;
-        }
+          if (byId && !idErr) ordRow = byId;
+        } catch {}
 
         if (!ordRow) {
-          const { data: byAlt } = await supabase
-            .from('orders')
-            .select('id, order_number, order_id, invoice_no, gross_amount, product_title, customer_phone, customer_name')
-            .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
-            .maybeSingle();
-          if (byAlt) ordRow = byAlt;
+          try {
+            const { data: byAlt, error: altErr } = await supabase
+              .from('orders')
+              .select('id, order_number, order_id, invoice_no, gross_amount, product_title, customer_phone, customer_name')
+              .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+              .maybeSingle();
+            if (byAlt && !altErr) ordRow = byAlt;
+          } catch {}
         }
 
         if (ordRow) {

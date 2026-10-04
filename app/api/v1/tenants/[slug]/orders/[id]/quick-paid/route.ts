@@ -31,24 +31,55 @@ export async function POST(
       );
     }
 
-    // 1. Fetch current order safely (checking UUID validity to avoid Postgres syntax error)
+    // 1. Fetch current order with flexible lookup (supporting legacy string IDs e.g. ORD-179..., UUID PKs, and display order_number)
     let order: any = null;
-    if (isValidUuid(orderId)) {
-      const { data: byId } = await supabase
+
+    // Direct check on 'id' column (handles both text string IDs e.g. ORD-179... and UUID PKs)
+    try {
+      const { data: byId, error: idErr } = await supabase
         .from('orders')
         .select('*')
         .eq('id', orderId)
         .maybeSingle();
-      if (byId) order = byId;
+
+      if (byId && !idErr) {
+        order = byId;
+      }
+    } catch (e) {
+      console.warn('[Quick-Paid] Direct id lookup note:', e);
     }
 
+    // Flexible fallback: search across alternative order identifier columns (order_number, order_id, invoice_no, correlation_id)
     if (!order) {
-      const { data: altOrder } = await supabase
-        .from('orders')
-        .select('*')
-        .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
-        .maybeSingle();
-      if (altOrder) order = altOrder;
+      try {
+        const { data: byAlt, error: altErr } = await supabase
+          .from('orders')
+          .select('*')
+          .or(`order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId},correlation_id.eq.${orderId}`)
+          .maybeSingle();
+
+        if (byAlt && !altErr) {
+          order = byAlt;
+        }
+      } catch (e) {
+        console.warn('[Quick-Paid] Alt columns lookup note:', e);
+      }
+    }
+
+    // Secondary fallback: scoped by tenant_slug if available
+    if (!order && slug) {
+      try {
+        const { data: bySlug } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('tenant_slug', slug)
+          .or(`id.eq.${orderId},order_number.eq.${orderId},order_id.eq.${orderId},invoice_no.eq.${orderId}`)
+          .maybeSingle();
+
+        if (bySlug) {
+          order = bySlug;
+        }
+      } catch {}
     }
 
     if (!order) {
@@ -169,10 +200,10 @@ export async function POST(
     });
 
     // Dispatch Meta CAPI Purchase (EMQ Optimization 8.0+)
-    dispatchMetaCAPIPurchaseForOrder(String(orderId), supabase)
+    dispatchMetaCAPIPurchaseForOrder(String(order.id || orderId), supabase)
       .then((capiRes) => {
         if (capiRes.success) {
-          console.log(`[Quick-Paid] Meta CAPI Purchase successfully dispatched for order #${orderId}`);
+          console.log(`[Quick-Paid] Meta CAPI Purchase successfully dispatched for order #${order.id || orderId}`);
         }
       })
       .catch((capiErr) => console.warn('[Quick-Paid] CAPI purchase dispatch note:', capiErr));

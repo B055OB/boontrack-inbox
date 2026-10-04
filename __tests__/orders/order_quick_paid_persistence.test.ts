@@ -240,6 +240,39 @@ describe('Order Quick-Paid & Approval Persistence Suite', () => {
       expect(storedOrder.status).toBe('PAID');
       expect(storedOrder.payment_status).toBe('PAID');
     });
+
+    it('successfully marks PAID for legacy order format ORD-1791021177544-8696 where id is pure string without UUID', async () => {
+      const legacyId = 'ORD-1791021177544-8696';
+      mockOrdersDatabase.push({
+        id: legacyId,
+        tenant_slug: 'demo-store',
+        tenant_id: 'tenant-uuid-1',
+        product_title: 'Legacy Product',
+        gross_amount: 199000,
+        status: 'PENDING',
+        payment_status: 'PENDING',
+        order_status: 'PENDING',
+        paid_at: null,
+      });
+
+      const req = new NextRequest(`https://dashboard.boontrack.com/api/v1/tenants/demo-store/orders/${legacyId}/quick-paid`, {
+        method: 'POST',
+        headers: { host: 'dashboard.boontrack.com' },
+      });
+
+      const res = await quickPaidRoute(req, {
+        params: Promise.resolve({ slug: 'demo-store', id: legacyId }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.order.status).toBe('PAID');
+      expect(json.order.payment_status).toBe('PAID');
+
+      const storedOrder = mockOrdersDatabase.find((o) => o.id === legacyId);
+      expect(storedOrder.status).toBe('PAID');
+    });
   });
 
   describe('2. POST /api/orders/[id]/approve', () => {

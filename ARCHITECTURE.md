@@ -4054,5 +4054,9 @@ Antarmuka kerja CS di dashboard menyediakan 3 aksi operasional terkoordinasi den
    - **Isolasi Alur Percakapan**: Menahan balasan otomatis AI general conversation tanpa pernah mengganggu proses transaksi.
    - **Invariance Transaksi Tetap Berjalan**: Blok parsing bukti transfer (`isManualOrderMessage`) dan rekonsiliasi mutasi pembayaran QRIS/Bank (`parsePaymentNotification`) tetap dieksekusi 100% secara deterministik meskipun bot sedang dalam status pause.
 
+---
 
-
+### 46.6 BoonTrack Shop Release Milestone: FnB Category & Instant Courier Share-Lock
+- **FnB Vertical Enabled**: Mendukung katalog dinamis untuk merchant kuliner & F&B lokal.
+- **Instant Delivery via Share-Location**: Sistem otomatis menghitung tarif kurir instan (GrabExpress/Gosend aggregator) langsung dari titik share lock koordinat pembeli.
+- **End-to-End Sync**: Integrasi utuh antara Checkout FnB, BoonTrack Inbox, WhatsApp Automation, dan deduplikasi Meta CAPI Purchase saat pembayaran terkonfirmasi.
