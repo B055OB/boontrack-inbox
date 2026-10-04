@@ -3803,7 +3803,7 @@ Untuk melindungi solvabilitas merchant, kepatuhan hukum, dan keandalan akuntansi
 
 Menindaklanjuti audit menyeluruh dan persetujuan CTO atas integrasi **BoonTrack Inbox**, **Evolution API v2**, **BoonPilot AI Multimodal State Machine**, serta pipeline **Meta Conversions API (CAPI)**, berikut adalah 3 pilar arsitektur kanonikal yang menjadi sumber kebenaran teknis platform:
 
-### 1. WhatsApp Data Model: Single source of truth di tabel whatsapp_connections
+### 46.1 WhatsApp Data Model: Single source of truth di tabel whatsapp_connections
 
 1. **Pusat Kebenaran Konfigurasi**:
    - Tabel `whatsapp_connections` di Supabase adalah **satu-satunya sumber kebenaran (Single Source of Truth)** untuk data koneksi WhatsApp setiap tenant.
@@ -3818,7 +3818,7 @@ Menindaklanjuti audit menyeluruh dan persetujuan CTO atas integrasi **BoonTrack 
 
 ---
 
-### 2. Bot State Machine & Human Takeover: Aturan 3-state, sliding window 24 jam berbasis last_human_activity saat CS balas via HP, serta Outbound Registry guard untuk cegah false self-pause. Transaksi (order/payment) wajib tetap berjalan 100% saat bot paused.
+### 46.2 Bot State Machine & Human Takeover: Aturan 3-state, sliding window 24 jam berbasis last_human_activity saat CS balas via HP, serta Outbound Registry guard untuk cegah false self-pause. Transaksi (order/payment) wajib tetap berjalan 100% saat bot paused.
 
 1. **Aturan Model 3-State**:
    Sistem percakapan WhatsApp tenant beroperasi di bawah 3 status kontrol terisolasi:
@@ -3842,7 +3842,7 @@ Menindaklanjuti audit menyeluruh dan persetujuan CTO atas integrasi **BoonTrack 
 
 ---
 
-### 3. POS Order & Meta CAPI: Pemisahan UUID (internal machine PK) dan order_number untuk display (format ORD-POS-YYMMDD-HEX6), serta dedup CAPI Purchase tunggal canonical via backend route /quick-paid.
+### 46.3 POS Order & Meta CAPI: Pemisahan UUID (internal machine PK) dan order_number untuk display (format ORD-POS-YYMMDD-HEX6), serta dedup CAPI Purchase tunggal canonical via backend route /quick-paid.
 
 1. **Pemisahan Dual-ID: Internal Machine PK (UUID) vs Display Order Number (format ORD-POS-YYMMDD-HEX6)**:
    - **Internal Machine PK (`orders.id`)**: Wajib berupa `UUID` v4 valid untuk PostgreSQL guna mematuhi schema integrity, foreign key constraint, dan mencegah PostgreSQL syntax error (`invalid input syntax for type uuid`).
@@ -3861,4 +3861,92 @@ Menindaklanjuti audit menyeluruh dan persetujuan CTO atas integrasi **BoonTrack 
      * Pengiriman email fulfillment kepada pembeli dan notifikasi ke merchant.
      * Pengiriman event `Purchase` Meta Conversions API (CAPI) dengan enkripsi SHA-256 EMQ (*Event Quality Match*) via `dispatchMetaCAPIPurchaseForOrder`.
    - Pemanggilan duplikat paralel dari client browser ke `/api/v1/tracking/capi` telah **dihapus total**, mengeliminasi over-reporting ganda dan anomaly warning di Meta Events Manager.
+
+---
+
+### 46.4 Database Schema, Emergency Runbook & Troubleshooting Guide
+
+Sebagai panduan operasional teknis bagi tim engineering, DevOps, dan Customer Support Lead, berikut adalah skema tabel inti, prosedur penanganan insiden darurat (*emergency runbook*), dan panduan kueri audit:
+
+#### 1. Tabel Kunci & Struktur Data
+
+| Nama Tabel | Peran Arsitektur | Kolom Kunci & Tipe Data | Deskripsi Operasional |
+| :--- | :--- | :--- | :--- |
+| `whatsapp_connections` | **Single Source of Truth** Sesi WhatsApp Tenant | `tenant_slug` (TEXT), `instance_name` (TEXT), `phone_number` (TEXT), `status` (TEXT), `qr_code` (TEXT), `updated_at` (TIMESTAMPTZ) | Menyimpan sesi koneksi WhatsApp per toko. Kolom `status`: `CONNECTED`, `CONNECTING`, `DISCONNECTED`, `refused`. |
+| `conversations` / `chat_sessions` | Penyimpanan Status Bot & Pause Window | `tenant_slug` (TEXT), `customer_phone` (TEXT), `bot_status` (TEXT), `paused_until` (TIMESTAMPTZ), `last_human_activity` (TIMESTAMPTZ), `is_paused` (BOOLEAN) | Mengatur status aktif/jeda bot AI. `bot_status`: `BOT_ACTIVE`, `HUMAN_PAUSED`, `HANDOVER`. `paused_until` mengatur batas waktu 24h sliding window. |
+| `orders` | Master Transaksi POS & Web Storefront | `id` (UUID PK), `order_number` (TEXT Display), `tenant_slug` (TEXT), `gross_amount` (NUMERIC), `status` (TEXT), `payment_status` (TEXT) | Master transaksi toko. Memisahkan `id` (UUID v4 mesin) dan `order_number` (`ORD-POS-YYMMDD-HEX6` display pembeli/CS). |
+| `capi_events` | Audit Trail Meta CAPI Dispatch | `id` (UUID), `tenant_slug` (TEXT), `event_name` (TEXT), `event_source` (TEXT), `payload` (JSONB), `status` (TEXT), `created_at` (TIMESTAMPTZ) | Log pengiriman event Meta CAPI (Purchase, InitiateCheckout). Menyimpan raw payload untuk verifikasi deduplikasi. |
+
+---
+
+#### 2. Masalah Nomor Nyangkut di Evolution API
+
+* **Skenario**:
+  Sesi WhatsApp tenant nyangkut di status `connecting` atau `failed`, QR code tidak kunjung muncul, atau terjadi konflik instance di container Docker Evolution API.
+
+* **Query Pengecekan Session**:
+  ```sql
+  SELECT id, tenant_slug, instance_name, phone_number, status, updated_at 
+  FROM whatsapp_connections 
+  ORDER BY updated_at DESC;
+  ```
+
+* **SQL Reset Darurat (Lepas Ikatan Session Nyangkut)**:
+  ```sql
+  UPDATE whatsapp_connections 
+  SET status = 'DISCONNECTED', qr_code = NULL, updated_at = NOW() 
+  WHERE tenant_slug = '<target_tenant_slug>';
+  ```
+
+* **Prosedur Evolution Server**:
+  1. Kirim request `DELETE /instance/logout` via REST API sebelum scan ulang:
+     ```bash
+     curl -X DELETE "https://evolution-api-production-abb7.up.railway.app/instance/logout/<instance_name>" \
+       -H "apikey: $EVOLUTION_API_KEY"
+     ```
+  2. Jika instance masih macet atau socket Baileys tidak merespons, lakukan restart container `evolution-api` di Railway/Docker.
+
+---
+
+#### 3. Masalah Bot Macet / Pause Terkunci (Human Takeover Lock)
+
+* **Skenario**:
+  Bot tetap diam lewat dari 24 jam atau CS ingin secara paksa mengaktifkan bot kembali secara instan tanpa menunggu kedaluwarsa waktu.
+
+* **Query Cek Status Pause Chat**:
+  ```sql
+  SELECT customer_phone, bot_status, paused_until, last_human_activity, updated_at 
+  FROM chat_sessions 
+  WHERE tenant_slug = '<target_tenant_slug>' 
+    AND (paused_until > NOW() OR bot_status = 'HUMAN_PAUSED');
+  ```
+
+* **SQL Paksa Lepas Pause (Resume Bot Instan)**:
+  ```sql
+  UPDATE chat_sessions 
+  SET bot_status = 'BOT_ACTIVE', paused_until = NOW() - INTERVAL '1 minute', updated_at = NOW() 
+  WHERE tenant_slug = '<target_tenant_slug>' AND customer_phone = '<target_phone>';
+  ```
+
+---
+
+#### 4. Meta CAPI Audit Queries
+
+* **Cek Duplikasi Purchase**:
+  ```sql
+  SELECT tenant_slug, event_name, COALESCE(payload->>'order_id', payload->'custom_data'->>'order_id') AS order_ref, count(*) 
+  FROM capi_events 
+  WHERE event_name = 'Purchase' 
+  GROUP BY 1, 2, 3 
+  HAVING count(*) > 1;
+  ```
+
+* **Cek Aliran Dispatch Terkini**:
+  ```sql
+  SELECT id, tenant_slug, event_name, event_source, status, payload->>'order_id' AS order_id, created_at 
+  FROM capi_events 
+  ORDER BY created_at DESC 
+  LIMIT 10;
+  ```
+
 
