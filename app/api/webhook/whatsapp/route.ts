@@ -175,7 +175,10 @@ export async function POST(req: NextRequest) {
               status: 'active',
               is_active: true,
               tier: resolvedTier,
+              subscription_status: isTrial ? 'trial' : 'active',
+              subscription_tier: resolvedTier,
               trial_ends_at: isTrial ? trialEndsAt : null,
+              subscription_ends_at: isTrial ? trialEndsAt : undefined,
               metadata: updatedMetadata,
               updated_at: verifiedAt,
             })
@@ -184,6 +187,27 @@ export async function POST(req: NextRequest) {
           if (updateErr) {
             console.error('[WhatsApp Webhook] Failed to activate tenant:', updateErr);
             continue;
+          }
+
+          // Sinkronisasi status langganan ke tabel shop_subscriptions jika trial
+          if (tenant.id && isTrial) {
+            try {
+              await supabase.from('shop_subscriptions').upsert({
+                tenant_id: tenant.id,
+                tier: resolvedTier,
+                status: 'TRIAL',
+                current_period_starts_at: verifiedAt,
+                current_period_ends_at: trialEndsAt,
+                expires_at: trialEndsAt,
+                amount_paid: 0,
+                metadata: {
+                  plan: resolvedPlanLabel,
+                  activated_via: 'whatsapp_webhook',
+                },
+              }, { onConflict: 'tenant_id,status' });
+            } catch (subErr) {
+              console.warn('[WhatsApp Webhook] Non-fatal sub sync note:', subErr);
+            }
           }
 
           console.log(`[WhatsApp Webhook] ✅ Toko "${tenant.slug}" berhasil diaktifkan dengan nomor ${senderPhone}!`);

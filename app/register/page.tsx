@@ -1253,10 +1253,19 @@ export default function RegisterShopPage() {
           throw new Error(onboardData.error || "Gagal menyiapkan pendaftaran toko. Silakan coba lagi.");
         }
 
-        // Tampilkan Modal QRIS Pembayaran Langsung
+        // Redirect merchant non-PRO_SCALE langsung ke invoice Xendit
+        if (onboardData.redirect_url || onboardData.invoice_url) {
+          const targetInvoiceUrl = onboardData.redirect_url || onboardData.invoice_url;
+          if (typeof window !== "undefined") {
+            window.location.href = targetInvoiceUrl;
+            return;
+          }
+        }
+
+        // Fallback: Tampilkan Modal QRIS Pembayaran Langsung jika tidak redirect
         setInvoiceData({
-          invoiceUrl: `https://payment.boontrack.com/invoice/${slug}-${planAmount}`,
-          invoiceId: `INV-${slug.toUpperCase()}-${Date.now().toString().slice(-6)}`,
+          invoiceUrl: onboardData.invoice_url || `https://payment.boontrack.com/invoice/${slug}-${planAmount}`,
+          invoiceId: onboardData.invoice_id || `INV-${slug.toUpperCase()}-${Date.now().toString().slice(-6)}`,
           amount: planAmount,
           tenantSlug: slug,
         });

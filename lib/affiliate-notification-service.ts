@@ -909,25 +909,32 @@ export async function sendOrderCommissionAlert(params: {
   affiliateCode?: string | null;
   directCommission?: number;
 }): Promise<{ success: boolean; dispatchedTo: string[] }> {
-  const {
-    orderId,
-    tenantSlug,
-    tenantId,
-    productTitle,
-    grossAmount,
-    customerName,
-    affiliateCode,
-    directCommission,
-  } = params;
+    const {
+      orderId,
+      tenantSlug,
+      tenantId,
+      productTitle,
+      grossAmount,
+      customerName,
+      affiliateCode,
+      directCommission,
+    } = params;
 
-  const dispatchedTo: string[] = [];
+    const dispatchedTo: string[] = [];
 
-  try {
-    const supabase = getSupabaseAdmin() || getSupabase();
-    if (!supabase) {
-      console.warn('[OrderCommissionAlert] Supabase database unreachable');
-      return { success: false, dispatchedTo };
+    // STRICT CTO RULE: Access != Payment != Commission
+    // Zero or negative gross amount transactions NEVER generate affiliate commission
+    if (!grossAmount || grossAmount <= 0) {
+      console.warn(`[OrderCommissionAlert] Skipped: grossAmount is 0 or invalid (${grossAmount}) for order ${orderId}`);
+      return { success: true, dispatchedTo };
     }
+
+    try {
+      const supabase = getSupabaseAdmin() || getSupabase();
+      if (!supabase) {
+        console.warn('[OrderCommissionAlert] Supabase database unreachable');
+        return { success: false, dispatchedTo };
+      }
 
     let recruiterAffiliate: any = null;
     let resolvedTenantSlug = tenantSlug;
@@ -1057,6 +1064,7 @@ export async function sendOrderCommissionAlert(params: {
         order_id: String(orderId),
         tenant_id: resolvedTenantSlug || tenantId || 'platform',
         affiliate_id: recruiterAffiliate.id,
+        order_amount: grossAmount,
         amount: calculatedCommission,
         status: 'PENDING',
         created_at: new Date().toISOString(),
@@ -1117,6 +1125,7 @@ export async function sendOrderCommissionAlert(params: {
             order_id: String(orderId),
             tenant_id: resolvedTenantSlug || tenantId || 'platform',
             affiliate_id: parentAm.id,
+            order_amount: grossAmount,
             amount: amOverrideAmount,
             status: 'PENDING',
             created_at: new Date().toISOString(),

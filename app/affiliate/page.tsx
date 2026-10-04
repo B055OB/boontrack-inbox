@@ -49,7 +49,11 @@ export interface LeadItem {
   utm_source: string;
   utm_medium: string;
   utm_campaign: string;
-  status: 'Trial' | 'Berlangganan' | 'Expired';
+  status: 'Trial' | 'Berlangganan' | 'Expired' | string;
+  domain_status?: 'TRIAL' | 'PAID' | 'GRANTED' | 'EXPIRED';
+  grant_type?: string | null;
+  commission_eligible?: boolean;
+  label?: string;
   tier: string;
   monthly_fee: number;
   potential_commission: number;
@@ -1894,19 +1898,25 @@ function AffiliatePortalContent() {
                           </td>
 
                           <td className="p-3.5 whitespace-nowrap">
-                            {lead.status === 'Trial' && (
+                            {(lead.domain_status === 'TRIAL' || lead.status === 'Trial' || lead.status === 'TRIAL AKTIF') && (
                               <span className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center gap-1 w-fit">
                                 <Clock className="w-3 h-3" />
-                                <span>Trial (7 Hari)</span>
+                                <span>TRIAL AKTIF</span>
                               </span>
                             )}
-                            {lead.status === 'Berlangganan' && (
+                            {(lead.domain_status === 'GRANTED' || lead.status?.includes('GRANTED')) && (
+                              <span className="px-2.5 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[10px] font-bold flex items-center gap-1 w-fit">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>{lead.label || `AKSES GRANTED - ${lead.grant_type || 'PILOT'}`}</span>
+                              </span>
+                            )}
+                            {(lead.domain_status === 'PAID' || lead.status === 'Berlangganan') && !lead.status?.includes('GRANTED') && (
                               <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold flex items-center gap-1 w-fit">
                                 <CheckCircle2 className="w-3 h-3" />
                                 <span>Berlangganan Aktif</span>
                               </span>
                             )}
-                            {lead.status === 'Expired' && (
+                            {(lead.domain_status === 'EXPIRED' || lead.status === 'Expired') && (
                               <span className="px-2.5 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[10px] font-bold flex items-center gap-1 w-fit">
                                 <X className="w-3 h-3" />
                                 <span>Expired</span>
@@ -1915,21 +1925,34 @@ function AffiliatePortalContent() {
                           </td>
 
                           <td className="p-3.5 whitespace-nowrap">
-                            <div className="font-mono font-bold text-emerald-400">
-                              Rp {lead.potential_commission.toLocaleString('id-ID')}
-                            </div>
-                            {(data.is_am || data.affiliate.role === 'am') && (
-                              <div className="text-[10px] font-mono mt-0.5">
-                                {lead.is_direct ? (
-                                  <span className="text-emerald-300 font-semibold">Direct ({data.affiliate.commission_rate}%)</span>
-                                ) : (
-                                  <span>
-                                    <span className="text-indigo-300 font-semibold">Override AM (5%)</span>
-                                    <span className="text-slate-500 ml-1">
-                                      (Mitra: Rp {(lead.recruiter_commission || Math.round(lead.monthly_fee * 0.25)).toLocaleString('id-ID')})
-                                    </span>
-                                  </span>
+                            {lead.commission_eligible || lead.domain_status === 'PAID' || (lead.status === 'Berlangganan' && lead.potential_commission > 0) ? (
+                              <>
+                                <div className="font-mono font-bold text-emerald-400">
+                                  Rp {lead.potential_commission.toLocaleString('id-ID')}
+                                </div>
+                                {(data.is_am || data.affiliate.role === 'am') && (
+                                  <div className="text-[10px] font-mono mt-0.5">
+                                    {lead.is_direct ? (
+                                      <span className="text-emerald-300 font-semibold">Direct ({data.affiliate.commission_rate}%)</span>
+                                    ) : (
+                                      <span>
+                                        <span className="text-indigo-300 font-semibold">Override AM (5%)</span>
+                                        <span className="text-slate-500 ml-1">
+                                          (Mitra: Rp {(lead.recruiter_commission || Math.round(lead.monthly_fee * 0.25)).toLocaleString('id-ID')})
+                                        </span>
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
+                              </>
+                            ) : (
+                              <div>
+                                <div className="font-mono text-slate-400 text-xs font-semibold">
+                                  Rp 0
+                                </div>
+                                <div className="text-[10px] text-amber-400/80 font-mono mt-0.5">
+                                  Non-eligible ({lead.domain_status === 'GRANTED' || lead.status?.includes('GRANTED') ? 'Granted' : 'Trial'})
+                                </div>
                               </div>
                             )}
                           </td>

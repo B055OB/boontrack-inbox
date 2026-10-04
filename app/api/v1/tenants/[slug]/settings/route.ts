@@ -106,7 +106,7 @@ export async function GET(
     const isSuspended = !perm.allowed;
     const resolvedSubStatus = isSuspended
       ? 'expired'
-      : String(metadata.subscription_status || tenantRow.status || 'active').toLowerCase();
+      : String(tenantRow.subscription_status || metadata.subscription_status || tenantRow.status || 'active').toLowerCase();
 
     // 4. Return data asli database tanpa data dummy
     return NextResponse.json({

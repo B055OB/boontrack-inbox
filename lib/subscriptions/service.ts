@@ -199,6 +199,7 @@ export async function activateShopSubscription(
       subscription_tier: tier,
       status: 'ACTIVE',
       subscription_status: 'ACTIVE',
+      is_active: true,
       subscription_ends_at: dates.expires_at,
       due_date: dates.expires_at.split('T')[0],
       metadata: updatedMetadata,
@@ -343,3 +344,6 @@ export async function renewPeriodQuota(
 
   return { success: true, newPeriodEndsAt };
 }
+
+export { getTenantSubscriptionStatus } from './status';
+export type { TenantSubscriptionStatusResult } from './status';

@@ -198,9 +198,8 @@ export async function POST(req: NextRequest) {
     // Generate Token Verifikasi 6 Digit (contoh: "BT-8921")
     const verificationToken = generateVerificationToken();
     const tokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    const trialEndsAt = planConfig.isTrial
-      ? new Date(Date.now() + planConfig.trialDays * 24 * 60 * 60 * 1000).toISOString()
-      : null;
+    const effectiveTrialDays = planConfig.isTrial && planConfig.trialDays > 0 ? planConfig.trialDays : 7;
+    const trialEndsAt = new Date(Date.now() + effectiveTrialDays * 24 * 60 * 60 * 1000).toISOString();
 
     const officialWaNumber = getOfficialWhatsAppNumber();
     const activationMessage = `AKTIVASI ${verificationToken}`;
@@ -210,7 +209,7 @@ export async function POST(req: NextRequest) {
     const isFood = ['FOOD', 'FNB', 'KULINER'].some(k => String(rawCategory || '').toUpperCase().includes(k));
     const defaultMenu = buildDefaultIndustryMenu(rawCategory, { name: shopName, slug: baseSlug });
 
-    // Simpan ke tabel tenants dengan status 'PENDING'
+    // Simpan ke tabel tenants dengan status 'PENDING' & subscription_status 'trial' (Trial 7 Hari)
     const tenantPayload = {
       slug: baseSlug,
       name: shopName,
@@ -218,8 +217,11 @@ export async function POST(req: NextRequest) {
       business_type: rawCategory,
       tier: planConfig.dbTier, // 'STARTER' | 'PRO_SCALE' | 'ENTERPRISE' (ADR canonical)
       status: 'PENDING',
+      subscription_status: planConfig.isTrial ? 'trial' : 'active',
+      subscription_tier: planConfig.dbTier,
       is_active: false,
       trial_ends_at: trialEndsAt,
+      subscription_ends_at: trialEndsAt,
       access_username: baseSlug,
       access_password: password,
       metadata: {
@@ -330,6 +332,27 @@ export async function POST(req: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    // Sinkronisasi record langganan awal ke tabel shop_subscriptions (Status: TRIAL 7 Hari)
+    if (upsertedTenant?.id && planConfig.isTrial) {
+      try {
+        await supabase.from('shop_subscriptions').insert({
+          tenant_id: upsertedTenant.id,
+          tier: planConfig.dbTier,
+          status: 'TRIAL',
+          current_period_starts_at: new Date().toISOString(),
+          current_period_ends_at: trialEndsAt,
+          expires_at: trialEndsAt,
+          amount_paid: 0,
+          metadata: {
+            plan: planConfig.planLabel,
+            created_via: 'register_init',
+          },
+        });
+      } catch (subErr) {
+        console.warn('[RegisterInit] Non-fatal shop_subscriptions insert note:', subErr);
+      }
     }
 
     if (isFood && upsertedTenant?.slug) {

@@ -7,6 +7,12 @@ export const SUBSCRIPTION_MUTATION_RESTRICTED_PAYLOAD = {
   message: 'Masa aktif paket/trial telah berakhir. Toko dalam mode baca-saja. Silakan lakukan upgrade langganan.',
 };
 
+export const PENDING_PAYMENT_RESTRICTED_PAYLOAD = {
+  error: 'PENDING_PAYMENT',
+  message: 'Toko Anda belum aktif. Selesaikan pembayaran invoice untuk mengaktifkan toko.',
+  action: 'REDIRECT_TO_BILLING',
+};
+
 export interface MutationPermissionResult {
   allowed: boolean;
   response?: NextResponse;
@@ -40,7 +46,7 @@ export async function checkTenantMutationPermission(
 
     const { data: tenant, error } = await supabase
       .from('tenants')
-      .select('id, slug, tier, status, is_active, trial_ends_at, subscription_ends_at, metadata')
+      .select('id, slug, tier, status, subscription_status, is_active, trial_ends_at, subscription_ends_at, metadata')
       .eq('slug', slug)
       .maybeSingle();
 
@@ -52,9 +58,28 @@ export async function checkTenantMutationPermission(
     const tStatus = String(tenant.status || 'active').toLowerCase().trim();
     const isActive = tenant.is_active !== false;
     const meta = (tenant.metadata || {}) as Record<string, any>;
-    const metaSubStatus = String(meta.subscription_status || '').toLowerCase().trim();
+    const metaSubStatus = String(tenant.subscription_status || meta.subscription_status || '').toLowerCase().trim();
+
+    // [PRIORITY 1] PENDING_PAYMENT Check — Toko belum membayar invoice pertama.
+    // is_active=false + status PENDING_PAYMENT → BLOCKED regardless of anything else.
+    const isPendingPayment = Boolean(
+      tStatus === 'pending_payment' ||
+      metaSubStatus === 'pending_payment' ||
+      meta.is_pending_payment === true ||
+      (!isActive && (tStatus === 'pending' || tStatus === 'unverified') && meta.plan_tier !== 'PRO_SCALE' && meta.tier !== 'PRO_SCALE')
+    );
+
+    if (isPendingPayment) {
+      return {
+        allowed: false,
+        response: NextResponse.json(PENDING_PAYMENT_RESTRICTED_PAYLOAD, { status: 402 }),
+        tenant,
+        reason: 'Pending payment — invoice not yet settled',
+      };
+    }
 
     // Check Special Grant (exempt from expiration)
+
     const subObj = meta.subscription;
     const isSpecialGrant = Boolean(
       subObj?.type === 'granted' ||

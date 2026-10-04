@@ -128,6 +128,7 @@ export function getTierAiSessionQuota(tier: SubscriptionTier): AiSessionQuota {
         resetCycleDays: RESET_CYCLE_DAYS,
         description: '600 sesi AI per 30 hari kalender (TTL 2 jam per sesi)',
       };
+    case 'CHECKOUT_LITE':
     case 'STARTER':
     default:
       return {
@@ -157,6 +158,30 @@ export function isSubscriptionActive(
  * Commercial pricing structure for multi-duration subscriptions (1, 6, 12 months).
  */
 export const SUBSCRIPTION_PRICING: Record<SubscriptionTier, TierPricingConfig> = {
+  CHECKOUT_LITE: {
+    tier: 'CHECKOUT_LITE',
+    name: 'Paket Checkout Lite',
+    durations: {
+      1: {
+        durationMonths: 1,
+        priceTotal: 59000,
+        pricePerMonth: 59000,
+        discountPercentage: 0,
+      },
+      6: {
+        durationMonths: 6,
+        priceTotal: 318600, // 10% discount: 59k * 6 * 0.9
+        pricePerMonth: 53100,
+        discountPercentage: 10,
+      },
+      12: {
+        durationMonths: 12,
+        priceTotal: 566400, // 20% discount: 59k * 12 * 0.8
+        pricePerMonth: 47200,
+        discountPercentage: 20,
+      },
+    },
+  },
   STARTER: {
     tier: 'STARTER',
     name: 'Solo / Starter',

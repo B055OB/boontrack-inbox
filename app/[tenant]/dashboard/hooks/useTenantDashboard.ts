@@ -1024,9 +1024,12 @@ export function useTenantDashboard() {
             const finalSubStatus = rawSubStatus || (isTrialStore ? 'trial' : 'active');
             setSubscriptionStatus(finalSubStatus);
 
-            const isStatusExpired = tenant.status === 'expired' || tenant.status === 'suspended' || tenant.is_active === false;
-            const rawSubEnds = tenant.subscription_ends_at || tenant.metadata?.subscription_ends_at;
             const now = Date.now();
+            const isStatusExpired =
+              tenant.status === 'expired' ||
+              tenant.status === 'suspended' ||
+              (tenant.is_active === false && !isTrialStore && !Boolean(rawTrialEnds && new Date(rawTrialEnds).getTime() > now));
+            const rawSubEnds = tenant.subscription_ends_at || tenant.metadata?.subscription_ends_at;
             const isSubExpired = rawSubEnds ? new Date(rawSubEnds).getTime() <= now : false;
             const isTrialExpired = rawTrialEnds ? new Date(rawTrialEnds).getTime() <= now : false;
             setIsSuspended(Boolean(isStatusExpired || isTrialExpired || (rawSubEnds ? isSubExpired : false)));

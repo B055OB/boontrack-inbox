@@ -21,6 +21,7 @@
 13. **Single Financial Authority (Financial State Machine)**: BoonTrack accepts multiple payment evidence rails, but maintains a single financial authority: the Financial State Machine. No OCR result, Reader event, or manual action may bypass its tenant, lifecycle, idempotency, and authorization invariants.
 14. **Fail-Closed Tenant Isolation**: If tenant resolution fails at any gateway (webhook router, API, checkout), the system MUST fail closed (silent drop, zero response, log security alert). Global platform sales fallbacks are strictly prohibited.
 15. **Pre-LLM Transaction Gatekeeper**: All purchase confirmations, order payments, and transactional messages must be intercepted deterministically before entering probabilistic AI context.
+16. **Access ≠ Payment ≠ Commission (Domain Decoupling Invariant)**: Tenant operational access, payment confirmation, and affiliate commission eligibility are strictly decoupled domains. `TRIAL` and `GRANTED` access states can never trigger commission accrual (`isCommissionEligible = false`). Commission ledger entries are strictly dependent on verified qualifying `PAID` transactions.
 
 ### 0.1 Tri-Rule Database-Driven Multi-Tenant Constitution (Phase B Guardrails)
 - **Rule 1 (Zero Hardcoded Tenant Logic)**: Tidak boleh membuat percabangan kode berbasis slug fisik (misal: `if tenant == 'gym'` atau `if slug in ['om_budi', 'career']`). Seluruh logika runtime wajib membaca `capabilities`, `business_type`, atau `tenant_kind` dari database Supabase (`TenantRuntimeContext`).
@@ -277,6 +278,70 @@ BoonTrack memisahkan **Durasi Kontrak Langganan (`expires_at`)** dengan **Siklus
   * Memberitahukan bahwa masa uji coba gratis tersisa <24 jam dan toko akan dialihkan ke mode dasar jika tidak diperpanjang.
   * Mengarahkan merchant langsung ke menu Billing di dashboard resmi mereka:  
     `https://dashboard.boontrack.com/{slug}?tab=billing`
+
+### 5.3 Subscription, Entitlement & Commission Engine Specification (Access ≠ Payment ≠ Commission)
+
+#### 1. Core Architectural Contract
+Platform BoonTrack memisahkan secara tegas tiga domain operasi:
+
+> **Access ≠ Payment ≠ Commission**
+
+* **Access (Tenant Lifecycle):** Menentukan ketersediaan operasional toko (`ACTIVE`, `EXPIRING`, `SUSPENDED`).
+* **Payment (Financial Event):** Peristiwa pencatatan uang masuk melalui payment gateway resmi (`PAYMENT_CONFIRMED`).
+* **Commission (Affiliate Ledger):** Hak pencairan komisi mitra yang sah, yang HANYA dapat diterbitkan dari pembayaran langganan riil.
+
+---
+
+#### 2. Subscription Lifecycle Taxonomy
+
+Status langganan dikunci ke dalam 4 domain kanonikal:
+
+| Subscription Status | Subtype / Keterangan | Hak Akses Toko | Commission Eligibility |
+| :--- | :--- | :---: | :---: |
+| **`TRIAL`** | Masa uji coba (default 7 hari sejak pendaftaran). | `ACTIVE` | ❌ **FALSE (Rp 0)** |
+| **`PAID`** | Langganan berbayar via Payment Gateway resmi (Xendit). | `ACTIVE` | ✅ **TRUE (Eligible)** |
+| **`GRANTED`** | Hak akses khusus via BoonTrack Grant Program:<br>• `PILOT`<br>• `BRAND_AMBASSADOR`<br>• `DESIGN_PARTNER`<br>• `PARTNERSHIP`<br>• `INTERNAL_DOGFOOD` | `ACTIVE` | ❌ **FALSE (Rp 0)** |
+| **`EXPIRED`** | Masa aktif habis tanpa perpanjangan berbayar/grant baru. | `SUSPENDED` / `READ_ONLY` | ❌ **FALSE (Rp 0)** |
+
+---
+
+#### 3. Data Flow & Source of Truth (SSOT)
+
+```text
+[CUSTOMER CHECKOUT / PG]
+│
+▼ (Webhook)
+PAYMENT_CONFIRMED ───────► Commission Engine ───► Commission Ledger (ELIGIBLE)
+│
+▼
+SUBSCRIPTION (PAID)
+│
+▼
+TENANT ACTIVE
+
+[ADMIN / GRANT PROGRAM]
+│
+▼
+GRANT_ACCESS ───────────► Commission Engine (COMMISSION_ELIGIBLE = FALSE)
+│
+▼
+SUBSCRIPTION (GRANTED / TRIAL)
+│
+▼
+TENANT ACTIVE
+```
+
+* **Core/Superadmin (`bossob`):** Bertindak sebagai *Single Source of Truth (SSOT)* melalui modul `lib/subscriptions/status.ts`.
+* **Affiliate Portal (`affiliate`):** Murni bertindak sebagai *Read-Model Projection*. Dilarang keras melakukan evaluasi status atau menghitung potensi komisi secara mandiri di frontend.
+
+---
+
+#### 4. Financial Invariants
+1. **Zero Commission on Non-Paid Access**: Tidak ada komisi affiliate yang boleh terbentuk dari mutasi status di UI, aktivasi complimentary, perpanjangan trial, maupun program grant (`isCommissionEligible = false`).
+2. **Qualifying Invoice Invariant**: Setiap entri pada buku besar komisi wajib memiliki relasi langsung ke entri invoice / order pembayaran yang terverifikasi (`order_amount > 0` dan `status = PAID`).
+3. **Audited Access & Grant Mutations**: Perpanjangan masa aktif melalui Superadmin atau pemberian status `GRANTED` wajib mencatat event audit terstruktur (`actor_id`, `target_tenant_id`, `previous_status`, `new_status`, `grant_type`, `reason`, `timestamp`) pada tabel audit log persisten.
+4. **Void Protocol for Anomaly Commissions**: Setiap transaksi komisi yang terbukti tidak memiliki invoice berbayar riil atau bernilai order 0 wajib dinyatakan VOID/INELIGIBLE secara permanen pada read-model dan ledger.
+5. **Deterministic Projection**: Endpoint proyeksi affiliate (`/api/v1/affiliate/portal` dan `/api/v1/affiliate/me`) membaca status dari SSOT `lib/subscriptions/status.ts` dan secara deterministik menghasilkan komisi Rp 0 jika status bukan `PAID`.
 
 ---
 

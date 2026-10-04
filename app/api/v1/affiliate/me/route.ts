@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
+import { getTenantSubscriptionStatus } from '@/lib/subscriptions/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -329,16 +330,17 @@ export async function GET(req: NextRequest) {
         ? (isDirect ? recruiterComm : amOverrideComm)
         : recruiterComm;
 
-      let storeStatus: 'Trial' | 'Berlangganan' | 'Expired' = 'Trial';
-      if (rawStatus === 'expired' || rawStatus === 'inactive' || t.is_active === false) {
-        storeStatus = 'Expired';
-      } else if (rawStatus === 'trial' || isTrialTier || meta.created_via === 'register_solo_trial') {
-        storeStatus = 'Trial';
-      } else if (rawStatus === 'active' || rawStatus === 'paid' || rawStatus === 'subscribed') {
-        storeStatus = 'Berlangganan';
-      } else {
-        storeStatus = 'Trial';
-      }
+      const subInfo = getTenantSubscriptionStatus(t);
+
+      // STRICT CTO RULE: Access != Payment != Commission
+      // Akun berstatus TRIAL atau GRANTED TIDAK BOLEH menghasilkan transaksi komisi (Commission Eligible = FALSE).
+      // Komisi hanya sah jika ada qualifying invoice 'PAID'.
+      const effectiveRecruiterComm = subInfo.isCommissionEligible ? recruiterComm : 0;
+      const effectiveAmOverrideComm = subInfo.isCommissionEligible ? amOverrideComm : 0;
+      const effectiveViewerComm = subInfo.isCommissionEligible ? viewerPotentialComm : 0;
+
+      // Projection status label for Affiliate Portal
+      const storeStatus = subInfo.affiliateStatus;
 
       return {
         id: t.id,
@@ -350,11 +352,15 @@ export async function GET(req: NextRequest) {
         utm_medium: meta.utm_medium || meta.medium || '-',
         utm_campaign: meta.utm_campaign || meta.campaign || '-',
         status: storeStatus,
+        domain_status: subInfo.domainStatus,
+        grant_type: subInfo.grantType,
+        commission_eligible: subInfo.isCommissionEligible,
+        label: subInfo.label,
         tier: t.tier || meta.tier || meta.plan_tier || 'STARTER',
         monthly_fee: fee,
-        potential_commission: viewerPotentialComm,
-        recruiter_commission: recruiterComm,
-        am_override_commission: amOverrideComm,
+        potential_commission: effectiveViewerComm,
+        recruiter_commission: effectiveRecruiterComm,
+        am_override_commission: effectiveAmOverrideComm,
         recruiter_id: recruiter?.id || affiliate.id,
         recruiter_name: recruiter?.name || affiliate.name || 'Mitra',
         recruiter_code: recruiter?.referral_code || affRefCode,
@@ -366,9 +372,10 @@ export async function GET(req: NextRequest) {
     const subAffiliateStats = isAM
       ? subAffiliates.map((sub: any) => {
           const subLeads = leads.filter((l: any) => l.recruiter_id === sub.id);
-          const trialCount = subLeads.filter((l: any) => l.status === 'Trial').length;
-          const subscribedCount = subLeads.filter((l: any) => l.status === 'Berlangganan').length;
-          const pipelineOmzet = subLeads.reduce((acc: number, l: any) => acc + (l.monthly_fee || 0), 0);
+          const trialCount = subLeads.filter((l: any) => l.domain_status === 'TRIAL' || l.status === 'Trial').length;
+          const subscribedCount = subLeads.filter((l: any) => l.domain_status === 'PAID' || l.status === 'Berlangganan').length;
+          const eligibleSubLeads = subLeads.filter((l: any) => l.commission_eligible);
+          const pipelineOmzet = eligibleSubLeads.reduce((acc: number, l: any) => acc + (l.monthly_fee || 0), 0);
           const subPotentialComm = subLeads.reduce((acc: number, l: any) => acc + (l.recruiter_commission || 0), 0);
           const rateVal = Number(sub.commission_rate) || 0.25;
 
@@ -394,14 +401,16 @@ export async function GET(req: NextRequest) {
 
     // 9. Calculate Overall Metrics & Separate AM Override Pool
     const totalLeads = leads.length;
-    const activeTrialStores = leads.filter((l) => l.status === 'Trial').length;
-    const activeSubscribedStores = leads.filter((l) => l.status === 'Berlangganan').length;
+    const activeTrialStores = leads.filter((l) => l.domain_status === 'TRIAL' || l.status === 'Trial').length;
+    const activeSubscribedStores = leads.filter((l) => l.domain_status === 'PAID' || l.status === 'Berlangganan').length;
     
     // Pemisahan Transaksi Direct vs Sub-Affiliate Binaan
     const subLeads = leads.filter((l: any) => !l.is_direct);
     const directLeads = leads.filter((l: any) => l.is_direct);
-    const subOmzet = subLeads.reduce((acc: number, l: any) => acc + (l.monthly_fee || 0), 0);
-    const directOmzet = directLeads.reduce((acc: number, l: any) => acc + (l.monthly_fee || 0), 0);
+    const eligibleSubLeads = subLeads.filter((l: any) => l.commission_eligible);
+    const eligibleDirectLeads = directLeads.filter((l: any) => l.commission_eligible);
+    const subOmzet = eligibleSubLeads.reduce((acc: number, l: any) => acc + (l.monthly_fee || 0), 0);
+    const directOmzet = eligibleDirectLeads.reduce((acc: number, l: any) => acc + (l.monthly_fee || 0), 0);
 
     const directPotentialCommission = directLeads.reduce((acc: number, l: any) => acc + (l.potential_commission || 0), 0);
     const downlinePotentialOverride = Math.round(subOmzet * 0.05); // Hak Murni AM 5% dari pipeline downline
@@ -411,7 +420,7 @@ export async function GET(req: NextRequest) {
       ? (directPotentialCommission + downlinePotentialOverride)
       : leads.reduce((acc, l) => acc + l.potential_commission, 0);
 
-    const totalPipelineOmzet = leads.reduce((acc, l) => acc + l.monthly_fee, 0);
+    const totalPipelineOmzet = (subOmzet + directOmzet);
     const balanceReady = Number(affiliate.balance) || 0;
     const totalWithdrawn = Number(affiliate.total_withdrawn) || 0;
 
