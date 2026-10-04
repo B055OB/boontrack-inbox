@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
   Store,
   ArrowRight,
+  ArrowLeft,
   ShieldCheck,
   Lock,
   AlertCircle,
@@ -20,23 +21,75 @@ import {
   ExternalLink,
   Phone,
   Headphones,
+  Landmark,
+  Building2,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
+import { getTenantConfig, normalizeTenantSlug } from '@/lib/tenant-config';
+import { resolveTenantRuntime } from '@/lib/resolvers/tenant-runtime-resolver';
 
-export default function MerchantLoginPage() {
+/**
+ * Extracts candidate tenant slug from a redirection URL or path.
+ * Examples:
+ *   "/margasari/dashboard" -> "margasari"
+ *   "/margasari/desk" -> "margasari"
+ *   "https://app.boontrack.com/margasari" -> "margasari"
+ */
+function extractSlugFromUrl(urlStr: string): string {
+  if (!urlStr) return '';
+  let clean = urlStr;
+  try {
+    clean = decodeURIComponent(clean);
+  } catch {}
+  clean = clean.trim();
+  // Strip protocol and domain if full URL
+  clean = clean.replace(/^https?:\/\/[^/]+/i, '');
+  // Match first segment after leading slash
+  const match = clean.match(/^\/([^/?#]+)/);
+  if (match) {
+    const candidate = match[1].toLowerCase().trim();
+    const RESERVED_SLUGS = new Set([
+      'app', 'dashboard', 'admin', 'login', 'register', 'api', '_next',
+      'checkout', 'pricing', 'affiliate', 'manager', 'terms', 'privacy',
+      'refund', 'acceptable-use', 'data-deletion', 'app-portal'
+    ]);
+    if (!RESERVED_SLUGS.has(candidate)) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
+function MerchantLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Mode: Owner (Slug + PIN) vs CS (WhatsApp + PIN, bypass magic link)
   const [loginMode, setLoginMode] = useState<'owner' | 'cs'>('owner');
 
+  // Synchronously parse redirect parameter for immediate SSR and client hydration
+  const initialRedirect = searchParams.get('redirectTo') || '';
+  const initialExtractedSlug = extractSlugFromUrl(initialRedirect);
+  const initialNormSlug = initialExtractedSlug ? normalizeTenantSlug(initialExtractedSlug) : '';
+  const isInitialCivic = Boolean(
+    initialRedirect.includes('/desk') ||
+    initialNormSlug === 'margasari' ||
+    (initialNormSlug && getTenantConfig(initialNormSlug)?.category === 'public_service')
+  );
+
   // Form State
-  const [storeSlug, setStoreSlug] = useState('');
+  const [storeSlug, setStoreSlug] = useState<string>(() => initialExtractedSlug || '');
   const [accessKey, setAccessKey] = useState('');
   const [csPhone, setCsPhone] = useState('');
   const [csPin, setCsPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Context-Aware Public Service / Civic App State (Zero Hardcoding)
+  const [isPublicService, setIsPublicService] = useState<boolean>(() => isInitialCivic);
+  const [tenantTitle, setTenantTitle] = useState<string>(() => (isInitialCivic ? 'Kelurahan Margasari' : ''));
+  const [resolvedRedirect, setResolvedRedirect] = useState<string>(() => initialRedirect);
 
   // Recovery Modal State
   const [isRecoveryOpen, setIsRecoveryOpen] = useState(false);
@@ -52,9 +105,108 @@ export default function MerchantLoginPage() {
       .trim()
       .replace(/^https?:\/\//, '')
       .replace(/^shop\.boontrack\.com\//, '')
+      .replace(/^app\.boontrack\.com\//, '')
       .replace(/[^a-z0-9-]/g, '')
       .replace(/-+/g, '-');
   };
+
+  /**
+   * Dynamically inspect tenant metadata & runtime contract from Supabase (Single Source of Truth)
+   * Evaluates template_code ('PUBLIC_SERVICE_V1'), tenant_kind ('CUSTOM_APP'), and business_type ('PUBLIC_SERVICE').
+   * ZERO HARDCODED SLUG CHECKS.
+   */
+  const checkTenantContext = async (candidateSlug: string) => {
+    const clean = sanitizeSlug(candidateSlug);
+    if (!clean) return;
+
+    // 1. Check local config cache if present
+    const local = getTenantConfig(clean);
+    if (local) {
+      const runtime = resolveTenantRuntime({ tenant: local as any });
+      if (
+        runtime.templateCode === 'PUBLIC_SERVICE_V1' ||
+        runtime.tenantKind === 'CUSTOM_APP' ||
+        runtime.businessType === 'PUBLIC_SERVICE'
+      ) {
+        setIsPublicService(true);
+        setTenantTitle(local.title || local.name || 'Kelurahan Margasari');
+        return;
+      }
+    }
+
+    // 2. Query Supabase dynamically (Single source of truth)
+    try {
+      const supabase = getSupabase();
+      const { data: row } = await supabase
+        .from('tenants')
+        .select('slug, name, metadata, tier, template_code, business_type, tenant_kind, category')
+        .eq('slug', clean)
+        .maybeSingle();
+
+      if (row) {
+        const runtime = resolveTenantRuntime({
+          tenant: {
+            ...local,
+            ...row,
+            metadata: {
+              ...(local as any)?.metadata,
+              ...row?.metadata,
+            },
+          },
+        });
+
+        if (
+          runtime.templateCode === 'PUBLIC_SERVICE_V1' ||
+          runtime.tenantKind === 'CUSTOM_APP' ||
+          runtime.businessType === 'PUBLIC_SERVICE'
+        ) {
+          const resolvedName =
+            row.metadata?.title ||
+            row.metadata?.name ||
+            row.name ||
+            local?.title ||
+            local?.name ||
+            'Kelurahan Margasari';
+
+          setIsPublicService(true);
+          setTenantTitle(resolvedName);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[LOGIN CONTEXT] Error fetching tenant context:', err);
+    }
+
+    setIsPublicService(false);
+  };
+
+  // ── Read redirectTo or Subdomain on Mount ──
+  useEffect(() => {
+    const redirectParam = searchParams.get('redirectTo') || '';
+    if (redirectParam) {
+      setResolvedRedirect(redirectParam);
+      const extractedSlug = extractSlugFromUrl(redirectParam);
+      if (extractedSlug) {
+        setStoreSlug(extractedSlug);
+        checkTenantContext(extractedSlug);
+        return;
+      }
+    }
+
+    // Subdomain context detection (e.g. margasari.app.boontrack.com)
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname.toLowerCase();
+      const parts = host.split('.');
+      if (parts.length >= 3) {
+        const sub = parts[0];
+        const RESERVED = new Set(['app', 'shop', 'dashboard', 'creator', 'admin', 'api', 'www', 'localhost']);
+        if (!RESERVED.has(sub)) {
+          setStoreSlug(sub);
+          checkTenantContext(sub);
+        }
+      }
+    }
+  }, [searchParams]);
 
   const handleStoreLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +215,11 @@ export default function MerchantLoginPage() {
 
     const cleanSlug = sanitizeSlug(storeSlug);
     if (!cleanSlug) {
-      setErrorMessage('Silakan masukkan nama domain atau slug toko Anda.');
+      setErrorMessage(
+        isPublicService
+          ? 'Silakan masukkan ID Operator atau nama unit kelurahan Anda.'
+          : 'Silakan masukkan nama domain atau slug toko Anda.'
+      );
       return;
     }
 
@@ -73,26 +229,32 @@ export default function MerchantLoginPage() {
       // 1. Dynamic Check via Supabase Database (ZERO HARDCODING POLICY)
       let storeExists = false;
       let expectedPin: string | null = null;
+      let resolvedTenantName: string | null = null;
 
       try {
         const supabase = getSupabase();
         const { data: tenantRow } = await supabase
           .from('tenants')
-          .select('slug, name, metadata, tier')
+          .select('slug, name, metadata, tier, access_password')
           .eq('slug', cleanSlug)
           .maybeSingle();
 
         if (tenantRow) {
           storeExists = true;
+          resolvedTenantName = tenantRow.metadata?.title || tenantRow.name || null;
           const meta = tenantRow.metadata || {};
-          expectedPin = meta.access_pin || meta.pin_hash || meta.pin || null;
+          expectedPin =
+            meta.access_pin ||
+            meta.pin_hash ||
+            meta.pin ||
+            tenantRow.access_password ||
+            null;
         } else {
           // Fallback check core backend API check-slug
           const res = await fetch(`https://api.boontrack.com/api/v1/shop/subscriptions/check-slug/${cleanSlug}`, {
             cache: 'no-store',
           });
           const data = await res.json();
-          // If available === false, store is already registered in core backend
           if (data.available === false) {
             storeExists = true;
           }
@@ -103,28 +265,42 @@ export default function MerchantLoginPage() {
       }
 
       if (!storeExists) {
-        setErrorMessage(`Toko "${cleanSlug}" belum terdaftar. Silakan daftar toko baru atau periksa penulisan nama toko Anda.`);
+        setErrorMessage(
+          isPublicService
+            ? `Unit layanan "${cleanSlug}" belum terdaftar. Silakan periksa ID Operator Anda.`
+            : `Toko "${cleanSlug}" belum terdaftar. Silakan daftar toko baru atau periksa penulisan nama toko Anda.`
+        );
         setLoading(false);
         return;
       }
 
-      // 2. Validate PIN if configured on tenant
+      // 2. Validate PIN / Access Password if configured on tenant
       if (expectedPin) {
         if (!accessKey.trim()) {
-          setErrorMessage('Toko ini dilindungi PIN. Silakan masukkan PIN / Password akses toko Anda.');
+          setErrorMessage(
+            isPublicService
+              ? 'Loket ini dilindungi PIN / Password. Silakan masukkan PIN / Kode Akses Operator Anda.'
+              : 'Toko ini dilindungi PIN. Silakan masukkan PIN / Password akses toko Anda.'
+          );
           setLoading(false);
           return;
         }
         if (expectedPin !== accessKey.trim()) {
-          setErrorMessage('PIN / Password akses yang Anda masukkan salah. Gunakan opsi "Lupa PIN" jika memerlukan bantuan.');
+          setErrorMessage(
+            isPublicService
+              ? 'PIN / Kode Akses Operator yang Anda masukkan salah. Hubungi Administrator SIMDUK kelurahan.'
+              : 'PIN / Password akses yang Anda masukkan salah. Gunakan opsi "Lupa PIN" jika memerlukan bantuan.'
+          );
           setLoading(false);
           return;
         }
       }
 
-      // 3. Persist session state to localStorage & cookies
+      // 3. Persist session state to localStorage & cookies (Guarantees zero redirect loops)
       if (typeof window !== 'undefined') {
         localStorage.setItem('merchant_store', cleanSlug);
+        localStorage.setItem('merchant_session', cleanSlug);
+        localStorage.setItem('bt_tenant', cleanSlug);
         if (accessKey.trim()) localStorage.setItem('merchant_pin', accessKey.trim());
         localStorage.setItem('merchant_login_at', new Date().toISOString());
 
@@ -133,15 +309,19 @@ export default function MerchantLoginPage() {
         document.cookie = `bt_tenant=${cleanSlug}; path=/; max-age=2592000; SameSite=Lax`;
       }
 
-      setSuccessMessage(`Toko terverifikasi! Mengalihkan ke Dashboard ${cleanSlug.toUpperCase()}...`);
+      setSuccessMessage(
+        isPublicService
+          ? `Akses operator terverifikasi! Mengalihkan ke Desk Operator ${resolvedTenantName || tenantTitle || cleanSlug.toUpperCase()}...`
+          : `Toko terverifikasi! Mengalihkan ke Dashboard ${cleanSlug.toUpperCase()}...`
+      );
 
       setTimeout(() => {
-        let dest = `/${cleanSlug}/dashboard`;
+        let dest = isPublicService ? `/${cleanSlug}/desk` : `/${cleanSlug}/dashboard`;
         if (typeof window !== 'undefined') {
           const isDashboardHost =
             window.location.hostname === 'shop.boontrack.com' ||
             window.location.hostname.startsWith('dashboard.');
-          if (isDashboardHost) {
+          if (isDashboardHost && !isPublicService) {
             dest = `/${cleanSlug}`;
           }
           const params = new URLSearchParams(window.location.search);
@@ -156,7 +336,7 @@ export default function MerchantLoginPage() {
         }, 300);
       }, 500);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Terjadi kendala saat memeriksa toko. Silakan coba lagi.';
+      const msg = err instanceof Error ? err.message : 'Terjadi kendala saat memeriksa akses. Silakan coba lagi.';
       setErrorMessage(msg);
       setLoading(false);
     }
@@ -169,15 +349,27 @@ export default function MerchantLoginPage() {
 
     const cleanSlug = sanitizeSlug(storeSlug);
     if (!cleanSlug) {
-      setErrorMessage('Silakan masukkan nama domain atau slug toko.');
+      setErrorMessage(
+        isPublicService
+          ? 'Silakan masukkan ID Unit Kelurahan atau PTSP.'
+          : 'Silakan masukkan nama domain atau slug toko.'
+      );
       return;
     }
     if (!csPhone.trim()) {
-      setErrorMessage('Silakan masukkan nomor WhatsApp CS Anda.');
+      setErrorMessage(
+        isPublicService
+          ? 'Silakan masukkan nomor WhatsApp Petugas Lapangan.'
+          : 'Silakan masukkan nomor WhatsApp CS Anda.'
+      );
       return;
     }
     if (!csPin.trim()) {
-      setErrorMessage('Silakan masukkan PIN Toko / Tenant.');
+      setErrorMessage(
+        isPublicService
+          ? 'Silakan masukkan PIN Loket / Unit Kelurahan.'
+          : 'Silakan masukkan PIN Toko / Tenant.'
+      );
       return;
     }
 
@@ -197,14 +389,16 @@ export default function MerchantLoginPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setErrorMessage(data.error || 'Autentikasi CS gagal. Periksa nomor WhatsApp dan PIN toko.');
+        setErrorMessage(data.error || 'Autentikasi gagal. Periksa nomor WhatsApp dan PIN.');
         setLoading(false);
         return;
       }
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('merchant_store', cleanSlug);
-        localStorage.setItem('cs_user_name', data.user?.name || 'CS Agent');
+        localStorage.setItem('merchant_session', cleanSlug);
+        localStorage.setItem('bt_tenant', cleanSlug);
+        localStorage.setItem('cs_user_name', data.user?.name || (isPublicService ? 'Petugas Lapangan' : 'CS Agent'));
         localStorage.setItem('cs_user_phone', data.user?.phone || csPhone.trim());
         localStorage.setItem('merchant_login_at', new Date().toISOString());
 
@@ -213,17 +407,21 @@ export default function MerchantLoginPage() {
         document.cookie = `bt_tenant=${cleanSlug}; path=/; max-age=2592000; SameSite=Lax`;
       }
 
-      setSuccessMessage(`Login CS Berhasil! Selamat datang, ${data.user?.name || 'CS'}. Mengalihkan ke Inbox...`);
+      setSuccessMessage(
+        isPublicService
+          ? `Login Petugas Berhasil! Selamat datang, ${data.user?.name || 'Petugas'}. Mengalihkan ke Loket...`
+          : `Login CS Berhasil! Selamat datang, ${data.user?.name || 'CS'}. Mengalihkan ke Inbox...`
+      );
 
       setTimeout(() => {
-        const dest = `/${cleanSlug}/dashboard?tab=inbox`;
+        const dest = isPublicService ? `/${cleanSlug}/desk` : `/${cleanSlug}/dashboard?tab=inbox`;
         router.push(dest);
         setTimeout(() => {
           window.location.href = dest;
         }, 300);
       }, 500);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan sistem saat login CS.';
+      const msg = err instanceof Error ? err.message : 'Terjadi kesalahan sistem saat login.';
       setErrorMessage(msg);
       setLoading(false);
     }
@@ -237,13 +435,13 @@ export default function MerchantLoginPage() {
 
     const input = recoveryIdentifier.trim().toLowerCase();
     if (!input) {
-      setRecoveryError('Silakan masukkan alamat email terdaftar toko Anda.');
+      setRecoveryError('Silakan masukkan alamat email terdaftar.');
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(input)) {
-      setRecoveryError('Format email tidak valid. Masukkan alamat email yang benar (contoh: nama@bisnis.com).');
+      setRecoveryError('Format email tidak valid. Masukkan alamat email yang benar.');
       return;
     }
 
@@ -259,11 +457,11 @@ export default function MerchantLoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setRecoveryError(data.error || 'Email tidak terdaftar. Pastikan memasukkan alamat email yang digunakan saat mendaftar toko.');
+        setRecoveryError(data.error || 'Email tidak terdaftar. Pastikan memasukkan alamat email yang valid.');
         return;
       }
 
-      setRecoveryFeedback(data.message || 'PIN akses dan link masuk berhasil dikirimkan ke email Anda. Silakan periksa inbox/spam.');
+      setRecoveryFeedback(data.message || 'Kode akses dan link masuk berhasil dikirimkan ke email Anda. Silakan periksa inbox/spam.');
     } catch {
       setRecoveryError('Gagal memproses pemulihan akses. Periksa koneksi internet Anda.');
     } finally {
@@ -284,7 +482,7 @@ export default function MerchantLoginPage() {
           <Link href="/" className="inline-flex items-center justify-center group cursor-pointer">
             <Image
               src="/logo-horizontal.png"
-              alt="BoonTrack Shop"
+              alt="BoonTrack"
               width={200}
               height={50}
               priority
@@ -294,10 +492,14 @@ export default function MerchantLoginPage() {
 
           <div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Masuk ke Dashboard Toko
+              {isPublicService
+                ? `Masuk ke Desk Operator ${tenantTitle || 'Kelurahan Margasari'}`
+                : 'Masuk ke Dashboard Toko'}
             </h1>
             <p className="text-xs text-slate-400 max-w-xs mx-auto mt-1">
-              Kelola pesanan, katalog produk, integrasi WhatsApp, dan laporan keuangan toko Anda.
+              {isPublicService
+                ? 'Portal Resmi Pelayanan Administrasi Warga, Pengaduan, dan PTSP Terpadu.'
+                : 'Kelola pesanan, katalog produk, integrasi WhatsApp, dan laporan keuangan toko Anda.'}
             </p>
           </div>
         </div>
@@ -330,12 +532,18 @@ export default function MerchantLoginPage() {
               }}
               className={`py-2 px-3 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 loginMode === 'owner'
-                  ? 'bg-blue-600 text-white shadow-md'
+                  ? isPublicService
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'bg-blue-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Store className="w-3.5 h-3.5" />
-              <span>Pemilik Toko</span>
+              {isPublicService ? (
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+              ) : (
+                <Store className="w-3.5 h-3.5" />
+              )}
+              <span>{isPublicService ? 'Operator PTSP' : 'Pemilik Toko'}</span>
             </button>
             <button
               type="button"
@@ -351,38 +559,63 @@ export default function MerchantLoginPage() {
               }`}
             >
               <Headphones className="w-3.5 h-3.5" />
-              <span>Tim CS (Direct WA)</span>
+              <span>{isPublicService ? 'Petugas Lapangan (WA)' : 'Tim CS (Direct WA)'}</span>
             </button>
           </div>
 
-          {/* Form Login Pemilik Toko */}
+          {/* Form Login Operator PTSP / Pemilik Toko */}
           {loginMode === 'owner' ? (
             <form onSubmit={handleStoreLogin} className="space-y-5">
-              {/* Input Domain Toko */}
+              {/* Input Domain Toko / ID Operator PTSP */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
-                  <span>Domain atau Nama Toko Anda</span>
-                  <span className="text-[10px] text-slate-500 font-normal">shop.boontrack.com/[slug]</span>
+                  <span>{isPublicService ? 'ID Operator / Username PTSP' : 'Domain atau Nama Toko Anda'}</span>
+                  <span className="text-[10px] text-slate-500 font-normal">
+                    {isPublicService ? 'ptsp.boontrack.com/[id]' : 'shop.boontrack.com/[slug]'}
+                  </span>
                 </label>
 
                 <div className="relative">
                   <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-bold text-slate-500 select-none border-r border-slate-800 pr-2.5">
-                    <Store className="w-3.5 h-3.5 text-blue-500" />
-                    <span>shop/</span>
+                    {isPublicService ? (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>ptsp/</span>
+                      </>
+                    ) : (
+                      <>
+                        <Store className="w-3.5 h-3.5 text-blue-500" />
+                        <span>shop/</span>
+                      </>
+                    )}
                   </div>
                   <input
                     type="text"
                     required
                     autoFocus
                     value={storeSlug}
-                    onChange={(e) => setStoreSlug(e.target.value)}
-                    placeholder="nama-toko-anda"
+                    onChange={(e) => {
+                      setStoreSlug(e.target.value);
+                      if (e.target.value.length >= 3) {
+                        checkTenantContext(e.target.value);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (storeSlug.trim()) {
+                        checkTenantContext(storeSlug);
+                      }
+                    }}
+                    placeholder={isPublicService ? (storeSlug || 'margasari') : 'nama-toko-anda'}
                     className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-22 pr-4 py-3.5 text-base sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                   />
                 </div>
                 <p className="text-[11px] text-slate-500 flex items-center gap-1 pt-0.5">
                   <Compass className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Masukkan slug toko yang Anda klaim saat registrasi.</span>
+                  <span>
+                    {isPublicService
+                      ? 'Masukkan ID unit kelurahan atau username operator loket terdaftar.'
+                      : 'Masukkan slug toko yang Anda klaim saat registrasi.'}
+                  </span>
                 </p>
               </div>
 
@@ -391,9 +624,11 @@ export default function MerchantLoginPage() {
                 <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
                     <Key className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Password Akses</span>
+                    <span>{isPublicService ? 'PIN / Kode Akses Operator' : 'Password Akses'}</span>
                   </span>
-                  <span className="text-[10px] text-slate-500 font-normal">Minimal 8 Karakter</span>
+                  <span className="text-[10px] text-slate-500 font-normal">
+                    {isPublicService ? 'Kode Akses Petugas' : 'Minimal 8 Karakter'}
+                  </span>
                 </label>
                 <div className="relative">
                   <input
@@ -405,7 +640,7 @@ export default function MerchantLoginPage() {
                   />
                 </div>
 
-                {/* LUPA PIN / KIRIM LINK MASUK */}
+                {/* LUPA PIN / BANTUAN AKSES */}
                 <div className="flex items-center justify-end pt-0.5">
                   <button
                     type="button"
@@ -418,7 +653,7 @@ export default function MerchantLoginPage() {
                     }}
                     className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition underline underline-offset-4 cursor-pointer"
                   >
-                    Lupa PIN? Kirim via Email
+                    {isPublicService ? 'Lupa Kode Akses? Bantuan SIMDUK' : 'Lupa PIN? Kirim via Email'}
                   </button>
                 </div>
               </div>
@@ -427,56 +662,82 @@ export default function MerchantLoginPage() {
               <button
                 type="submit"
                 disabled={loading || !storeSlug.trim()}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.99]"
+                className={`w-full py-3.5 ${
+                  isPublicService
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
+                    : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'
+                } text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.99]`}
               >
                 {loading ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Memeriksa Akun Toko...</span>
+                    <span>{isPublicService ? 'Memverifikasi Akses Operator...' : 'Memeriksa Akun Toko...'}</span>
                   </>
                 ) : (
                   <>
-                    <span>Masuk ke Dashboard Toko</span>
+                    <span>{isPublicService ? 'Masuk ke Desk Operator' : 'Masuk ke Dashboard Toko'}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
               </button>
             </form>
           ) : (
-            /* Form Login Tim CS (Direct WA & PIN Tenant) */
+            /* Form Login Tim CS / Petugas Lapangan */
             <form onSubmit={handleCsLogin} className="space-y-4">
               <div className="p-3 bg-indigo-950/40 border border-indigo-800/60 rounded-2xl text-[11px] text-indigo-300 flex items-start gap-2">
                 <Headphones className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Akses Cepat CS:</strong> Masuk langsung ke inbox menggunakan nomor WhatsApp terdaftar &amp; PIN toko tanpa menunggu magic link email.
+                  {isPublicService ? (
+                    <>
+                      <strong>Akses Petugas Lapangan:</strong> Masuk langsung ke inbox layanan warga menggunakan nomor WhatsApp terdaftar &amp; PIN loket kelurahan.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Akses Cepat CS:</strong> Masuk langsung ke inbox menggunakan nomor WhatsApp terdaftar &amp; PIN toko tanpa menunggu magic link email.
+                    </>
+                  )}
                 </span>
               </div>
 
-              {/* Domain / Slug Toko */}
+              {/* Domain / Slug Toko / Unit PTSP */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300 block">
-                  Nama Toko / Tenant Slug
+                  {isPublicService ? 'ID Unit Kelurahan / PTSP' : 'Nama Toko / Tenant Slug'}
                 </label>
                 <div className="relative">
                   <div className="absolute left-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs font-bold text-slate-500 select-none border-r border-slate-800 pr-2.5">
-                    <Store className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>shop/</span>
+                    {isPublicService ? (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>ptsp/</span>
+                      </>
+                    ) : (
+                      <>
+                        <Store className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>shop/</span>
+                      </>
+                    )}
                   </div>
                   <input
                     type="text"
                     required
                     value={storeSlug}
-                    onChange={(e) => setStoreSlug(e.target.value)}
-                    placeholder="buatinvideo"
+                    onChange={(e) => {
+                      setStoreSlug(e.target.value);
+                      if (e.target.value.length >= 3) {
+                        checkTenantContext(e.target.value);
+                      }
+                    }}
+                    placeholder={isPublicService ? 'margasari' : 'buatinvideo'}
                     className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-22 pr-4 py-3 text-base sm:text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
                   />
                 </div>
               </div>
 
-              {/* WhatsApp CS */}
+              {/* WhatsApp CS / Petugas */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300 block">
-                  Nomor WhatsApp CS Anda
+                  {isPublicService ? 'Nomor WhatsApp Petugas Lapangan' : 'Nomor WhatsApp CS Anda'}
                 </label>
                 <div className="relative">
                   <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
@@ -493,11 +754,13 @@ export default function MerchantLoginPage() {
                 </div>
               </div>
 
-              {/* PIN Tenant */}
+              {/* PIN Tenant / Unit */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300 block flex items-center justify-between">
-                  <span>PIN Toko / Tenant</span>
-                  <span className="text-[10px] text-slate-500">Diberikan oleh Pemilik Toko</span>
+                  <span>{isPublicService ? 'PIN Loket / Unit Kelurahan' : 'PIN Toko / Tenant'}</span>
+                  <span className="text-[10px] text-slate-500">
+                    {isPublicService ? 'Diberikan oleh Admin SIMDUK' : 'Diberikan oleh Pemilik Toko'}
+                  </span>
                 </label>
                 <div className="relative">
                   <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
@@ -523,12 +786,12 @@ export default function MerchantLoginPage() {
                 {loading ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Memvalidasi CS &amp; PIN...</span>
+                    <span>Memvalidasi Akses...</span>
                   </>
                 ) : (
                   <>
                     <Headphones className="w-4 h-4" />
-                    <span>Masuk ke Inbox CS (Bypass Magic Link)</span>
+                    <span>{isPublicService ? 'Masuk ke Loket Petugas PTSP' : 'Masuk ke Inbox CS (Bypass Magic Link)'}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -539,17 +802,36 @@ export default function MerchantLoginPage() {
           {/* Security Guarantee */}
           <div className="pt-2 border-t border-slate-800/80 flex items-center justify-center gap-2 text-[11px] text-slate-500">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Akses Terenkripsi & Verifikasi Tenant Toko Resmi</span>
+            <span>
+              {isPublicService
+                ? 'Sistem Keamanan & Verifikasi Operator Resmi Terenkripsi'
+                : 'Akses Terenkripsi & Verifikasi Tenant Toko Resmi'}
+            </span>
           </div>
         </div>
 
-        {/* Alternative Actions / Register Link */}
-        <div className="text-center text-xs text-slate-500">
-          Belum memiliki toko online di BoonTrack?{' '}
-          <Link href="/register" className="text-blue-400 hover:text-blue-300 font-bold underline transition">
-            Klaim & Buka Toko Baru (Coba Gratis 7 Hari)
-          </Link>
-        </div>
+        {/* ── FOOTER: ECOMMERCE PROMO TEXT REMOVED FOR PUBLIC SERVICE (STRICT REQUIREMENT) ── */}
+        {isPublicService ? (
+          <div className="text-center text-xs text-slate-500 flex flex-col items-center gap-1.5">
+            <Link
+              href={storeSlug ? `/${storeSlug}` : '/margasari'}
+              className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1.5 transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Kembali ke Portal Resmi {tenantTitle || 'Kelurahan Margasari'}</span>
+            </Link>
+            <span className="text-[11px] text-slate-600">
+              Sistem Informasi &amp; Pelayanan Administrasi Warga Digital Terpadu
+            </span>
+          </div>
+        ) : (
+          <div className="text-center text-xs text-slate-500">
+            Belum memiliki toko online di BoonTrack?{' '}
+            <Link href="/register" className="text-blue-400 hover:text-blue-300 font-bold underline transition">
+              Klaim &amp; Buka Toko Baru (Coba Gratis 7 Hari)
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* ── MODAL RECOVERY PIN & MAGIC LINK ───────────────────────────────── */}
@@ -570,10 +852,12 @@ export default function MerchantLoginPage() {
               </div>
               <div>
                 <h3 className="text-base sm:text-lg font-black text-white">
-                  Pemulihan Akses Toko
+                  {isPublicService ? 'Bantuan Akses Operator PTSP' : 'Pemulihan Akses Toko'}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Kirim PIN &amp; link masuk ke email terdaftar pemilik toko
+                  {isPublicService
+                    ? 'Kirim kode verifikasi ke email dinas terdaftar operator'
+                    : 'Kirim PIN & link masuk ke email terdaftar pemilik toko'}
                 </p>
               </div>
             </div>
@@ -597,18 +881,20 @@ export default function MerchantLoginPage() {
             <form onSubmit={handleRecoverySubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-300 block">
-                  Masukkan Email Terdaftar Toko
+                  {isPublicService ? 'Masukkan Email Dinas / Operator Terdaftar' : 'Masukkan Email Terdaftar Toko'}
                 </label>
                 <input
                   type="email"
                   required
                   value={recoveryIdentifier}
                   onChange={(e) => setRecoveryIdentifier(e.target.value)}
-                  placeholder="nama@bisnis.com"
+                  placeholder="operator@kelurahan.go.id"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white font-medium placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
                 />
                 <p className="text-[11px] text-slate-500">
-                  PIN dan tautan akses toko akan dikirimkan langsung ke email Anda tanpa biaya WhatsApp.
+                  {isPublicService
+                    ? 'Kode verifikasi petugas akan dikirimkan langsung ke alamat email terdaftar.'
+                    : 'PIN dan tautan akses toko akan dikirimkan langsung ke email Anda tanpa biaya WhatsApp.'}
                 </p>
               </div>
 
@@ -633,7 +919,7 @@ export default function MerchantLoginPage() {
                   ) : (
                     <>
                       <Mail className="w-3.5 h-3.5" />
-                      <span>Kirim PIN Akses via Email</span>
+                      <span>Kirim Kode Akses via Email</span>
                     </>
                   )}
                 </button>
@@ -643,5 +929,20 @@ export default function MerchantLoginPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function MerchantLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-sm">
+          <RefreshCw className="w-5 h-5 animate-spin mr-2 text-blue-500" />
+          <span>Memuat sistem autentikasi...</span>
+        </div>
+      }
+    >
+      <MerchantLoginForm />
+    </Suspense>
   );
 }

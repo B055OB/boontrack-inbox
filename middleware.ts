@@ -362,6 +362,13 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(targetUrl, 307);
       }
 
+      // ── DIRECT DESK ROUTE: Direct operator access without circular redirect ──
+      if (segments[1] === 'desk') {
+        const url = req.nextUrl.clone();
+        url.pathname = `/${tenantSlug}/desk`;
+        return NextResponse.rewrite(url);
+      }
+
       // ── TENANT AUTH GUARD & ISOLATION CHECK (P0 SECURITY) ──
       // Incognito / unauthenticated / wrong tenant cookie langsung di-redirect ke /login
       if (!hasValidTenantSession(req, tenantSlug)) {
