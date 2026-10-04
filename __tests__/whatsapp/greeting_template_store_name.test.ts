@@ -163,6 +163,7 @@ describe('Greeting Template Store Name Resolution (Zero UUID Leak)', () => {
       session_id: 'sess-test-123',
       tenant_id: '46cf50c6-18ff-4c1d-88a4-d86001d754c7',
       user_identifier: '6281237450222',
+      channel: 'WHATSAPP',
       message: 'Halo mau tanya produk',
     });
 
