@@ -60,11 +60,26 @@ async function ensureTenantConnectionRecord(
   tenantSlug: string,
   instanceName: string,
   mode: "DEDICATED" | "SHARED" = "DEDICATED",
-  status: string = "close"
+  status: string = "close",
+  phoneNumber?: string | null
 ) {
   try {
     const supabase = getSupabaseAdmin();
     if (!supabase) return;
+
+    const normalizedStatus = String(status || '').toLowerCase().trim();
+    const isConn = normalizedStatus === 'open' || normalizedStatus === 'connected';
+    let mappedStatus: 'open' | 'close' | 'connecting' | 'refused' = 'close';
+    if (isConn) {
+      mappedStatus = 'open';
+    } else if (normalizedStatus === 'connecting') {
+      mappedStatus = 'connecting';
+    } else if (normalizedStatus === 'refused') {
+      mappedStatus = 'refused';
+    }
+
+    const cleanPhone = phoneNumber ? phoneNumber.replace(/\D/g, '') : undefined;
+
     await supabase.from("whatsapp_connections").upsert(
       {
         tenant_id: tenantSlug,
@@ -72,7 +87,9 @@ async function ensureTenantConnectionRecord(
         instance_name: instanceName,
         provider: "EVOLUTION",
         channel_type: "BAILEYS",
-        status: status || "close",
+        status: mappedStatus,
+        is_connected: isConn,
+        ...(cleanPhone ? { phone_number: cleanPhone } : {}),
         metadata: {
           mode,
           instance_name: instanceName,
@@ -376,7 +393,7 @@ export async function POST(req: NextRequest) {
           cleanPhoneJid(info?.ownerJid || stateCheck.data?.instance?.ownerJid)
         ) || null;
 
-      await ensureTenantConnectionRecord(tenantSlug, activeInstanceName, mode, "open");
+      await ensureTenantConnectionRecord(tenantSlug, activeInstanceName, mode, "open", resolvedPhone);
 
       return NextResponse.json({
         success: true,
@@ -413,7 +430,7 @@ export async function POST(req: NextRequest) {
       const resolvedPhone =
         sanitizeMerchantPhone(cleanPhoneJid(data?.instance?.ownerJid || data?.connected_phone) || registryConfig.phone_number) || null;
 
-      await ensureTenantConnectionRecord(tenantSlug, targetInstance, mode, "open");
+      await ensureTenantConnectionRecord(tenantSlug, targetInstance, mode, "open", resolvedPhone);
 
       return NextResponse.json({
         success: true,
@@ -461,7 +478,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await ensureTenantConnectionRecord(tenantSlug, targetInstance, mode, "close");
+    await ensureTenantConnectionRecord(tenantSlug, targetInstance, mode, "connecting");
 
     return NextResponse.json({
       success: true,

@@ -208,13 +208,21 @@ export async function POST(
       ? `Akses materi digital Anda dapat dibuka di: ${accessUrl}`
       : 'Akses produk digital Anda sedang disiapkan oleh admin toko.';
 
+    const linkedConversationId =
+      order.metadata?.conversation_id ||
+      (order.conversation_id && isValidUuid(order.conversation_id) ? order.conversation_id : null) ||
+      (isValidUuid(orderId) ? orderId : null);
+
     try {
       await supabase.from('messages').insert({
         tenant_slug: slug,
-        ...(isValidUuid(orderId) ? { conversation_id: orderId } : {}),
+        tenant_id: order.tenant_id,
+        ...(linkedConversationId ? { conversation_id: linkedConversationId } : {}),
         sender: 'System AI',
+        sender_type: 'system',
         channel: 'order_fulfillment',
         text: `Pembayaran pesanan #${orderId} (${order.product_title || 'Produk Digital'}) telah terverifikasi LUNAS (PAID). ${fulfillmentNotice}`,
+        created_at: paidAt,
       });
     } catch { }
 

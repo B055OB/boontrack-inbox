@@ -490,7 +490,8 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
           created_at: nowIso,
         });
 
-        // 4b. Update conversations table and pause bot for human takeover
+        // 4b. Update conversations table and pause bot for human takeover (24-hour timeout sync)
+        const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         await supabase
           .from('conversations')
           .update({
@@ -501,6 +502,35 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
             updated_at: nowIso,
           })
           .eq('id', activeConversation.id);
+
+        const targetTenantId = effectiveTenantId || effectiveTenantSlug;
+        const cleanCustPhone = customerPhone ? customerPhone.replace(/\D/g, '') : '';
+        if (targetTenantId && cleanCustPhone) {
+          try {
+            await supabase.from('conversation_sessions').upsert(
+              {
+                tenant_id: targetTenantId,
+                session_id: `wa_${targetTenantId}_${cleanCustPhone}`,
+                channel: 'WHATSAPP',
+                user_identifier: cleanCustPhone,
+                current_state: 'HANDOVER_TO_HUMAN',
+                is_paused: true,
+                paused_at: nowIso,
+                paused_by: 'cs_dashboard_reply',
+                paused_until: pausedUntilIso,
+                metadata: {
+                  auto_pause: true,
+                  triggered_by: 'cs_dashboard_reply',
+                  paused_at: nowIso,
+                },
+                updated_at: nowIso,
+              },
+              { onConflict: 'tenant_id,user_identifier' }
+            );
+          } catch (sessErr) {
+            console.warn('[useTenantInbox] Session pause note:', sessErr);
+          }
+        }
 
         // 4c. Outbound dispatch via Evolution API if instance exists
         try {

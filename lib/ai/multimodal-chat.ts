@@ -292,7 +292,14 @@ export async function processMultimodalChat(
           return (isStatePaused || isFlagPaused) && (!pUntil || pUntil.getTime() > Date.now());
         });
 
-        if (pausedConv || pausedSess) {
+        const hasExpiredSess = (sessData || []).some((s: any) => {
+          const isStatePaused = s.current_state === 'HANDOVER_TO_HUMAN' || s.current_state === 'PAUSED' || s.current_state === 'human_takeover';
+          const isFlagPaused = Boolean(s.is_paused) || Boolean(s.metadata?.is_bot_paused);
+          const pUntil = s.paused_until ? new Date(s.paused_until) : null;
+          return (isStatePaused || isFlagPaused) && pUntil && pUntil.getTime() <= Date.now();
+        });
+
+        if (pausedSess || (pausedConv && !hasExpiredSess)) {
           console.info(`[Multimodal Chat Muted] Kontak '${targetPhone}' sedang dalam status JEDA BOT / HUMAN TAKEOVER. Bypass response.`);
           return {
             success: true,

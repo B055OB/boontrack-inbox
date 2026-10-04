@@ -285,13 +285,18 @@ export default function TeamChatTab({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedCsName = localStorage.getItem('cs_user_name');
-      const savedCsPhone = localStorage.getItem('cs_user_phone');
+      const cleanSlug = resolvedTenant || tenantSlug || '';
+      const savedCsName =
+        (cleanSlug ? localStorage.getItem(`cs_user_name_${cleanSlug}`) : null) ||
+        localStorage.getItem('cs_user_name');
+      const savedCsPhone =
+        (cleanSlug ? localStorage.getItem(`cs_user_phone_${cleanSlug}`) : null) ||
+        localStorage.getItem('cs_user_phone');
       if (savedCsName && savedCsPhone) {
         setActiveCsUser({ name: savedCsName, phone: savedCsPhone });
       }
     }
-  }, []);
+  }, [resolvedTenant, tenantSlug]);
 
   // Dynamic Tenant Payment Config & Multi-Tenant Bank Accounts (Zero Hardcoding)
   const [tenantPaymentData, setTenantPaymentData] = useState<any>(() => {
@@ -831,14 +836,24 @@ export default function TeamChatTab({
   // Quick POS: Generate QRIS Tagihan Dinamis & Trigger Meta CAPI InitiateCheckout
   const handleGenerateQris = async () => {
     if (!currentConversation) return;
-    const num = parseInt(qrisAmount.replace(/[^0-9]/g, ''), 10) || 100000;
+    const sanitizedRaw = qrisAmount.replace(/[^0-9]/g, '');
+    let num = parseInt(sanitizedRaw, 10);
+    if (isNaN(num) || num < 1000) {
+      num = 100000;
+    }
     const itemName = qrisItemName.trim() || 'Jasa Video Promosi';
     setIsGeneratingQris(true);
     setQrisFeedback(null);
 
     try {
-      const realOrderId = `ORD-POS-${Date.now().toString().slice(-6)}`;
-      const nowIso = new Date().toISOString();
+      const now = new Date();
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const datePart = `${yy}${mm}${dd}`;
+      const hexPart = Math.random().toString(16).substring(2, 8).toUpperCase().padEnd(6, '0');
+      const realOrderId = `ORD-POS-${datePart}-${hexPart}`;
+      const nowIso = now.toISOString();
 
       // 1. Ekstraksi string static QRIS tenant & konversi ke Dynamic QRIS terkunci angka pas
       const rawStaticQris =
@@ -858,13 +873,14 @@ export default function TeamChatTab({
       const rawPayUrl = getStorefrontPayUrl(resolvedTenant, paymentToken);
       const payUrl = rawPayUrl.startsWith('http') ? rawPayUrl : `https://shop.boontrack.com${rawPayUrl}`;
 
-      // 2. Simpan order ke Supabase orders table
+      // 2. Simpan order ke Supabase orders table (dengan 1:1 conversation linkage)
       const supabase = getSupabase();
       if (supabase) {
         await supabase.from('orders').insert({
           id: realOrderId,
           correlation_id: paymentToken,
           metadata: {
+            conversation_id: currentConversation.id,
             public_payment_token: paymentToken,
             payment_token: paymentToken,
             pay_url: payUrl,
@@ -1051,12 +1067,24 @@ export default function TeamChatTab({
   // Quick POS: Kirim Tagihan Rekening Bank Manual ke Chat & Trigger CAPI InitiateCheckout
   const handleSendBankTransferInfo = async () => {
     if (!currentConversation || bankAccounts.length === 0) return;
-    const baseAmt = parseInt(qrisAmount.replace(/[^0-9]/g, ''), 10) || 100000;
+    const sanitizedRaw = qrisAmount.replace(/[^0-9]/g, '');
+    let baseAmt = parseInt(sanitizedRaw, 10);
+    if (isNaN(baseAmt) || baseAmt < 1000) {
+      baseAmt = 100000;
+    }
     const uniqueCode = Math.floor(1 + Math.random() * 999);
     const totalWithCode = baseAmt + uniqueCode;
     const selectedBank = bankAccounts[selectedBankIdx] || bankAccounts[0];
     const itemName = qrisItemName.trim() || 'Jasa Video Promosi';
-    const realOrderId = `ORD-POS-${Date.now().toString().slice(-6)}`;
+
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const datePart = `${yy}${mm}${dd}`;
+    const hexPart = Math.random().toString(16).substring(2, 8).toUpperCase().padEnd(6, '0');
+    const realOrderId = `ORD-POS-${datePart}-${hexPart}`;
+    const nowIso = now.toISOString();
 
     setIsSendingBankInfo(true);
     setQrisFeedback(null);
@@ -1081,16 +1109,16 @@ export default function TeamChatTab({
         `📄 *Invoice Digital:* ${invoiceLink}\n\n` +
         `⚠️ *Penting:* Harap transfer tepat hingga digit terakhir agar verifikasi otomatis berjalan lancar. Anda juga dapat mengunggah bukti transfer langsung lewat tautan invoice resmi di atas. Terima kasih! 🙏`;
 
-      // Simpan pesanan di tabel orders Supabase
+      // Simpan pesanan di tabel orders Supabase (dengan 1:1 conversation linkage)
       const supabase = getSupabase();
       if (supabase) {
-        const nowIso = new Date().toISOString();
         await supabase.from('orders').insert({
           id: realOrderId,
           order_id: realOrderId,
           invoice_no: realOrderId,
           correlation_id: paymentToken,
           metadata: {
+            conversation_id: currentConversation.id,
             public_payment_token: paymentToken,
             payment_token: paymentToken,
             pay_url: payUrl,
@@ -1225,36 +1253,20 @@ export default function TeamChatTab({
         }
       }
 
-      // 2. Dispatch to Next.js Quick-Paid route (Updates DB, dispatches Meta CAPI Purchase with EMQ hashing, & sends email)
+      // 2. Dispatch to Next.js Quick-Paid route (Single Source of Truth: updates DB, dispatches Meta CAPI Purchase with EMQ hashing, & sends email)
       try {
-        await fetch(
+        const qpRes = await fetch(
           `/api/v1/tenants/${encodeURIComponent(resolvedTenant)}/orders/${encodeURIComponent(orderId)}/quick-paid`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
           }
         );
+        if (!qpRes.ok) {
+          console.warn('[Mark Paid] Quick-paid non-OK status:', qpRes.status);
+        }
       } catch (qpErr) {
         console.warn('[Mark Paid] Quick-paid dispatch note:', qpErr);
-      }
-
-      // 3. Fallback direct dispatch to Meta CAPI Purchase route
-      try {
-        fetch('/api/v1/tracking/capi', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tenantSlug: resolvedTenant,
-            eventName: 'Purchase',
-            orderId,
-            amount: orderGrossAmount || undefined,
-            customerPhone: custPhone,
-            customerName: currentConversation?.customerName,
-            contentName: orderTitle,
-          }),
-        }).catch((cErr) => console.warn('[Mark Paid] CAPI Purchase fallback note:', cErr));
-      } catch (cErr) {
-        console.warn('[Mark Paid] CAPI Purchase trigger note:', cErr);
       }
 
       // 4. Update Supabase orders table & send WhatsApp confirmation
@@ -1424,10 +1436,14 @@ export default function TeamChatTab({
       setTransferFeedback('Pilih CS tujuan terlebih dahulu.');
       return;
     }
+    const selectedMember = teamMembers.find((m) => m.name === targetAgent || m.id === targetAgent);
+    const assignedAgentId = selectedMember?.id || null;
+    const assignedAgentName = selectedMember?.name || targetAgent;
+
     try {
       const supabase = getSupabase();
       if (supabase) {
-        const sysMsgText = `Percakapan berhasil dialihkan ke ${targetAgent}.`;
+        const sysMsgText = `Percakapan berhasil dialihkan ke ${assignedAgentName}.`;
         await supabase.from('messages').insert({
           conversation_id: currentConversation.id,
           tenant_id: tenantId || resolvedTenant,
@@ -1439,16 +1455,18 @@ export default function TeamChatTab({
           created_at: new Date().toISOString(),
         });
         await supabase.from('conversations').update({
-          assigned_agent_name: targetAgent,
+          assigned_agent_id: assignedAgentId,
+          assigned_agent_name: assignedAgentName,
           last_message: sysMsgText,
           last_message_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         }).eq('id', currentConversation.id);
       }
     } catch (e) {
       console.warn('[Transfer] Error:', e);
     }
     await inbox.refreshConversations();
-    setTransferFeedback(`✅ Chat dialihkan ke ${targetAgent}`);
+    setTransferFeedback(`✅ Chat dialihkan ke ${assignedAgentName}`);
     setTimeout(() => setTransferFeedback(null), 3000);
   };
 
@@ -3123,6 +3141,12 @@ export default function TeamChatTab({
         tenantSlug={resolvedTenant}
         onSuccess={(csUser) => {
           setActiveCsUser(csUser);
+          if (typeof window !== 'undefined' && resolvedTenant) {
+            try {
+              localStorage.setItem(`cs_user_name_${resolvedTenant}`, csUser.name);
+              localStorage.setItem(`cs_user_phone_${resolvedTenant}`, csUser.phone);
+            } catch (_) {}
+          }
         }}
       />
     </div>

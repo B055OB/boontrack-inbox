@@ -22,6 +22,7 @@ import {
   resolveTenantFromConnection,
   persistInboundMessage,
   persistOutboundMessage,
+  cleanCustomerPhone,
 } from '@/lib/whatsapp/inbox-persistence';
 import { resolveBoonPilotSender } from '@/lib/boonpilot/sender-resolver';
 import { processBoonPilotPlatformChat } from '@/lib/boonpilot/platform-engine';
@@ -85,6 +86,7 @@ export async function getEvolutionMediaBase64(
         message: payloadBody,
         convertToMp4: false,
       }),
+      signal: AbortSignal.timeout(10000),
     });
 
     if (res.ok) {
@@ -134,6 +136,7 @@ export async function sendEvolutionTextMessage(
         number: cleanNumber,
         text: text.trim(),
       }),
+      signal: AbortSignal.timeout(8000),
     });
 
     return res.ok;
@@ -161,20 +164,40 @@ export async function processEvolutionWebhookEvent(
 
   // 1. Handle Connection Status Update
   if (rawEvent.includes('CONNECTION') || rawEvent.includes('STATUS')) {
-    const state = payload.data?.state || payload.state;
-    const resolvedStatus = state === 'open' ? 'CONNECTED' : state === 'close' ? 'DISCONNECTED' : 'CONNECTING';
+    const stateRaw = String(payload.data?.state || payload.state || payload.data?.status || payload.status || '').toLowerCase().trim();
+    let resolvedStatus: 'open' | 'close' | 'connecting' | 'refused' = 'connecting';
+    let isConnected = false;
+
+    if (stateRaw === 'open' || stateRaw === 'connected') {
+      resolvedStatus = 'open';
+      isConnected = true;
+    } else if (stateRaw === 'close' || stateRaw === 'closed' || stateRaw === 'disconnected' || stateRaw === 'logged_out') {
+      resolvedStatus = 'close';
+      isConnected = false;
+    } else if (stateRaw === 'refused') {
+      resolvedStatus = 'refused';
+      isConnected = false;
+    } else if (stateRaw === 'connecting') {
+      resolvedStatus = 'connecting';
+      isConnected = false;
+    }
+
+    const rawOwnerPhone = payload.data?.ownerJid || payload.owner || payload.data?.owner || payload.data?.connected_phone;
+    const cleanOwnerPhone = rawOwnerPhone ? cleanCustomerPhone(String(rawOwnerPhone)) : null;
 
     if (supabase && instanceName) {
       await supabase
         .from('whatsapp_connections')
         .update({
           status: resolvedStatus,
+          is_connected: isConnected,
+          ...(cleanOwnerPhone ? { phone_number: cleanOwnerPhone } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('instance_name', instanceName);
     }
 
-    return { success: true, processed: 1, event: rawEvent };
+    return { success: true, processed: 1, event: rawEvent, status: resolvedStatus };
   }
 
   // 2. Resolve Tenant Identity from whatsapp_connections dynamically (Zero Hardcoding)
@@ -307,6 +330,72 @@ export async function processEvolutionWebhookEvent(
             }
           }
           processedCount++;
+          continue;
+        } else {
+          // Auto-Pause via Mobile: Pesan keluar dari HP (fromMe === true non-command) wajib mengubah
+          // conversation_sessions.is_paused = true (HANDOVER_TO_HUMAN) dan mencatat balasan CS ke tabel messages.
+          const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+          console.info(`[Human Takeover] Mobile CS outbound message to ${senderPhone} on tenant ${tenantId}. Auto-pausing bot.`);
+          if (supabase) {
+            try {
+              const csTable = supabase.from('conversation_sessions');
+              if (typeof csTable?.upsert === 'function') {
+                await csTable.upsert({
+                  tenant_id: tenantId,
+                  session_id: `wa_${tenantId}_${senderPhone}`,
+                  channel: 'WHATSAPP',
+                  user_identifier: senderPhone,
+                  current_state: 'HANDOVER_TO_HUMAN',
+                  is_paused: true,
+                  paused_at: nowIso,
+                  paused_by: 'cs_mobile_outbound',
+                  paused_until: pausedUntilIso,
+                  metadata: {
+                    auto_pause: true,
+                    triggered_by: 'cs_mobile_outbound',
+                    paused_at: nowIso,
+                  },
+                  updated_at: nowIso,
+                }, { onConflict: 'tenant_id,user_identifier' });
+              }
+
+              const phoneVariants = [senderPhone, cleanCustomerPhone(senderPhone)].filter(Boolean);
+              const convTable = supabase.from('conversations');
+              if (typeof convTable?.update === 'function') {
+                let uQ = convTable.update({
+                  bot_paused: true,
+                  bot_mode: 'HUMAN_ACTIVE',
+                  status: 'paused',
+                  last_message: textBodyEarly || 'Pesan terkirim dari CS',
+                  last_message_at: nowIso,
+                  updated_at: nowIso,
+                });
+                if (typeof uQ?.or === 'function') {
+                  uQ = uQ.or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantId}`);
+                }
+                if (typeof uQ?.in === 'function') {
+                  await uQ.in('customer_phone', phoneVariants);
+                } else if (typeof uQ?.eq === 'function') {
+                  await uQ.eq('customer_phone', senderPhone);
+                }
+              }
+
+              if (textBodyEarly) {
+                await persistOutboundMessage({
+                  tenantId,
+                  tenantSlug: tenantSlug || tenantId,
+                  customerPhone: senderPhone,
+                  senderType: 'agent',
+                  senderName: 'CS Manual (WhatsApp HP)',
+                  messageBody: textBodyEarly,
+                  externalId: key.id || undefined,
+                });
+              }
+            } catch (hErr) {
+              console.warn('[Evolution Webhook] Mobile CS auto-pause error:', hErr);
+            }
+          }
+          // Outbound message - don't increment processedCount (inbound counter)
           continue;
         }
       }
@@ -716,10 +805,6 @@ export async function processEvolutionWebhookEvent(
         const phoneVariants = Array.from(new Set([senderPhone, cleanSender, phone62, phone08])).filter(Boolean);
         const tenantTokens = Array.from(new Set([tenantId, tenantSlug].filter(Boolean))) as string[];
 
-        // A. Cek tabel conversations (Toggle Jeda Bot di Menu Inbox)
-        let isConvPaused = false;
-        let convPauseReason = '';
-
         const uuidTokens = tenantTokens.filter(tok => /^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(tok));
         const slugTokens = tenantTokens.filter(tok => !/^[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}$/i.test(tok));
 
@@ -732,57 +817,117 @@ export async function processEvolutionWebhookEvent(
           convOrClause = `tenant_slug.in.(${slugTokens.join(',')})`;
         }
 
-        const convQuery = supabase
-          .from('conversations')
-          .select('id, bot_paused, bot_mode, status')
-          .or(convOrClause)
-          .in('customer_phone', phoneVariants)
-          .limit(5);
-
-        const { data: convData } = await convQuery;
-        if (Array.isArray(convData) && convData.length > 0) {
-          const pausedConv = convData.find((c: any) =>
-            c.bot_paused === true ||
-            c.is_bot_paused === true ||
-            c.is_bot_active === false ||
-            c.bot_mode === 'HUMAN_ACTIVE' ||
-            c.status === 'paused' ||
-            c.status === 'human_takeover'
-          );
-
-          if (pausedConv) {
-            isConvPaused = true;
-            convPauseReason = `conversations table (id: ${pausedConv.id}, bot_paused: ${pausedConv.bot_paused}, bot_mode: ${pausedConv.bot_mode}, status: ${pausedConv.status})`;
-          }
-        }
-
-        // B. Cek tabel conversation_sessions (Session Level Pause / Handover)
+        // B. Cek tabel conversation_sessions (Session Level Pause / Handover & Timeout Expiry)
         let isSessionPaused = false;
+        let isSessionExpired = false;
         let sessionPauseReason = '';
 
-        const sessQuery = supabase
+        let sessQuery: any = supabase
           .from('conversation_sessions')
-          .select('current_state, is_paused, paused_until, paused_at, paused_by, metadata')
-          .in('tenant_id', tenantTokens)
-          .in('user_identifier', phoneVariants)
-          .limit(5);
+          .select('session_id, current_state, is_paused, paused_until, paused_at, paused_by, metadata');
 
-        const { data: sessData } = await sessQuery;
+        if (typeof sessQuery?.in === 'function') {
+          sessQuery = sessQuery.in('tenant_id', tenantTokens);
+          if (typeof sessQuery?.in === 'function') {
+            sessQuery = sessQuery.in('user_identifier', phoneVariants);
+          }
+        } else if (typeof sessQuery?.eq === 'function') {
+          sessQuery = sessQuery.eq('tenant_id', tenantTokens[0] || tenantId);
+        }
+        if (typeof sessQuery?.limit === 'function') {
+          sessQuery = sessQuery.limit(5);
+        }
+
+        const { data: sessData } = await (sessQuery || Promise.resolve({ data: null }));
         if (Array.isArray(sessData) && sessData.length > 0) {
-          const pausedSess = sessData.find((s: any) => {
+          for (const s of sessData) {
             const isStatePaused = s.current_state === 'HANDOVER_TO_HUMAN' || s.current_state === 'PAUSED' || s.current_state === 'human_takeover';
             const isFlagPaused = Boolean(s.is_paused) || Boolean(s.metadata?.is_bot_paused);
-            const pUntil = s.paused_until ? new Date(s.paused_until) : null;
-            return (isStatePaused || isFlagPaused) && (!pUntil || pUntil.getTime() > Date.now());
-          });
 
-          if (pausedSess) {
-            isSessionPaused = true;
-            sessionPauseReason = `conversation_sessions table (state: ${pausedSess.current_state}, paused_by: ${pausedSess.paused_by || 'admin'})`;
+            if (isStatePaused || isFlagPaused) {
+              const pUntil = s.paused_until ? new Date(s.paused_until) : null;
+              if (pUntil && pUntil.getTime() <= Date.now()) {
+                // Timeout 24 jam telah kedaluwarsa -> Auto-Resume!
+                console.info(`[Auto-Resume] Timeout pause kedaluwarsa untuk '${senderPhone}' (until: ${s.paused_until}). Mengembalikan bot ke mode aktif.`);
+                isSessionExpired = true;
+                try {
+                  const updateRes = supabase.from('conversation_sessions').update({
+                    is_paused: false,
+                    current_state: 'ACTIVE',
+                    paused_until: null,
+                    updated_at: new Date().toISOString(),
+                  });
+                  if (typeof updateRes?.eq === 'function') {
+                    await updateRes.eq('session_id', s.session_id);
+                  }
+                } catch (_) {}
+              } else {
+                isSessionPaused = true;
+                sessionPauseReason = `conversation_sessions table (state: ${s.current_state}, paused_by: ${s.paused_by || 'admin'})`;
+                break;
+              }
+            }
           }
         }
 
-        if (isConvPaused || isSessionPaused) {
+        // A. Cek tabel conversations (dengan sinkronisasi expiry time)
+        let isConvPaused = false;
+        let convPauseReason = '';
+
+        if (!isSessionExpired) {
+          let convQuery: any = supabase
+            .from('conversations')
+            .select('id, bot_paused, bot_mode, status');
+
+          if (typeof convQuery?.or === 'function') {
+            convQuery = convQuery.or(convOrClause);
+          }
+          if (typeof convQuery?.in === 'function') {
+            convQuery = convQuery.in('customer_phone', phoneVariants);
+          } else if (typeof convQuery?.eq === 'function') {
+            convQuery = convQuery.eq('customer_phone', phoneVariants[0] || senderPhone);
+          }
+          if (typeof convQuery?.limit === 'function') {
+            convQuery = convQuery.limit(5);
+          }
+
+          const { data: convData } = await convQuery;
+          if (Array.isArray(convData) && convData.length > 0) {
+            const pausedConv = convData.find((c: any) =>
+              c.bot_paused === true ||
+              c.is_bot_paused === true ||
+              c.is_bot_active === false ||
+              c.bot_mode === 'HUMAN_ACTIVE' ||
+              c.status === 'paused' ||
+              c.status === 'human_takeover'
+            );
+
+            if (pausedConv) {
+              isConvPaused = true;
+              convPauseReason = `conversations table (id: ${pausedConv.id}, bot_paused: ${pausedConv.bot_paused}, bot_mode: ${pausedConv.bot_mode}, status: ${pausedConv.status})`;
+            }
+          }
+        } else {
+          // Jika session sudah expired / auto-resumed, sinkronkan conversations table agar bot_paused = false
+          try {
+            const cUpdate = supabase
+              .from('conversations')
+              .update({
+                bot_paused: false,
+                bot_mode: 'AI_ACTIVE',
+                status: 'active',
+                updated_at: new Date().toISOString(),
+              });
+            let cQ = typeof cUpdate?.or === 'function' ? cUpdate.or(convOrClause) : cUpdate;
+            if (typeof cQ?.in === 'function') {
+              await cQ.in('customer_phone', phoneVariants);
+            } else if (typeof cQ?.eq === 'function') {
+              await cQ.eq('customer_phone', senderPhone);
+            }
+          } catch (_) {}
+        }
+
+        if (isSessionPaused || isConvPaused) {
           console.info(`[Evolution Webhook Muted] Chat WhatsApp dari '${senderPhone}' sedang DIJEDA (${convPauseReason || sessionPauseReason}). AI Bot tidak boleh membalas (Bypass LLM & Outbound).`);
           processedCount++;
           continue;
