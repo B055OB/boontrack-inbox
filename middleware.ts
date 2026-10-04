@@ -641,6 +641,12 @@ export async function middleware(req: NextRequest) {
 
   // ── 3. KHUSUS APP.BOONTRACK.COM (Isolasi ke /app-portal) ──
   if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
+    const firstSegment = pathname.split('/')[1]?.toLowerCase();
+    // Allow B2B/B2G tenant slugs (e.g. margasari) on app.boontrack.com to be routed directly to tenant storefront/portal
+    if (firstSegment && B2B_TENANT_SLUGS.has(firstSegment)) {
+      return NextResponse.next();
+    }
+
     const url = req.nextUrl.clone();
     if (pathname === '/favicon.ico') {
       url.pathname = '/app-portal/favicon.ico';

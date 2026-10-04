@@ -19,7 +19,8 @@ describe('Kelurahan Margasari Public Service Deployment Verification', () => {
     it('should provide complete operational data for Kelurahan Margasari', () => {
       const config = getTenantConfig('margasari');
       expect(config).toBeDefined();
-      expect(config.name).toBe('Kelurahan Margasari');
+      expect(config.name).toContain('Kelurahan Margasari');
+      expect(config.title).toBe('Kelurahan Margasari');
 
       // Lurah Wahyu A. Affandi, S.IP., M.Si.
       expect(config.persona.system_prompt).toContain('Wahyu A. Affandi');

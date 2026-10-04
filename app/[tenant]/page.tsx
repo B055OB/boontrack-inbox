@@ -3,17 +3,17 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { 
-  ShoppingBag, 
-  Send, 
-  QrCode, 
-  Plus, 
-  Minus, 
-  X, 
-  Clock, 
-  ArrowRight, 
-  Store, 
-  PackageOpen, 
+import {
+  ShoppingBag,
+  Send,
+  QrCode,
+  Plus,
+  Minus,
+  X,
+  Clock,
+  ArrowRight,
+  Store,
+  PackageOpen,
   Package,
   Check,
   ExternalLink,
@@ -29,10 +29,11 @@ const BarcodeScannerModal = dynamic(() => import('./dashboard/components/Barcode
 import CheckoutModal from "@/app/components/CheckoutModal";
 import PersonalAuthorityTemplate from './components/templates/PersonalAuthorityTemplate';
 import MicrositeBioTemplate from './components/templates/MicrositeBioTemplate';
-import { 
-  captureAffiliateReferral, 
-  initSellerTracking, 
-  trackInitiateCheckout, 
+import PublicServicePortalTemplate from './components/templates/PublicServicePortalTemplate';
+import {
+  captureAffiliateReferral,
+  initSellerTracking,
+  trackInitiateCheckout,
   trackViewContent,
   trackContactEvent,
   initPixelsFromMetadata
@@ -41,6 +42,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { sanitizeImageUrl } from "@/lib/image-utils";
 import { getIndustryQuickReplies } from "@/lib/zero-ai-engine";
 import { resolveProductExternalUrl, resolveProductCtaLabel } from "@/lib/product-catalog";
+import { getTenantConfig, normalizeTenantSlug } from "@/lib/tenant-config";
 
 function StoreProductImage({
   src,
@@ -179,6 +181,17 @@ export function formatCategoryBadge(category?: string, productType?: string, cus
 export function getStoreChatGreeting(category: string, activeName: string): string {
   const cat = (category || "").toUpperCase().trim();
   if (
+    cat === "PUBLIC_SERVICE" ||
+    cat === "B2G" ||
+    cat === "PELAYANAN_PUBLIK" ||
+    cat.includes("PUBLIC_SERVICE") ||
+    cat.includes("PELAYANAN") ||
+    cat.includes("KELURAHAN") ||
+    cat.includes("WARGA")
+  ) {
+    return `Sampurasun! Selamat datang di ${activeName} 👋 Ada yang bisa kami bantu seputar aktivasi IKD, surat pengantar KTP/KK, surat domisili, atau layanan administrasi warga lainnya hari ini?`;
+  }
+  if (
     cat === "PROFESSIONAL_SERVICE" ||
     cat === "PRO_SERVICE" ||
     cat === "PROFESSIONAL" ||
@@ -309,10 +322,10 @@ function mapProductItemToStoreProduct(p: any, idx: number): Product {
     isFoodType
       ? 'food'
       : isPhysicalType
-      ? 'physical'
-      : (rawType.includes('service') || rawType.includes('jasa') || rawCat.includes('jasa')
-      ? 'service'
-      : 'digital');
+        ? 'physical'
+        : (rawType.includes('service') || rawType.includes('jasa') || rawCat.includes('jasa')
+          ? 'service'
+          : 'digital');
   const resolvedProductType = (p.product_type || (isFoodType ? 'FOOD' : isPhysicalType ? 'PHYSICAL' : resolvedType.toUpperCase()));
   const requiresShipping = Boolean(p.requires_shipping || p.requiresShipping || isPhysicalType || isFoodType);
 
@@ -350,16 +363,50 @@ export default function TenantStorefrontPage() {
   const params = useParams();
   const router = useRouter();
   const rawTenant = (params?.tenant as string) || "";
-  const tenantSlug = rawTenant.toLowerCase().trim();
+  const normalizedSlug = normalizeTenantSlug(rawTenant.toLowerCase().trim());
+  const tenantSlug = normalizedSlug || rawTenant.toLowerCase().trim();
   const displayName = tenantSlug.replace(/[-_]/g, " ");
+
+  const initialConfig = getTenantConfig(tenantSlug);
+  const isInitialPublicService = Boolean(
+    initialConfig &&
+    (initialConfig.category === 'public_service' || initialConfig.slug === 'margasari' || tenantSlug === 'margasari' || tenantSlug === 'kelurahan-margasari')
+  );
+
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
-  const [tenant, setTenant] = useState<any>(null);
-  const [tenantMetadata, setTenantMetadata] = useState<any>(null);
-  const [tenantCategory, setTenantCategory] = useState<string>('');
-  const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">("checking");
-  const [storeName, setStoreName] = useState("");
-  const [storeProducts, setStoreProducts] = useState<Product[]>([]);
+  const [tenant, setTenant] = useState<any>(() => (isInitialPublicService ? initialConfig : null));
+  const [tenantMetadata, setTenantMetadata] = useState<any>(() =>
+    isInitialPublicService && initialConfig
+      ? {
+          ...initialConfig,
+          title: initialConfig.title,
+          subtitle: initialConfig.subtitle,
+          lurah: initialConfig.lurah,
+          address: initialConfig.address,
+          business_type: initialConfig.business_type,
+          category: initialConfig.category,
+          products: initialConfig.pricing?.custom_packages || [],
+        }
+      : null
+  );
+  const [tenantCategory, setTenantCategory] = useState<string>(() => (isInitialPublicService ? 'public_service' : ''));
+  const [storeStatus, setStoreStatus] = useState<"checking" | "active" | "not_found">(() => (isInitialPublicService ? "active" : "checking"));
+  const [storeName, setStoreName] = useState(() => (isInitialPublicService && initialConfig ? (initialConfig.name || displayName) : ""));
+  const [storeProducts, setStoreProducts] = useState<Product[]>(() => {
+    if (isInitialPublicService && initialConfig) {
+      return (initialConfig.pricing?.custom_packages || []).map((p: any, idx: number) =>
+        mapProductItemToStoreProduct(
+          {
+            ...p,
+            category: 'Layanan Publik',
+          },
+          idx
+        )
+      );
+    }
+    return [];
+  });
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -421,6 +468,9 @@ export default function TenantStorefrontPage() {
 
     // 2. Fallback cerdas jika belum diset di admin
     const raw = resolvedCategory.toUpperCase();
+    if (raw === 'PUBLIC_SERVICE' || raw === 'B2G' || raw.includes('PUBLIC_SERVICE') || raw.includes('PELAYANAN') || raw.includes('WARGA')) {
+      return customCtaLabel || 'Layanan Warga';
+    }
     if (raw === 'PROFESSIONAL_SERVICE' || raw.includes('PRO') || raw.includes('CONSULT')) {
       return customCtaLabel || 'Konsultasi Layanan';
     }
@@ -447,6 +497,9 @@ export default function TenantStorefrontPage() {
     if (custom) return custom;
 
     const raw = resolvedCategory.toUpperCase();
+    if (raw === 'PUBLIC_SERVICE' || raw === 'B2G' || raw.includes('PUBLIC_SERVICE') || raw.includes('PELAYANAN') || raw.includes('WARGA')) {
+      return 'Tanya Loket Digital';
+    }
     if (raw === 'PROFESSIONAL_SERVICE' || raw.includes('PRO') || raw.includes('CONSULT')) {
       return 'Tanya Konsultan';
     }
@@ -508,7 +561,7 @@ export default function TenantStorefrontPage() {
         sessionStorage.setItem("boontrack_ctwa_clid", ctwa_clid.trim());
         try {
           localStorage.setItem("boontrack_ctwa_clid", ctwa_clid.trim());
-        } catch {}
+        } catch { }
       }
     } catch (err) {
       console.warn("[Tracking] UTM capture error:", err);
@@ -557,11 +610,23 @@ export default function TenantStorefrontPage() {
 
       try {
         const supabase = getSupabase();
-        const { data: tenantRow, error: dbErr } = await supabase
+        let { data: tenantRow, error: dbErr } = await supabase
           .from("tenants")
           .select("*")
           .eq("slug", tenantSlug)
           .maybeSingle();
+
+        if (!tenantRow && rawTenant && rawTenant.toLowerCase().trim() !== tenantSlug) {
+          const { data: rawRow } = await supabase
+            .from("tenants")
+            .select("*")
+            .eq("slug", rawTenant.toLowerCase().trim())
+            .maybeSingle();
+          if (rawRow) {
+            tenantRow = rawRow;
+            dbErr = null;
+          }
+        }
 
         if (dbErr || !tenantRow) {
           try {
@@ -590,6 +655,34 @@ export default function TenantStorefrontPage() {
             console.warn("[Storefront] Fallback settings fetch failed:", fbErr);
           }
 
+          // Fallback lokal untuk tenant B2G/public service (margasari)
+          const fallbackConfig = getTenantConfig(tenantSlug);
+          if (fallbackConfig && (fallbackConfig.category === 'public_service' || fallbackConfig.slug === 'margasari')) {
+            if (isMounted) {
+              setTenant(fallbackConfig);
+              setStoreName(fallbackConfig.name || displayName);
+              setTenantMetadata({
+                ...fallbackConfig,
+                title: fallbackConfig.title,
+                subtitle: fallbackConfig.subtitle,
+                lurah: fallbackConfig.lurah,
+                address: fallbackConfig.address,
+                business_type: fallbackConfig.business_type,
+                products: fallbackConfig.pricing?.custom_packages || [],
+              });
+              setTenantCategory('public_service');
+              const customPkgs = fallbackConfig.pricing?.custom_packages || [];
+              setStoreProducts(
+                customPkgs.map((p: any, idx: number) => mapProductItemToStoreProduct({
+                  ...p,
+                  category: 'Layanan Publik',
+                }, idx))
+              );
+              setStoreStatus("active");
+            }
+            return;
+          }
+
           // Fallback: Periksa apakah slug subdomain adalah kode referral affiliate mitra
           try {
             const { data: affRow } = await supabase
@@ -611,7 +704,7 @@ export default function TenantStorefrontPage() {
                   document.cookie = `ref=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
                   document.cookie = `boontrack_referral_code=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
                   document.cookie = `boontrack_merchant_ref=${encodeURIComponent(affCode)}; path=/${domainStr}; max-age=2592000; SameSite=Lax`;
-                } catch (_) {}
+                } catch (_) { }
                 router.replace(`https://shop.boontrack.com/?ref=${encodeURIComponent(affCode)}`);
               }
               return;
@@ -652,12 +745,12 @@ export default function TenantStorefrontPage() {
           const prodsList = Array.isArray(rawProds)
             ? rawProds.filter((p: any) => p !== null && typeof p === "object")
             : (tenantRow.metadata?.product &&
-               typeof tenantRow.metadata.product === "object" &&
-               tenantRow.metadata.product.name &&
-               tenantRow.metadata.product.name !== tenantRow.name &&
-               tenantRow.metadata.product.name !== tenantSlug
-                ? [tenantRow.metadata.product]
-                : []);
+              typeof tenantRow.metadata.product === "object" &&
+              tenantRow.metadata.product.name &&
+              tenantRow.metadata.product.name !== tenantRow.name &&
+              tenantRow.metadata.product.name !== tenantSlug
+              ? [tenantRow.metadata.product]
+              : []);
 
           // Gabungkan metadata dan SQL table (menjamin SKU dan etalase toko tidak pernah hilang)
           const combinedProds = [...prodsList];
@@ -798,14 +891,14 @@ export default function TenantStorefrontPage() {
           }
         }
       }
-    } catch {}
+    } catch { }
     window.open(finalUrl, "_blank", "noopener,noreferrer");
   };
 
   const trackExternalInitiateCheckout = (product: any) => {
     try {
       trackContactEvent(`Affiliate Outbound: ${product?.name || product?.title || 'Product'}`);
-    } catch (_) {}
+    } catch (_) { }
     if (typeof window !== "undefined" && typeof (window as any).fbq === "function") {
       try {
         (window as any).fbq("track", "InitiateCheckout", {
@@ -815,7 +908,7 @@ export default function TenantStorefrontPage() {
           value: Number(product?.price) || 0,
           currency: "IDR"
         });
-      } catch (_) {}
+      } catch (_) { }
     }
   };
 
@@ -826,13 +919,13 @@ export default function TenantStorefrontPage() {
   const filteredProducts = activeCategory === "all"
     ? visibleProducts
     : visibleProducts.filter((p) => {
-        if (!p) return false;
-        const cat = String(p.category || "").toLowerCase();
-        const badge = String(p.badge || "").toLowerCase();
-        const type = String(p.type || "").toLowerCase();
-        const active = String(activeCategory || "").toLowerCase();
-        return cat === active || badge === active || type === active;
-      });
+      if (!p) return false;
+      const cat = String(p.category || "").toLowerCase();
+      const badge = String(p.badge || "").toLowerCase();
+      const type = String(p.type || "").toLowerCase();
+      const active = String(activeCategory || "").toLowerCase();
+      return cat === active || badge === active || type === active;
+    });
 
   const addToCart = (product: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -892,7 +985,7 @@ export default function TenantStorefrontPage() {
   const handleCartCheckout = () => {
     if (cart.length === 0) return;
     const combinedTitles = cart.map(c => `${c.product?.name || 'Produk'} (${c.qty || 1}x)`).join(", ");
-    
+
     trackInitiateCheckout(combinedTitles, totalCartPrice);
 
     const hasPhysicalOrFood = cart.some(c => isPhysicalOrFoodProduct(c.product, tenantMetadata?.category || tenantCategory || tenant?.category));
@@ -1096,15 +1189,29 @@ export default function TenantStorefrontPage() {
     }
   }, [currentVisualTheme]);
 
+  const isPublicService =
+    resolvedCategory.toUpperCase() === 'PUBLIC_SERVICE' ||
+    tenantMetadata?.business_type === 'B2G' ||
+    tenantMetadata?.category === 'public_service' ||
+    tenant?.category === 'public_service';
+
   const rawTemplate =
     tenantMetadata?.selected_template ||
     tenantMetadata?.storefront_template ||
     tenantMetadata?.template ||
     currentTheme.template ||
-    'default';
-  // Kunci Default: pastikan fallback selalu ke default (Katalog Grid Standar)
-  const currentTemplate = rawTemplate === 'microsite' ? 'microsite' : (rawTemplate === 'personal' ? 'personal' : 'default');
-  
+    (isPublicService ? 'public_service' : 'default');
+
+  // Kunci Template: pastikan public_service, microsite, personal, atau default
+  const currentTemplate =
+    rawTemplate === 'microsite'
+      ? 'microsite'
+      : rawTemplate === 'personal'
+        ? 'personal'
+        : rawTemplate === 'public_service' || isPublicService
+          ? 'public_service'
+          : 'default';
+
   // Guard Web Chat Widget: strictly check toggle status (boolean / string)
   const rawChatEnabled =
     tenantMetadata?.theme?.chat_enabled ??
@@ -1192,6 +1299,47 @@ export default function TenantStorefrontPage() {
           </button>
         </div>
       </div>
+    );
+  }
+
+  // ── CONDITIONAL TEMPLATE: PUBLIC SERVICE (Kelurahan / Civic Portal) ──
+  if (currentTemplate === 'public_service') {
+    return (
+      <>
+        <PublicServicePortalTemplate
+          tenantSlug={tenantSlug}
+          storeName={storeName}
+          displayName={displayName}
+          tenant={tenant}
+          tenantMetadata={tenantMetadata}
+          storeLogoUrl={sanitizedActiveLogo}
+          storeProducts={storeProducts}
+          dynamicQuickReplies={dynamicQuickReplies}
+          chatEnabled={isChatEnabled}
+          onInitiateCheckout={(p) => {
+            trackInitiateCheckout(p.title, p.price);
+            setProductForCheckout(p);
+            setIsCheckoutOpen(true);
+          }}
+          onOutboundClick={handleOutboundClick}
+        />
+
+        {/* MODAL CHECKOUT QRIS & WHATSAPP SYNC */}
+        <CheckoutModal
+          isOpen={isCheckoutOpen}
+          onClose={() => setIsCheckoutOpen(false)}
+          tenantSlug={tenantSlug}
+          product={productForCheckout}
+        />
+        {/* Modal Barcode Scanner */}
+        {isScannerOpen && (
+          <BarcodeScannerModal
+            isOpen={isScannerOpen}
+            onClose={() => setIsScannerOpen(false)}
+            onScanSuccess={handleBarcodeDetected}
+          />
+        )}
+      </>
     );
   }
 
@@ -1607,9 +1755,8 @@ export default function TenantStorefrontPage() {
             </button>
             <button
               onClick={() => setActiveCategory("all")}
-              className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-                activeCategory === "all" ? defaultThemeConfig.activeCategory : defaultThemeConfig.inactiveCategory
-              }`}
+              className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${activeCategory === "all" ? defaultThemeConfig.activeCategory : defaultThemeConfig.inactiveCategory
+                }`}
             >
               Semua ({(storeProducts || []).length})
             </button>
@@ -1620,9 +1767,8 @@ export default function TenantStorefrontPage() {
                 <button
                   key={catClean}
                   onClick={() => setActiveCategory(catClean.toLowerCase())}
-                  className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-                    String(activeCategory || "").toLowerCase() === catClean.toLowerCase() ? defaultThemeConfig.activeCategory : defaultThemeConfig.inactiveCategory
-                  }`}
+                  className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${String(activeCategory || "").toLowerCase() === catClean.toLowerCase() ? defaultThemeConfig.activeCategory : defaultThemeConfig.inactiveCategory
+                    }`}
                 >
                   {catClean}
                 </button>
@@ -1658,7 +1804,7 @@ export default function TenantStorefrontPage() {
                     if (p) {
                       try {
                         trackViewContent(p);
-                      } catch {}
+                      } catch { }
                       setSelectedProduct(p);
                     }
                   }}
@@ -1722,13 +1868,13 @@ export default function TenantStorefrontPage() {
                         return (
                           <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                             {/* Tombol Utama: [+ Keranjang] */}
-                            <button 
+                            <button
                               type="button"
                               onClick={(e) => {
                                 if (p) {
                                   addToCart(p, e);
                                 }
-                              }} 
+                              }}
                               title="Tambah ke Keranjang"
                               className="bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 text-xs font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
                             >
@@ -1737,7 +1883,7 @@ export default function TenantStorefrontPage() {
                             </button>
 
                             {/* Tombol Cepat: [Beli Langsung / Pesan] */}
-                            <button 
+                            <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1757,7 +1903,7 @@ export default function TenantStorefrontPage() {
                                   });
                                   setIsCheckoutOpen(true);
                                 }
-                              }} 
+                              }}
                               title="Beli Langsung / Pesan"
                               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
                             >
@@ -1769,14 +1915,14 @@ export default function TenantStorefrontPage() {
                       }
 
                       return (
-                        <button 
+                        <button
                           type="button"
                           onClick={(e) => {
                             if (p) {
                               addToCart(p, e);
                               setShowCartModal(true);
                             }
-                          }} 
+                          }}
                           className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
                         >
                           <ShoppingBag className="w-3.5 h-3.5" /> + Pilihan
@@ -1807,9 +1953,8 @@ export default function TenantStorefrontPage() {
 
                 return (
                   <div key={msg.id} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
-                    <div className={`max-w-[88%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-xs ${
-                      msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
-                    }`}>
+                    <div className={`max-w-[88%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-xs ${msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
+                      }`}>
                       <p className="whitespace-pre-line">{msg.text}</p>
 
                       {/* Kartu Rekomendasi Layanan Interaktif */}
@@ -1982,11 +2127,13 @@ export default function TenantStorefrontPage() {
                 placeholder={
                   isBotTyping
                     ? "Sedang menunggu respon..."
-                    : resolvedCategory.toUpperCase().includes('PROFESSIONAL') || resolvedCategory.toUpperCase().includes('CONSULT')
-                    ? "Tulis pertanyaan, konsultasi, atau brief..."
-                    : resolvedCategory.toUpperCase().includes('FIELD') || resolvedCategory.toUpperCase().includes('TEKNISI')
-                    ? "Tulis pertanyaan atau jadwal servis..."
-                    : "Tulis pertanyaan atau informasi pesanan..."
+                    : resolvedCategory.toUpperCase().includes('PUBLIC_SERVICE') || resolvedCategory.toUpperCase().includes('PELAYANAN')
+                      ? "Tulis permohonan surat atau pertanyaan warga..."
+                      : resolvedCategory.toUpperCase().includes('PROFESSIONAL') || resolvedCategory.toUpperCase().includes('CONSULT')
+                        ? "Tulis pertanyaan, konsultasi, atau brief..."
+                        : resolvedCategory.toUpperCase().includes('FIELD') || resolvedCategory.toUpperCase().includes('TEKNISI')
+                          ? "Tulis pertanyaan atau jadwal servis..."
+                          : "Tulis pertanyaan atau informasi pesanan..."
                 }
                 className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-base md:text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
               />
@@ -2265,9 +2412,8 @@ export default function TenantStorefrontPage() {
 
                     return (
                       <div key={`mob-${msg.id}`} className={`flex flex-col ${msg.sender === "user" ? "items-end" : "items-start"}`}>
-                        <div className={`max-w-[88%] rounded-2xl p-3 text-xs leading-relaxed shadow-xs ${
-                          msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
-                        }`}>
+                        <div className={`max-w-[88%] rounded-2xl p-3 text-xs leading-relaxed shadow-xs ${msg.sender === "user" ? "bg-blue-600 text-white rounded-br-xs" : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
+                          }`}>
                           <p className="whitespace-pre-line">{msg.text}</p>
 
                           {/* Interactive Product Card */}
@@ -2435,11 +2581,13 @@ export default function TenantStorefrontPage() {
                     placeholder={
                       isBotTyping
                         ? "Menunggu respon..."
-                        : resolvedCategory.toUpperCase().includes('PROFESSIONAL') || resolvedCategory.toUpperCase().includes('CONSULT')
-                        ? "Tulis pertanyaan, konsultasi, atau brief..."
-                        : resolvedCategory.toUpperCase().includes('FIELD') || resolvedCategory.toUpperCase().includes('TEKNISI')
-                        ? "Tulis pertanyaan atau jadwal servis..."
-                        : "Tulis pertanyaan atau informasi pesanan..."
+                        : resolvedCategory.toUpperCase().includes('PUBLIC_SERVICE') || resolvedCategory.toUpperCase().includes('PELAYANAN')
+                          ? "Tulis permohonan surat atau pertanyaan warga..."
+                          : resolvedCategory.toUpperCase().includes('PROFESSIONAL') || resolvedCategory.toUpperCase().includes('CONSULT')
+                            ? "Tulis pertanyaan, konsultasi, atau brief..."
+                            : resolvedCategory.toUpperCase().includes('FIELD') || resolvedCategory.toUpperCase().includes('TEKNISI')
+                              ? "Tulis pertanyaan atau jadwal servis..."
+                              : "Tulis pertanyaan atau informasi pesanan..."
                     }
                     className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white transition-all disabled:opacity-60"
                   />

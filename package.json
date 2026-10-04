@@ -12,7 +12,8 @@
     "test:waba": "jest waba_security_matrix --no-coverage",
     "test:outbox": "jest outbox-worker --no-coverage",
     "worker:outbox": "ts-node scripts/run-outbox-worker.ts",
-    "broadcast:v3.2.0": "jiti scripts/broadcast-changelog-v3.2.0.ts"
+    "broadcast:v3.2.0": "jiti scripts/broadcast-changelog-v3.2.0.ts",
+    "broadcast:announcement": "jiti scripts/broadcast-tenant-announcement.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",

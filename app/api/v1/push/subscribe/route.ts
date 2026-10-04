@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabase } from '@/lib/supabaseClient';
 import { getPlatformBaseUrl } from '@/lib/platform-urls';
+import { DEFAULT_VAPID_PUBLIC_KEY } from '@/lib/webpush-service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -74,6 +75,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    console.log(`[PushSubscribe] Subscription saved for tenant '${targetSlug}': ${subscription.endpoint.slice(0, 45)}...`);
+
     return NextResponse.json({
       success: true,
       message: 'Push subscription successfully bound to BoonTrack platform',
@@ -89,14 +92,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const vapidPublicKey =
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
-    process.env.VAPID_PUBLIC_KEY ||
-    'BC6JgUcxn2q3k7aKvdH1EkmK9yZ2XJ9x8oGqj_M5z1W3D9eKq4fL7n8mO1P2Q3R4S5T6U7V8W9X0Y1Z2A3B4C5D';
-
   return NextResponse.json({
     success: true,
-    public_key: vapidPublicKey,
+    public_key: DEFAULT_VAPID_PUBLIC_KEY,
     origin: getPlatformBaseUrl(),
   });
 }

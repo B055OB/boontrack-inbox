@@ -62,6 +62,15 @@ export default function SuperAdminPushNotificationPage() {
   const [dispatchResult, setDispatchResult] = useState<any | null>(null);
   const [historyLogs, setHistoryLogs] = useState<BroadcastLog[]>([]);
 
+  // Browser subscription & database telemetry states
+  const [totalSubscribers, setTotalSubscribers] = useState<number | null>(null);
+  const [isBrowserSubscribed, setIsBrowserSubscribed] = useState(false);
+  const [isRegisteringDevice, setIsRegisteringDevice] = useState(false);
+  const [deviceFeedback, setDeviceFeedback] = useState<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+  } | null>(null);
+
   // Authenticate PIN
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,9 +83,43 @@ export default function SuperAdminPushNotificationPage() {
     }
   };
 
+  // Refresh total active push subscriptions from database
+  const refreshDatabaseSubscribers = async () => {
+    try {
+      const res = await fetch('/api/v1/admin/push/broadcast');
+      if (res.ok) {
+        const data = await res.json();
+        setTotalSubscribers(data.total_subscriptions ?? 0);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // Inspect current browser's PushManager subscription
+  const inspectBrowserSubscription = async () => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('Notification' in window)) {
+      return;
+    }
+    try {
+      if (Notification.permission === 'granted') {
+        const reg = await navigator.serviceWorker.ready.catch(() => null);
+        if (reg) {
+          const sub = await reg.pushManager.getSubscription().catch(() => null);
+          setIsBrowserSubscribed(!!sub);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   // Load tenants from Supabase (Strictly isolate to SaaS / Shop Merchants)
   useEffect(() => {
     if (!isAdminAuth) return;
+    refreshDatabaseSubscribers();
+    inspectBrowserSubscription();
+
     const fetchTenants = async () => {
       setLoadingTenants(true);
       try {
@@ -139,6 +182,18 @@ export default function SuperAdminPushNotificationPage() {
     fetchTenants();
   }, [isAdminAuth]);
 
+  // Utility to convert Base64 URL to Uint8Array for VAPID applicationServerKey
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  };
+
   // Handle Send Broadcast
   const handleSendBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,6 +227,7 @@ export default function SuperAdminPushNotificationPage() {
       }
 
       setDispatchResult(data);
+      await refreshDatabaseSubscribers();
 
       // Append to local history logs
       const newLog: BroadcastLog = {
@@ -197,36 +253,100 @@ export default function SuperAdminPushNotificationPage() {
     }
   };
 
-  // Local Device Test Notification
+  // Local Device Test & Push Subscription Persistence
   const handleLocalTestNotification = async () => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      alert('Browser ini tidak mendukung Web Notification');
+    if (typeof window === 'undefined' || !('Notification' in window) || !('serviceWorker' in navigator)) {
+      alert('Browser ini tidak mendukung Web Push Notification.');
       return;
     }
 
+    setIsRegisteringDevice(true);
+    setDeviceFeedback(null);
+
     try {
+      // 1. Request notification permission
       const perm = await Notification.requestPermission();
-      if (perm === 'granted') {
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          const reg = await navigator.serviceWorker.ready;
-          reg.showNotification(title, {
-            body: message,
-            icon: '/logo.png',
-            badge: '/logo.png',
-            data: { url: targetUrl },
-          } as any);
-        } else {
-          new Notification(title, {
-            body: message,
-            icon: '/logo.png',
-          });
-        }
-        alert('Notifikasi uji coba berhasil ditembakkan ke browser Anda!');
-      } else {
-        alert('Izin notifikasi ditolak oleh browser.');
+      if (perm !== 'granted') {
+        const errMsg = 'Izin notifikasi ditolak oleh browser. Mohon izinkan notifikasi pada pengaturan browser Anda.';
+        setDeviceFeedback({ type: 'error', message: errMsg });
+        alert(errMsg);
+        return;
       }
-    } catch (testErr) {
-      console.error(testErr);
+
+      // 2. Ensure Service Worker /sw.js is registered and ready
+      let reg: ServiceWorkerRegistration;
+      const existingReg = await navigator.serviceWorker.getRegistration();
+      if (existingReg) {
+        reg = existingReg;
+      } else {
+        reg = await navigator.serviceWorker.register('/sw.js');
+      }
+      await navigator.serviceWorker.ready;
+
+      // 3. Fetch VAPID public key
+      const vapidRes = await fetch('/api/v1/push/subscribe');
+      const vapidData = await vapidRes.json();
+      const publicKey = vapidData?.public_key;
+      if (!publicKey) {
+        throw new Error('Public VAPID key tidak ditemukan di server.');
+      }
+
+      // 4. Ensure browser is subscribed via PushManager
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+      }
+
+      // 5. Persist subscription record to Supabase via /api/v1/push/subscribe
+      const chosenTenant =
+        selectedTenant && selectedTenant !== 'ALL_SHOPS' ? selectedTenant : 'admin';
+
+      const saveRes = await fetch('/api/v1/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: chosenTenant,
+          subscription: sub.toJSON ? sub.toJSON() : sub,
+          origin: window.location.origin,
+        }),
+      });
+
+      const saveData = await saveRes.json();
+      if (!saveRes.ok || !saveData.success) {
+        throw new Error(saveData.error || 'Gagal menyimpan subscription ke database Supabase.');
+      }
+
+      // 6. Show test notification on device
+      const notifTitle = title.trim() || '🎉 Web Push BoonTrack Aktif!';
+      const notifBody =
+        message.trim() ||
+        `Perangkat browser Anda berhasil didaftarkan ke database (tenant: ${chosenTenant}).`;
+
+      reg.showNotification(notifTitle, {
+        body: notifBody,
+        icon: '/logo.png',
+        badge: '/logo.png',
+        data: { url: targetUrl || '/admin/push-notification' },
+      } as any);
+
+      setIsBrowserSubscribed(true);
+      await refreshDatabaseSubscribers();
+
+      setDeviceFeedback({
+        type: 'success',
+        message: `✅ Berhasil! Subscription browser Anda telah tersimpan di Supabase (tenant: ${chosenTenant}). Notifikasi uji coba telah dikirim ke layar Anda.`,
+      });
+      alert(`Berhasil! Token push browser Anda telah disimpan ke database (tenant: ${chosenTenant}) dan notifikasi uji coba berhasil ditembakkan!`);
+    } catch (err: any) {
+      console.error('[WebPush Test Device Error]:', err);
+      const errMsg = err.message || 'Gagal mendaftarkan browser ke Web Push.';
+      setDeviceFeedback({ type: 'error', message: errMsg });
+      alert(`Gagal: ${errMsg}`);
+    } finally {
+      setIsRegisteringDevice(false);
     }
   };
 
@@ -286,6 +406,25 @@ export default function SuperAdminPushNotificationPage() {
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   Target: Merchant Storefront Aktif (shop.boontrack.com)
+                </span>
+                {totalSubscribers !== null && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                    📊 {totalSubscribers} Subscriber Terdaftar di DB
+                  </span>
+                )}
+                <span
+                  className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${
+                    isBrowserSubscribed
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      isBrowserSubscribed ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                    }`}
+                  />
+                  {isBrowserSubscribed ? 'Browser Ini: Terdaftar' : 'Browser Ini: Belum Terdaftar'}
                 </span>
               </div>
               <h1 className="text-xl font-black text-white mt-1">Web Push Notification Broadcaster</h1>
@@ -471,44 +610,74 @@ export default function SuperAdminPushNotificationPage() {
                 )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={handleLocalTestNotification}
-                  className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition border border-slate-700 cursor-pointer"
-                >
-                  🧪 Test di Browser Saya
-                </button>
+              {/* Action Buttons & Feedback */}
+              <div className="space-y-3 pt-3 border-t border-slate-800">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handleLocalTestNotification}
+                    disabled={isRegisteringDevice}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition border border-slate-700 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {isRegisteringDevice ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-400" />
+                        <span>Mendaftarkan Browser ke Supabase...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🧪 Test & Simpan Browser Saya</span>
+                      </>
+                    )}
+                  </button>
 
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full sm:w-auto px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-purple-600/30 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Menembakkan Web Push...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      <span>Kirim Web Push Sekarang</span>
-                    </>
-                  )}
-                </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full sm:w-auto px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-purple-600/30 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Menembakkan Web Push...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>Kirim Web Push Sekarang</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Device Registration Feedback Banner */}
+                {deviceFeedback && (
+                  <div
+                    className={`p-3 rounded-xl text-xs border flex items-start gap-2 animate-in fade-in duration-200 ${
+                      deviceFeedback.type === 'success'
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                        : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                    }`}
+                  >
+                    {deviceFeedback.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                    )}
+                    <div className="flex-1 leading-relaxed">{deviceFeedback.message}</div>
+                  </div>
+                )}
               </div>
             </form>
 
             {/* Broadcast Dispatch Result Alert */}
             {dispatchResult && (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-2">
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
                 <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Push Broadcast Berhasil Diproses!</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                   <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
                     <span className="text-[10px] text-slate-400 block">Total Target</span>
                     <span className="font-bold text-white text-sm">{dispatchResult.total_targets}</span>
@@ -521,9 +690,49 @@ export default function SuperAdminPushNotificationPage() {
                     <span className="text-[10px] text-rose-400 block">Gagal</span>
                     <span className="font-bold text-rose-400 text-sm">{dispatchResult.failure_count}</span>
                   </div>
+                  <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                    <span className="text-[10px] text-amber-400 block">Auto-Cleaned (410/404)</span>
+                    <span className="font-bold text-amber-400 text-sm">{dispatchResult.cleaned_up_count || 0}</span>
+                  </div>
                 </div>
+
                 {dispatchResult.note && (
-                  <p className="text-[11px] text-slate-400 italic pt-1">{dispatchResult.note}</p>
+                  <p className="text-[11px] text-slate-400 italic">{dispatchResult.note}</p>
+                )}
+
+                {/* Detailed Failures & Diagnostic Breakdown */}
+                {Array.isArray(dispatchResult.failures) && dispatchResult.failures.length > 0 && (
+                  <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                    <span className="text-[11px] font-bold text-slate-300 block">
+                      Rincian Diagnosa Endpoint Gagal ({dispatchResult.failures.length}):
+                    </span>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {dispatchResult.failures.map((f: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="p-2 rounded-lg bg-slate-950/80 border border-slate-800 text-[10px] flex items-start justify-between gap-2"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-200">[{f.tenant_slug}]</span>
+                              <span className="px-1.5 py-0.2 rounded text-[9px] bg-slate-800 text-slate-400 border border-slate-700">
+                                {f.category}
+                              </span>
+                              {f.status_code && (
+                                <span className="font-mono text-slate-500">HTTP {f.status_code}</span>
+                              )}
+                            </div>
+                            <p className="text-slate-400 leading-snug">{f.reason}</p>
+                          </div>
+                          {f.cleaned_up && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0 font-bold text-[9px]">
+                              🧹 Dihapus dari DB
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             )}

@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import Script from 'next/script';
 import { cache } from 'react';
+import { normalizeTenantSlug, getTenantConfig } from '@/lib/tenant-config';
 
 // ISR: re-generate layout shell (meta tags + tracking) paling sering tiap 60 detik.
 // Vercel Edge Network akan serve cached HTML ke seluruh dunia (<300ms TTFB).
@@ -10,8 +11,9 @@ export const revalidate = 60;
 // ── Cache fetch per request agar generateMetadata & TenantStoreLayout tidak melakukan duplikasi query ──
 // Menggunakan native fetch + next:{revalidate:60} agar Vercel Edge Cache aktif.
 // Supabase JS SDK tidak mendukung Next.js fetch cache — gunakan REST API langsung.
-const getTenantStoreData = cache(async (cleanTenant: string) => {
+const getTenantStoreData = cache(async (rawTenant: string) => {
   const RESERVED_SLUGS = ['login', 'register', 'admin', 'auth', 'checkout'];
+  const cleanTenant = normalizeTenantSlug((rawTenant || '').toLowerCase().trim());
   if (!cleanTenant || RESERVED_SLUGS.includes(cleanTenant)) {
     return { store: null, settings: null };
   }
@@ -45,12 +47,53 @@ const getTenantStoreData = cache(async (cleanTenant: string) => {
     const tenantRows = tenantRes.ok ? await tenantRes.json().catch(() => []) : [];
     const settingsRows = settingsRes.ok ? await settingsRes.json().catch(() => []) : [];
 
+    let store = Array.isArray(tenantRows) && tenantRows.length > 0 ? tenantRows[0] : null;
+    const settings = Array.isArray(settingsRows) && settingsRows.length > 0 ? settingsRows[0] : null;
+
+    if (!store) {
+      const localConfig = getTenantConfig(cleanTenant);
+      if (localConfig && (localConfig.category === 'public_service' || localConfig.slug === 'margasari')) {
+        store = {
+          name: localConfig.name,
+          metadata: {
+            title: localConfig.title,
+            subtitle: localConfig.subtitle,
+            lurah: localConfig.lurah,
+            address: localConfig.address,
+            business_type: localConfig.business_type,
+            category: localConfig.category,
+            description: localConfig.persona?.system_prompt,
+            products: localConfig.pricing?.custom_packages,
+          },
+        };
+      }
+    }
+
     return {
-      store: Array.isArray(tenantRows) && tenantRows.length > 0 ? tenantRows[0] : null,
-      settings: Array.isArray(settingsRows) && settingsRows.length > 0 ? settingsRows[0] : null,
+      store,
+      settings,
     };
   } catch (err) {
     console.warn('[TenantStoreLayout] Cached fetch error:', err);
+    const localConfig = getTenantConfig(cleanTenant);
+    if (localConfig && (localConfig.category === 'public_service' || localConfig.slug === 'margasari')) {
+      return {
+        store: {
+          name: localConfig.name,
+          metadata: {
+            title: localConfig.title,
+            subtitle: localConfig.subtitle,
+            lurah: localConfig.lurah,
+            address: localConfig.address,
+            business_type: localConfig.business_type,
+            category: localConfig.category,
+            description: localConfig.persona?.system_prompt,
+            products: localConfig.pricing?.custom_packages,
+          },
+        },
+        settings: null,
+      };
+    }
     return { store: null, settings: null };
   }
 });
@@ -68,7 +111,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   try {
     const { tenant } = await params;
-    const cleanTenant = (tenant || '').toLowerCase().trim();
+    const cleanTenant = normalizeTenantSlug((tenant || '').toLowerCase().trim());
 
     // Slug bawaan sistem agar tidak tertimpa
     const RESERVED_SLUGS = ['login', 'register', 'admin', 'auth', 'checkout'];
@@ -133,8 +176,14 @@ export async function generateMetadata({
     const resolvedFavicon = logoUrl || '/shopping-cart.svg';
     const resolvedAppleIcon = logoUrl || '/shopping-cart.png';
 
+    const isPublicService =
+      metaObj.business_type === 'B2G' ||
+      metaObj.category === 'public_service' ||
+      cleanTenant === 'margasari' ||
+      cleanTenant === 'kelurahan-margasari';
+
     return {
-      title: `${storeName} | Toko Resmi`,
+      title: `${storeName} | ${isPublicService ? 'Portal Resmi' : 'Toko Resmi'}`,
       description,
       icons: {
         icon: [

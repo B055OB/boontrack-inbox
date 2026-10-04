@@ -11,11 +11,11 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ orderId?: string; id?: string }> }
 ) {
   try {
-    const { id: rawOrderId } = await params;
-    const orderId = String(rawOrderId || '').trim();
+    const { orderId: paramOrderId, id: paramId } = await params;
+    const orderId = String(paramOrderId || paramId || '').trim();
 
     if (!orderId) {
       return NextResponse.json(

@@ -2,23 +2,16 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import webpush from 'web-push';
 import { getSupabase } from '@/lib/supabaseClient';
+import {
+  DEFAULT_VAPID_PUBLIC_KEY,
+  initWebPush,
+  classifyPushError,
+  logPushDiagnostic,
+  deleteStaleSubscription,
+} from '@/lib/webpush-service';
 
-// VAPID Configuration: environment variables with fallback default for testing/staging
-const VAPID_PUBLIC_KEY =
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
-  process.env.VAPID_PUBLIC_KEY ||
-  'BC6JgUcxn2q3k7aKvdH1EkmK9yZ2XJ9x8oGqj_M5z1W3D9eKq4fL7n8mO1P2Q3R4S5T6U7V8W9X0Y1Z2A3B4C5D';
-const VAPID_PRIVATE_KEY =
-  process.env.VAPID_PRIVATE_KEY ||
-  'e6tJ1p9xK7_mO2qL4vD5sF8aG9jH1kZ3x8c7v6b5n4m';
-const VAPID_SUBJECT =
-  process.env.VAPID_SUBJECT || 'mailto:support@boontrack.com';
-
-try {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-} catch (vapidErr) {
-  console.warn('[WebPush] VAPID configuration note:', vapidErr);
-}
+// Ensure VAPID credentials are initialized
+initWebPush();
 
 export async function GET() {
   try {
@@ -29,22 +22,30 @@ export async function GET() {
 
     const { data: subs, error } = await supabase
       .from('push_subscriptions')
-      .select('id, tenant_slug, created_at, user_agent');
+      .select('id, tenant_slug, created_at, user_agent, endpoint')
+      .order('created_at', { ascending: false });
 
     const total = Array.isArray(subs) ? subs.length : 0;
+    const formattedSubs = (subs || []).map((s: any) => ({
+      id: s.id,
+      tenant_slug: s.tenant_slug,
+      created_at: s.created_at,
+      user_agent: s.user_agent,
+      endpoint_snippet: s.endpoint ? `...${s.endpoint.slice(-28)}` : '',
+    }));
 
     return NextResponse.json({
       success: true,
       total_subscriptions: total,
-      public_key: VAPID_PUBLIC_KEY,
-      subscriptions: subs || [],
+      public_key: DEFAULT_VAPID_PUBLIC_KEY,
+      subscriptions: formattedSubs,
       error: error?.message || null,
     });
   } catch (err: any) {
     return NextResponse.json({
       success: true,
       total_subscriptions: 0,
-      public_key: VAPID_PUBLIC_KEY,
+      public_key: DEFAULT_VAPID_PUBLIC_KEY,
       subscriptions: [],
       error: err.message,
     });
@@ -138,6 +139,10 @@ export async function POST(req: NextRequest) {
                 .map((t: any) => t.slug)
             );
 
+            // Always allow admin & superadmin test device subscriptions
+            validSaasSlugs.add('admin');
+            validSaasSlugs.add('superadmin');
+
             subscriptions = subscriptions.filter((s: any) => validSaasSlugs.has(s.tenant_slug));
           }
         }
@@ -155,13 +160,17 @@ export async function POST(req: NextRequest) {
           .ilike('tier', `%${target_value}%`);
 
         const validSlugs = new Set((tenants || []).map((t: any) => t.slug));
+        // Also keep admin in tier test if present
+        validSlugs.add('admin');
+        validSlugs.add('superadmin');
+
         subscriptions = subscriptions.filter((s: any) => validSlugs.has(s.tenant_slug));
       } catch (tierErr) {
         console.warn('[WebPush] Tier filter note:', tierErr);
       }
     }
 
-    // Payload notifikasi terstandarisasi untuk sw.js
+    // Standardized payload for sw.js
     const payload = JSON.stringify({
       title: notifTitle,
       body: notifBody,
@@ -174,9 +183,16 @@ export async function POST(req: NextRequest) {
 
     let successCount = 0;
     let failureCount = 0;
-    const staleSubscriptionIds: string[] = [];
+    let cleanedUpCount = 0;
+    const failureDetails: Array<{
+      tenant_slug: string;
+      category: string;
+      status_code?: number;
+      reason: string;
+      cleaned_up: boolean;
+    }> = [];
 
-    // Jika ada subscription tersimpan, dispatch via web-push
+    // Dispatch via web-push
     if (subscriptions.length > 0) {
       await Promise.allSettled(
         subscriptions.map(async (sub) => {
@@ -193,21 +209,33 @@ export async function POST(req: NextRequest) {
             successCount++;
           } catch (err: any) {
             failureCount++;
-            if (err.statusCode === 410 || err.statusCode === 404) {
-              if (sub.id) staleSubscriptionIds.push(sub.id);
+
+            // 1. Classify the push error (expired/gone, VAPID mismatch, invalid payload, etc.)
+            const errorInfo = classifyPushError(err);
+
+            // 2. Output detailed terminal diagnostic log
+            logPushDiagnostic(sub, err, errorInfo);
+
+            let wasCleanedUp = false;
+
+            // 3. Auto-cleanup stale subscriptions (410 Gone / 404 Not Found)
+            if (errorInfo.isStale && supabase) {
+              wasCleanedUp = await deleteStaleSubscription(supabase, sub);
+              if (wasCleanedUp) {
+                cleanedUpCount++;
+              }
             }
+
+            failureDetails.push({
+              tenant_slug: sub.tenant_slug || 'unknown',
+              category: errorInfo.type,
+              status_code: errorInfo.statusCode,
+              reason: errorInfo.reason,
+              cleaned_up: wasCleanedUp,
+            });
           }
         })
       );
-
-      // Bersihkan subscription kadaluarsa
-      if (staleSubscriptionIds.length > 0 && supabase) {
-        try {
-          await supabase.from('push_subscriptions').delete().in('id', staleSubscriptionIds);
-        } catch {
-          // ignore cleanup err
-        }
-      }
     }
 
     return NextResponse.json({
@@ -220,10 +248,15 @@ export async function POST(req: NextRequest) {
       total_targets: subscriptions.length,
       success_count: successCount,
       failure_count: failureCount,
+      cleaned_up_count: cleanedUpCount,
+      failures: failureDetails,
       timestamp: new Date().toISOString(),
-      note: subscriptions.length === 0
-        ? 'Siap digunakan. Belum ada subscriber aktif yang terdaftar di database push_subscriptions.'
-        : `Berhasil dikirim ke ${successCount} perangkat.`,
+      note:
+        subscriptions.length === 0
+          ? 'Siap digunakan. Belum ada subscriber aktif yang terdaftar di database push_subscriptions.'
+          : `Berhasil dikirim ke ${successCount} perangkat. (${failureCount} gagal${
+              cleanedUpCount > 0 ? `, ${cleanedUpCount} token basi otomatis dihapus` : ''
+            })`,
     });
   } catch (err: any) {
     console.error('[WebPush Error]:', err);

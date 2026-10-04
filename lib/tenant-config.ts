@@ -70,7 +70,13 @@ export interface SecretsConfig {
 export interface TenantConfig {
   slug: string;
   name: string;
-  category: 'internal' | 'external';
+  title?: string;
+  subtitle?: string;
+  category: 'internal' | 'external' | 'public_service' | string;
+  lurah?: string;
+  address?: string;
+  webhook_verify_token?: string;
+  business_type?: 'B2B' | 'B2C' | 'B2G' | string;
   health: TenantHealthInfo;
   persona: PersonaConfig;
   operational_hours: OperationalHoursConfig;
@@ -332,8 +338,81 @@ export const DEFAULT_TENANT_CONFIGS: Record<string, TenantConfig> = {
 
   'margasari': {
     slug: 'margasari',
-    name: 'Kelurahan Margasari',
-    category: 'external',
+    name: 'Portal Pelayanan Digital Warga Kelurahan Margasari',
+    title: 'Kelurahan Margasari',
+    subtitle: 'Kecamatan Buahbatu, Kota Bandung',
+    category: 'public_service',
+    lurah: 'Wahyu A. Affandi, S.IP., M.Si.',
+    address: 'Jl. Cipagalo Girang No. 09, Margasari, Kec. Buahbatu, Kota Bandung',
+    webhook_verify_token: 'kelurahan_margasari_wh_sec_2026',
+    business_type: 'B2G',
+    health: {
+      status: 'HEALTHY',
+      wa_gateway: 'CONNECTED',
+      last_payment_ping: 'Internal B2G',
+      last_activity_ping: 'Baru saja',
+      response_time_ms: 110,
+      uptime_pct: 99.9,
+    },
+    persona: {
+      ai_name: 'Sapa Warga Margasari AI',
+      system_prompt: 'Anda adalah asisten pelayanan publik resmi Kelurahan Margasari, Kec. Buahbatu, Kota Bandung (Lurah: Wahyu A. Affandi, S.IP., M.Si., Kantor: Jl. Cipagalo Girang No. 09). Berikan informasi akurat, santun, dan terstruktur mengenai aktivasi IKD (Identitas Kependudukan Digital), pengurusan SKDU (Surat Keterangan Domisili & Usaha), pengantar KTP/KK via aplikasi SARI Pemkot Bandung, SKTM, serta layanan Kawasan Bebas Sampah (KBS Margasari).',
+      tone: 'formal',
+      greeting_message: 'Sampurasun! Selamat datang di Layanan Mandiri Warga Digital Kelurahan Margasari, Kec. Buahbatu, Kota Bandung. Silakan pilih layanan: 1. Aktivasi IKD / KTP Online Digital, 2. Pengurusan SKDU (Domisili & Usaha), 3. Pengantar KTP-el / KK, 4. Kawasan Bebas Sampah (KBS).',
+      fallback_message: 'Permohonan/pertanyaan Anda telah tercatat dalam sistem loket Kelurahan Margasari. Petugas pelayanan akan memverifikasi dalam 1x24 jam kerja.',
+      human_handoff_enabled: true,
+      human_handoff_number: '+6281977655099',
+    },
+    operational_hours: {
+      days: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'],
+      open_time: '08:00',
+      close_time: '15:00',
+      timezone: 'WIB',
+      is_24_hours: false,
+      closed_auto_reply: 'Pelayanan Loket PTSP Kelurahan Margasari (Jl. Cipagalo Girang No. 09) dibuka hari Senin - Jumat pukul 08:00 - 15:00 WIB. Permohonan mandiri Anda tetap tercatat dan akan diproses pada jam kerja berikutnya.',
+      emergency_contact: '+6281977655099',
+    },
+    pricing: {
+      tier: 'ENTERPRISE',
+      monthly_fee: 0,
+      max_monthly_messages: 50000,
+      currency: 'IDR',
+      custom_packages: [
+        { id: 'mgs-ikd', name: 'Aktivasi IKD / KTP Online Digital', price: 0, description: 'Scan QR aktivasi operator SIMDUK Kelurahan Margasari' },
+        { id: 'mgs-skdu', name: 'Surat Keterangan Domisili & Usaha (SKDU)', price: 0, description: 'Layanan gratis warga & UMKM Margasari (Same-Day)' },
+        { id: 'mgs-kk-ktp', name: 'Surat Pengantar KTP-el / KK', price: 0, description: 'Verifikasi berkas & integrasi aplikasi SARI Pemkot Bandung' },
+        { id: 'mgs-kbs', name: 'Kawasan Bebas Sampah (KBS Margasari)', price: 0, description: 'Pemilahan sampah organik & anorganik tingkat RW se-Margasari' },
+      ],
+    },
+    features: {
+      whatsapp_gateway: true,
+      telegram_bot: true,
+      webchat_widget: true,
+      auto_ai_reply: true,
+      qris_billing: false,
+      gate_iot_sync: false,
+      cv_ats_scanner: false,
+      rate_limiting: true,
+    },
+    secrets: {
+      wa_api_token: 'EAAX77c98A01aZB88299Kkl19...',
+      webhook_verify_token: 'kelurahan_margasari_wh_sec_2026',
+      payment_api_key: 'b2g_free_margasari_tier_key',
+      admin_password: 'margasari_lurah_pass2026',
+    },
+    updated_at: new Date().toISOString(),
+  },
+
+  'kelurahan-margasari': {
+    slug: 'kelurahan-margasari',
+    name: 'Portal Pelayanan Digital Warga Kelurahan Margasari',
+    title: 'Kelurahan Margasari',
+    subtitle: 'Kecamatan Buahbatu, Kota Bandung',
+    category: 'public_service',
+    lurah: 'Wahyu A. Affandi, S.IP., M.Si.',
+    address: 'Jl. Cipagalo Girang No. 09, Margasari, Kec. Buahbatu, Kota Bandung',
+    webhook_verify_token: 'kelurahan_margasari_wh_sec_2026',
+    business_type: 'B2G',
     health: {
       status: 'HEALTHY',
       wa_gateway: 'CONNECTED',

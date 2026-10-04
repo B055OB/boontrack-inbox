@@ -984,8 +984,31 @@ Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, Whats
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* News 1 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* News 1 (Fitur Baru: Bot Telegram Real-Time) */}
+          <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-2.5 flex flex-col justify-between hover:shadow-md transition-shadow group">
+            <div className="space-y-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Fitur Baru
+              </span>
+              <h4 className="font-black text-slate-900 text-sm leading-snug">
+                Notifikasi Bot Telegram Real-Time: Pesanan &amp; Pembayaran Masuk Instan
+              </h4>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Kini dashboard toko Anda terhubung langsung dengan Telegram. Dapatkan notifikasi instan langsung ke HP untuk setiap pesanan baru masuk, konfirmasi pembayaran lunas (PAID / CAPI dispatched), bukti transfer, hingga status koneksi bot WhatsApp tanpa takut terlewat.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('telegram_alerts')}
+              className="pt-2 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 group/btn cursor-pointer transition text-left"
+            >
+              <span>Hubungkan Telegram -&gt;</span>
+            </button>
+          </div>
+
+          {/* News 2 (Pembayaran: Dynamic QRIS V2) */}
           <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-2.5 flex flex-col justify-between hover:shadow-md transition-shadow">
             <div className="space-y-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1003,7 +1026,7 @@ Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, Whats
             </div>
           </div>
 
-          {/* News 2 */}
+          {/* News 3 (Desain: Template Bio-Link) */}
           <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-2.5 flex flex-col justify-between hover:shadow-md transition-shadow">
             <div className="space-y-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
@@ -1016,12 +1039,15 @@ Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, Whats
                 Tampilan microsite kini dioptimalkan khusus untuk pengunjung dari TikTok dan Instagram dengan waktu muat di bawah 1 detik.
               </p>
             </div>
-            <div className="pt-2 text-[11px] font-bold text-purple-600">
-              Coba di tab Tampilan Toko
+            <div
+              onClick={() => onNavigateTab('themes')}
+              className="pt-2 text-[11px] font-bold text-purple-600 hover:text-purple-700 cursor-pointer flex items-center gap-1"
+            >
+              <span>Coba di tab Tampilan Toko</span>
             </div>
           </div>
 
-          {/* News 3 */}
+          {/* News 4 (Tips Penjualan: WhatsApp CTA) */}
           <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-2.5 flex flex-col justify-between hover:shadow-md transition-shadow">
             <div className="space-y-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200">
@@ -1034,8 +1060,11 @@ Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, Whats
                 Gunakan format sapaan otomatis di tombol etalase agar calon pembeli merasa dilayani secara personal sejak ketukan pertama.
               </p>
             </div>
-            <div className="pt-2 text-[11px] font-bold text-blue-600">
-              Pelajari Panduan Bot
+            <div
+              onClick={() => onNavigateTab('whatsapp')}
+              className="pt-2 text-[11px] font-bold text-blue-600 hover:text-blue-700 cursor-pointer flex items-center gap-1"
+            >
+              <span>Pelajari Panduan Bot</span>
             </div>
           </div>
         </div>
