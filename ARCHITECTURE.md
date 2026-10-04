@@ -3799,7 +3799,7 @@ Untuk melindungi solvabilitas merchant, kepatuhan hukum, dan keandalan akuntansi
 
 ---
 
-## WhatsApp Gateway, Inbox & Meta CAPI Architecture (Audit Oct 2026)
+## 46. WhatsApp Gateway, Inbox & Meta CAPI Architecture (Audit Oct 2026)
 
 Menindaklanjuti audit menyeluruh dan persetujuan CTO atas integrasi **BoonTrack Inbox**, **Evolution API v2**, **BoonPilot AI Multimodal State Machine**, serta pipeline **Meta Conversions API (CAPI)**, berikut adalah 3 pilar arsitektur kanonikal yang menjadi sumber kebenaran teknis platform:
 
@@ -3875,7 +3875,7 @@ Sebagai panduan operasional teknis bagi tim engineering, DevOps, dan Customer Su
 | `whatsapp_connections` | **Single Source of Truth** Sesi WhatsApp Tenant | `tenant_slug` (TEXT), `instance_name` (TEXT), `phone_number` (TEXT), `status` (TEXT), `qr_code` (TEXT), `updated_at` (TIMESTAMPTZ) | Menyimpan sesi koneksi WhatsApp per toko. Kolom `status`: `CONNECTED`, `CONNECTING`, `DISCONNECTED`, `refused`. |
 | `conversations` / `chat_sessions` | Penyimpanan Status Bot & Pause Window | `tenant_slug` (TEXT), `customer_phone` (TEXT), `bot_status` (TEXT), `paused_until` (TIMESTAMPTZ), `last_human_activity` (TIMESTAMPTZ), `is_paused` (BOOLEAN) | Mengatur status aktif/jeda bot AI. `bot_status`: `BOT_ACTIVE`, `HUMAN_PAUSED`, `HANDOVER`. `paused_until` mengatur batas waktu 24h sliding window. |
 | `orders` | Master Transaksi POS & Web Storefront | `id` (UUID PK), `order_number` (TEXT Display), `tenant_slug` (TEXT), `gross_amount` (NUMERIC), `status` (TEXT), `payment_status` (TEXT) | Master transaksi toko. Memisahkan `id` (UUID v4 mesin) dan `order_number` (`ORD-POS-YYMMDD-HEX6` display pembeli/CS). |
-| `capi_events` | Audit Trail Meta CAPI Dispatch | `id` (UUID), `tenant_slug` (TEXT), `event_name` (TEXT), `event_source` (TEXT), `payload` (JSONB), `status` (TEXT), `created_at` (TIMESTAMPTZ) | Log pengiriman event Meta CAPI (Purchase, InitiateCheckout). Menyimpan raw payload untuk verifikasi deduplikasi. |
+| `capi_events` | Audit Trail Meta CAPI Dispatch | `id` (UUID PK), `tenant_slug` (TEXT), `event_name` (TEXT), `event_source` (TEXT), `payload` (JSONB), `status` (TEXT), `created_at` (TIMESTAMPTZ) | Log pengiriman event Meta CAPI (Purchase, InitiateCheckout). Menyimpan raw payload untuk verifikasi deduplikasi. |
 
 ---
 
@@ -3948,5 +3948,111 @@ Sebagai panduan operasional teknis bagi tim engineering, DevOps, dan Customer Su
   ORDER BY created_at DESC 
   LIMIT 10;
   ```
+
+---
+
+### 46.5 BoonTrack Inbox Technical Specification, Database Dictionary & VCS Repositories
+
+Bagian ini merinci informasi repositori & deployment, arsitektur data internal, spesifikasi kamus data (*data dictionary*), relasi antar-entitas, serta siklus hidup *event-driven* pada antarmuka **BoonTrack Inbox (`TeamChatTab.tsx`)**:
+
+#### 1. Informasi Repositori Git & Lingkungan Deploy
+- **Repository Remote**: `https://github.com/boontrack-inbox.git`
+- **Production Branch**: `main`
+- **Integrasi Webhook**: Endpoint `/api/webhooks/evolution` menerima stream event Evolution v2 (`MESSAGES_UPSERT`, `CONNECTION_UPDATE`).
+
+---
+
+#### 2. Tabel Pesan Chat (`whatsapp_messages` / `messages`)
+
+Tabel ini bertindak sebagai buku besar (*ledger*) riwayat percakapan granular untuk seluruh pesan masuk (*inbound*) dan pesan keluar (*outbound*):
+
+| Nama Kolom | Tipe Data | Constraint | Deskripsi & Aturan Integritas |
+| :--- | :--- | :--- | :--- |
+| `id` | `UUID` / `BIGINT` | `PRIMARY KEY` | Pengidentifikasi unik baris pesan di database. |
+| `tenant_slug` | `TEXT` | `NOT NULL` | Identifier slug toko untuk isolasi multi-tenant data layer. |
+| `remote_jid` / `customer_phone` | `TEXT` | `NOT NULL` | Nomor telepon WhatsApp pelanggan dalam format E.164 terstandarisasi (`628xxx`). |
+| `message_id` | `TEXT` | `INDEXED` | ID unik pesan dari provider WhatsApp (Evolution API / Meta WABA) untuk deduplikasi pesan masuk. |
+| `from_me` | `BOOLEAN` | `NOT NULL`, `DEFAULT false` | Pembeda pesan masuk vs pesan keluar CS/bot (`false` = masuk, `true` = keluar). |
+| `message_type` | `TEXT` | `NOT NULL` | Format konten: `'text'`, `'image'`, `'audio'`, `'document'`, `'location'`. |
+| `content` / `body` | `TEXT` | `NULLABLE` | Teks pesan mentah atau transkripsi keterangan media. |
+| `media_url` | `TEXT` | `NULLABLE` | URL berkas media publik atau bucket storage jika pesan berisi foto bukti transfer/lokasi. |
+| `metadata` / `qris_data` | `JSONB` | `DEFAULT '{}'::jsonb` | Payload interaktif POS: menyimpan `order_id`, `order_number`, `invoice_url`, `gross_amount`, `qr_string`, dan parameter kurir instan. |
+| `created_at` | `TIMESTAMPTZ` | `DEFAULT NOW()` | Timestamp pencatatan pesan dalam zona waktu UTC kanonikal. |
+
+* **Relasi Data**:
+  - `N : 1` terhadap tabel `conversations` / `chat_sessions` melalui `conversation_id` atau pasangan unik `(tenant_slug, customer_phone)`.
+  - `N : 1` terhadap tabel `tenants` melalui `tenant_slug` / `tenant_id`.
+
+---
+
+#### 3. Tabel Sesi & State CS (`conversations` / `chat_sessions`)
+
+Tabel ini mengontrol status percakapan aktif, antrean CS, dan status jeda (*pause window*) bot AI:
+
+| Nama Kolom | Tipe Data | Constraint | Deskripsi & Aturan Integritas |
+| :--- | :--- | :--- | :--- |
+| `id` | `UUID` | `PRIMARY KEY` | ID sesi percakapan unik global. |
+| `tenant_slug` | `TEXT` | `NOT NULL` | Relasi scoping toko tenant. |
+| `customer_phone` | `TEXT` | `NOT NULL` | Nomor telepon pelanggan terstandarisasi. |
+| `customer_name` | `TEXT` | `NULLABLE` | Nama profil WhatsApp pelanggan (`pushName`) atau nama yang diinput CS. |
+| `bot_status` | `TEXT` | `NOT NULL` | State machine kendali bot: `'BOT_ACTIVE'`, `'HUMAN_PAUSED'`, `'HANDOVER'`. |
+| `is_paused` | `BOOLEAN` | `DEFAULT false` | Flag biner status jeda bot (true saat human takeover aktif). |
+| `paused_until` | `TIMESTAMPTZ` | `NULLABLE` | Batas waktu kedaluwarsa sliding window 24 jam auto-resume. |
+| `last_human_activity`| `TIMESTAMPTZ` | `NULLABLE` | Timestamp terakhir CS manusia mengirim balasan manual dari HP/web. |
+| `unread_count` | `INTEGER` | `DEFAULT 0` | Jumlah pesan belum dibaca oleh CS toko. |
+| `last_message_preview`| `TEXT` | `NULLABLE` | Cuplikan pesan terakhir untuk tampilan daftar chat di sidebar inbox. |
+| `updated_at` | `TIMESTAMPTZ` | `DEFAULT NOW()` | Timestamp perubahan status sesi terkini. |
+
+* **Relasi Data**:
+  - `1 : N` terhadap tabel `messages` (satu sesi menaungi seluruh riwayat pesan obrolan).
+  - `1 : N` terhadap tabel `orders` berdasarkan kecocokan `(tenant_slug, customer_phone)`.
+
+---
+
+#### 4. Trigger Event Tombol Aksi di Tampilan Inbox (`TeamChatTab.tsx`)
+
+Antarmuka kerja CS di dashboard menyediakan 3 aksi operasional terkoordinasi dengan *backend contract* yang ketat:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│              DASHBOARD INBOX WORKSPACE (TeamChatTab.tsx)               │
+└────────────────────────────────────────────────────────────────────────┘
+          │                              │                          │
+          ▼ [Aksi 1]                     ▼ [Aksi 2]                 ▼ [Aksi 3]
+┌──────────────────┐           ┌──────────────────┐       ┌──────────────────┐
+│  Buat Order POS  │           │   Tandai Lunas   │       │   Pause / Resume │
+│   (Quick POS)    │           │   (Quick Paid)   │       │   Toggle Bot     │
+└─────────┬────────┘           └─────────┬────────┘       └─────────┬────────┘
+          │                              │                          │
+          ▼                              ▼                          ▼
+1. Simpan baris orders         1. POST /quick-paid        1. Update state:
+   - id: UUID v4                  - Update orders (PAID)     - bot_status
+   - order_number:                - order_audit_logs         - paused_until
+     ORD-POS-YYMMDD-HEX6          - Meta CAPI Purchase       - is_paused
+2. Insert bubble messages         - Email Fulfillment     2. AI LLM Muted
+   (metadata: qris_data)       2. Deduplikasi CAPI:       3. Order/Payment
+3. Outbound WA QRIS/Bank          Status 'dispatched'        Gatekeeper TETAP
+4. Meta CAPI: InitiateCheckout    (Zero Double Count)        100% AKTIF
+```
+
+1. **Tombol "Buat Order POS" (Quick POS & Tagihan QRIS / Bank)**:
+   - **Generator Dual-ID**: Menghasilkan `internalOrderId` (`crypto.randomUUID()`) dan `displayOrderNumber` kanonikal (`ORD-POS-YYMMDD-HEX6`).
+   - **Persistensi `orders`**: Meng-insert baris baru pada tabel `orders` dengan status `PENDING`, `payment_status: 'PENDING'`, dan mengikat `conversation_id`.
+   - **Render Tagihan Chat**: Menyisipkan pesan ke tabel `messages` dengan payload JSON `qris_data` (berisi QRIS dinamis atau nomor rekening transfer beserta kode unik).
+   - **Outbound Dispatch**: Mengirimkan tagihan resmi via Evolution API ke WhatsApp pembeli (tercatat otomatis di *Outbound Registry*).
+   - **Telemetri CAPI**: Menembakkan event Meta CAPI `InitiateCheckout` untuk pelacakan *ad performance*.
+
+2. **Tombol "Tandai Lunas" (Quick Paid - Single Source of Truth)**:
+   - **Kanonikal Backend Gateway**: Mengeksekusi permintaan HTTP ke endpoint terpusat:
+     `POST /api/v1/tenants/[slug]/orders/[id]/quick-paid`
+   - **Database State Transition**: Mengubah `orders.status = 'PAID'`, `orders.payment_status = 'PAID'`, dan mencatat timestamp `paid_at`.
+   - **Audit Trail & Deduplikasi CAPI**: Mencatat verifikasi pelunasan ke `order_audit_logs`, lalu menembakkan event kanonikal `Purchase` terenkripsi EMQ ke Meta CAPI. Record dispatch dicatat ke `capi_events` dengan status `dispatched` secara idempoten (bebas over-reporting).
+   - **Konfirmasi Otomatis**: Mengirimkan pesan konfirmasi lunas resmi beserta link e-invoice toko ke WhatsApp pembeli dan memicu email fulfillment.
+
+3. **Tombol "Pause Bot / Resume" (Toggle Manual Kontrol AI)**:
+   - **Mutasi State Sesi**: Memperbarui tabel percakapan (`bot_status = 'HUMAN_PAUSED'`, `is_paused = true`, `paused_until = now + 24 jam` saat pause; atau `bot_status = 'BOT_ACTIVE'`, `is_paused = false` saat resume).
+   - **Isolasi Alur Percakapan**: Menahan balasan otomatis AI general conversation tanpa pernah mengganggu proses transaksi.
+   - **Invariance Transaksi Tetap Berjalan**: Blok parsing bukti transfer (`isManualOrderMessage`) dan rekonsiliasi mutasi pembayaran QRIS/Bank (`parsePaymentNotification`) tetap dieksekusi 100% secara deterministik meskipun bot sedang dalam status pause.
+
 
 
