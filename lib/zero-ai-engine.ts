@@ -64,6 +64,41 @@ export function getIndustryQuickReplies(
   rawCategory?: string,
   meta?: Record<string, any>
 ): string[] {
+  // 0. Deteksi Khusus Portal Warga / Layanan Publik (Margasari & B2G)
+  const slug = String(meta?.slug || meta?.tenant_slug || '').toLowerCase().trim();
+  const rawCat = String(rawCategory || meta?.category || meta?.business_category || meta?.vertical || '').toUpperCase().trim();
+  const isWargaPublicService =
+    slug === 'margasari' ||
+    slug === 'kelurahan-margasari' ||
+    slug === 'pelayanan-publik' ||
+    slug === 'pelayanan-publik-dummy' ||
+    rawCat === 'PUBLIC_SERVICE' ||
+    rawCat === 'B2G' ||
+    rawCat === 'CIVIC' ||
+    rawCat.includes('PELAYANAN') ||
+    rawCat.includes('KELURAHAN') ||
+    rawCat.includes('WARGA');
+
+  if (isWargaPublicService) {
+    const storedQuickReplies = meta?.quick_replies;
+    if (Array.isArray(storedQuickReplies) && storedQuickReplies.length > 0) {
+      const list = storedQuickReplies
+        .map((r: any) => (typeof r === 'string' ? r : r.title || r.name))
+        .filter((t: any): t is string => typeof t === 'string' && Boolean(t.trim()));
+      if (!list.some((item) => /ikd|ktp online/i.test(item))) {
+        list.unshift('Aktivasi IKD / KTP Online Digital');
+      }
+      return list;
+    }
+
+    return [
+      'Aktivasi IKD / KTP Online Digital',
+      'Surat Keterangan Domisili & Usaha (SKDU)',
+      'Pengantar KTP-el / KK',
+      'Kawasan Bebas Sampah (KBS Margasari)',
+    ];
+  }
+
   const category = normalizeIndustryCategory(rawCategory || meta?.category || meta?.business_category);
 
   // 1. Cek apakah ada quick_replies eksplisit di metadata
@@ -179,8 +214,77 @@ export function buildDefaultIndustryMenu(
   rawCategory: string | undefined,
   tenant: { name?: string; slug?: string; metadata?: Record<string, any> }
 ): InteractiveMenu {
+  const storeName = tenant.name || tenant.slug || 'Kelurahan Margasari';
+  const slug = String(tenant.slug || '').toLowerCase().trim();
+  const rawCat = String(rawCategory || tenant.metadata?.category || tenant.metadata?.business_category || tenant.metadata?.vertical || '').toUpperCase().trim();
+
+  // Khusus Portal Warga & Layanan Publik (Margasari)
+  if (
+    slug === 'margasari' ||
+    slug === 'kelurahan-margasari' ||
+    slug === 'pelayanan-publik' ||
+    slug === 'pelayanan-publik-dummy' ||
+    rawCat === 'PUBLIC_SERVICE' ||
+    rawCat === 'B2G' ||
+    rawCat === 'CIVIC' ||
+    rawCat.includes('PELAYANAN') ||
+    rawCat.includes('KELURAHAN') ||
+    rawCat.includes('WARGA')
+  ) {
+    return {
+      id: 'menu_portal_warga',
+      trigger: `Menu Layanan Warga ${storeName}`,
+      title: `Pilihan Layanan ${storeName}`,
+      header_text: `Portal Mandiri Warga ${storeName}`,
+      description: `Sampurasun! Selamat datang di Portal Layanan Mandiri Warga ${storeName}. Silakan pilih menu di bawah ini:`,
+      options: [
+        {
+          id: 'opt_ikd',
+          title: '1. Aktivasi IKD / KTP Online Digital',
+          description: 'Aktivasi KTP Digital HP Android/iOS via SIMDUK',
+          responseText: 'Saya ingin tahu syarat dan alur Aktivasi IKD / KTP Online Digital di Kelurahan Margasari.',
+        },
+        {
+          id: 'opt_skdu',
+          title: '2. Surat Domisili & Usaha (SKDU)',
+          description: 'Pengurusan SKDU warga & UMKM Margasari (Same-Day)',
+          responseText: 'Bagaimana syarat dan alur pengurusan Surat Keterangan Domisili & Usaha (SKDU)?',
+        },
+        {
+          id: 'opt_ktp_kk',
+          title: '3. Pengantar KTP-el / KK',
+          description: 'Penerbitan baru/ganti KK & KTP via aplikasi SARI',
+          responseText: 'Bagaimana prosedur permohonan pengantar KTP-el dan Kartu Keluarga (KK)?',
+        },
+        {
+          id: 'opt_kbs',
+          title: '4. Kawasan Bebas Sampah (KBS)',
+          description: 'Jadwal pilah sampah & aduan sampah liar RW',
+          responseText: 'Informasi Kawasan Bebas Sampah (KBS Margasari) dan pengaduan sampah liar.',
+        },
+        {
+          id: 'opt_sktm',
+          title: '5. Keterangan Tidak Mampu (SKTM)',
+          description: 'Pengajuan SKTM beasiswa & BPJS PBI',
+          responseText: 'Syarat dan alur pembuatan Surat Keterangan Tidak Mampu (SKTM).',
+        },
+        {
+          id: 'opt_nikah',
+          title: '6. Surat Pengantar Nikah (N1-N4)',
+          description: 'Blanko pengantar nikah ke KUA Buahbatu',
+          responseText: 'Persyaratan pengurusan surat pengantar nikah N1-N4.',
+        },
+        {
+          id: 'opt_jam_lokasi',
+          title: '7. Lokasi & Jam Kantor',
+          description: 'Jl. Cipagalo Girang No. 09 (08:00 - 15:00 WIB)',
+          responseText: 'Informasi alamat kantor kelurahan, jam operasional loket, dan kontak WhatsApp.',
+        },
+      ],
+    };
+  }
+
   const category = normalizeIndustryCategory(rawCategory || tenant.metadata?.category || tenant.metadata?.business_category);
-  const storeName = tenant.name || tenant.slug || 'Toko Kami';
 
   switch (category) {
     // -------------------------------------------------------------
@@ -693,6 +797,134 @@ export async function processZeroAiMessage(
   let actionUrl = getTenantActionUrl(tenantDomainInfo, primaryProduct);
 
   // 5. INTENT DISPATCHER (ZERO-TOKEN DETERMINISTIC LOGIC)
+
+  // ── [PORTAL WARGA KELURAHAN MARGASARI INTENTS] ──
+  const isMargasariPublic =
+    slug === 'margasari' ||
+    slug === 'kelurahan-margasari' ||
+    slug === 'pelayanan-publik' ||
+    (category === 'PROFESSIONAL_SERVICE' && (cleanMsg.includes('ikd') || cleanMsg.includes('ktp digital') || cleanMsg.includes('skdu') || cleanMsg.includes('margasari')));
+
+  if (
+    cleanMsg.includes('ikd') ||
+    cleanMsg.includes('ktp digital') ||
+    cleanMsg.includes('ktp online') ||
+    cleanMsg.includes('identitas kependudukan digital') ||
+    cleanMsg.includes('aplikasi ikd') ||
+    cleanMsg.includes('aktivasi ikd') ||
+    (isMargasariPublic && (selectedOptionIndex === 1 || cleanMsg.includes('ktp')))
+  ) {
+    const replyText =
+      `🏛️ *AKTIVASI & PEMBUATAN IDENTITAS KEPENDUDUKAN DIGITAL (IKD / KTP ONLINE)*\n` +
+      `_Layanan Resmi Kelurahan Margasari, Kec. Buahbatu, Kota Bandung_\n\n` +
+      `📋 *Persyaratan Wajib:*\n` +
+      `1. Sudah melakukan perekaman biometrik / memiliki fisik KTP-el\n` +
+      `2. Memiliki email aktif dan nomor HP pribadi yang aktif & berkuota internet\n` +
+      `3. Smartphone Android (minimal versi 8.0) atau iOS\n` +
+      `4. Kartu Keluarga (KK) untuk validasi NIK\n\n` +
+      `🔄 *Alur Prosedur Aktivasi:*\n` +
+      `1. Unduh aplikasi 'Identitas Kependudukan Digital' (KemenDagri) di Google Play Store atau Apple App Store.\n` +
+      `2. Buka aplikasi, masukkan NIK, Email aktif, dan No HP aktif, lalu klik Verifikasi Data.\n` +
+      `3. Lakukan verifikasi wajah (Face Recognition) melalui kamera aplikasi ponsel.\n` +
+      `4. Datang ke Loket PTSP Kelurahan Margasari (Jl. Cipagalo Girang No. 09) untuk verifikasi dan scan QR code aktivasi oleh petugas Operator SIMDUK.\n` +
+      `5. Cek kotak masuk email untuk menerima 6 digit kode PIN aktivasi, kemudian masukkan PIN pada aplikasi. IKD aktif penuh dan siap digunakan.\n\n` +
+      `⏱️ *Estimasi:* 5 - 10 Menit di Loket PTSP\n` +
+      `💳 *Biaya:* Gratis (Rp 0)\n` +
+      `📍 *Lokasi:* Kantor Kelurahan Margasari, Jl. Cipagalo Girang No. 09 (Senin - Jumat, 08:00 - 15:00 WIB)\n` +
+      `👤 *Lurah:* Wahyu A. Affandi, S.IP., M.Si.`;
+
+    return sendResult({
+      handled: true,
+      reply: replyText,
+      type: 'TEXT',
+      intent_key: 'PUBLIC_SERVICE_IKD',
+    });
+  }
+
+  if (
+    cleanMsg.includes('skdu') ||
+    cleanMsg.includes('domisili usaha') ||
+    (isMargasariPublic && (cleanMsg.includes('domisili') || selectedOptionIndex === 2))
+  ) {
+    const replyText =
+      `🏛️ *PENGURUSAN SURAT KETERANGAN DOMISILI & USAHA (SKDU)*\n` +
+      `_Layanan Resmi Kelurahan Margasari, Kec. Buahbatu, Kota Bandung_\n\n` +
+      `📋 *Persyaratan Wajib:*\n` +
+      `1. Surat Pengantar RT/RW setempat (wilayah Kelurahan Margasari)\n` +
+      `2. Fotokopi KTP-el Pemohon & Kartu Keluarga (KK)\n` +
+      `3. Pasfoto 3x4 berwarna sebanyak 2 lembar\n` +
+      `4. Surat Pernyataan Tempat Usaha / Perjanjian Sewa Tempat (khusus domisili usaha)\n` +
+      `5. Foto tempat / aktivitas usaha\n\n` +
+      `🔄 *Alur Pengurusan:*\n` +
+      `1. Minta Surat Pengantar ke pengurus RT dan RW setempat di Margasari.\n` +
+      `2. Bawa berkas persyaratan lengkap ke Loket Pelayanan Kelurahan Margasari (Jl. Cipagalo Girang No. 09).\n` +
+      `3. Petugas memeriksa kelengkapan berkas dan memproses verifikasi.\n` +
+      `4. Penandatanganan dokumen oleh Lurah Margasari (Wahyu A. Affandi, S.IP., M.Si.).\n` +
+      `5. Penyerahan dokumen fisik SKDU resmi bertanda tangan & berstempel.\n\n` +
+      `⏱️ *Durasi:* Same-day / Maksimal 1 Hari Kerja\n` +
+      `💳 *Biaya:* Tanpa Biaya / Gratis (Rp 0)\n` +
+      `📍 *Lokasi:* Jl. Cipagalo Girang No. 09, Margasari (Senin - Jumat, 08:00 - 15:00 WIB)`;
+
+    return sendResult({
+      handled: true,
+      reply: replyText,
+      type: 'TEXT',
+      intent_key: 'PUBLIC_SERVICE_SKDU',
+    });
+  }
+
+  if (
+    cleanMsg.includes('kbs') ||
+    cleanMsg.includes('bebas sampah') ||
+    cleanMsg.includes('sampah liar') ||
+    (isMargasariPublic && (cleanMsg.includes('sampah') || cleanMsg.includes('kebersihan') || selectedOptionIndex === 4))
+  ) {
+    const replyText =
+      `🌿 *LAYANAN KEBERSIHAN & KAWASAN BEBAS SAMPAH (KBS MARGASARI)*\n` +
+      `_Program Gerakan Kang Pisman & Penanganan Lingkungan Kelurahan Margasari_\n\n` +
+      `📋 *Panduan & Program:*\n` +
+      `1. Pemilahan Sampah Mandiri: Warga memilah sampah dari rumah tangga menjadi wadah Organik (sisa makanan/daun) dan Anorganik (plastik/kertas/kardus).\n` +
+      `2. Bank Sampah Unit RW: Penyetoran sampah terpilah anorganik bernilai ekonomi ke Bank Sampah RW se-Margasari.\n` +
+      `3. Pengangkutan Rutin: Pengangkutan sampah residu terjadwal oleh tim kebersihan RW bersama Dinas Lingkungan Hidup (DLH) Kota Bandung.\n` +
+      `4. Pengaduan Sampah Liar: Laporkan tumpukan sampah liar dengan menyertakan foto lokasi dan patokan RT/RW ke Seksi Trantib Kelurahan Margasari.\n\n` +
+      `📍 *Posko:* Seksi Trantib Kelurahan Margasari, Jl. Cipagalo Girang No. 09\n` +
+      `📞 *Hotline Support:* +62 819-7765-5099`;
+
+    return sendResult({
+      handled: true,
+      reply: replyText,
+      type: 'TEXT',
+      intent_key: 'PUBLIC_SERVICE_KBS',
+    });
+  }
+
+  if (
+    (cleanMsg.includes('pengantar ktp') || cleanMsg.includes('pengantar kk') || cleanMsg.includes('sari')) ||
+    (isMargasariPublic && (cleanMsg.includes('kk') || cleanMsg.includes('kartu keluarga') || selectedOptionIndex === 3))
+  ) {
+    const replyText =
+      `🏛️ *SURAT PENGANTAR KTP-EL / KARTU KELUARGA (KK)*\n` +
+      `_Layanan Kependudukan Kelurahan Margasari & Disdukcapil Kota Bandung_\n\n` +
+      `📋 *Persyaratan Wajib:*\n` +
+      `1. Surat Pengantar RT/RW setempat wilayah Margasari\n` +
+      `2. Kartu Keluarga (KK) lama (jika perubahan data / penambahan anggota)\n` +
+      `3. Surat Keterangan Kehilangan dari Polsek Buahbatu (khusus jika KK/KTP hilang)\n` +
+      `4. Dokumen pendukung perubahan data (Ijazah / Buku Nikah / Akta Lahir)\n\n` +
+      `🔄 *Alur Pengurusan:*\n` +
+      `1. Bawa pengantar RT/RW dan berkas ke Loket Kelurahan Margasari.\n` +
+      `2. Petugas memverifikasi dan menginput pengajuan ke sistem SIMDUK / aplikasi SARI (Pemuda Dukcapil Kota Bandung).\n` +
+      `3. Warga juga dapat memantau permohonan via aplikasi 'SARI' / Pemuda Dukcapil Kota Bandung (disdukcapil.bandung.go.id).\n` +
+      `4. Pengambilan fisik KK baru atau KTP-el cetak di Kantor Kelurahan Margasari / Kantor Kecamatan Buahbatu.\n\n` +
+      `⏱️ *Estimasi:* 1 - 3 Hari Kerja\n` +
+      `💳 *Biaya:* Tanpa Biaya / Gratis (Rp 0)`;
+
+    return sendResult({
+      handled: true,
+      reply: replyText,
+      type: 'TEXT',
+      intent_key: 'PUBLIC_SERVICE_KK_KTP',
+    });
+  }
 
   // ── [INTENT 1]: LIHAT PRODUK / KATALOG / MENU / RATE CARD / TARIF ──
   if (

@@ -22,7 +22,8 @@ const B2B_TENANT_SLUGS = new Set([
   'nyka', 'nyka-hijab', 'nyka-modest', 'nyka-store',
   'suhu-ads', 'suhu-ads-masterclass', 'suhuads', 'masterclass', 'digital-marketing',
   'bale-pananggeuhan', 'bale',
-  'pelayanan-publik', 'pelayanan-publik-dummy', 'indra-public', 'indra', 'kelurahan-indra',
+  'margasari', 'kelurahan-margasari',
+  'pelayanan-publik',
   'om-budi', 'om_budi', 'ombudi', 'boontrack-demo', 'boontrack-holding', 'holding',
 ]);
 
