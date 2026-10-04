@@ -464,7 +464,7 @@ function SingleProductContent() {
               enable_payment: cfg.enable_payment ?? true,
               client_logos: cfg.client_logos || builder.client_logos || match.client_logos || [],
               faqs: cfg.faqs || [],
-              problem_title: ps.title || ps.problem_title || cfg.problem_title || 'Apakah Anda Sering Menghadapi Masalah Ini?',
+              problem_title: ps.title || ps.problem_title || cfg.problem_title || '',
               pain_points: ps.pain_points || cfg.pain_points || [],
               solution_title: ps.solution_title || cfg.solution_title || 'Materi & Fasilitas Utama',
               solution_points: resolvedSolutionPoints,
@@ -3982,7 +3982,7 @@ function SingleProductContent() {
                 {config.show_pain_points !== false && Boolean((config.pain_points && config.pain_points.length > 0) || (config.problem_title && config.problem_title.trim())) ? (
                   <section className="bg-rose-50/70 border border-rose-200/80 rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-snug">
-                      {config.problem_title || 'Apakah Anda Sering Mengalami Masalah Ini?'}
+                      {config.problem_title || (config.pain_points && config.pain_points.length > 0 ? 'Apakah Anda Sering Menghadapi Masalah Ini?' : '')}
                     </h2>
                     {config.pain_points && config.pain_points.length > 0 && (
                       <div className="space-y-2.5">

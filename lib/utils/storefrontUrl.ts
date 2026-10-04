@@ -1,14 +1,13 @@
 /**
  * Centralized Storefront URL Helper (BoonTrack Multi-Tenant §4)
- * Canonical format: https://boontrack.com/${slug}
- * (Replaces legacy prefix shop.boontrack.com)
+ * Canonical format: https://shop.boontrack.com/${slug}
  */
 
-export const CANONICAL_DOMAIN = 'https://boontrack.com';
+export const CANONICAL_DOMAIN = 'https://shop.boontrack.com';
 
 /**
  * Resolves the clean, canonical storefront bio link for any tenant.
- * Example: getStorefrontUrl('om-budi') -> 'https://boontrack.com/om-budi'
+ * Example: getStorefrontUrl('om-budi') -> 'https://shop.boontrack.com/om-budi'
  */
 export function getStorefrontUrl(tenantSlug?: string | null, customDomain?: string | null): string {
   if (customDomain) {
