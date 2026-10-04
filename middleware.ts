@@ -642,29 +642,50 @@ export async function middleware(req: NextRequest) {
   // ── 3. KHUSUS APP.BOONTRACK.COM (Isolasi ke /app-portal) ──
   if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
     const firstSegment = pathname.split('/')[1]?.toLowerCase();
-    // Allow B2B/B2G tenant slugs (e.g. margasari) on app.boontrack.com to be routed directly to tenant storefront/portal
-    if (firstSegment && B2B_TENANT_SLUGS.has(firstSegment)) {
-      return NextResponse.next();
-    }
 
-    const url = req.nextUrl.clone();
+    // Favicon & Icons
     if (pathname === '/favicon.ico') {
+      const url = req.nextUrl.clone();
       url.pathname = '/app-portal/favicon.ico';
       return NextResponse.rewrite(url);
     }
     if (pathname === '/apple-touch-icon.png' || pathname === '/apple-icon.png') {
+      const url = req.nextUrl.clone();
       url.pathname = '/app-portal/apple-icon.png';
       return NextResponse.rewrite(url);
     }
+    if (pathname === '/icon.png') {
+      const url = req.nextUrl.clone();
+      url.pathname = '/app-portal/icon.png';
+      return NextResponse.rewrite(url);
+    }
+
+    // Root portal landing
     if (pathname === '/' || pathname === '') {
+      const url = req.nextUrl.clone();
       url.pathname = '/app-portal';
       return NextResponse.rewrite(url);
     }
-    if (!pathname.startsWith('/app-portal')) {
-      url.pathname = `/app-portal${pathname}`;
-      return NextResponse.rewrite(url);
+
+    // Explicit app-portal subpaths
+    if (pathname.startsWith('/app-portal')) {
+      return NextResponse.next();
     }
-    return NextResponse.next();
+
+    // Reserved system routes
+    const SYSTEM_APP_ROUTES = new Set([
+      'api', '_next', 'auth', 'login', 'register', 'dashboard', 'admin',
+      'terms', 'privacy', 'acceptable-use', 'refund'
+    ]);
+
+    // Dynamic Tenant Routing Boundary: Allow any tenant portal request to route directly to app/[tenant]/page.tsx
+    if (firstSegment && !SYSTEM_APP_ROUTES.has(firstSegment)) {
+      return NextResponse.next();
+    }
+
+    const url = req.nextUrl.clone();
+    url.pathname = `/app-portal${pathname}`;
+    return NextResponse.rewrite(url);
   }
 
   // ── 4. KHUSUS CREATOR.BOONTRACK.COM (CREATOR_V1 Profile Rewrite) ──
