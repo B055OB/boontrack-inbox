@@ -42,6 +42,7 @@ import { useTenantInbox } from '../../hooks/useTenantInbox';
 import { extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import { getStorefrontInvoiceUrl, getStorefrontPayUrl, generatePaymentToken } from '@/lib/storefront-urls';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
+import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
 import DirectCsLoginModal from '../DirectCsLoginModal';
 
 export interface ConversationMessage {
@@ -889,27 +890,26 @@ export default function TeamChatTab({
       // 2. Simpan order ke Supabase orders table (dengan internal UUID dan order_number untuk display)
       const supabase = getSupabase();
       if (supabase) {
-        await supabase.from('orders').insert({
+        // Resolve valid product_id from tenant catalog or fallback
+        const productsList: any[] =
+          (Array.isArray(initialTenant?.metadata?.products) ? initialTenant.metadata.products : null) ||
+          (Array.isArray(tenantPaymentData?.metadata?.products) ? tenantPaymentData.metadata.products : null) ||
+          [];
+        const matchedProd = productsList.find((p: any) =>
+          p && ((p.name && itemName && p.name.toLowerCase().includes(itemName.toLowerCase())) ||
+                (itemName && p.name && itemName.toLowerCase().includes(p.name.toLowerCase())))
+        );
+        const resolvedProductId = String(matchedProd?.id || productsList[0]?.id || 'srv_custom_chat');
+
+        const rawOrderPayload = {
           id: internalOrderId,
           order_number: displayOrderNumber,
-          order_id: displayOrderNumber,
-          invoice_no: displayOrderNumber,
           correlation_id: paymentToken,
-          metadata: {
-            order_number: displayOrderNumber,
-            order_id: displayOrderNumber,
-            internal_id: internalOrderId,
-            conversation_id: currentConversation.id,
-            public_payment_token: paymentToken,
-            payment_token: paymentToken,
-            pay_url: payUrl,
-            qr_string: dynamicQrString,
-            source: 'QUICK_POS_CHAT',
-          },
           tenant_slug: resolvedTenant,
           tenant_id: tenantId || resolvedTenant,
           customer_phone: currentConversation.customerPhone,
           customer_name: currentConversation.customerName || 'Pelanggan',
+          product_id: resolvedProductId,
           product_title: itemName,
           gross_amount: num,
           status: 'PENDING',
@@ -917,7 +917,25 @@ export default function TeamChatTab({
           order_status: 'PENDING',
           created_at: nowIso,
           updated_at: nowIso,
-        });
+          metadata: {
+            order_number: displayOrderNumber,
+            internal_id: internalOrderId,
+            conversation_id: currentConversation.id,
+            public_payment_token: paymentToken,
+            payment_token: paymentToken,
+            payment_method: 'qris',
+            pay_url: payUrl,
+            qr_string: dynamicQrString,
+            source: 'QUICK_POS_CHAT',
+          },
+        };
+
+        const orderPayload = sanitizeOrderPayload(rawOrderPayload);
+        const { error: insertOrderErr } = await supabase.from('orders').insert(orderPayload);
+        if (insertOrderErr) {
+          console.error('[Quick POS] Failed to insert QRIS order into Supabase:', insertOrderErr);
+          throw new Error(`Gagal menyimpan data pesanan (${insertOrderErr.message || 'Database error'})`);
+        }
 
         // 3. Simpan pesan chat di tabel messages
         const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, displayOrderNumber);
@@ -1143,40 +1161,54 @@ export default function TeamChatTab({
       // Simpan pesanan di tabel orders Supabase (dengan internal UUID dan order_number untuk display)
       const supabase = getSupabase();
       if (supabase) {
-        await supabase.from('orders').insert({
+        // Resolve valid product_id from tenant catalog or fallback
+        const productsList: any[] =
+          (Array.isArray(initialTenant?.metadata?.products) ? initialTenant.metadata.products : null) ||
+          (Array.isArray(tenantPaymentData?.metadata?.products) ? tenantPaymentData.metadata.products : null) ||
+          [];
+        const matchedProd = productsList.find((p: any) =>
+          p && ((p.name && itemName && p.name.toLowerCase().includes(itemName.toLowerCase())) ||
+                (itemName && p.name && itemName.toLowerCase().includes(p.name.toLowerCase())))
+        );
+        const resolvedProductId = String(matchedProd?.id || productsList[0]?.id || 'srv_custom_chat');
+
+        const rawOrderPayload = {
           id: internalOrderId,
-          order_id: displayOrderNumber,
           order_number: displayOrderNumber,
-          invoice_no: displayOrderNumber,
           correlation_id: paymentToken,
+          tenant_slug: resolvedTenant,
+          tenant_id: tenantId || resolvedTenant,
+          customer_phone: currentConversation.customerPhone,
+          customer_name: currentConversation.customerName || 'Pelanggan',
+          product_id: resolvedProductId,
+          product_title: itemName,
+          gross_amount: totalWithCode,
+          status: 'PENDING',
+          payment_status: 'PENDING',
+          order_status: 'PENDING',
+          created_at: nowIso,
+          updated_at: nowIso,
           metadata: {
             order_number: displayOrderNumber,
-            order_id: displayOrderNumber,
             internal_id: internalOrderId,
             conversation_id: currentConversation.id,
             public_payment_token: paymentToken,
             payment_token: paymentToken,
             pay_url: payUrl,
             unique_code: uniqueCode,
+            base_amount: baseAmt,
             bank_account: selectedBank,
+            payment_method: 'MANUAL_BANK',
             source: 'QUICK_POS_CHAT',
           },
-          tenant_slug: resolvedTenant,
-          tenant_id: tenantId || resolvedTenant,
-          customer_phone: currentConversation.customerPhone,
-          customer_name: currentConversation.customerName || 'Pelanggan',
-          product_title: itemName,
-          gross_amount: totalWithCode,
-          total_amount: totalWithCode,
-          amount: baseAmt,
-          unique_code: uniqueCode,
-          payment_method: 'MANUAL_BANK',
-          status: 'PENDING',
-          payment_status: 'PENDING',
-          order_status: 'PENDING',
-          created_at: nowIso,
-          updated_at: nowIso,
-        });
+        };
+
+        const orderPayload = sanitizeOrderPayload(rawOrderPayload);
+        const { error: insertOrderErr } = await supabase.from('orders').insert(orderPayload);
+        if (insertOrderErr) {
+          console.error('[Quick POS] Failed to insert Bank order into Supabase:', insertOrderErr);
+          throw new Error(`Gagal menyimpan data pesanan (${insertOrderErr.message || 'Database error'})`);
+        }
 
         // Insert pesan chat dengan data bank terstruktur
         await supabase.from('messages').insert({
@@ -1263,18 +1295,29 @@ export default function TeamChatTab({
   };
 
   // Manual Transaction: Tandai Lunas via Single Source of Truth (/quick-paid route)
-  const handleMarkPaid = async (orderId: string) => {
+  const handleMarkPaid = async (
+    orderId: string,
+    fallbackAmount?: number,
+    fallbackTitle?: string,
+    fallbackOrderNum?: string
+  ) => {
     if (!orderId) return;
     setMarkingPaidOrderId(orderId);
     try {
       const nowIso = new Date().toISOString();
       const supabase = getSupabase();
 
+      // Form input fallbacks from current component state
+      const formAmount = parseInt((qrisAmount || '').replace(/[^0-9]/g, ''), 10);
+      const formTitle = (qrisItemName || '').trim();
+
       // 1. Fetch current order info safely (supporting internal UUID and display order number)
-      let orderGrossAmount = 0;
-      let orderTitle = 'Layanan / Proyek';
+      let orderGrossAmount = (typeof fallbackAmount === 'number' && fallbackAmount > 0)
+        ? fallbackAmount
+        : (!isNaN(formAmount) && formAmount > 0 ? formAmount : 0);
+      let orderTitle = fallbackTitle || (formTitle ? formTitle : 'Layanan / Proyek');
       let custPhone = currentConversation?.customerPhone || '';
-      let displayOrderNum = orderId;
+      let displayOrderNum = fallbackOrderNum || orderId;
       let effectiveOrderId = orderId;
       let ordRow: any = null;
 
@@ -1282,7 +1325,7 @@ export default function TeamChatTab({
         try {
           const { data: byOr, error: orErr } = await supabase
             .from('orders')
-            .select('id, order_number, gross_amount, product_title, customer_phone, customer_name')
+            .select('id, order_number, gross_amount, product_title, customer_phone, customer_name, status, payment_status')
             .or(`id.eq.${orderId},order_number.eq.${orderId}`)
             .maybeSingle();
           if (byOr && !orErr) ordRow = byOr;
@@ -1292,7 +1335,7 @@ export default function TeamChatTab({
           try {
             const { data: byId } = await supabase
               .from('orders')
-              .select('id, order_number, gross_amount, product_title, customer_phone, customer_name')
+              .select('id, order_number, gross_amount, product_title, customer_phone, customer_name, status, payment_status')
               .eq('id', orderId)
               .maybeSingle();
             if (byId) ordRow = byId;
@@ -1303,7 +1346,7 @@ export default function TeamChatTab({
           try {
             const { data: byOrderNum } = await supabase
               .from('orders')
-              .select('id, order_number, gross_amount, product_title, customer_phone, customer_name')
+              .select('id, order_number, gross_amount, product_title, customer_phone, customer_name, status, payment_status')
               .eq('order_number', orderId)
               .maybeSingle();
             if (byOrderNum) ordRow = byOrderNum;
@@ -1312,14 +1355,23 @@ export default function TeamChatTab({
 
         if (ordRow) {
           effectiveOrderId = ordRow.id || ordRow.order_number || orderId;
-          displayOrderNum = ordRow.order_number || ordRow.id;
-          orderGrossAmount = Number(ordRow.gross_amount) || 0;
-          orderTitle = ordRow.product_title || orderTitle;
-          if (ordRow.customer_phone) custPhone = ordRow.customer_phone;
+          displayOrderNum = ordRow.order_number || ordRow.id || displayOrderNum;
+          const rowAmount = Number(ordRow.gross_amount);
+          if (!isNaN(rowAmount) && rowAmount > 0) {
+            orderGrossAmount = rowAmount;
+          }
+          if (ordRow.product_title) {
+            orderTitle = ordRow.product_title;
+          }
+          if (ordRow.customer_phone) {
+            custPhone = ordRow.customer_phone;
+          }
         }
       }
 
       // 2. Dispatch to Next.js Quick-Paid route (Single Source of Truth: updates DB, dispatches Meta CAPI Purchase with EMQ hashing, & sends email)
+      let qpSuccess = false;
+      let qpErrorMessage = '';
       try {
         const qpRes = await fetch(
           `/api/v1/tenants/${encodeURIComponent(resolvedTenant)}/orders/${encodeURIComponent(effectiveOrderId)}/quick-paid`,
@@ -1329,10 +1381,54 @@ export default function TeamChatTab({
           }
         );
         if (!qpRes.ok) {
-          console.warn('[Mark Paid] Quick-paid non-OK status:', qpRes.status);
+          const errJson = await qpRes.json().catch(() => null);
+          qpErrorMessage = errJson?.error || `Status HTTP ${qpRes.status}`;
+          console.warn('[Mark Paid] Quick-paid non-OK status:', qpRes.status, qpErrorMessage);
+        } else {
+          const resJson = await qpRes.json().catch(() => null);
+          qpSuccess = true;
+          if (resJson?.order) {
+            const updatedRow = resJson.order;
+            if (updatedRow.gross_amount && Number(updatedRow.gross_amount) > 0) {
+              orderGrossAmount = Number(updatedRow.gross_amount);
+            }
+            if (updatedRow.product_title) {
+              orderTitle = updatedRow.product_title;
+            }
+            if (updatedRow.order_number) {
+              displayOrderNum = updatedRow.order_number;
+            }
+            if (updatedRow.customer_phone) {
+              custPhone = updatedRow.customer_phone;
+            }
+          }
         }
-      } catch (qpErr) {
+      } catch (qpErr: any) {
+        qpErrorMessage = qpErr?.message || 'Gagal menghubungi server';
         console.warn('[Mark Paid] Quick-paid dispatch note:', qpErr);
+      }
+
+      // HARDENING 1: Jika query orders kosong atau pemanggilan API quick-paid menghasilkan status 404/Error, HENTIKAN eksekusi secara tegas (return)
+      if (!qpSuccess) {
+        console.error('[handleMarkPaid] Execution stopped: quick-paid endpoint failed or order not found', {
+          orderId,
+          effectiveOrderId,
+          error: qpErrorMessage,
+        });
+        setQrisFeedback(`❌ Gagal: Verifikasi pembayaran ditolak sistem (${qpErrorMessage || 'Pesanan tidak ditemukan / endpoint error'}).`);
+        setTimeout(() => setQrisFeedback(null), 5000);
+        return;
+      }
+
+      // HARDENING 2: Jangan pernah menembakkan template pesan konfirmasi WhatsApp jika data pesanan tidak valid atau orderGrossAmount <= 0
+      if (!orderGrossAmount || orderGrossAmount <= 0) {
+        console.error('[handleMarkPaid] Execution stopped: invalid gross amount (Rp 0)', {
+          orderId,
+          orderGrossAmount,
+        });
+        setQrisFeedback(`❌ Gagal: Nominal transaksi tidak valid (Rp ${orderGrossAmount}). Konfirmasi pembayaran dibatalkan.`);
+        setTimeout(() => setQrisFeedback(null), 5000);
+        return;
       }
 
       // 3. Send WhatsApp confirmation and append to chat messages ledger
@@ -2145,7 +2241,7 @@ export default function TeamChatTab({
                               {msg.qrisData.status === 'WAITING_PAYMENT' ? (
                                 <button
                                   type="button"
-                                  onClick={() => handleMarkPaid(msg.qrisData!.orderId)}
+                                  onClick={() => handleMarkPaid(msg.qrisData!.orderId, msg.qrisData!.amount, msg.qrisData!.description, msg.qrisData!.orderNumber)}
                                   disabled={markingPaidOrderId === msg.qrisData.orderId}
                                   className="w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
                                 >
@@ -2237,7 +2333,7 @@ export default function TeamChatTab({
                               {msg.bankData.status !== 'PAID' ? (
                                 <button
                                   type="button"
-                                  onClick={() => handleMarkPaid(msg.bankData!.orderId)}
+                                  onClick={() => handleMarkPaid(msg.bankData!.orderId, msg.bankData!.amount, msg.bankData!.description, msg.bankData!.orderNumber)}
                                   disabled={markingPaidOrderId === msg.bankData.orderId}
                                   className="w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
                                 >
@@ -2824,7 +2920,7 @@ export default function TeamChatTab({
                             {!isPaid ? (
                               <button
                                 type="button"
-                                onClick={() => handleMarkPaid(bData.orderId)}
+                                onClick={() => handleMarkPaid(bData.orderId, bData.amount, bData.description, bData.orderNumber)}
                                 disabled={markingPaidOrderId === bData.orderId}
                                 className="w-full mt-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
                               >

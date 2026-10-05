@@ -42,6 +42,9 @@ export const VALID_ORDER_COLUMNS = new Set<string>([
   'is_archived',
   'subscription_id',
   'metadata',
+  'order_number',
+  'download_url',
+  'fulfillment_metadata',
   'created_at',
   'updated_at',
 ]);
