@@ -22,6 +22,7 @@
 14. **Fail-Closed Tenant Isolation**: If tenant resolution fails at any gateway (webhook router, API, checkout), the system MUST fail closed (silent drop, zero response, log security alert). Global platform sales fallbacks are strictly prohibited.
 15. **Pre-LLM Transaction Gatekeeper**: All purchase confirmations, order payments, and transactional messages must be intercepted deterministically before entering probabilistic AI context.
 16. **Access ≠ Payment ≠ Commission (Domain Decoupling Invariant)**: Tenant operational access, payment confirmation, and affiliate commission eligibility are strictly decoupled domains. `TRIAL` and `GRANTED` access states can never trigger commission accrual (`isCommissionEligible = false`). Commission ledger entries are strictly dependent on verified qualifying `PAID` transactions.
+17. **Tenant Runtime Boundary & Multi-Vertical Isolation Gatekeeper (CTO Mandate)**: BoonTrack melarang keras pembuatan aplikasi monolitik terpisah untuk tiap vertikal baru. Setiap vertikal (Commerce, Civic/Public Service, Creator, Career) wajib dioperasikan melalui Core Capability Engine berbasis data runtime, tunduk pada 7 Isolation Gates, dan mematuhi aturan Invariant (No Silent Fallback to Shop, Domain Boundary Guard, Zero Query Parameter Authority).
 
 ### 0.1 Tri-Rule Database-Driven Multi-Tenant Constitution (Phase B Guardrails)
 - **Rule 1 (Zero Hardcoded Tenant Logic)**: Tidak boleh membuat percabangan kode berbasis slug fisik (misal: `if tenant == 'gym'` atau `if slug in ['om_budi', 'career']`). Seluruh logika runtime wajib membaca `capabilities`, `business_type`, atau `tenant_kind` dari database Supabase (`TenantRuntimeContext`).
@@ -4060,3 +4061,126 @@ Antarmuka kerja CS di dashboard menyediakan 3 aksi operasional terkoordinasi den
 - **FnB Vertical Enabled**: Mendukung katalog dinamis untuk merchant kuliner & F&B lokal.
 - **Instant Delivery via Share-Location**: Sistem otomatis menghitung tarif kurir instan (GrabExpress/Gosend aggregator) langsung dari titik share lock koordinat pembeli.
 - **End-to-End Sync**: Integrasi utuh antara Checkout FnB, BoonTrack Inbox, WhatsApp Automation, dan deduplikasi Meta CAPI Purchase saat pembayaran terkonfirmasi.
+
+---
+
+## 47. CTO Mandate: Tenant Runtime Boundary & Multi-Vertical Isolation Gates
+
+> **Mandate Invariant**: *"A vertical is not a new application. A vertical is a declarative capability projection over BoonTrack Core, resolved at runtime through deterministic isolation gates."*
+
+### 47.1 Canonical Architecture Flow & Hierarchy Diagram
+
+Ekosistem BoonTrack menerapkan pemisahan modular berlapis secara ketat. Arsitektur mengalir dari **Core Foundation**, ke **Shared Capabilities**, melalui **Domain Boundary Gates**, diwujudkan dalam **Canonical Templates**, dan dieksekusi secara dinamis di **Tenant Runtime**.
+
+```mermaid
+graph TD
+    subgraph Core ["1. BOONTRACK CORE ENGINE"]
+        C1["Core Runtime & Financial State Machine"]
+        C2["Supabase Single Source of Truth"]
+        C3["Outbox Pattern & Event Bus"]
+        C4["Entitlement & Plan Guard"]
+    end
+
+    subgraph Capabilities ["2. SHARED CAPABILITIES"]
+        SC1["Meta CAPI Deduplication Engine"]
+        SC2["Payment QRIS & Bank Aggregator"]
+        SC3["Evolution WhatsApp & Telegram Bot"]
+        SC4["Cloudflare R2 Media Vault"]
+        SC5["Deterministic CRM & Order Engine"]
+    end
+
+    subgraph Domains ["3. DOMAIN BOUNDARY GATES"]
+        D1["shop.boontrack.com<br/>(Commerce Storefronts)"]
+        D2["app.boontrack.com<br/>(Custom Apps, Civic Portals & Hub)"]
+        D3["creator.boontrack.com<br/>(Creator Profiles & UGC Studio)"]
+        D4["career.boontrack.com<br/>(Career AI & Talent Pool)"]
+    end
+
+    subgraph Templates ["4. CANONICAL TEMPLATES"]
+        T1["SHOP_V1<br/>(Catalog, Cart, Checkout, Delivery, POS)"]
+        T2["PUBLIC_SERVICE_V1<br/>(Citizen Request, Complaint, SOP, Desk Operator - NO CART)"]
+        T3["CREATOR_V1<br/>(Media Showcase, Portfolio, Rate Cards, Direct Booking)"]
+        T4["CAREER_V1<br/>(CV Intake, AI ATS Scoring, Interview Scheduling)"]
+    end
+
+    subgraph Runtime ["5. TENANT RUNTIME CONTEXT"]
+        R1["resolveTenantRuntime()"]
+        R2["Zero-Hardcoding Capability Enforcer"]
+        R3["Controlled Provisioning Guard"]
+    end
+
+    Core --> Capabilities
+    Capabilities --> Domains
+    Domains --> Templates
+    Templates --> Runtime
+```
+
+#### Hierarki Komponen Arsitektur:
+1. **Core Engine**: Penjaga otoritas transaksi, model data persisten (Supabase), state machine keuangan, dan autentikasi multi-tenant.
+2. **Shared Capabilities**: Mesin global terpadu yang dapat dikonsumsi oleh seluruh vertikal (CAPI, Payment, WhatsApp, R2 Storage).
+3. **Domain Boundary Gates**: Firewall layer pada edge/middleware yang memvalidasi kecocokan host domain dengan template tenant.
+4. **Canonical Templates**: Proyeksi UI/UX standar industri (`SHOP_V1`, `PUBLIC_SERVICE_V1`, `CREATOR_V1`, `CAREER_V1`).
+5. **Tenant Runtime Context**: Objek runtime yang dihasilkan oleh `resolveTenantRuntime()` yang memuat flags kapabilitas eksplisit (`capabilities`), `business_type`, dan `tenant_kind`.
+
+---
+
+### 47.2 The 7 Mandatory Isolation Gates
+
+Setiap fitur, endpoint, dan modul vertikal yang beroperasi di platform BoonTrack **WAJIB** melewati 7 Gerbang Isolasi Arsitektural (Isolation Gates) berikut tanpa pengecualian:
+
+| No | Isolation Gate | Mekanisme Penegakan | Failure Mode & Mitigasi |
+|:---|:---|:---|:---|
+| **1** | **DB Schema Gate** | Seluruh tabel bisnis (`orders`, `messages`, `conversations`, `tenant_settings`) wajib memiliki kolom pemisah `tenant_slug` / `tenant_id` dan dilindungi oleh *Row-Level Security* (RLS) serta composite indexing `(tenant_slug, ...)`. Dilarang keras melakukan `SELECT` tanpa filter tenant scope. | *Fail-Closed*: Query tanpa tenant identifier otomatis melempar error 400 atau mengembalikan dataset kosong. |
+| **2** | **Worker Workload Gate** | Pemrosesan background (outbox WhatsApp dispatch, webhook ingestion, AI reasoning) dipartisi menggunakan queue terisolasi dengan rate limiting per-tenant (Leaky Bucket). Tenant bervolume tinggi tidak boleh memonopoli worker thread tenant lain. | *Isolation Quota*: Overlimit tenant masuk ke antrean retry bertingkat (exponential backoff) tanpa mempengaruhi throughput tenant lain. |
+| **3** | **CI/CD Blocking Gate** | Pipeline CI/CD menjalankan test matrix otomatis (`tenant_runtime_boundary.test.ts`, `dashboard_routing.test.ts`, `login_context_resolver.test.ts`). Setiap upaya menyisipkan hardcode slug (`if (slug === '...')`) atau silent fallback ke `SHOP_V1` memicu status *Red Build* dan memblokir merge PR. | *PR Blocker*: Pull request dengan pelanggaran boundary langsung di-reject secara otomatis oleh sistem CI. |
+| **4** | **Storage Bucket Gate** | Media dan aset publik di Cloudflare R2 dipartisi menggunakan direktori prefix terenkapsulasi: `/{tenant_slug}/{category}/{file_id}`. Dilarang keras membuat bucket global tanpa tenant prefixing atau mengizinkan penulisan publik langsung tanpa presigned URL valid. | *Unauthorized Write Block*: Permintaan upload tanpa otorisasi tenant slug ditolak dengan HTTP 403 Forbidden. |
+| **5** | **Transaction Authority Gate** | Otoritas mutasi status keuangan hanya dimiliki oleh *Financial State Machine* di sisi server (`POST /api/v1/tenants/[slug]/orders/[id]/quick-paid` atau webhook terverifikasi HMAC). Sinyal klien eksternal tidak boleh mengubah status pesanan menjadi `PAID` secara sepihak. | *Zero Blind Trust*: Event pembayaran yang tidak lolos validasi kriptografis dicatat sebagai alert keamanan dan diabaikan. |
+| **6** | **Migration Safety Gate** | Perubahan skema database PostgreSQL wajib menerapkan pola *Expand and Contract*. Dilarang keras melakukan drop column, rename column, atau perubahan tipe data yang memutus backwards compatibility secara instan dalam 1 deployment. | *Rollback Safety*: Migrasi harus menyertakan skrip rollback teruji dan mempertahankan kompatibilitas versi minimal N-1. |
+| **7** | **Production SLO Gate** | Seluruh tenant runtime wajib memenuhi ambang batas performa produksi: TTFB di Edge < 300ms untuk 95% trafik global, uptime platform 99.9%. Jika tenant custom app mengalami crash fatal, antarmuka wajib merender `ControlledProvisioningError` tanpa merusak ketersediaan portal tenant lain. | *Fail-Isolated*: Error pada satu vertikal/tenant tidak boleh memicu cascading failure pada Core Gateway. |
+
+---
+
+### 47.3 Invariant Rules (Prinsip Arsitektur Mutlak)
+
+Tiga aturan invarian berikut bersifat absolut dan tidak dapat diubah (*non-negotiable*):
+
+#### Invariant 1: No Silent Fallback to Shop
+- Jika data tenant memiliki template code yang tidak dikenal, typo, bernilai `null`, atau bertentangan dengan lisensi provisioning (contoh: `template_code: 'INVALID_XYZ'`), sistem **DILARANG KERAS** melakukan silent fallback ke antarmuka toko online (`SHOP_V1`).
+- Sistem wajib menetapkan template sebagai `UNKNOWN_TEMPLATE`, mengembalikan error `UnknownTemplateError` (HTTP 422), dan menampilkan komponen fallback terkendali: `ControlledProvisioningError`.
+- Hal ini mencegah kebocoran visual katalog e-commerce pada entitas non-komersial (seperti kantor kelurahan, instansi publik, atau landing page korporat).
+
+#### Invariant 2: Domain Boundary Guard
+Sistem menerapkan firewall rute berbasis domain hostname pada level Edge Middleware dan Component Resolver:
+- **`shop.boontrack.com` (Commerce Domain)**:
+  * Hanya mengizinkan tenant dengan kapabilitas komersial penuh (`SHOP_V1`).
+  * Jika tenant non-komersial (`PUBLIC_SERVICE_V1`, `CUSTOM_APP`) diakses melalui `shop.boontrack.com`, sistem **WAJIB menolak dengan HTTP 404 Not Found** (`TemplateNotCompatibleError`).
+- **`app.boontrack.com` (Application & Public Service Domain)**:
+  * Mengizinkan tenant aplikasi kustom, layanan warga digital (`PUBLIC_SERVICE_V1`), portal enterprise, dan routing portal aplikasi (`/app-portal`).
+  * Akses operator PTSP (`/[tenant]/desk`) dan autentikasi kontekstual (`/login?redirectTo=...`) diselesaikan secara otomatis tanpa circular redirect.
+- **`creator.boontrack.com` (Creator Domain)**:
+  * Didedikasikan khusus untuk profil kreator, UGC Studio, dan rate card interaktif (`CREATOR_V1`).
+- **`career.boontrack.com` (Career Domain)**:
+  * Didedikasikan untuk intake CV, evaluasi AI ATS, dan talent pool recruitment (`CAREER_V1`).
+
+#### Invariant 3: Zero Query Parameter Authority
+- Parameter query di URL browser (seperti `?price=1000`, `?status=paid`, `?tier=ENTERPRISE`, `?role=admin`, `?template=SHOP_V1`) memiliki **OTORITAS NOL (0%)** dalam menentukan hak akses, jenis template, harga produk, atau status transaksi.
+- Seluruh penentuan template, hak fitur (*entitlements*), dan validitas order bersumber murni dari data terverifikasi di database Supabase dan token sesi terotentikasi.
+
+---
+
+### 47.4 Definition of Done (DoD) Checklist for Creator & Multi-Vertical PRs
+
+Setiap engineer yang berkontribusi kode untuk fitur kreator, layanan publik, atau vertikal baru **WAJIB** melampirkan checklist Definition of Done (DoD) ini di dalam deskripsi Pull Request (PR):
+
+```markdown
+### Multi-Vertical & Runtime Boundary Definition of Done (DoD)
+- [ ] **Contract Schema Adherence**: Modul menggunakan tipe data resmi dari `lib/types/tenant-runtime.ts` (`TenantKind`, `BusinessType`, `TemplateCode`, `TenantCapabilities`).
+- [ ] **Zero Hardcoded Slugs**: Tidak ada pengecekan statis nama tenant (dilarang menggunakan `slug === 'margasari'`, `slug === 'suhu'`, atau daftar array slug).
+- [ ] **Strict Capability Boundary**: Seluruh kapabilitas yang tidak diizinkan untuk vertikal ini dimatikan secara eksplisit di `getTemplateCapabilities()`. (Misal: template publik menonaktifkan `cart: false`, `checkout: false`, `payment: false`).
+- [ ] **No Silent Fallback**: Template code yang invalid/unknown memicu `UNKNOWN_TEMPLATE` dan merender `ControlledProvisioningError`, bukan jatuh ke Storefront.
+- [ ] **Domain Boundary Guard**: Pengujian rute memastikan vertikal hanya dapat diakses melalui host domain yang sah dan mengembalikan HTTP 404 pada domain yang tidak kompatibel.
+- [ ] **Zero Query Parameter Authority**: Tidak ada percabangan logika bisnis atau penentuan harga/status yang bersumber dari query parameter URL.
+- [ ] **Test Coverage**: Test case baru telah ditambahkan ke `__tests__/routing/` atau `__tests__/auth/` dan seluruh test suite lulus 100% (`npm test`).
+- [ ] **Production Build Check**: Script build produksi (`npm run build`) berjalan sukses dengan status exit code 0 tanpa error TypeScript atau Turbopack.
+```
+
