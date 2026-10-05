@@ -78,6 +78,8 @@ export default function CareerProfilePage() {
               <span>{copied ? 'Link Disalin!' : 'Bagikan Profil'}</span>
             </button>
 
+            {/* Navigasi Career dinonaktifkan sementara untuk fokus rilis awal */}
+            {/*
             <Link
               href="/career"
               className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition flex items-center gap-1.5"
@@ -86,6 +88,7 @@ export default function CareerProfilePage() {
               <span>Konsultasi AI</span>
               <ExternalLink className="w-3 h-3 opacity-70" />
             </Link>
+            */}
           </div>
         </div>
       </header>
@@ -288,6 +291,8 @@ export default function CareerProfilePage() {
               <p className="text-[11px] text-slate-400">
                 Ingin menganalisis CV Anda sendiri atau simulasi wawancara teknis?
               </p>
+              {/* Demo Career AI dinonaktifkan sementara untuk fokus rilis awal */}
+              {/*
               <Link
                 href="/career"
                 className="inline-flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold pt-1"
@@ -295,6 +300,7 @@ export default function CareerProfilePage() {
                 <span>Buka Demo Konseling Karir</span>
                 <ArrowRight className="w-3 h-3" />
               </Link>
+              */}
             </div>
           </div>
         </div>

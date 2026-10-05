@@ -92,12 +92,20 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <PwaRegister />
-        {/* ads-tracker.js — lazyOnload, skip /admin/* routes */}
+        {/* ads-tracker.js — lazyOnload, strictly isolated to public storefronts (skip admin, merchant dashboard, and CS desk) */}
         <Script
           id="ads-tracker"
           strategy="lazyOnload"
           dangerouslySetInnerHTML={{
-            __html: `(function(){if(window.location.pathname.startsWith('/admin'))return;var s=document.createElement('script');s.src='/ads-tracker.js';s.async=true;document.head.appendChild(s);})();`,
+            __html: `(function(){
+              if (
+                window.location.pathname.startsWith('/admin') ||
+                window.location.pathname.includes('/dashboard') ||
+                window.location.pathname.includes('/desk') ||
+                window.location.hostname.startsWith('dashboard.')
+              ) return;
+              var s=document.createElement('script');s.src='/ads-tracker.js';s.async=true;document.head.appendChild(s);
+            })();`,
           }}
         />
         <ErrorBoundary name="RootLayout">

@@ -350,12 +350,12 @@ export async function middleware(req: NextRequest) {
     const tenantSlug = segments[0]?.toLowerCase().trim();
 
     if (tenantSlug && !RESERVED_PUBLIC_ROUTES.has(tenantSlug)) {
-      // HOTFIX QUEUE #5.1: Public invoice routes hitting dashboard domain -> Redirect 307 to storefront domain (shop.boontrack.com)
-      if (segments[1] === 'invoice') {
-        const invoiceSubPath = segments.slice(1).join('/');
+      // Public storefront routes hitting dashboard domain -> Redirect 307 to storefront domain (shop.boontrack.com)
+      if (segments[1] === 'invoice' || segments[1] === 'pay' || segments[1] === 'checkout') {
+        const storeSubPath = segments.slice(1).join('/');
         const isProd = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
-        const targetHost = isProd ? 'https://shop.boontrack.com' : `${req.nextUrl.protocol}//shop.${hostClean.replace(/^dashboard\./, '')}`;
-        const targetUrl = new URL(`${targetHost}/${tenantSlug}/${invoiceSubPath}`);
+        const targetHost = isProd ? 'https://shop.boontrack.com' : `${req.nextUrl.protocol}//shop.${hostClean.replace(/^dashboard\./, '')}${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`;
+        const targetUrl = new URL(`${targetHost}/${tenantSlug}/${storeSubPath}`);
         req.nextUrl.searchParams.forEach((val, key) => {
           targetUrl.searchParams.set(key, val);
         });
@@ -521,7 +521,23 @@ export async function middleware(req: NextRequest) {
 
   if (isShopHost) {
     const shopDashboardMatch = pathname.match(/^\/([^/]+)\/dashboard(?:\/(.*))?$/);
+    const shopDeskMatch = pathname.match(/^\/([^/]+)\/desk(?:\/(.*))?$/);
     const isShopGenericDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+
+    if (shopDeskMatch) {
+      const targetSlug = shopDeskMatch[1];
+      const subPath = shopDeskMatch[2] ? `/${shopDeskMatch[2]}` : '';
+      const isProd = hostClean.endsWith('.boontrack.com') || hostClean === 'boontrack.com';
+      const dashboardBase = isProd
+        ? 'https://dashboard.boontrack.com'
+        : `${req.nextUrl.protocol}//dashboard.${hostClean.replace(/^shop\./, '')}${req.nextUrl.port ? `:${req.nextUrl.port}` : ''}`;
+
+      const targetUrl = new URL(`${dashboardBase}/${targetSlug}/desk${subPath}`);
+      req.nextUrl.searchParams.forEach((val, key) => {
+        targetUrl.searchParams.set(key, val);
+      });
+      return NextResponse.redirect(targetUrl, 302);
+    }
 
     if (shopDashboardMatch) {
       const targetSlug = shopDashboardMatch[1];
