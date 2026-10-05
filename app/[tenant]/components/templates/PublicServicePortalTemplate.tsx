@@ -114,6 +114,7 @@ export default function PublicServicePortalTemplate({
   const quickRepliesList = [
     'Aktivasi IKD / KTP Online Digital',
     'Surat Keterangan Domisili & Usaha (SKDU)',
+    'Surat Pengantar Nikah (N1 - N4)',
     'Pengantar KTP-el / KK',
     'Kawasan Bebas Sampah (KBS Margasari)'
   ];
@@ -125,7 +126,7 @@ export default function PublicServicePortalTemplate({
         id: 'bot-welcome',
         sender: 'bot',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: 'Sampurasun! Ada yang bisa kami bantu seputar pelayanan warga Margasari?',
+        text: 'Sampurasun! Selamat datang Bapak/Ibu Warga di layanan Loket Digital Kelurahan Margasari, Kec. Buahbatu, Kota Bandung. Ada yang bisa kami bantu terkait administrasi kependudukan atau pengurusan surat?',
         type: 'TEXT',
         quick_actions: quickRepliesList,
       },
@@ -196,6 +197,8 @@ export default function PublicServicePortalTemplate({
         smartReply = 'Pengurusan SKDU (Surat Keterangan Domisili Usaha) gratis tanpa dipungut biaya. Bawa surat pengantar RT/RW, fotokopi KTP/KK, dan foto lokasi usaha. Layanan selesai same-day jika berkas lengkap!';
       } else if (lower.includes('kk') || lower.includes('ktp') || lower.includes('sari')) {
         smartReply = 'Pengurusan pengantar KTP-el / KK kini terintegrasi dengan aplikasi SARI Pemkot Bandung. Anda dapat memverifikasi berkas di loket kelurahan atau mengirimkan berkas digital via aplikasi SARI.';
+      } else if (lower.includes('nikah') || lower.includes('pernikahan') || lower.includes('kua') || lower.includes('n1')) {
+        smartReply = 'Surat Pengantar Nikah (Model N1 - N4): Bebas biaya (Rp 0). Persyaratan: Surat Pengantar RT/RW setempat Margasari, fotokopi KTP & KK calon pengantin dan orang tua, pasfoto latar biru 2x3 (4 lembar) & 4x6 (2 lembar), ijazah/akta kelahiran, dan surat pernyataan belum pernah menikah bermeterai. Setelah ditandatangani Lurah Margasari, berkas dibawa ke KUA Kec. Buahbatu.';
       } else if (lower.includes('kbs') || lower.includes('sampah') || lower.includes('pisman')) {
         smartReply = 'Kawasan Bebas Sampah (KBS) Margasari mewajibkan pemilahan sampah organik (kompos/maggot) dan anorganik dari rumah tangga. Setiap RW telah memiliki jadwal angkut sampah terpilah.';
       }

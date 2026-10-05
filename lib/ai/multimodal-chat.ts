@@ -317,16 +317,29 @@ export async function processMultimodalChat(
     console.warn('[Multimodal Chat] DB error during tenant resolution:', dbErr);
   }
 
-  const checkoutUrl = getTenantActionUrl(
-    {
-      ...tenantDomainInfo,
-      category,
-    },
-    {
-      id: (product as any).id || (packages[0] as any)?.id,
-      slug: (product as any).slug || (packages[0] as any)?.slug,
-    }
-  );
+  const isPublicServiceTenant =
+    (t as any)?.template_code === 'PUBLIC_SERVICE_V1' ||
+    tenantMetadata?.template_code === 'PUBLIC_SERVICE_V1' ||
+    tenantMetadata?.selected_template === 'PUBLIC_SERVICE_V1' ||
+    category === 'public_service' ||
+    category === 'B2G' ||
+    tenantMetadata?.business_type === 'B2G' ||
+    slug === 'margasari' ||
+    slug === 'kelurahan-margasari' ||
+    slug === 'kelurahan-indra';
+
+  const checkoutUrl = isPublicServiceTenant
+    ? `https://app.boontrack.com/${slug}`
+    : getTenantActionUrl(
+        {
+          ...tenantDomainInfo,
+          category,
+        },
+        {
+          id: (product as any).id || (packages[0] as any)?.id,
+          slug: (product as any).slug || (packages[0] as any)?.slug,
+        }
+      );
 
   const interactiveMenus: InteractiveMenu[] = Array.isArray(tenantMetadata.interactive_menus)
     ? tenantMetadata.interactive_menus
@@ -371,7 +384,11 @@ export async function processMultimodalChat(
       explicitEngine === 'LOCAL_SERVICE_V1') &&
     explicitEngine !== 'SALES_REP_V1';
 
-  const activeEngine = isFieldService ? 'LOCAL_SERVICE_V1' : 'SALES_REP_V1';
+  const activeEngine = isPublicServiceTenant
+    ? 'CIVIC_PUBLIC_SERVICE_V1'
+    : isFieldService
+    ? 'LOCAL_SERVICE_V1'
+    : 'SALES_REP_V1';
   const senderPhone =
     input.sender_phone ||
     input.user_identifier ||
@@ -381,7 +398,7 @@ export async function processMultimodalChat(
 
   // ── ORDER GATEKEEPER CHECK (MANUAL TRANSACTION INTERCEPTOR) ──────────────────
   // Cek apakah isi pesan mengandung pola order manual: "Total Nominal:", "Metode: Transfer Bank", "Mohon dicek dan aktivasi akses", atau "Masterclass CPM"
-  if (isManualOrderMessage(message)) {
+  if (!isPublicServiceTenant && isManualOrderMessage(message)) {
     console.info(`[ORDER_GATEKEEPER] Intercepted manual order for tenant '${slug}'. Bypassing Gemini multimodal pipeline.`);
     const realStoreName = tenantMetadata.store_name || tenantMetadata.name || storeName;
     const orderConfirmReply = getOrderConfirmationReply(realStoreName);
@@ -452,6 +469,46 @@ export async function processMultimodalChat(
 
   // ── JIKA TIDAK ADA GAMBAR: Jalankan Deterministik Funnel & Fast-Paths ──────────
   if (!hasImage) {
+    // 0. Public Service / Civic AI Direct Interceptor (Kelurahan Margasari / B2G)
+    if (isPublicServiceTenant) {
+      try {
+        const coreEndpoint = getBackendApiUrl(`/api/v1/public-service/${slug}/chat`);
+        const coreRes = await fetch(coreEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-ID': slug,
+          },
+          body: JSON.stringify({
+            tenant_slug: slug,
+            message,
+            conversation_history: input.conversation_history,
+            context: input.context,
+          }),
+          cache: 'no-store',
+        });
+
+        if (coreRes.ok) {
+          const coreData = await coreRes.json();
+          const coreReply = coreData.reply || coreData.response || coreData.message;
+          if (coreReply) {
+            return {
+              success: true,
+              reply: coreReply,
+              tenant_id: slug,
+              tenant_slug: slug,
+              checkout_url: checkoutUrl,
+              type: 'CIVIC_PUBLIC_SERVICE',
+              quick_actions: coreData.quick_actions || defaultQuickActions,
+              active_engine: activeEngine,
+            };
+          }
+        }
+      } catch (civicErr) {
+        console.warn('[MultimodalChat] Direct public service core fetch error:', civicErr);
+      }
+    }
+
     const isOfficial =
       isOfficialPlatformIdentifier(slug, senderPhone) ||
       slug === 'boon' ||
@@ -484,84 +541,87 @@ export async function processMultimodalChat(
       }
     }
 
-    // 1. Funnel Booking Auto-Extraction
-    const funnelRes = await processFunnelBookingMessage({
-      tenantSlug: slug,
-      senderPhone,
-      message,
-      interactiveReply: input.interactive_reply,
-    });
+    // Commerce funnels (Booking, Consultations, Retail Zero-AI) are strictly for non-public-service tenants
+    if (!isPublicServiceTenant) {
+      // 1. Funnel Booking Auto-Extraction
+      const funnelRes = await processFunnelBookingMessage({
+        tenantSlug: slug,
+        senderPhone,
+        message,
+        interactiveReply: input.interactive_reply,
+      });
 
-    if (funnelRes.isHandled && funnelRes.replyText) {
-      return {
-        success: true,
-        reply: funnelRes.replyText,
-        tenant_id: slug,
-        tenant_slug: slug,
-        checkout_url: checkoutUrl,
-        type: funnelRes.isBookingCreated ? 'BOOKING_CONFIRMED' : 'TEXT',
-        booking: funnelRes.bookingData,
-        quick_actions: defaultQuickActions,
-        active_engine: activeEngine,
-      };
-    }
-
-    // 1.1. Consultation, Lead Filtering & Service Order Gatekeeper Funnel
-    const consultFunnelRes = await processConsultationLeadFunnel({
-      tenant: t,
-      tenantSlug: slug,
-      message,
-      senderPhone,
-      conversationHistory: input.conversation_history,
-      hasPreviousGreeting: Boolean(input.context?.hasPreviousBotGreeting),
-    });
-
-    if (consultFunnelRes.handled && consultFunnelRes.reply) {
-      return {
-        success: true,
-        reply: consultFunnelRes.reply,
-        tenant_id: t?.id || slug,
-        tenant_slug: t?.slug || slug,
-        checkout_url: consultFunnelRes.checkoutUrl || checkoutUrl,
-        type: consultFunnelRes.type,
-        quick_actions: defaultQuickActions,
-        active_engine: activeEngine,
-      };
-    }
-
-    // 2. Zero-AI Engine (Commerce Assistant)
-    const zeroAiRes = await processZeroAiMessage({
-      tenant_slug: slug,
-      message,
-      sender_phone: senderPhone,
-      interactive_reply: input.interactive_reply,
-      channel_type: channel === 'WABA' ? 'WABA' : 'WAHA',
-    });
-
-    if (zeroAiRes.handled) {
-      if (zeroAiRes.silent) {
+      if (funnelRes.isHandled && funnelRes.replyText) {
         return {
           success: true,
-          silent: true,
-          reply: '',
-          tenant_id: slug,
-          tenant_slug: slug,
-          type: 'HUMAN_TAKEOVER_SILENT',
-        };
-      }
-
-      if (zeroAiRes.reply) {
-        return {
-          success: true,
-          reply: zeroAiRes.reply,
+          reply: funnelRes.replyText,
           tenant_id: slug,
           tenant_slug: slug,
           checkout_url: checkoutUrl,
-          type: zeroAiRes.type,
-          interactive_payload: zeroAiRes.interactive_payload,
-          quick_actions: zeroAiRes.quick_actions || defaultQuickActions,
+          type: funnelRes.isBookingCreated ? 'BOOKING_CONFIRMED' : 'TEXT',
+          booking: funnelRes.bookingData,
+          quick_actions: defaultQuickActions,
           active_engine: activeEngine,
         };
+      }
+
+      // 1.1. Consultation, Lead Filtering & Service Order Gatekeeper Funnel
+      const consultFunnelRes = await processConsultationLeadFunnel({
+        tenant: t,
+        tenantSlug: slug,
+        message,
+        senderPhone,
+        conversationHistory: input.conversation_history,
+        hasPreviousGreeting: Boolean(input.context?.hasPreviousBotGreeting),
+      });
+
+      if (consultFunnelRes.handled && consultFunnelRes.reply) {
+        return {
+          success: true,
+          reply: consultFunnelRes.reply,
+          tenant_id: t?.id || slug,
+          tenant_slug: t?.slug || slug,
+          checkout_url: consultFunnelRes.checkoutUrl || checkoutUrl,
+          type: consultFunnelRes.type,
+          quick_actions: defaultQuickActions,
+          active_engine: activeEngine,
+        };
+      }
+
+      // 2. Zero-AI Engine (Commerce Assistant)
+      const zeroAiRes = await processZeroAiMessage({
+        tenant_slug: slug,
+        message,
+        sender_phone: senderPhone,
+        interactive_reply: input.interactive_reply,
+        channel_type: channel === 'WABA' ? 'WABA' : 'WAHA',
+      });
+
+      if (zeroAiRes.handled) {
+        if (zeroAiRes.silent) {
+          return {
+            success: true,
+            silent: true,
+            reply: '',
+            tenant_id: slug,
+            tenant_slug: slug,
+            type: 'HUMAN_TAKEOVER_SILENT',
+          };
+        }
+
+        if (zeroAiRes.reply) {
+          return {
+            success: true,
+            reply: zeroAiRes.reply,
+            tenant_id: slug,
+            tenant_slug: slug,
+            checkout_url: checkoutUrl,
+            type: zeroAiRes.type,
+            interactive_payload: zeroAiRes.interactive_payload,
+            quick_actions: zeroAiRes.quick_actions || defaultQuickActions,
+            active_engine: activeEngine,
+          };
+        }
       }
     }
 
@@ -791,6 +851,45 @@ export async function processMultimodalChat(
           resolution.role === 'MERCHANT'
             ? `Halo Kak ${resolution.tenant?.owner_name || 'Owner'}! Saya BoonPilot, Co-Pilot resmi toko ${resolution.tenant?.name || 'Anda'}. Siap membantu operasional dan analisis Anda.`
             : `Halo! Saya BoonPilot, Onboarding & Platform Specialist resmi dari BoonTrack. Siap membantu penjelasan fitur dan pendaftaran toko Anda.`;
+      } else if (isPublicServiceTenant) {
+        systemPrompt = `Anda adalah "Asisten Virtual Resmi Loket Digital Pelayanan Kelurahan Margasari", Kecamatan Buahbatu, Kota Bandung (Lurah: Wahyu A. Affandi, S.IP., M.Si.).
+Gaya Komunikasi / Tone: Sangat formal, sopan, melayani, dan mengayomi warga layaknya pamong praja kelurahan resmi.
+Sapaan Wajib: Selalu sapa warga dengan "Bapak/Ibu" atau "Bapak/Ibu Warga Kelurahan Margasari". DILARANG KERAS menyapa dengan panggilan toko seperti "Kak", "Kakak", "Gan", "Sis", "Min".
+LARANGAN MUTLAK KOSAKATA E-COMMERCE:
+- DILARANG KERAS menggunakan istilah e-commerce seperti: "toko", "produk", "jual", "beli", "etalase", "keranjang", "checkout", "diskon", "ongkir", "resi", "pesanan".
+- Seluruh layanan kelurahan adalah PELAYANAN PUBLIK ADMINISTRASI KEPENDUDUKAN & PENGURUSAN SURAT PENGANTAR.
+
+INFORMASI RESMI LOKET & KANTOR KELURAHAN:
+- Lokasi Kantor: Jl. Cipagalo Girang No. 09, Margasari, Kec. Buahbatu, Kota Bandung (Senin - Jumat, 08:00 - 15:00 WIB)
+- Portal Resmi Pelayanan Warga: https://app.boontrack.com/margasari
+- WhatsApp Pelayanan PTSP: ${handoverPhone || '081977655099'}
+
+LAYANAN UTAMA KELURAHAN MARGASARI:
+1. Aktivasi & Pembuatan IKD (Identitas Kependudukan Digital / KTP Online):
+   - Biaya: Gratis (Rp 0).
+   - Syarat: Sudah rekam KTP-el, email aktif, nomor HP aktif, smartphone Android/iOS, Kartu Keluarga (KK).
+   - Alur: Unduh aplikasi IKD Kemendagri, isi data & verifikasi wajah, datang ke loket Kelurahan Margasari untuk scan QR aktivasi oleh operator SIMDUK.
+2. Surat Keterangan Domisili & Usaha (SKDU / SKU):
+   - Biaya: Gratis (Rp 0). Estimasi: Same-day / 1 hari kerja.
+   - Syarat: Pengantar RT/RW setempat Margasari, fotokopi KTP & KK pemohon, pasfoto 3x4 (2 lbr), bukti tempat usaha/sewa.
+3. Surat Pengantar KTP-el / Kartu Keluarga (KK):
+   - Biaya: Gratis (Rp 0). Estimasi: 1 - 3 hari kerja.
+   - Syarat: Pengantar RT/RW Margasari, KK lama (jika pecah/perubahan data), surat kehilangan Polsek Buahbatu jika hilang. Terintegrasi aplikasi SARI Dukcapil Kota Bandung.
+4. Surat Pengantar Nikah (Model N1 - N4):
+   - Biaya: Gratis (Rp 0). Estimasi: 1 - 2 hari kerja.
+   - Syarat: Pengantar RT/RW Margasari, fotokopi KTP & KK calon pengantin dan orang tua, pasfoto latar biru 2x3 (4 lbr) & 4x6 (2 lbr), fotokopi ijazah/akta kelahiran, surat pernyataan belum pernah menikah bermeterai (atau Akta Cerai/Kematian jika duda/janda).
+   - Alur: Berkas diverifikasi dan diterbitkan blanko N1-N4 bertanda tangan Lurah Margasari, lalu dibawa ke KUA Kec. Buahbatu.
+5. Surat Keterangan Tidak Mampu (SKTM):
+   - Biaya: Gratis (Rp 0). Untuk keperluan pendidikan atau kesehatan/bansos.
+   - Syarat: Pengantar RT/RW Margasari, fotokopi KTP & KK, surat pernyataan tidak mampu bermeterai.
+6. Kebersihan Lingkungan & Kawasan Bebas Sampah (KBS Margasari):
+   - Program penanganan kebersihan RW se-Margasari dan pemilahan sampah organik & anorganik (Kang Pisman).
+   - Pengaduan sampah liar diteruskan ke Seksi Trantib Kelurahan Margasari.
+
+ATURAN TAUTAN & RUJUKAN:
+1. Hanya rujuk ke Portal Resmi: https://app.boontrack.com/margasari
+2. DILARANG KERAS membagikan tautan yang mengandung "shop.boontrack.com" atau "checkout".`;
+        modelGreeting = `Sampurasun! Selamat datang Bapak/Ibu Warga di layanan Loket Digital Kelurahan Margasari, Kec. Buahbatu, Kota Bandung. Ada yang bisa kami bantu seputar pelayanan administrasi kependudukan atau pengurusan surat?`;
       } else {
         systemPrompt = `Anda adalah "${botPersona}", representasi customer service resmi untuk "${storeName}" (Kategori: ${category}).
 Gaya Komunikasi / Tone: ${botTone}.
@@ -927,7 +1026,22 @@ PANDUAN PEMROSESAN GAMBAR & MULTIMODAL VISION:
       const isCheckoutUrlUuid = /[0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}/i.test(checkoutUrl);
       const cleanCheckoutUrl = !isCheckoutUrlUuid && checkoutUrl ? checkoutUrl : '';
 
-      if (fallbackFunnel.handled && fallbackFunnel.reply) {
+      if (isPublicServiceTenant) {
+        const lowerQ = (message || '').toLowerCase();
+        if (lowerQ.includes('nikah') || lowerQ.includes('pernikahan') || lowerQ.includes('kua') || lowerQ.includes('n1')) {
+          reply = '🏛️ **Surat Pengantar Nikah (Model N1 - N4)**\n*Penerbitan surat pengantar nikah resmi (N1, N2, N4) untuk pendaftaran pernikahan di KUA Kecamatan Buahbatu.*\n\n**Persyaratan Wajib:**\n- Surat Pengantar RT/RW setempat wilayah Margasari\n- Fotokopi KTP-el dan KK calon pengantin serta orang tua\n- Pasfoto calon pengantin latar biru ukuran 2x3 (4 lembar) dan 4x6 (2 lembar)\n- Fotokopi Ijazah terakhir / Akta Kelahiran\n- Surat Pernyataan Belum Pernah Menikah bermeterai (atau Akta Cerai/Kematian jika duda/janda)\n\n**Alur Pengurusan:**\n1. Meminta surat pengantar ke RT/RW setempat.\n2. Menyerahkan berkas persyaratan ke Loket Pelayanan Kelurahan Margasari.\n3. Penerbitan blanko pengantar pernikahan N1-N4 bertanda tangan Lurah Margasari.\n4. Pemohon membawa berkas pengantar ke KUA Kecamatan Buahbatu.\n\n⏱️ **Estimasi:** 1 - 2 Hari Kerja\n💳 **Biaya:** Gratis (Rp 0)\n\n📍 *Lokasi:* Kantor Kelurahan Margasari, Jl. Cipagalo Girang No. 09, Kec. Buahbatu, Kota Bandung (Senin - Jumat, 08:00 - 15:00 WIB)\n\n🌐 Informasi & Layanan Mandiri: https://app.boontrack.com/margasari';
+        } else if (lowerQ.includes('ikd') || lowerQ.includes('ktp digital') || lowerQ.includes('online')) {
+          reply = '📱 **Aktivasi Identitas Kependudukan Digital (IKD)**\n*Layanan pembuatan dan aktivasi KTP Digital pada smartphone warga Margasari melalui aplikasi resmi Ditjen Dukcapil Kemendagri.*\n\n**Persyaratan Wajib:**\n- Sudah memiliki fisik KTP-el / perekaman biometrik\n- Memiliki email aktif & nomor HP pribadi aktif berkuota internet\n- Smartphone Android (min. v8.0) atau iOS\n- Kartu Keluarga (KK)\n\n**Alur Pengurusan:**\n1. Unduh aplikasi "Identitas Kependudukan Digital" di Play Store / App Store.\n2. Buka aplikasi, isi NIK, email, dan nomor HP, lalu klik Verifikasi Data.\n3. Lakukan verifikasi wajah (Face Recognition) pada aplikasi.\n4. Datang ke Loket PTSP Kelurahan Margasari (Jl. Cipagalo Girang No. 09) untuk scan QR aktivasi oleh petugas SIMDUK.\n5. Masukkan PIN aktivasi yang dikirimkan ke email.\n\n⏱️ **Estimasi:** 5 - 10 Menit\n💳 **Biaya:** Gratis (Rp 0)';
+        } else if (lowerQ.includes('skdu') || lowerQ.includes('domisili') || lowerQ.includes('usaha')) {
+          reply = '🏛️ **Surat Keterangan Domisili & Usaha (SKDU)**\n*Penerbitan surat keterangan domisili usaha bagi warga & pelaku UMKM di Kelurahan Margasari.*\n\n**Persyaratan Wajib:**\n- Surat Pengantar RT/RW setempat wilayah Margasari\n- Fotokopi KTP-el & KK Pemohon\n- Pasfoto 3x4 berwarna (2 lembar)\n- Bukti kepemilikan/sewa tempat usaha & foto kegiatan usaha\n\n⏱️ **Estimasi:** Same-day / 1 Hari Kerja\n💳 **Biaya:** Gratis (Rp 0)\n\n📍 Kantor Kelurahan Margasari (Jl. Cipagalo Girang No. 09, Senin - Jumat 08.00 - 15.00 WIB)';
+        } else if (lowerQ.includes('kk') || lowerQ.includes('ktp') || lowerQ.includes('sari')) {
+          reply = '🏛️ **Surat Pengantar KTP-el / Kartu Keluarga (KK)**\n*Pelayanan surat pengantar untuk penerbitan baru, perbaikan data, pecah KK, dan integrasi online Pemkot Bandung.*\n\n**Persyaratan Wajib:**\n- Surat Pengantar RT/RW setempat wilayah Margasari\n- KK lama asli/fotokopi (untuk perubahan data / pecah KK)\n- Surat Keterangan Kehilangan Polsek Buahbatu (khusus jika KTP/KK hilang)\n\n⏱️ **Estimasi:** 1 - 3 Hari Kerja\n💳 **Biaya:** Gratis (Rp 0)\n\nLayanan juga terintegrasi via aplikasi SARI Dukcapil Kota Bandung.';
+        } else if (lowerQ.includes('kbs') || lowerQ.includes('sampah') || lowerQ.includes('kebersihan')) {
+          reply = '🌱 **Layanan Kawasan Bebas Sampah (KBS Margasari)**\n*Program penanganan kebersihan lingkungan dan pemilahan sampah organik & anorganik (Kang Pisman) tingkat RW se-Kelurahan Margasari.*\n\nUntuk pengaduan timbulan sampah liar, warga dapat melapor langsung melalui chat ini atau Seksi Trantib Kelurahan Margasari.';
+        } else {
+          reply = `Sampurasun! Selamat datang Bapak/Ibu Warga di layanan resmi Loket Digital Kelurahan Margasari, Kec. Buahbatu, Kota Bandung.\n\n📍 *Kantor Kelurahan:* Jl. Cipagalo Girang No. 09, Margasari (Senin - Jumat, 08:00 - 15:00 WIB)\n👨‍💼 *Lurah Margasari:* Wahyu A. Affandi, S.IP., M.Si.\n🌐 *Portal Resmi:* https://app.boontrack.com/margasari\n\nSilakan sampaikan kebutuhan administrasi kependudukan atau surat pengantar Bapak/Ibu.`;
+        }
+      } else if (fallbackFunnel.handled && fallbackFunnel.reply) {
         reply = fallbackFunnel.reply;
       } else if (q.includes('qris') || q.includes('bayar') || q.includes('beli') || q.includes('order')) {
         reply = `Pembayaran di *${storeName}* dapat dilakukan secara praktis dan otomatis melalui QRIS 24 jam.` +

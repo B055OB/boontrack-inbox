@@ -14,7 +14,7 @@ export const BACKEND_API_URL = IS_SERVER
       process.env.NEXT_PUBLIC_CORE_API_URL ||
       process.env.CORE_API_URL ||
       process.env.NEXT_PUBLIC_CORE_API ||
-      'https://api.boontrack.com'
+      (process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:8000' : 'https://api.boontrack.com')
     )
   : '';
 

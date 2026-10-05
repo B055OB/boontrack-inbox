@@ -94,6 +94,7 @@ export function getIndustryQuickReplies(
     return [
       'Aktivasi IKD / KTP Online Digital',
       'Surat Keterangan Domisili & Usaha (SKDU)',
+      'Surat Pengantar Nikah (N1 - N4)',
       'Pengantar KTP-el / KK',
       'Kawasan Bebas Sampah (KBS Margasari)',
     ];
