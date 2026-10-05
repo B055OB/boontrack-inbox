@@ -4184,3 +4184,30 @@ Setiap engineer yang berkontribusi kode untuk fitur kreator, layanan publik, ata
 - [ ] **Production Build Check**: Script build produksi (`npm run build`) berjalan sukses dengan status exit code 0 tanpa error TypeScript atau Turbopack.
 ```
 
+---
+
+## 48. Update Arkitektur (05 Oktober 2026): Tenant Layout, Asset Isolation, & Shared Lifecycle Engine
+
+### 48.1 Asset & Layout Isolation Invariant (P0 Rule)
+- **Invariant:** Binaan (build) atau rilis pada satu vertikal (Creator, B2G, atau Service) dilarang keras mengubah atau membocorkan aset, manifest, favicon, atau tingkah laku routing pada domain/vertikal lain (khususnya `shop.boontrack.com`).
+- **Resolution Pipeline:** Resolusi aset dan susun atur (layout) wajib mematuhi rantaian hierarki berasaskan konteks hos:
+  ```text
+  Host -> Tenant Runtime Context -> Asset / Manifest / Icon Resolver -> Template Resolver
+  ```
+- Root layout global tidak dibenarkan menetapkan nilai lalai (default branding) milik mana-mana vertikal tertentu.
+
+### 48.2 Core Engine vs Vertical Boundary Principles
+- **Core Invariant:** `Core menyimpan primitive. Vertical menentukan business policy.`
+- Core Engine hanya menyediakan keupayaan primitif yang agnostik terhadap industri:
+  * Transaction Engine (Order, Payment, Settlement)
+  * Lifecycle Scheduler Engine (Event, Schedule, Trigger, Message Outcome)
+  * Shared Notification Channels (WhatsApp, Messaging)
+- Vertikal perniagaan (Shop, Clinic, Creator) bertindak sebagai pengguna (consumers) yang memetakan konfigurasi metadata dan polisi sahaja:
+  * **Clinic Policy:** Event `APPOINTMENT_COMPLETED` -> Reminder WhatsApp H+3 -> Recall Pemeriksaan 6 Bulan.
+  * **Retail Policy:** Event `ORDER_COMPLETED` -> Follow-up H+7 -> Tawaran Belian Ulangan (Repeat Order).
+  * **Creator Policy:** Event `PRODUCT_PURCHASED` -> Pautan Akses / Onboarding H+3 -> Upsell Kandungan.
+
+### 48.3 External Audience & Data Sync Boundary (HOLD Directive)
+- Integrasi terus (tight coupling) antara Customer Lifecycle Engine dengan Meta CAPI atau platform iklan pihak ketiga ditangguhkan di peringkat Core.
+- Sebarang keperluan eksport audiens pada masa hadapan wajib diasingkan melalui lapisan perantara `Audience Export Adapter` demi pematuhan privasi data dan fleksibiliti pelbagai platform (Meta, TikTok, Google).
+
