@@ -318,6 +318,25 @@ export default function TeamChatTab({
   const [selectedBillingTab, setSelectedBillingTab] = useState<'qris' | 'bank'>('qris');
   const [selectedBankIdx, setSelectedBankIdx] = useState<number>(0);
 
+  // Memoized tenant product catalog for Quick POS
+  const tenantProducts = useMemo(() => {
+    const prods =
+      (Array.isArray(initialTenant?.metadata?.products) ? initialTenant.metadata.products : null) ||
+      (Array.isArray(tenantPaymentData?.metadata?.products) ? tenantPaymentData.metadata.products : null) ||
+      [];
+    return prods.filter((p: any) => p && (p.name || p.title) && p.is_active !== false);
+  }, [initialTenant, tenantPaymentData]);
+
+  // Set smart default for Quick POS deal when catalog loads
+  useEffect(() => {
+    if (tenantProducts.length > 0 && qrisItemName === 'Jasa Video Promosi') {
+      const first = tenantProducts[0];
+      const firstName = first.name || first.title || '';
+      if (firstName) setQrisItemName(firstName);
+      if (first.price) setQrisAmount(String(first.price));
+    }
+  }, [tenantProducts, qrisItemName]);
+
   useEffect(() => {
     if (initialTenant) {
       setTenantPaymentData((prev: any) => {
@@ -2793,6 +2812,42 @@ export default function TeamChatTab({
                               </span>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* Pilihan Cepat Layanan dari Katalog Toko */}
+                      {tenantProducts.length > 0 && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-700 block">
+                            Pilih Cepat dari Katalog ({tenantProducts.length})
+                          </label>
+                          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200/80 rounded-xl">
+                            {tenantProducts.map((p: any, idx: number) => {
+                              const pName = p.name || p.title || `Layanan ${idx + 1}`;
+                              const pPrice = Number(p.price || 0);
+                              const isSelected = qrisItemName === pName;
+                              return (
+                                <button
+                                  key={p.id || idx}
+                                  type="button"
+                                  onClick={() => {
+                                    setQrisItemName(pName);
+                                    setQrisAmount(String(pPrice));
+                                  }}
+                                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 border cursor-pointer active:scale-95 ${
+                                    isSelected
+                                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                      : 'bg-white text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 border-slate-200'
+                                  }`}
+                                >
+                                  <span className="truncate max-w-[130px]">{pName}</span>
+                                  <span className={isSelected ? 'text-indigo-200' : 'text-slate-400 font-normal'}>
+                                    &bull; Rp {pPrice.toLocaleString('id-ID')}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
 
