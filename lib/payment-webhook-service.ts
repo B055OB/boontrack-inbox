@@ -829,6 +829,7 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     message: `Pesanan #${orderId} berhasil diverifikasi LUNAS (PAID) via BoonTrack Reader (nominal Rp ${totalAmount.toLocaleString('id-ID')}).`,
     order_id: orderId,
     gross_amount: totalAmount,
+    already_paid: false,
     match_strategy: matchStrategy,
     detected_app: detectedApp,
     tenant_slug: targetTenantSlug,

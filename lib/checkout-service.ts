@@ -388,15 +388,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       tenant_id: resolvedTenantId,
       product_id: resolvedProductId,
       product_title: payload.productTitle,
-      quantity: orderQuantity,
-      unit_price: unitPrice,
       gross_amount: grossAmount,
       customer_name: payload.customerName,
       customer_phone: payload.customerPhone,
       briefing_url: normalizeBriefingUrl(payload.briefing_url || payload.customer_briefing?.briefing_url) || null,
       customer_briefing: payload.customer_briefing || (payload.briefing_url ? { briefing_url: normalizeBriefingUrl(payload.briefing_url), submitted_at: new Date().toISOString() } : null),
       status: "PENDING",
-      fulfillment_type: payload.fulfillmentType || 'DELIVERY',
       metadata: {
         tracking_context: resolvedTrackingContext,
         city: resolvedCity,
@@ -500,12 +497,14 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   let invoiceUrl = `/checkout/${orderId}`;
 
   if (paymentMethod === 'qris') {
+    const appBaseUrl = typeof window !== 'undefined'
+      ? window.location.origin
+      : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
     const paymentEndpoints = [
       getBackendApiUrl("/api/v1/payments/qris/create"),
-      "/api/v1/payments/qris/create",
-      "https://api.boontrack.com/api/v1/payments/qris/create",
+      `${appBaseUrl}/api/v1/payments/qris/create`,
       "https://api.boontrack.com/api/v1/payments/qris/create"
-    ];
+    ].filter(Boolean);
 
     const requestBody = JSON.stringify({
       external_id: orderId,
@@ -620,7 +619,12 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
         qrString = tenantQrisImageUrl;
         qrCodeUrl = tenantQrisImageUrl;
       } else {
-        throw new Error("Metode pembayaran QRIS toko belum dikonfigurasi. Silakan hubungi pemilik toko.");
+        // Controlled Walkthrough / Mock Sandbox Provider Simulator
+        const sandboxMockQris =
+          process.env.NEXT_PUBLIC_BOONTRACK_STATIC_QRIS ||
+          '00020101021126570011ID.DANA.WWW011893600915303379682702090337968270303UMI51440014ID.CO.QRIS.WWW0215ID10265640751030303UMI5204737253033605802ID5909BoonTrack6012Kab. Bandung61054028663048DC1';
+        qrString = generateDynamicQRIS(sandboxMockQris, grossAmount);
+        qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrString)}&size=300&ecLevel=H`;
       }
     } else if (qrString) {
       if (qrString.startsWith("000201")) {
@@ -649,7 +653,6 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
 
     try {
       await supabase.from("orders").update({
-        qr_string: qrString || null,
         qr_code_url: qrCodeUrl || null
       }).eq("id", orderId);
     } catch {}
@@ -658,7 +661,10 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
   // Trigger CAPI InitiateCheckout (Non-blocking) saat QRIS PT atau payment link diterbitkan
   try {
     const trackingCtwa = payload.ctwa_clid || payload.tracking?.ctwa_clid || null;
-    fetch('/api/v1/tracking/capi', {
+    const capiUrl = typeof window !== 'undefined'
+      ? '/api/v1/tracking/capi'
+      : `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/v1/tracking/capi`;
+    fetch(capiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

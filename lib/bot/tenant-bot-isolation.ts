@@ -602,6 +602,16 @@ export async function routeTenantInboundMessage(params: {
     };
   }
 
+  // 5. Fallback: Default Greeting from Tenant Decision Tree
+  if (treeConfig.default_greeting) {
+    return {
+      handled: true,
+      reply: treeConfig.default_greeting,
+      type: 'TEXT',
+      quick_actions: treeConfig.quick_replies,
+    };
+  }
+
   return {
     handled: false,
     reply: '',

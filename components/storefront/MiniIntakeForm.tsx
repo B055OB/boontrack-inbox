@@ -129,6 +129,21 @@ export default function MiniIntakeForm({
     });
     trackContactEvent('Submit Mini Intake Form');
 
+    // Persist Lead ke CRM Core Engine (/api/v1/crm/lead)
+    try {
+      fetch('/api/v1/crm/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: tenantSlug,
+          name: payload.parentName,
+          phone: payload.whatsappPhone,
+          intent: payload.primaryConcern,
+          notes: `Anak: ${payload.childName} (${payload.childAge}). Format Sesi: ${payload.sessionType}. Catatan: ${payload.notes || '-'}`,
+        }),
+      }).catch((err) => console.warn('[MiniIntakeForm] CRM capture notice:', err));
+    } catch {}
+
     setIsSubmitted(true);
 
     if (mode === 'CHECKOUT' && onDirectCheckout) {

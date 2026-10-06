@@ -76,7 +76,7 @@ export async function generateUniqueCodeForTenant(options: UniqueCodeOptions): P
       // 2. Check active pending orders in `orders` table
       const { data: activeOrders, error } = await supabase
         .from('orders')
-        .select('unique_code, gross_amount, total_amount, metadata, status, payment_status, order_status')
+        .select('id, gross_amount, metadata, status, payment_status, order_status')
         .or(`tenant_slug.eq.${cleanSlug},tenant_id.eq.${cleanTenantId}`)
         .gte('created_at', windowStartIso);
 

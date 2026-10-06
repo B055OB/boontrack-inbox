@@ -67,16 +67,19 @@ export const getSupabase = () => {
   return supabaseInstance;
 };
 
-const rawServiceRoleKey = (
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY ||
-  ''
-).trim();
-const supabaseServiceRoleKey = rawServiceRoleKey || supabaseAnonKey;
+let lastConfiguredAdminKey: string | null = null;
 
 export const getSupabaseAdmin = () => {
-  if (!supabaseAdminInstance) {
-    supabaseAdminInstance = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  const currentKey = (
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    ''
+  ).trim();
+
+  if (!supabaseAdminInstance || (currentKey && currentKey !== lastConfiguredAdminKey)) {
+    lastConfiguredAdminKey = currentKey;
+    const serviceKey = currentKey || supabaseAnonKey;
+    supabaseAdminInstance = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
       global: {
         fetch: createGuardedFetch(),
