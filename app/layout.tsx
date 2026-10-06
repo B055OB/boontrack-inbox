@@ -92,16 +92,10 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: "BoonTrack Shop",
       images: [
         {
-          url: 'https://shop.boontrack.com/og-square.png?v=3',
+          url: 'https://shop.boontrack.com/og-square.png?v=4',
           width: 500,
           height: 500,
           alt: 'BoonTrack Shop',
-        },
-        {
-          url: '/og-shop.png',
-          width: 1200,
-          height: 630,
-          alt: 'BoonTrack Shop - Platform Otomasi Penjualan & WhatsApp Commerce Cerdas',
         },
       ],
       locale: 'id_ID',
@@ -140,7 +134,7 @@ export default function RootLayout({
     >
       <head>
         {/* Instant messenger parser fallback (WhatsApp / Telegram image_src) */}
-        <link rel="image_src" href="https://shop.boontrack.com/og-square.png?v=3" />
+        <link rel="image_src" href="https://shop.boontrack.com/og-square.png?v=4" />
         {/* Early Safari / WebKit Compatibility Polyfill (before scripts execute) */}
         <script
           dangerouslySetInnerHTML={{

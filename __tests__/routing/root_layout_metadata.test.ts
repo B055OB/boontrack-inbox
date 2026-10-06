@@ -72,18 +72,13 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     expect(meta.manifest).toBe('/manifest.json');
     expect(meta.title).toContain('Shop');
 
-    // Open Graph & Twitter Card specification (og-square.png 500x500 first, og-shop.png 1200x630 second)
+    // Open Graph & Twitter Card specification (only 1 image og-square.png?v=4 in openGraph.images)
     expect(meta.openGraph?.images).toEqual([
       expect.objectContaining({
-        url: 'https://shop.boontrack.com/og-square.png?v=3',
+        url: 'https://shop.boontrack.com/og-square.png?v=4',
         width: 500,
         height: 500,
         alt: 'BoonTrack Shop',
-      }),
-      expect.objectContaining({
-        url: '/og-shop.png',
-        width: 1200,
-        height: 630,
       }),
     ]);
     expect((meta.twitter as any)?.card).toBe('summary_large_image');
@@ -111,15 +106,10 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     expect(meta.title).toContain('Shop');
     expect(meta.openGraph?.images).toEqual([
       expect.objectContaining({
-        url: 'https://shop.boontrack.com/og-square.png?v=3',
+        url: 'https://shop.boontrack.com/og-square.png?v=4',
         width: 500,
         height: 500,
         alt: 'BoonTrack Shop',
-      }),
-      expect.objectContaining({
-        url: '/og-shop.png',
-        width: 1200,
-        height: 630,
       }),
     ]);
     expect((meta.twitter as any)?.card).toBe('summary_large_image');
@@ -130,7 +120,7 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     const fs = require('fs');
     const path = require('path');
     const layoutContent = fs.readFileSync(path.join(process.cwd(), 'app', 'layout.tsx'), 'utf8');
-    expect(layoutContent).toContain('<link rel="image_src" href="https://shop.boontrack.com/og-square.png?v=3" />');
+    expect(layoutContent).toContain('<link rel="image_src" href="https://shop.boontrack.com/og-square.png?v=4" />');
   });
 
   describe('Middleware Asset Rewrites Isolation', () => {
