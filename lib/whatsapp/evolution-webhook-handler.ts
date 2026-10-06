@@ -123,11 +123,14 @@ export async function sendEvolutionTextMessage(
   const apiKey = customApiKey || EVOLUTION_API_KEY;
   const endpoint = `${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
 
-  let cleanNumber = recipientPhone.replace(/\D/g, '');
-  if (cleanNumber.startsWith('0')) {
-    cleanNumber = '62' + cleanNumber.slice(1);
-  } else if (cleanNumber.startsWith('8')) {
-    cleanNumber = '62' + cleanNumber;
+  let cleanNumber = (recipientPhone || '').trim();
+  if (!cleanNumber.includes('@g.us')) {
+    cleanNumber = cleanNumber.replace(/\D/g, '');
+    if (cleanNumber.startsWith('0')) {
+      cleanNumber = '62' + cleanNumber.slice(1);
+    } else if (cleanNumber.startsWith('8')) {
+      cleanNumber = '62' + cleanNumber;
+    }
   }
 
   // Pre-register in Outbound Registry to eliminate race condition with immediate webhook echo
@@ -633,35 +636,29 @@ export async function processEvolutionWebhookEvent(
         // If supabase unavailable, fall through to Gemini below with group context
       }
 
-      // PERTANYAAN NYATA → Kirim ke Gemini AI & balas ke Grup (rawFrom = group JID)
+      // PERTANYAAN NYATA DI GRUP (@boon) → Kirim ke BoonPilot Platform Chat (Gemini LLM / Fallback) & balas ke Grup
       try {
-        const groupAiResult = await processMultimodalChat({
-          tenant_slug: tenantSlug || tenantId,
-          tenant_id: tenantId,
-          message: cleanQuery || rawText,
-          text: cleanQuery || rawText,
-          sender_phone: senderPhone,
-          user_identifier: senderPhone,
-          channel: 'WHATSAPP',
-          context: {
-            isGroupChat: true,
-            groupJid: rawFrom,
-            storeName: 'BoonTrack',
+        const platformResult = await processBoonPilotPlatformChat(
+          {
+            senderPhone,
+            message: cleanQuery || rawText,
+            channel_type: 'WAHA',
           },
-        });
+          supabase
+        );
 
-        if (groupAiResult.reply && groupAiResult.reply.trim()) {
-          await sendEvolutionTextMessage(instanceName, rawFrom, groupAiResult.reply.trim(), resolvedApiKey);
+        if (platformResult.reply && platformResult.reply.trim()) {
+          await sendEvolutionTextMessage(instanceName, rawFrom, platformResult.reply.trim(), resolvedApiKey);
 
           await persistOutboundMessage({
             tenantId,
             tenantSlug: tenantSlug || tenantId,
             customerPhone: rawFrom,
             senderType: 'bot',
-            senderName: 'BoonPilot Grup',
-            messageBody: groupAiResult.reply.trim(),
+            senderName: platformResult.role === 'MERCHANT' ? 'BoonPilot Toko' : 'BoonPilot Konsultan',
+            messageBody: platformResult.reply.trim(),
             externalId: item.key?.id ? `bot_group_reply_${item.key.id}` : undefined,
-            rawPayload: { trigger: 'boonpilot_group_gemini', groupJid: rawFrom, senderPhone },
+            rawPayload: { trigger: 'boonpilot_group_mention', groupJid: rawFrom, senderPhone, role: platformResult.role },
           });
         }
       } catch (groupAiErr) {
@@ -1230,34 +1227,28 @@ export async function processEvolutionWebhookEvent(
         supabase
       );
 
-      // Only short-circuit if platform engine matched a deterministic fast-path.
-      // Non-deterministic fallback (isDeterministicMatch === false) falls through
-      // to Gemini AI for an intelligent answer with full Knowledge Base context.
-      if (chatRes.isDeterministicMatch !== false) {
-        if (chatRes.reply && chatRes.reply.trim()) {
-          await sendEvolutionTextMessage(
-            instanceName,
-            senderPhone,
-            chatRes.reply.trim(),
-            resolvedApiKey
-          );
+      if (chatRes.reply && chatRes.reply.trim()) {
+        await sendEvolutionTextMessage(
+          instanceName,
+          senderPhone,
+          chatRes.reply.trim(),
+          resolvedApiKey
+        );
 
-          await persistOutboundMessage({
-            tenantId: resolution.tenant?.id || tenantId,
-            tenantSlug: resolution.tenant?.slug || tenantSlug || tenantId,
-            customerPhone: senderPhone,
-            senderType: 'bot',
-            senderName: resolution.role === 'MERCHANT' ? 'BoonPilot Toko' : 'BoonTrack Concierge',
-            messageBody: chatRes.reply.trim(),
-            externalId: item.key?.id ? `bot_reply_${item.key.id}` : undefined,
-            rawPayload: { trigger: 'boonpilot_platform_dual_role', role: resolution.role },
-          });
-        }
+        await persistOutboundMessage({
+          tenantId: resolution.tenant?.id || tenantId,
+          tenantSlug: resolution.tenant?.slug || tenantSlug || tenantId,
+          customerPhone: senderPhone,
+          senderType: 'bot',
+          senderName: resolution.role === 'MERCHANT' ? 'BoonPilot Toko' : 'BoonPilot Konsultan',
+          messageBody: chatRes.reply.trim(),
+          externalId: item.key?.id ? `bot_reply_${item.key.id}` : undefined,
+          rawPayload: { trigger: 'boonpilot_platform_dual_role', role: resolution.role },
+        });
 
         processedCount++;
         continue;
       }
-      // isDeterministicMatch === false → fall through to Gemini AI below
     }
 
     const isUuid = (val?: string | null) =>
