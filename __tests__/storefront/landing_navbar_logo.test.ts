@@ -25,4 +25,28 @@ describe('Landing Page Navbar Logo Contrast Integrity', () => {
     expect(content).not.toContain('src="/logo-horizontal.png"');
     expect(content).toContain('alt="BoonTrack"');
   });
+
+  it('ensures public/og-shop.png exists and meets 1200x630 Open Graph specification', async () => {
+    const ogPath = path.join(process.cwd(), 'public', 'og-shop.png');
+    expect(fs.existsSync(ogPath)).toBe(true);
+
+    const sharp = (await import('sharp')).default;
+    const meta = await sharp(ogPath).metadata();
+    expect(meta.width).toBe(1200);
+    expect(meta.height).toBe(630);
+    expect(meta.format).toBe('png');
+  });
+
+  it('ensures tenant layout preserves isolated tenant-specific generateMetadata without being overwritten', () => {
+    const tenantLayoutFile = path.join(process.cwd(), 'app', '[tenant]', 'layout.tsx');
+    const content = fs.readFileSync(tenantLayoutFile, 'utf8');
+
+    // Tenant layout must have its own generateMetadata
+    expect(content).toContain('export async function generateMetadata');
+    // Must derive from tenant store data
+    expect(content).toContain('getTenantStoreData(cleanTenant)');
+    // Must respect tenant branding hierarchy
+    expect(content).toContain('metaObj.banner_url');
+    expect(content).toContain('metaObj.logo_url');
+  });
 });

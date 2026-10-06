@@ -92,20 +92,20 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: "BoonTrack Shop",
       images: [
         {
-          url: '/logo-master.png',
-          width: 1024,
-          height: 1024,
-          alt: 'BoonTrack Platform',
+          url: '/og-shop.png',
+          width: 1200,
+          height: 630,
+          alt: 'BoonTrack Shop - Platform Otomasi Penjualan & WhatsApp Commerce Cerdas',
         },
       ],
       locale: 'id_ID',
       type: 'website',
     },
     twitter: {
-      card: 'summary',
+      card: 'summary_large_image',
       title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
       description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
-      images: ['/logo-master.png'],
+      images: ['/og-shop.png'],
     },
     appleWebApp: {
       capable: true,
