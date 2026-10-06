@@ -197,8 +197,8 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                 } catch {}
               }
 
-              const serviceName = parsedUtm?.service_item || o.product_title || 'Layanan Toren';
-              const address = parsedUtm?.address || o.shipping_address || 'Karawang';
+              const serviceName = parsedUtm?.service_item || o.product_title || 'Layanan Servis';
+              const address = parsedUtm?.address || o.shipping_address || '-';
               const date = parsedUtm?.scheduled_at || o.service_schedule || new Date(o.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
               const timeSlot = parsedUtm?.time_slot || o.time_slot || '09:00 - 12:00 WIB';
               const paymentMethod = parsedUtm?.payment_method || 'COD';
@@ -520,7 +520,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
           </div>
           <div>
             <h2 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
-              <span>Jadwal & Penugasan Teknisi Toren</span>
+              <span>Jadwal & Penugasan Servis Lapangan</span>
               <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full border border-blue-200">
                 Operasional
               </span>
@@ -734,7 +734,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
               {/* Order Details Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
                 <div>
-                  <span className="text-slate-400 block text-[11px] font-bold">🚰 Ukuran / Layanan Toren:</span>
+                  <span className="text-slate-400 block text-[11px] font-bold">🚰 Nama Layanan / Servis:</span>
                   <span className="font-black text-slate-900 text-sm mt-0.5 block">{item.serviceName}</span>
                 </div>
                 <div>
@@ -823,7 +823,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                   {/* Konfirmasi ke Client */}
                   <a
                     href={`https://wa.me/${item.phone.replace(/^0/, '62')}?text=${encodeURIComponent(
-                      `Halo Kak ${item.customerName}, kami dari Jasa Toren Karawang mengonfirmasi jadwal pengerjaan ${item.serviceName} pada ${item.date} (${item.timeSlot}). Apakah ada arahan khusus sebelum tim teknisi meluncur ke lokasi?`
+                      `Halo Kak ${item.customerName}, kami mengonfirmasi jadwal pengerjaan ${item.serviceName} pada ${item.date} (${item.timeSlot}). Apakah ada arahan khusus sebelum tim teknisi meluncur ke lokasi?`
                     )}`}
                     target="_blank"
                     rel="noreferrer"
@@ -890,7 +890,7 @@ export default function FieldServiceBookingTab({ tenantSlug }: { tenantSlug: str
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-slate-900">Tambah Jadwal Pengerjaan Baru</h3>
-                  <p className="text-[11px] text-slate-500">Format standar operasional Jasa Toren Karawang</p>
+                  <p className="text-[11px] text-slate-500">Format standar operasional layanan & servis</p>
                 </div>
               </div>
               <button

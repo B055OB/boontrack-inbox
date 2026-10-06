@@ -1,5 +1,5 @@
-export const DEFAULT_BOOKING_SUMMARY_TEMPLATE = `JASA TOREN KARAWANG
-🚰 Order ukuran toren : {ukuran_toren}
+export const DEFAULT_BOOKING_SUMMARY_TEMPLATE = `RANGKUMAN ORDER LAYANAN
+🛠️ Layanan / Servis : {ukuran_toren}
 👤 Nama Client : {nama_client}
 🏠 Alamat : {alamat}
 🗓️ Tanggal Eksekusi : {tanggal}
