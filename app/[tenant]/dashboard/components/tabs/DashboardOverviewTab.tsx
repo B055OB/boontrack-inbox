@@ -667,7 +667,7 @@ Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, Whats
               </button>
               <button
                 type="button"
-                onClick={() => onNavigateTab('boonpilot')}
+                onClick={() => onNavigateTab('ai_knowledge')}
                 className="w-full py-1.5 px-3 bg-white/5 hover:bg-white/10 text-purple-200 hover:text-white font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
               >
                 <span>Konfigurasi Persona &amp; AI Prompt</span>

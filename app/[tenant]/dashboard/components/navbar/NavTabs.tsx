@@ -21,24 +21,29 @@ import {
 } from 'lucide-react';
 
 export type DashboardTab =
-  | 'dashboard'
   | 'overview'
+  | 'dashboard'
   | 'inbox'
   | 'catalog'
   | 'products'
   | 'orders'
   | 'microsite'
+  | 'links'
   | 'storefront'
+  | 'themes'
   | 'finance'
   | 'ai_knowledge'
   | 'ads_tracking'
   | 'shipping'
+  | 'biteship'
   | 'booking'
   | 'downloads'
   | 'campaigns'
   | 'broadcast'
-  | 'whatsapp'
   | 'auto_reply'
+  | 'whatsapp'
+  | 'rotator'
+  | 'telegram_alerts'
   | 'crm'
   | 'customers'
   | 'settings';
@@ -106,26 +111,18 @@ export default function NavTabs({
   const teamScaleActive = isTeamScale || permissions.isTeamScale;
 
   // Resolusi kategori toko fisik vs digital vs jasa yang ketat
-  const rawCat = (businessType || storeCategory || 'PHYSICAL').toUpperCase();
+  const rawCat = (businessType || storeCategory || 'PHYSICAL').toUpperCase().trim();
   const isDakwah = rawCat.includes('DAKWAH') || rawCat.includes('KAJIAN') || rawCat.includes('ISLAM');
 
-  const isPhysical =
-    !isDakwah &&
-    (rawCat === 'PHYSICAL' || rawCat === 'RETAIL' || rawCat === 'RETAIL_PHYSICAL') &&
-    capabilities?.shipping !== false;
+  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'KLINIK', 'DOKTER', 'TRAVEL', 'UMROH'].some((k) => rawCat.includes(k));
+  const isFieldService = !isProService && (['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'REPAIR', 'CLEANING', 'TEKNISI'].some((k) => rawCat.includes(k)));
+  const isFood = ['FOOD', 'FNB', 'KULINER', 'MAKANAN', 'RESTO'].some((k) => rawCat.includes(k));
+  const isDigital = ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD'].some((k) => rawCat.includes(k)) || isDakwah || Boolean(capabilities?.digital_fulfillment);
+  const isAgency = ['CREATOR_AGENCY', 'AGENCY', 'CREATOR', 'CAMPAIGN', 'TALENT', 'AFFILIATE'].some((k) => rawCat.includes(k));
 
-  const isService =
-    !isPhysical && (
-      rawCat === 'FIELD_SERVICE' ||
-      rawCat === 'PROFESSIONAL_SERVICE' ||
-      rawCat === 'LOCAL_SERVICE' ||
-      rawCat === 'PROFESSIONAL_CONSULT' ||
-      rawCat.includes('SERVICE') ||
-      rawCat.includes('LOCAL')
-    );
-
-  const isDigital = (!isPhysical && !isService) || rawCat === 'DIGITAL' || isDakwah;
-  const showBooking = isService || Boolean(capabilities?.booking);
+  const isPhysical = (!isDigital && !isProService && !isFieldService && !isAgency) || rawCat === 'PHYSICAL' || rawCat === 'RETAIL' || isFood;
+  const showShipping = (isPhysical || isFood || capabilities?.shipping === true) && capabilities?.shipping !== false;
+  const showBooking = isProService || isFieldService || Boolean(capabilities?.booking);
   const showDigital = isDigital || Boolean(capabilities?.digital_fulfillment);
 
   // Entitlement Ads Tracking Pro: terkunci untuk Solo/Trial
@@ -215,9 +212,9 @@ export default function NavTabs({
             <span>
               {isDakwah
                 ? `Katalog Materi / Program Dakwah (${productCount})`
-                : rawCat === 'PROFESSIONAL_SERVICE' || rawCat === 'PROFESSIONAL_CONSULT'
+                : isProService
                 ? `Katalog Jasa & Konsultasi (${productCount})`
-                : isService
+                : isFieldService
                 ? `Katalog Jasa & Layanan (${productCount})`
                 : isDigital
                 ? `Katalog Produk Digital (${productCount})`
@@ -283,8 +280,8 @@ export default function NavTabs({
             )}
           </button>
 
-          {/* TAB 4: CONDITIONAL — LOGISTIK (Fisik) / BOOKING (Jasa & Jadwal) / AKSES UNDUH (Digital) */}
-          {isPhysical && (
+          {/* TAB 4: CONDITIONAL — PENGIRIMAN (Fisik) / BOOKING (Jasa & Jadwal) / AKSES UNDUH (Digital) */}
+          {showShipping && (
             <button
               type="button"
               role="tab"
@@ -297,9 +294,9 @@ export default function NavTabs({
               }`}
             >
               <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Logistik & Ekspedisi</span>
+              <span>{isFood ? 'Kurir Instan & Dapur' : 'Pengiriman & Ekspedisi'}</span>
               <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-extrabold">
-                MULTI-KURIR
+                {isFood ? 'INSTAN' : 'MULTI-KURIR'}
               </span>
             </button>
           )}
@@ -317,9 +314,9 @@ export default function NavTabs({
               }`}
             >
               <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>{isDakwah ? 'Jadwal Kajian & Zoom' : rawCat === 'PROFESSIONAL_SERVICE' || rawCat === 'PROFESSIONAL_CONSULT' ? 'Jadwal & Sesi Konsultasi' : 'Booking & Jadwal'}</span>
+              <span>{isDakwah ? 'Jadwal Kajian & Zoom' : isProService ? 'Jadwal & Sesi Konsultasi' : 'Jadwal & Booking Servis'}</span>
               <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">
-                {isDakwah ? 'KAJIAN' : rawCat === 'PROFESSIONAL_SERVICE' || rawCat === 'PROFESSIONAL_CONSULT' ? 'KONSULTASI' : 'JASA'}
+                {isDakwah ? 'KAJIAN' : isProService ? 'SESI' : 'SLOT'}
               </span>
             </button>
           )}
@@ -369,10 +366,10 @@ export default function NavTabs({
           <button
             type="button"
             role="tab"
-            aria-selected={activeTab === 'finance' || activeTab === 'integration' || activeTab === 'overview'}
+            aria-selected={activeTab === 'finance' || activeTab === 'integration'}
             onClick={() => setActiveTab('finance')}
             className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
-              activeTab === 'finance' || activeTab === 'integration' || activeTab === 'overview'
+              activeTab === 'finance' || activeTab === 'integration'
                 ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}

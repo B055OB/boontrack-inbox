@@ -102,130 +102,108 @@ function getVerticalMenuConfig(storeCategory?: string) {
   }
 }
 
-function getVerticalOperationalMenuConfig(
-  storeCategory?: string,
+export interface OperationalMenuItem {
+  label: string;
+  targetTab: string;
+  badge: string;
+  icon: React.ElementType;
+  colorClass: string;
+}
+
+function getVerticalOperationalMenuItems(
+  categoryOrType?: string,
   capabilities?: { shipping?: boolean; booking?: boolean; digital_fulfillment?: boolean; [key: string]: any } | null
-) {
-  const norm = (storeCategory || '').toUpperCase().trim();
-  const isDigital = ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK'].some((k) => norm.includes(k)) || capabilities?.digital_fulfillment === true;
-  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'TRAVEL', 'UMROH'].some((k) => norm.includes(k));
-  const isFieldService = !isProService && (['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'REPAIR', 'TEKNISI', 'BOOKING'].some((k) => norm.includes(k)) || capabilities?.booking === true);
-  const isFood = ['FOOD', 'FNB', 'KULINER'].some((k) => norm.includes(k));
+): OperationalMenuItem[] {
+  const norm = (categoryOrType || '').toUpperCase().trim();
+  const items: OperationalMenuItem[] = [];
 
+  const isProService = ['PRO_SERVICE', 'PROFESSIONAL', 'CONSULT', 'KONSULTASI', 'LEGAL', 'KLINIK', 'DOKTER', 'TRAVEL', 'UMROH'].some((k) => norm.includes(k));
+  const isFieldService = !isProService && (['FIELD_SERVICE', 'LOCAL_SERVICE', 'SERVICE', 'JASA', 'TOREN', 'REPAIR', 'CLEANING', 'TEKNISI'].some((k) => norm.includes(k)));
+  const isBookingActive = isProService || isFieldService || capabilities?.booking === true;
+
+  const isFood = ['FOOD', 'FNB', 'KULINER', 'MAKANAN', 'RESTO'].some((k) => norm.includes(k));
+  const isDigital = ['DIGITAL', 'COURSE', 'SOFTWARE', 'EBOOK', 'DOWNLOAD', 'DAKWAH', 'KAJIAN', 'MAJELIS'].some((k) => norm.includes(k)) || capabilities?.digital_fulfillment === true;
+  const isAgency = ['CREATOR_AGENCY', 'AGENCY', 'CREATOR', 'CAMPAIGN', 'TALENT', 'AFFILIATE'].some((k) => norm.includes(k));
+
+  // 1. Pengiriman & Ekspedisi (Hanya produk fisik & FnB, kecuali shipping dinonaktifkan secara eksplisit)
+  const isPhysical = (!isDigital && !isProService && !isFieldService && !isAgency) || norm === 'PHYSICAL' || norm === 'RETAIL' || isFood;
+  const showShipping = (isPhysical || isFood || capabilities?.shipping === true) && capabilities?.shipping !== false;
+
+  if (showShipping) {
+    if (isFood) {
+      items.push({
+        label: 'Kurir Instan & Dapur',
+        targetTab: 'shipping',
+        badge: 'INSTAN',
+        icon: Bike,
+        colorClass: 'bg-amber-50 text-amber-600',
+      });
+    } else {
+      items.push({
+        label: 'Pengiriman & Ekspedisi',
+        targetTab: 'shipping',
+        badge: 'KURIR',
+        icon: Truck,
+        colorClass: 'bg-teal-50 text-teal-600',
+      });
+    }
+  }
+
+  // 2. Jadwal & Booking (Hanya jika vertikal toko adalah jasa/klinis/booking atau flag booking aktif)
+  if (isBookingActive) {
+    if (isProService) {
+      items.push({
+        label: 'Jadwal & Sesi Konsultasi',
+        targetTab: 'booking',
+        badge: 'SESI',
+        icon: Calendar,
+        colorClass: 'bg-blue-50 text-blue-600',
+      });
+    } else {
+      items.push({
+        label: 'Jadwal & Booking Servis',
+        targetTab: 'booking',
+        badge: 'SLOT',
+        icon: CalendarCheck,
+        colorClass: 'bg-emerald-50 text-emerald-600',
+      });
+    }
+  }
+
+  // 3. Akses Unduh & Lisensi (Produk Digital)
   if (isDigital) {
-    return {
+    items.push({
       label: 'Akses Unduh & Lisensi',
       targetTab: 'downloads',
       badge: 'AKSES',
       icon: FolderKey,
       colorClass: 'bg-indigo-50 text-indigo-600',
-      hideShipping: true,
-    };
+    });
   }
 
-  if (isProService) {
-    return {
-      label: 'Jadwal & Sesi Konsultasi',
-      targetTab: 'booking',
-      badge: 'SESI',
-      icon: Calendar,
-      colorClass: 'bg-blue-50 text-blue-600',
-      hideShipping: true,
-    };
-  }
-
-  if (isFieldService) {
-    return {
-      label: 'Jadwal & Booking Servis',
-      targetTab: 'booking',
-      badge: 'SLOT',
-      icon: CalendarCheck,
-      colorClass: 'bg-emerald-50 text-emerald-600',
-      hideShipping: true,
-    };
-  }
-
-  if (isFood) {
-    return {
-      label: 'Kurir Instan & Dapur',
-      targetTab: 'shipping',
-      badge: 'INSTAN',
-      icon: Bike,
-      colorClass: 'bg-amber-50 text-amber-600',
-      hideShipping: false,
-    };
-  }
-
-  const verticalKey = resolveDomainVertical(storeCategory);
-  if (verticalKey === 'field-service' || capabilities?.booking === true) {
-    return {
-      label: 'Jadwal & Booking Servis',
-      targetTab: 'booking',
-      badge: 'SLOT',
-      icon: CalendarCheck,
-      colorClass: 'bg-emerald-50 text-emerald-600',
-      hideShipping: true,
-    };
-  }
-
-  if (verticalKey === 'digital-product' || capabilities?.digital_fulfillment === true) {
-    return {
-      label: 'Akses Unduh & Lisensi',
-      targetTab: 'downloads',
-      badge: 'AKSES',
-      icon: FolderKey,
-      colorClass: 'bg-indigo-50 text-indigo-600',
-      hideShipping: true,
-    };
-  }
-
-  if (verticalKey === 'creator-agency') {
-    return {
+  // 4. Manajemen Kampanye & UGC (Creator Agency)
+  if (isAgency) {
+    items.push({
       label: 'Manajemen Kampanye & UGC',
       targetTab: 'campaigns',
       badge: 'UGC',
       icon: Share2,
       colorClass: 'bg-pink-50 text-pink-600',
-      hideShipping: true,
-    };
+    });
   }
 
-  // Guard ketat untuk PHYSICAL: HARUS business_type === 'PHYSICAL' && capabilities?.shipping !== false
-  const isPhysicalShippingAllowed =
-    (norm === 'PHYSICAL' || norm === 'RETAIL' || !norm) &&
-    capabilities?.shipping !== false;
-
-  if (isPhysicalShippingAllowed) {
-    return {
-      label: 'Logistik & Ekspedisi',
+  // Fallback: jika belum ada item sama sekali dan toko bukan non-shipping murni, berikan Pengiriman
+  if (items.length === 0 && capabilities?.shipping !== false) {
+    items.push({
+      label: 'Pengiriman & Ekspedisi',
       targetTab: 'shipping',
       badge: 'KURIR',
       icon: Truck,
       colorClass: 'bg-teal-50 text-teal-600',
-      hideShipping: false,
-    };
+    });
   }
 
-  // Fallback jika capabilities.shipping false: ganti dengan modul Booking atau Downloads
-  if (capabilities?.booking) {
-    return {
-      label: 'Jadwal & Booking Servis',
-      targetTab: 'booking',
-      badge: 'SLOT',
-      icon: CalendarCheck,
-      colorClass: 'bg-emerald-50 text-emerald-600',
-      hideShipping: true,
-    };
-  }
-
-  return {
-    label: 'Akses Unduh & Lisensi',
-    targetTab: 'downloads',
-    badge: 'AKSES',
-    icon: FolderKey,
-    colorClass: 'bg-indigo-50 text-indigo-600',
-    hideShipping: true,
-  };
+  return items;
 }
 
 interface DashboardSidebarProps {
@@ -343,12 +321,16 @@ export default function DashboardSidebar({
   };
 
   const isPowerTabActive = (tab: string) => {
-    if (tab === 'whatsapp' && (activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply')) return true;
+    if (tab === 'whatsapp' && (activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply' || activeTab === 'rotator' || activeTab === 'telegram_alerts')) return true;
     if (tab === 'inbox' && activeTab === 'inbox') return true;
     if (tab === 'crm' && (activeTab === 'crm' || activeTab === 'customers')) return true;
     if (tab === 'ads_tracking' && activeTab === 'ads_tracking') return true;
-    if (tab === 'finance' && activeTab === 'finance') return true;
+    if (tab === 'finance' && (activeTab === 'finance' || activeTab === 'overview' || activeTab === 'integration' || activeTab === 'analytics')) return true;
     if (tab === 'orders' && activeTab === 'orders') return true;
+    if (tab === 'shipping' && (activeTab === 'shipping' || activeTab === 'biteship')) return true;
+    if (tab === 'booking' && activeTab === 'booking') return true;
+    if (tab === 'downloads' && activeTab === 'downloads') return true;
+    if (tab === 'campaigns' && activeTab === 'campaigns') return true;
     return false;
   };
 
@@ -838,6 +820,115 @@ export default function DashboardSidebar({
                   </div>
                 </button>
 
+                {/* Katalog / Layanan Dinamis */}
+                {(() => {
+                  const verticalConfig = getVerticalMenuConfig(storeCategory || businessType);
+                  const VerticalIcon = verticalConfig.icon;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectTab('catalog')}
+                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                        isMainTabActive('catalog')
+                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                      }`}
+                    >
+                      {isMainTabActive('catalog') && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                      )}
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
+                          <VerticalIcon className="w-4 h-4" />
+                        </div>
+                        <span className="truncate">{verticalConfig.label}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
+                          {verticalConfig.badge}
+                        </span>
+                        {productCount > 0 ? (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                            {productCount}
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })()}
+
+                {/* Pesanan & Order Toko */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('orders')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isPowerTabActive('orders')
+                      ? 'bg-emerald-50/80 text-emerald-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isPowerTabActive('orders') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
+                      <ShoppingBag className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">Daftar Pesanan Toko</span>
+                  </div>
+                  {orderCount > 0 ? (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-600 text-white">
+                      {orderCount}
+                    </span>
+                  ) : null}
+                </button>
+
+                {/* Modul Operasional Vertikal Bisnis (Shipping, Booking, Unduh, Kampanye) */}
+                {(() => {
+                  const operationalItems = getVerticalOperationalMenuItems(storeCategory || businessType, capabilities);
+                  return operationalItems.map((opItem) => {
+                    const OpIcon = opItem.icon;
+                    const isOpActive =
+                      activeTab === opItem.targetTab ||
+                      (opItem.targetTab === 'shipping' && activeTab === 'biteship');
+
+                    return (
+                      <button
+                        key={opItem.targetTab}
+                        type="button"
+                        onClick={() => handleSelectTab(opItem.targetTab)}
+                        className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                          isOpActive
+                            ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                        }`}
+                      >
+                        {isOpActive && (
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                        )}
+                        <div className="flex items-center gap-2.5 truncate">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${opItem.colorClass}`}>
+                            <OpIcon className="w-4 h-4" />
+                          </div>
+                          <span className="truncate">{opItem.label}</span>
+                        </div>
+                        <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                          {opItem.badge}
+                        </span>
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+
+            {/* KATEGORI 2: CUSTOMER */}
+            <div className="pt-2 border-t border-slate-100">
+              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
+                CUSTOMER
+              </span>
+
+              <div className="space-y-1">
                 {/* BoonTrack Inbox (Live CS) */}
                 <button
                   type="button"
@@ -877,90 +968,6 @@ export default function DashboardSidebar({
                   )}
                 </button>
 
-                {/* Katalog / Layanan Dinamis */}
-                {(() => {
-                  const verticalConfig = getVerticalMenuConfig(storeCategory);
-                  const VerticalIcon = verticalConfig.icon;
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTab('catalog')}
-                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                        isMainTabActive('catalog')
-                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                      }`}
-                    >
-                      {isMainTabActive('catalog') && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                      )}
-                      <div className="flex items-center gap-2.5 truncate">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
-                          <VerticalIcon className="w-4 h-4" />
-                        </div>
-                        <span className="truncate">{verticalConfig.label}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
-                          {verticalConfig.badge}
-                        </span>
-                        {productCount > 0 ? (
-                          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                            {productCount}
-                          </span>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })()}
-
-                {/* Menu Operasional Khusus Dinamis */}
-                {(() => {
-                  const opConfig = getVerticalOperationalMenuConfig(storeCategory, capabilities);
-                  if (opConfig.targetTab === 'shipping' && opConfig.hideShipping) {
-                    return null;
-                  }
-
-                  const OpIcon = opConfig.icon;
-                  const isOpActive =
-                    activeTab === opConfig.targetTab ||
-                    (opConfig.targetTab === 'shipping' && activeTab === 'biteship');
-
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTab(opConfig.targetTab)}
-                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                        isOpActive
-                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                      }`}
-                    >
-                      {isOpActive && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                      )}
-                      <div className="flex items-center gap-2.5 truncate">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${opConfig.colorClass}`}>
-                          <OpIcon className="w-4 h-4" />
-                        </div>
-                        <span className="truncate">{opConfig.label}</span>
-                      </div>
-                      <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
-                        {opConfig.badge}
-                      </span>
-                    </button>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* KATEGORI 2: CUSTOMER */}
-            <div className="pt-2 border-t border-slate-100">
-              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
-                CUSTOMER
-              </span>
-
-              <div className="space-y-1">
                 {/* Pelanggan (CRM) */}
                 <button
                   type="button"
@@ -1029,37 +1036,6 @@ export default function DashboardSidebar({
               </span>
 
               <div className="space-y-1">
-                {/* Ads Tracking Pro */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('ads_tracking')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isPowerTabActive('ads_tracking')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isPowerTabActive('ads_tracking') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-amber-50 text-amber-600">
-                      <Target className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Ads Tracking Pro</span>
-                  </div>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
-                      isAdsTrackingUnlocked
-                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                        : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
-                    }`}
-                  >
-                    {!isAdsTrackingUnlocked && <Lock className="w-2.5 h-2.5" />}
-                    {isAdsTrackingUnlocked ? 'CAPI' : '299k'}
-                  </span>
-                </button>
-
                 {/* Tampilan & Tema */}
                 <button
                   type="button"
@@ -1108,6 +1084,37 @@ export default function DashboardSidebar({
                   </span>
                 </button>
 
+                {/* Ads Tracking Pro */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('ads_tracking')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isPowerTabActive('ads_tracking')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isPowerTabActive('ads_tracking') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-amber-50 text-amber-600">
+                      <Target className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">Ads Tracking Pro</span>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                      isAdsTrackingUnlocked
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-slate-100 text-slate-500 border-slate-200 flex items-center gap-0.5'
+                    }`}
+                  >
+                    {!isAdsTrackingUnlocked && <Lock className="w-2.5 h-2.5" />}
+                    {isAdsTrackingUnlocked ? 'CAPI' : '299k'}
+                  </span>
+                </button>
+
                 {/* Laporan Keuangan */}
                 <button
                   type="button"
@@ -1130,32 +1137,6 @@ export default function DashboardSidebar({
                   {isSoloOrTrial ? (
                     <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-0.5">
                       <Lock className="w-2.5 h-2.5" /> PRO
-                    </span>
-                  ) : null}
-                </button>
-
-                {/* Pesanan & Order */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('orders')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isPowerTabActive('orders')
-                      ? 'bg-emerald-50/80 text-emerald-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isPowerTabActive('orders') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                      <ShoppingBag className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Daftar Pesanan Toko</span>
-                  </div>
-                  {orderCount > 0 ? (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-600 text-white">
-                      {orderCount}
                     </span>
                   ) : null}
                 </button>

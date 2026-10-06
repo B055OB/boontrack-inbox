@@ -54,12 +54,16 @@ import SinglePageBuilderModal from './components/SinglePageBuilderModal';
 import BulkImportModal from './components/modals/BulkImportModal';
 import UpsellModal from './components/modals/UpsellModal';
 import UpgradePaymentModal from './components/modals/UpgradePaymentModal';
-import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
 import OrdersTab from './components/tabs/OrdersTab';
 import CustomerDatabaseTab from './components/tabs/CustomerDatabaseTab';
 import {
   ModularVerticalTabDispatcher,
   FnbInstantCourier,
+  PhysicalRetailShippingTab,
+  FieldServiceBookingTab,
+  ProServiceCalendarTab,
+  DigitalDeliveryTab,
+  CreatorAgencyCampaignTab,
   resolveDomainVertical,
 } from './components/modules';
 import { useTenantDashboard } from './hooks/useTenantDashboard';
@@ -930,7 +934,7 @@ export default function TenantDashboardPage() {
       )}
 
       {/* TAB: LAPORAN & KEUANGAN */}
-      {(activeTab === 'finance' || activeTab === 'integration' || activeTab === 'overview' || activeTab === 'analytics') && (
+      {(activeTab === 'finance' || activeTab === 'integration' || activeTab === 'analytics') && (
         isSoloOrTrial ? (
           <div className="p-6 md:p-8 max-w-5xl mx-auto w-full">
             {renderLockedFeatureCard({
@@ -1194,9 +1198,9 @@ export default function TenantDashboardPage() {
         />
       )}
 
-      {/* TAB: LOGISTIK & EKSPEDISI MULTI-KURIR (HANYA PRODUK FISIK) */}
+      {/* TAB: PENGIRIMAN & EKSPEDISI MULTI-KURIR (HANYA PRODUK FISIK / FNB) */}
       {(activeTab === 'shipping' || activeTab === 'biteship') && (
-        resolveDomainVertical(storeCategory) === 'fnb-culinary' ? (
+        resolveDomainVertical(storeCategory || businessType) === 'fnb-culinary' ? (
           <>
             {/* FnB: Konfigurasi Pinpoint Dapur & Kurir Instan (GoSend/Grab) */}
             <FnbInstantCourier tenantSlug={tenantSlug} />
@@ -1224,26 +1228,21 @@ export default function TenantDashboardPage() {
 
       {/* TAB: BOOKING & JADWAL (FIELD SERVICE / JASA / PRO SERVICE) */}
       {activeTab === 'booking' && (
-        <ModularVerticalTabDispatcher
-          verticalKey={resolveDomainVertical(storeCategory)}
-          tenantSlug={tenantSlug}
-        />
+        resolveDomainVertical(storeCategory || businessType) === 'pro-service' ? (
+          <ProServiceCalendarTab tenantSlug={tenantSlug} />
+        ) : (
+          <FieldServiceBookingTab tenantSlug={tenantSlug} />
+        )
       )}
 
       {/* TAB: AKSES UNDUH & DIGITAL DELIVERY (PRODUK DIGITAL) */}
       {activeTab === 'downloads' && (
-        <ModularVerticalTabDispatcher
-          verticalKey="digital-product"
-          tenantSlug={tenantSlug}
-        />
+        <DigitalDeliveryTab tenantSlug={tenantSlug} />
       )}
 
       {/* TAB: MANAJEMEN KAMPANYE & UGC (CREATOR AGENCY) */}
       {activeTab === 'campaigns' && (
-        <ModularVerticalTabDispatcher
-          verticalKey="creator-agency"
-          tenantSlug={tenantSlug}
-        />
+        <CreatorAgencyCampaignTab tenantSlug={tenantSlug} />
       )}
 
             {/* MOBILE LIVE PHONE PREVIEW (< lg, smartphone) */}

@@ -1210,16 +1210,15 @@ export function useTenantDashboard() {
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get('tab')?.toLowerCase();
       if (tabParam) {
-        hasUserSelectedTabRef.current = true;
-        if (tabParam === 'dashboard') setActiveTab('dashboard');
+        if (tabParam === 'dashboard' || tabParam === 'overview' || tabParam === 'beranda') setActiveTab('dashboard');
         else if (tabParam === 'products' || tabParam === 'catalog') setActiveTab('catalog');
         else if (tabParam === 'orders' || tabParam === 'pesanan') setActiveTab('orders');
-        else if (tabParam === 'overview' || tabParam === 'analytics' || tabParam === 'finance' || tabParam === 'laporan') setActiveTab('finance');
+        else if (tabParam === 'finance' || tabParam === 'laporan' || tabParam === 'keuangan' || tabParam === 'analytics' || tabParam === 'integration') setActiveTab('finance');
         else if (tabParam === 'telegram' || tabParam === 'alerts' || tabParam === 'telegram_alerts') {
           setActiveTab('telegram_alerts');
         }
-        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'shipping', 'broadcast', 'whatsapp', 'auto_reply', 'rotator', 'telegram_alerts', 'microsite', 'settings'].includes(tabParam)) {
-          setActiveTab(tabParam as DashboardTab);
+        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'shipping', 'booking', 'downloads', 'campaigns', 'broadcast', 'whatsapp', 'auto_reply', 'rotator', 'microsite', 'themes', 'customers', 'crm', 'settings'].includes(tabParam)) {
+          setActiveTab(tabParam === 'biteship' ? 'shipping' : tabParam === 'crm' ? 'customers' : tabParam as DashboardTab);
         }
       }
     }

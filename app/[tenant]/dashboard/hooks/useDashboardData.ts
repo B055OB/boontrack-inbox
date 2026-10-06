@@ -5,9 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import { getPlatformWhatsApp } from '@/lib/tenant-config';
 
 export type DashboardTab = 
+  | 'overview'
   | 'dashboard'
   | 'inbox' 
   | 'catalog' 
+  | 'products'
   | 'orders' 
   | 'microsite'
   | 'links'
@@ -17,11 +19,14 @@ export type DashboardTab =
   | 'ai_knowledge' 
   | 'ads_tracking' 
   | 'shipping' 
+  | 'biteship'
   | 'booking'
   | 'downloads'
   | 'campaigns'
   | 'broadcast' 
+  | 'auto_reply'
   | 'whatsapp'
+  | 'rotator'
   | 'telegram_alerts'
   | 'crm'
   | 'customers'
@@ -106,11 +111,15 @@ export function useDashboardData(tenantSlug: string) {
       const tabParam = urlParams.get('tab')?.toLowerCase();
       if (tabParam) {
         hasUserSelectedTabRef.current = true;
-        if (tabParam === 'products' || tabParam === 'catalog') setActiveTab('catalog');
+        if (tabParam === 'dashboard' || tabParam === 'overview' || tabParam === 'beranda') setActiveTab('dashboard');
+        else if (tabParam === 'products' || tabParam === 'catalog') setActiveTab('catalog');
         else if (tabParam === 'orders' || tabParam === 'pesanan') setActiveTab('orders');
-        else if (tabParam === 'overview' || tabParam === 'analytics' || tabParam === 'finance' || tabParam === 'laporan' || tabParam === 'integration') setActiveTab('finance');
-        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'shipping', 'biteship', 'broadcast', 'whatsapp'].includes(tabParam)) {
-          setActiveTab(tabParam === 'biteship' ? 'shipping' : tabParam as DashboardTab);
+        else if (tabParam === 'finance' || tabParam === 'laporan' || tabParam === 'keuangan' || tabParam === 'analytics' || tabParam === 'integration') setActiveTab('finance');
+        else if (tabParam === 'telegram' || tabParam === 'alerts' || tabParam === 'telegram_alerts') {
+          setActiveTab('telegram_alerts');
+        }
+        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'shipping', 'biteship', 'booking', 'downloads', 'campaigns', 'broadcast', 'whatsapp', 'auto_reply', 'rotator', 'microsite', 'themes', 'customers', 'crm', 'settings'].includes(tabParam)) {
+          setActiveTab(tabParam === 'biteship' ? 'shipping' : tabParam === 'crm' ? 'customers' : tabParam as DashboardTab);
         }
       }
     }
