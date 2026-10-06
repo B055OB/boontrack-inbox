@@ -127,7 +127,7 @@ export async function POST(
       tier: canonical.key,
       subscription_tier: canonical.key,
       subscription_status: 'ACTIVE',
-      grant_type: 'special_grant',
+      grant_type: 'PILOT',
       status: 'ACTIVE',
       is_active: true,
       trial_ends_at: null,
@@ -151,19 +151,52 @@ export async function POST(
       );
     }
 
-    // 5. Catat ke shop_subscriptions dengan amount 0 & type granted agar konsisten
+    // 5. Catat dan sinkronkan ke shop_subscriptions (SSOT Langganan Aktif)
     try {
-      await supabaseAdmin.from('shop_subscriptions').insert({
+      const { data: existingSubRow } = await supabaseAdmin
+        .from('shop_subscriptions')
+        .select('id')
+        .eq('tenant_id', tenant.id)
+        .eq('status', 'ACTIVE')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const subPayload = {
+        tenant_id: tenant.id,
         tenant_slug: slug,
+        tier: canonical.key === 'CHECKOUT_LITE' ? 'STARTER' : canonical.key,
         plan_tier: canonical.key.toLowerCase(),
-        amount: 0,
+        duration_months: [1, 6, 12].includes(months) ? months : 1,
+        starts_at: baseDate.toISOString(),
+        current_period_starts_at: baseDate.toISOString(),
+        current_period_ends_at: validUntil,
+        expires_at: validUntil,
         status: 'ACTIVE',
-        billing_cycle: 'grant',
-        xendit_external_id: `grant_${slug}_${canonical.key.toLowerCase()}_${Date.now()}`,
-        due_date: validUntil.split('T')[0],
-      });
+        amount: 0,
+        amount_paid: 0,
+        grant_type: 'PILOT',
+        metadata: {
+          plan_tier: canonical.key,
+          tier_name: canonical.name,
+          granted_by: 'super_admin',
+          notes: notes || undefined,
+          granted_duration_months: months,
+        },
+      };
+
+      if (existingSubRow?.id) {
+        await supabaseAdmin
+          .from('shop_subscriptions')
+          .update(subPayload)
+          .eq('id', existingSubRow.id);
+      } else {
+        await supabaseAdmin
+          .from('shop_subscriptions')
+          .insert(subPayload);
+      }
     } catch (subLogErr) {
-      console.warn('[Subscription Grant] shop_subscriptions log note:', subLogErr);
+      console.warn('[Subscription Grant] shop_subscriptions sync note:', subLogErr);
     }
 
     return NextResponse.json({

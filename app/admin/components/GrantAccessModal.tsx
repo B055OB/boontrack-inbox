@@ -275,6 +275,13 @@ export default function GrantAccessModal({
                 : `⚡ Dihitung langsung dari hari ini (+${selectedMonths * 30} Hari).`}
             </p>
 
+            <div className="p-2 rounded-xl bg-indigo-900/40 border border-indigo-500/30 text-[11px] text-indigo-200 flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>
+                Paket utama di database (<span className="font-mono text-white">tenants</span> & <span className="font-mono text-white">shop_subscriptions</span>) otomatis diubah menjadi <strong>{targetTierObj.name}</strong>.
+              </span>
+            </div>
+
             <div className="pt-2 border-t border-indigo-500/20 text-[10px] text-slate-400 flex items-center justify-between">
               <span>Financial Ledger Isolation:</span>
               <span className="font-bold text-emerald-400">Rp 0 (Otomatis Filtered)</span>

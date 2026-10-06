@@ -41,7 +41,7 @@ export interface CustomPackage {
 }
 
 export interface PricingConfig {
-  tier: 'STARTER' | 'PRO' | 'ENTERPRISE';
+  tier: 'STARTER' | 'PRO' | 'PRO_SCALE' | 'ENTERPRISE' | 'CHECKOUT_LITE' | string;
   monthly_fee: number;
   max_monthly_messages: number;
   currency: string;

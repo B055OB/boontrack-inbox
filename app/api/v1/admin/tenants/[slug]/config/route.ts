@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseClient';
+import { resolveCanonicalTier } from '@/lib/subscription-tiers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -50,9 +51,11 @@ async function findTenant(supabaseAdmin: any, identifier: string) {
   if (!cleanId) return null;
 
   const isUuid = UUID_REGEX.test(cleanId);
+  const selectCols =
+    'id, slug, name, tier, subscription_tier, subscription_status, status, is_active, monthly_fee, max_monthly_messages, subscription_ends_at, grant_type, metadata';
   let query = supabaseAdmin
     .from('tenants')
-    .select('id, slug, name, tier, status, is_active, metadata');
+    .select(selectCols);
 
   if (isUuid) {
     query = query.or(`slug.eq.${cleanId},id.eq.${cleanId}`);
@@ -67,7 +70,7 @@ async function findTenant(supabaseAdmin: any, identifier: string) {
   if (!isUuid) {
     const { data: fallbackData } = await supabaseAdmin
       .from('tenants')
-      .select('id, slug, name, tier, status, is_active, metadata')
+      .select(selectCols)
       .ilike('slug', cleanId)
       .maybeSingle();
     if (fallbackData) return fallbackData;
@@ -158,8 +161,14 @@ export async function GET(
         slug: tenant.slug,
         name: tenant.name,
         tier: tenant.tier,
+        subscription_tier: tenant.subscription_tier,
+        subscription_status: tenant.subscription_status,
         status: tenant.status,
         is_active: tenant.is_active,
+        monthly_fee: tenant.monthly_fee,
+        max_monthly_messages: tenant.max_monthly_messages,
+        subscription_ends_at: tenant.subscription_ends_at,
+        grant_type: tenant.grant_type,
         payment_config,
         shipping_config,
         metadata: meta,
@@ -257,22 +266,77 @@ export async function PATCH(
       };
     }
 
-    // 4. Merge into tenant metadata
+    // 4. Resolusi Perubahan Tier Langganan Utama (SSOT Database)
+    const rawTier = body.tier || body.plan_tier || body.pricing?.tier;
+    let canonical = null;
+    let planType: string | null = null;
+    if (rawTier) {
+      canonical = resolveCanonicalTier(rawTier);
+      planType =
+        canonical.key === 'ENTERPRISE'
+          ? 'team_scale'
+          : canonical.key === 'PRO_SCALE'
+          ? 'ads_performance'
+          : canonical.key === 'CHECKOUT_LITE'
+          ? 'checkout_lite'
+          : 'solo';
+    }
+
+    // 5. Merge into tenant metadata
     const updatedMetadata = {
       ...currentMeta,
       ...(extra_metadata || {}),
       ...otherMetadata,
+      ...(body.pricing ? { pricing: body.pricing } : {}),
+      ...(body.pricing?.custom_packages ? { products: body.pricing.custom_packages } : {}),
       ...(auto_replies !== undefined ? { auto_replies } : {}),
       ...(payment_config ? { payment_config: updatedPaymentConfig } : {}),
       ...(shipping_config ? { shipping_config: updatedShippingConfig } : {}),
       config_updated_at: new Date().toISOString(),
     };
 
+    const tenantUpdatePayload: Record<string, any> = {
+      metadata: updatedMetadata,
+    };
+
+    if (canonical && planType) {
+      tenantUpdatePayload.tier = canonical.key;
+      tenantUpdatePayload.subscription_tier = canonical.key;
+
+      updatedMetadata.tier = canonical.key;
+      updatedMetadata.plan_tier = canonical.key;
+      updatedMetadata.plan_type = planType;
+      updatedMetadata.subscription_tier = canonical.key;
+      updatedMetadata.features = {
+        ...(currentMeta.features || {}),
+        tier: canonical.key,
+        ...canonical.features,
+        crm: canonical.features.crm,
+        has_crm: canonical.features.crm,
+      };
+      updatedMetadata.capabilities = {
+        ...(currentMeta.capabilities || {}),
+        ...canonical.features,
+        crm: canonical.features.crm,
+      };
+
+      if (updatedMetadata.subscription) {
+        updatedMetadata.subscription.plan_tier = canonical.key;
+        updatedMetadata.subscription.tier_name = canonical.name;
+      }
+    }
+
+    if (body.pricing?.monthly_fee !== undefined || body.monthly_fee !== undefined) {
+      tenantUpdatePayload.monthly_fee = Number(body.pricing?.monthly_fee ?? body.monthly_fee);
+    }
+
+    if (body.pricing?.chat_quota !== undefined || body.max_monthly_messages !== undefined) {
+      tenantUpdatePayload.max_monthly_messages = Number(body.pricing?.chat_quota ?? body.max_monthly_messages);
+    }
+
     const { error: updateErr } = await supabaseAdmin
       .from('tenants')
-      .update({
-        metadata: updatedMetadata,
-      })
+      .update(tenantUpdatePayload)
       .eq('id', tenant.id);
 
     if (updateErr) {
@@ -282,11 +346,72 @@ export async function PATCH(
       );
     }
 
+    // 6. Sinkronkan ke tabel shop_subscriptions jika tier diubah
+    if (canonical) {
+      try {
+        const { data: activeSub } = await supabaseAdmin
+          .from('shop_subscriptions')
+          .select('id, metadata')
+          .eq('tenant_id', tenant.id)
+          .eq('status', 'ACTIVE')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const subTier = canonical.key === 'CHECKOUT_LITE' ? 'STARTER' : canonical.key;
+
+        if (activeSub?.id) {
+          await supabaseAdmin
+            .from('shop_subscriptions')
+            .update({
+              tier: subTier,
+              plan_tier: canonical.key.toLowerCase(),
+              metadata: {
+                ...(activeSub.metadata || {}),
+                plan_tier: canonical.key,
+                tier_name: canonical.name,
+                updated_at: new Date().toISOString(),
+              },
+            })
+            .eq('id', activeSub.id);
+        } else {
+          const nowIso = new Date().toISOString();
+          const endsIso = tenant.subscription_ends_at || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+          await supabaseAdmin
+            .from('shop_subscriptions')
+            .insert({
+              tenant_id: tenant.id,
+              tenant_slug: tenant.slug,
+              tier: subTier,
+              plan_tier: canonical.key.toLowerCase(),
+              duration_months: 1,
+              starts_at: nowIso,
+              current_period_starts_at: nowIso,
+              current_period_ends_at: endsIso,
+              expires_at: endsIso,
+              status: 'ACTIVE',
+              amount: tenantUpdatePayload.monthly_fee ?? 0,
+              amount_paid: tenantUpdatePayload.monthly_fee ?? 0,
+              grant_type: tenant.grant_type || null,
+              metadata: {
+                plan_tier: canonical.key,
+                tier_name: canonical.name,
+                updated_by: 'super_admin_config',
+              },
+            });
+        }
+      } catch (subSyncErr) {
+        console.warn('[Tenant Config] shop_subscriptions sync warning:', subSyncErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Konfigurasi toko berhasil disimpan',
+      message: 'Konfigurasi toko dan paket langganan berhasil disimpan',
       data: {
         slug: tenant.slug,
+        tier: canonical ? canonical.key : tenant.tier,
+        subscription_tier: canonical ? canonical.key : tenant.subscription_tier,
         payment_config: updatedPaymentConfig,
         shipping_config: updatedShippingConfig,
         ...otherMetadata,

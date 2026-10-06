@@ -32,6 +32,7 @@ import {
   TenantConfigHistory,
   CustomPackage,
 } from '@/lib/tenant-config';
+import { resolveCanonicalTier, CANONICAL_TIER_LIST } from '@/lib/subscription-tiers';
 import TelegramGroupMappingSection from '@/app/admin/components/TelegramGroupMappingSection';
 
 type TabType = 'persona' | 'operational_hours' | 'pricing' | 'features' | 'secrets' | 'telegram' | 'history';
@@ -65,6 +66,45 @@ export default function TenantConfigEditorPage() {
     setConfig(tenantSlug ? getTenantConfig(tenantSlug) : null);
     setHistory(tenantSlug ? getTenantConfigHistory(tenantSlug) : []);
   }
+
+  // Fetch SSOT config directly from database on mount / slug change
+  useEffect(() => {
+    if (!tenantSlug) return;
+    let isCancelled = false;
+
+    async function loadDbConfig() {
+      try {
+        const res = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(tenantSlug)}/config`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.success && json.tenant && !isCancelled) {
+          const t = json.tenant;
+          const canonical = resolveCanonicalTier(t.subscription_tier || t.tier || t.metadata?.tier || 'STARTER');
+          setConfig((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              name: t.name || prev.name,
+              pricing: {
+                ...prev.pricing,
+                tier: canonical.key as any,
+                monthly_fee: t.monthly_fee ?? prev.pricing?.monthly_fee ?? canonical.monthlyPrice,
+                max_monthly_messages: t.max_monthly_messages ?? prev.pricing?.max_monthly_messages ?? 1000,
+                custom_packages: t.metadata?.products || prev.pricing?.custom_packages || [],
+              },
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('[Tenant Config Editor] Error loading config from DB:', err);
+      }
+    }
+
+    loadDbConfig();
+    return () => {
+      isCancelled = true;
+    };
+  }, [tenantSlug]);
 
   // Secret Masking state
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({
@@ -107,7 +147,31 @@ export default function TenantConfigEditorPage() {
       const updatedHist = getTenantConfigHistory(tenantSlug);
       setHistory(updatedHist);
 
-      // 2. Sinkronkan langsung ke backend engine boontrack-core di Railway
+      // 2. Persist & sinkronkan langsung ke database Supabase (SSOT Utama)
+      const dbRes = await fetch(`/api/v1/admin/tenants/${encodeURIComponent(tenantSlug)}/config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tier: config.pricing.tier,
+          pricing: config.pricing,
+          features: config.features,
+          persona: config.persona,
+          operational_hours: config.operational_hours,
+          extra_metadata: {
+            persona: config.persona,
+            operational_hours: config.operational_hours,
+            pricing: config.pricing,
+            products: config.pricing.custom_packages,
+          },
+        }),
+      });
+
+      const dbJson = await dbRes.json();
+      if (!dbRes.ok || !dbJson.success) {
+        throw new Error(dbJson.error || 'Gagal menyimpan perubahan ke database Supabase');
+      }
+
+      // 3. Sinkronkan langsung ke backend engine boontrack-core di Railway (best effort)
       try {
         await fetch(`${CORE_API_URL}/api/v1/tenants/${tenantSlug}/config`, {
           method: 'PUT',
@@ -140,12 +204,12 @@ export default function TenantConfigEditorPage() {
           : null
       );
 
-      setSaveSuccessMsg(`Konfigurasi ${sectionName} berhasil disimpan & disinkronkan ke server!`);
-      showToast(`Pengaturan ${sectionName} berhasil disimpan!`, 'success');
+      setSaveSuccessMsg(`Konfigurasi ${sectionName} berhasil disimpan ke database & disinkronkan!`);
+      showToast(`Pengaturan ${sectionName} berhasil disimpan ke database!`, 'success');
       setTimeout(() => setSaveSuccessMsg(''), 3500);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to save config:', e);
-      showToast('Gagal menyimpan konfigurasi', 'error');
+      showToast(e.message || 'Gagal menyimpan konfigurasi', 'error');
     } finally {
       setSaving(false);
     }
@@ -717,24 +781,35 @@ export default function TenantConfigEditorPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="text-xs font-medium text-slate-300 block mb-1.5">Tier Langganan Platform</label>
+                <label className="text-xs font-medium text-slate-300 block mb-1.5">
+                  Tier Langganan Platform (SSOT Database)
+                </label>
                 <select
-                  value={config.pricing.tier}
-                  onChange={(e) =>
+                  value={resolveCanonicalTier(config.pricing.tier).key}
+                  onChange={(e) => {
+                    const newTier = e.target.value;
+                    const canonical = resolveCanonicalTier(newTier);
                     setConfig({
                       ...config,
                       pricing: {
                         ...config.pricing,
-                        tier: e.target.value as 'STARTER' | 'PRO' | 'ENTERPRISE',
+                        tier: canonical.key as any,
+                        monthly_fee: config.pricing.monthly_fee || canonical.monthlyPrice,
+                        max_monthly_messages: config.pricing.max_monthly_messages || 1000,
                       },
-                    })
-                  }
-                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-semibold"
+                    });
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white font-semibold focus:outline-none focus:border-blue-500 transition"
                 >
-                  <option value="STARTER">STARTER</option>
-                  <option value="PRO">PRO</option>
-                  <option value="ENTERPRISE">ENTERPRISE</option>
+                  {CANONICAL_TIER_LIST.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.name}
+                    </option>
+                  ))}
                 </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {resolveCanonicalTier(config.pricing.tier).description}
+                </p>
               </div>
 
               <div>

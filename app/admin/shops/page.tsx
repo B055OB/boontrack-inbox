@@ -297,12 +297,15 @@ export default function SuperAdminShopDirectory() {
             return {
               ...s,
               tier: json.tier,
+              subscription_tier: json.tier,
               subscription_ends_at: json.valid_until,
               metadata: {
                 ...(s.metadata || {}),
                 subscription: json.subscription,
                 subscription_type: 'granted',
                 tier: json.tier,
+                subscription_tier: json.tier,
+                plan_tier: json.tier,
                 selected_plan: `${json.tier_name} • Special Grant`,
                 is_trial: false,
               },
@@ -328,12 +331,15 @@ export default function SuperAdminShopDirectory() {
           return {
             ...s,
             tier: json.tier,
+            subscription_tier: json.tier,
             subscription_ends_at: json.valid_until,
             metadata: {
               ...(s.metadata || {}),
               subscription: json.subscription,
               subscription_type: 'granted',
               tier: json.tier,
+              subscription_tier: json.tier,
+              plan_tier: json.tier,
               selected_plan: `${json.tier_name} • Special Grant`,
               is_trial: false,
             },
