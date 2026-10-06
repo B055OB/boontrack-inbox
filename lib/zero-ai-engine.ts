@@ -9,6 +9,12 @@ import {
   formatWahaInteractive,
   WabaInteractivePayload,
 } from '@/lib/whatsappFormatter';
+import {
+  getBotSessionState,
+  pauseBotForConversation,
+  resumeBotForConversation,
+  routeTenantInboundMessage,
+} from '@/lib/bot/tenant-bot-isolation';
 
 export type CanonicalIndustryCategory =
   | 'PHYSICAL'
@@ -666,12 +672,17 @@ export async function processZeroAiMessage(
     };
   }
 
-  // 1. Fetch Tenant Record
-  const { data: tenant, error: tErr } = await supabase
+  // 1. Fetch Tenant Record strictly scoped
+  const isUuid = isValidUuid(slug);
+  let tenantQuery = supabase
     .from('tenants')
-    .select('id, slug, name, category, business_type, tier, metadata')
-    .eq('slug', slug)
-    .maybeSingle();
+    .select('id, slug, name, category, business_type, tier, metadata');
+  if (isUuid) {
+    tenantQuery = tenantQuery.or(`id.eq.${slug},slug.eq.${slug}`);
+  } else {
+    tenantQuery = tenantQuery.eq('slug', slug);
+  }
+  const { data: tenant, error: tErr } = await tenantQuery.maybeSingle();
 
   if (tErr || !tenant) {
     return {
@@ -684,16 +695,12 @@ export async function processZeroAiMessage(
   const meta = tenant.metadata || {};
   const storeName = tenant.name || tenant.slug;
 
-  // 2. CHECK HUMAN TAKEOVER GUARD
-  // Jika bot_status === 'HUMAN_TAKEOVER' dan masih dalam rentang paused_until, bot DIAM (silent)
-  const botStatus = meta.bot_status || 'BOT_ACTIVE';
-  const pausedUntil = meta.paused_until ? new Date(meta.paused_until).getTime() : 0;
-  const isCurrentlyPaused = botStatus === 'HUMAN_TAKEOVER' && Date.now() < pausedUntil;
-
-  // Pelanggan bisa mengaktifkan bot kembali jika mengetik 'bot', 'menu', atau 'aktifkan bot'
+  // 2. CHECK ISOLATED BOT SESSION STATE (${tenantId}:${senderPhone})
+  // Jaminan Mutlak: Perubahan status bot di satu tenant TIDAK AKAN PERNAH memengaruhi obrolan di tenant lain
+  const sessionState = await getBotSessionState(tenant.id, senderPhone, supabase);
   const isResetCommand = /^(bot|menu|aktifkan bot|reset bot|pilihan)\b/i.test(cleanMsg);
 
-  if (isCurrentlyPaused && !isResetCommand) {
+  if (sessionState.bot_paused && !isResetCommand) {
     return {
       handled: true,
       silent: true,
@@ -701,21 +708,44 @@ export async function processZeroAiMessage(
       type: 'HUMAN_TAKEOVER',
       data: {
         bot_status: 'HUMAN_TAKEOVER',
-        paused_until: meta.paused_until,
+        paused_until: sessionState.paused_until,
       },
     };
   }
 
-  // Jika waktu jeda sudah habis atau pelanggan mengetik menu/bot, pulihkan bot status
-  if (isCurrentlyPaused && isResetCommand) {
-    const updatedMeta = {
-      ...meta,
-      bot_status: 'BOT_ACTIVE',
-      paused_at: null,
-      paused_until: null,
-    };
-    await supabase.from('tenants').update({ metadata: updatedMeta }).eq('id', tenant.id);
-    tenant.metadata = updatedMeta;
+  // Jika waktu jeda sudah habis atau pelanggan mengetik menu/bot, pulihkan bot status HANYA untuk percakapan ini
+  if (sessionState.bot_paused && isResetCommand) {
+    await resumeBotForConversation(tenant.id, senderPhone, supabase);
+    sessionState.bot_paused = false;
+  }
+
+  // 2b. Check specialized tenant decision tree & campaign routing (e.g. Tumbuh Kembang Anak clinic standard)
+  const isSpecializedClinic =
+    tenant.slug === 'tumbuh-kembang-anak' ||
+    tenant.category === 'CLINIC' ||
+    tenant.category === 'KLINIK_KONSULTASI';
+
+  if (isSpecializedClinic) {
+    const routeRes = await routeTenantInboundMessage({
+      tenantIdOrSlug: tenant.id,
+      senderPhone,
+      message: rawMsg,
+      interactiveReply: payload.interactive_reply,
+      channelType,
+      supabaseClient: supabase,
+    });
+
+    if (routeRes.handled) {
+      const quickActions = getIndustryQuickReplies(tenant.category || tenant.business_type, meta);
+      return {
+        handled: true,
+        reply: routeRes.reply,
+        type: routeRes.type as any,
+        intent_key: routeRes.intent_key,
+        interactive_payload: routeRes.interactive_payload,
+        quick_actions: routeRes.quick_actions || quickActions,
+      };
+    }
   }
 
   // 3. Resolve Navigation Menu
@@ -1406,23 +1436,9 @@ export async function processZeroAiMessage(
     cleanMsg.includes('diskusi') ||
     cleanMsg.includes('bantuan')
   ) {
-    // 1. Set bot_status = 'HUMAN_TAKEOVER'
+    // 1. Set bot_status = 'HUMAN_TAKEOVER' strictly scoped to this composite key (${tenantId}:${senderPhone})
     const nowIso = new Date().toISOString();
-    const pausedUntilIso = new Date(Date.now() + 2 * 3600 * 1000).toISOString(); // 2 jam
-
-    const updatedMetadata = {
-      ...meta,
-      bot_status: 'HUMAN_TAKEOVER',
-      paused_at: nowIso,
-      paused_until: pausedUntilIso,
-      last_human_takeover_reason: 'CUSTOMER_MENU_REQUEST',
-    };
-
-    // Update database tenant
-    await supabase
-      .from('tenants')
-      .update({ metadata: updatedMetadata })
-      .eq('id', tenant.id);
+    await pauseBotForConversation(tenant.id, senderPhone, 'CUSTOMER_MENU_REQUEST', 120, supabase);
 
     // 2. Kirim sinyal notifikasi ke panel inbox (tabel messages)
     try {
@@ -1474,7 +1490,9 @@ export async function processZeroAiMessage(
       reply: replyText,
       type: 'HUMAN_TAKEOVER',
       intent_key: 'HUMAN_CS',
-      metadata_updated: updatedMetadata,
+      data: {
+        bot_status: 'HUMAN_TAKEOVER',
+      },
     });
   }
 
