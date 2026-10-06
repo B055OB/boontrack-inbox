@@ -72,8 +72,14 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     expect(meta.manifest).toBe('/manifest.json');
     expect(meta.title).toContain('Shop');
 
-    // Open Graph & Twitter Card specification (1200x630 & summary_large_image)
+    // Open Graph & Twitter Card specification (og-square.png 500x500 first, og-shop.png 1200x630 second)
     expect(meta.openGraph?.images).toEqual([
+      expect.objectContaining({
+        url: '/og-square.png',
+        width: 500,
+        height: 500,
+        alt: 'BoonTrack Shop',
+      }),
       expect.objectContaining({
         url: '/og-shop.png',
         width: 1200,
@@ -81,7 +87,7 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
       }),
     ]);
     expect((meta.twitter as any)?.card).toBe('summary_large_image');
-    expect((meta.twitter as any)?.images).toEqual(['/og-shop.png']);
+    expect((meta.twitter as any)?.images).toEqual(['https://shop.boontrack.com/og-shop.png']);
 
     // Icons must be scoped to Shop commerce defaults
     const iconsObj = meta.icons && typeof meta.icons === 'object' && !Array.isArray(meta.icons) ? (meta.icons as any) : null;
@@ -105,12 +111,19 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     expect(meta.title).toContain('Shop');
     expect(meta.openGraph?.images).toEqual([
       expect.objectContaining({
+        url: '/og-square.png',
+        width: 500,
+        height: 500,
+        alt: 'BoonTrack Shop',
+      }),
+      expect.objectContaining({
         url: '/og-shop.png',
         width: 1200,
         height: 630,
       }),
     ]);
     expect((meta.twitter as any)?.card).toBe('summary_large_image');
+    expect((meta.twitter as any)?.images).toEqual(['https://shop.boontrack.com/og-shop.png']);
   });
 
   describe('Middleware Asset Rewrites Isolation', () => {

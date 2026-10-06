@@ -37,6 +37,17 @@ describe('Landing Page Navbar Logo Contrast Integrity', () => {
     expect(meta.format).toBe('png');
   });
 
+  it('ensures public/og-square.png exists and meets 500x500 square Open Graph specification', async () => {
+    const ogSquarePath = path.join(process.cwd(), 'public', 'og-square.png');
+    expect(fs.existsSync(ogSquarePath)).toBe(true);
+
+    const sharp = (await import('sharp')).default;
+    const meta = await sharp(ogSquarePath).metadata();
+    expect(meta.width).toBe(500);
+    expect(meta.height).toBe(500);
+    expect(meta.format).toBe('png');
+  });
+
   it('ensures tenant layout preserves isolated tenant-specific generateMetadata without being overwritten', () => {
     const tenantLayoutFile = path.join(process.cwd(), 'app', '[tenant]', 'layout.tsx');
     const content = fs.readFileSync(tenantLayoutFile, 'utf8');

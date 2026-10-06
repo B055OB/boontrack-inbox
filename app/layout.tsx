@@ -92,6 +92,12 @@ export async function generateMetadata(): Promise<Metadata> {
       siteName: "BoonTrack Shop",
       images: [
         {
+          url: '/og-square.png',
+          width: 500,
+          height: 500,
+          alt: 'BoonTrack Shop',
+        },
+        {
           url: '/og-shop.png',
           width: 1200,
           height: 630,
@@ -105,7 +111,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: 'summary_large_image',
       title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
       description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
-      images: ['/og-shop.png'],
+      images: ['https://shop.boontrack.com/og-shop.png'],
     },
     appleWebApp: {
       capable: true,
