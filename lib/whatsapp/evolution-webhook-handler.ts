@@ -25,7 +25,10 @@ import {
   cleanCustomerPhone,
 } from '@/lib/whatsapp/inbox-persistence';
 import { resolveBoonPilotSender } from '@/lib/boonpilot/sender-resolver';
-import { processBoonPilotPlatformChat } from '@/lib/boonpilot/platform-engine';
+import {
+  processBoonPilotPlatformChat,
+  resolveCommunityContext,
+} from '@/lib/boonpilot/platform-engine';
 import {
   registerBotOutbound,
   isBotOutbound,
@@ -604,36 +607,24 @@ export async function processEvolutionWebhookEvent(
         /^(halo|hai|hi|hello|p|ping|start|test|tes|yo|bro|kak|min|mimin|gan|boss|assalamualaikum|waalaikumsalam|apa kabar|selamat pagi|selamat siang|selamat malam)[\.\!\?]?$/i.test(cleanQuery);
 
       if (isJustGreeting) {
-        // CEK KOLAM KOMUNITAS AFILIASI DI CHANNEL_BINDINGS (§43) → static greeting
-        if (supabase) {
-          try {
-            const { data: waBinding } = await supabase
-              .from('channel_bindings')
-              .select('*')
-              .eq('community_source_id', rawFrom)
-              .eq('is_active', true)
-              .maybeSingle();
+        // CEK KOLAM KOMUNITAS AFILIASI DI CHANNEL_BINDINGS (§43) → Dynamic community context
+        try {
+          const commCtx = await resolveCommunityContext(rawFrom, supabase);
 
-            const affId = waBinding?.affiliate_id || 'boon';
-            const demoUrl = waBinding?.demo_url || 'https://shop.boontrack.com/boon';
-            const registerUrl =
-              (waBinding?.metadata as Record<string, string>)?.register_url ||
-              `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}`;
-
+          if (commCtx.binding_id) {
             const replyText =
               `👋 *Halo dari BoonTrack!*\n` +
               `Platform otomatisasi checkout & katalog digital 24 jam untuk pebisnis online & UKM.\n\n` +
-              `🛍️ *Cek Contoh Demo:*\n${demoUrl}\n\n` +
-              `🚀 *Buka Toko Online / Coba Gratis:*\n${registerUrl}`;
+              `🛍️ *Cek Contoh Demo:*\n${commCtx.demo_store_url}\n\n` +
+              `🚀 *Buka Toko Online / Coba Gratis:*\n${commCtx.registration_url}`;
 
             await sendEvolutionTextMessage(instanceName, rawFrom, replyText, resolvedApiKey);
             processedCount++;
             continue;
-          } catch (waErr) {
-            console.warn('[Evolution WA Group Community Trigger Error]:', waErr);
           }
+        } catch (waErr) {
+          console.warn('[Evolution WA Group Community Trigger Error]:', waErr);
         }
-        // If supabase unavailable, fall through to Gemini below with group context
       }
 
       // PERTANYAAN NYATA DI GRUP (@boon) → Kirim ke BoonPilot Platform Chat (Gemini LLM / Fallback) & balas ke Grup
@@ -643,6 +634,7 @@ export async function processEvolutionWebhookEvent(
             senderPhone,
             message: cleanQuery || rawText,
             channel_type: 'WAHA',
+            community_source_id: rawFrom,
           },
           supabase
         );

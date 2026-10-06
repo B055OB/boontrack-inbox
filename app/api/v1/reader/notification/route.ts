@@ -6,6 +6,7 @@ import { sendOrderFulfillmentNotification } from '@/lib/whatsapp';
 import { enqueueCAPIOutboxEvent, processCAPIOutboxQueue } from '@/lib/capi-outbox';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { parseDanaNotification, validateOrderPaymentMatch } from '@/lib/payment/dana-reader';
+import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -539,6 +540,24 @@ export async function POST(req: NextRequest) {
       directCommission: Number(matchedOrder.affiliate_commission) || undefined,
     }).catch((notifErr) => {
       console.warn('[BoonTrack Reader Webhook] Non-fatal affiliate commission alert error:', notifErr);
+    });
+
+    // Dispatch Telegram Real-time Order Payment Alert ke bot @boonshop_bot / seller chat
+    dispatchOrderTelegramAlert({
+      order: {
+        id: matchedOrder.id,
+        tenant_id: matchedOrder.tenant_id,
+        tenant_slug: effectiveTenantSlug,
+        product_title: itemsSummary,
+        gross_amount: totalAmount,
+        payment_method: matchedOrder.payment_method || 'QRIS Dinamis (Otomatis)',
+        customer_name: customerName,
+        customer_phone: customerPhone,
+      },
+      event: 'payment_confirmed',
+      supabaseClient: supabase,
+    }).catch((tgErr) => {
+      console.warn('[BoonTrack Reader Webhook] Non-fatal Telegram order alert error:', tgErr);
     });
 
     return NextResponse.json({

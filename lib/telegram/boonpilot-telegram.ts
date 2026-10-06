@@ -12,6 +12,7 @@
  */
 
 import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
+import { resolveCommunityContext } from '@/lib/boonpilot/platform-engine';
 import { ConversationEngine } from '@/lib/conversationEngine';
 import { getPlatformBaseUrl } from '@/lib/platform-urls';
 import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
@@ -626,17 +627,17 @@ export async function handleTelegramUpdate(
   if (isGroup && affiliateCommunityBinding) {
     sendTelegramChatAction(chatId, 'typing').catch(() => {});
 
+    const commCtx = await resolveCommunityContext(String(chatId), supabase);
     const affId = affiliateCommunityBinding.affiliate_id || 'buzzerukm';
     const partnerName =
       affId === 'buzzerukm'
         ? 'Kang Sakti (buzzerukm)'
         : (affiliateCommunityBinding.metadata as Record<string, any>)?.affiliate_name || affId;
-    const demoUrl =
-      affiliateCommunityBinding.demo_url ||
-      `https://shop.boontrack.com/${encodeURIComponent(affId)}/p/ctwa-mastery-7day`;
-    const registerUrl =
-      (affiliateCommunityBinding.metadata as Record<string, string>)?.register_url ||
-      `https://shop.boontrack.com/register?ref=${encodeURIComponent(affId)}`;
+    let demoUrl = affiliateCommunityBinding.demo_url || commCtx.demo_store_url;
+    if (!demoUrl || demoUrl.includes('toko-demo')) {
+      demoUrl = commCtx.demo_store_url;
+    }
+    const registerUrl = commCtx.registration_url;
     const channelName =
       affiliateCommunityBinding.channel_name || message.chat?.title || 'Komunitas';
 

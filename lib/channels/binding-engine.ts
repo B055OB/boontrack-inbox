@@ -92,7 +92,7 @@ export function validateDemoUrl(urlStr?: string | null): {
   normalizedUrl?: string;
   error?: string;
 } {
-  if (!urlStr || !urlStr.trim()) {
+  if (!urlStr || !urlStr.trim() || urlStr.includes('toko-demo')) {
     return {
       valid: true,
       normalizedUrl: 'https://shop.boontrack.com/boon',

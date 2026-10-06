@@ -28,6 +28,101 @@ import { getPlatformBaseUrl, getRegisterUrl } from '@/lib/platform-urls';
 import { getBoonPilotPaymentNotificationKnowledge } from '@/lib/boonpilotKnowledge';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 
+export interface BoonPilotCommunityContext {
+  binding_id?: string;
+  affiliate_id?: string | null;
+  tenant_slug?: string | null;
+  community_source_id?: string | null;
+  demo_store_url: string;
+  registration_url: string;
+  channel_name?: string | null;
+}
+
+/**
+ * Resolves dynamic community context (demo_store_url & registration_url)
+ * based on WhatsApp Group JID or Telegram Chat ID (community_source_id) from channel_bindings.
+ *
+ * Rules:
+ * a. demo_store_url: Ambil tautan demo toko / single-page checkout yang diatur affiliate.
+ *    Jika kosong/null atau mengandung 'toko-demo', fallback default: https://shop.boontrack.com/boon.
+ * b. registration_url:
+ *    - KHUSUS jika afiliasi adalah Kang Sakti (slug/referral buzzerukm): https://buzzerukm.boontrack.com
+ *    - Untuk afiliasi lainnya: URL registrasi di binding (metadata.register_url / https://shop.boontrack.com/?ref={referral_code})
+ *    - Direct chat / tanpa binding komunitas: fallback ke https://boontrack.com
+ */
+export async function resolveCommunityContext(
+  communitySourceId?: string | null,
+  clientOverride?: any
+): Promise<BoonPilotCommunityContext> {
+  const defaultFallback: BoonPilotCommunityContext = {
+    demo_store_url: 'https://shop.boontrack.com/boon',
+    registration_url: 'https://boontrack.com',
+  };
+
+  const cleanSourceId = (communitySourceId || '').trim();
+  if (!cleanSourceId) {
+    return defaultFallback;
+  }
+
+  const supabase = clientOverride || getSupabaseAdmin() || getSupabase();
+  if (!supabase) {
+    return defaultFallback;
+  }
+
+  try {
+    const { data: binding } = await supabase
+      .from('channel_bindings')
+      .select('*')
+      .eq('community_source_id', cleanSourceId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!binding) {
+      return defaultFallback;
+    }
+
+    // a. demo_store_url
+    let demoStoreUrl = (binding.demo_url || '').trim();
+    if (!demoStoreUrl || demoStoreUrl.includes('toko-demo')) {
+      demoStoreUrl = 'https://shop.boontrack.com/boon';
+    }
+
+    // b. registration_url
+    const affId = (binding.affiliate_id || '').trim();
+    const affIdLower = affId.toLowerCase();
+    const tenantSlug = (binding.tenant_slug || '').trim().toLowerCase();
+    const isKangSakti = affIdLower === 'buzzerukm' || tenantSlug === 'buzzerukm';
+
+    let registrationUrl = '';
+    if (isKangSakti) {
+      registrationUrl = 'https://buzzerukm.boontrack.com';
+    } else {
+      const meta = (binding.metadata as Record<string, any>) || {};
+      const customReg = meta.register_url || meta.fallback_register;
+      if (typeof customReg === 'string' && customReg.trim()) {
+        registrationUrl = customReg.trim();
+      } else if (affId) {
+        registrationUrl = `https://shop.boontrack.com/?ref=${encodeURIComponent(affId)}`;
+      } else {
+        registrationUrl = 'https://boontrack.com';
+      }
+    }
+
+    return {
+      binding_id: binding.binding_id,
+      affiliate_id: binding.affiliate_id,
+      tenant_slug: binding.tenant_slug,
+      community_source_id: cleanSourceId,
+      demo_store_url: demoStoreUrl,
+      registration_url: registrationUrl,
+      channel_name: binding.channel_name,
+    };
+  } catch (err) {
+    console.warn('[BOONPILOT] Error resolving community context:', err);
+    return defaultFallback;
+  }
+}
+
 export interface BoonPilotPlatformChatInput {
   senderPhone: string;
   message: string;
@@ -40,6 +135,8 @@ export interface BoonPilotPlatformChatInput {
     type?: string;
   };
   channel_type?: 'WABA' | 'WAHA' | 'TELEGRAM';
+  community_source_id?: string;
+  communityContext?: BoonPilotCommunityContext;
 }
 
 export interface BoonPilotPlatformChatResult {
@@ -53,9 +150,12 @@ export interface BoonPilotPlatformChatResult {
 }
 
 /**
- * Builds the customized LLM System Prompt for Gemini based on sender registration resolution.
+ * Builds the customized LLM System Prompt for Gemini based on sender registration resolution and community context.
  */
-export function buildBoonPilotSystemPrompt(resolution: BoonPilotSenderResolution): string {
+export function buildBoonPilotSystemPrompt(
+  resolution: BoonPilotSenderResolution,
+  communityContext?: BoonPilotCommunityContext
+): string {
   const paymentNotificationKb = getBoonPilotPaymentNotificationKnowledge();
 
   const signaturePersonaDirective = `GAYA PERSONA & PEMBUKAAN WAJIB (KONSULTAN EDUKATIF):
@@ -82,6 +182,15 @@ export function buildBoonPilotSystemPrompt(resolution: BoonPilotSenderResolution
 - Mendukung perhitungan ongkir akurat otomatis ke seluruh kecamatan di Indonesia melalui ekspedisi reguler (JNE, SiCepat, J&T, Lion Parcel, POS) serta kurir instan/sameday (Grab/Gojek).
 - Fitur BYOK (Bring Your Own Key): Merchant dapat menghubungkan akun ekspedisi Lincah atau Biteship langsung ke dashboard toko untuk otomatisasi resi dan pickup paket oleh kurir tanpa antre.`;
 
+  const demoStoreUrl = communityContext?.demo_store_url || 'https://shop.boontrack.com/boon';
+  const registrationUrl = communityContext?.registration_url || 'https://boontrack.com';
+
+  const communityContextKnowledge = `KONTEKS TAUTAN DEMO & REGISTRASI DINAMIS (COMMUNITY CONTEXT):
+- URL Contoh Demo Toko / Single-Page Checkout: ${demoStoreUrl}
+  * Wajib gunakan tautan {demo_store_url} (${demoStoreUrl}) saat audiens meminta contoh toko, cek katalog demo, atau alur checkout.
+- URL Registrasi / Buka Toko Baru: ${registrationUrl}
+  * Wajib gunakan tautan {registration_url} (${registrationUrl}) saat audiens bertanya cara daftar/buat toko BoonTrack.`;
+
   if (resolution.role === 'MERCHANT' && resolution.tenant) {
     const t = resolution.tenant;
     const ownerName = t.owner_name || 'Owner';
@@ -96,6 +205,7 @@ PERAN & TUGAS UTAMA (MERCHANT):
 1. Bantuan operasional toko, cek status order, dan panduan fitur 8 tab dashboard BoonTrack (Overview, Katalog Produk, Pesanan, WhatsApp Gateway, Pengiriman, Pembayaran/QRIS, Tim CS, Pengaturan Toko).
 2. Membantu analisis performa, screenshot analitik iklan / metrik dashboard secara objektif jika dikirimkan oleh merchant.
 3. Membantu pemecahan masalah operasional toko (checkout, ongkir, QRIS, notifikasi WhatsApp).
+4. Contoh demo toko / alur checkout resmi: ${demoStoreUrl}
 
 ${paymentNotificationKb}
 
@@ -127,8 +237,12 @@ PERAN & TUGAS UTAMA (NON-MERCHANT):
    - Verifikasi pembayaran otomatis real-time (QRIS dinamis 0% MDR & transfer bank manual).
    - Single-Page Checkout instan tanpa pembeli perlu install aplikasi atau registrasi akun.
    - Agregator Kurir multi-ekspedisi BYOK (Lincah, Biteship, JNE, SiCepat, J&T).
-2. Memandu calon pengguna untuk mendaftar uji coba gratis ke ${getPlatformBaseUrl()} (atau ${getRegisterUrl()}).
+2. Tautan & Panduan Calon Pengguna:
+   - Gunakan tautan {demo_store_url} (${demoStoreUrl}) saat audiens meminta contoh toko, cek katalog demo, atau alur checkout.
+   - Gunakan tautan {registration_url} (${registrationUrl} atau ${getRegisterUrl()}) saat audiens bertanya cara daftar/buat toko BoonTrack.
 3. Menganalisis gambar publik: Jika pengguna mengirimkan screenshot website atau materi onboarding, jelaskan fiturnya dengan ramah.
+
+${communityContextKnowledge}
 
 ${paymentNotificationKb}
 
@@ -146,7 +260,8 @@ PANDUAN ESKALASI & UPSELL:
 ATURAN MUTLAK KEAMANAN (STRICT SECURITY & ZERO-DATA-LEAKAGE):
 - DILARANG KERAS membocorkan data, transaksi, katalog, omset, atau nama pembeli dari toko privat tenant lain.
 - Jangan pernah mengarang data transaksi milik toko tertentu.
-- Selalu berikan panduan daftar uji coba resmi: ${getRegisterUrl()} (atau ${getPlatformBaseUrl()}).`;
+- Selalu berikan panduan daftar uji coba resmi: ${registrationUrl} (atau ${getRegisterUrl()} / ${getPlatformBaseUrl()}).
+- Selalu berikan tautan demo toko resmi ${demoStoreUrl} saat audiens meminta contoh toko atau alur checkout.`;
 }
 
 /**
@@ -155,8 +270,12 @@ ATURAN MUTLAK KEAMANAN (STRICT SECURITY & ZERO-DATA-LEAKAGE):
  */
 function resolveBoonPilotFallbackReply(
   cleanMsg: string,
-  resolution: BoonPilotSenderResolution
+  resolution: BoonPilotSenderResolution,
+  communityContext?: BoonPilotCommunityContext
 ): BoonPilotPlatformChatResult {
+  const demoStoreUrl = communityContext?.demo_store_url || 'https://shop.boontrack.com/boon';
+  const registrationUrl = communityContext?.registration_url || 'https://boontrack.com';
+
   const guestQuickActions = [
     '💡 Apa itu BoonTrack?',
     '📦 Fitur & Paket',
@@ -349,11 +468,28 @@ function resolveBoonPilotFallbackReply(
   }
 
   // BRANCH B: GUEST / PROSPECT (NON-MERCHANT ONBOARDING SPECIALIST)
+  if (/(contoh toko|demo toko|toko demo|lihat demo|cek demo|katalog demo|alur checkout|sample toko)/i.test(cleanMsg)) {
+    const reply =
+      `Halo kak, bantu jawab ya! Saya *BoonPilot*.\n\n` +
+      `Berikut contoh toko online dan simulasi alur Single-Page Checkout resmi BoonTrack:\n\n` +
+      `🛍️ *Lihat Demo Toko & Checkout:*\n${demoStoreUrl}\n\n` +
+      `Di tautan demo di atas, Kakak bisa mencoba langsung proses pemesanan instan, cek ongkir multi-ekspedisi otomatis, serta simulasi pembayaran QRIS Dinamis 0% MDR! ✨\n\n` +
+      `Silakan dicoba alur checkout-nya ya Kak! 😊`;
+    return {
+      reply,
+      role: resolution.role,
+      activeEngine: resolution.role === 'MERCHANT' ? 'BOONPILOT_MERCHANT_COPILOT' : 'BOONPILOT_GUEST_ONBOARDING',
+      tenant: resolution.tenant,
+      quick_actions: ['🛍️ Cek Demo Toko', '🚀 Daftar Uji Coba'],
+      isDeterministicMatch: true,
+    };
+  }
+
   if (/(daftar|register|buka toko|buat toko|gabung|registrasi|cara daftar|buat akun|uji coba)/i.test(cleanMsg)) {
     const reply =
       `Halo kak, bantu jawab ya! Saya *BoonPilot*, Asisten AI resmi BoonTrack.\n\n` +
       `Untuk memulai uji coba gratis dan mendaftarkan toko baru di *BoonTrack*, silakan buka tautan resmi kami:\n\n` +
-      `👉 *Link Registrasi Toko:*\n${getRegisterUrl()} (atau ${getPlatformBaseUrl()})\n\n` +
+      `👉 *Link Registrasi Toko:*\n${registrationUrl} (atau ${getRegisterUrl()})\n\n` +
       `*Langkah Pendaftaran:*\n` +
       `1. Masukkan nama lengkap, nomor WhatsApp, dan tentukan nama toko Anda.\n` +
       `2. Selesaikan aktivasi instan melalui kode WhatsApp.\n` +
@@ -396,7 +532,7 @@ function resolveBoonPilotFallbackReply(
       `💳 *QRIS Dinamis & Bank Otomatis*: Verifikasi pembayaran real-time 24 jam dengan integrasi QRIS dan transfer bank manual.\n` +
       `📲 *WhatsApp Commerce*: Notifikasi faktur dan update resi otomatis terkirim ke WhatsApp pembeli dan notifikasi penjualan ke seller.\n` +
       `🚚 *Agregator Kurir BYOK*: Cek ongkir otomatis multi-ekspedisi (JNE, SiCepat, J&T, Lion, POS) hingga kurir instan.\n\n` +
-      `👉 *Daftar Toko Gratis*: ${getRegisterUrl()} (${getPlatformBaseUrl()})`;
+      `👉 *Daftar Toko Gratis*: ${registrationUrl} (atau ${getRegisterUrl()})`;
     return {
       reply,
       role: 'GUEST',
@@ -411,7 +547,7 @@ function resolveBoonPilotFallbackReply(
       `Halo kak, bantu jawab ya! Saya *BoonPilot*. Berikut *Layanan Pengiriman Terintegrasi BoonTrack:* 🚚\n\n` +
       `BoonTrack mendukung perhitungan ongkir real-time ke seluruh kecamatan di Indonesia melalui ekspedisi reguler (JNE, SiCepat, J&T, Lion Parcel, POS) serta kurir instan/sameday (Grab/Gojek).\n\n` +
       `Anda dapat menggunakan fitur BYOK (Bring Your Own Key) untuk menghubungkan akun ekspedisi Lincah atau Biteship langsung ke dashboard toko Anda.\n\n` +
-      `👉 *Daftar Toko Anda Sekarang:* ${getRegisterUrl()} (${getPlatformBaseUrl()})`;
+      `👉 *Daftar Toko Anda Sekarang*: ${registrationUrl} (atau ${getRegisterUrl()})`;
     return {
       reply,
       role: 'GUEST',
@@ -427,9 +563,10 @@ function resolveBoonPilotFallbackReply(
     `Ada yang bisa BoonPilot bantu hari ini?\n` +
     `1️⃣ *Apa itu BoonTrack?* (Otomasi order WA, verifikasi pembayaran QRIS otomatis)\n` +
     `2️⃣ *Pilihan Paket Langganan* (Checkout Lite, Solo, Pro Scale, Team Scale)\n` +
-    `3️⃣ *Setup Toko Terima Beres (DFY)* (Toko siap pakai tanpa pusing setup teknis)\n` +
-    `4️⃣ *Cara Mendaftar Toko Baru (Panduan Uji Coba)*\n\n` +
-    `👉 *Daftar Toko Gratis*: ${getRegisterUrl()} (${getPlatformBaseUrl()})`;
+    `3️⃣ *Contoh Demo Toko*: ${demoStoreUrl}\n` +
+    `4️⃣ *Setup Toko Terima Beres (DFY)* (Toko siap pakai tanpa pusing setup teknis)\n` +
+    `5️⃣ *Cara Mendaftar Toko Baru (Panduan Uji Coba)*\n\n` +
+    `👉 *Daftar Toko Gratis*: ${registrationUrl} (atau ${getRegisterUrl()})`;
 
   return {
     reply: defaultGuestReply,
@@ -450,6 +587,9 @@ export async function processBoonPilotPlatformChat(
 ): Promise<BoonPilotPlatformChatResult> {
   const { senderPhone, message } = input;
   const resolution = await resolveBoonPilotSender(senderPhone, clientOverride);
+  const communityContext =
+    input.communityContext ||
+    (await resolveCommunityContext(input.community_source_id, clientOverride));
   const cleanMsg = (message || '').trim().toLowerCase();
 
   const guestQuickActions = [
@@ -505,7 +645,7 @@ export async function processBoonPilotPlatformChat(
   if (geminiApiKey && cleanMsg.length > 0) {
     try {
       console.log(`[BOONPILOT_PLATFORM_LLM] Initiating Gemini reasoning (model: ${aiModel}) for message: "${cleanMsg}"`);
-      const systemPrompt = buildBoonPilotSystemPrompt(resolution);
+      const systemPrompt = buildBoonPilotSystemPrompt(resolution, communityContext);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiApiKey}`;
 
       const contents: any[] = [
@@ -585,5 +725,5 @@ export async function processBoonPilotPlatformChat(
   }
 
   // ── 2. RESILIENT DETERMINISTIC FALLBACK (API OFFLINE / RATE-LIMIT / UNIT TEST) ──
-  return resolveBoonPilotFallbackReply(cleanMsg, resolution);
+  return resolveBoonPilotFallbackReply(cleanMsg, resolution, communityContext);
 }

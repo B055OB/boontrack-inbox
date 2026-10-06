@@ -174,6 +174,7 @@ export class ConversationEngine {
           sessionId: session_id,
           channel_type: payload.channel_type || (payload.channel === 'WHATSAPP' ? 'WABA' : payload.channel === 'TELEGRAM' ? 'TELEGRAM' : 'WAHA'),
           interactive_reply: payload.interactive_reply,
+          community_source_id: (payload as any).community_source_id,
         },
         supabase
       );
