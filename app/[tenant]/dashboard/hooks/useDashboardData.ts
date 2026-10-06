@@ -24,6 +24,7 @@ export type DashboardTab =
   | 'whatsapp'
   | 'telegram_alerts'
   | 'crm'
+  | 'customers'
   | 'settings';
 
 export type PlanTier = 'growth' | 'ads_performance' | 'team_scale';

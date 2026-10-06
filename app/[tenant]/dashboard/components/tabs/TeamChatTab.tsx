@@ -16,6 +16,7 @@ import {
   ExternalLink,
   QrCode,
   ArrowRightLeft,
+  ArrowUpRight,
   Tag,
   ShoppingBag,
   ShieldCheck,
@@ -146,6 +147,8 @@ export interface TeamChatTabProps {
   isCheckoutLite?: boolean;
   tenantTier?: string;
   initialTenant?: any;
+  /** Optional: deep-link to the Customer Database (Pelanggan) tab */
+  onOpenCustomers?: () => void;
 }
 
 export const CS_SEAT_QUOTA_MAP: Record<string, number> = {
@@ -184,6 +187,7 @@ export default function TeamChatTab({
   handleToggleTenantBot,
   isCheckoutLite = false,
   tenantTier,
+  onOpenCustomers,
 }: TeamChatTabProps) {
   // Kalkulasi dinamis real-time sisa hari dari trialEndsAt
   const effectiveDaysLeft = useMemo(() => {
@@ -2924,7 +2928,7 @@ export default function TeamChatTab({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>Memory CRM</span>
+                <span>Pelanggan (CRM)</span>
                 {!isCrmEnabled && <Lock className="w-2.5 h-2.5 text-amber-500 shrink-0" />}
               </button>
               <button
@@ -3006,9 +3010,24 @@ export default function TeamChatTab({
                     {currentConversation.avatarInitials || currentConversation.customerName?.slice(0, 2) || 'WA'}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-black text-slate-900 truncate">
-                      {currentConversation.customerName || 'Pelanggan'}
-                    </p>
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-xs font-black text-slate-900 truncate">
+                        {currentConversation.customerName || 'Pelanggan'}
+                      </p>
+                      {onOpenCustomers && (
+                        <button
+                          type="button"
+                          id="open-customer-crm-profile"
+                          onClick={onOpenCustomers}
+                          title="Lihat Profil di CRM Pelanggan"
+                          className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 text-[9px] font-bold transition cursor-pointer border border-violet-100"
+                        >
+                          <Users className="w-2.5 h-2.5" />
+                          <span>Profil CRM</span>
+                          <ArrowUpRight className="w-2 h-2" />
+                        </button>
+                      )}
+                    </div>
                     <p className="text-[11px] text-slate-500 font-mono">
                       {currentConversation.customerPhone}
                     </p>

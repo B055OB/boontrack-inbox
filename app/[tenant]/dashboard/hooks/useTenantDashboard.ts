@@ -54,6 +54,7 @@ export type DashboardTab =
   | 'rotator'
   | 'telegram_alerts'
   | 'crm'
+  | 'customers'
   | 'settings';
 
 export interface ConversationMessage {

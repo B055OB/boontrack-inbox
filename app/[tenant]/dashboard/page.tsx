@@ -56,6 +56,7 @@ import UpsellModal from './components/modals/UpsellModal';
 import UpgradePaymentModal from './components/modals/UpgradePaymentModal';
 import LocalServiceConfigForm from '@/app/components/LocalServiceConfigForm';
 import OrdersTab from './components/tabs/OrdersTab';
+import CustomerDatabaseTab from './components/tabs/CustomerDatabaseTab';
 import {
   ModularVerticalTabDispatcher,
   FnbInstantCourier,
@@ -751,12 +752,13 @@ export default function TenantDashboardPage() {
             trialEndsAt={trialEndsAt}
             isTenantBotPaused={isTenantBotPaused}
             handleToggleTenantBot={handleToggleTenantBot}
+            onOpenCustomers={() => setActiveTab('customers')}
           />
         )
       )}
 
-      {/* TAB CRM: CUSTOMER MEMORY & LIFECYCLE (Unlocked if hasTierAccess or Pro/Scale, else Teaser) */}
-      {activeTab === 'crm' && (
+      {/* TAB PELANGGAN (CRM): Customer Database Table View */}
+      {(activeTab === 'customers' || activeTab === 'crm') && (
         !isCrmEnabled ? (
           <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
             <FeatureLockedTeaser
@@ -784,30 +786,22 @@ export default function TenantDashboardPage() {
             />
           </div>
         ) : (
-          <TeamChatTab
-            initialTenant={tenantData}
+          <CustomerDatabaseTab
             tenantSlug={tenantSlug}
-            tenantId={tenantId || undefined}
-            isCheckoutLite={isCheckoutLite}
-            tenantTier={tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'ADS_PERFORMANCE' : isTeamScale ? 'TEAM_SCALE' : 'STARTER')}
-            conversations={conversations}
-            activeConversation={activeConversation}
-            activeConversationId={activeConversationId}
-            setActiveConversationId={setActiveConversationId}
-            replyText={replyText}
-            setReplyText={setReplyText}
-            handleSendMessage={handleSendMessage}
-            isProScale={isProScale}
-            isGrowthPlus={isGrowthPlus}
-            isGrowth={isGrowth}
-            isTeamScale={isTeamScale}
-            isAdsPerformance={isAdsPerformance}
-            handleUpgradeTier={handleUpgradeTier}
-            isSoloOrTrial={isSoloOrTrial}
-            trialDaysLeft={trialDaysLeft}
-            trialEndsAt={trialEndsAt}
-            isTenantBotPaused={isTenantBotPaused}
-            handleToggleTenantBot={handleToggleTenantBot}
+            tenantId={tenantId}
+            isCrmEnabled={isCrmEnabled}
+            onOpenInbox={(phone?: string) => {
+              if (phone) {
+                const cleanPhone = phone.replace(/\D/g, '');
+                const match = conversations.find(
+                  (c) => (c.customerPhone || '').replace(/\D/g, '') === cleanPhone
+                );
+                if (match) {
+                  setActiveConversationId(match.id);
+                }
+              }
+              setActiveTab('inbox');
+            }}
           />
         )
       )}

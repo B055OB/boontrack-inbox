@@ -345,7 +345,7 @@ export default function DashboardSidebar({
   const isPowerTabActive = (tab: string) => {
     if (tab === 'whatsapp' && (activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply')) return true;
     if (tab === 'inbox' && activeTab === 'inbox') return true;
-    if (tab === 'crm' && activeTab === 'crm') return true;
+    if (tab === 'crm' && (activeTab === 'crm' || activeTab === 'customers')) return true;
     if (tab === 'ads_tracking' && activeTab === 'ads_tracking') return true;
     if (tab === 'finance' && activeTab === 'finance') return true;
     if (tab === 'orders' && activeTab === 'orders') return true;
@@ -708,24 +708,24 @@ export default function DashboardSidebar({
                 </span>
               </button>
 
-              {/* 7. Memory CRM - Gated Feature Teaser */}
+              {/* 7. Pelanggan (CRM) - Gated Feature Teaser */}
               <button
                 type="button"
-                onClick={() => handleSelectTab('crm')}
+                onClick={() => handleSelectTab('customers')}
                 className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                  activeTab === 'crm'
+                  activeTab === 'customers' || activeTab === 'crm'
                     ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
                 }`}
               >
-                {activeTab === 'crm' && (
+                {(activeTab === 'customers' || activeTab === 'crm') && (
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
                 )}
                 <div className="flex items-center gap-2.5 truncate">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
                     <Brain className="w-4 h-4" />
                   </div>
-                  <span className="truncate">Memory CRM</span>
+                  <span className="truncate">Pelanggan</span>
                 </div>
                 {!isCrmEffective ? (
                   <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
@@ -809,15 +809,15 @@ export default function DashboardSidebar({
             </div>
           </div>
         ) : (
-          <>
-            {/* KATEGORI 1: STORE ENGINE */}
+        <>
+            {/* KATEGORI 1: OPERASIONAL */}
             <div>
               <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-1 pb-2 block">
-                STORE ENGINE
+                OPERASIONAL
               </span>
 
               <div className="space-y-1">
-                {/* 1. Dashboard / Beranda */}
+                {/* Dashboard / Beranda */}
                 <button
                   type="button"
                   onClick={() => handleSelectTab('dashboard')}
@@ -836,166 +836,6 @@ export default function DashboardSidebar({
                     </div>
                     <span className="truncate">Dashboard</span>
                   </div>
-                </button>
-
-                {/* 2. Katalog / Layanan Dinamis Sesuai 6 Kategori Bisnis */}
-                {(() => {
-                  const verticalConfig = getVerticalMenuConfig(storeCategory);
-                  const VerticalIcon = verticalConfig.icon;
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTab('catalog')}
-                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                        isMainTabActive('catalog')
-                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                      }`}
-                    >
-                      {isMainTabActive('catalog') && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                      )}
-                      <div className="flex items-center gap-2.5 truncate">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
-                          <VerticalIcon className="w-4 h-4" />
-                        </div>
-                        <span className="truncate">{verticalConfig.label}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
-                          {verticalConfig.badge}
-                        </span>
-                        {productCount > 0 ? (
-                          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                            {productCount}
-                          </span>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })()}
-
-                {/* 3. Menu Operasional Khusus Dinamis Sesuai 6 Kategori Bisnis */}
-                {(() => {
-                  const opConfig = getVerticalOperationalMenuConfig(storeCategory, capabilities);
-                  if (opConfig.targetTab === 'shipping' && opConfig.hideShipping) {
-                    return null;
-                  }
-
-                  const OpIcon = opConfig.icon;
-                  const isOpActive =
-                    activeTab === opConfig.targetTab ||
-                    (opConfig.targetTab === 'shipping' && activeTab === 'biteship');
-
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTab(opConfig.targetTab)}
-                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                        isOpActive
-                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                      }`}
-                    >
-                      {isOpActive && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                      )}
-                      <div className="flex items-center gap-2.5 truncate">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${opConfig.colorClass}`}>
-                          <OpIcon className="w-4 h-4" />
-                        </div>
-                        <span className="truncate">{opConfig.label}</span>
-                      </div>
-                      <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
-                        {opConfig.badge}
-                      </span>
-                    </button>
-                  );
-                })()}
-
-                {/* Tampilan (Design & Themes) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('themes')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isMainTabActive('themes')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isMainTabActive('themes') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-purple-50 text-purple-600">
-                      <Palette className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">Tampilan &amp; Tema</span>
-                  </div>
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">
-                    5 TEMA
-                  </span>
-                </button>
-
-                {/* AI Knowledge & Bot */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('ai_knowledge')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isMainTabActive('ai_knowledge')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isMainTabActive('ai_knowledge') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
-                      <Brain className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">AI Knowledge &amp; Bot</span>
-                  </div>
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
-                    AI
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            {/* KATEGORI 2: GROWTH & CONVERSIONS */}
-            <div className="pt-2 border-t border-slate-100">
-              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
-                GROWTH &amp; CONVERSIONS
-              </span>
-
-              <div className="space-y-1">
-                {/* WhatsApp & Broadcast */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectTab('whatsapp')}
-                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isPowerTabActive('whatsapp')
-                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
-                  }`}
-                >
-                  {isPowerTabActive('whatsapp') && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
-                  )}
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
-                      <Radio className="w-4 h-4" />
-                    </div>
-                    <span className="truncate">WhatsApp &amp; Broadcast</span>
-                  </div>
-                  {isTeamScale ? (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      WABA
-                    </span>
-                  ) : (
-                    <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  )}
                 </button>
 
                 {/* BoonTrack Inbox (Live CS) */}
@@ -1037,24 +877,108 @@ export default function DashboardSidebar({
                   )}
                 </button>
 
-                {/* Memory CRM */}
+                {/* Katalog / Layanan Dinamis */}
+                {(() => {
+                  const verticalConfig = getVerticalMenuConfig(storeCategory);
+                  const VerticalIcon = verticalConfig.icon;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectTab('catalog')}
+                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                        isMainTabActive('catalog')
+                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                      }`}
+                    >
+                      {isMainTabActive('catalog') && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                      )}
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-sky-50 text-sky-600">
+                          <VerticalIcon className="w-4 h-4" />
+                        </div>
+                        <span className="truncate">{verticalConfig.label}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
+                          {verticalConfig.badge}
+                        </span>
+                        {productCount > 0 ? (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                            {productCount}
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })()}
+
+                {/* Menu Operasional Khusus Dinamis */}
+                {(() => {
+                  const opConfig = getVerticalOperationalMenuConfig(storeCategory, capabilities);
+                  if (opConfig.targetTab === 'shipping' && opConfig.hideShipping) {
+                    return null;
+                  }
+
+                  const OpIcon = opConfig.icon;
+                  const isOpActive =
+                    activeTab === opConfig.targetTab ||
+                    (opConfig.targetTab === 'shipping' && activeTab === 'biteship');
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectTab(opConfig.targetTab)}
+                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                        isOpActive
+                          ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                      }`}
+                    >
+                      {isOpActive && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                      )}
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${opConfig.colorClass}`}>
+                          <OpIcon className="w-4 h-4" />
+                        </div>
+                        <span className="truncate">{opConfig.label}</span>
+                      </div>
+                      <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                        {opConfig.badge}
+                      </span>
+                    </button>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* KATEGORI 2: CUSTOMER */}
+            <div className="pt-2 border-t border-slate-100">
+              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
+                CUSTOMER
+              </span>
+
+              <div className="space-y-1">
+                {/* Pelanggan (CRM) */}
                 <button
                   type="button"
-                  onClick={() => handleSelectTab('crm')}
+                  onClick={() => handleSelectTab('customers')}
                   className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
-                    isPowerTabActive('crm')
+                    activeTab === 'customers' || isPowerTabActive('crm')
                       ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
                   }`}
                 >
-                  {isPowerTabActive('crm') && (
+                  {(activeTab === 'customers' || isPowerTabActive('crm')) && (
                     <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
                   )}
                   <div className="flex items-center gap-2.5 truncate">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
                       <Brain className="w-4 h-4" />
                     </div>
-                    <span className="truncate">Memory CRM</span>
+                    <span className="truncate">Pelanggan</span>
                   </div>
                   {!isCrmEffective ? (
                     <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
@@ -1068,6 +992,43 @@ export default function DashboardSidebar({
                   )}
                 </button>
 
+                {/* WhatsApp & Broadcast */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('whatsapp')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isPowerTabActive('whatsapp')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isPowerTabActive('whatsapp') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
+                      <Radio className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">WhatsApp &amp; Broadcast</span>
+                  </div>
+                  {isTeamScale ? (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      WABA
+                    </span>
+                  ) : (
+                    <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* KATEGORI 3: GROWTH */}
+            <div className="pt-2 border-t border-slate-100">
+              <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase px-3 pt-2 pb-2 block">
+                GROWTH
+              </span>
+
+              <div className="space-y-1">
                 {/* Ads Tracking Pro */}
                 <button
                   type="button"
@@ -1096,6 +1057,54 @@ export default function DashboardSidebar({
                   >
                     {!isAdsTrackingUnlocked && <Lock className="w-2.5 h-2.5" />}
                     {isAdsTrackingUnlocked ? 'CAPI' : '299k'}
+                  </span>
+                </button>
+
+                {/* Tampilan & Tema */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('themes')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isMainTabActive('themes')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isMainTabActive('themes') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-purple-50 text-purple-600">
+                      <Palette className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">Tampilan &amp; Tema</span>
+                  </div>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">
+                    5 TEMA
+                  </span>
+                </button>
+
+                {/* AI Knowledge & Bot */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('ai_knowledge')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isMainTabActive('ai_knowledge')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isMainTabActive('ai_knowledge') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">AI Knowledge &amp; Bot</span>
+                  </div>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+                    AI
                   </span>
                 </button>
 
@@ -1153,6 +1162,7 @@ export default function DashboardSidebar({
               </div>
             </div>
           </>
+
         )}
       </div>
 
