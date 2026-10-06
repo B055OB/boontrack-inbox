@@ -7,6 +7,7 @@ import {
 } from '@/lib/whatsapp';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 import { verifyMetaWebhookChallenge } from '@/lib/whatsapp/meta-webhook-normalizer';
 

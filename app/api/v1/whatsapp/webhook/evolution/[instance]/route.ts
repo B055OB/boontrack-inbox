@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { processEvolutionWebhookEvent } from '@/lib/whatsapp/evolution-webhook-handler';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /**
  * GET: Health check endpoint for Evolution API instance webhook.

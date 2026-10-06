@@ -26,6 +26,7 @@ import {
 } from './sender-resolver';
 import { getPlatformBaseUrl, getRegisterUrl } from '@/lib/platform-urls';
 import { getBoonPilotPaymentNotificationKnowledge } from '@/lib/boonpilotKnowledge';
+import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 
 export interface BoonPilotPlatformChatInput {
   senderPhone: string;
@@ -464,14 +465,42 @@ export async function processBoonPilotPlatformChat(
   const quickActions = resolution.role === 'MERCHANT' ? merchantQuickActions : guestQuickActions;
 
   // ── 1. PEMANGGILAN LLM GEMINI (GEMINI-3.8-FLASH) UNTUK PERTANYAAN BEBAS ──
-  const geminiApiKey =
+  let geminiApiKey =
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_AI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    resolution.tenant?.metadata?.ai_settings?.gemini_api_key ||
     '';
-  const aiModel = process.env.AI_MODEL_NAME || 'gemini-3.8-flash';
+
+  let aiModel =
+    process.env.AI_MODEL_NAME ||
+    resolution.tenant?.metadata?.ai_settings?.model_name ||
+    'gemini-3.8-flash';
+
+  // Fallback: ambil konfigurasi Gemini resmi dari platform tenant di Supabase jika env belum diset
+  if (!geminiApiKey && process.env.NODE_ENV !== 'test') {
+    try {
+      const dbClient = clientOverride || getSupabaseAdmin() || getSupabase();
+      if (dbClient) {
+        const { data: platformTenant } = await dbClient
+          .from('tenants')
+          .select('metadata')
+          .eq('id', '52967979-4760-4cea-b686-cdbdb389c0e1')
+          .maybeSingle();
+
+        if (platformTenant?.metadata?.ai_settings?.gemini_api_key) {
+          geminiApiKey = platformTenant.metadata.ai_settings.gemini_api_key;
+          aiModel = platformTenant.metadata.ai_settings.model_name || aiModel;
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[BOONPILOT_PLATFORM_LLM] Failed fetching Gemini key from Supabase:', dbErr);
+    }
+  }
 
   if (geminiApiKey && cleanMsg.length > 0) {
     try {
+      console.log(`[BOONPILOT_PLATFORM_LLM] Initiating Gemini reasoning (model: ${aiModel}) for message: "${cleanMsg}"`);
       const systemPrompt = buildBoonPilotSystemPrompt(resolution);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiApiKey}`;
 
@@ -511,6 +540,7 @@ export async function processBoonPilotPlatformChat(
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           contents,
           generationConfig: {
@@ -529,6 +559,7 @@ export async function processBoonPilotPlatformChat(
           if (!/^halo kak[,\s!]/i.test(reply)) {
             reply = `Halo kak, bantu jawab ya!\n\n${reply}`;
           }
+          console.log(`[BOONPILOT_PLATFORM_LLM] Gemini generated response successfully (${reply.length} chars).`);
           return {
             reply,
             role: resolution.role,
@@ -545,6 +576,8 @@ export async function processBoonPilotPlatformChat(
     } catch (llmErr) {
       console.warn('[BOONPILOT_PLATFORM_LLM] Gemini API call exception, activating fallback:', llmErr);
     }
+  } else {
+    console.warn(`[BOONPILOT_PLATFORM_LLM] Skipped Gemini: keyPresent=${Boolean(geminiApiKey)}, msgLen=${cleanMsg.length}`);
   }
 
   // ── 2. RESILIENT DETERMINISTIC FALLBACK (API OFFLINE / RATE-LIMIT / UNIT TEST) ──
