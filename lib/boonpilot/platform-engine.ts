@@ -150,6 +150,43 @@ export interface BoonPilotPlatformChatResult {
 }
 
 /**
+ * Evaluates whether a registered merchant tenant has completed their store setup.
+ *
+ * Rules:
+ * 1. Explicit boolean flag if present (isSetupComplete or metadata.setup_completed / is_setup_complete / is_ready).
+ * 2. Checks essential checklist:
+ *    - Has products (metadata.products is non-empty array or has_products flag)
+ *    - Has payment setup (payment_settings with QRIS or bank accounts, or root qris/bank fields)
+ */
+export function isTenantSetupComplete(tenant?: BoonPilotSenderTenant | null): boolean {
+  if (!tenant) return false;
+  if (typeof (tenant as any).isSetupComplete === 'boolean') {
+    return (tenant as any).isSetupComplete;
+  }
+  const meta = tenant.metadata || {};
+  if (meta.setup_completed === true || meta.is_setup_complete === true || meta.is_ready === true) {
+    return true;
+  }
+  if (meta.setup_completed === false || meta.is_setup_complete === false || meta.is_ready === false) {
+    return false;
+  }
+
+  const hasProducts =
+    (Array.isArray(meta.products) && meta.products.length > 0) ||
+    Boolean(meta.has_products);
+
+  const hasPayment = Boolean(
+    meta.payment_settings?.qris_image_url ||
+    (Array.isArray(meta.payment_settings?.bank_accounts) && meta.payment_settings.bank_accounts.length > 0) ||
+    meta.qris_image_url ||
+    (Array.isArray(meta.bank_accounts) && meta.bank_accounts.length > 0) ||
+    (Array.isArray(meta.payment_methods) && meta.payment_methods.length > 0)
+  );
+
+  return Boolean(hasProducts && hasPayment);
+}
+
+/**
  * Builds the customized LLM System Prompt for Gemini based on sender registration resolution and community context.
  */
 export function buildBoonPilotSystemPrompt(
@@ -196,10 +233,27 @@ export function buildBoonPilotSystemPrompt(
     const ownerName = t.owner_name || 'Owner';
     const storeName = t.name || 'Toko Anda';
     const tier = t.tier || 'SOLO';
+    const isSetupDone = isTenantSetupComplete(t);
+
+    const merchantBehaviorDirective = isSetupDone
+      ? `BEHAVIOR & GREETING KHUSUS (SKENARIO TOKO SUDAH LENGKAP & AKTIF):
+- Kenali profil tenant: Nama Owner adalah "Kak ${ownerName}", Nama Toko adalah "${storeName}" (Tier: ${tier}).
+- Toko sudah lengkap datanya dan berstatus aktif siap tempur.
+- Saat Kak ${ownerName} menyapa (greeting), membuka percakapan, atau menanyakan kabar toko:
+  "Halo Kak ${ownerName}, toko ${storeName} sudah siap tempur nih! Hari ini mau kita diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau ada hal lain yang mau Kakak ceritakan?"
+- Diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau topik bisnis lainnya secara hangat dan solutif.`
+      : `BEHAVIOR & GREETING KHUSUS (SKENARIO DATA BELUM LENGKAP):
+- Kenali profil tenant: Nama Owner adalah "Kak ${ownerName}", Nama Toko adalah "${storeName}" (Tier: ${tier}).
+- Data toko masih belum selesai (katalog produk atau konfigurasi pembayaran belum lengkap).
+- Saat Kak ${ownerName} menyapa (greeting) atau membuka percakapan:
+  "Halo Kak ${ownerName}, toko ${storeName} kamu masih belum selesai nih. Yuk kita bantu lengkapin data-datanya biar siap jualan!"
+- Tawarkan bantuan langkah demi langkah melengkapi data produk, rekening/QRIS, dan setting pengiriman agar toko lekas siap jualan.`;
 
     return `Anda adalah "BoonPilot", Konsultan E-Commerce Resmi & Business Co-Pilot untuk toko "${storeName}" (Tier: ${tier}, Pemilik: Kak ${ownerName}) di platform BoonTrack.
 
 ${signaturePersonaDirective}
+
+${merchantBehaviorDirective}
 
 PERAN & TUGAS UTAMA (MERCHANT):
 1. Bantuan operasional toko, cek status order, dan panduan fitur 8 tab dashboard BoonTrack (Overview, Katalog Produk, Pesanan, WhatsApp Gateway, Pengiriman, Pembayaran/QRIS, Tim CS, Pengaturan Toko).
@@ -223,13 +277,23 @@ PANDUAN ESKALASI & UPSELL:
 ATURAN MUTLAK (STRICT RULES):
 - DILARANG KERAS menawarkan pendaftaran akun baru atau memberikan link registrasi akun (seperti /register) karena merchant ini SUDAH terdaftar dan aktif memiliki toko "${storeName}".
 - Sapa merchant secara ramah dengan menyebut Kak ${ownerName} dan nama tokonya "${storeName}".
-- ISOLASI DATA (ZERO LEAKAGE): Anda hanya berwenang mendiskusikan toko "${storeName}". Dilarang membocorkan data toko privat tenant lain.`;
+- ISOLASI DATA (ZERO LEAKAGE): Anda hanya berwenang mendiskusikan toko "${storeName}". Dilarang membocorkan data toko privat tenant lain.
+- Format respon dalam single chat bubble (padat, ringkas, tanpa markdown bintang pada tautan).`;
   }
+
+  const guestStoreAnalysisKnowledge = `PANDUAN KHUSUS ANALISA TOKO / DASHBOARD (USER BELUM TERDAFTAR):
+- Jika nomor pengirim belum ada di database tenant dan meminta analisa toko, bedah toko, audit performa, review toko, atau cek dashboard:
+  Berikan respon cerdas, santai, persuasif, hangat, dan solutif (hindari kesan menolak secara kaku):
+  "Wah saya bisa bantu analisa kak, tapi kalau Kakak sudah jadi seller di BoonTrack Shop pasti saya bantu bedah sampai tuntas! Yuk aktifkan toko Kakak dulu di sini: ${registrationUrl}"
+- Pertahankan gaya bahasa hangat, solutif, dan hindari kesan menolak secara kaku.
+- Tetap patuhi aturan single chat bubble (padat, ringkas, tanpa markdown bintang pada tautan).`;
 
   // GUEST / PROSPECT BRANCH (NON-MERCHANT)
   return `Anda adalah "BoonPilot", Konsultan E-Commerce Resmi, Onboarding & Platform Specialist dari BoonTrack (https://boontrack.com).
 
 ${signaturePersonaDirective}
+
+${guestStoreAnalysisKnowledge}
 
 PERAN & TUGAS UTAMA (NON-MERCHANT):
 1. Mengedukasi calon pengguna tentang keunggulan dan otomasi platform BoonTrack:
@@ -261,7 +325,8 @@ ATURAN MUTLAK KEAMANAN (STRICT SECURITY & ZERO-DATA-LEAKAGE):
 - DILARANG KERAS membocorkan data, transaksi, katalog, omset, atau nama pembeli dari toko privat tenant lain.
 - Jangan pernah mengarang data transaksi milik toko tertentu.
 - Selalu berikan panduan daftar uji coba resmi: ${registrationUrl} (atau ${getRegisterUrl()} / ${getPlatformBaseUrl()}).
-- Selalu berikan tautan demo toko resmi ${demoStoreUrl} saat audiens meminta contoh toko atau alur checkout.`;
+- Selalu berikan tautan demo toko resmi ${demoStoreUrl} saat audiens meminta contoh toko atau alur checkout.
+- Tetap patuhi aturan single chat bubble (padat, ringkas, tanpa markdown bintang pada tautan).`;
 }
 
 /**
@@ -447,15 +512,33 @@ function resolveBoonPilotFallbackReply(
       };
     }
 
-    const defaultMerchantReply =
-      `Halo kak, bantu jawab ya! Halo Kak ${ownerName}! Senang bertemu kembali ✨\n\n` +
-      `Ada yang bisa BoonPilot bantu untuk operasional toko *${storeName}* (Paket: *${tier}*) hari ini? 🚀\n\n` +
-      `BoonPilot siap membantu asistensi:\n` +
-      `• Ringkasan pesanan & transaksi\n` +
-      `• Panduan katalog & link checkout\n` +
-      `• Setup ekspedisi & ongkir otomatis\n` +
-      `• Konfigurasi QRIS & rekening bank\n\n` +
-      `Silakan ketik pertanyaan atau kendala operasional toko Kakak ya!`;
+    // 6. Analisa performa / strategi bisnis merchant
+    if (/(strategi|penjualan|analisa|evaluasi|performa|omset|tingkatkan penjualan|closing|evaluasi bisnis)/i.test(cleanMsg)) {
+      const reply = `Halo kak, bantu jawab ya! Halo Kak ${ownerName}! Untuk analisa dan evaluasi performa bisnis toko *${storeName}*:\n\n` +
+        `1. Pantau metrik konversi dan omset harian di tab *Overview* dashboard Anda.\n` +
+        `2. Evaluasi performa produk terlaris dan pastikan alur checkout serta QRIS dinamis berjalan optimal.\n` +
+        `3. Manfaatkan retargeting pesan WhatsApp otomatis untuk pembeli yang belum menyelesaikan transaksi. 🚀\n\n` +
+        `Ada aspek strategi penjualan atau kendala performa tertentu yang ingin kita diskusikan lebih dalam Kak?`;
+      return {
+        reply,
+        role: 'MERCHANT',
+        activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
+        tenant,
+        quick_actions: merchantQuickActions,
+        isDeterministicMatch: true,
+      };
+    }
+
+    const isComplete = isTenantSetupComplete(tenant);
+    let defaultMerchantReply: string;
+
+    if (isComplete) {
+      defaultMerchantReply =
+        `Halo Kak ${ownerName}, toko ${storeName} sudah siap tempur nih! Hari ini mau kita diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau ada hal lain yang mau Kakak ceritakan? (Paket: ${tier})`;
+    } else {
+      defaultMerchantReply =
+        `Halo Kak ${ownerName}, toko ${storeName} kamu masih belum selesai nih. Yuk kita bantu lengkapin data-datanya biar siap jualan! (Paket: ${tier})`;
+    }
 
     return {
       reply: defaultMerchantReply,
@@ -468,6 +551,17 @@ function resolveBoonPilotFallbackReply(
   }
 
   // BRANCH B: GUEST / PROSPECT (NON-MERCHANT ONBOARDING SPECIALIST)
+  // GUEST ASKS FOR STORE / DASHBOARD ANALYSIS (BELUM TERDAFTAR)
+  if (/(analisa toko|analisis toko|bedah toko|audit toko|review toko|cek toko|analisa dashboard|analisis dashboard|performa toko|evaluasi toko|cek dashboard|analisa bisnis|audit performa|audit dashboard)/i.test(cleanMsg)) {
+    const reply = `Wah saya bisa bantu analisa kak, tapi kalau Kakak sudah jadi seller di BoonTrack Shop pasti saya bantu bedah sampai tuntas! Yuk aktifkan toko Kakak dulu di sini: ${registrationUrl}`;
+    return {
+      reply,
+      role: 'GUEST',
+      activeEngine: 'BOONPILOT_GUEST_ONBOARDING',
+      quick_actions: ['🚀 Aktifkan Toko Sekarang', '💡 Fitur BoonTrack'],
+      isDeterministicMatch: true,
+    };
+  }
   if (/(contoh toko|demo toko|toko demo|lihat demo|cek demo|katalog demo|alur checkout|sample toko)/i.test(cleanMsg)) {
     const reply =
       `Halo kak, bantu jawab ya! Saya *BoonPilot*.\n\n` +
@@ -658,7 +752,9 @@ export async function processBoonPilotPlatformChat(
           parts: [
             {
               text: resolution.role === 'MERCHANT'
-                ? `Halo kak, bantu jawab ya! Saya BoonPilot, Konsultan E-Commerce & Co-Pilot resmi toko ${resolution.tenant?.name || 'Anda'}. Siap membantu operasional, analisa toko, dan optimasi bisnis Kakak.`
+                ? (isTenantSetupComplete(resolution.tenant)
+                    ? `Halo Kak ${resolution.tenant?.owner_name || 'Owner'}, toko ${resolution.tenant?.name || 'Toko Anda'} sudah siap tempur nih! Hari ini mau kita diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau ada hal lain yang mau Kakak ceritakan?`
+                    : `Halo Kak ${resolution.tenant?.owner_name || 'Owner'}, toko ${resolution.tenant?.name || 'Toko Anda'} kamu masih belum selesai nih. Yuk kita bantu lengkapin data-datanya biar siap jualan!`)
                 : `Halo kak, bantu jawab ya! Saya BoonPilot, Konsultan E-Commerce & Onboarding Specialist resmi dari BoonTrack. Siap memandu dan mengedukasi fitur-fitur otomasi kami!`,
             },
           ],
@@ -699,10 +795,15 @@ export async function processBoonPilotPlatformChat(
         let candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (candidateText && candidateText.trim().length > 0) {
           let reply = candidateText.trim();
-          // Pastikan pembuka khas "Halo kak, bantu jawab ya!" konsisten hadir
-          if (!/^halo kak[,\s!]/i.test(reply)) {
+          // Pastikan pembuka khas konsisten hadir jika bukan balasan pembuka khusus / analisa persuasif
+          if (
+            !/^halo kak[,\s!]/i.test(reply) &&
+            !/^wah saya bisa bantu analisa/i.test(reply)
+          ) {
             reply = `Halo kak, bantu jawab ya!\n\n${reply}`;
           }
+          // Bersihkan jika ada tanda bintang markdown pada tautan URL
+          reply = reply.replace(/\*(\s*https?:\/\/[^\s*]+)\*/g, '$1');
           console.log(`[BOONPILOT_PLATFORM_LLM] Gemini generated response successfully (${reply.length} chars).`);
           return {
             reply,
