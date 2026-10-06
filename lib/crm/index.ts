@@ -6,3 +6,5 @@
 export * from './types';
 export * from './phone-utils';
 export * from './contact.service';
+export * from './followup-engine';
+

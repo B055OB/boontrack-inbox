@@ -72,3 +72,35 @@ export interface UpsertContactInput {
   lifecycle_stage?: LifecycleStage;
   metadata?: Record<string, any>;
 }
+
+export type FollowUpTriggerType =
+  | 'BIRTHDAY'
+  | 'H3_DUE'
+  | 'H3_PAST'
+  | 'H7_DUE'
+  | 'H7_PAST'
+  | 'UPCOMING_H3'
+  | 'RETENTION'
+  | 'NONE';
+
+export interface FollowUpInfo {
+  type: FollowUpTriggerType;
+  label: string;
+  badgeCls: string;
+  isDueToday: boolean;
+  templateText: string;
+  targetDate?: string | null;
+}
+
+export interface CreateContactInput {
+  tenantId: string;
+  name: string;
+  phone: string;
+  email?: string;
+  lifecycleStage?: LifecycleStage;
+  birthDate?: string | null;
+  tags?: string[];
+  initialNotes?: string;
+  metadata?: Record<string, any>;
+}
+

@@ -28,6 +28,7 @@ import {
   Sparkles,
   RefreshCw,
   UserCheck,
+  UserPlus,
   Building2,
   CreditCard,
   MapPin,
@@ -52,6 +53,9 @@ import QuickRepliesModal from '@/components/inbox/QuickRepliesModal';
 import { QuickReplyItem } from '@/lib/inbox/quick-replies';
 import { Brain } from 'lucide-react';
 import { hasTierAccess } from '@/lib/subscription-tiers';
+import { ContactService } from '@/lib/crm/contact.service';
+import { toE164 } from '@/lib/crm/phone-utils';
+
 
 export interface ConversationMessage {
   id: number | string;
@@ -300,7 +304,11 @@ export default function TeamChatTab({
 
   const [qrisItemName, setQrisItemName] = useState('Jasa Video Promosi');
   const [qrisAmount, setQrisAmount] = useState('150000');
+  const [isWalkInCustomer, setIsWalkInCustomer] = useState(false);
+  const [walkInName, setWalkInName] = useState('');
+  const [walkInPhone, setWalkInPhone] = useState('');
   const [isGeneratingQris, setIsGeneratingQris] = useState(false);
+
   const [isSendingBankInfo, setIsSendingBankInfo] = useState(false);
   const [markingPaidOrderId, setMarkingPaidOrderId] = useState<string | null>(null);
   const [qrisFeedback, setQrisFeedback] = useState<string | null>(null);
@@ -1046,7 +1054,20 @@ export default function TeamChatTab({
 
   // Quick POS: Generate QRIS Tagihan Dinamis & Trigger Meta CAPI InitiateCheckout
   const handleGenerateQris = async () => {
-    if (!currentConversation) return;
+    if (!currentConversation && !isWalkInCustomer) return;
+
+    if (isWalkInCustomer) {
+      if (!walkInName.trim()) {
+        setQrisFeedback('⚠️ Nama pelanggan walk-in wajib diisi.');
+        return;
+      }
+      const canonical = toE164(walkInPhone);
+      if (!canonical || canonical.length < 9) {
+        setQrisFeedback('⚠️ Nomor WhatsApp pelanggan walk-in tidak valid.');
+        return;
+      }
+    }
+
     const sanitizedRaw = qrisAmount.replace(/[^0-9]/g, '');
     let num = parseInt(sanitizedRaw, 10);
     if (isNaN(num) || num < 1000) {
@@ -1077,6 +1098,13 @@ export default function TeamChatTab({
           });
       const nowIso = now.toISOString();
 
+      const targetCustomerPhone = isWalkInCustomer
+        ? toE164(walkInPhone)
+        : (currentConversation?.customerPhone || '');
+      const targetCustomerName = isWalkInCustomer
+        ? walkInName.trim()
+        : (currentConversation?.customerName || 'Pelanggan');
+
       // 1. Ekstraksi string static QRIS tenant & konversi ke Dynamic QRIS terkunci angka pas
       const rawStaticQris =
         tenantPaymentData?.metadata?.payment_config?.raw_qris_string ||
@@ -1095,7 +1123,33 @@ export default function TeamChatTab({
       const rawPayUrl = getStorefrontPayUrl(resolvedTenant, paymentToken);
       const payUrl = rawPayUrl.startsWith('http') ? rawPayUrl : `https://shop.boontrack.com${rawPayUrl}`;
 
-      // 2. Simpan order ke Supabase orders table (dengan internal UUID dan order_number untuk display)
+      // 2. Jika Walk-in: Buat atau update kontak baru di CRM
+      let linkedContactId: string | null = null;
+      if (isWalkInCustomer) {
+        try {
+          const tenantUuid = await ContactService.resolveTenantId(tenantId || resolvedTenant);
+          if (tenantUuid) {
+            const contact = await ContactService.createOrUpdateFullContact({
+              tenantId: tenantUuid,
+              name: targetCustomerName,
+              phone: targetCustomerPhone,
+              lifecycleStage: 'CUSTOMER',
+              tags: ['Walk-in'],
+              initialNotes: `Transaksi Quick POS Walk-in: ${itemName} (Rp ${num.toLocaleString('id-ID')})`,
+              metadata: {
+                source: 'walk_in',
+                last_visit_at: nowIso,
+                created_via: 'QUICK_POS_WALKIN',
+              },
+            });
+            linkedContactId = contact.id;
+          }
+        } catch (cErr) {
+          console.warn('[Quick POS] Create walk-in contact note:', cErr);
+        }
+      }
+
+      // 3. Simpan order ke Supabase orders table (dengan internal UUID dan order_number untuk display)
       const supabase = getSupabase();
       if (supabase) {
         // Resolve valid product_id from tenant catalog or fallback
@@ -1115,8 +1169,8 @@ export default function TeamChatTab({
           correlation_id: paymentToken,
           tenant_slug: resolvedTenant,
           tenant_id: tenantId || resolvedTenant,
-          customer_phone: currentConversation.customerPhone,
-          customer_name: currentConversation.customerName || 'Pelanggan',
+          customer_phone: targetCustomerPhone,
+          customer_name: targetCustomerName,
           product_id: resolvedProductId,
           product_title: itemName,
           gross_amount: num,
@@ -1128,13 +1182,15 @@ export default function TeamChatTab({
           metadata: {
             order_number: displayOrderNumber,
             internal_id: internalOrderId,
-            conversation_id: currentConversation.id,
+            conversation_id: currentConversation?.id || null,
+            contact_id: linkedContactId,
             public_payment_token: paymentToken,
             payment_token: paymentToken,
             payment_method: 'qris',
             pay_url: payUrl,
             qr_string: dynamicQrString,
-            source: 'QUICK_POS_CHAT',
+            source: isWalkInCustomer ? 'QUICK_POS_WALKIN' : 'QUICK_POS_CHAT',
+            is_walk_in: isWalkInCustomer,
           },
         };
 
@@ -1145,7 +1201,38 @@ export default function TeamChatTab({
           throw new Error(`Gagal menyimpan data pesanan (${insertOrderErr.message || 'Database error'})`);
         }
 
-        // 3. Simpan pesan chat di tabel messages
+        // 4. Buat / tautkan conversation jika belum ada
+        let targetConversationId: string | null = currentConversation?.id || null;
+        if (!targetConversationId && isWalkInCustomer) {
+          const { data: existingConv } = await supabase
+            .from('conversations')
+            .select('id')
+            .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
+            .eq('customer_phone', targetCustomerPhone)
+            .maybeSingle();
+
+          if (existingConv?.id) {
+            targetConversationId = existingConv.id;
+          } else {
+            const { data: newConv } = await supabase
+              .from('conversations')
+              .insert({
+                tenant_id: tenantId || resolvedTenant,
+                tenant_slug: resolvedTenant,
+                customer_phone: targetCustomerPhone,
+                customer_name: targetCustomerName,
+                phone_number: targetCustomerPhone,
+                contact_name: targetCustomerName,
+                status: 'open',
+                unread_count: 0,
+              })
+              .select('id')
+              .maybeSingle();
+            targetConversationId = newConv?.id || null;
+          }
+        }
+
+        // 5. Simpan pesan chat di tabel messages
         const invoiceLink = getStorefrontInvoiceUrl(resolvedTenant, displayOrderNumber);
         const qrisChatText = `🧾 *TAGIHAN QRIS DINAMIS KESEPAKATAN*\n\n` +
           `Halo Kak! Berikut rincian tagihan kesepakatan:\n` +
@@ -1158,39 +1245,41 @@ export default function TeamChatTab({
           `📄 *Invoice Digital:* ${invoiceLink}\n\n` +
           `Silakan scan barcode QRIS atau selesaikan pembayaran lewat tautan resmi di atas, lalu kirimkan konfirmasi di sini. Terima kasih! 🙏`;
 
-        await supabase.from('messages').insert({
-          conversation_id: currentConversation.id,
-          tenant_id: tenantId || resolvedTenant,
-          tenant_slug: resolvedTenant,
-          sender_type: 'agent',
-          sender: 'agent',
-          message_body: qrisChatText,
-          text: qrisChatText,
-          channel: 'whatsapp',
-          user_name: activeCsUser?.name ? `${activeCsUser.name} (CS)` : 'Anda (Quick POS)',
-          user_phone: currentConversation.customerPhone,
-          payload: {
-            is_qris: true,
-            qris_data: {
-              orderId: internalOrderId,
-              orderNumber: displayOrderNumber,
-              paymentToken,
-              payUrl,
-              amount: num,
-              description: itemName,
-              qrValue: dynamicQrString,
-              status: 'WAITING_PAYMENT',
+        if (targetConversationId) {
+          await supabase.from('messages').insert({
+            conversation_id: targetConversationId,
+            tenant_id: tenantId || resolvedTenant,
+            tenant_slug: resolvedTenant,
+            sender_type: 'agent',
+            sender: 'agent',
+            message_body: qrisChatText,
+            text: qrisChatText,
+            channel: 'whatsapp',
+            user_name: activeCsUser?.name ? `${activeCsUser.name} (CS)` : 'Anda (Quick POS)',
+            user_phone: targetCustomerPhone,
+            payload: {
+              is_qris: true,
+              qris_data: {
+                orderId: internalOrderId,
+                orderNumber: displayOrderNumber,
+                paymentToken,
+                payUrl,
+                amount: num,
+                description: itemName,
+                qrValue: dynamicQrString,
+                status: 'WAITING_PAYMENT',
+              },
             },
-          },
-          created_at: nowIso,
-        });
+            created_at: nowIso,
+          });
 
-        await supabase.from('conversations').update({
-          last_message: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${displayOrderNumber})`,
-          last_message_at: nowIso,
-        }).eq('id', currentConversation.id);
+          await supabase.from('conversations').update({
+            last_message: `Tagihan QRIS Rp ${num.toLocaleString('id-ID')} (${displayOrderNumber})`,
+            last_message_at: nowIso,
+          }).eq('id', targetConversationId);
+        }
 
-        // 4. Outbound dispatch ke WhatsApp pembeli via Evolution API
+        // 6. Outbound dispatch ke WhatsApp pembeli via Evolution API
         try {
           const { data: conn } = await supabase
             .from('whatsapp_connections')
@@ -1201,14 +1290,14 @@ export default function TeamChatTab({
 
           if (conn?.instance_name) {
             const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
-            await sendEvolutionTextMessage(conn.instance_name, currentConversation.customerPhone, qrisChatText, conn.credential_ref);
+            await sendEvolutionTextMessage(conn.instance_name, targetCustomerPhone, qrisChatText, conn.credential_ref);
           }
         } catch (waErr) {
           console.warn('[Quick POS] Outbound WA QRIS note:', waErr);
         }
       }
 
-      // 5. Trigger Meta CAPI event 'InitiateCheckout' dengan nominal kesepakatan
+      // 7. Trigger Meta CAPI event 'InitiateCheckout' dengan nominal kesepakatan
       try {
         fetch('/api/v1/tracking/capi', {
           method: 'POST',
@@ -1218,8 +1307,8 @@ export default function TeamChatTab({
             eventName: 'InitiateCheckout',
             orderId: displayOrderNumber,
             amount: num,
-            customerPhone: currentConversation.customerPhone,
-            customerName: currentConversation.customerName,
+            customerPhone: targetCustomerPhone,
+            customerName: targetCustomerName,
             contentName: itemName,
           }),
         }).catch((capiErr) => console.warn('[Quick POS] CAPI InitiateCheckout note:', capiErr));
@@ -1228,13 +1317,18 @@ export default function TeamChatTab({
       }
 
       await inbox.refreshConversations();
-      setQrisFeedback(`✅ Tagihan QRIS Dinamis (${displayOrderNumber}) & CAPI InitiateCheckout terkirim!`);
+      setQrisFeedback(`✅ Tagihan QRIS Dinamis (${displayOrderNumber}) untuk ${targetCustomerName} berhasil diterbitkan!`);
+      if (isWalkInCustomer) {
+        setWalkInName('');
+        setWalkInPhone('');
+      }
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
       setQrisFeedback(`❌ Gagal: ${err.message || 'Error membuat tagihan'}`);
     } finally {
       setIsGeneratingQris(false);
     }
+
   };
 
   // Quick POS: Kirim Info Rekening Bank Saja ke Chat
@@ -1312,7 +1406,20 @@ export default function TeamChatTab({
 
   // Quick POS: Kirim Tagihan Rekening Bank Manual ke Chat & Trigger CAPI InitiateCheckout
   const handleSendBankTransferInfo = async () => {
-    if (!currentConversation || bankAccounts.length === 0) return;
+    if ((!currentConversation && !isWalkInCustomer) || bankAccounts.length === 0) return;
+
+    if (isWalkInCustomer) {
+      if (!walkInName.trim()) {
+        setQrisFeedback('⚠️ Nama pelanggan walk-in wajib diisi.');
+        return;
+      }
+      const canonical = toE164(walkInPhone);
+      if (!canonical || canonical.length < 9) {
+        setQrisFeedback('⚠️ Nomor WhatsApp pelanggan walk-in tidak valid.');
+        return;
+      }
+    }
+
     const sanitizedRaw = qrisAmount.replace(/[^0-9]/g, '');
     let baseAmt = parseInt(sanitizedRaw, 10);
     if (isNaN(baseAmt) || baseAmt < 1000) {
@@ -1343,6 +1450,13 @@ export default function TeamChatTab({
         });
     const nowIso = now.toISOString();
 
+    const targetCustomerPhone = isWalkInCustomer
+      ? toE164(walkInPhone)
+      : (currentConversation?.customerPhone || '');
+    const targetCustomerName = isWalkInCustomer
+      ? walkInName.trim()
+      : (currentConversation?.customerName || 'Pelanggan');
+
     setIsSendingBankInfo(true);
     setQrisFeedback(null);
 
@@ -1366,7 +1480,33 @@ export default function TeamChatTab({
         `📄 *Invoice Digital:* ${invoiceLink}\n\n` +
         `⚠️ *Penting:* Harap transfer tepat hingga digit terakhir agar verifikasi otomatis berjalan lancar. Anda juga dapat mengunggah bukti transfer langsung lewat tautan invoice resmi di atas. Terima kasih! 🙏`;
 
-      // Simpan pesanan di tabel orders Supabase (dengan internal UUID dan order_number untuk display)
+      // Jika Walk-in: Buat atau update kontak baru di CRM
+      let linkedContactId: string | null = null;
+      if (isWalkInCustomer) {
+        try {
+          const tenantUuid = await ContactService.resolveTenantId(tenantId || resolvedTenant);
+          if (tenantUuid) {
+            const contact = await ContactService.createOrUpdateFullContact({
+              tenantId: tenantUuid,
+              name: targetCustomerName,
+              phone: targetCustomerPhone,
+              lifecycleStage: 'CUSTOMER',
+              tags: ['Walk-in'],
+              initialNotes: `Transaksi Quick POS Bank Walk-in: ${itemName} (Rp ${totalWithCode.toLocaleString('id-ID')})`,
+              metadata: {
+                source: 'walk_in',
+                last_visit_at: nowIso,
+                created_via: 'QUICK_POS_WALKIN',
+              },
+            });
+            linkedContactId = contact.id;
+          }
+        } catch (cErr) {
+          console.warn('[Quick POS] Create walk-in contact bank note:', cErr);
+        }
+      }
+
+      // Simpan pesanan di tabel orders Supabase
       const supabase = getSupabase();
       if (supabase) {
         // Resolve valid product_id from tenant catalog or fallback
@@ -1386,8 +1526,8 @@ export default function TeamChatTab({
           correlation_id: paymentToken,
           tenant_slug: resolvedTenant,
           tenant_id: tenantId || resolvedTenant,
-          customer_phone: currentConversation.customerPhone,
-          customer_name: currentConversation.customerName || 'Pelanggan',
+          customer_phone: targetCustomerPhone,
+          customer_name: targetCustomerName,
           product_id: resolvedProductId,
           product_title: itemName,
           gross_amount: totalWithCode,
@@ -1399,7 +1539,8 @@ export default function TeamChatTab({
           metadata: {
             order_number: displayOrderNumber,
             internal_id: internalOrderId,
-            conversation_id: currentConversation.id,
+            conversation_id: currentConversation?.id || null,
+            contact_id: linkedContactId,
             public_payment_token: paymentToken,
             payment_token: paymentToken,
             pay_url: payUrl,
@@ -1407,7 +1548,8 @@ export default function TeamChatTab({
             base_amount: baseAmt,
             bank_account: selectedBank,
             payment_method: 'MANUAL_BANK',
-            source: 'QUICK_POS_CHAT',
+            source: isWalkInCustomer ? 'QUICK_POS_WALKIN' : 'QUICK_POS_CHAT',
+            is_walk_in: isWalkInCustomer,
           },
         };
 
@@ -1418,42 +1560,75 @@ export default function TeamChatTab({
           throw new Error(`Gagal menyimpan data pesanan (${insertOrderErr.message || 'Database error'})`);
         }
 
-        // Insert pesan chat dengan data bank terstruktur
-        await supabase.from('messages').insert({
-          conversation_id: currentConversation.id,
-          tenant_id: tenantId || resolvedTenant,
-          tenant_slug: resolvedTenant,
-          sender_type: 'agent',
-          sender: 'agent',
-          message_body: bankText,
-          text: bankText,
-          channel: 'whatsapp',
-          user_name: activeCsUser?.name ? `${activeCsUser.name} (CS)` : 'Anda (Quick POS)',
-          user_phone: currentConversation.customerPhone,
-          payload: {
-            is_bank_transfer: true,
-            bank_data: {
-              orderId: internalOrderId,
-              orderNumber: displayOrderNumber,
-              paymentToken,
-              payUrl,
-              amount: totalWithCode,
-              baseAmount: baseAmt,
-              uniqueCode,
-              bankName: selectedBank.bank_name,
-              accountNumber: selectedBank.account_number,
-              accountHolder: selectedBank.account_holder,
-              description: itemName,
-              status: 'WAITING_PAYMENT',
-            },
-          },
-          created_at: nowIso,
-        });
+        // Buat / tautkan conversation jika belum ada
+        let targetConversationId: string | null = currentConversation?.id || null;
+        if (!targetConversationId && isWalkInCustomer) {
+          const { data: existingConv } = await supabase
+            .from('conversations')
+            .select('id')
+            .or(`tenant_id.eq.${tenantId || resolvedTenant},tenant_slug.eq.${resolvedTenant}`)
+            .eq('customer_phone', targetCustomerPhone)
+            .maybeSingle();
 
-        await supabase.from('conversations').update({
-          last_message: `Tagihan Transfer Rp ${totalWithCode.toLocaleString('id-ID')} (${displayOrderNumber})`,
-          last_message_at: nowIso,
-        }).eq('id', currentConversation.id);
+          if (existingConv?.id) {
+            targetConversationId = existingConv.id;
+          } else {
+            const { data: newConv } = await supabase
+              .from('conversations')
+              .insert({
+                tenant_id: tenantId || resolvedTenant,
+                tenant_slug: resolvedTenant,
+                customer_phone: targetCustomerPhone,
+                customer_name: targetCustomerName,
+                phone_number: targetCustomerPhone,
+                contact_name: targetCustomerName,
+                status: 'open',
+                unread_count: 0,
+              })
+              .select('id')
+              .maybeSingle();
+            targetConversationId = newConv?.id || null;
+          }
+        }
+
+        // Insert pesan chat dengan data bank terstruktur
+        if (targetConversationId) {
+          await supabase.from('messages').insert({
+            conversation_id: targetConversationId,
+            tenant_id: tenantId || resolvedTenant,
+            tenant_slug: resolvedTenant,
+            sender_type: 'agent',
+            sender: 'agent',
+            message_body: bankText,
+            text: bankText,
+            channel: 'whatsapp',
+            user_name: activeCsUser?.name ? `${activeCsUser.name} (CS)` : 'Anda (Quick POS)',
+            user_phone: targetCustomerPhone,
+            payload: {
+              is_bank_transfer: true,
+              bank_data: {
+                orderId: internalOrderId,
+                orderNumber: displayOrderNumber,
+                paymentToken,
+                payUrl,
+                amount: totalWithCode,
+                baseAmount: baseAmt,
+                uniqueCode,
+                bankName: selectedBank.bank_name,
+                accountNumber: selectedBank.account_number,
+                accountHolder: selectedBank.account_holder,
+                description: itemName,
+                status: 'WAITING_PAYMENT',
+              },
+            },
+            created_at: nowIso,
+          });
+
+          await supabase.from('conversations').update({
+            last_message: `Tagihan Transfer Rp ${totalWithCode.toLocaleString('id-ID')} (${displayOrderNumber})`,
+            last_message_at: nowIso,
+          }).eq('id', targetConversationId);
+        }
 
         // Outbound dispatch ke WhatsApp pembeli via Evolution API
         try {
@@ -1466,7 +1641,7 @@ export default function TeamChatTab({
 
           if (conn?.instance_name) {
             const { sendEvolutionTextMessage } = await import('@/lib/whatsapp/evolution-webhook-handler');
-            await sendEvolutionTextMessage(conn.instance_name, currentConversation.customerPhone, bankText, conn.credential_ref);
+            await sendEvolutionTextMessage(conn.instance_name, targetCustomerPhone, bankText, conn.credential_ref);
           }
         } catch (waErr) {
           console.warn('[Quick POS] Outbound WA Bank note:', waErr);
@@ -1483,8 +1658,8 @@ export default function TeamChatTab({
             eventName: 'InitiateCheckout',
             orderId: displayOrderNumber,
             amount: totalWithCode,
-            customerPhone: currentConversation.customerPhone,
-            customerName: currentConversation.customerName,
+            customerPhone: targetCustomerPhone,
+            customerName: targetCustomerName,
             contentName: itemName,
           }),
         }).catch((capiErr) => console.warn('[Quick POS] CAPI InitiateCheckout bank note:', capiErr));
@@ -1493,7 +1668,11 @@ export default function TeamChatTab({
       }
 
       await inbox.refreshConversations();
-      setQrisFeedback(`✅ Rekening Bank & Tagihan (${displayOrderNumber}) terkirim ke chat & WA!`);
+      setQrisFeedback(`✅ Tagihan Transfer (${displayOrderNumber}) untuk ${targetCustomerName} berhasil diterbitkan!`);
+      if (isWalkInCustomer) {
+        setWalkInName('');
+        setWalkInPhone('');
+      }
       setTimeout(() => setQrisFeedback(null), 4000);
     } catch (err: any) {
       setQrisFeedback(`❌ Gagal: ${err.message || 'Error mengirim info rekening'}`);
@@ -1501,6 +1680,7 @@ export default function TeamChatTab({
       setIsSendingBankInfo(false);
     }
   };
+
 
   // Manual Transaction: Tandai Lunas via Single Source of Truth (/quick-paid route)
   const handleMarkPaid = async (
@@ -2945,12 +3125,12 @@ export default function TeamChatTab({
             </div>
           </div>
 
-          {!currentConversation ? (
-            <div className="p-6 text-center text-slate-400 text-xs">
-              Pilih kontak pelanggan untuk melihat data profil CRM dan membuat tagihan QRIS.
-            </div>
-          ) : rightPanelTab === 'crm' ? (
-            isCrmEnabled ? (
+          {rightPanelTab === 'crm' ? (
+            !currentConversation ? (
+              <div className="p-6 text-center text-slate-400 text-xs">
+                Pilih kontak pelanggan di panel kiri untuk melihat data profil CRM.
+              </div>
+            ) : isCrmEnabled ? (
               <div className="space-y-3">
                 <ContactSidebar
                   tenantId={tenantId || resolvedTenant}
@@ -3003,84 +3183,96 @@ export default function TeamChatTab({
             )
           ) : (
             <>
-              {/* 1. KARTU PROFIL CRM PELANGGAN */}
-              <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-                <div className="flex items-start gap-2.5">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white font-black text-sm flex items-center justify-center shrink-0 uppercase shadow-xs">
-                    {currentConversation.avatarInitials || currentConversation.customerName?.slice(0, 2) || 'WA'}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <p className="text-xs font-black text-slate-900 truncate">
-                        {currentConversation.customerName || 'Pelanggan'}
-                      </p>
-                      {onOpenCustomers && (
-                        <button
-                          type="button"
-                          id="open-customer-crm-profile"
-                          onClick={onOpenCustomers}
-                          title="Lihat Profil di CRM Pelanggan"
-                          className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 text-[9px] font-bold transition cursor-pointer border border-violet-100"
-                        >
-                          <Users className="w-2.5 h-2.5" />
-                          <span>Profil CRM</span>
-                          <ArrowUpRight className="w-2 h-2" />
-                        </button>
-                      )}
+              {/* 1. KARTU PROFIL CRM PELANGGAN (Atau Walk-in Notice) */}
+              {currentConversation ? (
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white font-black text-sm flex items-center justify-center shrink-0 uppercase shadow-xs">
+                      {currentConversation.avatarInitials || currentConversation.customerName?.slice(0, 2) || 'WA'}
                     </div>
-                    <p className="text-[11px] text-slate-500 font-mono">
-                      {currentConversation.customerPhone}
-                    </p>
-                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                      <span className="px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold flex items-center gap-1">
-                        <Tag className="w-2.5 h-2.5" />
-                        <span>{currentConversation.tag || 'Prospek'}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-xs font-black text-slate-900 truncate">
+                          {currentConversation.customerName || 'Pelanggan'}
+                        </p>
+                        {onOpenCustomers && (
+                          <button
+                            type="button"
+                            id="open-customer-crm-profile"
+                            onClick={onOpenCustomers}
+                            title="Lihat Profil di CRM Pelanggan"
+                            className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 text-[9px] font-bold transition cursor-pointer border border-violet-100"
+                          >
+                            <Users className="w-2.5 h-2.5" />
+                            <span>Profil CRM</span>
+                            <ArrowUpRight className="w-2 h-2" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        {currentConversation.customerPhone}
+                      </p>
+                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        <span className="px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold flex items-center gap-1">
+                          <Tag className="w-2.5 h-2.5" />
+                          <span>{currentConversation.tag || 'Prospek'}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* WhatsApp Action Link */}
+                  <a
+                    href={`https://wa.me/${currentConversation.customerPhone.replace(/[^0-9]/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Phone className="w-3 h-3 text-emerald-600" />
+                    <span>Buka di WhatsApp Web</span>
+                    <ExternalLink className="w-2.5 h-2.5 ml-auto text-emerald-600" />
+                  </a>
+
+                  {/* Metrik CRM Ringkas (Database-Driven, Zero Mock) */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                    <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[9px] font-bold text-slate-400 block uppercase">Total Order</span>
+                      <span className="text-xs font-black text-slate-800">
+                        {crmMetrics.isLoading ? '...' : `${crmMetrics.totalOrders} Pesanan`}
+                      </span>
+                    </div>
+                    <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                      <span className="text-[9px] font-bold text-slate-400 block uppercase">Nilai Belanja</span>
+                      <span className="text-xs font-black text-indigo-700">
+                        {crmMetrics.isLoading ? '...' : `Rp ${crmMetrics.lifetimeValue.toLocaleString('id-ID')}`}
                       </span>
                     </div>
                   </div>
+
+                  {currentConversation.crm?.city && (
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      📍 Area: <span className="text-slate-700 font-semibold">{currentConversation.crm.city}</span>
+                    </p>
+                  )}
+
+                  {currentConversation.crm?.notes && (
+                    <div className="p-2 bg-slate-50 rounded-xl text-[10px] text-slate-600 border border-slate-100">
+                      <span className="font-bold text-slate-700 block mb-0.5">Catatan CS:</span>
+                      {currentConversation.crm.notes}
+                    </div>
+                  )}
                 </div>
-
-                {/* WhatsApp Action Link */}
-                <a
-                  href={`https://wa.me/${currentConversation.customerPhone.replace(/[^0-9]/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition"
-                >
-                  <Phone className="w-3 h-3 text-emerald-600" />
-                  <span>Buka di WhatsApp Web</span>
-                  <ExternalLink className="w-2.5 h-2.5 ml-auto text-emerald-600" />
-                </a>
-
-                {/* Metrik CRM Ringkas (Database-Driven, Zero Mock) */}
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
-                  <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Total Order</span>
-                    <span className="text-xs font-black text-slate-800">
-                      {crmMetrics.isLoading ? '...' : `${crmMetrics.totalOrders} Pesanan`}
-                    </span>
+              ) : (
+                <div className="bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-200/80 shadow-2xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-indigo-950">
+                    <UserPlus className="w-4 h-4 text-indigo-600" />
+                    <span>Mode Kasir Quick POS (Walk-in)</span>
                   </div>
-                  <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Nilai Belanja</span>
-                    <span className="text-xs font-black text-indigo-700">
-                      {crmMetrics.isLoading ? '...' : `Rp ${crmMetrics.lifetimeValue.toLocaleString('id-ID')}`}
-                    </span>
-                  </div>
-                </div>
-
-                {currentConversation.crm?.city && (
-                  <p className="text-[10px] text-slate-500 font-medium">
-                    📍 Area: <span className="text-slate-700 font-semibold">{currentConversation.crm.city}</span>
+                  <p className="text-[10px] text-slate-600 leading-relaxed">
+                    Tidak ada chat aktif yang dipilih. Aktifkan toggle <strong>Pelanggan Baru (Walk-in)</strong> di bawah untuk memasukkan nama dan nomor WhatsApp pelanggan langsung di meja kasir.
                   </p>
-                )}
-
-                {currentConversation.crm?.notes && (
-                  <div className="p-2 bg-slate-50 rounded-xl text-[10px] text-slate-600 border border-slate-100">
-                    <span className="font-bold text-slate-700 block mb-0.5">Catatan CS:</span>
-                    {currentConversation.crm.notes}
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* 2. QUICK POS: TAGIHAN PEMBAYARAN DINAMIS */}
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
@@ -3147,6 +3339,60 @@ export default function TeamChatTab({
                         ? 'Kirim invoice QRIS dinamis langsung ke chat pelanggan agar bisa langsung di-scan.'
                         : 'Kirim rincian rekening bank atau tagihan transfer resmi langsung ke chat pelanggan.'}
                     </p>
+
+                    {/* Toggle: Pelanggan Baru (Walk-in) */}
+                    <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+                          <span className="text-[11px] font-bold text-slate-900">
+                            Pelanggan Baru (Walk-in)
+                          </span>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            id="toggle-walkin-mode"
+                            checked={isWalkInCustomer}
+                            onChange={(e) => setIsWalkInCustomer(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                      </div>
+
+                      {isWalkInCustomer && (
+                        <div className="space-y-2 pt-2 border-t border-slate-200/60 animate-in fade-in duration-150">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                              Nama Pelanggan / Pasien Walk-in <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={walkInName}
+                              onChange={(e) => setWalkInName(e.target.value)}
+                              placeholder="Contoh: Bunda Riana / Pasien Walk-in"
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-indigo-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-700 block mb-1">
+                              Nomor WhatsApp Pelanggan <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={walkInPhone}
+                              onChange={(e) => setWalkInPhone(e.target.value)}
+                              placeholder="Contoh: 08123456789"
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono focus:outline-none focus:border-indigo-600"
+                            />
+                            <p className="text-[9px] text-slate-400 mt-0.5">
+                              Otomatis tersimpan ke CRM dan tagihan terikat ke ID kontak ini.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Kondisi 2: KEDUANYA AKTIF -> Tab Switcher */}
                     {hasQris && hasNorek && (
@@ -3287,7 +3533,7 @@ export default function TeamChatTab({
                         <button
                           type="button"
                           onClick={handleGenerateQris}
-                          disabled={isGeneratingQris || !qrisAmount}
+                          disabled={isGeneratingQris || !qrisAmount || (!currentConversation && !isWalkInCustomer)}
                           className="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
                         >
                           {isGeneratingQris ? (
@@ -3298,7 +3544,7 @@ export default function TeamChatTab({
                           ) : (
                             <>
                               <QrCode className="w-3.5 h-3.5" />
-                              <span>Kirim Tagihan QRIS ke Chat</span>
+                              <span>Kirim Tagihan QRIS {isWalkInCustomer ? '(Walk-in)' : 'ke Chat'}</span>
                             </>
                           )}
                         </button>
@@ -3307,7 +3553,7 @@ export default function TeamChatTab({
                           <button
                             type="button"
                             onClick={handleSendBankTransferInfo}
-                            disabled={isSendingBankInfo || !qrisAmount}
+                            disabled={isSendingBankInfo || !qrisAmount || (!currentConversation && !isWalkInCustomer)}
                             className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
                           >
                             {isSendingBankInfo ? (
@@ -3318,22 +3564,25 @@ export default function TeamChatTab({
                             ) : (
                               <>
                                 <Building2 className="w-3.5 h-3.5" />
-                                <span>Generate Tagihan Transfer</span>
+                                <span>Generate Tagihan Transfer {isWalkInCustomer ? '(Walk-in)' : ''}</span>
                               </>
                             )}
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={handleSendBankOnly}
-                            disabled={isSendingBankInfo}
-                            className="w-full py-2 px-3 bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-                          >
-                            <Send className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Kirim Rekening Bank ke Chat</span>
-                          </button>
+                          {currentConversation && (
+                            <button
+                              type="button"
+                              onClick={handleSendBankOnly}
+                              disabled={isSendingBankInfo}
+                              className="w-full py-2 px-3 bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                            >
+                              <Send className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Kirim Rekening Bank ke Chat</span>
+                            </button>
+                          )}
                         </div>
                       )}
+
 
                       {/* Ringkasan & Aksi Cepat Tandai Lunas Tagihan Terakhir (QRIS atau Bank) */}
                       {(() => {
