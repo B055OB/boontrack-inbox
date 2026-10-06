@@ -895,6 +895,77 @@ Penamaan key/path di bucket Cloudflare R2 wajib seragam dan scoped per konteks/t
 
 ---
 
+## Data Ingestion & Storefront Assets
+
+### Asset Staging & Knowledge Base Extraction Engine (Headless Auto-Scroll SOP)
+
+Standar Operasional Prosedur (SOP) ini mengatur tata cara akuisisi aset visual beresolusi tinggi dan ekstraksi knowledge base teks dari landing page mitra/klien (misal: Scalev, OrderOnline, Webflow, Shopify, WordPress/Elementor) sebelum diintegrasikan ke ekosistem BoonTrack.
+
+#### 1. Batasan Static Fetch/Curl (Strict Prohibition)
+- **Larangan Keras**: Dilarang menggunakan utilitas HTTP statis seperti `curl`, `fetch()`, `axios`, atau parser HTML statis (`cheerio`, `beautifulsoup`) tanpa eksekusi JavaScript runtime untuk scraping landing page modern.
+- **Rasional**: Landing page modern mengimplementasikan dynamic hydration, responsive picture sources (`srcset`), container lazy-loading berbasis `IntersectionObserver`, dan perlindungan script dinamis. Permintaan HTTP statis hanya akan mengunduh placeholder transparan (1x1 GIF), blur thumbnail, atau badge proteksi luar tanpa pernah memuat URL berkas media gambar yang sebenarnya.
+
+#### 2. Protokol Headless Auto-Scroll (Dual-Pass Engine)
+- **Engine Standar**: Wajib menggunakan Headless Browser bertenaga Playwright (Chromium atau Microsoft Edge system channel) dengan emulasi desktop viewport minimal `1280x900` dan User-Agent desktop browser modern.
+- **Siklus Auto-Scroll Dua Arah (Dual-Pass)**:
+  1. *Pass 1 (Top-to-Bottom Progressive Step)*: Melakukan scroll otomatis bertahap dari atas ke bawah (`step = 350px` setiap jeda interval `200ms - 250ms`) hingga melampaui `document.body.scrollHeight`. Jeda rendering ini wajib ada agar seluruh container lazy-load sempat memicu event network request dan meresolusi elemen gambar ke DOM.
+  2. *Pass 2 (Reverse & Re-trigger)*: Melakukan scroll balik ke pucuk halaman (`window.scrollTo(0, 0)`), jeda pendinginan `500ms`, lalu scroll cepat kembali ke footer. Siklus balik ini menjamin seluruh *IntersectionObserver* yang tertinggal atau elemen DOM interaktif yang bergantung pada scroll direction ikut terpicu.
+
+#### 3. Clean Asset Filtering & Deduplikasi
+- **Pembersihan Aset Non-Produk**:
+  - Mengabaikan elemen pelacak analitik transparan atau file pixel berukuran `< 2 KB`.
+  - Mengabaikan favicon (`favicon.ico`, `apple-touch-icon`).
+  - Mengabaikan badge proteksi pihak ketiga (misal: Google reCAPTCHA `gstatic.com/recaptcha`, Cloudflare Turnstile).
+  - Mengabaikan ikon gerbang pembayaran atau bank generik (misal: `/banks/`, `/payment-method-icons/`, logo transfer BCA/Mandiri/QRIS platform asal).
+- **Deduplikasi Berbasis SHA-256 Hash**:
+  - Seluruh buffer biner gambar yang diunduh dihitung nilai ringkasan hash `SHA-256`. File dengan hash yang identik diabaikan agar folder penyimpanan fisik bebas dari redundansi.
+- **Standarisasi Penamaan File Terurut**:
+  - File diurutkan berdasarkan koordinat vertikal posisi halaman (`rect.top + window.scrollY`).
+  - Format penamaan wajib menggunakan prefix 2 digit berurut dan slug kategori semantik: `01_hero.webp`, `02_infografis_gizi.webp`, `03_kurikulum.webp`, `04_resep_menu.webp`, `05_testimoni.webp`.
+
+#### 4. Structured Knowledge Schema (`knowledge-summary.json`)
+- Setiap folder staging produk wajib memuat file manifest ekstraksi `knowledge-summary.json` sebagai Single Source of Truth (SSOT) data untuk bot WhatsApp AI, Decision Tree, serta komponen Single Page Checkout.
+- **Skema JSON Wajib**:
+  ```json
+  {
+    "target_url": "https://domain.com/landing-page-slug",
+    "title": "Judul Halaman / Produk",
+    "main_headline": "Headline Utama Penawaran",
+    "sub_headlines": ["Sub-headline 1", "Sub-headline 2"],
+    "pain_points": [
+      "Keluhan dan problem utama target audiens"
+    ],
+    "curriculum_and_syllabus": [
+      "Daftar modul, bab, silabus materi, atau value proposition yang didapat"
+    ],
+    "pricing_and_packages": [
+      "Harga normal, harga diskon/promo, dan opsi paket penawaran"
+    ],
+    "parent_testimonials": [
+      "Kutipan review, feedback konsumen, atau bukti hasil nyata"
+    ],
+    "extracted_at": "ISO-8601 Timestamp",
+    "downloaded_images": [
+      {
+        "fileName": "01_hero.webp",
+        "sizeBytes": 105658,
+        "category": "hero",
+        "sourceUrl": "https://cdn.example.com/asset.webp"
+      }
+    ]
+  }
+  ```
+
+#### 5. Eksekutor Tersimpan (Operational Reference)
+- Implementasi baku yang siap dijalankan dan diaudit tersimpan di:
+  [`scripts/deep-scrape-dr-harys.js`](file:///c:/boontrack-inbox/scripts/deep-scrape-dr-harys.js).
+- Menjalankan kembali pipeline ekstraksi:
+  ```bash
+  node scripts/deep-scrape-dr-harys.js
+  ```
+
+---
+
 ## 11. Merchant Dashboard Navigation & Dynamic Vertical Standard
 
 ### 11.1 Canvas Layout & Live Phone Preview Isolation Rule
