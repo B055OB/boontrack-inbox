@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -25,46 +26,101 @@ export const viewport: Viewport = {
   themeColor: "#0f172a",
 };
 
-export const metadata: Metadata = {
-  metadataBase: new URL('https://shop.boontrack.com'),
-  title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
-  description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
-  manifest: "/manifest.json",
-  openGraph: {
-    title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
-    description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
-    url: "https://shop.boontrack.com",
-    siteName: "BoonTrack Shop",
-    images: [
-      {
-        url: '/logo-master.png',
-        width: 1024,
-        height: 1024,
-        alt: 'BoonTrack Platform',
+export async function generateMetadata(): Promise<Metadata> {
+  const headersList = await headers();
+  const hostHeader =
+    headersList.get('x-forwarded-host') ||
+    headersList.get('host') ||
+    '';
+  const hostClean = hostHeader.split(',')[0].trim().toLowerCase().split(':')[0];
+
+  const isCreatorHost = hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.');
+
+  if (isCreatorHost) {
+    return {
+      metadataBase: new URL('https://creator.boontrack.com'),
+      title: "BoonTrack Creator | Platform Profil Kreator, Rate Card & UGC Studio",
+      description: "Ekosistem digital resmi kreator: etalase rate card interaktif, showcase portofolio UGC, dan penerimaan pesanan konten terverifikasi.",
+      manifest: "/manifest-creator.json",
+      openGraph: {
+        title: "BoonTrack Creator | Platform Profil Kreator, Rate Card & UGC Studio",
+        description: "Ekosistem digital resmi kreator: etalase rate card interaktif, showcase portofolio UGC, dan penerimaan pesanan konten terverifikasi.",
+        url: "https://creator.boontrack.com",
+        siteName: "BoonTrack Creator",
+        images: [
+          {
+            url: '/app-brand/logo-master.png',
+            width: 1024,
+            height: 1024,
+            alt: 'BoonTrack Creator Platform',
+          },
+        ],
+        locale: 'id_ID',
+        type: 'website',
       },
-    ],
-    locale: 'id_ID',
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary',
+      twitter: {
+        card: 'summary',
+        title: "BoonTrack Creator | Platform Profil Kreator, Rate Card & UGC Studio",
+        description: "Ekosistem digital resmi kreator: etalase rate card interaktif, showcase portofolio UGC, dan penerimaan pesanan konten terverifikasi.",
+        images: ['/app-brand/logo-master.png'],
+      },
+      appleWebApp: {
+        capable: true,
+        statusBarStyle: "default",
+        title: "BoonTrack Creator",
+      },
+      icons: {
+        icon: [
+          { url: '/app-brand/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+          { url: '/app-brand/favicon.ico', sizes: 'any' },
+        ],
+        apple: '/app-brand/apple-touch-icon.png',
+      },
+    };
+  }
+
+  // Resolusi Host shop.boontrack.com & Default Commerce Fallback
+  return {
+    metadataBase: new URL('https://shop.boontrack.com'),
     title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
     description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
-    images: ['/logo-master.png'],
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "BoonTrack",
-  },
-  icons: {
-    icon: [
-      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/favicon.ico', sizes: 'any' },
-    ],
-    apple: '/apple-touch-icon.png',
-  },
-};
+    manifest: "/manifest.json",
+    openGraph: {
+      title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
+      description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
+      url: "https://shop.boontrack.com",
+      siteName: "BoonTrack Shop",
+      images: [
+        {
+          url: '/logo-master.png',
+          width: 1024,
+          height: 1024,
+          alt: 'BoonTrack Platform',
+        },
+      ],
+      locale: 'id_ID',
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary',
+      title: "BoonTrack Shop | Platform Otomasi Penjualan & WhatsApp Commerce Cerdas",
+      description: "Solusi SaaS terintegrasi untuk kelola katalog digital, checkout otomatis, notifikasi WhatsApp instan, dan penerimaan pembayaran QRIS resmi PT BOONTRACK INOVASI DIGITAL.",
+      images: ['/logo-master.png'],
+    },
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "default",
+      title: "BoonTrack",
+    },
+    icons: {
+      icon: [
+        { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+        { url: '/favicon.ico', sizes: 'any' },
+      ],
+      apple: '/apple-touch-icon.png',
+    },
+  };
+}
 
 export default function RootLayout({
   children,

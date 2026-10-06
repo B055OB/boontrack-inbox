@@ -29,10 +29,10 @@ export default function Navbar({ referralCode, onOpenDemo }: NavbarProps) {
       {/* Main Header */}
       <header className="sticky top-[37px] z-40 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur-md transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
-          {/* Logo Resmi BoonTrack Horizontal Transparan */}
-          <Link href="/" className="flex items-center group cursor-pointer">
+          {/* Logo Resmi BoonTrack Horizontal Kontras (Teks Boon Gelap Slate-900) */}
+          <Link href="/" className="flex items-center group cursor-pointer" aria-label="BoonTrack Home">
             <Image
-              src="/logo-horizontal.png"
+              src="/logo-horizontal-dark.png"
               alt="BoonTrack"
               width={160}
               height={42}

@@ -12,6 +12,7 @@ const config: Config = {
   moduleNameMapper: {
     // Resolve Next.js path aliases
     '^@/(.*)$': '<rootDir>/$1',
+    '\\.(css|less|sass|scss)$': '<rootDir>/__tests__/__mocks__/styleMock.js',
   },
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {

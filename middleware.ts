@@ -286,8 +286,8 @@ function hasValidTenantSession(req: NextRequest, targetSlug?: string): boolean {
 
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
-  const host = req.headers.get('host') || '';
-  const hostClean = host.split(':')[0].toLowerCase().trim();
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || '';
+  const hostClean = host.split(',')[0].trim().toLowerCase().split(':')[0];
 
   // ── 0. BYPASS API & STATIC LANGSUNG (/_next, /favicon.ico, /images, dll.) ──
   if (
@@ -301,10 +301,36 @@ export async function middleware(req: NextRequest) {
     pathname === '/404-store-not-found' ||
     pathname.includes('.')
   ) {
-    if (pathname === '/favicon.ico' && (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.'))) {
-      const url = req.nextUrl.clone();
-      url.pathname = '/app-brand/favicon.ico';
-      return NextResponse.rewrite(url);
+    if (pathname === '/favicon.ico') {
+      if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/app-brand/favicon.ico';
+        return NextResponse.rewrite(url);
+      }
+      if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/app-brand/favicon.ico';
+        return NextResponse.rewrite(url);
+      }
+    }
+    if (pathname === '/apple-touch-icon.png') {
+      if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/app-brand/apple-touch-icon.png';
+        return NextResponse.rewrite(url);
+      }
+    }
+    if (pathname === '/manifest.json' || pathname === '/site.webmanifest') {
+      if (hostClean === 'creator.boontrack.com' || hostClean.startsWith('creator.')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/manifest-creator.json';
+        return NextResponse.rewrite(url);
+      }
+      if (hostClean === 'app.boontrack.com' || hostClean.startsWith('app.')) {
+        const url = req.nextUrl.clone();
+        url.pathname = '/app-portal/site.webmanifest';
+        return NextResponse.rewrite(url);
+      }
     }
     return NextResponse.next();
   }
