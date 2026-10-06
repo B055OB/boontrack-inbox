@@ -75,7 +75,7 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     // Open Graph & Twitter Card specification (og-square.png 500x500 first, og-shop.png 1200x630 second)
     expect(meta.openGraph?.images).toEqual([
       expect.objectContaining({
-        url: '/og-square.png',
+        url: 'https://shop.boontrack.com/og-square.png?v=3',
         width: 500,
         height: 500,
         alt: 'BoonTrack Shop',
@@ -111,7 +111,7 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     expect(meta.title).toContain('Shop');
     expect(meta.openGraph?.images).toEqual([
       expect.objectContaining({
-        url: '/og-square.png',
+        url: 'https://shop.boontrack.com/og-square.png?v=3',
         width: 500,
         height: 500,
         alt: 'BoonTrack Shop',
@@ -124,6 +124,13 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     ]);
     expect((meta.twitter as any)?.card).toBe('summary_large_image');
     expect((meta.twitter as any)?.images).toEqual(['https://shop.boontrack.com/og-shop.png']);
+  });
+
+  it('ensures root layout head contains image_src fallback tag for instant messengers', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const layoutContent = fs.readFileSync(path.join(process.cwd(), 'app', 'layout.tsx'), 'utf8');
+    expect(layoutContent).toContain('<link rel="image_src" href="https://shop.boontrack.com/og-square.png?v=3" />');
   });
 
   describe('Middleware Asset Rewrites Isolation', () => {
