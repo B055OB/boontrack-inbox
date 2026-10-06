@@ -28,6 +28,7 @@ interface GrantAccessModalProps {
     name?: string;
     slug: string;
     tier?: string;
+    subscription_tier?: string;
     subscription_ends_at?: string;
     metadata?: any;
   } | null;
@@ -50,8 +51,9 @@ export default function GrantAccessModal({
   useEffect(() => {
     if (shop) {
       const currentTier =
-        shop.metadata?.subscription?.plan_tier ||
+        shop.subscription_tier ||
         shop.tier ||
+        shop.metadata?.subscription?.plan_tier ||
         shop.metadata?.tier ||
         'PRO_SCALE';
       const canonical = resolveCanonicalTier(currentTier);

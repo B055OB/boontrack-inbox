@@ -50,6 +50,7 @@ import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
 import QuickRepliesModal from '@/components/inbox/QuickRepliesModal';
 import { QuickReplyItem } from '@/lib/inbox/quick-replies';
 import { Brain } from 'lucide-react';
+import { hasTierAccess } from '@/lib/subscription-tiers';
 
 export interface ConversationMessage {
   id: number | string;
@@ -214,15 +215,10 @@ export default function TeamChatTab({
     return '';
   }, [tenantSlug, routeTenant]);
 
-  // CRM V1 Feature Gate: Khusus tenant 'tumbuh-kembang-anak' (atau feature flag metadata Supabase)
+  // CRM Feature Gate: Berdasarkan tier hierarchy & feature flags (Single Source of Truth)
   const isCrmEnabled = useMemo(() => {
-    const currentTenantSlug = (resolvedTenant || tenantSlug || routeTenant || '').toLowerCase().trim();
-    const hasMetadataFlag = Boolean(
-      initialTenant?.metadata?.features?.crm ||
-      initialTenant?.features?.crm
-    );
-    return currentTenantSlug === 'tumbuh-kembang-anak' || hasMetadataFlag;
-  }, [resolvedTenant, tenantSlug, routeTenant, initialTenant]);
+    return hasTierAccess(initialTenant, 'crm');
+  }, [initialTenant]);
 
   // 100% Global & Tenant-Agnostic Supabase Realtime Inbox Hook (Single Source of Truth)
   const inbox = useTenantInbox(tenantId, resolvedTenant);

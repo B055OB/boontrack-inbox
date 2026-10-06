@@ -87,12 +87,24 @@ export async function POST(
       notes: notes || (isExtended ? `Perpanjangan Akses Khusus (+${months} Bulan)` : `Akses Khusus Murid / Tester (${months} Bulan)`),
     };
 
+    const planType =
+      canonical.key === 'ENTERPRISE'
+        ? 'team_scale'
+        : canonical.key === 'PRO_SCALE'
+        ? 'ads_performance'
+        : canonical.key === 'CHECKOUT_LITE'
+        ? 'checkout_lite'
+        : 'solo';
+
     const updatedMetadata = {
       ...(tenant.metadata || {}),
       subscription: subscriptionPayload,
       subscription_type: 'granted',
       tier: canonical.key,
       plan_tier: canonical.key,
+      plan_type: planType,
+      subscription_tier: canonical.key,
+      subscription_status: 'ACTIVE',
       selected_plan: `${canonical.name} • Special Grant`,
       is_trial: false,
       trial_ends_at: null,
@@ -100,20 +112,27 @@ export async function POST(
         ...(tenant.metadata?.features || {}),
         tier: canonical.key,
         ...canonical.features,
+        crm: canonical.features.crm,
+        has_crm: canonical.features.crm,
       },
       capabilities: {
         ...(tenant.metadata?.capabilities || {}),
         ...canonical.features,
+        crm: canonical.features.crm,
       },
     };
 
-    // 4. Update tabel tenants
+    // 4. Update tabel tenants (Sync semua kolom tier, status, dan due_date)
     const updatePayload: Record<string, any> = {
       tier: canonical.key,
+      subscription_tier: canonical.key,
+      subscription_status: 'ACTIVE',
+      grant_type: 'special_grant',
       status: 'ACTIVE',
       is_active: true,
       trial_ends_at: null,
       subscription_ends_at: validUntil,
+      due_date: validUntil.split('T')[0],
       metadata: updatedMetadata,
     };
 
@@ -121,7 +140,7 @@ export async function POST(
       .from('tenants')
       .update(updatePayload)
       .eq('slug', slug)
-      .select('id, slug, name, tier, status, is_active, subscription_ends_at, metadata')
+      .select('id, slug, name, tier, subscription_tier, subscription_status, status, is_active, subscription_ends_at, metadata')
       .single();
 
     if (updateErr) {

@@ -23,6 +23,7 @@ import {
 import LockedFeatureCard from './components/LockedFeatureCard';
 import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
 import { getSupabase } from '@/lib/supabaseClient';
+import { hasTierAccess } from '@/lib/subscription-tiers';
 
 import DashboardSidebar from './components/sidebar/DashboardSidebar';
 import LivePhonePreview from './components/preview/LivePhonePreview';
@@ -221,13 +222,8 @@ export default function TenantDashboardPage() {
   }), [tenantFeatureFlags?.tier, isCheckoutLite, isSoloOrTrial, isAdsPerformance, isTeamScale]);
 
   const isCrmEnabled = React.useMemo(() => {
-    const slug = (tenantSlug || '').toLowerCase().trim();
-    const hasMetadataFlag = Boolean(
-      tenantData?.metadata?.features?.crm ||
-      tenantData?.features?.crm
-    );
-    return slug === 'tumbuh-kembang-anak' || hasMetadataFlag;
-  }, [tenantSlug, tenantData]);
+    return hasTierAccess(tenantData, 'crm');
+  }, [tenantData]);
 
   const renderLockedFeatureCard = (cardProps: {
     title: string;
@@ -759,33 +755,61 @@ export default function TenantDashboardPage() {
         )
       )}
 
-      {/* TAB CRM: CUSTOMER MEMORY & LIFECYCLE (Preview Mode: Locked Teaser) */}
+      {/* TAB CRM: CUSTOMER MEMORY & LIFECYCLE (Unlocked if hasTierAccess or Pro/Scale, else Teaser) */}
       {activeTab === 'crm' && (
-        <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
-          <FeatureLockedTeaser
-            featureTitle="Customer Memory Layer & Lifecycle CRM"
-            badgeTier="Eksklusif Paket Pro & Scale"
-            headline="Pahami Setiap Pelanggan Tanpa Tanya Ulang di Meja Chat CS"
-            comparison={{
-              problemTitle: 'Masalah: CS Lupa Histori & Chat Acak-acakan',
-              problem:
-                'CS sering lupa riwayat belanja, preferensi, dan keluhan pelanggan terdahulu. Chat acak-acakan tanpa histori membuat closing lambat dan pelanggan frustrasi.',
-              solutionTitle: 'Solusi: Memory Layer & Lifecycle BoonTrack',
-              solution:
-                'Memory layer merekam interaksi, tag relasional, catatan internal rahasia CS, dan tahapan lifecycle otomatis tepat di samping jendela obrolan.',
-            }}
-            bullets={[
-              'Customer Memory Layer: CS selalu tahu histori belanja, tag, dan preferensi pelanggan tanpa tanya ulang.',
-              'Lifecycle Stage Engine: Pantau alur prospek (LEAD → QUALIFIED → CUSTOMER → REPEAT_CUSTOMER) secara visual.',
-              'Internal Team Notes: Kolaborasi catatan rahasia dan operasional antar CS per pelanggan tanpa terlihat oleh pembeli.',
-            ]}
-            calloutBanner="💡 Tips Hemat: Ambil langganan 1 tahun langsung otomatis unlock fitur Memory CRM ini tanpa biaya tambahan!"
-            ctaText="Upgrade ke Pro Scale / Paket Tahunan"
-            featureIcon={<Brain className="w-7 h-7 text-indigo-400" />}
+        !isCrmEnabled ? (
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+            <FeatureLockedTeaser
+              featureTitle="Customer Memory Layer & Lifecycle CRM"
+              badgeTier="Eksklusif Paket Pro & Scale"
+              headline="Pahami Setiap Pelanggan Tanpa Tanya Ulang di Meja Chat CS"
+              comparison={{
+                problemTitle: 'Masalah: CS Lupa Histori & Chat Acak-acakan',
+                problem:
+                  'CS sering lupa riwayat belanja, preferensi, dan keluhan pelanggan terdahulu. Chat acak-acakan tanpa histori membuat closing lambat dan pelanggan frustrasi.',
+                solutionTitle: 'Solusi: Memory Layer & Lifecycle BoonTrack',
+                solution:
+                  'Memory layer merekam interaksi, tag relasional, catatan internal rahasia CS, dan tahapan lifecycle otomatis tepat di samping jendela obrolan.',
+              }}
+              bullets={[
+                'Customer Memory Layer: CS selalu tahu histori belanja, tag, dan preferensi pelanggan tanpa tanya ulang.',
+                'Lifecycle Stage Engine: Pantau alur prospek (LEAD → QUALIFIED → CUSTOMER → REPEAT_CUSTOMER) secara visual.',
+                'Internal Team Notes: Kolaborasi catatan rahasia dan operasional antar CS per pelanggan tanpa terlihat oleh pembeli.',
+              ]}
+              calloutBanner="💡 Tips Hemat: Ambil langganan 1 tahun langsung otomatis unlock fitur Memory CRM ini tanpa biaya tambahan!"
+              ctaText="Upgrade ke Pro Scale / Paket Tahunan"
+              featureIcon={<Brain className="w-7 h-7 text-indigo-400" />}
+              tenantSlug={tenantSlug}
+              onUpgrade={() => handleUpgradeTier('ads_performance')}
+            />
+          </div>
+        ) : (
+          <TeamChatTab
+            initialTenant={tenantData}
             tenantSlug={tenantSlug}
-            onUpgrade={() => handleUpgradeTier('ads_performance')}
+            tenantId={tenantId || undefined}
+            isCheckoutLite={isCheckoutLite}
+            tenantTier={tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'ADS_PERFORMANCE' : isTeamScale ? 'TEAM_SCALE' : 'STARTER')}
+            conversations={conversations}
+            activeConversation={activeConversation}
+            activeConversationId={activeConversationId}
+            setActiveConversationId={setActiveConversationId}
+            replyText={replyText}
+            setReplyText={setReplyText}
+            handleSendMessage={handleSendMessage}
+            isProScale={isProScale}
+            isGrowthPlus={isGrowthPlus}
+            isGrowth={isGrowth}
+            isTeamScale={isTeamScale}
+            isAdsPerformance={isAdsPerformance}
+            handleUpgradeTier={handleUpgradeTier}
+            isSoloOrTrial={isSoloOrTrial}
+            trialDaysLeft={trialDaysLeft}
+            trialEndsAt={trialEndsAt}
+            isTenantBotPaused={isTenantBotPaused}
+            handleToggleTenantBot={handleToggleTenantBot}
           />
-        </div>
+        )
       )}
 
       {/* TAB: PESANAN / ORDERS */}

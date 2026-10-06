@@ -280,7 +280,7 @@ export default function SuperAdminShopDirectory() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tier: shop.metadata?.subscription?.plan_tier || shop.tier || 'PRO_SCALE',
+          tier: shop.subscription_tier || shop.tier || shop.metadata?.subscription?.plan_tier || 'PRO_SCALE',
           months: 1,
           notes: 'Quick Extend +1 Bulan via Admin Table',
         }),

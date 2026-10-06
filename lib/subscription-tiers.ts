@@ -20,6 +20,7 @@ export interface CanonicalTierDef {
     custom_domain: boolean;
     unlimited_products: boolean;
     single_page_checkout: boolean;
+    crm: boolean;
   };
 }
 
@@ -41,6 +42,7 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
       custom_domain: false,
       unlimited_products: true,
       single_page_checkout: true,
+      crm: true,
     },
   },
   ENTERPRISE: {
@@ -60,6 +62,7 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
       custom_domain: true,
       unlimited_products: true,
       single_page_checkout: true,
+      crm: true,
     },
   },
   STARTER: {
@@ -79,6 +82,7 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
       custom_domain: false,
       unlimited_products: true,
       single_page_checkout: true,
+      crm: false,
     },
   },
   CHECKOUT_LITE: {
@@ -98,6 +102,7 @@ export const CANONICAL_TIERS: Record<string, CanonicalTierDef> = {
       custom_domain: false,
       unlimited_products: false,
       single_page_checkout: true,
+      crm: false,
     },
   },
 };
@@ -108,6 +113,157 @@ export const CANONICAL_TIER_LIST: CanonicalTierDef[] = [
   CANONICAL_TIERS.STARTER,
   CANONICAL_TIERS.CHECKOUT_LITE,
 ];
+
+/**
+ * Standard Tier Hierarchy Levels:
+ * FREE / TRIAL (0) < STARTER / BASIC (1) < PRO (2) < SCALE (3) < ENTERPRISE / SPECIAL_GRANT (4).
+ */
+export const TIER_HIERARCHY_LEVELS: Record<string, number> = {
+  FREE: 0,
+  TRIAL: 0,
+  CHECKOUT_LITE: 0,
+  LITE: 0,
+  STARTER: 1,
+  BASIC: 1,
+  SOLO: 1,
+  GROWTH: 1,
+  PRO: 2,
+  PRO_SCALE: 2,
+  ADS_PERFORMANCE: 2,
+  GROWTH_PLUS: 2,
+  SCALE: 3,
+  TEAM_SCALE: 3,
+  ENTERPRISE: 4,
+  SPECIAL_GRANT: 4,
+};
+
+/**
+ * Minimum tier level required for each feature.
+ * Higher tiers automatically inherit all lower tier capabilities.
+ */
+export const FEATURE_MIN_LEVELS: Record<string, number> = {
+  single_page_checkout: 0,
+  unlimited_products: 1,
+  ai_bot: 1,
+  has_capi: 2,
+  capi: 2,
+  ads_tracking: 2,
+  inbox: 2,
+  crm: 2,
+  has_crm: 2,
+  memory_crm: 2,
+  export: 2,
+  multi_cs: 3,
+  broadcast: 3,
+  custom_domain: 3,
+};
+
+/**
+ * Convert any raw tier string to its canonical numeric hierarchy level (0-4).
+ */
+export function getTierLevel(rawTier?: string | null): number {
+  if (!rawTier) return 1;
+  const norm = String(rawTier).toUpperCase().trim();
+  if (norm.includes('ENTERPRISE') || norm.includes('SPECIAL_GRANT')) return 4;
+  if (norm.includes('TEAM') || norm === 'SCALE') return 3;
+  if (
+    norm.includes('PRO') ||
+    norm.includes('ADS') ||
+    norm.includes('PERFORMANCE') ||
+    norm.includes('PLUS')
+  ) {
+    return 2;
+  }
+  if (norm.includes('CHECKOUT') || norm.includes('LITE')) return 0;
+  if (norm.includes('FREE')) return 0;
+  if (
+    norm.includes('STARTER') ||
+    norm.includes('SOLO') ||
+    norm.includes('BASIC') ||
+    norm.includes('GROWTH')
+  ) {
+    return 1;
+  }
+  return TIER_HIERARCHY_LEVELS[norm] ?? 1;
+}
+
+/**
+ * Centralized feature gating helper:
+ * Returns true if the tier or tenant metadata allows access to the requested feature.
+ */
+export function canAccessFeature(
+  rawTier?: string | null,
+  featureKey: string = '',
+  tenantMeta?: any
+): boolean {
+  if (!featureKey) return false;
+  const normFeature = featureKey.toLowerCase().replace(/-/g, '_');
+
+  // 1. Direct explicit boolean override in tenant metadata (features or capabilities)
+  if (tenantMeta?.features?.[normFeature] === true || tenantMeta?.features?.[featureKey] === true) {
+    return true;
+  }
+  if (tenantMeta?.capabilities?.[normFeature] === true || tenantMeta?.capabilities?.[featureKey] === true) {
+    return true;
+  }
+
+  // 2. Active special grant check (Special grants on ENTERPRISE or TEAM inherit all features)
+  const isGrant = Boolean(
+    tenantMeta?.subscription?.type === 'granted' ||
+      tenantMeta?.subscription?.subscription_type === 'granted' ||
+      tenantMeta?.subscription_type === 'granted' ||
+      tenantMeta?.subscription?.is_grant
+  );
+
+  const userLevel = getTierLevel(rawTier);
+
+  // Level 4 (ENTERPRISE / SPECIAL_GRANT) inherits EVERYTHING without exception
+  if (
+    userLevel >= 4 ||
+    (isGrant &&
+      (String(rawTier || '').toUpperCase().includes('ENTERPRISE') ||
+        String(rawTier || '').toUpperCase().includes('TEAM')))
+  ) {
+    return true;
+  }
+
+  const minLevel = FEATURE_MIN_LEVELS[normFeature] ?? 2;
+  return userLevel >= minLevel;
+}
+
+/**
+ * Centralized tenant-level feature access helper:
+ * Evaluates tenant object (including subscription_tier, tier, metadata, and capabilities)
+ * against the target feature.
+ */
+export function hasTierAccess(tenant: any, featureKey: string): boolean {
+  if (!tenant || !featureKey) return false;
+  const normFeature = featureKey.toLowerCase().replace(/-/g, '_');
+
+  // Direct feature flags check in metadata or root
+  if (
+    tenant.metadata?.features?.[normFeature] === true ||
+    tenant.metadata?.features?.[featureKey] === true ||
+    tenant.features?.[normFeature] === true ||
+    tenant.features?.[featureKey] === true ||
+    tenant.metadata?.capabilities?.[normFeature] === true ||
+    tenant.capabilities?.[normFeature] === true
+  ) {
+    return true;
+  }
+
+  // Resolve best tier candidate
+  const tierCandidate =
+    tenant.subscription_tier ||
+    tenant.tier ||
+    tenant.metadata?.subscription?.plan_tier ||
+    tenant.metadata?.plan_tier ||
+    tenant.metadata?.tier ||
+    tenant.metadata?.plan_type ||
+    'STARTER';
+
+  return canAccessFeature(tierCandidate, normFeature, tenant.metadata);
+}
 
 /**
  * Resolve canonical tier definition from any raw string (backward compatible)
@@ -168,3 +324,4 @@ export function getRemainingDays(validUntil?: string | null): number {
   if (diffMs <= 0) return 0;
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
+

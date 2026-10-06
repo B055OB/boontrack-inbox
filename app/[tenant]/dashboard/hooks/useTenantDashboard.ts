@@ -147,27 +147,29 @@ export function useTenantDashboard() {
     selectedPlan.toLowerCase().includes('checkout') ||
     isUrlCheckoutLite;
 
+  // Team Scale — DB canonical: 'ENTERPRISE' (ARCHITECTURE.md ADR)
+  // Backward-compat aliases: 'TEAM_SCALE'
+  const isTeamScale =
+    !isCheckoutLite &&
+    (planTier === 'team_scale' ||
+      String(tenantFeatureFlags.tier || '').toUpperCase() === 'ENTERPRISE' ||
+      String(tenantFeatureFlags.tier || '').toUpperCase() === 'TEAM_SCALE' ||
+      selectedPlan.toLowerCase().includes('enterprise') ||
+      selectedPlan.toLowerCase().includes('team'));
+
   // Ads Performance — DB canonical: 'PRO_SCALE' (ARCHITECTURE.md ADR)
   // Backward-compat aliases: 'ADS_PERFORMANCE', 'GROWTH_PLUS'
+  // Tier Hierarchy: Team Scale / Enterprise automatically inherits Ads Performance capabilities
   const isAdsPerformance =
     !isCheckoutLite &&
-    (planTier === 'ads_performance' ||
+    (isTeamScale ||
+      planTier === 'ads_performance' ||
       String(tenantFeatureFlags.tier || '').toUpperCase() === 'PRO_SCALE' ||
       String(tenantFeatureFlags.tier || '').toUpperCase() === 'ADS_PERFORMANCE' ||
       String(tenantFeatureFlags.tier || '').toUpperCase() === 'GROWTH_PLUS' ||
       String(tenantFeatureFlags.tier || '').toUpperCase().includes('ADS') ||
       selectedPlan.toLowerCase().includes('ads') ||
       selectedPlan.toLowerCase().includes('performance'));
-
-  // Team Scale — DB canonical: 'ENTERPRISE' (ARCHITECTURE.md ADR)
-  // Backward-compat aliases: 'TEAM_SCALE'
-  const isTeamScale =
-    !isCheckoutLite &&
-    !isAdsPerformance &&
-    (planTier === 'team_scale' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'ENTERPRISE' ||
-      String(tenantFeatureFlags.tier || '').toUpperCase() === 'TEAM_SCALE' ||
-      selectedPlan.toLowerCase().includes('team'));
 
   const isProScale = isAdsPerformance;
   const isGrowthPlus = isAdsPerformance;
@@ -176,8 +178,8 @@ export function useTenantDashboard() {
   // Solo/Starter — DB canonical: 'STARTER' (ARCHITECTURE.md ADR)
   // Backward-compat aliases: 'SOLO', 'SOLO_TRIAL'
   const isSoloOrTrial = Boolean(
-    !isAdsPerformance &&
     !isTeamScale &&
+    !isAdsPerformance &&
     (isCheckoutLite ||
       tenantFeatureFlags.tier === 'STARTER' ||
       tenantFeatureFlags.tier === 'SOLO' ||
@@ -938,7 +940,13 @@ export function useTenantDashboard() {
             setStoreCategory('PHYSICAL');
           }
 
-          const resolvedTier = tenant.tier || tenant.metadata?.tier || tenant.metadata?.plan_tier || 'STARTER';
+          const resolvedTier =
+            tenant.subscription_tier ||
+            tenant.tier ||
+            tenant.metadata?.subscription?.plan_tier ||
+            tenant.metadata?.tier ||
+            tenant.metadata?.plan_tier ||
+            'STARTER';
           const rawTier = String(resolvedTier).toLowerCase();
           const selectedPlanMeta = String(tenant.metadata?.selected_plan || tenant.metadata?.selectedPlan || '');
           const selectedPlanLower = selectedPlanMeta.toLowerCase();
@@ -953,29 +961,33 @@ export function useTenantDashboard() {
 
           setTenantFeatureFlags(prev => ({ ...prev, tier: resolvedTier }));
 
-          // Prioritaskan Ads Performance (DB canonical: PRO_SCALE)
+          // Prioritaskan Team Scale / Enterprise (DB canonical: ENTERPRISE, Tier Level 4/3)
           if (
+            rawTier === 'enterprise' ||
+            rawTier === 'team_scale' ||
+            rawTier.includes('enterprise') ||
+            rawTier.includes('team') ||
+            planTypeMeta === 'team_scale' ||
+            planTypeMeta === 'enterprise' ||
+            selectedPlanLower.includes('enterprise') ||
+            selectedPlanLower.includes('team') ||
+            (selectedPlanLower.includes('scale') && !selectedPlanLower.includes('pro'))
+          ) {
+            setPlanTier('team_scale');
+          // Ads Performance (DB canonical: PRO_SCALE, Tier Level 2)
+          } else if (
             rawTier === 'pro_scale' ||
             rawTier === 'ads_performance' ||
             rawTier.includes('ads') ||
             rawTier.includes('performance') ||
-            selectedPlanLower.includes('ads') ||
-            selectedPlanLower.includes('performance') ||
             planTypeMeta === 'ads_performance' ||
+            planTypeMeta === 'pro_scale' ||
             rawTier.includes('growth_plus') ||
-            rawTier.includes('plus')
+            rawTier.includes('plus') ||
+            selectedPlanLower.includes('ads') ||
+            selectedPlanLower.includes('performance')
           ) {
             setPlanTier('ads_performance');
-          // Team Scale (DB canonical: ENTERPRISE)
-          } else if (
-            rawTier === 'enterprise' ||
-            rawTier === 'team_scale' ||
-            rawTier.includes('team') ||
-            selectedPlanLower.includes('team') ||
-            (selectedPlanLower.includes('scale') && !selectedPlanLower.includes('pro')) ||
-            planTypeMeta === 'team_scale'
-          ) {
-            setPlanTier('team_scale');
           // Solo / Starter / Checkout (DB canonical: STARTER)
           } else {
             setPlanTier('growth');

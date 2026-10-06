@@ -127,7 +127,7 @@ export function getTenantSubscriptionStatus(tenant: any, referenceTimeMs: number
   const meta = (tenant.metadata && typeof tenant.metadata === 'object') ? tenant.metadata : {};
   const rawStatus = String(tenant.status || '').toLowerCase().trim();
   const rawSubStatus = String(tenant.subscription_status || meta.subscription_status || '').toLowerCase().trim();
-  const rawTier = String(tenant.tier || meta.tier || meta.plan_tier || 'STARTER').toUpperCase().trim();
+  const rawTier = String(tenant.subscription_tier || tenant.tier || meta.tier || meta.plan_tier || 'STARTER').toUpperCase().trim();
   const tier = rawTier.includes('ENTERPRISE') || rawTier.includes('TEAM')
     ? 'ENTERPRISE'
     : rawTier.includes('PRO') || rawTier.includes('ADS')

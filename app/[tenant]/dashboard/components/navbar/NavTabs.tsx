@@ -72,6 +72,7 @@ interface NavTabsProps {
   storeCategory?: string;
   businessType?: string;
   capabilities?: NavTabsCapabilities | null;
+  isCrmEnabled?: boolean;
 }
 
 export default function NavTabs({
@@ -95,6 +96,7 @@ export default function NavTabs({
   storeCategory = 'PHYSICAL',
   businessType,
   capabilities,
+  isCrmEnabled = false,
 }: NavTabsProps) {
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -454,9 +456,15 @@ export default function NavTabs({
           >
             <Brain className="w-4 h-4 text-violet-600 shrink-0" />
             <span>Memory CRM</span>
-            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-extrabold flex items-center gap-1">
-              <Lock className="w-2.5 h-2.5 text-amber-500" /> PRO
-            </span>
+            {!isCrmEnabled ? (
+              <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-extrabold flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5 text-amber-500" /> PRO
+              </span>
+            ) : (
+              <span className="px-1.5 py-0.5 bg-violet-50 text-violet-700 border border-violet-200 rounded text-[10px] font-extrabold">
+                CRM
+              </span>
+            )}
           </button>
         </div>
 

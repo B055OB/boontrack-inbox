@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { resolveDomainVertical, DomainVerticalKey } from '@/app/[tenant]/dashboard/components/modules';
+import { hasTierAccess } from '@/lib/subscription-tiers';
 import PwaInstallPrompt from '../PwaInstallPrompt';
 
 function getVerticalMenuConfig(storeCategory?: string) {
@@ -300,7 +301,7 @@ export default function DashboardSidebar({
   const currentTier = String(tenant?.tier || '').toUpperCase();
   const isStarter = currentTier === 'STARTER' || currentTier === 'SOLO';
   const isCheckoutLite = currentTier === 'CHECKOUT_LITE' || currentTier === 'LITE' || Boolean(isCheckoutLiteProp);
-  const isCrmEffective = isCrmEnabled || tenantSlug === 'tumbuh-kembang-anak' || Boolean(tenant?.metadata?.features?.crm || tenant?.features?.crm);
+  const isCrmEffective = Boolean(isCrmEnabled || hasTierAccess(tenant, 'crm'));
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
@@ -726,10 +727,16 @@ export default function DashboardSidebar({
                   </div>
                   <span className="truncate">Memory CRM</span>
                 </div>
-                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
-                  <Lock className="w-2.5 h-2.5 text-amber-600" />
-                  <span>PRO</span>
-                </span>
+                {!isCrmEffective ? (
+                  <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
+                    <Lock className="w-2.5 h-2.5 text-amber-600" />
+                    <span>PRO</span>
+                  </span>
+                ) : (
+                  <span className="rounded-full px-1.5 py-0.2 text-[9px] font-extrabold bg-violet-50 text-violet-700 border border-violet-200">
+                    CRM
+                  </span>
+                )}
               </button>
 
               {/* 7. WhatsApp & Broadcast - Gated Feature Teaser */}
@@ -1049,10 +1056,16 @@ export default function DashboardSidebar({
                     </div>
                     <span className="truncate">Memory CRM</span>
                   </div>
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5 text-amber-500" />
-                    <span>PRO</span>
-                  </span>
+                  {!isCrmEffective ? (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5 text-amber-500" />
+                      <span>PRO</span>
+                    </span>
+                  ) : (
+                    <span className="rounded-full px-1.5 py-0.2 text-[9px] font-extrabold bg-violet-50 text-violet-700 border border-violet-200">
+                      CRM
+                    </span>
+                  )}
                 </button>
 
                 {/* Ads Tracking Pro */}

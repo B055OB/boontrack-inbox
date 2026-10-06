@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { canAccessFeature } from '@/lib/subscription-tiers';
 
 export type MetaCAPIEventName = 'Lead' | 'InitiateCheckout' | 'Purchase';
 
@@ -269,28 +270,18 @@ export const dispatchMetaCAPI = dispatchMetaCAPIPurchase;
  */
 export async function checkAdsTrackingEntitlement(supabase: any, tenantId: string): Promise<boolean> {
   try {
-    // 1. Cek Tier / Plan Tenant
+    // 1. Cek Tier / Plan Tenant (Hierarki Terpusat via canAccessFeature)
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('plan, tier')
+      .select('plan, tier, subscription_tier, metadata')
       .eq('id', tenantId)
       .maybeSingle();
 
-    const tier = (tenant?.tier || tenant?.plan || '').toUpperCase();
-    if (tier === 'CHECKOUT_LITE' || tier === 'SOLO' || tier === 'STARTER') {
-      return false;
-    }
-    if (
-      tier === 'PRO_SCALE' ||
-      tier === 'ADS_PERFORMANCE' ||
-      tier === 'ENTERPRISE' ||
-      tier === 'TEAM_SCALE' ||
-      tier === 'GROWTH_PRO' ||
-      tier === 'GROWTH_TRACKING' ||
-      tier === 'GROWTHPLUS' ||
-      tenantId === 'growthplus'
-    ) {
-      return true;
+    if (tenant) {
+      const activeTier = tenant.subscription_tier || tenant.tier || tenant.plan;
+      if (canAccessFeature(activeTier, 'has_capi', tenant.metadata)) {
+        return true;
+      }
     }
 
     // 2. Cek Add-on Entitlement di tabel tenant_entitlements

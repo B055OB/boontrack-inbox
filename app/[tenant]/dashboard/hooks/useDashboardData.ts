@@ -68,14 +68,14 @@ export function useDashboardData(tenantSlug: string) {
   const isTeamScale = 
     planTier === 'team_scale' || 
     tenantFeatureFlags.tier === 'TEAM_SCALE' || 
-    tenantFeatureFlags.tier === 'PRO_SCALE' ||
     tenantFeatureFlags.tier === 'ENTERPRISE';
 
   const isAdsPerformance = 
-    (planTier === 'ads_performance' || 
-     tenantFeatureFlags.tier === 'ADS_PERFORMANCE' || 
-     tenantFeatureFlags.tier === 'GROWTH_PLUS') && 
-    !isTeamScale;
+    isTeamScale ||
+    planTier === 'ads_performance' || 
+    tenantFeatureFlags.tier === 'PRO_SCALE' ||
+    tenantFeatureFlags.tier === 'ADS_PERFORMANCE' || 
+    tenantFeatureFlags.tier === 'GROWTH_PLUS';
 
   const isSolo = planTier === 'growth' && !isAdsPerformance && !isTeamScale;
 

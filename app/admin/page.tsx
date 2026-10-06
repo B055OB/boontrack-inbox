@@ -118,7 +118,7 @@ export default function SuperAdminDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tier: t.metadata?.subscription?.plan_tier || t.plan || 'PRO_SCALE',
+          tier: (t as any).subscription_tier || t.plan || t.metadata?.subscription?.plan_tier || 'PRO_SCALE',
           months: 1,
           notes: 'Quick Extend +1 Bulan via Admin Workspace Table',
         }),
