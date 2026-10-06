@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
+import InstagramVisualGrid from './InstagramVisualGrid';
 import ScheduleBookingWidget from '../ScheduleBookingWidget';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
@@ -69,20 +70,30 @@ export default function PersonalAuthorityTemplate({
   onOutboundClick,
 }: PersonalAuthorityTemplateProps) {
   const activeName = storeName || displayName.toUpperCase();
+  // Official Tenant Logo (for Navbar, Brand headers, Footer)
   const rawLogo =
     storeLogoUrl ||
     tenant?.metadata?.logo_url ||
     tenant?.metadata?.store_logo_url ||
-    tenant?.metadata?.avatar_url ||
     tenantMetadata?.logo_url ||
     tenantMetadata?.store_logo_url ||
-    tenantMetadata?.avatar_url ||
     tenant?.logo_url ||
+    '';
+  const displayLogo = sanitizeImageUrl(rawLogo) || rawLogo;
+
+  // Practitioner / Authority Avatar (for Hero Bio showcase)
+  const rawAvatar =
+    tenant?.metadata?.avatar_url ||
+    tenantMetadata?.avatar_url ||
     tenant?.avatar_url ||
+    rawLogo ||
     '/logo.png';
-  const displayAvatar = sanitizeImageUrl(rawLogo) || rawLogo;
+  const displayAvatar = sanitizeImageUrl(rawAvatar) || rawAvatar;
+
+  const [logoError, setLogoError] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [productImgError, setProductImgError] = useState(false);
+  const [selectedTopicForChat, setSelectedTopicForChat] = useState<string | null>(null);
 
   const initials =
     (activeName || 'Store')
@@ -183,11 +194,11 @@ export default function PersonalAuthorityTemplate({
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl overflow-hidden border border-purple-200/80 shadow-xs bg-purple-50 shrink-0 flex items-center justify-center">
-              {displayAvatar && !avatarError ? (
+              {displayLogo && !logoError ? (
                 <img
-                  src={displayAvatar}
+                  src={displayLogo}
                   alt={activeName}
-                  onError={() => setAvatarError(true)}
+                  onError={() => setLogoError(true)}
                   className="w-full h-full object-cover rounded-2xl"
                 />
               ) : (
@@ -670,6 +681,16 @@ export default function PersonalAuthorityTemplate({
         </div>
       </section>
 
+      {/* INSTAGRAM VISUAL FEEDING GRID (SSOT Dynamic from tenant metadata) */}
+      <InstagramVisualGrid
+        tenantSlug={tenantSlug}
+        storeName={activeName}
+        tenantMetadata={tenantMetadata || tenant?.metadata}
+        onSelectTopic={(topic) => {
+          setSelectedTopicForChat(topic);
+        }}
+      />
+
       {/* SECTION TESTIMONIAL */}
       {dynamicTestimonials.length > 0 && (
         <section className="py-16 px-4 sm:px-6 bg-white border-t border-slate-100">
@@ -716,11 +737,11 @@ export default function PersonalAuthorityTemplate({
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-xl overflow-hidden bg-purple-600 shrink-0 flex items-center justify-center">
-              {displayAvatar && !avatarError ? (
+              {displayLogo && !logoError ? (
                 <img
-                  src={displayAvatar}
+                  src={displayLogo}
                   alt={activeName}
-                  onError={() => setAvatarError(true)}
+                  onError={() => setLogoError(true)}
                   className="w-full h-full object-cover rounded-xl"
                 />
               ) : (
@@ -745,6 +766,7 @@ export default function PersonalAuthorityTemplate({
           displayName={displayName}
           category={tenant?.category || tenantMetadata?.category || tenantMetadata?.business_category || tenantMetadata?.vertical}
           dynamicQuickReplies={dynamicQuickReplies}
+          initialTopic={selectedTopicForChat}
           onInitiateCheckout={onInitiateCheckout}
         />
       )}

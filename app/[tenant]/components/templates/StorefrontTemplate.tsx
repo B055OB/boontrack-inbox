@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { TenantRuntimeContext } from '@/lib/types/tenant-runtime';
 import type { Product } from '@/app/[tenant]/page';
+import InstagramVisualGrid from './InstagramVisualGrid';
+import FloatingWebchat from './FloatingWebchat';
 
 export interface StorefrontTemplateProps {
   context?: TenantRuntimeContext;
@@ -37,12 +39,14 @@ export function StorefrontTemplate({
   }
 
   // Standalone storefront render
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const effectiveName = storeName || displayName || context?.tenant?.name || context?.tenantSlug || 'Toko';
   const effectiveSlug = tenantSlug || context?.tenantSlug || '';
   const products = storeProducts || context?.tenant?.metadata?.products || [];
+  const meta = tenantMetadata || context?.tenant?.metadata || tenant?.metadata;
 
   return (
-    <div data-template="SHOP_V1" className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+    <div data-template="SHOP_V1" className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col justify-between">
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -62,7 +66,7 @@ export function StorefrontTemplate({
       </header>
 
       {/* Catalog Grid */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-8 flex-1">
         <div className="mb-6">
           <h2 className="text-xl font-black text-slate-900">Katalog Produk &amp; Layanan</h2>
           <p className="text-xs text-slate-500 mt-1">Pilih produk untuk memesan langsung via WhatsApp &amp; QRIS.</p>
@@ -93,6 +97,27 @@ export function StorefrontTemplate({
           </div>
         )}
       </main>
+
+      {/* Visual Feeding Grid (Dynamic if tenant provides visual feed in metadata) */}
+      <InstagramVisualGrid
+        tenantSlug={effectiveSlug}
+        storeName={effectiveName}
+        tenantMetadata={meta}
+        onSelectTopic={(topic) => setSelectedTopic(topic)}
+      />
+
+      {/* Floating Webchat Widget */}
+      {props.chatEnabled !== false && (
+        <FloatingWebchat
+          tenantSlug={effectiveSlug}
+          storeName={effectiveName}
+          displayName={displayName || effectiveName}
+          category={tenant?.category || meta?.category}
+          dynamicQuickReplies={props.dynamicQuickReplies || []}
+          initialTopic={selectedTopic}
+          onInitiateCheckout={props.onInitiateCheckout}
+        />
+      )}
     </div>
   );
 }
