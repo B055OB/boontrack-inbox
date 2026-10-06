@@ -123,7 +123,17 @@ export async function getBotSessionState(
       } else {
         convQuery = convQuery.eq('tenant_slug', cleanTenant);
       }
-      convQuery = convQuery.in('customer_phone', phoneVariants).order('updated_at', { ascending: false }).limit(1);
+      if (typeof (convQuery as any).in === 'function') {
+        convQuery = convQuery.in('customer_phone', phoneVariants);
+      } else {
+        convQuery = convQuery.eq('customer_phone', cleanPhone);
+      }
+      if (typeof (convQuery as any).order === 'function') {
+        convQuery = convQuery.order('updated_at', { ascending: false });
+      }
+      if (typeof (convQuery as any).limit === 'function') {
+        convQuery = convQuery.limit(1);
+      }
 
       const { data: conv } = await convQuery.maybeSingle();
 

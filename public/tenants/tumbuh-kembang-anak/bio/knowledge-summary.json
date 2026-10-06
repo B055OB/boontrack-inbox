@@ -1,0 +1,31 @@
+{
+  "target_url": "https://tumbuhkembanganak.com/bio",
+  "title": "TUMBUH KEMBANG ANAK",
+  "main_headline": "Tumbuh Kembang Anak",
+  "sub_headlines": [],
+  "pain_points": [],
+  "curriculum_and_syllabus": [],
+  "pricing_and_packages": [],
+  "parent_testimonials": [],
+  "extracted_at": "2026-10-06T18:36:35.140Z",
+  "downloaded_images": [
+    {
+      "fileName": "01_testimoni.webp",
+      "sizeBytes": 28486,
+      "category": "testimoni",
+      "sourceUrl": "https://cdn.scalev.id/uploads/1779161096/-_wAjjNR-PE8MFmN1G85WQ/1779161094997-LOGO-TKA-PNG.webp"
+    },
+    {
+      "fileName": "02_testimoni.webp",
+      "sizeBytes": 314510,
+      "category": "testimoni",
+      "sourceUrl": "https://cdn.scalev.id/uploads/1779161227/fTISXAqXpkxT_1JLgLWOWQ/1779161225378-ChatGPT-Image-19-Mei-2026,-10.26.57.webp"
+    },
+    {
+      "fileName": "03_infografis_gizi.webp",
+      "sizeBytes": 286680,
+      "category": "infografis_gizi",
+      "sourceUrl": "https://cdn.scalev.com/uploads/1781850380/ioQtdxuRvL7UYh0sSPjz6A/1781850380661-afa9be63-701f-4a5f-8d1d-6085a8043c0e.webp"
+    }
+  ]
+}

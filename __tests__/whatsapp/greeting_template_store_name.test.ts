@@ -45,15 +45,24 @@ jest.mock('@/lib/supabaseClient', () => ({
   getSupabase: jest.fn(() => ({
     from: jest.fn((table: string) => {
       if (table === 'tenants') {
-        return {
-          select: jest.fn(() => ({
-            eq: jest.fn((field: string, val: string) => ({
-              maybeSingle: jest.fn(async () => {
-                const found = mockTenantsDb[val] || null;
-                return { data: found, error: null };
-              }),
-            })),
+        const queryBuilder: any = {
+          eq: jest.fn((field: string, val: string) => ({
+            maybeSingle: jest.fn(async () => {
+              const found = mockTenantsDb[val] || null;
+              return { data: found, error: null };
+            }),
           })),
+          or: jest.fn((orExpr: string) => ({
+            maybeSingle: jest.fn(async () => {
+              const matches = orExpr.match(/[0-9a-fA-F-]{36}/g);
+              const val = matches ? matches[0] : '';
+              const found = mockTenantsDb[val] || null;
+              return { data: found, error: null };
+            }),
+          })),
+        };
+        return {
+          select: jest.fn(() => queryBuilder),
         };
       }
       if (table === 'bot_profiles') {

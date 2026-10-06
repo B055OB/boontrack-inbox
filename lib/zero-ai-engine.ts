@@ -678,7 +678,11 @@ export async function processZeroAiMessage(
     .from('tenants')
     .select('id, slug, name, category, business_type, tier, metadata');
   if (isUuid) {
-    tenantQuery = tenantQuery.or(`id.eq.${slug},slug.eq.${slug}`);
+    if (typeof (tenantQuery as any).or === 'function') {
+      tenantQuery = tenantQuery.or(`id.eq.${slug},slug.eq.${slug}`);
+    } else {
+      tenantQuery = tenantQuery.eq('id', slug);
+    }
   } else {
     tenantQuery = tenantQuery.eq('slug', slug);
   }
