@@ -258,6 +258,7 @@ interface DashboardSidebarProps {
     digital_fulfillment?: boolean;
     [key: string]: any;
   } | null;
+  isCrmEnabled?: boolean;
   onOpenStoreSettings: () => void;
   onOpenUpgradeModal: () => void;
   onCloseMobileDrawer?: () => void;
@@ -290,6 +291,7 @@ export default function DashboardSidebar({
   storeCategory,
   businessType,
   capabilities,
+  isCrmEnabled = false,
   onOpenStoreSettings,
   onOpenUpgradeModal,
   onCloseMobileDrawer,
@@ -298,6 +300,7 @@ export default function DashboardSidebar({
   const currentTier = String(tenant?.tier || '').toUpperCase();
   const isStarter = currentTier === 'STARTER' || currentTier === 'SOLO';
   const isCheckoutLite = currentTier === 'CHECKOUT_LITE' || currentTier === 'LITE' || Boolean(isCheckoutLiteProp);
+  const isCrmEffective = isCrmEnabled || tenantSlug === 'tumbuh-kembang-anak' || Boolean(tenant?.metadata?.features?.crm || tenant?.features?.crm);
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
@@ -341,6 +344,7 @@ export default function DashboardSidebar({
   const isPowerTabActive = (tab: string) => {
     if (tab === 'whatsapp' && (activeTab === 'whatsapp' || activeTab === 'broadcast' || activeTab === 'auto_reply')) return true;
     if (tab === 'inbox' && activeTab === 'inbox') return true;
+    if (tab === 'crm' && activeTab === 'crm') return true;
     if (tab === 'ads_tracking' && activeTab === 'ads_tracking') return true;
     if (tab === 'finance' && activeTab === 'finance') return true;
     if (tab === 'orders' && activeTab === 'orders') return true;
@@ -677,6 +681,106 @@ export default function DashboardSidebar({
                   Pixel Lite
                 </span>
               </button>
+
+              {/* 6. BoonTrack Inbox (Live CS) - Gated Feature Teaser */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('inbox')}
+                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                  activeTab === 'inbox'
+                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                }`}
+              >
+                {activeTab === 'inbox' && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
+                    <MessageSquare className="w-4 h-4" />
+                  </div>
+                  <span className="truncate">BoonTrack Inbox (CS)</span>
+                </div>
+                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
+                  <Lock className="w-2.5 h-2.5 text-amber-600" />
+                  <span>CAPI</span>
+                </span>
+              </button>
+
+              {/* 7. Memory CRM - Gated Feature Teaser */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('crm')}
+                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                  activeTab === 'crm'
+                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                }`}
+              >
+                {activeTab === 'crm' && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
+                    <Brain className="w-4 h-4" />
+                  </div>
+                  <span className="truncate">Memory CRM</span>
+                </div>
+                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
+                  <Lock className="w-2.5 h-2.5 text-amber-600" />
+                  <span>PRO</span>
+                </span>
+              </button>
+
+              {/* 7. WhatsApp & Broadcast - Gated Feature Teaser */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('whatsapp')}
+                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                  activeTab === 'whatsapp' || activeTab === 'broadcast'
+                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                }`}
+              >
+                {(activeTab === 'whatsapp' || activeTab === 'broadcast') && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
+                    <Radio className="w-4 h-4" />
+                  </div>
+                  <span className="truncate">WhatsApp &amp; Broadcast</span>
+                </div>
+                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
+                  <Lock className="w-2.5 h-2.5 text-amber-600" />
+                  <span>WABA</span>
+                </span>
+              </button>
+
+              {/* 8. Laporan Keuangan - Gated Feature Teaser */}
+              <button
+                type="button"
+                onClick={() => handleSelectTab('finance')}
+                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                  activeTab === 'finance'
+                    ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                }`}
+              >
+                {activeTab === 'finance' && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                )}
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-slate-100 text-slate-700">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                  <span className="truncate">Laporan Keuangan</span>
+                </div>
+                <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
+                  <Lock className="w-2.5 h-2.5 text-amber-600" />
+                  <span>PRO</span>
+                </span>
+              </button>
             </div>
 
             {/* Banner Upgrade Tier Callout */}
@@ -924,6 +1028,31 @@ export default function DashboardSidebar({
                       {isTeamScale ? 'PRO' : isAdsPerformance ? '2 SEATS' : '199k'}
                     </span>
                   )}
+                </button>
+
+                {/* Memory CRM */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('crm')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    isPowerTabActive('crm')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {isPowerTabActive('crm') && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-violet-50 text-violet-600">
+                      <Brain className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">Memory CRM</span>
+                  </div>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5 text-amber-500" />
+                    <span>PRO</span>
+                  </span>
                 </button>
 
                 {/* Ads Tracking Pro */}

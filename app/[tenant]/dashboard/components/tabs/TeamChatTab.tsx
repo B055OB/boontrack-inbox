@@ -34,6 +34,7 @@ import {
   Copy,
   FileText,
   Headphones,
+  Zap,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useParams } from 'next/navigation';
@@ -44,6 +45,11 @@ import { getStorefrontInvoiceUrl, getStorefrontPayUrl, generatePaymentToken } fr
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 import { sanitizeOrderPayload } from '@/lib/order-sanitizer';
 import DirectCsLoginModal from '../DirectCsLoginModal';
+import ContactSidebar from '@/components/crm/ContactSidebar';
+import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
+import QuickRepliesModal from '@/components/inbox/QuickRepliesModal';
+import { QuickReplyItem } from '@/lib/inbox/quick-replies';
+import { Brain } from 'lucide-react';
 
 export interface ConversationMessage {
   id: number | string;
@@ -208,6 +214,16 @@ export default function TeamChatTab({
     return '';
   }, [tenantSlug, routeTenant]);
 
+  // CRM V1 Feature Gate: Khusus tenant 'tumbuh-kembang-anak' (atau feature flag metadata Supabase)
+  const isCrmEnabled = useMemo(() => {
+    const currentTenantSlug = (resolvedTenant || tenantSlug || routeTenant || '').toLowerCase().trim();
+    const hasMetadataFlag = Boolean(
+      initialTenant?.metadata?.features?.crm ||
+      initialTenant?.features?.crm
+    );
+    return currentTenantSlug === 'tumbuh-kembang-anak' || hasMetadataFlag;
+  }, [resolvedTenant, tenantSlug, routeTenant, initialTenant]);
+
   // 100% Global & Tenant-Agnostic Supabase Realtime Inbox Hook (Single Source of Truth)
   const inbox = useTenantInbox(tenantId, resolvedTenant);
 
@@ -274,6 +290,14 @@ export default function TeamChatTab({
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
 
   // Quick POS Dynamic Deal Modal / Form state (Custom Deal Closing)
+  const [rightPanelTab, setRightPanelTab] = useState<'crm' | 'pos'>('pos');
+
+  useEffect(() => {
+    if (isCrmEnabled) {
+      setRightPanelTab('crm');
+    }
+  }, [isCrmEnabled]);
+
   const [qrisItemName, setQrisItemName] = useState('Jasa Video Promosi');
   const [qrisAmount, setQrisAmount] = useState('150000');
   const [isGeneratingQris, setIsGeneratingQris] = useState(false);
@@ -300,6 +324,170 @@ export default function TeamChatTab({
       }
     }
   }, [resolvedTenant, tenantSlug]);
+
+  // Master Global Bot Pause State (#resume & #pause)
+  const [isGlobalBotPaused, setIsGlobalBotPaused] = useState<boolean>(
+    Boolean(isTenantBotPaused || initialTenant?.metadata?.bot_paused || initialTenant?.bot_paused)
+  );
+
+  useEffect(() => {
+    if (typeof isTenantBotPaused === 'boolean') {
+      setIsGlobalBotPaused(isTenantBotPaused);
+    }
+  }, [isTenantBotPaused]);
+
+  // Quick Replies State (Trigger /)
+  const [quickReplies, setQuickReplies] = useState<QuickReplyItem[]>([]);
+  const [isQuickRepliesModalOpen, setIsQuickRepliesModalOpen] = useState(false);
+  const [slashPopoverOpen, setSlashPopoverOpen] = useState(false);
+  const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
+  const [slashQuery, setSlashQuery] = useState('');
+  const chatInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Fetch Quick Replies for this tenant
+  const fetchQuickReplies = useCallback(async () => {
+    const target = resolvedTenant || tenantSlug || tenantId;
+    if (!target) return;
+    try {
+      const res = await fetch(`/api/inbox/quick-replies?tenant=${encodeURIComponent(target)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.quick_replies)) {
+          setQuickReplies(data.quick_replies);
+        }
+      }
+    } catch (err) {
+      console.warn('[TeamChatTab] Error fetching quick replies:', err);
+    }
+  }, [resolvedTenant, tenantSlug, tenantId]);
+
+  useEffect(() => {
+    fetchQuickReplies();
+  }, [fetchQuickReplies]);
+
+  // Master Toggle Global Bot (Ekuivalen #resume dan #pause)
+  const handleMasterToggleBot = async () => {
+    const newState = !isGlobalBotPaused;
+    setIsGlobalBotPaused(newState);
+    const targetSlug = resolvedTenant || tenantSlug;
+    const nowIso = new Date().toISOString();
+
+    try {
+      const supabase = getSupabase();
+      if (supabase && targetSlug) {
+        const { data: tRow } = await supabase
+          .from('tenants')
+          .select('id, metadata')
+          .or(`slug.eq.${targetSlug},id.eq.${tenantId || targetSlug}`)
+          .maybeSingle();
+
+        const meta = tRow?.metadata || {};
+        meta.bot_paused = newState;
+        meta.is_bot_paused = newState;
+
+        await supabase
+          .from('tenants')
+          .update({ metadata: meta, updated_at: nowIso })
+          .or(`slug.eq.${targetSlug},id.eq.${tenantId || targetSlug}`);
+
+        if (!newState) {
+          const tId = tRow?.id || tenantId || targetSlug;
+          await supabase
+            .from('conversation_sessions')
+            .update({
+              is_paused: false,
+              paused_until: null,
+              current_state: 'ACTIVE',
+              updated_at: nowIso,
+            })
+            .or(`tenant_id.eq.${tId},tenant_id.eq.${targetSlug}`);
+
+          await supabase
+            .from('conversations')
+            .update({
+              bot_paused: false,
+              bot_mode: 'AI_ACTIVE',
+              status: 'active',
+              updated_at: nowIso,
+            })
+            .or(`tenant_id.eq.${tId},tenant_slug.eq.${targetSlug}`);
+        }
+      }
+    } catch (err) {
+      console.warn('[TeamChatTab] Error toggling master bot:', err);
+    }
+
+    if (handleToggleTenantBot) {
+      handleToggleTenantBot();
+    }
+    await inbox.refreshConversations();
+  };
+
+  // Filtered Quick Replies for Slash Trigger
+  const filteredQuickReplies = useMemo(() => {
+    if (!slashQuery) return quickReplies;
+    const q = slashQuery.toLowerCase();
+    return quickReplies.filter(
+      (item) =>
+        item.shortcut.toLowerCase().includes(q) ||
+        item.title.toLowerCase().includes(q)
+    );
+  }, [quickReplies, slashQuery]);
+
+  // Handle select slash quick reply
+  const handleSelectQuickReply = (item: QuickReplyItem) => {
+    const currentVal = inbox.replyText || localReplyText || '';
+    const slashIndex = currentVal.lastIndexOf('/');
+    let nextVal = item.content;
+    if (slashIndex > 0) {
+      nextVal = currentVal.slice(0, slashIndex) + item.content;
+    }
+    inbox.setReplyText(nextVal);
+    setLocalReplyText(nextVal);
+    if (externalSetReplyText) externalSetReplyText(nextVal);
+    setSlashPopoverOpen(false);
+    setSlashQuery('');
+    if (chatInputRef.current) {
+      chatInputRef.current.focus();
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    inbox.setReplyText(val);
+    setLocalReplyText(val);
+    if (externalSetReplyText) externalSetReplyText(val);
+
+    const slashMatch = val.match(/(?:^|\s)\/([a-zA-Z0-9_-]*)$/);
+    if (slashMatch) {
+      setSlashQuery(slashMatch[1] || '');
+      setSlashPopoverOpen(true);
+      setSelectedSlashIndex(0);
+    } else {
+      setSlashPopoverOpen(false);
+      setSlashQuery('');
+    }
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!slashPopoverOpen || filteredQuickReplies.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedSlashIndex((prev) => (prev + 1) % filteredQuickReplies.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedSlashIndex((prev) => (prev - 1 + filteredQuickReplies.length) % filteredQuickReplies.length);
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      const selected = filteredQuickReplies[selectedSlashIndex];
+      if (selected) {
+        handleSelectQuickReply(selected);
+      }
+    } else if (e.key === 'Escape') {
+      setSlashPopoverOpen(false);
+    }
+  };
 
   // Dynamic Tenant Payment Config & Multi-Tenant Bank Accounts (Zero Hardcoding)
   const [tenantPaymentData, setTenantPaymentData] = useState<any>(() => {
@@ -802,7 +990,7 @@ export default function TeamChatTab({
               is_bot_paused: isPaused,
               is_bot_active: newBotState,
               bot_mode: newBotState ? 'AI_ACTIVE' : 'HUMAN_ACTIVE',
-              status: isPaused ? 'paused' : 'open',
+              status: isPaused ? 'HUMAN_PAUSED' : 'active',
               updated_at: nowIso,
             })
             .eq('id', currentConversation.id);
@@ -821,14 +1009,15 @@ export default function TeamChatTab({
                   session_id: `wa_${tId}_${ph}`,
                   channel: 'WHATSAPP',
                   user_identifier: ph,
-                  current_state: isPaused ? 'HANDOVER_TO_HUMAN' : 'ACTIVE',
+                  current_state: isPaused ? 'HUMAN_PAUSED' : 'ACTIVE',
                   is_paused: isPaused,
                   paused_at: isPaused ? nowIso : null,
-                  paused_by: 'admin_command',
+                  paused_by: 'admin_dashboard',
                   paused_until: pausedUntilIso,
                   metadata: {
-                    manual_toggle: isPaused ? 'PAUSE' : 'RESUME',
-                    paused_by: 'admin_command',
+                    manual_toggle: isPaused ? 'OFF' : 'ON',
+                    paused_reason: isPaused ? 'MANUAL_OFF' : null,
+                    paused_by: 'admin_dashboard',
                     paused_at: isPaused ? nowIso : null,
                   },
                   updated_at: nowIso,
@@ -1685,7 +1874,38 @@ export default function TeamChatTab({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          {/* Master Toggle Global Bot AI (#resume & #pause) */}
+          <button
+            type="button"
+            onClick={handleMasterToggleBot}
+            className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-2xs active:scale-95 ${
+              !isGlobalBotPaused
+                ? 'bg-emerald-50 hover:bg-emerald-100/80 text-emerald-900 border-emerald-300'
+                : 'bg-amber-50 hover:bg-amber-100/80 text-amber-950 border-amber-300'
+            }`}
+            title={!isGlobalBotPaused ? 'Klik untuk menjeda Bot AI secara GLOBAL (Semua chat masuk mode CS manual)' : 'Klik untuk mengaktifkan Bot AI secara GLOBAL (Semua chat dilayani bot)'}
+          >
+            <span className={`w-2 h-2 rounded-full ${!isGlobalBotPaused ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+            <span>
+              {!isGlobalBotPaused ? 'Bot AI Aktif Global' : 'Bot AI Dijeda Global (Manual)'}
+            </span>
+            <div className={`w-6 h-3.5 flex items-center rounded-full p-0.5 transition-colors ${!isGlobalBotPaused ? 'bg-emerald-600' : 'bg-slate-300'}`}>
+              <div className={`bg-white w-2.5 h-2.5 rounded-full shadow-md transform transition-transform ${!isGlobalBotPaused ? 'translate-x-2.5' : 'translate-x-0'}`} />
+            </div>
+          </button>
+
+          {/* Quick Reply / Canned Responses Button */}
+          <button
+            type="button"
+            onClick={() => setIsQuickRepliesModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs active:scale-95"
+            title="Kelola Quick Reply & Canned Responses (Trigger Slash /)"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
+            <span>Quick Reply (/)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setIsDirectCsLoginOpen(true)}
@@ -2032,6 +2252,19 @@ export default function TeamChatTab({
 
                         {/* Status Badges Row */}
                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                          {/* Visual Robot vs Admin Icon */}
+                          {c.isBotActive !== false && !isGlobalBotPaused && c.status !== 'HUMAN_PAUSED' && c.status !== 'paused' ? (
+                            <span className="px-1.5 py-0.2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold flex items-center gap-1" title="Bot AI sedang melayani nomor ini">
+                              <Bot className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>AI</span>
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[9px] font-bold flex items-center gap-1" title="CS Manual Takeover (Bot dijeda)">
+                              <UserCheck className="w-2.5 h-2.5 text-amber-600" />
+                              <span>CS</span>
+                            </span>
+                          )}
+
                           {/* Agen Assignment Badge */}
                           {isMine ? (
                             <span className="px-1.5 py-0.2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold flex items-center gap-1">
@@ -2124,31 +2357,41 @@ export default function TeamChatTab({
                   </div>
                 </div>
 
-                {/* Tombol Toggle Jeda Bot / Ambil Alih CS */}
+                {/* Status Badge (AI Active vs CS Takeover) & Tombol Toggle Cepat (#on / #off) */}
                 <div className="flex items-center gap-2 shrink-0">
+                  {currentConversation.isBotActive ? (
+                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>AI Active</span>
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-xl text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1.5 shadow-2xs">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span>CS Takeover</span>
+                    </span>
+                  )}
+
                   <button
                     type="button"
                     onClick={handleToggleBot}
                     className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95 ${
                       currentConversation.isBotActive
-                        ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
-                        : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200'
+                        ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
                     }`}
-                    title={currentConversation.isBotActive ? 'Klik untuk menjeda bot dan ambil alih live CS' : 'Klik untuk mengaktifkan kembali bot AI'}
+                    title={currentConversation.isBotActive ? 'Jeda Bot khusus nomor ini (ekuivalen #off)' : 'Aktifkan Bot kembali untuk nomor ini (ekuivalen #on)'}
                   >
                     {currentConversation.isBotActive ? (
                       <>
-                        <Bot className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="hidden sm:inline">Bot AI Aktif</span>
-                        <span className="sm:hidden">Bot On</span>
-                        <Pause className="w-3 h-3 text-emerald-700 ml-1" />
+                        <Pause className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="hidden sm:inline">Jeda Bot (#off)</span>
+                        <span className="sm:hidden">#off</span>
                       </>
                     ) : (
                       <>
-                        <User className="w-3.5 h-3.5 text-amber-600" />
-                        <span className="hidden sm:inline">CS Ambil Alih (Bot Jeda)</span>
-                        <span className="sm:hidden">CS Live</span>
-                        <Play className="w-3 h-3 text-amber-700 ml-1" />
+                        <Play className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="hidden sm:inline">Aktifkan Bot (#on)</span>
+                        <span className="sm:hidden">#on</span>
                       </>
                     )}
                   </button>
@@ -2547,54 +2790,121 @@ export default function TeamChatTab({
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Quick Canned Responses Bar */}
-              <div className="px-3.5 py-2 border-t border-slate-100 bg-slate-50/70 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                <span className="text-[10px] font-bold text-slate-400 shrink-0">Template:</span>
-                {[
-                  'Halo kak, pesanan sedang kami siapkan ya!',
-                  'Silakan scan QRIS di atas untuk proses kilat kak.',
-                  'Ada yang bisa kami bantu lagi kak?',
-                ].map((tpl, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      inbox.setReplyText(tpl);
-                      setLocalReplyText(tpl);
-                      if (externalSetReplyText) externalSetReplyText(tpl);
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-[10px] font-medium text-slate-600 hover:text-indigo-600 truncate shrink-0 transition cursor-pointer"
-                  >
-                    {tpl}
-                  </button>
-                ))}
-              </div>
+              {/* Form Input Balasan Manual & Popover Slash Autocomplete */}
+              <div className="relative border-t border-slate-200 bg-white">
+                {/* Popover Menu Autocomplete Quick Replies */}
+                {slashPopoverOpen && filteredQuickReplies.length > 0 && (
+                  <div className="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-2xl border border-indigo-200 shadow-xl overflow-hidden z-30 max-h-60 overflow-y-auto animate-in slide-in-from-bottom-2 duration-150">
+                    <div className="p-2 bg-indigo-50/80 border-b border-indigo-100 flex items-center justify-between text-[11px] font-bold text-indigo-900">
+                      <span className="flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-indigo-600 fill-indigo-500" />
+                        <span>Pilih Quick Reply (Gunakan Panah ↑↓ &amp; Enter / Tab)</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-normal">Esc untuk tutup</span>
+                    </div>
+                    <div className="p-1 space-y-0.5">
+                      {filteredQuickReplies.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          onClick={() => handleSelectQuickReply(item)}
+                          className={`p-2.5 rounded-xl cursor-pointer transition flex items-start gap-2.5 ${
+                            idx === selectedSlashIndex
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'hover:bg-indigo-50/70 text-slate-800'
+                          }`}
+                        >
+                          <span
+                            className={`px-1.5 py-0.5 rounded font-mono font-black text-xs shrink-0 ${
+                              idx === selectedSlashIndex
+                                ? 'bg-white/20 text-white'
+                                : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                            }`}
+                          >
+                            {item.shortcut}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={`text-xs font-bold truncate ${
+                                idx === selectedSlashIndex ? 'text-white' : 'text-slate-900'
+                              }`}
+                            >
+                              {item.title}
+                            </p>
+                            <p
+                              className={`text-[11px] line-clamp-1 mt-0.5 ${
+                                idx === selectedSlashIndex ? 'text-indigo-100' : 'text-slate-500'
+                              }`}
+                            >
+                              {item.content}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              {/* Form Input Balasan Manual */}
-              <form
-                onSubmit={handleSendLocalMessage}
-                className="p-3 border-t border-slate-200 bg-white flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={inbox.replyText || localReplyText}
-                  onChange={(e) => {
-                    inbox.setReplyText(e.target.value);
-                    setLocalReplyText(e.target.value);
-                    if (externalSetReplyText) externalSetReplyText(e.target.value);
-                  }}
-                  placeholder="Ketik balasan CS langsung ke pembeli (otomatis menjeda bot)..."
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 transition"
-                />
-                <button
-                  type="submit"
-                  disabled={(!inbox.replyText.trim() && !localReplyText.trim()) || inbox.isSending}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs active:scale-95"
+                {/* Quick Canned Responses Bar */}
+                <div className="px-3.5 py-2 border-b border-slate-100 bg-slate-50/70 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  <span className="text-[10px] font-bold text-slate-400 shrink-0">Shortcut /:</span>
+                  {(quickReplies.length > 0 ? quickReplies.slice(0, 5) : [
+                    { shortcut: '/katalog', title: 'Katalog', content: 'Halo kak, silakan cek katalog kami ya!' },
+                    { shortcut: '/jam', title: 'Jam CS', content: 'Layanan CS aktif pukul 08.00 - 21.00 WIB.' },
+                    { shortcut: '/alamat', title: 'Alamat Toko', content: 'Lokasi gudang pusat pengiriman.' },
+                    { shortcut: '/garansi', title: 'Garansi', content: 'Syarat retur sertakan video unboxing.' },
+                    { shortcut: '/tanya', title: 'Form Tanya', content: 'Mohon isi data konsultasi awal.' },
+                  ]).map((tpl, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        inbox.setReplyText(tpl.content);
+                        setLocalReplyText(tpl.content);
+                        if (externalSetReplyText) externalSetReplyText(tpl.content);
+                        if (chatInputRef.current) chatInputRef.current.focus();
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-[10px] font-medium text-slate-600 hover:text-indigo-600 truncate shrink-0 transition cursor-pointer flex items-center gap-1"
+                      title={tpl.content}
+                    >
+                      <span className="font-mono font-bold text-indigo-600">{tpl.shortcut}</span>
+                      <span className="text-slate-400">•</span>
+                      <span>{tpl.title}</span>
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickRepliesModalOpen(true)}
+                    className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-bold shrink-0 transition cursor-pointer ml-auto flex items-center gap-1"
+                  >
+                    <span>+ Atur Template</span>
+                  </button>
+                </div>
+
+                {/* Form Input Balasan Manual */}
+                <form
+                  onSubmit={handleSendLocalMessage}
+                  className="p-3 flex items-center gap-2"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>{inbox.isSending ? 'Mengirim...' : 'Kirim'}</span>
-                </button>
-              </form>
+                  <input
+                    ref={chatInputRef}
+                    type="text"
+                    value={inbox.replyText || localReplyText}
+                    onChange={handleInputChange}
+                    onKeyDown={handleInputKeyDown}
+                    placeholder="Ketik balasan CS atau ketik '/' untuk panggil quick reply..."
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 transition"
+                  />
+                  <button
+                    type="submit"
+                    disabled={(!inbox.replyText.trim() && !localReplyText.trim()) || inbox.isSending}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{inbox.isSending ? 'Mengirim...' : 'Kirim'}</span>
+                  </button>
+                </form>
+              </div>
             </>
           )}
         </div>
@@ -2602,21 +2912,95 @@ export default function TeamChatTab({
         {/* =================================================================== */}
         {/* PANEL KANAN (3 COLS): QUICK POS & CRM RINGKASAN KONTAK             */}
         {/* =================================================================== */}
-        <div className="lg:col-span-3 flex flex-col bg-slate-50/60 h-full overflow-y-auto p-4 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+        <div className="lg:col-span-3 flex flex-col bg-slate-50/60 h-full overflow-y-auto p-3.5 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
             <span className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
               <ShoppingBag className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Quick POS &amp; Mini CRM</span>
+              <span>Console CS</span>
             </span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
-              Live Console
-            </span>
+            <div className="flex items-center gap-1 p-0.5 bg-slate-200/80 rounded-lg text-[10px] font-bold">
+              <button
+                type="button"
+                onClick={() => setRightPanelTab('crm')}
+                className={`px-2 py-0.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                  rightPanelTab === 'crm'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>Memory CRM</span>
+                {!isCrmEnabled && <Lock className="w-2.5 h-2.5 text-amber-500 shrink-0" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightPanelTab('pos')}
+                className={`px-2 py-0.5 rounded-md transition cursor-pointer ${
+                  rightPanelTab === 'pos'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Quick POS
+              </button>
+            </div>
           </div>
 
           {!currentConversation ? (
             <div className="p-6 text-center text-slate-400 text-xs">
               Pilih kontak pelanggan untuk melihat data profil CRM dan membuat tagihan QRIS.
             </div>
+          ) : rightPanelTab === 'crm' ? (
+            isCrmEnabled ? (
+              <div className="space-y-3">
+                <ContactSidebar
+                  tenantId={tenantId || resolvedTenant}
+                  customerPhone={currentConversation.customerPhone}
+                  customerName={currentConversation.customerName}
+                  authorName={activeCsUser?.name ? `${activeCsUser.name} (CS)` : 'CS Agent'}
+                  className="border border-slate-200 rounded-2xl shadow-2xs"
+                />
+
+                {/* Metrik CRM Ringkas (Database-Driven, Zero Mock) */}
+                <div className="grid grid-cols-2 gap-2 p-2 bg-white rounded-2xl border border-slate-200/80">
+                  <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Total Order</span>
+                    <span className="text-xs font-black text-slate-800">
+                      {crmMetrics.isLoading ? '...' : `${crmMetrics.totalOrders} Pesanan`}
+                    </span>
+                  </div>
+                  <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-[9px] font-bold text-slate-400 block uppercase">Nilai Belanja</span>
+                    <span className="text-xs font-black text-indigo-700">
+                      {crmMetrics.isLoading ? '...' : `Rp ${crmMetrics.lifetimeValue.toLocaleString('id-ID')}`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <FeatureLockedTeaser
+                  featureTitle="Customer Memory Layer & Lifecycle CRM"
+                  badgeTier="Pro Scale & Team Scale"
+                  headline="Pahami Setiap Pelanggan Tanpa Tanya Ulang di Meja Chat CS"
+                  comparison={{
+                    problemTitle: 'Tantangan Saat Ini',
+                    problem: 'CS sering lupa riwayat beli dan preferensi pelanggan, membuat customer frustrasi dan closing rate menurun.',
+                    solutionTitle: 'Solusi BoonTrack',
+                    solution: 'Memory layer mencatat seluruh interaksi, tag, catatan internal, dan tahapan lifecycle otomatis tepat di samping chat.',
+                  }}
+                  bullets={[
+                    'Customer Memory Layer: CS selalu tahu histori belanja, tag, dan preferensi pelanggan tanpa tanya ulang.',
+                    'Tahapan Lifecycle Prospek: Pantau transisi LEAD → QUALIFIED → CUSTOMER → REPEAT_CUSTOMER secara visual.',
+                    'Catatan Internal Tim: Kolaborasi catatan rahasia antar CS per pelanggan tanpa terlihat oleh konsumen.',
+                  ]}
+                  ctaText="Buka Akses CRM & Upgrade ke Pro Scale"
+                  featureIcon={<Brain className="w-6 h-6 text-indigo-400" />}
+                  compact={true}
+                  tenantSlug={resolvedTenant || tenantSlug}
+                  onUpgrade={() => handleUpgradeTier?.('ads_performance')}
+                />
+              </div>
+            )
           ) : (
             <>
               {/* 1. KARTU PROFIL CRM PELANGGAN */}
@@ -3363,6 +3747,16 @@ export default function TeamChatTab({
             } catch (_) {}
           }
         }}
+      />
+
+      {/* Quick Replies Settings Modal */}
+      <QuickRepliesModal
+        isOpen={isQuickRepliesModalOpen}
+        onClose={() => setIsQuickRepliesModalOpen(false)}
+        tenantSlug={resolvedTenant || tenantSlug || ''}
+        tenantId={tenantId}
+        quickReplies={quickReplies}
+        onQuickRepliesChange={setQuickReplies}
       />
     </div>
   );

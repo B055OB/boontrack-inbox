@@ -311,44 +311,96 @@ export async function processEvolutionWebhookEvent(
         }
 
         const nowIso = new Date().toISOString();
-        if (cleanCmdLower === 'pause' || cleanCmdLower === '#pause') {
-          console.info('[Evolution Admin Override] PAUSE for ' + senderPhone + ' on tenant ' + tenantId);
-          const pausedUntilIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        const cmdClean = cleanCmdLower.trim();
+
+        // 1. GLOBAL COMMAND: #resume
+        if (cmdClean === '#resume' || cmdClean === 'resume') {
+          console.info(`[Evolution Admin Override] GLOBAL RESUME on tenant ${tenantId}`);
           if (supabase) {
             try {
-              await supabase.from('conversation_sessions').upsert({
-                tenant_id: tenantId,
-                session_id: 'wa_' + tenantId + '_' + senderPhone,
-                channel: 'WHATSAPP',
-                user_identifier: senderPhone,
-                current_state: 'HUMAN_PAUSED',
-                is_paused: true,
-                paused_at: nowIso,
-                paused_by: 'admin_command',
-                paused_until: pausedUntilIso,
-                metadata: { manual_toggle: 'PAUSE', paused_by: 'admin_command', paused_at: nowIso, paused_until: pausedUntilIso },
-                updated_at: nowIso,
-              }, { onConflict: 'tenant_id,user_identifier' });
+              // Update tenants metadata.bot_paused = false
+              const { data: tRow } = await supabase
+                .from('tenants')
+                .select('metadata')
+                .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`)
+                .maybeSingle();
+              const meta = tRow?.metadata || {};
+              meta.bot_paused = false;
+              meta.is_bot_paused = false;
+              await supabase
+                .from('tenants')
+                .update({ metadata: meta, updated_at: nowIso })
+                .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`);
 
-              await supabase.from('conversations').update({
-                bot_paused: true,
-                bot_mode: 'HUMAN_ACTIVE',
-                status: 'HUMAN_PAUSED',
-                updated_at: nowIso,
-              }).or('tenant_slug.eq.' + tenantId + ',tenant_id.eq.' + tenantId).eq('phone_number', senderPhone);
+              // Update semua sesi conversation_sessions.is_paused = false
+              await supabase
+                .from('conversation_sessions')
+                .update({
+                  is_paused: false,
+                  paused_until: null,
+                  current_state: 'ACTIVE',
+                  updated_at: nowIso,
+                  metadata: { manual_toggle: 'GLOBAL_RESUME', resumed_at: nowIso },
+                })
+                .or(`tenant_id.eq.${tenantId},tenant_id.eq.${tenantSlug || tenantId}`);
+
+              // Update semua conversations bot_paused = false
+              await supabase
+                .from('conversations')
+                .update({
+                  bot_paused: false,
+                  bot_mode: 'AI_ACTIVE',
+                  status: 'active',
+                  updated_at: nowIso,
+                })
+                .or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantSlug || tenantId}`);
             } catch (sErr) {
-              console.warn('[Evolution Webhook] Admin pause error:', sErr);
+              console.warn('[Evolution Webhook] Global resume error:', sErr);
             }
           }
+
+          const replyText = '🤖 *[SISTEM]* Bot AI aktif untuk SEMUA percakapan.';
+          await sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey);
           processedCount++;
           continue;
-        } else if (cleanCmdLower === 'resume' || cleanCmdLower === '#resume') {
-          console.info('[Evolution Admin Override] RESUME for ' + senderPhone + ' on tenant ' + tenantId);
+        }
+
+        // 2. GLOBAL COMMAND: #pause
+        if (cmdClean === '#pause' || cmdClean === 'pause') {
+          console.info(`[Evolution Admin Override] GLOBAL PAUSE on tenant ${tenantId}`);
+          if (supabase) {
+            try {
+              const { data: tRow } = await supabase
+                .from('tenants')
+                .select('metadata')
+                .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`)
+                .maybeSingle();
+              const meta = tRow?.metadata || {};
+              meta.bot_paused = true;
+              meta.is_bot_paused = true;
+              await supabase
+                .from('tenants')
+                .update({ metadata: meta, updated_at: nowIso })
+                .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`);
+            } catch (sErr) {
+              console.warn('[Evolution Webhook] Global pause error:', sErr);
+            }
+          }
+
+          const replyText = '⏸️ *[SISTEM]* Bot AI dinonaktifkan GLOBAL (semua percakapan masuk mode manual).';
+          await sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey);
+          processedCount++;
+          continue;
+        }
+
+        // 3. LOCAL COMMAND: #on (Hanya untuk Lawan Bicara / Sesi Terkait)
+        if (cmdClean === '#on' || cmdClean === 'on') {
+          console.info(`[Evolution Admin Override] LOCAL ON for ${senderPhone} on tenant ${tenantId}`);
           if (supabase) {
             try {
               await supabase.from('conversation_sessions').upsert({
                 tenant_id: tenantId,
-                session_id: 'wa_' + tenantId + '_' + senderPhone,
+                session_id: `wa_${tenantId}_${senderPhone}`,
                 channel: 'WHATSAPP',
                 user_identifier: senderPhone,
                 current_state: 'ACTIVE',
@@ -356,20 +408,69 @@ export async function processEvolutionWebhookEvent(
                 paused_at: null,
                 paused_by: 'admin_command',
                 paused_until: null,
-                metadata: { manual_toggle: 'RESUME', resumed_by: 'admin_command', resumed_at: nowIso },
+                metadata: { manual_toggle: 'ON', paused_reason: null, resumed_by: 'admin_command', resumed_at: nowIso },
                 updated_at: nowIso,
               }, { onConflict: 'tenant_id,user_identifier' });
 
-              await supabase.from('conversations').update({
-                bot_paused: false,
-                bot_mode: 'AI_ACTIVE',
-                status: 'active',
-                updated_at: nowIso,
-              }).or('tenant_slug.eq.' + tenantId + ',tenant_id.eq.' + tenantId).eq('phone_number', senderPhone);
+              const phoneVariants = [senderPhone, cleanCustomerPhone(senderPhone)].filter(Boolean);
+              await supabase
+                .from('conversations')
+                .update({
+                  bot_paused: false,
+                  bot_mode: 'AI_ACTIVE',
+                  status: 'active',
+                  updated_at: nowIso,
+                })
+                .or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantId}`)
+                .in('customer_phone', phoneVariants);
             } catch (sErr) {
-              console.warn('[Evolution Webhook] Admin resume error:', sErr);
+              console.warn('[Evolution Webhook] Local ON error:', sErr);
             }
           }
+
+          const replyText = '🟢 *[SISTEM]* Bot AI aktif kembali untuk nomor ini.';
+          await sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey);
+          processedCount++;
+          continue;
+        }
+
+        // 4. LOCAL COMMAND: #off (Hanya untuk Lawan Bicara / Sesi Terkait)
+        if (cmdClean === '#off' || cmdClean === 'off') {
+          console.info(`[Evolution Admin Override] LOCAL OFF for ${senderPhone} on tenant ${tenantId}`);
+          if (supabase) {
+            try {
+              await supabase.from('conversation_sessions').upsert({
+                tenant_id: tenantId,
+                session_id: `wa_${tenantId}_${senderPhone}`,
+                channel: 'WHATSAPP',
+                user_identifier: senderPhone,
+                current_state: 'HUMAN_PAUSED',
+                is_paused: true,
+                paused_at: nowIso,
+                paused_by: 'admin_command',
+                paused_until: null,
+                metadata: { manual_toggle: 'OFF', paused_reason: 'MANUAL_OFF', paused_by: 'admin_command', paused_at: nowIso },
+                updated_at: nowIso,
+              }, { onConflict: 'tenant_id,user_identifier' });
+
+              const phoneVariants = [senderPhone, cleanCustomerPhone(senderPhone)].filter(Boolean);
+              await supabase
+                .from('conversations')
+                .update({
+                  bot_paused: true,
+                  bot_mode: 'HUMAN_ACTIVE',
+                  status: 'HUMAN_PAUSED',
+                  updated_at: nowIso,
+                })
+                .or(`tenant_slug.eq.${tenantId},tenant_id.eq.${tenantId}`)
+                .in('customer_phone', phoneVariants);
+            } catch (sErr) {
+              console.warn('[Evolution Webhook] Local OFF error:', sErr);
+            }
+          }
+
+          const replyText = '🔴 *[SISTEM]* Bot AI dimatikan khusus untuk nomor ini (CS Manual Takeover).';
+          await sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey);
           processedCount++;
           continue;
         } else {
@@ -941,6 +1042,25 @@ export async function processEvolutionWebhookEvent(
     // 6.3. Active Pause Gate (Auto-Mute: Balasan Otomatis Ditahan jika is_paused == true / bot_paused == true)
     if (supabase) {
       try {
+        // A0. Cek Status Global Bot Toko (Global #pause)
+        let isTenantGlobalPaused = false;
+        try {
+          const { data: tRow } = await supabase
+            .from('tenants')
+            .select('metadata')
+            .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`)
+            .maybeSingle();
+          if (tRow?.metadata?.bot_paused === true || tRow?.metadata?.is_bot_paused === true) {
+            isTenantGlobalPaused = true;
+          }
+        } catch (_) {}
+
+        if (isTenantGlobalPaused) {
+          console.info(`[Evolution Webhook Muted] Bot toko '${tenantSlug || tenantId}' sedang DIJEDA GLOBAL (#pause). AI Bot tidak boleh membalas.`);
+          processedCount++;
+          continue;
+        }
+
         const cleanSender = senderPhone.replace(/\D/g, '');
         const phone62 = cleanSender.startsWith('0') ? '62' + cleanSender.slice(1) : cleanSender;
         const phone08 = cleanSender.startsWith('62') ? '0' + cleanSender.slice(2) : cleanSender;

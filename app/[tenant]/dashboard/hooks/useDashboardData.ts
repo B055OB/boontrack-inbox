@@ -23,6 +23,7 @@ export type DashboardTab =
   | 'broadcast' 
   | 'whatsapp'
   | 'telegram_alerts'
+  | 'crm'
   | 'settings';
 
 export type PlanTier = 'growth' | 'ads_performance' | 'team_scale';

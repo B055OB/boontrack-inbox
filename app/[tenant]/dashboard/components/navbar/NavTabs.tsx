@@ -39,6 +39,7 @@ export type DashboardTab =
   | 'broadcast'
   | 'whatsapp'
   | 'auto_reply'
+  | 'crm'
   | 'settings';
 
 export interface NavTabsPermissions {
@@ -437,6 +438,25 @@ export default function NavTabs({
             ) : (
               <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-extrabold">2 SEATS</span>
             )}
+          </button>
+
+          {/* TAB 9: MEMORY CRM */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'crm'}
+            onClick={() => setActiveTab('crm')}
+            className={`flex-shrink-0 shrink-0 py-2.5 sm:py-3.5 px-2.5 sm:px-3 border-b-2 flex items-center gap-1.5 sm:gap-2 transition-all cursor-pointer ${
+              activeTab === 'crm'
+                ? 'border-blue-600 text-blue-600 bg-blue-50/60 sm:bg-transparent rounded-t-lg sm:rounded-none'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Brain className="w-4 h-4 text-violet-600 shrink-0" />
+            <span>Memory CRM</span>
+            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-extrabold flex items-center gap-1">
+              <Lock className="w-2.5 h-2.5 text-amber-500" /> PRO
+            </span>
           </button>
         </div>
 

@@ -14,9 +14,11 @@ import {
   RefreshCw,
   ArrowRight,
   Save,
+  Radio,
 } from 'lucide-react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 import TelegramAlertManager from '../TelegramAlertManager';
+import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
 
 interface WhatsAppTabProps {
   tenantSlug: string;
@@ -48,6 +50,7 @@ interface WhatsAppTabProps {
     targetTier: 'ads_performance' | 'team_scale';
     targetTierLabel: string;
   }) => React.ReactNode;
+  onUpgradeTier?: (targetTier: 'ads_performance' | 'team_scale') => void;
   setSaveFeedback: (msg: string | null) => void;
   greetingMessage?: string;
   setGreetingMessage?: (msg: string) => void;
@@ -95,6 +98,7 @@ export default function WhatsAppTab({
   strategyFeedback,
   isProScale,
   renderLockedFeatureCard,
+  onUpgradeTier,
   setSaveFeedback,
   greetingMessage,
   setGreetingMessage,
@@ -452,13 +456,28 @@ export default function WhatsAppTab({
       {/* PRO SCALE PANEL */}
       {waMode === 'meta' && (
         !isProScale ? (
-          renderLockedFeatureCard({
-            title: 'Koneksi Resmi Meta Cloud API (Official WABA)',
-            badge: 'Fitur Eksklusif Team Scale',
-            description: 'Integrasikan nomor WhatsApp bisnis resmi dengan Meta Cloud API (Official WABA) centang hijau, webhook instan berkecepatan tinggi, dan proteksi anti-banned.',
-            targetTier: 'team_scale',
-            targetTierLabel: 'Team Scale',
-          })
+          <div className="py-2 flex items-center justify-center">
+            <FeatureLockedTeaser
+              featureTitle="WhatsApp Business API (Official WABA)"
+              badgeTier="Team Scale"
+              headline="Broadcast Skala Besar & Automasi Resmi Meta Tanpa Risiko Terblokir"
+              comparison={{
+                problemTitle: 'Tantangan Saat Ini',
+                problem: 'Broadcast manual dari nomor pribadi rentan terblokir (banned) seketika oleh WhatsApp dan membatasi skala pertumbuhan bisnis.',
+                solutionTitle: 'Solusi BoonTrack',
+                solution: 'Jalur resmi Meta Cloud API dengan centang hijau, proteksi anti-banned mutlak, dan kecepatan kirim ribuan pesan per menit.',
+              }}
+              bullets={[
+                'Broadcast Massal Resmi: Kirim promosi serentak ke ribuan kontak pelanggan tanpa rasa was-was akun terblokir.',
+                'Centang Hijau Resmi (OBA): Bangun kredibilitas instan dengan verified business badge di profil WhatsApp.',
+                'Template Interaktif Meta: Kirim penawaran dengan tombol Quick Reply & CTA link langsung ke pembayaran.',
+              ]}
+              ctaText="Upgrade ke Team Scale (Official WABA)"
+              featureIcon={<Radio className="w-7 h-7 text-emerald-400" />}
+              tenantSlug={tenantSlug}
+              onUpgrade={() => onUpgradeTier?.('team_scale')}
+            />
+          </div>
         ) : (
           <div className="space-y-4">
             <WhatsAppWabaConfig

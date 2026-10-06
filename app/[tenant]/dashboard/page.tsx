@@ -16,8 +16,12 @@ import {
   X,
   Sun,
   Moon,
+  MessageSquare,
+  Radio,
+  Brain,
 } from 'lucide-react';
 import LockedFeatureCard from './components/LockedFeatureCard';
+import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
 import { getSupabase } from '@/lib/supabaseClient';
 
 import DashboardSidebar from './components/sidebar/DashboardSidebar';
@@ -216,6 +220,15 @@ export default function TenantDashboardPage() {
     tier: tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'ADS_PERFORMANCE' : isTeamScale ? 'TEAM_SCALE' : 'STARTER'),
   }), [tenantFeatureFlags?.tier, isCheckoutLite, isSoloOrTrial, isAdsPerformance, isTeamScale]);
 
+  const isCrmEnabled = React.useMemo(() => {
+    const slug = (tenantSlug || '').toLowerCase().trim();
+    const hasMetadataFlag = Boolean(
+      tenantData?.metadata?.features?.crm ||
+      tenantData?.features?.crm
+    );
+    return slug === 'tumbuh-kembang-anak' || hasMetadataFlag;
+  }, [tenantSlug, tenantData]);
+
   const renderLockedFeatureCard = (cardProps: {
     title: string;
     badge: string;
@@ -413,6 +426,7 @@ export default function TenantDashboardPage() {
               storeCategory={storeCategory || businessType}
               businessType={businessType || storeCategory}
               capabilities={capabilities}
+              isCrmEnabled={isCrmEnabled}
               activeTab={activeTab}
               setActiveTab={(tab) => {
                 setActiveTab(tab);
@@ -459,6 +473,7 @@ export default function TenantDashboardPage() {
         storeCategory={storeCategory || businessType}
         businessType={businessType || storeCategory}
         capabilities={capabilities}
+        isCrmEnabled={isCrmEnabled}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         isTeamScale={isTeamScale}
@@ -692,31 +707,85 @@ export default function TenantDashboardPage() {
 
       {/* TAB 1: LIVE CHAT CS OMNICHANNEL */}
       {activeTab === 'inbox' && (
-        <TeamChatTab
-          initialTenant={tenantData}
-          tenantSlug={tenantSlug}
-          tenantId={tenantId || undefined}
-          isCheckoutLite={isCheckoutLite}
-          tenantTier={tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'ADS_PERFORMANCE' : isTeamScale ? 'TEAM_SCALE' : 'STARTER')}
-          conversations={conversations}
-          activeConversation={activeConversation}
-          activeConversationId={activeConversationId}
-          setActiveConversationId={setActiveConversationId}
-          replyText={replyText}
-          setReplyText={setReplyText}
-          handleSendMessage={handleSendMessage}
-          isProScale={isProScale}
-          isGrowthPlus={isGrowthPlus}
-          isGrowth={isGrowth}
-          isTeamScale={isTeamScale}
-          isAdsPerformance={isAdsPerformance}
-          handleUpgradeTier={handleUpgradeTier}
-          isSoloOrTrial={isSoloOrTrial}
-          trialDaysLeft={trialDaysLeft}
-          trialEndsAt={trialEndsAt}
-          isTenantBotPaused={isTenantBotPaused}
-          handleToggleTenantBot={handleToggleTenantBot}
-        />
+        isCheckoutLite ? (
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+            <FeatureLockedTeaser
+              featureTitle="BoonTrack Omnichannel Inbox & Meta CAPI"
+              badgeTier="Starter / Pro"
+              headline="Ubah Chat CS Jadi Sinyal ROAS Meta Ads Secara Real-Time"
+              comparison={{
+                problemTitle: 'Tantangan Saat Ini',
+                problem: 'Chat WhatsApp sering putus dari pelacakan Meta Ads. Konversi closing tidak terbaca algoritma, membuat biaya iklan membengkak tanpa arah.',
+                solutionTitle: 'Solusi BoonTrack',
+                solution: 'Setiap transaksi closing di chat langsung menembakkan server-side CAPI event. ROAS tercatat akurat dan optimasi iklan menjadi presisi.',
+              }}
+              bullets={[
+                'Otomatis Kirim Event CAPI: Setiap closing di inbox langsung tercatat sebagai Purchase ke Meta Ads tanpa bocor cookie.',
+                'Customer Memory: CS selalu tahu histori belanja, tag, dan preferensi pelanggan tanpa tanya ulang.',
+                'Multi-CS Satu Nomor: Pantau kinerja seluruh admin dalam satu meja kerja terpusat.',
+              ]}
+              ctaText="Buka Akses Inbox & Maksimalkan Iklan"
+              featureIcon={<MessageSquare className="w-7 h-7 text-indigo-400" />}
+              tenantSlug={tenantSlug}
+              onUpgrade={() => handleUpgradeTier('ads_performance')}
+            />
+          </div>
+        ) : (
+          <TeamChatTab
+            initialTenant={tenantData}
+            tenantSlug={tenantSlug}
+            tenantId={tenantId || undefined}
+            isCheckoutLite={isCheckoutLite}
+            tenantTier={tenantFeatureFlags?.tier || (isCheckoutLite ? 'CHECKOUT_LITE' : isSoloOrTrial ? 'STARTER' : isAdsPerformance ? 'ADS_PERFORMANCE' : isTeamScale ? 'TEAM_SCALE' : 'STARTER')}
+            conversations={conversations}
+            activeConversation={activeConversation}
+            activeConversationId={activeConversationId}
+            setActiveConversationId={setActiveConversationId}
+            replyText={replyText}
+            setReplyText={setReplyText}
+            handleSendMessage={handleSendMessage}
+            isProScale={isProScale}
+            isGrowthPlus={isGrowthPlus}
+            isGrowth={isGrowth}
+            isTeamScale={isTeamScale}
+            isAdsPerformance={isAdsPerformance}
+            handleUpgradeTier={handleUpgradeTier}
+            isSoloOrTrial={isSoloOrTrial}
+            trialDaysLeft={trialDaysLeft}
+            trialEndsAt={trialEndsAt}
+            isTenantBotPaused={isTenantBotPaused}
+            handleToggleTenantBot={handleToggleTenantBot}
+          />
+        )
+      )}
+
+      {/* TAB CRM: CUSTOMER MEMORY & LIFECYCLE (Preview Mode: Locked Teaser) */}
+      {activeTab === 'crm' && (
+        <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+          <FeatureLockedTeaser
+            featureTitle="Customer Memory Layer & Lifecycle CRM"
+            badgeTier="Eksklusif Paket Pro & Scale"
+            headline="Pahami Setiap Pelanggan Tanpa Tanya Ulang di Meja Chat CS"
+            comparison={{
+              problemTitle: 'Masalah: CS Lupa Histori & Chat Acak-acakan',
+              problem:
+                'CS sering lupa riwayat belanja, preferensi, dan keluhan pelanggan terdahulu. Chat acak-acakan tanpa histori membuat closing lambat dan pelanggan frustrasi.',
+              solutionTitle: 'Solusi: Memory Layer & Lifecycle BoonTrack',
+              solution:
+                'Memory layer merekam interaksi, tag relasional, catatan internal rahasia CS, dan tahapan lifecycle otomatis tepat di samping jendela obrolan.',
+            }}
+            bullets={[
+              'Customer Memory Layer: CS selalu tahu histori belanja, tag, dan preferensi pelanggan tanpa tanya ulang.',
+              'Lifecycle Stage Engine: Pantau alur prospek (LEAD → QUALIFIED → CUSTOMER → REPEAT_CUSTOMER) secara visual.',
+              'Internal Team Notes: Kolaborasi catatan rahasia dan operasional antar CS per pelanggan tanpa terlihat oleh pembeli.',
+            ]}
+            calloutBanner="💡 Tips Hemat: Ambil langganan 1 tahun langsung otomatis unlock fitur Memory CRM ini tanpa biaya tambahan!"
+            ctaText="Upgrade ke Pro Scale / Paket Tahunan"
+            featureIcon={<Brain className="w-7 h-7 text-indigo-400" />}
+            tenantSlug={tenantSlug}
+            onUpgrade={() => handleUpgradeTier('ads_performance')}
+          />
+        </div>
       )}
 
       {/* TAB: PESANAN / ORDERS */}
@@ -1011,6 +1080,7 @@ export default function TenantDashboardPage() {
               strategyFeedback={strategyFeedback}
               isProScale={isProScale}
               renderLockedFeatureCard={renderLockedFeatureCard}
+              onUpgradeTier={handleUpgradeTier}
               setSaveFeedback={setSaveFeedback}
               greetingMessage={storeGreetingMessage}
               setGreetingMessage={setStoreGreetingMessage}
@@ -1043,15 +1113,27 @@ export default function TenantDashboardPage() {
 
           {activeTab === 'broadcast' &&
             (!isProScale ? (
-              <div className="p-6 md:p-8 max-w-5xl mx-auto w-full">
-                {renderLockedFeatureCard({
-                  title: 'Broadcast WA Massal (Meta Cloud API)',
-                  badge: 'Fitur Eksklusif Team Scale (Official WABA)',
-                  description:
-                    'Fitur Eksklusif Team Scale (Official WABA). Kirim pesan promosi massal resmi anti-banned langsung lewat Meta Cloud API.',
-                  targetTier: 'team_scale',
-                  targetTierLabel: 'Team Scale',
-                })}
+              <div className="p-6 md:p-8 max-w-5xl mx-auto w-full flex items-center justify-center">
+                <FeatureLockedTeaser
+                  featureTitle="WhatsApp Business API (Official WABA)"
+                  badgeTier="Team Scale"
+                  headline="Broadcast Skala Besar & Automasi Resmi Meta Tanpa Risiko Terblokir"
+                  comparison={{
+                    problemTitle: 'Tantangan Saat Ini',
+                    problem: 'Broadcast manual dari nomor pribadi rentan terblokir (banned) seketika oleh WhatsApp dan membatasi skala pertumbuhan bisnis.',
+                    solutionTitle: 'Solusi BoonTrack',
+                    solution: 'Jalur resmi Meta Cloud API dengan centang hijau, proteksi anti-banned mutlak, dan kecepatan kirim ribuan pesan per menit.',
+                  }}
+                  bullets={[
+                    'Broadcast Massal Resmi: Kirim promosi serentak ke ribuan kontak pelanggan tanpa rasa was-was akun terblokir.',
+                    'Centang Hijau Resmi (OBA): Bangun kredibilitas instan dengan verified business badge di profil WhatsApp.',
+                    'Template Interaktif Meta: Kirim penawaran dengan tombol Quick Reply & CTA link langsung ke pembayaran.',
+                  ]}
+                  ctaText="Upgrade ke Team Scale (Official WABA)"
+                  featureIcon={<Radio className="w-7 h-7 text-emerald-400" />}
+                  tenantSlug={tenantSlug}
+                  onUpgrade={() => handleUpgradeTier('team_scale')}
+                />
               </div>
             ) : (
               <WhatsAppBroadcastManager
