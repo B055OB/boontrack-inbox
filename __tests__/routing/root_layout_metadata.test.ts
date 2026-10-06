@@ -72,10 +72,10 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     expect(meta.manifest).toBe('/manifest.json');
     expect(meta.title).toContain('Shop');
 
-    // Open Graph & Twitter Card specification (only 1 image og-square.png?v=4 in openGraph.images)
+    // Open Graph & Twitter Card specification (only 1 image og-square.png?v=5 in openGraph.images)
     expect(meta.openGraph?.images).toEqual([
       expect.objectContaining({
-        url: 'https://shop.boontrack.com/og-square.png?v=4',
+        url: 'https://shop.boontrack.com/og-square.png?v=5',
         width: 500,
         height: 500,
         alt: 'BoonTrack Shop',
@@ -106,7 +106,7 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     expect(meta.title).toContain('Shop');
     expect(meta.openGraph?.images).toEqual([
       expect.objectContaining({
-        url: 'https://shop.boontrack.com/og-square.png?v=4',
+        url: 'https://shop.boontrack.com/og-square.png?v=5',
         width: 500,
         height: 500,
         alt: 'BoonTrack Shop',
@@ -120,7 +120,7 @@ describe('Root Layout Metadata & Icon/Manifest Isolation', () => {
     const fs = require('fs');
     const path = require('path');
     const layoutContent = fs.readFileSync(path.join(process.cwd(), 'app', 'layout.tsx'), 'utf8');
-    expect(layoutContent).toContain('<link rel="image_src" href="https://shop.boontrack.com/og-square.png?v=4" />');
+    expect(layoutContent).toContain('<link rel="image_src" href="https://shop.boontrack.com/og-square.png?v=5" />');
   });
 
   describe('Middleware Asset Rewrites Isolation', () => {
