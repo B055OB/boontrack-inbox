@@ -180,6 +180,7 @@ export async function GET(
         total_omzet: metadata.total_omzet || null,
         telegram_chat_id: tenantRow.telegram_chat_id || metadata.telegram_chat_id || null,
         telegram_group_config: metadata.telegram_group_config || null,
+        followup_rules: metadata.followup_rules || null,
       },
     });
   } catch (err: unknown) {
@@ -244,6 +245,8 @@ export async function PUT(
       shipping_settings,
       telegram_chat_id,
       telegram_group_config,
+      followup_rules,
+      follow_up_rules,
     } = body;
 
     const supabase = getSupabase();
@@ -378,6 +381,9 @@ export async function PUT(
       ...(telegram_chat_id !== undefined ? { telegram_chat_id: telegram_chat_id || null } : {}),
       ...(telegram_group_config !== undefined || body.telegram_group_config !== undefined
         ? { telegram_group_config: telegram_group_config ?? body.telegram_group_config }
+        : {}),
+      ...(followup_rules !== undefined || follow_up_rules !== undefined
+        ? { followup_rules: followup_rules !== undefined ? followup_rules : follow_up_rules }
         : {}),
     };
 

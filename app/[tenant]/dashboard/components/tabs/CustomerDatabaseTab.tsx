@@ -27,12 +27,20 @@ import {
   CheckCircle2,
   Plus,
   HeartHandshake,
+  CalendarClock,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { ContactService } from '@/lib/crm/contact.service';
 import { toE164, formatDisplayPhone } from '@/lib/crm/phone-utils';
-import { calculateFollowUpInfo } from '@/lib/crm/followup-engine';
-import { LifecycleStage, FollowUpInfo, FollowUpTriggerType } from '@/lib/crm/types';
+import { calculateFollowUpInfo, formatFollowUpTemplate } from '@/lib/crm/followup-engine';
+import {
+  LifecycleStage,
+  FollowUpInfo,
+  FollowUpTriggerType,
+  FollowUpRules,
+  DEFAULT_FOLLOW_UP_RULES,
+} from '@/lib/crm/types';
+import FollowUpRulesConfig from '../settings/FollowUpRulesConfig';
 
 // -------------------------------------------------------------------
 // Types
@@ -155,6 +163,8 @@ export default function CustomerDatabaseTab({
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [tenantName, setTenantName] = useState<string>('');
+  const [followUpRules, setFollowUpRules] = useState<FollowUpRules>(DEFAULT_FOLLOW_UP_RULES);
+  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
 
   // -------------------------------------------------------------------
   // Modal State: Tambah Pelanggan / Pasien
@@ -198,15 +208,39 @@ export default function CustomerDatabaseTab({
       // 1. Resolve canonical tenant UUID
       const tenantUuid = await ContactService.resolveTenantId(tenantId || tenantSlug);
 
-      // Get tenant store name if available
+      // Get tenant store name & dynamic follow-up rules
+      let currentFollowUpRules: FollowUpRules = DEFAULT_FOLLOW_UP_RULES;
       if (tenantUuid) {
         const { data: tData } = await supabase
           .from('tenants')
-          .select('name')
+          .select('name, metadata')
           .eq('id', tenantUuid)
           .maybeSingle();
         if (tData?.name) {
           setTenantName(tData.name);
+        }
+        if (tData?.metadata?.followup_rules) {
+          currentFollowUpRules = {
+            ...DEFAULT_FOLLOW_UP_RULES,
+            ...tData.metadata.followup_rules,
+          };
+          setFollowUpRules(currentFollowUpRules);
+        }
+      } else if (tenantSlug) {
+        const { data: tData } = await supabase
+          .from('tenants')
+          .select('name, metadata')
+          .eq('slug', tenantSlug)
+          .maybeSingle();
+        if (tData?.name) {
+          setTenantName(tData.name);
+        }
+        if (tData?.metadata?.followup_rules) {
+          currentFollowUpRules = {
+            ...DEFAULT_FOLLOW_UP_RULES,
+            ...tData.metadata.followup_rules,
+          };
+          setFollowUpRules(currentFollowUpRules);
         }
       }
 
@@ -307,6 +341,7 @@ export default function CustomerDatabaseTab({
           birthDate,
           lastVisitDate,
           tenantName: tenantName || 'Tumbuh Kembang Anak',
+          rules: currentFollowUpRules,
         });
 
         customerMap.set(phone, {
@@ -347,6 +382,7 @@ export default function CustomerDatabaseTab({
               birthDate: existing.birthDate,
               lastVisitDate: conv.last_message_at,
               tenantName: tenantName || 'Tumbuh Kembang Anak',
+              rules: currentFollowUpRules,
             });
           }
         } else {
@@ -360,6 +396,7 @@ export default function CustomerDatabaseTab({
             birthDate: null,
             lastVisitDate,
             tenantName: tenantName || 'Tumbuh Kembang Anak',
+            rules: currentFollowUpRules,
           });
 
           customerMap.set(phone, {
@@ -390,6 +427,7 @@ export default function CustomerDatabaseTab({
             birthDate: null,
             lastVisitDate: stats.lastOrderDate,
             tenantName: tenantName || 'Tumbuh Kembang Anak',
+            rules: currentFollowUpRules,
           });
 
           customerMap.set(phone, {
@@ -711,6 +749,18 @@ export default function CustomerDatabaseTab({
             >
               <UserPlus className="w-3.5 h-3.5" />
               <span>+ Tambah Pelanggan / Pasien</span>
+            </button>
+
+            {/* Button Aturan Follow-Up Dinamis */}
+            <button
+              type="button"
+              id="btn-followup-rules"
+              onClick={() => setIsRulesModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition cursor-pointer active:scale-95"
+              title="Atur jeda hari & template pesan WhatsApp"
+            >
+              <CalendarClock className="w-3.5 h-3.5 text-emerald-600" />
+              <span>⚙️ Aturan Follow-Up (H+{followUpRules.h1Days}, H+{followUpRules.h2Days})</span>
             </button>
 
             {/* Sort dropdown */}
@@ -1287,24 +1337,32 @@ export default function CustomerDatabaseTab({
                     type="button"
                     onClick={() => {
                       setFollowUpMessageText(
-                        `Halo Ayah/Bunda ${activeFollowUpCustomer.customerName}, bagaimana perkembangan si kecil setelah sesi kunjungan 3 hari lalu di ${tenantName || 'Klinik'}? Apakah ada respon atau kondisi baru yang ingin dikonsultasikan kembali? Kami siap membantu evaluasi 🙏`
+                        formatFollowUpTemplate(followUpRules.h1Template, {
+                          name: activeFollowUpCustomer.customerName,
+                          store: tenantName || 'Klinik Tumbuh Kembang',
+                          days: followUpRules.h1Days,
+                        })
                       );
                     }}
                     className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 cursor-pointer"
                   >
-                    Template H+3 (Evaluasi Kondisi)
+                    Template H+{followUpRules.h1Days} (Evaluasi Kondisi)
                   </button>
 
                   <button
                     type="button"
                     onClick={() => {
                       setFollowUpMessageText(
-                        `Halo Ayah/Bunda ${activeFollowUpCustomer.customerName}, sudah 1 minggu sejak sesi kunjungan terakhir. Untuk memastikan kemajuan stimulasi dan tumbuh kembang si kecil berjalan optimal, apakah ingin menjadwalkan sesi evaluasi lanjutan minggu ini? 😊`
+                        formatFollowUpTemplate(followUpRules.h2Template, {
+                          name: activeFollowUpCustomer.customerName,
+                          store: tenantName || 'Klinik Tumbuh Kembang',
+                          days: followUpRules.h2Days,
+                        })
                       );
                     }}
                     className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 cursor-pointer"
                   >
-                    Template H+7 (Sesi Lanjutan)
+                    Template H+{followUpRules.h2Days} (Sesi Lanjutan)
                   </button>
 
                   {activeFollowUpCustomer.birthDate && (
@@ -1312,7 +1370,10 @@ export default function CustomerDatabaseTab({
                       type="button"
                       onClick={() => {
                         setFollowUpMessageText(
-                          `Halo Ayah/Bunda ${activeFollowUpCustomer.customerName}, Selamat Ulang Tahun untuk si kecil! 🎂🎉 Semoga senantiasa sehat, tumbuh cerdas, dan penuh keceriaan. Kami dari ${tenantName || 'Klinik Tumbuh Kembang'} mendoakan yang terbaik. Spesial di hari bahagia ini, kami siapkan hadiah voucher spesial 🎁✨`
+                          formatFollowUpTemplate(followUpRules.birthdayTemplate, {
+                            name: activeFollowUpCustomer.customerName,
+                            store: tenantName || 'Klinik Tumbuh Kembang',
+                          })
                         );
                       }}
                       className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100 cursor-pointer"
@@ -1385,6 +1446,44 @@ export default function CustomerDatabaseTab({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PENGATURAN ATURAN FOLLOW-UP DINAMIS */}
+      {isRulesModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 my-auto space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <CalendarClock className="w-5 h-5 text-emerald-600" />
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    Pengaturan Jadwal Follow-Up &amp; Siklus Pasien
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Kustomisasi jeda hari dan template pesan WhatsApp untuk {tenantName || tenantSlug}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRulesModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg cursor-pointer transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <FollowUpRulesConfig
+              tenantSlug={tenantSlug}
+              tenantDisplayName={tenantName || tenantSlug}
+              onSaved={(newRules) => {
+                setFollowUpRules(newRules);
+                setToastMessage('✅ Aturan jadwal follow-up berhasil diperbarui!');
+                fetchCustomers();
+              }}
+            />
           </div>
         </div>
       )}

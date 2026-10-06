@@ -75,6 +75,11 @@ export interface UpsertContactInput {
 
 export type FollowUpTriggerType =
   | 'BIRTHDAY'
+  | 'H1_DUE'
+  | 'H1_PAST'
+  | 'H2_DUE'
+  | 'H2_PAST'
+  | 'UPCOMING_H1'
   | 'H3_DUE'
   | 'H3_PAST'
   | 'H7_DUE'
@@ -82,6 +87,36 @@ export type FollowUpTriggerType =
   | 'UPCOMING_H3'
   | 'RETENTION'
   | 'NONE';
+
+export interface FollowUpRules {
+  h1Days: number;
+  h2Days: number;
+  h1Enabled: boolean;
+  h2Enabled: boolean;
+  birthdayEnabled: boolean;
+  retentionEnabled?: boolean;
+  h1Template: string;
+  h2Template: string;
+  birthdayTemplate: string;
+  retentionTemplate?: string;
+}
+
+export const DEFAULT_FOLLOW_UP_RULES: FollowUpRules = {
+  h1Days: 3,
+  h2Days: 7,
+  h1Enabled: true,
+  h2Enabled: true,
+  birthdayEnabled: true,
+  retentionEnabled: true,
+  h1Template:
+    'Halo Ayah/Bunda [nama], bagaimana perkembangan si kecil setelah sesi [hari] hari lalu di [toko]? Apakah ada keluhan atau respon perkembangan yang ingin dikonsultasikan kembali? Kami siap membantu evaluasi kondisinya 🙏',
+  h2Template:
+    'Halo Ayah/Bunda [nama], sudah 1 minggu ([hari] hari) sejak sesi kunjungan terakhir di [toko]. Untuk memastikan kemajuan stimulasi dan tumbuh kembang si kecil berjalan optimal, apakah ingin menjadwalkan sesi evaluasi lanjutan minggu ini? 😊',
+  birthdayTemplate:
+    'Halo Ayah/Bunda [nama], Selamat Ulang Tahun untuk si kecil! 🎂🎉 Semoga senantiasa sehat, tumbuh cerdas, dan penuh keceriaan. Kami dari [toko] selalu mendoakan yang terbaik. Spesial di hari bahagia ini, kami siapkan hadiah voucher spesial untuk sesi atau program tumbuh kembang bulan ini 🎁✨',
+  retentionTemplate:
+    'Halo Ayah/Bunda [nama], apa kabar si kecil? Sudah cukup lama sejak sesi kunjungan terakhir di [toko]. Jika memerlukan pendampingan stimulasi atau evaluasi baru, pintu klinik kami selalu terbuka untuk Ayah/Bunda 🙏',
+};
 
 export interface FollowUpInfo {
   type: FollowUpTriggerType;

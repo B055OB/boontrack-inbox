@@ -72,6 +72,7 @@ export function matchBankOption(name: string): { option: string; custom: string 
 
 import { getSupabase } from '@/lib/supabaseClient';
 import ReaderIntegrationCard from '../settings/ReaderIntegrationCard';
+import FollowUpRulesConfig from '../settings/FollowUpRulesConfig';
 import AiSessionQuotaMeter from '../AiSessionQuotaMeter';
 
 export interface SettingsTabProps {
@@ -707,6 +708,17 @@ export default function SettingsTab({
         <p className="text-[10px] text-slate-400">
           Pesan ini dikirimkan otomatis oleh Bot saat calon pembeli pertama kali mengirim chat. Gunakan variabel <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono">[nama_toko]</code> untuk memuat nama toko dinamis.
         </p>
+      </div>
+
+      {/* ── ATURAN OTOMASI FOLLOW-UP LIFECYCLE & RETENSI ── */}
+      <div className="pt-4 border-t border-slate-200">
+        <FollowUpRulesConfig
+          tenantSlug={tenantSlug}
+          tenantDisplayName={storeDisplayName}
+          onSaved={() => {
+            if (onSavedSuccess) onSavedSuccess();
+          }}
+        />
       </div>
     </div>
   );

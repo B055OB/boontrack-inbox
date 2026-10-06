@@ -4,20 +4,47 @@
  * H+3 (Evaluation/check-in), H+7 (Weekly review / next session), and Birthday Reminder.
  */
 
-import { FollowUpInfo } from './types';
+import {
+  FollowUpInfo,
+  FollowUpRules,
+  DEFAULT_FOLLOW_UP_RULES,
+  FollowUpTriggerType,
+} from './types';
+
+export function formatFollowUpTemplate(
+  template: string,
+  variables: { name: string; store: string; days?: number }
+): string {
+  return template
+    .replace(/\[nama\]|\{\{nama\}\}|\{\{customerName\}\}/gi, variables.name)
+    .replace(/\[toko\]|\[nama_toko\]|\{\{toko\}\}|\{\{storeName\}\}/gi, variables.store)
+    .replace(/\[hari\]|\{\{hari\}\}|\{\{days\}\}/gi, String(variables.days ?? ''));
+}
 
 export function calculateFollowUpInfo(params: {
   customerName: string;
   birthDate?: string | null;
   lastVisitDate?: string | null;
   tenantName?: string;
+  rules?: Partial<FollowUpRules> | null;
 }): FollowUpInfo {
-  const { customerName, birthDate, lastVisitDate, tenantName } = params;
+  const { customerName, birthDate, lastVisitDate, tenantName, rules } = params;
   const storeName = tenantName || 'Tumbuh Kembang Anak';
   const now = new Date();
 
+  const h1Days = Math.max(1, Math.floor(Number(rules?.h1Days ?? DEFAULT_FOLLOW_UP_RULES.h1Days)));
+  const h2Days = Math.max(h1Days + 1, Math.floor(Number(rules?.h2Days ?? DEFAULT_FOLLOW_UP_RULES.h2Days)));
+  const h1Enabled = rules?.h1Enabled !== false;
+  const h2Enabled = rules?.h2Enabled !== false;
+  const birthdayEnabled = rules?.birthdayEnabled !== false;
+
+  const h1Template = rules?.h1Template || DEFAULT_FOLLOW_UP_RULES.h1Template;
+  const h2Template = rules?.h2Template || DEFAULT_FOLLOW_UP_RULES.h2Template;
+  const birthdayTemplate = rules?.birthdayTemplate || DEFAULT_FOLLOW_UP_RULES.birthdayTemplate;
+  const retentionTemplate = rules?.retentionTemplate || DEFAULT_FOLLOW_UP_RULES.retentionTemplate || '';
+
   // 1. Birthday Check (Trigger priority: Birthday takes top precedence on the day of birth)
-  if (birthDate) {
+  if (birthdayEnabled && birthDate) {
     const bDate = new Date(birthDate);
     if (!isNaN(bDate.getTime())) {
       const isBirthdayToday =
@@ -30,68 +57,92 @@ export function calculateFollowUpInfo(params: {
           badgeCls: 'bg-rose-50 text-rose-700 border-rose-200 font-black',
           isDueToday: true,
           targetDate: birthDate,
-          templateText: `Halo Ayah/Bunda ${customerName}, Selamat Ulang Tahun untuk si kecil! 🎂🎉 Semoga senantiasa sehat, tumbuh cerdas, dan penuh keceriaan. Kami dari ${storeName} selalu mendoakan yang terbaik. Spesial di hari bahagia ini, kami siapkan hadiah voucher spesial untuk sesi atau program tumbuh kembang bulan ini 🎁✨`,
+          templateText: formatFollowUpTemplate(birthdayTemplate, {
+            name: customerName,
+            store: storeName,
+          }),
         };
       }
     }
   }
 
-  // 2. Post-visit H+3 & H+7 Check
+  // 2. Post-visit Check with Dynamic Day Rules
   if (lastVisitDate) {
     const visit = new Date(lastVisitDate);
     if (!isNaN(visit.getTime())) {
       const diffTime = now.getTime() - visit.getTime();
       const daysDiff = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-      if (daysDiff === 3) {
+      if (h1Enabled && daysDiff === h1Days) {
+        const type: FollowUpTriggerType = h1Days === 3 ? 'H3_DUE' : 'H1_DUE';
         return {
-          type: 'H3_DUE',
-          label: 'Follow-Up H+3 (Hari Ini)',
+          type,
+          label: `Follow-Up H+${h1Days} (Hari Ini)`,
           badgeCls: 'bg-amber-50 text-amber-800 border-amber-300 font-bold',
           isDueToday: true,
           targetDate: lastVisitDate,
-          templateText: `Halo Ayah/Bunda ${customerName}, bagaimana perkembangan si kecil setelah sesi 3 hari lalu di ${storeName}? Apakah ada keluhan atau respon perkembangan yang ingin dikonsultasikan kembali? Kami siap membantu evaluasi kondisinya 🙏`,
+          templateText: formatFollowUpTemplate(h1Template, {
+            name: customerName,
+            store: storeName,
+            days: h1Days,
+          }),
         };
       }
 
-      if (daysDiff > 3 && daysDiff < 7) {
+      if (h1Enabled && daysDiff > h1Days && daysDiff < h2Days) {
+        const type: FollowUpTriggerType = h1Days === 3 ? 'H3_PAST' : 'H1_PAST';
         return {
-          type: 'H3_PAST',
+          type,
           label: `H+${daysDiff} (Check-in Kondisi)`,
           badgeCls: 'bg-amber-50/70 text-amber-700 border-amber-200 font-medium',
           isDueToday: false,
           targetDate: lastVisitDate,
-          templateText: `Halo Ayah/Bunda ${customerName}, bagaimana kondisi si kecil saat ini? Apakah proses stimulasi di rumah berjalan lancar? Bila ada yang ingin ditanyakan kepada tim kami, silakan balas pesan ini ya 🙏`,
+          templateText: formatFollowUpTemplate(h1Template, {
+            name: customerName,
+            store: storeName,
+            days: daysDiff,
+          }),
         };
       }
 
-      if (daysDiff === 7) {
+      if (h2Enabled && daysDiff === h2Days) {
+        const type: FollowUpTriggerType = h2Days === 7 ? 'H7_DUE' : 'H2_DUE';
         return {
-          type: 'H7_DUE',
-          label: 'Follow-Up H+7 (Hari Ini)',
+          type,
+          label: `Follow-Up H+${h2Days} (Hari Ini)`,
           badgeCls: 'bg-blue-50 text-blue-800 border-blue-300 font-bold',
           isDueToday: true,
           targetDate: lastVisitDate,
-          templateText: `Halo Ayah/Bunda ${customerName}, sudah 1 minggu sejak sesi kunjungan terakhir. Untuk memastikan kemajuan stimulasi dan tumbuh kembang si kecil berjalan optimal, apakah ingin menjadwalkan sesi evaluasi lanjutan minggu ini? 😊`,
+          templateText: formatFollowUpTemplate(h2Template, {
+            name: customerName,
+            store: storeName,
+            days: h2Days,
+          }),
         };
       }
 
-      if (daysDiff > 7 && daysDiff <= 14) {
+      if (h2Enabled && daysDiff > h2Days && daysDiff <= h2Days * 2) {
+        const type: FollowUpTriggerType = h2Days === 7 ? 'H7_PAST' : 'H2_PAST';
         return {
-          type: 'H7_PAST',
+          type,
           label: `H+${daysDiff} (Evaluasi Lanjutan)`,
           badgeCls: 'bg-indigo-50 text-indigo-700 border-indigo-200 font-medium',
           isDueToday: false,
           targetDate: lastVisitDate,
-          templateText: `Halo Ayah/Bunda ${customerName}, mengingatkan untuk jadwal evaluasi berkala si kecil agar program tumbuh kembangnya tetap berlanjut optimal. Apakah Ayah/Bunda ingin reservasi slot jadwal minggu ini? 😊`,
+          templateText: formatFollowUpTemplate(h2Template, {
+            name: customerName,
+            store: storeName,
+            days: daysDiff,
+          }),
         };
       }
 
-      if (daysDiff < 3) {
-        const remaining = 3 - daysDiff;
+      if (h1Enabled && daysDiff < h1Days) {
+        const remaining = h1Days - daysDiff;
+        const type: FollowUpTriggerType = h1Days === 3 ? 'UPCOMING_H3' : 'UPCOMING_H1';
         return {
-          type: 'UPCOMING_H3',
-          label: `H+3 (${remaining} hari lagi)`,
+          type,
+          label: `H+${h1Days} (${remaining} hari lagi)`,
           badgeCls: 'bg-slate-100 text-slate-600 border-slate-200',
           isDueToday: false,
           targetDate: lastVisitDate,
@@ -99,14 +150,18 @@ export function calculateFollowUpInfo(params: {
         };
       }
 
-      if (daysDiff > 14) {
+      if (daysDiff > h2Days * 2) {
         return {
           type: 'RETENTION',
           label: `Kunjungan ${daysDiff} hari lalu`,
           badgeCls: 'bg-slate-100 text-slate-500 border-slate-200',
           isDueToday: false,
           targetDate: lastVisitDate,
-          templateText: `Halo Ayah/Bunda ${customerName}, apa kabar si kecil? Sudah cukup lama sejak sesi kunjungan terakhir. Jika memerlukan pendampingan stimulasi atau evaluasi baru, pintu klinik kami selalu terbuka untuk Ayah/Bunda 🙏`,
+          templateText: formatFollowUpTemplate(retentionTemplate, {
+            name: customerName,
+            store: storeName,
+            days: daysDiff,
+          }),
         };
       }
     }

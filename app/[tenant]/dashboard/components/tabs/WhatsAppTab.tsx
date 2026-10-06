@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import WhatsAppWabaConfig from '../WhatsAppWabaConfig';
 import TelegramAlertManager from '../TelegramAlertManager';
+import FollowUpRulesConfig from '../settings/FollowUpRulesConfig';
 import FeatureLockedTeaser from '@/components/shared/FeatureLockedTeaser';
 
 interface WhatsAppTabProps {
@@ -571,6 +572,17 @@ export default function WhatsAppTab({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* ATURAN OTOMASI FOLLOW-UP CRM & SIKLUS PELANGGAN */}
+      <div className="pt-2">
+        <FollowUpRulesConfig
+          tenantSlug={tenantSlug}
+          tenantDisplayName={displayName}
+          onSaved={() => {
+            if (setSaveFeedback) setSaveFeedback('✅ Aturan follow-up otomatis WhatsApp berhasil disimpan!');
+          }}
+        />
       </div>
 
       {/* INTEGRASI NOTIFIKASI TELEGRAM MULTI-TENANT */}

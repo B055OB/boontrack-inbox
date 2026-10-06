@@ -92,7 +92,69 @@ describe('CRM Follow-Up Automation Engine & Phone Utils', () => {
       expect(res.isDueToday).toBe(true);
       expect(res.label).toContain('H+7');
       expect(res.templateText).toContain('Bunda Sarah');
-      expect(res.templateText).toContain('1 minggu sejak sesi kunjungan terakhir');
+      expect(res.templateText).toContain('sejak sesi kunjungan terakhir');
+    });
+  });
+
+  describe('Dynamic Tenant Rules (Custom Days & Templates)', () => {
+    it('supports custom H+5 and H+14 intervals configured by tenant', () => {
+      const now = new Date();
+      const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString();
+      const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+      const customRules = {
+        h1Days: 5,
+        h2Days: 14,
+        h1Template: 'Halo [nama], evaluasi sesi [hari] hari lalu di [toko] 🙏',
+        h2Template: 'Halo [nama], follow-up berkala [hari] hari dari [toko] ✨',
+      };
+
+      // Test H+5
+      const resH1 = calculateFollowUpInfo({
+        customerName: 'Bunda Jessica',
+        birthDate: null,
+        lastVisitDate: fiveDaysAgo,
+        tenantName: 'Klinik Tumbuh Kembang Sejahtera',
+        rules: customRules,
+      });
+
+      expect(resH1.isDueToday).toBe(true);
+      expect(resH1.label).toContain('H+5');
+      expect(resH1.templateText).toBe('Halo Bunda Jessica, evaluasi sesi 5 hari lalu di Klinik Tumbuh Kembang Sejahtera 🙏');
+
+      // Test H+14
+      const resH2 = calculateFollowUpInfo({
+        customerName: 'Bunda Jessica',
+        birthDate: null,
+        lastVisitDate: fourteenDaysAgo,
+        tenantName: 'Klinik Tumbuh Kembang Sejahtera',
+        rules: customRules,
+      });
+
+      expect(resH2.isDueToday).toBe(true);
+      expect(resH2.label).toContain('H+14');
+      expect(resH2.templateText).toBe('Halo Bunda Jessica, follow-up berkala 14 hari dari Klinik Tumbuh Kembang Sejahtera ✨');
+    });
+
+    it('respects disabled flags (e.g. birthdayEnabled: false)', () => {
+      const today = new Date();
+      const yyyy = today.getFullYear() - 2;
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const birthDate = `${yyyy}-${mm}-${dd}`;
+
+      const res = calculateFollowUpInfo({
+        customerName: 'Bunda Dian',
+        birthDate,
+        lastVisitDate: null,
+        tenantName: 'Klinik dr. Harys',
+        rules: {
+          birthdayEnabled: false,
+        },
+      });
+
+      expect(res.type).toBe('NONE');
+      expect(res.isDueToday).toBe(false);
     });
   });
 });
