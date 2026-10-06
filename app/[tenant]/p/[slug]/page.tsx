@@ -83,6 +83,8 @@ import {
 import { getSupabase } from '@/lib/supabaseClient';
 import { hasTenantBankAccounts, extractTenantBankAccounts, TenantBankAccount } from '@/lib/bank-accounts';
 import StickyBuyButton from '@/components/storefront/StickyBuyButton';
+import ProductMediaShowcase from '@/components/storefront/ProductMediaShowcase';
+import MiniIntakeForm from '@/components/storefront/MiniIntakeForm';
 import { useCart } from '@/lib/cart/use-cart';
 import { evaluateCartPolicy } from '@/lib/cart/cart-policy';
 import CartDrawer from '@/components/cart/CartDrawer';
@@ -320,7 +322,21 @@ function SingleProductContent() {
         ]);
 
         const tenantRow = tenantRes.data;
-        const sqlProd = sqlProdRes.data;
+        let sqlProd = sqlProdRes.data;
+        if (!sqlProd && tenantRow?.id) {
+          const { data: tenantProds } = await supabase
+            .from('products')
+            .select('*')
+            .eq('tenant_id', tenantRow.id);
+          if (tenantProds && tenantProds.length > 0) {
+            const normSlug = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
+            sqlProd = tenantProds.find((p: any) => {
+              const pSlug = (p.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const pName = slugify(p.title || p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              return pSlug === normSlug || pName === normSlug || (pSlug && (normSlug.includes(pSlug) || pSlug.includes(normSlug)));
+            }) || null;
+          }
+        }
         const adsTrackingCfg = settingsRes.data?.ads_tracking_config;
 
         if (tenantRow && isMounted) {
@@ -488,6 +504,8 @@ function SingleProductContent() {
               whatsapp_cta_number: cfg.whatsapp_cta_number || match?.metadata?.whatsapp_cta_number || undefined,
               checkout_action_mode: cfg.checkout_action_mode || match?.metadata?.checkout_action_mode || (match?.fulfillment_metadata?.single_page_config?.checkout_action_mode) || 'DIRECT',
               whatsapp_custom_message: cfg.whatsapp_custom_message || match?.metadata?.whatsapp_custom_message || (match?.fulfillment_metadata?.single_page_config?.whatsapp_custom_message) || '',
+              gallery_images: cfg.gallery_images || (match?.fulfillment_metadata?.single_page_config?.gallery_images) || (cfg.testimonial_images && cfg.testimonial_images.length > 0 ? cfg.testimonial_images.map((im: string, i: number) => ({ url: im, title: `Bukti & Testimoni ${i + 1}`, category: 'Bukti Chat & Testimoni' })) : []),
+              intake_form_config: cfg.intake_form_config || (match?.fulfillment_metadata?.single_page_config?.intake_form_config) || undefined,
             };
 
             const rawPrice = match.price !== undefined && match.price !== null ? Number(match.price) : (ob.price !== undefined && ob.price !== null ? Number(ob.price) : 0);
@@ -3966,6 +3984,14 @@ function SingleProductContent() {
           </section>
         )}
 
+        {/* 1.5 Interactive Product Media Showcase (Silabus, Infografis Gizi/Stimulasi & Lightbox Zoom) */}
+        {config.gallery_images && config.gallery_images.length > 0 && (
+          <ProductMediaShowcase
+            images={config.gallery_images}
+            productName={product.name}
+          />
+        )}
+
         {/* 2. Client Logos Section (Brand Social Proof) */}
         {!isDirectCheckoutOnly && config.enable_client_logos && config.client_logos && config.client_logos.length > 0 && (
           <ClientLogosSection logos={config.client_logos} />
@@ -4233,6 +4259,19 @@ function SingleProductContent() {
               </section>
             ) : null}
           </>
+        )}
+
+        {/* 7.5 Mini Intake Form (Positive Friction Filter untuk Konsultasi Medis & Screening) */}
+        {config.intake_form_config?.enabled && (
+          <MiniIntakeForm
+            tenantSlug={tenant}
+            officialWaNumber={tenantWhatsAppNumber}
+            onDirectCheckout={(data) => {
+              setBuyerName(data.parentName);
+              setBuyerPhone(data.whatsappPhone);
+              handleOpenCheckout();
+            }}
+          />
         )}
 
         {/* 8. Ultra-Lean Single Page Checkout Section */}

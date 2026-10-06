@@ -163,6 +163,26 @@ export interface SinglePageConfig {
   whatsapp_cta_number?: string;
   /** When true, hides Alamat Lengkap & Kecamatan/Kota fields (for digital/consultation products). Default: false */
   hide_address_for_digital?: boolean;
+
+  // 9. Interactive Product Media Showcase & Lightbox Gallery
+  enable_media_gallery?: boolean;
+  gallery_images?: Array<{
+    url: string;
+    title?: string;
+    category?: string;
+  }>;
+
+  // 10. Mini Intake Form (Positive Friction Filter)
+  intake_form_config?: {
+    enabled?: boolean;
+    title?: string;
+    description?: string;
+    child_name_label?: string;
+    child_age_label?: string;
+    concern_label?: string;
+    action_type?: 'WHATSAPP' | 'CHECKOUT';
+    target_wa_number?: string;
+  };
 }
 
 export type ProductType =
