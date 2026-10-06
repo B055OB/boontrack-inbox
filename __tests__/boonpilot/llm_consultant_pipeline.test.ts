@@ -83,6 +83,19 @@ describe('BoonPilot LLM Consultant & Enriched Knowledge Pipeline', () => {
       });
       expect(merchantPrompt).toContain('Halo kak, bantu jawab ya!');
     });
+
+    it('mandates concise, to-the-point response rules to fit 1 WhatsApp bubble', () => {
+      const prompt = buildBoonPilotSystemPrompt({
+        isRegistered: false,
+        role: 'GUEST',
+        senderPhone: '089999999999',
+        normalizedPhone: '6289999999999',
+      });
+
+      expect(prompt).toContain('ATURAN JAWABAN PADAT, TO THE POINT & TUNTAS (1 BALON CHAT WHATSAPP)');
+      expect(prompt).toContain('1 balon chat WhatsApp');
+      expect(prompt).toContain('tanpa bertele-tele');
+    });
   });
 
   describe('2. Gemini 3.8 Flash Dynamic LLM Invocation', () => {
@@ -119,6 +132,9 @@ describe('BoonPilot LLM Consultant & Enriched Knowledge Pipeline', () => {
       expect(geminiCalls.length).toBe(1);
       const callUrl = geminiCalls[0][0];
       expect(callUrl).toContain('gemini-3.8-flash:generateContent?key=test-gemini-key-123');
+
+      const requestPayload = JSON.parse(geminiCalls[0][1].body);
+      expect(requestPayload.generationConfig.maxOutputTokens).toBe(2048);
 
       expect(result.reply).toContain('Halo kak, bantu jawab ya!');
       expect(result.reply).toContain('Purchase server-side');

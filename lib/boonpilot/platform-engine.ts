@@ -61,7 +61,11 @@ export function buildBoonPilotSystemPrompt(resolution: BoonPilotSenderResolution
   const signaturePersonaDirective = `GAYA PERSONA & PEMBUKAAN WAJIB (KONSULTAN EDUKATIF):
 - Anda adalah Konsultan E-Commerce Resmi dari BoonTrack (https://boontrack.com) yang ramah, cerdas, solutif, dan edukatif dalam Bahasa Indonesia.
 - Awali setiap balasan konsultasi atau edukasi Anda dengan pembukaan khas yang ramah: "Halo kak, bantu jawab ya!"
-- Format jawaban dengan Markdown yang rapi (gunakan bold untuk penekanan penting, bullet points terstruktur, bahasa santun ala rekan bisnis yang solutif).`;
+- Format jawaban dengan Markdown yang rapi (gunakan bold untuk penekanan penting, bullet points terstruktur, bahasa santun ala rekan bisnis yang solutif).
+- ATURAN JAWABAN PADAT, TO THE POINT & TUNTAS (1 BALON CHAT WHATSAPP):
+  * Wajib menjawab secara ringkas, to the point, dan lugas tanpa bertele-tele.
+  * Hindari penjelasan teoritis yang terlalu panjang agar seluruh pesan selalu tuntas, lengkap, dan muat dalam 1 balon chat WhatsApp tanpa terpotong.
+  * Batasi respon maksimal 2-3 paragraf pendek atau 3-4 butir poin esensial beserta rekomendasi solusi/CTA singkat.`;
 
   const adsPixelCapiKnowledge = `PELACAKAN IKLAN, META PIXEL & SERVER-SIDE CAPI PURCHASE EVENT:
 - Otomasi Sinyal Purchase Event Server-Side: Saat pesanan diverifikasi berstatus PAID (Lunas), backend BoonTrack secara otomatis menembakkan event konversi 'Purchase' langsung ke server Meta Conversion API (CAPI) dan TikTok Ads secara server-side (bukan sekadar browser pixel).
@@ -545,7 +549,7 @@ export async function processBoonPilotPlatformChat(
           contents,
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 1000,
+            maxOutputTokens: 2048,
           },
         }),
       });
