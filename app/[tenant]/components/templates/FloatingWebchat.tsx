@@ -280,7 +280,7 @@ export default function FloatingWebchat({
   };
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end">
+    <div className="fixed bottom-5 right-4 sm:right-6 z-40 flex flex-col items-end">
       {/* Floating Chat Modal Box */}
       {isOpen && (
         <div className="w-[360px] sm:w-[400px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100dvh-6rem)] bg-white rounded-3xl border border-slate-200/90 shadow-2xl flex flex-col overflow-hidden mb-3 animate-in fade-in slide-in-from-bottom-3 duration-200 transition-all">
@@ -532,14 +532,14 @@ export default function FloatingWebchat({
         type="button"
         id="btn-floating-webchat"
         onClick={() => setIsOpen(!isOpen)}
-        className="group relative flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-full shadow-lg shadow-purple-600/30 transition-all duration-300 active:scale-95 cursor-pointer"
-        aria-label="Buka Chat Konsultasi"
+        className="group relative flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-full shadow-xl shadow-purple-600/30 transition-all duration-300 active:scale-95 cursor-pointer whitespace-nowrap shrink-0 border border-white/20 select-none"
+        aria-label="Konsultasi Dokter"
       >
-        <span className="relative flex items-center justify-center">
+        <span className="relative flex items-center justify-center shrink-0">
           <MessageSquare className="w-5 h-5" />
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-purple-600 animate-pulse" />
         </span>
-        <span className="font-bold text-xs tracking-tight">Konsultasi Dokter / CS</span>
+        <span className="font-bold text-xs tracking-tight whitespace-nowrap">Konsultasi Dokter</span>
       </button>
     </div>
   );

@@ -18,6 +18,8 @@ import {
   QrCode,
   ExternalLink,
   ChevronRight,
+  AlertCircle,
+  Check,
 } from 'lucide-react';
 import type { Product } from '@/app/[tenant]/page';
 import FloatingWebchat from './FloatingWebchat';
@@ -25,6 +27,7 @@ import InstagramVisualGrid from './InstagramVisualGrid';
 import ScheduleBookingWidget from '../ScheduleBookingWidget';
 import { sanitizeImageUrl } from '@/lib/image-utils';
 import { resolveProductExternalUrl, resolveProductCtaLabel } from '@/lib/product-catalog';
+import { toE164 } from '@/lib/crm/phone-utils';
 
 interface PersonalAuthorityTemplateProps {
   tenantSlug: string;
@@ -94,6 +97,144 @@ export default function PersonalAuthorityTemplate({
   const [avatarError, setAvatarError] = useState(false);
   const [productImgError, setProductImgError] = useState(false);
   const [selectedTopicForChat, setSelectedTopicForChat] = useState<string | null>(null);
+
+  // Dynamic Doctors List (SSOT from Supabase)
+  const doctorsList: Array<{
+    name: string;
+    title?: string;
+    specialty?: string;
+    photo_url?: string;
+    avatar_url?: string;
+    schedule?: string;
+  }> =
+    Array.isArray(tenantMetadata?.doctors) && tenantMetadata.doctors.length > 0
+      ? tenantMetadata.doctors
+      : Array.isArray(tenant?.metadata?.doctors) && tenant.metadata.doctors.length > 0
+      ? tenant.metadata.doctors
+      : [];
+
+  // Mini Intake Form State (Positive Friction Lead Capture)
+  const [intakeParentName, setIntakeParentName] = useState('');
+  const [intakeParentPhone, setIntakeParentPhone] = useState('');
+  const [intakeChildAge, setIntakeChildAge] = useState('');
+  const [intakeComplaint, setIntakeComplaint] = useState(
+    '🥣 Masalah Makan / Gerakan Tutup Mulut (GTM)'
+  );
+  const [intakeError, setIntakeError] = useState<string | null>(null);
+  const [intakeSuccess, setIntakeSuccess] = useState(false);
+  const [isIntakeSubmitting, setIsIntakeSubmitting] = useState(false);
+
+  const COMPLAINT_OPTIONS = [
+    {
+      id: 'gtm',
+      title: '🥣 Masalah Makan / Gerakan Tutup Mulut (GTM)',
+      desc: 'Solusi berat badan seret, pilih makanan (picky eater), feeding rules dr. Harys',
+    },
+    {
+      id: 'speech',
+      title: '🗣️ Keterlambatan Bicara (Speech Delay)',
+      desc: 'Evaluasi artikulasi, kontak mata, & stimulasi komunikasi 2 arah dr. Azizah',
+    },
+    {
+      id: 'sensori',
+      title: '🧩 Sensori & Motorik',
+      desc: 'Regulasi emosi, tantrum berlebih, sensitif tekstur/suara, koordinasi gerak',
+    },
+    {
+      id: 'umum',
+      title: '🩺 Konsultasi Perkembangan Umum',
+      desc: 'Pemantauan milestone lengkap 1.000 Hari Pertama Kehidupan & skrining',
+    },
+  ];
+
+  const handleIntakeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIntakeError(null);
+
+    if (!intakeParentName.trim()) {
+      setIntakeError('Nama Ayah / Bunda wajib diisi.');
+      return;
+    }
+
+    if (!intakeParentPhone.trim()) {
+      setIntakeError('Nomor WhatsApp aktif wajib diisi.');
+      return;
+    }
+
+    let rawPhone = intakeParentPhone.trim();
+    if (rawPhone.startsWith('0')) {
+      rawPhone = '62' + rawPhone.slice(1);
+    } else if (rawPhone.startsWith('+62')) {
+      rawPhone = rawPhone.slice(1);
+    } else if (!rawPhone.startsWith('62')) {
+      rawPhone = '62' + rawPhone;
+    }
+    const canonicalPhone = toE164(rawPhone) || (rawPhone.startsWith('+') ? rawPhone : `+${rawPhone}`);
+
+    setIsIntakeSubmitting(true);
+
+    try {
+      // 1. Submit lead to CRM API endpoint (/api/v1/crm/lead)
+      await fetch('/api/v1/crm/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_slug: tenantSlug,
+          name: intakeParentName.trim(),
+          phone: canonicalPhone,
+          intent: intakeComplaint,
+          notes: `Mini Intake Form: Usia Anak: ${intakeChildAge.trim() || 'Tidak disebutkan'} | Keluhan: ${intakeComplaint}`,
+        }),
+      });
+
+      // 2. Save lead in localStorage for webchat continuity
+      try {
+        localStorage.setItem(
+          `boontrack_webchat_lead_${tenantSlug}`,
+          JSON.stringify({ name: intakeParentName.trim(), phone: canonicalPhone })
+        );
+      } catch {}
+
+      setIntakeSuccess(true);
+
+      // 3. Formulate direct WhatsApp message
+      const targetPhone = whatsappNumber || '6285129992305';
+      const cleanWaPhone = targetPhone.replace(/\D/g, '');
+      const waMsg =
+        `Halo dr. Harys & dr. Azizah (${activeName}),\n\n` +
+        `Saya ingin konsultasi terarah untuk si kecil:\n` +
+        `• Nama Orang Tua: ${intakeParentName.trim()}\n` +
+        `• Nomor WhatsApp: ${canonicalPhone}\n` +
+        `• Usia Si Kecil: ${intakeChildAge.trim() || 'Belum diisi'}\n` +
+        `• Keluhan Utama: ${intakeComplaint}\n\n` +
+        `Mohon arahan jadwal dan alur konsultasinya. Terima kasih!`;
+
+      const waUrl = `https://wa.me/${cleanWaPhone}?text=${encodeURIComponent(waMsg)}`;
+
+      // Open WhatsApp link
+      if (typeof window !== 'undefined') {
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      }
+      onOutboundClick(waUrl, 'whatsapp_intake_submit');
+    } catch (err) {
+      console.warn('[MiniIntakeForm] Error submitting lead:', err);
+      const targetPhone = whatsappNumber || '6285129992305';
+      const cleanWaPhone = targetPhone.replace(/\D/g, '');
+      const waMsg =
+        `Halo dr. Harys & dr. Azizah (${activeName}),\n\n` +
+        `Saya ingin konsultasi terarah untuk si kecil:\n` +
+        `• Nama Orang Tua: ${intakeParentName.trim()}\n` +
+        `• Usia Si Kecil: ${intakeChildAge.trim() || 'Belum diisi'}\n` +
+        `• Keluhan Utama: ${intakeComplaint}\n\n` +
+        `Mohon arahan jadwal dan alur konsultasinya. Terima kasih!`;
+      const waUrl = `https://wa.me/${cleanWaPhone}?text=${encodeURIComponent(waMsg)}`;
+      if (typeof window !== 'undefined') {
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
+      }
+    } finally {
+      setIsIntakeSubmitting(false);
+    }
+  };
 
   const initials =
     (activeName || 'Store')
@@ -241,88 +382,361 @@ export default function PersonalAuthorityTemplate({
         </div>
       </header>
 
-      {/* HERO SECTION: Clean UX with generous whitespace & bold typography */}
-      <section className="relative overflow-hidden pt-12 pb-16 md:pt-20 md:pb-24 px-4 sm:px-6 bg-gradient-to-b from-white via-purple-50/20 to-transparent">
-        <div className="max-w-5xl mx-auto text-center space-y-6">
-          {/* Authority Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-100 text-purple-800 text-xs font-black border border-purple-200 shadow-2xs">
-            <Award className="w-4 h-4 text-purple-600" />
-            <span>Kanal Resmi &bull; {tenantMetadata?.category || 'Verified Store'}</span>
-          </div>
+      {/* HERO SECTION: 2-Column Authority Layout with Doctors Portrait Showcase */}
+      <section className="relative overflow-hidden pt-10 pb-14 md:pt-16 md:pb-20 px-4 sm:px-6 bg-gradient-to-b from-white via-purple-50/30 to-slate-50/20">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
+            {/* Sisi Kiri: Authority Content, Educational Sub-headline & Primary CTAs */}
+            <div className="lg:col-span-7 space-y-6 text-left">
+              {/* Trust Badge: Medical Authority Label */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-50 text-purple-900 text-xs font-black border border-purple-200/90 shadow-2xs">
+                <Award className="w-4 h-4 text-purple-600 shrink-0" />
+                <span>Otoritas Medis Dokter Anak &bull; {tenantMetadata?.category === 'KLINIK_KONSULTASI' ? 'Klinik Tumbuh Kembang' : (tenantMetadata?.category || 'Klinik Resmi')}</span>
+              </div>
 
-          {/* Headline */}
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-black text-slate-900 tracking-tight leading-[1.15] max-w-4xl mx-auto">
-            {headline}
-          </h1>
+              {/* Headline Medis yang Lugas & Berwibawa */}
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-[1.16]">
+                {headline}
+              </h1>
 
-          {/* Subheadline */}
-          {subheadline ? (
-            <p className="text-sm sm:text-base md:text-lg text-slate-600 font-normal leading-relaxed max-w-2xl mx-auto">
-              {subheadline}
-            </p>
-          ) : null}
+              {/* Sub-headline Edukatif Terkait Tumbuh Kembang & Nutrisi */}
+              {subheadline ? (
+                <p className="text-sm sm:text-base md:text-lg text-slate-600 font-normal leading-relaxed max-w-xl">
+                  {subheadline}
+                </p>
+              ) : null}
 
-          {/* Profile Avatar Showcase */}
-          <div className="py-2 flex flex-col items-center justify-center">
-            <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-3xl overflow-hidden p-1 bg-gradient-to-tr from-purple-600 via-indigo-500 to-amber-400 shadow-xl shadow-purple-600/20 flex items-center justify-center">
-              {displayAvatar && !avatarError ? (
-                <img
-                  src={displayAvatar}
-                  alt={activeName}
-                  onError={() => setAvatarError(true)}
-                  className="w-full h-full object-cover rounded-2xl bg-white"
-                />
-              ) : (
-                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-center text-white shadow-inner">
-                  <span className="text-3xl sm:text-4xl font-black tracking-tight">{initials}</span>
+              {/* Clinical Trust Checkpoints */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 text-xs font-semibold text-slate-700">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Pendampingan Dokter Spesialis &amp; Praktisi</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Metode Happy Eating Tanpa Trauma</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Screening Milestone 1.000 Hari Pertama</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Jadwal Praktik Senin–Jumat 08.00–11.30 WIB</span>
+                </div>
+              </div>
+
+              {/* Main CTA Buttons */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const intakeEl = typeof document !== 'undefined' ? document.getElementById('intake-form-section') : null;
+                    if (intakeEl) {
+                      intakeEl.scrollIntoView({ behavior: 'smooth' });
+                    } else {
+                      handleCtaPrimary();
+                    }
+                  }}
+                  className="w-full sm:w-auto px-7 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-purple-600/25 transition-all duration-200 active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <span>Mulai Konsultasi Terarah</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                {whatsappConsultationUrl && (
+                  <button
+                    type="button"
+                    onClick={() => onOutboundClick(whatsappConsultationUrl, 'whatsapp_hero_consult')}
+                    className="w-full sm:w-auto px-6 py-3.5 bg-white hover:bg-slate-50 text-slate-800 font-bold text-sm rounded-2xl border border-slate-200 shadow-xs transition cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+                  >
+                    <HeartHandshake className="w-4 h-4 text-purple-600" />
+                    <span>Tanya via WhatsApp</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Social Proof Stats */}
+              {stats && stats.length > 0 && (
+                <div className={`pt-4 grid grid-cols-${Math.min(stats.length, 3)} gap-4 border-t border-slate-200/80`}>
+                  {stats.map((item, idx) => (
+                    <div key={idx}>
+                      <p className="text-xl sm:text-2xl font-black text-slate-900">{item.value}</p>
+                      <p className="text-[11px] text-slate-500 font-medium">{item.label}</p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-800">{activeName}</span>
-              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-emerald-600" /> Verified Store
-              </span>
-            </div>
-          </div>
 
-          {/* Main CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            {mainProduct && (
-              <button
-                type="button"
-                onClick={handleCtaPrimary}
-                className="w-full sm:w-auto px-7 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-purple-600/25 transition-all duration-200 active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300" />
-                <span>Pesan {mainProduct.name}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
+            {/* Sisi Kanan: Foto Profesional Dokter / Praktisi Berwibawa */}
+            <div className="lg:col-span-5">
+              {doctorsList.length >= 2 ? (
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 max-w-md mx-auto lg:max-w-none">
+                  {doctorsList.slice(0, 2).map((doc, dIdx) => (
+                    <div
+                      key={dIdx}
+                      className="group relative bg-white/95 backdrop-blur-md rounded-3xl p-3 sm:p-4 border border-purple-100 shadow-xl shadow-purple-900/5 hover:shadow-2xl hover:border-purple-300 transition-all duration-300 flex flex-col justify-between"
+                    >
+                      {/* Portrait Doctor Frame */}
+                      <div className="relative aspect-[3/4] w-full rounded-2xl overflow-hidden bg-gradient-to-b from-purple-50 via-slate-50 to-purple-100/40 border border-purple-100/80 mb-3 flex items-center justify-center">
+                        {doc.photo_url || doc.avatar_url ? (
+                          <img
+                            src={sanitizeImageUrl(doc.photo_url || doc.avatar_url)}
+                            alt={doc.name}
+                            className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-purple-100 text-purple-700 font-black text-2xl">
+                            {doc.name.slice(0, 2)}
+                          </div>
+                        )}
+                        {/* Status Badge */}
+                        <div className="absolute top-2 left-2 bg-white/95 backdrop-blur-xs px-2 py-0.5 rounded-full border border-purple-100 shadow-2xs flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold text-slate-800">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span>Praktik</span>
+                        </div>
+                      </div>
 
-            {whatsappConsultationUrl && (
-              <button
-                type="button"
-                onClick={() => onOutboundClick(whatsappConsultationUrl, 'whatsapp_hero_consult')}
-                className="w-full sm:w-auto px-6 py-3.5 bg-white hover:bg-slate-50 text-slate-800 font-bold text-sm rounded-2xl border border-slate-200 shadow-xs transition cursor-pointer flex items-center justify-center gap-2 active:scale-95"
-              >
-                <HeartHandshake className="w-4 h-4 text-purple-600" />
-                <span>Tanya via WhatsApp</span>
-              </button>
-            )}
-          </div>
-
-          {/* Social Proof Stats */}
-          {stats && stats.length > 0 && (
-            <div className={`pt-6 grid grid-cols-${Math.min(stats.length, 3)} gap-2 sm:gap-6 max-w-lg mx-auto text-center border-t border-slate-200/80`}>
-              {stats.map((item, idx) => (
-                <div key={idx}>
-                  <p className="text-xl sm:text-2xl font-black text-slate-900">{item.value}</p>
-                  <p className="text-[11px] text-slate-500 font-medium">{item.label}</p>
+                      {/* Doctor Credential Details */}
+                      <div className="space-y-1">
+                        <h3 className="font-black text-slate-900 text-xs sm:text-sm tracking-tight leading-snug">
+                          {doc.name}
+                        </h3>
+                        <p className="text-[10px] sm:text-[11px] font-bold text-purple-700 leading-tight">
+                          {doc.specialty || doc.title}
+                        </p>
+                        {doc.schedule ? (
+                          <p className="text-[9px] text-slate-400 font-medium pt-0.5 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-purple-500 shrink-0" />
+                            <span className="truncate">{doc.schedule}</span>
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                /* Fallback untuk single-authority practitioner */
+                <div className="relative bg-white/95 backdrop-blur-md rounded-3xl p-4 sm:p-5 border border-purple-100 shadow-xl shadow-purple-900/5 max-w-sm mx-auto flex flex-col items-center text-center">
+                  <div className="relative aspect-[3/4] w-full rounded-2xl overflow-hidden bg-gradient-to-b from-purple-50 via-slate-50 to-purple-100/40 border border-purple-100 mb-4 flex items-center justify-center">
+                    {displayAvatar && !avatarError ? (
+                      <img
+                        src={displayAvatar}
+                        alt={activeName}
+                        onError={() => setAvatarError(true)}
+                        className="w-full h-full object-cover object-top"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-violet-700 flex items-center justify-center text-white text-4xl font-black">
+                        {initials}
+                      </div>
+                    )}
+                    <div className="absolute top-3 left-3 bg-white/95 px-2.5 py-1 rounded-full border border-purple-100 shadow-2xs flex items-center gap-1.5 text-[10px] font-bold text-slate-800">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Verified Practitioner</span>
+                    </div>
+                  </div>
+                  <h3 className="font-black text-slate-900 text-base">{activeName}</h3>
+                  <p className="text-xs text-purple-700 font-semibold">{headline}</p>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* MINI INTAKE FORM (POSITIVE FRICTION LEAD FILTER)                    */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <section id="intake-form-section" className="py-14 px-4 sm:px-6 bg-gradient-to-b from-purple-50/50 via-white to-slate-50/50 border-y border-purple-100">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-3xl border border-purple-200/80 shadow-xl shadow-purple-900/5 p-6 sm:p-10 relative overflow-hidden">
+            {/* Top decorative gradient bar */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-amber-400" />
+
+            <div className="text-center space-y-2 mb-8">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100/80 text-purple-800 text-[11px] font-black border border-purple-200">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                <span>Skrining Cepat &bull; Konsultasi Terarah</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                Konsultasikan Kebutuhan Si Kecil Bersama Dokter Kami
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500 max-w-xl mx-auto leading-relaxed">
+                Isi formulir ringkas di bawah ini agar tim dokter dapat mempelajari riwayat &amp; memberikan respon yang tepat sasaran via WhatsApp.
+              </p>
+            </div>
+
+            {intakeSuccess ? (
+              <div className="p-6 sm:p-8 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-4 animate-in fade-in zoom-in-95 duration-300">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-black text-slate-900">
+                    Data Konsultasi Berhasil Dicatat!
+                  </h3>
+                  <p className="text-xs text-slate-600 max-w-md mx-auto">
+                    Tautan WhatsApp telah disiapkan dengan rangkuman informasi si kecil. Jika aplikasi WhatsApp tidak terbuka otomatis, silakan klik tombol di bawah:
+                  </p>
+                </div>
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <a
+                    href={`https://wa.me/${(whatsappNumber || '6285129992305').replace(/\D/g, '')}?text=${encodeURIComponent(
+                      `Halo dr. Harys & dr. Azizah (${activeName}),\n\nSaya ingin konsultasi terarah untuk si kecil:\n• Nama Orang Tua: ${intakeParentName}\n• Usia Si Kecil: ${intakeChildAge || 'Belum diisi'}\n• Keluhan Utama: ${intakeComplaint}\n\nMohon arahan jadwal dan alur konsultasinya. Terima kasih!`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
+                  >
+                    <HeartHandshake className="w-4 h-4" />
+                    <span>Buka Percakapan WhatsApp</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIntakeSuccess(false);
+                      setIntakeParentName('');
+                      setIntakeParentPhone('');
+                      setIntakeChildAge('');
+                    }}
+                    className="w-full sm:w-auto px-5 py-3 bg-white text-slate-700 hover:bg-slate-100 font-bold text-xs rounded-xl border border-slate-200 transition cursor-pointer"
+                  >
+                    Isi Formulir Baru
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleIntakeSubmit} className="space-y-6">
+                {intakeError && (
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-200">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                    <span>{intakeError}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Nama Orang Tua */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Nama Ayah / Bunda <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={intakeParentName}
+                      onChange={(e) => setIntakeParentName(e.target.value)}
+                      placeholder="Contoh: Bunda Sarah"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/10 outline-hidden transition font-medium"
+                    />
+                  </div>
+
+                  {/* Nomor WhatsApp */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Nomor WhatsApp Aktif <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                        +62
+                      </span>
+                      <input
+                        type="tel"
+                        required
+                        value={intakeParentPhone}
+                        onChange={(e) => setIntakeParentPhone(e.target.value.replace(/^[+0]/, ''))}
+                        placeholder="81234567890"
+                        className="w-full pl-11 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/10 outline-hidden transition font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Usia Si Kecil */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Usia Si Kecil
+                    </label>
+                    <input
+                      type="text"
+                      value={intakeChildAge}
+                      onChange={(e) => setIntakeChildAge(e.target.value)}
+                      placeholder="Contoh: 18 Bulan / 2 Tahun"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-purple-600 focus:ring-2 focus:ring-purple-600/10 outline-hidden transition font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Pilihan Keluhan Utama */}
+                <div className="space-y-2 pt-1">
+                  <label className="block text-xs font-bold text-slate-800">
+                    Pilih Keluhan Utama Si Kecil <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {COMPLAINT_OPTIONS.map((opt) => {
+                      const isSelected = intakeComplaint === opt.title;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setIntakeComplaint(opt.title)}
+                          className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                            isSelected
+                              ? 'bg-purple-50/80 border-purple-500 ring-2 ring-purple-500/20 shadow-xs'
+                              : 'bg-slate-50/60 border-slate-200/90 hover:bg-slate-100 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="font-bold text-xs text-slate-900 leading-snug">
+                              {opt.title}
+                            </span>
+                            <span
+                              className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                                isSelected
+                                  ? 'border-purple-600 bg-purple-600 text-white'
+                                  : 'border-slate-300 bg-white'
+                              }`}
+                            >
+                              {isSelected ? <Check className="w-2.5 h-2.5" /> : null}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 mt-1 leading-normal">
+                            {opt.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Tombol Aksi */}
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isIntakeSubmitting}
+                    className="w-full py-3.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 text-white font-black text-sm rounded-2xl shadow-lg shadow-purple-600/25 transition-all duration-200 active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {isIntakeSubmitting ? (
+                      <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-amber-300" />
+                        <span>Mulai Konsultasi Terarah</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[10px] text-slate-400 text-center mt-2.5">
+                    🔒 Data privasi aman &bull; Diteruskan langsung ke tim medis resmi {activeName} via WhatsApp.
+                  </p>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       </section>
 

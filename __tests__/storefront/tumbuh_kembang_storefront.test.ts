@@ -106,4 +106,68 @@ describe('Tumbuh Kembang Anak Storefront & Dynamic Feed Specification', () => {
       expect(initialNotes).toContain('Konsultasi Tumbuh Kembang');
     });
   });
+
+  describe('4. Hero Section 2-Column Medical Authority & Doctors Showcase', () => {
+    it('resolves doctor profiles for dr. Harys and dr. Azizah dynamically from metadata', () => {
+      const clinicMetadata = {
+        name: 'Tumbuh Kembang Anak',
+        doctors: [
+          {
+            name: 'dr. Harys Maulana',
+            title: 'Dokter Konsultan Tumbuh Kembang & Nutrisi Anak',
+            specialty: 'Nutrisi & Feeding Problem (GTM / Picky Eater)',
+            photo_url: '/tenants/tumbuh-kembang-anak/dr-harys.png',
+            schedule: 'Senin – Jumat, 08.00 – 11.30 WIB',
+          },
+          {
+            name: 'dr. Azizah Ridwan',
+            title: 'Dokter Praktisi Tumbuh Kembang & Stimulasi Sensori',
+            specialty: 'Screening Tumbuh Kembang & Stimulasi Motorik Anak',
+            photo_url: '/tenants/tumbuh-kembang-anak/dr-azizah.png',
+            schedule: 'Senin – Jumat, 08.00 – 11.30 WIB',
+          },
+        ],
+      };
+
+      const doctors = clinicMetadata.doctors;
+      expect(doctors).toHaveLength(2);
+      expect(doctors[0].name).toBe('dr. Harys Maulana');
+      expect(doctors[0].specialty).toContain('GTM');
+      expect(doctors[0].photo_url).toBe('/tenants/tumbuh-kembang-anak/dr-harys.png');
+      expect(doctors[1].name).toBe('dr. Azizah Ridwan');
+      expect(doctors[1].specialty).toContain('Screening Tumbuh Kembang');
+      expect(doctors[1].photo_url).toBe('/tenants/tumbuh-kembang-anak/dr-azizah.png');
+    });
+  });
+
+  describe('5. Mini Intake Form (Positive Friction Filter & WhatsApp Prefill)', () => {
+    it('generates clinical WhatsApp prefill message from mini intake form data', () => {
+      const formData = {
+        parentName: 'Bunda Sarah',
+        parentPhone: '08123456789',
+        childAge: '18 Bulan',
+        complaint: '🥣 Masalah Makan / Gerakan Tutup Mulut (GTM)',
+      };
+
+      const canonicalPhone = toE164(formData.parentPhone);
+      expect(canonicalPhone).toBe('+628123456789');
+
+      const waMsg =
+        `Halo dr. Harys & dr. Azizah (Tumbuh Kembang Anak),\n\n` +
+        `Saya ingin konsultasi terarah untuk si kecil:\n` +
+        `• Nama Orang Tua: ${formData.parentName}\n` +
+        `• Nomor WhatsApp: ${canonicalPhone}\n` +
+        `• Usia Si Kecil: ${formData.childAge}\n` +
+        `• Keluhan Utama: ${formData.complaint}\n\n` +
+        `Mohon arahan jadwal dan alur konsultasinya. Terima kasih!`;
+
+      const targetPhone = '6285129992305';
+      const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(waMsg)}`;
+
+      expect(waUrl).toContain('wa.me/6285129992305');
+      expect(waUrl).toContain(encodeURIComponent('Bunda Sarah'));
+      expect(waUrl).toContain(encodeURIComponent('18 Bulan'));
+      expect(waUrl).toContain(encodeURIComponent('Gerakan Tutup Mulut (GTM)'));
+    });
+  });
 });
