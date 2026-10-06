@@ -187,6 +187,47 @@ export function isTenantSetupComplete(tenant?: BoonPilotSenderTenant | null): bo
 }
 
 /**
+ * Evaluates whether a tenant's subscription status has expired.
+ * Checks:
+ * 1. Explicit boolean flag if present (isSubscriptionExpired).
+ * 2. subscription_status === 'expired' or status === 'expired'.
+ * 3. plan_expires_at < Date.now().
+ */
+export function isTenantSubscriptionExpired(tenant?: BoonPilotSenderTenant | null): boolean {
+  if (!tenant) return false;
+  if (typeof tenant.isSubscriptionExpired === 'boolean') {
+    return tenant.isSubscriptionExpired;
+  }
+  const meta = tenant.metadata || {};
+  const rawStatus = (tenant.subscription_status || meta.subscription_status || meta.status || '').toLowerCase();
+  if (rawStatus === 'expired') return true;
+
+  const rawExpiresAt = tenant.plan_expires_at || meta.plan_expires_at || meta.subscription_ends_at || meta.expires_at;
+  if (rawExpiresAt) {
+    const expiresMs = new Date(rawExpiresAt).getTime();
+    if (!isNaN(expiresMs) && expiresMs < Date.now()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Evaluates whether the sender has multi-role status (Affiliate Leader + Merchant).
+ */
+export function isMultiRoleAffiliate(
+  tenant?: BoonPilotSenderTenant | null,
+  resolution?: BoonPilotSenderResolution
+): boolean {
+  if (resolution?.isMultiRole) return true;
+  if (tenant?.isAffiliateLeader) return true;
+  const meta = tenant?.metadata || {};
+  if (meta.is_affiliate_leader || meta.affiliate_id) return true;
+  if (tenant?.slug === 'buzzerukm') return true;
+  return false;
+}
+
+/**
  * Builds the customized LLM System Prompt for Gemini based on sender registration resolution and community context.
  */
 export function buildBoonPilotSystemPrompt(
@@ -234,29 +275,56 @@ export function buildBoonPilotSystemPrompt(
     const storeName = t.name || 'Toko Anda';
     const tier = t.tier || 'SOLO';
     const isSetupDone = isTenantSetupComplete(t);
+    const isExpired = isTenantSubscriptionExpired(t);
+    const isMultiRole = isMultiRoleAffiliate(t, resolution);
 
-    const merchantBehaviorDirective = isSetupDone
-      ? `BEHAVIOR & GREETING KHUSUS (SKENARIO TOKO SUDAH LENGKAP & AKTIF):
+    let activeMerchantDirective = '';
+
+    if (isExpired) {
+      activeMerchantDirective = `STATUS LANGGANAN EXPIRED (MASA AKTIF BERAKHIR):
+- Toko "${storeName}" saat ini masa aktif operasionalnya sudah berakhir.
+- Saat Kak ${ownerName} menyapa (greeting) atau membuka obrolan / meminta bantuan operasional toko:
+  "Halo Kak ${ownerName}! Masa aktif operasional toko ${storeName} saat ini sudah berakhir nih. Agar otomatisasi WhatsApp, penerimaan pesanan, dan asisten toko bisa langsung jalan kembali, silakan login ke dashboard toko Kakak di https://dashboard.boontrack.com lalu klik tombol Upgrade / Perpanjangan ya!"
+- PENTING (ATURAN GATING & EDUKASI):
+  * Pertanyaan operasional internal (cek pesanan, upload produk, QRIS, kurir): ingatkan bahwa fitur dijeda dan arahkan upgrade di https://dashboard.boontrack.com.
+  * Pertanyaan UMUM seputar fitur ekosistem, edukasi bisnis/jualan, dan tanya jawab non-dashboard: TETAP JAWAB SECARA RAMAH, EDUKATIF, DAN INFORMATIF (JANGAN MENOLAK KAKU), lalu di bagian akhir sertakan pengingat perpanjangan akun di https://dashboard.boontrack.com.`;
+    } else if (isMultiRole) {
+      const affId = t.affiliateId || resolution.affiliateProfile?.affiliate_id || (t.slug === 'buzzerukm' ? 'buzzerukm' : t.slug);
+      const commName = t.communityName || resolution.affiliateProfile?.community_name || (affId === 'buzzerukm' ? 'Buzzer UKM' : affId);
+      const refLink = affId === 'buzzerukm' ? 'https://buzzerukm.boontrack.com' : `https://shop.boontrack.com/?ref=${affId}`;
+
+      activeMerchantDirective = `BEHAVIOR KHUSUS MULTI-ROLE (AFFILIATE LEADER + MERCHANT):
+- Kenali profil ganda pengirim: Partner Pemimpin Komunitas Affiliate (${commName}) sekaligus Pemilik Toko "${storeName}".
+- Saat Kak/Kang ${ownerName} menyapa (greeting) atau membuka obrolan Japri/DM:
+  "Halo Kang/Kak ${ownerName}! Mau cek performa referral komunitas ${commName}, diskusi strategi toko ${storeName}, atau ada hal lain yang mau diobrolkan?"
+- Jika menanyakan performa referral/komunitas:
+  Berikan ringkasan data pendaftar dari referral-nya, tautan kolam komunitasnya (${refLink}), dan sampaikan bahwa setiap pendaftar baru tercatat rapi secara real-time di sistem.
+- Jika menanyakan performa toko pribadi:
+  Alihkan ke analisa strategi dan performa toko "${storeName}" (metrik overview di dashboard https://dashboard.boontrack.com, katalog produk, dan optimasi checkout).`;
+    } else if (isSetupDone) {
+      activeMerchantDirective = `BEHAVIOR & GREETING KHUSUS (SKENARIO TOKO SUDAH LENGKAP & AKTIF):
 - Kenali profil tenant: Nama Owner adalah "Kak ${ownerName}", Nama Toko adalah "${storeName}" (Tier: ${tier}).
 - Toko sudah lengkap datanya dan berstatus aktif siap tempur.
 - Saat Kak ${ownerName} menyapa (greeting), membuka percakapan, atau menanyakan kabar toko:
   "Halo Kak ${ownerName}, toko ${storeName} sudah siap tempur nih! Hari ini mau kita diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau ada hal lain yang mau Kakak ceritakan?"
-- Diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau topik bisnis lainnya secara hangat dan solutif.`
-      : `BEHAVIOR & GREETING KHUSUS (SKENARIO DATA BELUM LENGKAP):
+- Diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau topik bisnis lainnya secara hangat dan solutif.`;
+    } else {
+      activeMerchantDirective = `BEHAVIOR & GREETING KHUSUS (SKENARIO DATA BELUM LENGKAP):
 - Kenali profil tenant: Nama Owner adalah "Kak ${ownerName}", Nama Toko adalah "${storeName}" (Tier: ${tier}).
 - Data toko masih belum selesai (katalog produk atau konfigurasi pembayaran belum lengkap).
 - Saat Kak ${ownerName} menyapa (greeting) atau membuka percakapan:
   "Halo Kak ${ownerName}, toko ${storeName} kamu masih belum selesai nih. Yuk kita bantu lengkapin data-datanya biar siap jualan!"
 - Tawarkan bantuan langkah demi langkah melengkapi data produk, rekening/QRIS, dan setting pengiriman agar toko lekas siap jualan.`;
+    }
 
     return `Anda adalah "BoonPilot", Konsultan E-Commerce Resmi & Business Co-Pilot untuk toko "${storeName}" (Tier: ${tier}, Pemilik: Kak ${ownerName}) di platform BoonTrack.
 
 ${signaturePersonaDirective}
 
-${merchantBehaviorDirective}
+${activeMerchantDirective}
 
 PERAN & TUGAS UTAMA (MERCHANT):
-1. Bantuan operasional toko, cek status order, dan panduan fitur 8 tab dashboard BoonTrack (Overview, Katalog Produk, Pesanan, WhatsApp Gateway, Pengiriman, Pembayaran/QRIS, Tim CS, Pengaturan Toko).
+1. Bantuan operasional toko, cek status order, dan panduan fitur 8 tab dashboard BoonTrack (Overview, Katalog Produk, Pesanan, WhatsApp Gateway, Pengiriman, Pembayaran/QRIS, Tim CS, Pengaturan Toko di https://dashboard.boontrack.com).
 2. Membantu analisis performa, screenshot analitik iklan / metrik dashboard secara objektif jika dikirimkan oleh merchant.
 3. Membantu pemecahan masalah operasional toko (checkout, ongkir, QRIS, notifikasi WhatsApp).
 4. Contoh demo toko / alur checkout resmi: ${demoStoreUrl}
@@ -271,7 +339,7 @@ ${shippingLogisticsKnowledge}
 
 PANDUAN ESKALASI & UPSELL:
 - Kesulitan setup / minta terima beres: Tawarkan paket DFY (Done-For-You / Setup Toko Terima Beres) di https://shop.boontrack.com/boon atau arahkan untuk menghubungi IT Support resmi di https://wa.me/6281977655099.
-- Butuh fitur tim & kuota tinggi: Jika merchant membutuhkan multi-seat CS, broadcast WABA resmi, atau volume pesanan tinggi, rekomendasikan upgrade ke paket Pro Scale atau Team Scale.
+- Butuh fitur tim & kuota tinggi: Jika merchant membutuhkan multi-seat CS, broadcast WABA resmi, atau volume pesanan tinggi, rekomendasikan upgrade ke paket Pro Scale atau Team Scale di https://dashboard.boontrack.com.
 - Keberatan biaya langganan: Jika merchant merasa biaya langganan saat ini berat atau ingin paket paling terjangkau, arahkan ke paket Checkout Lite (Rp 59.000/bln).
 
 ATURAN MUTLAK (STRICT RULES):
@@ -410,7 +478,7 @@ function resolveBoonPilotFallbackReply(
       `• Multi-Seat CS Inbox tanpa batas\n` +
       `• Koneksi Official WhatsApp Cloud API (WABA) & broadcast promo\n` +
       `• Prioritas server & kuota pesan tak terbatas\n\n` +
-      `👉 *Pelajari & Upgrade di Dashboard:* https://shop.boontrack.com`;
+      `👉 *Pelajari & Upgrade di Dashboard:* https://dashboard.boontrack.com`;
 
     return {
       reply,
@@ -428,10 +496,96 @@ function resolveBoonPilotFallbackReply(
     const storeName = tenant.name || 'Toko Anda';
     const ownerName = tenant.owner_name || 'Owner';
     const tier = tenant.tier || 'SOLO';
+    const isExpired = isTenantSubscriptionExpired(tenant);
+    const isMultiRole = isMultiRoleAffiliate(tenant, resolution);
 
+    // ── KASUS 1: STATUS TENANT EXPIRED (MASA LANGGANAN HABIS) ──
+    if (isExpired) {
+      // Jika pesan adalah pertanyaan operasional internal atau sapaan/buka chat:
+      const isInternalOperationalOrGreeting =
+        /(order|pesanan|resi|status bayar|cek order|transaksi|lacak|produk|katalog|upload|tambah produk|stok|harga produk|checkout form|ongkir|pengiriman|kurir|asal kirim|biteship|lincah|byok|ekspedisi|qris|rekening|bank|transfer|metode bayar|settlement|dashboard|tab|halaman|bantuan toko|operasional|halo|hi|pagi|siang|sore|malam|bot|boonpilot)/i.test(cleanMsg) ||
+        cleanMsg.length <= 15;
+
+      if (isInternalOperationalOrGreeting) {
+        const reply =
+          `Halo Kak ${ownerName}! Masa aktif operasional toko ${storeName} saat ini sudah berakhir nih. Agar otomatisasi WhatsApp, penerimaan pesanan, dan asisten toko bisa langsung jalan kembali, silakan login ke dashboard toko Kakak di https://dashboard.boontrack.com lalu klik tombol Upgrade / Perpanjangan ya! (Paket: ${tier})`;
+
+        return {
+          reply,
+          role: 'MERCHANT',
+          activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
+          tenant,
+          quick_actions: ['🔄 Perpanjang Langganan', '💡 Info Paket & Harga', '📞 Hubungi IT Support'],
+          isDeterministicMatch: true,
+        };
+      }
+      // PENTING: Pertanyaan umum seputar fitur, edukasi jualan, dan tanya jawab non-dashboard
+      // tetap dilanjutkan ke bawah agar dijawab ramah dan informatif.
+    }
+
+    // ── KASUS 2: MULTI-ROLE RECOGNITION (AFFILIATE LEADER + MERCHANT) ──
+    if (isMultiRole) {
+      const affId = tenant.affiliateId || resolution.affiliateProfile?.affiliate_id || (tenant.slug === 'buzzerukm' ? 'buzzerukm' : tenant.slug);
+      const communityName = tenant.communityName || resolution.affiliateProfile?.community_name || (affId === 'buzzerukm' ? 'Buzzer UKM' : affId);
+      const referralUrl = affId === 'buzzerukm' ? 'https://buzzerukm.boontrack.com' : `https://shop.boontrack.com/?ref=${affId}`;
+
+      // a. Menanyakan performa referral / komunitas
+      if (/(referral|komunitas|pendaftar|afiliasi|downline|leads|komisi referral|performa referral|laporan kolam)/i.test(cleanMsg)) {
+        const reply =
+          `Halo Kang/Kak ${ownerName}! Berikut ringkasan performa referral komunitas *${communityName}*:\n\n` +
+          `📊 *Status Referral Komunitas ${communityName}:*\n` +
+          `• Tautan Registrasi Kolam: ${referralUrl}\n` +
+          `• Tautan Demo Toko: ${demoStoreUrl}\n` +
+          `• Sistem Tracking: Aktif & Terhubung Otomatis ke Attribution Engine\n\n` +
+          `Setiap pendaftar baru yang masuk lewat link referral Kakak otomatis tercatat di sistem. Mau kita pantau konversi pendaftar minggu ini atau ada promo baru yang ingin disiapkan? 🚀`;
+
+        return {
+          reply,
+          role: 'MERCHANT',
+          activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
+          tenant,
+          quick_actions: ['📊 Cek Performa Referral', '🏪 Diskusi Strategi Toko', '💡 Bantuan Lainnya'],
+          isDeterministicMatch: true,
+        };
+      }
+
+      // b. Menanyakan performa toko pribadi
+      if (/(toko pribadi|toko saya|strategi toko|omset toko|pesanan toko|katalog toko|jualan toko)/i.test(cleanMsg)) {
+        const reply =
+          `Halo Kang/Kak ${ownerName}! Untuk analisa dan performa toko pribadi *${storeName}*:\n\n` +
+          `1. Pantau metrik konversi dan pesanan masuk di tab *Overview* dashboard Kakak di https://dashboard.boontrack.com.\n` +
+          `2. Pastikan katalog produk dan pembayaran QRIS aktif agar pembeli dapat langsung checkout mandiri.\n` +
+          `3. Optimalkan notifikasi WhatsApp otomatis untuk follow-up pesanan. 📦\n\n` +
+          `Mau kita bedah strategi penjualan atau optimasi alur checkout toko ${storeName} hari ini Kak?`;
+
+        return {
+          reply,
+          role: 'MERCHANT',
+          activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
+          tenant,
+          quick_actions: ['🏪 Diskusi Strategi Toko', '📊 Cek Performa Referral', '💡 Bantuan Lainnya'],
+          isDeterministicMatch: true,
+        };
+      }
+
+      // c. Sapaan / Greeting Umum Japri/DM Multi-Role
+      const multiRoleGreeting =
+        `Halo Kang/Kak ${ownerName}! Mau cek performa referral komunitas ${communityName}, diskusi strategi toko ${storeName}, atau ada hal lain yang mau diobrolkan? (Paket: ${tier})`;
+
+      return {
+        reply: multiRoleGreeting,
+        role: 'MERCHANT',
+        activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
+        tenant,
+        quick_actions: ['📊 Cek Performa Referral', '🏪 Diskusi Strategi Toko', '💡 Bantuan Lainnya'],
+        isDeterministicMatch: true,
+      };
+    }
+
+    // ── KASUS 3: MERCHANT REGULER AKTIF ──
     if (/(order|pesanan|resi|status bayar|cek order|transaksi|lacak)/i.test(cleanMsg)) {
       const reply = `Halo kak, bantu jawab ya! Halo Kak ${ownerName}! Untuk mengecek dan memproses pesanan masuk di *${storeName}*:\n\n` +
-        `1. Buka tab *Pesanan (Orders)* di dashboard merchant Anda.\n` +
+        `1. Buka tab *Pesanan (Orders)* di dashboard merchant Anda di https://dashboard.boontrack.com.\n` +
         `2. Di sana Kakak bisa melihat transaksi lunas (*PAID*), mengonfirmasi pembayaran manual, dan menginput nomor resi pengiriman.\n` +
         `3. Notifikasi resi akan otomatis terkirim ke WhatsApp pembeli setelah resi disimpan! 📦\n\n` +
         `Ada transaksi atau resi spesifik yang ingin dibantu cek Kak?`;
@@ -447,7 +601,7 @@ function resolveBoonPilotFallbackReply(
 
     if (/(produk|katalog|upload|tambah produk|stok|harga produk|checkout form)/i.test(cleanMsg)) {
       const reply = `Halo kak, bantu jawab ya! Halo Kak ${ownerName}! Untuk mengelola katalog & link checkout produk *${storeName}*:\n\n` +
-        `1. Buka tab *Katalog Produk* di dashboard merchant.\n` +
+        `1. Buka tab *Katalog Produk* di dashboard merchant di https://dashboard.boontrack.com.\n` +
         `2. Kakak bisa menambah produk baru (fisik / digital), mengatur harga promo, dan mengaktifkan form single-page checkout.\n` +
         `3. Link checkout resmi produk siap dibagikan ke bio Instagram, TikTok, atau chat WhatsApp pembeli. ✨\n\n` +
         `Butuh bantuan cara optimasi copywriting atau deskripsi produk Kak?`;
@@ -463,7 +617,7 @@ function resolveBoonPilotFallbackReply(
 
     if (/(ongkir|pengiriman|kurir|asal kirim|biteship|lincah|byok|ekspedisi)/i.test(cleanMsg)) {
       const reply = `Halo kak, bantu jawab ya! Halo Kak ${ownerName}! Untuk konfigurasi pengiriman & kurir di toko *${storeName}*:\n\n` +
-        `1. Masuk ke tab *Pengiriman (Shipping)* di dashboard.\n` +
+        `1. Masuk ke tab *Pengiriman (Shipping)* di dashboard di https://dashboard.boontrack.com.\n` +
         `2. Pastikan *Lokasi Asal Pengiriman (Kecamatan/Kota)* sudah terisi agar kalkulasi ongkir pembeli akurat.\n` +
         `3. Anda dapat mengaktifkan integrasi kurir BYOK (Lincah / Biteship) untuk otomatisasi resi dan pickup paket oleh kurir. 🚚`;
       return {
@@ -478,7 +632,7 @@ function resolveBoonPilotFallbackReply(
 
     if (/(qris|rekening|bank|transfer|metode bayar|settlement)/i.test(cleanMsg)) {
       const reply = `Halo kak, bantu jawab ya! Halo Kak ${ownerName}! Untuk pengaturan metode pembayaran toko *${storeName}*:\n\n` +
-        `1. Buka tab *Pembayaran / QRIS* di dashboard.\n` +
+        `1. Buka tab *Pembayaran / QRIS* di dashboard di https://dashboard.boontrack.com.\n` +
         `2. Kakak dapat mengunggah barcode *QRIS Toko* atau mengisi nomor *Rekening Bank Manual* (BCA, Mandiri, BRI, BSI, dll).\n` +
         `3. Begitu disimpan, pembeli bisa langsung memilih QRIS atau Transfer Bank saat melakukan checkout di toko Kakak. 💳`;
       return {
@@ -487,6 +641,61 @@ function resolveBoonPilotFallbackReply(
         activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
         tenant,
         quick_actions: merchantQuickActions,
+        isDeterministicMatch: true,
+      };
+    }
+
+    if (/(keunggulan|apa itu|cara kerja|kelebihan|solusi|kenapa boontrack)/i.test(cleanMsg)) {
+      const reply =
+        `Halo kak, bantu jawab ya! Saya *BoonPilot*. Berikut *Keunggulan Utama Ekosistem BoonTrack:* 🚀\n\n` +
+        `⚡ *Single-Page Checkout*: Form checkout instan yang ringan & cepat, pembeli tidak perlu download aplikasi atau ribet login.\n` +
+        `💳 *QRIS Dinamis & Bank Otomatis*: Verifikasi pembayaran real-time 24 jam dengan integrasi QRIS dan transfer bank manual.\n` +
+        `📲 *WhatsApp Commerce*: Notifikasi faktur dan update resi otomatis terkirim ke WhatsApp pembeli dan notifikasi penjualan ke seller.\n` +
+        `🚚 *Agregator Kurir BYOK*: Cek ongkir otomatis multi-ekspedisi (JNE, SiCepat, J&T, Lion, POS) hingga kurir instan.\n\n` +
+        `👉 *Dashboard Toko*: https://dashboard.boontrack.com`;
+      return {
+        reply,
+        role: 'MERCHANT',
+        activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
+        tenant,
+        quick_actions: merchantQuickActions,
+        isDeterministicMatch: true,
+      };
+    }
+
+    if (/(contoh toko|demo toko|toko demo|lihat demo|cek demo|katalog demo|alur checkout|sample toko)/i.test(cleanMsg)) {
+      const reply =
+        `Halo kak, bantu jawab ya! Saya *BoonPilot*.\n\n` +
+        `Berikut contoh toko online dan simulasi alur Single-Page Checkout resmi BoonTrack:\n\n` +
+        `🛍️ *Lihat Demo Toko & Checkout:*\n${demoStoreUrl}\n\n` +
+        `Di tautan demo di atas, Kakak bisa mencoba langsung proses pemesanan instan, cek ongkir multi-ekspedisi otomatis, serta simulasi pembayaran QRIS Dinamis 0% MDR! ✨\n\n` +
+        `👉 *Kelola Toko Kakak*: https://dashboard.boontrack.com`;
+      return {
+        reply,
+        role: 'MERCHANT',
+        activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
+        tenant,
+        quick_actions: merchantQuickActions,
+        isDeterministicMatch: true,
+      };
+    }
+
+    if (/(paket|harga|biaya|tarif|langganan|subscription|upgrade|perpanjang)/i.test(cleanMsg)) {
+      const reply =
+        `Halo kak, bantu jawab ya! Saya *BoonPilot*. Status paket aktif toko *${storeName}* saat ini adalah *${tier}*.\n\n` +
+        `💡 *Pilihan Paket BoonTrack:*\n` +
+        `• *Checkout Lite (Rp 59rb/bln)*: Checkout instan & QRIS dinamis 0% MDR.\n` +
+        `• *Solo (Rp 199rb/bln)*: Katalog tak terbatas & cek ongkir otomatis.\n` +
+        `• *Pro Scale (Rp 299rb/bln)*: Meta & TikTok CAPI server-side, custom domain, 2 CS Inbox.\n` +
+        `• *Team Scale (Rp 499rb/bln)*: Unlimited CS Inbox, WhatsApp Cloud API resmi.\n\n` +
+        `Untuk upgrade atau perpanjangan langganan, silakan akses:\n` +
+        `👉 *Dashboard Toko*: https://dashboard.boontrack.com`;
+      return {
+        reply,
+        role: 'MERCHANT',
+        activeEngine: 'BOONPILOT_MERCHANT_COPILOT',
+        tenant,
+        quick_actions: ['🔄 Upgrade Paket', '📊 Cek Ringkasan Toko', '💡 Bantuan Lainnya'],
         isDeterministicMatch: true,
       };
     }
@@ -500,7 +709,7 @@ function resolveBoonPilotFallbackReply(
         `🚚 *5. Pengiriman*: Setting asal kirim & tarif ekspedisi.\n` +
         `💳 *6. Pembayaran*: Setup QRIS & rekening bank manual.\n` +
         `👥 *7. Tim & CS*: Manajemen rotator CS & akses staf.\n` +
-        `⚙️ *8. Pengaturan*: Profil toko, custom domain & pixel.\n\n` +
+        `⚙️ *8. Pengaturan*: Profil toko, custom domain & pixel di https://dashboard.boontrack.com.\n\n` +
         `Ada bagian tab yang ingin Kakak tanyakan lebih detail? 😊`;
       return {
         reply,
@@ -512,10 +721,10 @@ function resolveBoonPilotFallbackReply(
       };
     }
 
-    // 6. Analisa performa / strategi bisnis merchant
+    // 4. Analisa performa / strategi bisnis merchant
     if (/(strategi|penjualan|analisa|evaluasi|performa|omset|tingkatkan penjualan|closing|evaluasi bisnis)/i.test(cleanMsg)) {
       const reply = `Halo kak, bantu jawab ya! Halo Kak ${ownerName}! Untuk analisa dan evaluasi performa bisnis toko *${storeName}*:\n\n` +
-        `1. Pantau metrik konversi dan omset harian di tab *Overview* dashboard Anda.\n` +
+        `1. Pantau metrik konversi dan omset harian di tab *Overview* dashboard Anda di https://dashboard.boontrack.com.\n` +
         `2. Evaluasi performa produk terlaris dan pastikan alur checkout serta QRIS dinamis berjalan optimal.\n` +
         `3. Manfaatkan retargeting pesan WhatsApp otomatis untuk pembeli yang belum menyelesaikan transaksi. 🚀\n\n` +
         `Ada aspek strategi penjualan atau kendala performa tertentu yang ingin kita diskusikan lebih dalam Kak?`;
@@ -752,9 +961,13 @@ export async function processBoonPilotPlatformChat(
           parts: [
             {
               text: resolution.role === 'MERCHANT'
-                ? (isTenantSetupComplete(resolution.tenant)
-                    ? `Halo Kak ${resolution.tenant?.owner_name || 'Owner'}, toko ${resolution.tenant?.name || 'Toko Anda'} sudah siap tempur nih! Hari ini mau kita diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau ada hal lain yang mau Kakak ceritakan?`
-                    : `Halo Kak ${resolution.tenant?.owner_name || 'Owner'}, toko ${resolution.tenant?.name || 'Toko Anda'} kamu masih belum selesai nih. Yuk kita bantu lengkapin data-datanya biar siap jualan!`)
+                ? (isTenantSubscriptionExpired(resolution.tenant)
+                    ? `Halo Kak ${resolution.tenant?.owner_name || 'Owner'}! Masa aktif operasional toko ${resolution.tenant?.name || 'Toko Anda'} saat ini sudah berakhir nih. Agar otomatisasi WhatsApp, penerimaan pesanan, dan asisten toko bisa langsung jalan kembali, silakan login ke dashboard toko Kakak di https://dashboard.boontrack.com lalu klik tombol Upgrade / Perpanjangan ya!`
+                    : (isMultiRoleAffiliate(resolution.tenant, resolution)
+                        ? `Halo Kang/Kak ${resolution.tenant?.owner_name || 'Owner'}! Mau cek performa referral komunitas ${resolution.tenant?.communityName || resolution.affiliateProfile?.community_name || 'Komunitas'}, diskusi strategi toko ${resolution.tenant?.name || 'Toko Anda'}, atau ada hal lain yang mau diobrolkan?`
+                        : (isTenantSetupComplete(resolution.tenant)
+                            ? `Halo Kak ${resolution.tenant?.owner_name || 'Owner'}, toko ${resolution.tenant?.name || 'Toko Anda'} sudah siap tempur nih! Hari ini mau kita diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau ada hal lain yang mau Kakak ceritakan?`
+                            : `Halo Kak ${resolution.tenant?.owner_name || 'Owner'}, toko ${resolution.tenant?.name || 'Toko Anda'} kamu masih belum selesai nih. Yuk kita bantu lengkapin data-datanya biar siap jualan!`)))
                 : `Halo kak, bantu jawab ya! Saya BoonPilot, Konsultan E-Commerce & Onboarding Specialist resmi dari BoonTrack. Siap memandu dan mengedukasi fitur-fitur otomasi kami!`,
             },
           ],
@@ -797,7 +1010,7 @@ export async function processBoonPilotPlatformChat(
           let reply = candidateText.trim();
           // Pastikan pembuka khas konsisten hadir jika bukan balasan pembuka khusus / analisa persuasif
           if (
-            !/^halo kak[,\s!]/i.test(reply) &&
+            !/^halo (?:kang\/)?kak[,\s!]/i.test(reply) &&
             !/^wah saya bisa bantu analisa/i.test(reply)
           ) {
             reply = `Halo kak, bantu jawab ya!\n\n${reply}`;

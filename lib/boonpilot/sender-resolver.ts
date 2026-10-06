@@ -22,6 +22,15 @@ export interface BoonPilotSenderTenant {
   phone?: string;
   category?: string;
   metadata?: Record<string, any>;
+  isSetupComplete?: boolean;
+  // Subscription Status Lifecycle
+  isSubscriptionExpired?: boolean;
+  subscription_status?: string;
+  plan_expires_at?: string | null;
+  // Multi-Role Affiliate Leader
+  isAffiliateLeader?: boolean;
+  affiliateId?: string;
+  communityName?: string;
 }
 
 export interface BoonPilotSenderResolution {
@@ -30,6 +39,12 @@ export interface BoonPilotSenderResolution {
   senderPhone: string;
   normalizedPhone: string;
   tenant?: BoonPilotSenderTenant;
+  isMultiRole?: boolean;
+  affiliateProfile?: {
+    affiliate_id: string;
+    community_name: string;
+    channel_binding_id?: string;
+  };
 }
 
 export const OFFICIAL_BOONPILOT_NUMBERS = [
@@ -112,11 +127,13 @@ export async function resolveBoonPilotSender(
       `metadata->>wa_verified_phone.eq.${localPhone}`,
       `metadata->>wa_number.eq.${normalizedPhone}`,
       `metadata->>wa_number.eq.${localPhone}`,
+      `telegram_chat_id.eq.${cleanDigits}`,
+      `metadata->>telegram_chat_id.eq.${cleanDigits}`,
     ].join(',');
 
     const query = supabase
       .from('tenants')
-      .select('id, slug, name, tier, category, business_type, metadata');
+      .select('id, slug, name, tier, category, business_type, status, plan_expires_at, telegram_chat_id, metadata');
 
     let tenantRow: any = null;
 
@@ -136,12 +153,14 @@ export async function resolveBoonPilotSender(
         ['metadata->>whatsapp_number', localPhone],
         ['metadata->>wa_verified_phone', normalizedPhone],
         ['metadata->>wa_verified_phone', localPhone],
+        ['telegram_chat_id', cleanDigits],
+        ['metadata->>telegram_chat_id', cleanDigits],
       ];
       for (const [col, val] of candidates) {
         try {
           const { data } = await supabase
             .from('tenants')
-            .select('id, slug, name, tier, category, business_type, metadata')
+            .select('id, slug, name, tier, category, business_type, status, plan_expires_at, telegram_chat_id, metadata')
             .eq(col, val)
             .maybeSingle();
           if (data && data.id) {
@@ -166,9 +185,60 @@ export async function resolveBoonPilotSender(
       // Canonically resolve tier: tenants.tier is single source of truth
       const rawTier = tenantRow.tier || meta.tier || 'SOLO';
 
+      // 1. Subscription Status Lifecycle
+      const rawStatus = (tenantRow.status || meta.subscription_status || meta.status || '').toLowerCase();
+      const rawExpiresAt = tenantRow.plan_expires_at || meta.plan_expires_at || meta.subscription_ends_at || meta.expires_at || null;
+      let isSubscriptionExpired = false;
+
+      if (rawStatus === 'expired') {
+        isSubscriptionExpired = true;
+      } else if (rawExpiresAt) {
+        const expiresMs = new Date(rawExpiresAt).getTime();
+        if (!isNaN(expiresMs) && expiresMs < Date.now()) {
+          isSubscriptionExpired = true;
+        }
+      }
+
+      // 2. Multi-Role Recognition (Affiliate Leader + Merchant)
+      let isAffiliateLeader = false;
+      let affiliateId: string | undefined = undefined;
+      let communityName: string | undefined = undefined;
+
+      const candAffId = (meta.affiliate_id || (tenantRow.slug === 'buzzerukm' ? 'buzzerukm' : '')).trim();
+
+      if (candAffId || meta.is_affiliate_leader || tenantRow.slug === 'buzzerukm') {
+        isAffiliateLeader = true;
+        affiliateId = candAffId || tenantRow.slug;
+        communityName = meta.community_name || (affiliateId === 'buzzerukm' ? 'Buzzer UKM' : affiliateId);
+      } else {
+        try {
+          const { data: binding } = await supabase
+            .from('channel_bindings')
+            .select('affiliate_id, channel_name, tenant_slug, metadata')
+            .or(`affiliate_id.eq.${tenantRow.slug},tenant_slug.eq.${tenantRow.slug}`)
+            .limit(1)
+            .maybeSingle();
+
+          if (binding) {
+            isAffiliateLeader = true;
+            affiliateId = binding.affiliate_id || tenantRow.slug;
+            communityName = binding.channel_name || (binding.metadata as any)?.community_name || affiliateId;
+          }
+        } catch {
+          // ignore lookup error
+        }
+      }
+
       return {
         isRegistered: true,
         role: 'MERCHANT',
+        isMultiRole: isAffiliateLeader,
+        affiliateProfile: isAffiliateLeader
+          ? {
+              affiliate_id: affiliateId!,
+              community_name: communityName || affiliateId!,
+            }
+          : undefined,
         senderPhone,
         normalizedPhone,
         tenant: {
@@ -180,6 +250,12 @@ export async function resolveBoonPilotSender(
           category: tenantRow.category || tenantRow.business_type || 'retail',
           phone: normalizedPhone,
           metadata: meta,
+          isSubscriptionExpired,
+          subscription_status: rawStatus,
+          plan_expires_at: rawExpiresAt,
+          isAffiliateLeader,
+          affiliateId,
+          communityName,
         },
       };
     }

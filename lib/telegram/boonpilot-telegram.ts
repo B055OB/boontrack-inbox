@@ -558,6 +558,19 @@ export async function handleTelegramUpdate(
   let matchedTenant: any = null;
   let affiliateCommunityBinding: any = null;
 
+  if (supabase) {
+    try {
+      const { data: t } = await supabase
+        .from('tenants')
+        .select('id, name, slug, phone, telegram_chat_id, metadata')
+        .eq('telegram_chat_id', String(chatId))
+        .maybeSingle();
+      matchedTenant = t;
+    } catch (err) {
+      console.warn('[TELEGRAM] Tenant lookup warning:', err);
+    }
+  }
+
   if (isGroup && supabase) {
     try {
       const { data: acb } = await supabase
@@ -577,17 +590,6 @@ export async function handleTelegramUpdate(
       }
     } catch (dbErr) {
       console.warn('[TELEGRAM] Affiliate community binding lookup warning:', dbErr);
-    }
-
-    try {
-      const { data: t } = await supabase
-        .from('tenants')
-        .select('id, name, slug, telegram_chat_id, metadata')
-        .eq('telegram_chat_id', String(chatId))
-        .maybeSingle();
-      matchedTenant = t;
-    } catch (err) {
-      console.warn('[TELEGRAM] Tenant group lookup warning:', err);
     }
 
     // §42.5 — Bot ID Validation:
@@ -930,12 +932,18 @@ export async function handleTelegramUpdate(
   // 2. Beri indikator typing ke Telegram chat
   sendTelegramChatAction(chatId, 'typing').catch(() => {});
 
+  const senderIdentifier =
+    matchedTenant?.phone ||
+    (matchedTenant?.metadata as any)?.phone ||
+    (matchedTenant?.metadata as any)?.whatsapp_number ||
+    String(fromId);
+
   // 3. Teruskan ke ConversationEngine resmi BoonTrack (pipeline yang sama persis dengan WhatsApp)
   const engineResult = await ConversationEngine.process({
     tenant_id: matchedTenant?.id || 'boon', // Tenant terkait atau official BoonPilot platform
     channel: 'TELEGRAM',
     session_id: String(chatId),
-    user_identifier: String(fromId),
+    user_identifier: senderIdentifier,
     message: cleanMessage,
     channel_type: 'TELEGRAM',
   });

@@ -378,4 +378,138 @@ describe('BoonPilot Knowledge & Behavioral Prompting', () => {
       expect(guestRes.reply.split('\n\n').length).toBeLessThanOrEqual(3);
     });
   });
+
+  describe('5. Multi-Role Recognition (Affiliate Leader + Merchant)', () => {
+    const multiRoleRowKangSakti = {
+      id: 'tenant-kang-sakti-uuid',
+      slug: 'buzzerukm',
+      name: 'Buzzer UKM Store',
+      tier: 'TEAM_SCALE',
+      owner_name: 'Kang Sakti',
+      metadata: {
+        owner_name: 'Kang Sakti',
+        phone: '6281987654321',
+        whatsapp_number: '6281987654321',
+        tier: 'TEAM_SCALE',
+        is_affiliate_leader: true,
+        affiliate_id: 'buzzerukm',
+        community_name: 'Buzzer UKM',
+      },
+    };
+
+    it('greets multi-role partner with specialized affiliate & store greeting', async () => {
+      const mockDb = createMockDb(multiRoleRowKangSakti);
+      const res = await processBoonPilotPlatformChat(
+        {
+          senderPhone: '081987654321',
+          message: 'Halo BoonPilot',
+        },
+        mockDb
+      );
+
+      expect(res.role).toBe('MERCHANT');
+      expect(res.activeEngine).toBe('BOONPILOT_MERCHANT_COPILOT');
+      expect(res.reply).toContain(
+        'Halo Kang/Kak Kang Sakti! Mau cek performa referral komunitas Buzzer UKM, diskusi strategi toko Buzzer UKM Store, atau ada hal lain yang mau diobrolkan?'
+      );
+      expect(res.quick_actions).toContain('📊 Cek Performa Referral');
+      expect(res.quick_actions).toContain('🏪 Diskusi Strategi Toko');
+    });
+
+    it('summarizes community referral performance when affiliate leader asks about referral', async () => {
+      const mockDb = createMockDb(multiRoleRowKangSakti);
+      const res = await processBoonPilotPlatformChat(
+        {
+          senderPhone: '081987654321',
+          message: 'Gimana performa referral komunitas dan pendaftar kolam saya?',
+        },
+        mockDb
+      );
+
+      expect(res.role).toBe('MERCHANT');
+      expect(res.reply).toContain('Status Referral Komunitas Buzzer UKM');
+      expect(res.reply).toContain('https://buzzerukm.boontrack.com');
+      expect(res.reply).toContain('Attribution Engine');
+      expect(res.reply).not.toContain('*https://buzzerukm.boontrack.com*');
+    });
+
+    it('redirects to store analysis when affiliate leader asks about personal store performance', async () => {
+      const mockDb = createMockDb(multiRoleRowKangSakti);
+      const res = await processBoonPilotPlatformChat(
+        {
+          senderPhone: '081987654321',
+          message: 'Mau cek performa toko pribadi saya dong',
+        },
+        mockDb
+      );
+
+      expect(res.role).toBe('MERCHANT');
+      expect(res.reply).toContain('performa toko pribadi *Buzzer UKM Store*');
+      expect(res.reply).toContain('https://dashboard.boontrack.com');
+      expect(res.reply).toContain('Overview');
+    });
+  });
+
+  describe('6. Status Tenant Expired (Masa Langganan Habis)', () => {
+    const expiredTenantRow = {
+      id: 'tenant-expired-uuid',
+      slug: 'toko-kadaluarsa',
+      name: 'Toko Cantik Alami',
+      tier: 'PRO_SCALE',
+      owner_name: 'Dewi Lestari',
+      status: 'expired',
+      metadata: {
+        owner_name: 'Dewi Lestari',
+        phone: '628555444333',
+        whatsapp_number: '628555444333',
+        tier: 'PRO_SCALE',
+        subscription_status: 'expired',
+      },
+    };
+
+    it('gates internal operational features and greets with subscription upgrade CTA', async () => {
+      const mockDb = createMockDb(expiredTenantRow);
+      const resGreeting = await processBoonPilotPlatformChat(
+        {
+          senderPhone: '08555444333',
+          message: 'Halo',
+        },
+        mockDb
+      );
+
+      expect(resGreeting.role).toBe('MERCHANT');
+      expect(resGreeting.reply).toContain(
+        'Halo Kak Dewi Lestari! Masa aktif operasional toko Toko Cantik Alami saat ini sudah berakhir nih.'
+      );
+      expect(resGreeting.reply).toContain('https://dashboard.boontrack.com');
+      expect(resGreeting.reply).toContain('Upgrade / Perpanjangan');
+      expect(resGreeting.quick_actions).toContain('🔄 Perpanjang Langganan');
+
+      // Internal operational inquiry also gated
+      const resOrder = await processBoonPilotPlatformChat(
+        {
+          senderPhone: '08555444333',
+          message: 'Bisa tolong cek pesanan masuk dan input resi?',
+        },
+        mockDb
+      );
+      expect(resOrder.reply).toContain('Masa aktif operasional toko Toko Cantik Alami saat ini sudah berakhir nih');
+      expect(resOrder.reply).toContain('https://dashboard.boontrack.com');
+    });
+
+    it('answers general feature/educational questions informatively even if subscription expired', async () => {
+      const mockDb = createMockDb(expiredTenantRow);
+      const resFeature = await processBoonPilotPlatformChat(
+        {
+          senderPhone: '08555444333',
+          message: 'BoonTrack itu keunggulannya apa ya kak?',
+        },
+        mockDb
+      );
+
+      // Must be friendly and informative without rigid rejection
+      expect(resFeature.reply).toContain('Single-Page Checkout');
+      expect(resFeature.reply).toContain('QRIS Dinamis');
+    });
+  });
 });

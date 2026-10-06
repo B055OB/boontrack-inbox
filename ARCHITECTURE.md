@@ -4211,3 +4211,78 @@ Setiap engineer yang berkontribusi kode untuk fitur kreator, layanan publik, ata
 - Integrasi terus (tight coupling) antara Customer Lifecycle Engine dengan Meta CAPI atau platform iklan pihak ketiga ditangguhkan di peringkat Core.
 - Sebarang keperluan eksport audiens pada masa hadapan wajib diasingkan melalui lapisan perantara `Audience Export Adapter` demi pematuhan privasi data dan fleksibiliti pelbagai platform (Meta, TikTok, Google).
 
+---
+
+## 49. BoonPilot Bot Architecture & Persona Engine (WhatsApp & Telegram)
+
+### 49.1 Executive Summary & Multi-Provider Gateway
+BoonPilot is the unified conversational AI assistant and onboarding specialist across the BoonTrack commerce ecosystem. It operates concurrently through two official messaging gateways:
+- **WhatsApp Gateway**: Official Platform Number `081215567168` (`+6281215567168`), routed via Evolution API / WhatsApp Cloud API webhooks (`lib/whatsapp/evolution-webhook-handler.ts`).
+- **Telegram Gateway**: Official Platform Bot `@boonshop_bot`, routed via Telegram Bot webhook (`lib/telegram/boonpilot-telegram.ts`).
+
+Both gateways route into the unified entrypoint `processBoonPilotPlatformChat()` (`lib/boonpilot/platform-engine.ts`), which coordinates dynamic sender identity resolution, multi-role recognition, persona prompt compilation, LLM execution (Gemini 3.8 Flash), and deterministic fallbacks.
+
+### 49.2 Identity Resolution & Lifecycle Engine (`lib/boonpilot/sender-resolver.ts`)
+BoonPilot enforces **Zero Hardcoding** and relies on Supabase as the **Single Source of Truth**:
+1. **Dynamic Phone & Telegram Matching**:
+   - Resolves sender phone across `phone`, `whatsapp_number`, and `wa_verified_phone` (normalized to international `62...` format).
+   - Resolves Telegram users via `telegram_chat_id` column and `metadata->>telegram_chat_id`.
+2. **Setup Completeness Evaluation (`isTenantSetupComplete`)**:
+   - Evaluates whether the merchant's store is ready for commerce:
+     - Explicit flags: `tenant.isSetupComplete`, `metadata.setup_completed`, `metadata.is_ready`.
+     - Runtime state: Presence of active catalog products AND configured payment method (QRIS or bank account).
+3. **Subscription Lifecycle Evaluation (`isTenantSubscriptionExpired`)**:
+   - Checks `tenant.subscription_status === 'expired'` or `tenant.status === 'expired'`.
+   - Checks expiration timestamp: `tenant.plan_expires_at && new Date(tenant.plan_expires_at) < new Date()`.
+
+### 49.3 Multi-Role Recognition (Affiliate Leader + Merchant)
+Affiliate Leaders often manage their own merchant storefront while simultaneously leading downline communities:
+- **Detection Criteria**:
+  - The sender matches a registered tenant in `tenants`.
+  - The sender holds an affiliate leader relationship in `channel_bindings` or designated slug (e.g. `buzzerukm` / Kang Sakti).
+- **Private DM Greeting (Japri)**:
+  `"Halo Kang/Kak {nama_owner}! Mau cek performa referral komunitas {affiliate_id/nama_komunitas}, diskusi strategi toko {nama_toko}, atau ada hal lain yang mau diobrolkan?"`
+- **Dual Intent Routing**:
+  - **Community / Referral Inquiry**: BoonPilot summarizes referral performance, pool registration link, and demo store attribution.
+  - **Personal Store Inquiry**: BoonPilot redirects to `{nama_toko}` analytics, conversion metrics, and dashboard management (`https://dashboard.boontrack.com`).
+  - **General Inquiries**: Seamlessly answered with high-value e-commerce knowledge.
+
+### 49.4 Tenant Expired Lifecycle & Feature Gating
+When a merchant's plan expires:
+- **Operational Gating**:
+  - Store management operations (orders, catalog, courier setup, QRIS settlement, dashboard navigation) are gated.
+  - Sapaan & Gating Message:
+    `"Halo Kak {nama_owner}! Masa aktif operasional toko {nama_toko} saat ini sudah berakhir nih. Agar otomatisasi WhatsApp, penerimaan pesanan, dan asisten toko bisa langsung jalan kembali, silakan login ke dashboard toko Kakak di https://dashboard.boontrack.com lalu klik tombol Upgrade / Perpanjangan ya!"`
+- **Educational Exemption Guardrail**:
+  - General e-commerce inquiries, product feature explanations (Single-Page Checkout, Dynamic QRIS 0% MDR, Meta CAPI), and business questions are **still answered informatively and warmly**.
+  - The bot **never refuses rigidly** to answer non-dashboard educational questions.
+
+### 49.5 Merchant Reguler & Onboarding Personas
+- **Scenario A: Setup Incomplete (Belum Selesai)**:
+  `"Halo Kak {nama_owner}, toko {nama_toko} kamu masih belum selesai nih. Yuk kita bantu lengkapin data-datanya biar siap jualan!"`
+- **Scenario B: Store Ready (Siap Tempur)**:
+  `"Halo Kak {nama_owner}, toko {nama_toko} sudah siap tempur nih! Hari ini mau kita diskusikan strategi penjualan, analisa dan evaluasi performa bisnis, atau ada hal lain yang mau Kakak ceritakan?"`
+- **Invariant**: Registered merchants are **strictly never pitched** to create a new store or shown registration links.
+
+### 49.6 Unregistered Guest & Community Attribution
+- **Store / Dashboard Analysis Request**:
+  When an unregistered user asks BoonPilot to audit or analyze their store/dashboard:
+  `"Wah saya bisa bantu analisa kak, tapi kalau Kakak sudah jadi seller di BoonTrack Shop pasti saya bantu bedah sampai tuntas! Yuk aktifkan toko Kakak dulu di sini: {registration_url}"`
+- **Dynamic Registration URL Attribution**:
+  - **Kang Sakti (Buzzer UKM)**: `https://buzzerukm.boontrack.com`
+  - **Other Affiliates**: `https://shop.boontrack.com/?ref={code}`
+  - **Direct / Generic Fallback**: `https://boontrack.com`
+
+### 49.7 Canonical URL Standardization & Strict Guardrails
+- **Merchant Dashboard**: `https://dashboard.boontrack.com`
+- **Demo Storefront**: `https://shop.boontrack.com/boon`
+- **Kang Sakti Landing**: `https://buzzerukm.boontrack.com`
+- **Affiliate Referral**: `https://shop.boontrack.com/?ref={code}`
+- **Platform Homepage**: `https://boontrack.com`
+
+#### Communication Guardrails
+1. **Single Chat Bubble**: `maxOutputTokens` is tuned (2048 tokens) and responses are formatted concisely to ensure delivery in a single chat bubble.
+2. **Asterisk-Free URLs**: Markdown asterisks wrapping URLs (`*https://...*`) are strictly eliminated across both LLM generation and fallback templates via regex sanitizer:
+   `cleanReply = cleanReply.replace(/\*(\s*https?:\/\/[^\s*]+)\*/g, '$1');`
+
+
