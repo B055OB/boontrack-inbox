@@ -34,6 +34,10 @@ import {
   isBotOutbound,
 } from '@/lib/whatsapp/outbound-registry';
 import { parsePaymentNotification } from '@/lib/payment-webhook-service';
+import { resolveHardeningPolicy } from '@/lib/resolvers/tenant-runtime-resolver';
+import { isDuplicateWebhookEvent } from '@/lib/hardening/deduplication';
+import { evaluateClinicalSafetyGate } from '@/lib/hardening/clinical-safety-gate';
+import { enqueueOutboxMessage } from '@/lib/outbox/enqueue';
 
 const EVOLUTION_API_URL =
   process.env.EVOLUTION_API_URL ||
@@ -364,6 +368,20 @@ export async function processEvolutionWebhookEvent(
     resolvedApiKey = resolvedTenant.apiKey;
   }
 
+  // Resolve Hardening Policy version (Progressive Runtime Rollout)
+  let tenantRecordForHardening: any = { id: tenantId, slug: tenantSlug || tenantId };
+  if (supabase && (tenantId || tenantSlug)) {
+    try {
+      const { data: tRow } = await supabase
+        .from('tenants')
+        .select('id, slug, name, metadata, tier, status')
+        .or(`id.eq.${tenantId},slug.eq.${tenantSlug || tenantId}`)
+        .maybeSingle();
+      if (tRow) tenantRecordForHardening = tRow;
+    } catch {}
+  }
+  const hardeningPolicy = resolveHardeningPolicy(tenantRecordForHardening);
+
   // 3. Normalisasi Daftar Pesan
   let messagesList: any[] = [];
   if (Array.isArray(payload.data)) {
@@ -389,6 +407,32 @@ export async function processEvolutionWebhookEvent(
     const isGroup = rawFrom.includes('@g.us');
     const senderPhone = rawFrom.split('@')[0].replace(/\D/g, '');
     if (!senderPhone) continue;
+
+    const messageExternalId = key.id || item.id || undefined;
+
+    // HARDENING_V1: Durable deduplication check (Redis + DB messages record). Duplicate event -> direct NO-OP!
+    if (hardeningPolicy === 'HARDENING_V1' && messageExternalId) {
+      const dedupCheck = await isDuplicateWebhookEvent({
+        externalId: messageExternalId,
+        tenantId,
+        tenantSlug,
+        senderPhone,
+      });
+
+      if (dedupCheck.isDuplicate) {
+        console.info(
+          `[Evolution Webhook] HARDENING_V1 Deduplication: event ${messageExternalId} from ${senderPhone} already processed. Direct NO-OP.`,
+          {
+            hardening_policy_version: 'HARDENING_V1',
+            external_id: messageExternalId,
+            tenant_slug: tenantSlug,
+            sender_phone: senderPhone,
+          }
+        );
+        processedCount++;
+        continue; // Direct NO-OP per requirement!
+      }
+    }
 
     const rawMsgEarly = item.message || {};
     const textBodyEarly = (
@@ -1046,7 +1090,24 @@ export async function processEvolutionWebhookEvent(
             `✅ *Status:* LUNAS (PAID)\n\n` +
             `Terima kasih! Pesanan Anda segera diproses. 🙏`;
 
-          await sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey);
+          if (hardeningPolicy === 'HARDENING_V1') {
+            // HARDENING_V1: Mode notifikasi outbox / worker async agar status pembayaran PENDING -> PAID tidak terhambat pengiriman WhatsApp
+            enqueueOutboxMessage({
+              tenant_id: tenantId,
+              recipient: senderPhone,
+              recipient_phone: senderPhone,
+              channel: 'WHATSAPP',
+              payload: {
+                type: 'text',
+                text: { body: replyText, preview_url: false },
+              },
+            }).catch((err) => console.warn('[Payment Notification Outbox] Enqueue warning:', err));
+
+            sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey)
+              .catch((err) => console.warn('[Payment Notification Async] Send warning:', err));
+          } else {
+            await sendEvolutionTextMessage(instanceName, senderPhone, replyText, resolvedApiKey);
+          }
 
           await persistOutboundMessage({
             tenantId,
@@ -1055,7 +1116,12 @@ export async function processEvolutionWebhookEvent(
             senderType: 'bot',
             senderName: 'PaymentGatekeeper',
             messageBody: replyText,
-            rawPayload: { trigger: 'payment_mutation_matched', order_id: targetOrderId, amount: paymentParsed.amount },
+            rawPayload: {
+              trigger: 'payment_mutation_matched',
+              order_id: targetOrderId,
+              amount: paymentParsed.amount,
+              hardening_policy_version: hardeningPolicy,
+            },
           });
 
           processedCount++;
@@ -1126,6 +1192,93 @@ export async function processEvolutionWebhookEvent(
 
       processedCount++;
       continue;
+    }
+
+    // 6.2B. HARDENING_V1: Clinical Safety Gate (Pre-LLM Acute Danger & Emergency Interceptor)
+    if (hardeningPolicy === 'HARDENING_V1' && textBody) {
+      const clinicalSafety = evaluateClinicalSafetyGate(textBody);
+      if (clinicalSafety.isEmergency) {
+        console.warn(
+          `[Evolution Webhook] HARDENING_V1 Clinical Emergency triggered for ${senderPhone} (${clinicalSafety.label}). Halting AI and escalating to medical team.`,
+          {
+            hardening_policy_version: 'HARDENING_V1',
+            category: clinicalSafety.category,
+            matched_keywords: clinicalSafety.matchedKeywords,
+            tenant_slug: tenantSlug,
+            sender_phone: senderPhone,
+          }
+        );
+
+        const nowIso = new Date().toISOString();
+        const pausedUntilIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+        if (supabase) {
+          try {
+            await supabase.from('conversation_sessions').upsert(
+              {
+                tenant_id: tenantId,
+                session_id: `wa_${tenantId}_${senderPhone}`,
+                channel: 'WHATSAPP',
+                user_identifier: senderPhone,
+                current_state: 'HANDOVER_TO_HUMAN',
+                is_paused: true,
+                paused_at: nowIso,
+                paused_by: 'clinical_emergency_safety_gate',
+                paused_until: pausedUntilIso,
+                metadata: {
+                  handover_reason: 'clinical_emergency_safety_gate',
+                  emergency_category: clinicalSafety.category,
+                  matched_keywords: clinicalSafety.matchedKeywords,
+                  paused_at: nowIso,
+                  trigger_text: textBody.slice(0, 100),
+                  hardening_policy_version: 'HARDENING_V1',
+                },
+                updated_at: nowIso,
+              },
+              { onConflict: 'tenant_id,user_identifier' }
+            );
+
+            if (convId) {
+              await supabase
+                .from('conversations')
+                .update({
+                  bot_paused: true,
+                  bot_mode: 'HUMAN_ACTIVE',
+                  status: 'emergency_escalation',
+                  updated_at: nowIso,
+                })
+                .eq('id', convId);
+            }
+          } catch (gateErr) {
+            console.warn('[Evolution Webhook] Clinical gate session lock warning:', gateErr);
+          }
+        }
+
+        await sendEvolutionTextMessage(
+          instanceName,
+          senderPhone,
+          clinicalSafety.replyMessage,
+          resolvedApiKey
+        );
+
+        await persistOutboundMessage({
+          tenantId: tenantId,
+          tenantSlug: tenantSlug || tenantId,
+          customerPhone: senderPhone,
+          senderType: 'bot',
+          senderName: 'ClinicalSafetyGate',
+          messageBody: clinicalSafety.replyMessage,
+          rawPayload: {
+            trigger: 'clinical_safety_gate',
+            category: clinicalSafety.category,
+            matched_keywords: clinicalSafety.matchedKeywords,
+            hardening_policy_version: 'HARDENING_V1',
+          },
+        });
+
+        processedCount++;
+        continue; // Deterministic AI STOP! Do NOT call Gemini LLM!
+      }
     }
 
     // 6.3. Active Pause Gate (Auto-Mute: Balasan Otomatis Ditahan jika is_paused == true / bot_paused == true)

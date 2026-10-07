@@ -37,6 +37,8 @@ export interface TenantCapabilities {
   [key: string]: boolean | undefined;
 }
 
+export type HardeningPolicy = 'HARDENING_V0' | 'HARDENING_V1';
+
 export interface TenantRecord {
   id?: string;
   slug: string;
@@ -48,6 +50,7 @@ export interface TenantRecord {
   tenant_kind?: TenantKind;
   business_type?: BusinessType;
   template_code?: TemplateCode | string;
+  hardening_policy?: HardeningPolicy;
   metadata?: Record<string, any>;
   [key: string]: any;
 }
@@ -59,9 +62,11 @@ export interface TenantRuntimeContext {
   businessType: BusinessType;
   templateCode: TemplateCode;
   capabilities: TenantCapabilities;
+  hardeningPolicy: HardeningPolicy;
   tenant: TenantRecord;
   isAllowedHost: boolean;
   error?: 'HOST_MISMATCH' | 'TEMPLATE_NOT_COMPATIBLE' | 'UNKNOWN_TEMPLATE' | 'TENANT_NOT_FOUND';
   errorMessage?: string;
   statusCode?: number;
 }
+

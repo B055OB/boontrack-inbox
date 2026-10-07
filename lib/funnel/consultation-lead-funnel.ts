@@ -12,6 +12,8 @@
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
 import { generateDynamicQRIS } from '@/lib/qris-dynamic';
+import { resolveHardeningPolicy } from '@/lib/resolvers/tenant-runtime-resolver';
+
 
 export interface ProcessConsultationFunnelParams {
   tenant?: any;
@@ -301,9 +303,13 @@ export async function processConsultationLeadFunnel(
   // progressive slot filling (Parent, Child, Complaint), and hybrid QRIS checkout.
   // =========================================================================
   const isClinic = isClinicConsultationTenant(tenant, meta, products);
+  const hardeningPolicy = resolveHardeningPolicy(tenant);
+
   if (isClinic) {
     const lockedProduct = resolveLockedGtmProduct(products, meta);
-    const domain = meta.custom_domain || 'konsul.littlebitefeeding.com';
+    const domain = hardeningPolicy === 'HARDENING_V1'
+      ? 'konsul.littlebitefeeding.com'
+      : (meta.custom_domain || 'konsul.littlebitefeeding.com');
     const priceNumber = Number(lockedProduct.price || lockedProduct.promo_price || 150000);
     const priceStr = `Rp ${priceNumber.toLocaleString('id-ID')}`;
 
@@ -459,6 +465,7 @@ export async function processConsultationLeadFunnel(
                 clinic_intake: clinicIntake.data,
                 invoice_url: fullCheckoutUrl,
                 order_created_at: nowIso,
+                hardening_policy_version: hardeningPolicy,
               },
               updated_at: nowIso,
             },

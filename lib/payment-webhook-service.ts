@@ -11,6 +11,7 @@ import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { parseDanaNotification, validateOrderPaymentMatch } from '@/lib/payment/dana-reader';
 import { activateShopSubscription } from '@/lib/subscriptions/service';
 import { SubscriptionTier, SubscriptionDurationMonths } from '@/lib/subscriptions/types';
+import { resolveHardeningPolicy } from '@/lib/resolvers/tenant-runtime-resolver';
 
 // In-memory diagnostic logs ring buffer (stores up to 50 latest webhook calls)
 export interface WebhookLogEntry {
@@ -756,9 +757,15 @@ export async function handlePaymentWebhook(req: NextRequest, endpointSource = 'r
     matchedOrder.fulfillment_metadata?.instructions || '';
 
   const targetTenantSlug = matchedOrder.tenant_slug || matchedOrder.tenant_id || tenantSlug;
+  const hardeningPolicy = resolveHardeningPolicy(matchedOrder?.tenant || { slug: targetTenantSlug, metadata: matchedOrder?.metadata });
 
   if (customerPhone) {
-    console.log(`[Webhook Reader ${logId}] Mengirim WhatsApp auto-fulfillment (${resolvedProductType}) ke ${customerPhone} (Outbox Queue)`);
+    console.log(`[Webhook Reader ${logId}] Mengirim WhatsApp auto-fulfillment (${resolvedProductType}) ke ${customerPhone} (Outbox Queue)`, {
+      hardening_policy_version: hardeningPolicy,
+      order_id: String(orderId),
+      tenant_slug: targetTenantSlug,
+    });
+    // Async worker / outbox dispatch ensures PENDING -> PAID DB status mutation and HTTP 200 response are never blocked
     sendOrderFulfillmentNotification({
       phone: customerPhone,
       customerName,

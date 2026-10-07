@@ -18,8 +18,40 @@ import {
   TemplateCode,
   TenantRecord,
   TenantRuntimeContext,
+  HardeningPolicy,
 } from '@/lib/types/tenant-runtime';
 import { getTenantConfig } from '@/lib/tenant-config';
+
+// ── HARDENING POLICY RESOLVER (Progressive Runtime Rollout) ───────────────────
+
+/**
+ * Resolves the Hardening Policy version for a tenant:
+ * - 'HARDENING_V1': Scoped canary for pilot tenant ('tumbuh-kembang-anak' / 'konsul.littlebitefeeding.com')
+ *   or explicit metadata override.
+ * - 'HARDENING_V0': Default legacy/stable path for all existing tenants (buzzerukm, syandinaryoshop, digitara, gaziir, boon, etc.)
+ */
+export function resolveHardeningPolicy(tenant?: TenantRecord | null): HardeningPolicy {
+  // 1. Check explicit policy in metadata or tenant record first (Single Source of Truth / dynamic)
+  const explicitPolicy =
+    tenant?.hardening_policy ||
+    tenant?.metadata?.hardening_policy ||
+    tenant?.metadata?.hardeningPolicy;
+
+  if (explicitPolicy === 'HARDENING_V1' || explicitPolicy === 'v1' || explicitPolicy === 'V1') {
+    return 'HARDENING_V1';
+  }
+
+  // 2. Canary scoping for pilot tenant
+  const slug = (tenant?.slug || '').toLowerCase().trim();
+  const customDomain = (tenant?.metadata?.custom_domain || '').toLowerCase().trim();
+  if (slug === 'tumbuh-kembang-anak' || customDomain === 'konsul.littlebitefeeding.com') {
+    return 'HARDENING_V1';
+  }
+
+  // 3. Default to HARDENING_V0 for all other tenants (zero regression)
+  return 'HARDENING_V0';
+}
+
 
 // ── CUSTOM CANONICAL ERROR CLASSES ──────────────────────────────────────────
 
@@ -299,6 +331,7 @@ export function resolveTenantRuntime(
   }
 
   const capabilities = getTemplateCapabilities(templateCode);
+  const hardeningPolicy = resolveHardeningPolicy(tenant);
 
   // 3. Domain Boundary Guards
   const isShopDomain =
@@ -317,6 +350,7 @@ export function resolveTenantRuntime(
         businessType,
         templateCode,
         capabilities,
+        hardeningPolicy,
         tenant,
         isAllowedHost: false,
         statusCode: 404,
@@ -339,6 +373,7 @@ export function resolveTenantRuntime(
       businessType,
       templateCode,
       capabilities,
+      hardeningPolicy,
       tenant,
       isAllowedHost: false,
       statusCode: 422,
@@ -358,6 +393,7 @@ export function resolveTenantRuntime(
     businessType,
     templateCode,
     capabilities,
+    hardeningPolicy,
     tenant,
     isAllowedHost: true,
     statusCode: 200,

@@ -28,6 +28,8 @@ import {
   processBoonPilotPlatformChat,
   buildBoonPilotSystemPrompt,
 } from '@/lib/boonpilot/platform-engine';
+import { resolveHardeningPolicy } from '@/lib/resolvers/tenant-runtime-resolver';
+import { evaluateClinicalSafetyGate } from '@/lib/hardening/clinical-safety-gate';
 
 export interface MultimodalChatInput {
   tenant_slug?: string;
@@ -565,6 +567,27 @@ export async function processMultimodalChat(
           quick_actions: defaultQuickActions,
           active_engine: activeEngine,
         };
+      }
+
+      // 1.05. HARDENING_V1: Pre-LLM Clinical Safety Gate (Acute Medical Danger Interceptor)
+      const hardeningPolicy = resolveHardeningPolicy(t || { slug, metadata: tenantMetadata });
+      if (hardeningPolicy === 'HARDENING_V1') {
+        const clinicalGate = evaluateClinicalSafetyGate(message);
+        if (clinicalGate.isEmergency) {
+          console.warn(`[MultimodalChat] HARDENING_V1 Clinical Emergency intercepted for tenant '${slug}'. AI STOP.`, {
+            hardening_policy_version: 'HARDENING_V1',
+            category: clinicalGate.category,
+            matched_keywords: clinicalGate.matchedKeywords,
+          });
+          return {
+            success: true,
+            reply: clinicalGate.replyMessage,
+            tenant_id: t?.id || slug,
+            tenant_slug: t?.slug || slug,
+            type: 'CLINICAL_EMERGENCY_ESCALATION',
+            bot_paused: true,
+          };
+        }
       }
 
       // 1.1. Consultation, Lead Filtering & Service Order Gatekeeper Funnel
