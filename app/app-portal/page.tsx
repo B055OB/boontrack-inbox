@@ -76,7 +76,7 @@ export default function AppPortalPage() {
                     {/* Header CTA Button */}
                     <div className="flex items-center gap-3">
                         <a
-                            href="https://wa.me/6285181830080?text=Halo%20BoonTrack%2C%20saya%20tertarik%20untuk%20konsultasi%20solusi%20Enterprise%20dan%20aktivasi%20platform."
+                            href="https://wa.me/6281977655099?text=Halo%20BoonTrack%2C%20saya%20tertarik%20untuk%20konsultasi%20solusi%20Enterprise%20dan%20aktivasi%20platform."
                             target="_blank"
                             rel="noopener noreferrer"
                             className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-lg shadow-orange-500/20 transition-all hover:scale-[1.02]"
@@ -120,7 +120,7 @@ export default function AppPortalPage() {
                     {/* CTA Button Group */}
                     <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
                         <a
-                            href="https://wa.me/6285181830080?text=Halo%20BoonTrack%2C%20saya%20tertarik%20untuk%20konsultasi%20solusi%20Enterprise%20dan%20aktivasi%20platform."
+                            href="https://wa.me/6281977655099?text=Halo%20BoonTrack%2C%20saya%20tertarik%20untuk%20konsultasi%20solusi%20Enterprise%20dan%20aktivasi%20platform."
                             target="_blank"
                             rel="noopener noreferrer"
                             className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold text-sm shadow-xl shadow-orange-500/25 transition-all text-center"
@@ -354,7 +354,7 @@ export default function AppPortalPage() {
                     </p>
                     <div className="mt-8 flex justify-center">
                         <a
-                            href="https://wa.me/6285181830080?text=Halo%20BoonTrack%2C%20saya%20tertarik%20klaim%20Pilot%20Resmi%207%20Hari%20Meta%20WABA."
+                            href="https://wa.me/6281977655099?text=Halo%20BoonTrack%2C%20saya%20tertarik%20klaim%20Pilot%20Resmi%207%20Hari%20Meta%20WABA."
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-8 py-4 rounded-xl bg-white text-orange-600 font-black text-sm hover:bg-orange-50 shadow-lg transition transform active:scale-95"

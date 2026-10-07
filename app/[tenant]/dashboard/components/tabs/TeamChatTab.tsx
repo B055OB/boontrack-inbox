@@ -4142,12 +4142,14 @@ export default function TeamChatTab({
                 </div>
                 <div className="pt-2">
                   <a
-                    href="https://wa.me/6285113636165?text=Halo%20Enterprise%20BoonTrack,%20saya%20ingin%20tambah%20kuota%20CS%20Seat%20lebih%20dari%205"
+                    href={`https://wa.me/6281977655099?text=${encodeURIComponent(
+                      'Halo Tim Billing BoonTrack, saya tertarik upgrade paket Pro/Scale untuk tambah kuota CS Seat Smart Chatbox & Paket Tahunan. Mohon info biaya dan panduan aktivasi.'
+                    )}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full block py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-xs text-center transition"
                   >
-                    Hubungi Enterprise Support
+                    Hubungi Tim Billing
                   </a>
                 </div>
               </div>

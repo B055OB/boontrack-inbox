@@ -162,7 +162,9 @@ export function useDashboardData(tenantSlug: string) {
 
   const handleUpgradeTier = (targetTier: 'ads_performance' | 'team_scale') => {
     const tierLabel = targetTier === 'team_scale' ? 'Team Scale (499k)' : 'Ads Performance (299k)';
-    const text = encodeURIComponent(`Halo Tim BoonTrack, saya ingin upgrade paket toko "${displayName}" (${tenantSlug}) ke paket ${tierLabel}. Mohon panduannya.`);
+    const text = encodeURIComponent(
+      `Halo Tim Billing BoonTrack, saya tertarik upgrade paket Pro/Scale untuk fitur toko "${displayName}" (${tenantSlug}) ke paket ${tierLabel} & Paket Tahunan. Mohon info biaya dan panduan aktivasi.`
+    );
     window.open(`https://wa.me/${getPlatformWhatsApp()}?text=${text}`, '_blank');
   };
 

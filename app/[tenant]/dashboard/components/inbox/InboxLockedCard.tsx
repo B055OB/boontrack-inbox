@@ -7,7 +7,7 @@ import { getPlatformWhatsApp } from '@/lib/tenant-config';
 export default function InboxLockedCard({ tenantSlug }: { tenantSlug: string }) {
   const handleUpgradeClick = () => {
     const text = encodeURIComponent(
-      `Halo Tim BoonTrack, saya ingin buka akses Live Chat CS Inbox untuk toko "${tenantSlug}". Mohon panduan upgrade ke paket Ads Performance.`
+      `Halo Tim Billing BoonTrack, saya tertarik upgrade paket Pro/Scale untuk fitur Live Chat Smart Chatbox di toko "${tenantSlug}" & Paket Tahunan. Mohon info biaya dan panduan aktivasi.`
     );
     window.open(`https://wa.me/${getPlatformWhatsApp()}?text=${text}`, '_blank');
   };

@@ -61,21 +61,21 @@ export default function FeatureLockedTeaser({
       return;
     }
     // Default fallback: direct to platform billing WhatsApp
-    const waNumber = getPlatformWhatsApp();
+    const waNumber = getPlatformWhatsApp() || '6281977655099';
     const text = encodeURIComponent(
-      `Halo Tim BoonTrack, saya ingin konsultasi aktivasi fitur "${featureTitle}" (${badgeTier})${
-        tenantSlug ? ` untuk toko "${tenantSlug}"` : ''
-      }. Mohon panduan aktivasi.`
+      `Halo Tim Billing BoonTrack, saya tertarik upgrade paket Pro/Scale untuk fitur "${featureTitle}" (${badgeTier})${
+        tenantSlug ? ` di toko "${tenantSlug}"` : ''
+      } & Paket Tahunan. Mohon info biaya dan panduan aktivasi.`
     );
     window.open(`https://wa.me/${waNumber}?text=${text}`, '_blank');
   };
 
   const handleConsultClick = () => {
-    const waNumber = getPlatformWhatsApp();
+    const waNumber = getPlatformWhatsApp() || '6281977655099';
     const text = encodeURIComponent(
-      `Halo Tim Billing BoonTrack, saya tertarik dengan fitur "${featureTitle}" (${badgeTier})${
+      `Halo Tim Billing BoonTrack, saya tertarik upgrade paket Pro/Scale untuk fitur "${featureTitle}" (${badgeTier})${
         tenantSlug ? ` di toko "${tenantSlug}"` : ''
-      }. Apakah bisa dibantu aktivasi dan penjelasan detail paketnya?`
+      } & Paket Tahunan. Mohon info biaya dan panduan aktivasi.`
     );
     window.open(`https://wa.me/${waNumber}?text=${text}`, '_blank');
   };

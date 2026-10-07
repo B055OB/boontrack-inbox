@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Lock, ArrowRight } from 'lucide-react';
+import { Lock, ArrowRight, MessageCircle } from 'lucide-react';
 
 interface LockedFeatureCardProps {
   title: string;
@@ -45,6 +45,17 @@ export default function LockedFeatureCard({
             <span>Upgrade Sekarang ({targetTierLabel})</span>
             <ArrowRight className="w-4 h-4" />
           </button>
+          <a
+            href={`https://wa.me/6281977655099?text=${encodeURIComponent(
+              `Halo Tim Billing BoonTrack, saya tertarik upgrade paket Pro/Scale untuk fitur ${title} (${badge}) & Paket Tahunan. Mohon info biaya dan panduan aktivasi.`
+            )}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-3.5 rounded-xl text-xs transition cursor-pointer"
+          >
+            <MessageCircle className="w-4 h-4 text-emerald-600" />
+            <span>Tanya Tim Billing</span>
+          </a>
         </div>
       </div>
     </div>

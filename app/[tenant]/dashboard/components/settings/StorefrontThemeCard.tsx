@@ -160,7 +160,7 @@ const BIO_ICON_OPTIONS: { id: BioButton['icon']; label: string; icon: React.Elem
 ];
 
 export function getDefaultStarterButtons(slug: string, waNumber?: string): BioButton[] {
-  const cleanWa = waNumber?.replace(/\D/g, '') || '6285181830080';
+  const cleanWa = waNumber?.replace(/\D/g, '') || '6281977655099';
   return [
     {
       id: 'btn-wa',
@@ -1465,7 +1465,9 @@ export default function StorefrontThemeCard({
                 Nanti Saja
               </button>
               <a
-                href="https://wa.me/6281234567890?text=Halo%20BoonTrack,%20saya%20ingin%20upgrade%20paket%20untuk%20membuka%20tema%20storefront"
+                href={`https://wa.me/6281977655099?text=${encodeURIComponent(
+                  'Halo Tim Billing BoonTrack, saya tertarik upgrade paket Pro/Scale untuk membuka tema premium storefront & Paket Tahunan. Mohon info biaya dan panduan aktivasi.'
+                )}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs flex items-center gap-1.5"

@@ -269,6 +269,16 @@ export function buildBoonPilotSystemPrompt(
 - Mendukung perhitungan ongkir akurat otomatis ke seluruh kecamatan di Indonesia melalui ekspedisi reguler (JNE, SiCepat, J&T, Lion Parcel, POS) serta kurir instan/sameday (Grab/Gojek).
 - Fitur BYOK (Bring Your Own Key): Merchant dapat menghubungkan akun ekspedisi Lincah atau Biteship langsung ke dashboard toko untuk otomatisasi resi dan pickup paket oleh kurir tanpa antre.`;
 
+  const smartChatboxKnowledge = `SMART CHATBOX & FITUR CRM TINGKAT LANJUT:
+- Label Navigasi Resmi: Menu chat CS di dashboard kini resmi bernama "Smart Chatbox" (sebelumnya BoonTrack Inbox).
+- Fitur CRM Tingkat Lanjut (Aktif pada Tier Pro Scale & Team Scale):
+  * Customer Memory Layer: CS selalu tahu histori belanja, tag relasional, preferensi, dan catatan internal rahasia pelanggan tepat di samping jendela obrolan.
+  * Lifecycle Engine: Pelacakan tahapan prospek otomatis dari Lead Baru, Follow-up, Closing, hingga Pelanggan Loyal.
+  * Inline Edit Nama Pelanggan: Admin CS dapat mengedit dan menyimpan nama pelanggan secara langsung di panel chat tanpa perlu buka kontak HP.
+  * Unduh Kontak HP (.vcf / vCard 3.0): Simpan nomor WhatsApp pelanggan ke aplikasi Kontak smartphone bawaan (Google Contacts / iOS Contacts) dalam 1 klik.
+- Kebijakan Upgrade Paket Tahunan & Unlock Fitur Pro/Scale:
+  * Jika merchant atau pengguna menanyakan cara upgrade ke paket tahunan atau unlock fitur Pro/Scale, WAJIB arahkan mereka untuk menghubungi Tim Billing resmi BoonTrack via WhatsApp ke nomor 081977655099 (https://wa.me/6281977655099) karena sistem upgrade saat ini diproses secara personal via chat.`;
+
   const demoStoreUrl = communityContext?.demo_store_url || 'https://shop.boontrack.com/boon';
   const registrationUrl = communityContext?.registration_url || 'https://boontrack.com';
 
@@ -333,12 +343,14 @@ ${signaturePersonaDirective}
 ${activeMerchantDirective}
 
 PERAN & TUGAS UTAMA (MERCHANT):
-1. Bantuan operasional toko, cek status order, dan panduan fitur 8 tab dashboard BoonTrack (Overview, Katalog Produk, Pesanan, WhatsApp Gateway, Pengiriman, Pembayaran/QRIS, Tim CS, Pengaturan Toko di https://dashboard.boontrack.com).
+1. Bantuan operasional toko, cek status order, dan panduan fitur dashboard BoonTrack (Overview, Katalog Produk, Pesanan, Smart Chatbox & CRM, WhatsApp Gateway, Pengiriman, Pembayaran/QRIS, Pengaturan Toko di https://dashboard.boontrack.com).
 2. Membantu analisis performa, screenshot analitik iklan / metrik dashboard secara objektif jika dikirimkan oleh merchant.
 3. Membantu pemecahan masalah operasional toko (checkout, ongkir, QRIS, notifikasi WhatsApp).
 4. Contoh demo toko / alur checkout resmi: ${demoStoreUrl}
 
 ${paymentNotificationKb}
+
+${smartChatboxKnowledge}
 
 ${adsPixelCapiKnowledge}
 
@@ -348,7 +360,7 @@ ${shippingLogisticsKnowledge}
 
 PANDUAN ESKALASI & UPSELL:
 - Kesulitan setup / minta terima beres: Tawarkan paket DFY (Done-For-You / Setup Toko Terima Beres) di https://shop.boontrack.com/boon atau arahkan untuk menghubungi IT Support resmi di https://wa.me/6281977655099.
-- Butuh fitur tim & kuota tinggi: Jika merchant membutuhkan multi-seat CS, broadcast WABA resmi, atau volume pesanan tinggi, rekomendasikan upgrade ke paket Pro Scale atau Team Scale di https://dashboard.boontrack.com.
+- Butuh fitur tim, kuota tinggi, atau paket tahunan: Jika merchant ingin upgrade paket tahunan atau membuka fitur Pro Scale / Team Scale (Smart Chatbox CRM lanjutan, multi-seat CS, broadcast WABA resmi), arahkan untuk menghubungi Tim Billing via WhatsApp di https://wa.me/6281977655099 (081977655099) karena aktivasi diproses secara personal via chat.
 - Keberatan biaya langganan: Jika merchant merasa biaya langganan saat ini berat atau ingin paket paling terjangkau, arahkan ke paket Checkout Lite (Rp 59.000/bln).
 
 ATURAN MUTLAK (STRICT RULES):
@@ -387,6 +399,8 @@ ${communityContextKnowledge}
 
 ${paymentNotificationKb}
 
+${smartChatboxKnowledge}
+
 ${adsPixelCapiKnowledge}
 
 ${checkoutLiteKnowledge}
@@ -395,7 +409,7 @@ ${shippingLogisticsKnowledge}
 
 PANDUAN ESKALASI & UPSELL:
 - Kesulitan setup / minta terima beres: Tawarkan paket DFY (Done-For-You) di https://shop.boontrack.com/boon atau hubungi IT Support resmi: https://wa.me/6281977655099.
-- Butuh fitur tim & kuota tinggi: Rekomendasikan upgrade paket Pro / Scale untuk kebutuhan CS multi-seat dan server-side Meta CAPI.
+- Butuh fitur tim, kuota tinggi, atau paket tahunan: Rekomendasikan paket Pro / Scale dan arahkan calon pengguna untuk menghubungi Tim Billing via WhatsApp di https://wa.me/6281977655099 (081977655099) untuk konsultasi paket tahunan atau unlock fitur Pro/Scale (Smart Chatbox CRM lanjutan).
 - Keberatan biaya langganan: Arahkan ke paket Checkout Lite (Rp 59.000/bln) sebagai solusi super hemat untuk langsung jualan mandiri.
 
 ATURAN MUTLAK KEAMANAN (STRICT SECURITY & ZERO-DATA-LEAKAGE):
@@ -432,8 +446,11 @@ function resolveBoonPilotFallbackReply(
     '💳 Atur Rekening/QRIS',
   ];
 
-  // 0. Pertanyaan seputar Meta Ads, Facebook Ads, CTWA, Pixel, CAPI, dan Iklan Digital
-  if (/(meta ads|fb ads|facebook ads|instagram ads|ig ads|ctwa|click to whatsapp|pixel|capi|conversion api|iklan digital|periklanan|iklan|roas|cpm|cpa)/i.test(cleanMsg)) {
+  // 0. Pertanyaan seputar Meta Ads, Facebook Ads, CTWA, Pixel, CAPI, dan Iklan Digital (jika bukan permintaan upgrade/tim CS)
+  if (
+    /(meta ads|fb ads|facebook ads|instagram ads|ig ads|ctwa|click to whatsapp|pixel|capi|conversion api|iklan digital|periklanan|iklan|roas|cpm|cpa)/i.test(cleanMsg) &&
+    !/(upgrade|kuota tinggi|tim cs|cs banyak|multi.?seat|skala besar|volume tinggi|tahunan|billing)/i.test(cleanMsg)
+  ) {
     const reply =
       `Halo kak, bantu jawab ya!\n\n` +
       `Paham banget kak! BoonTrack dirancang khusus untuk memaksimalkan hasil iklan digital, terutama *Meta Ads (FB/IG Ads)* dan funnel *CTWA (Click to WhatsApp)*:\n\n` +
@@ -498,26 +515,29 @@ function resolveBoonPilotFallbackReply(
     };
   }
 
-  // 3. Butuh fitur tim & kuota tinggi -> Upgrade Pro / Scale
-  if (/(upgrade|pro scale|team scale|multi seat|multi-seat|cs banyak|tim cs|kuota tinggi|skala besar|volume tinggi)/i.test(cleanMsg)) {
+  // 3. Butuh fitur tim & kuota tinggi -> Upgrade Pro / Scale / Paket Tahunan / Smart Chatbox CRM
+  if (/(upgrade|pro scale|team scale|crm|smart chatbox|chatbox|customer memory|lifecycle|vcf|vcard|multi seat|multi-seat|cs banyak|tim cs|kuota tinggi|skala besar|volume tinggi|tahunan|paket tahunan|billing)/i.test(cleanMsg)) {
     const reply =
-      `Halo kak, bantu jawab ya!\n\nUntuk operasional dengan tim CS dan volume transaksi tinggi, kami sarankan paket lanjutan:\n\n` +
+      `Halo kak, bantu jawab ya!\n\nUntuk operasional dengan tim CS dan kebutuhan fitur CRM tingkat lanjut, berikut pilihan paket resmi BoonTrack:\n\n` +
       `🚀 *Paket Pro Scale (Ads Performance)*:\n` +
-      `• Meta & TikTok Server-Side CAPI (optimasi pixel iklan)\n` +
-      `• 2 Seats CS Inbox & Multi-Rotator\n` +
+      `• *Smart Chatbox:* 2 CS Seats & CRM Tingkat Lanjut (Customer Memory Layer, Lifecycle Engine, Inline Edit Nama Pelanggan, Unduh Kontak HP .vcf)\n` +
+      `• Meta & TikTok Server-Side CAPI (optimasi pixel iklan anti iOS drop)\n` +
       `• Custom Domain toko sendiri + SSL\n\n` +
       `🏢 *Paket Team Scale (Enterprise)*:\n` +
-      `• Multi-Seat CS Inbox tanpa batas\n` +
-      `• Koneksi Official WhatsApp Cloud API (WABA) & broadcast promo\n` +
+      `• Multi-Seat CS Smart Chatbox tanpa batas\n` +
+      `• Official WhatsApp Cloud API (WABA Centang Hijau) & Broadcast Promosi Massal\n` +
       `• Prioritas server & kuota pesan tak terbatas\n\n` +
-      `👉 *Pelajari & Upgrade di Dashboard:* https://dashboard.boontrack.com`;
+      `💎 *Aktivasi & Upgrade Paket Tahunan:*\n` +
+      `Saat ini proses upgrade ke paket tahunan atau unlock fitur Pro/Scale diproses secara personal via chat. Silakan langsung hubungi Tim Billing resmi BoonTrack di WhatsApp:\n` +
+      `👉 https://wa.me/6281977655099 (081977655099)\n\n` +
+      `Tim Billing kami siap bantu panduan dan aktivasi instan tanpa jeda operasional toko Kakak! 😊`;
 
     return {
       reply,
       role: resolution.role,
       activeEngine: resolution.role === 'MERCHANT' ? 'BOONPILOT_MERCHANT_COPILOT' : 'BOONPILOT_GUEST_ONBOARDING',
       tenant: resolution.tenant,
-      quick_actions: ['🚀 Cek Paket Pro Scale', '🏢 Cek Team Scale'],
+      quick_actions: ['💎 Hubungi Tim Billing', '💬 Fitur Smart Chatbox', '🚀 Cek Paket Pro Scale'],
       isDeterministicMatch: true,
     };
   }

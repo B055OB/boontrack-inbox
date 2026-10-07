@@ -931,11 +931,22 @@ export function getTenantWhatsApp(slug?: string): string {
   return '';
 }
 
+export const PLATFORM_BILLING_WHATSAPP = '6281977655099';
+
+export function getBillingWhatsApp(): string {
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.NEXT_PUBLIC_BILLING_WHATSAPP) return process.env.NEXT_PUBLIC_BILLING_WHATSAPP.replace(/\D/g, '');
+    if (process.env.NEXT_PUBLIC_SUPPORT_PHONE) return process.env.NEXT_PUBLIC_SUPPORT_PHONE.replace(/\D/g, '');
+  }
+  return PLATFORM_BILLING_WHATSAPP;
+}
+
 export function getPlatformWhatsApp(): string {
   if (typeof process !== 'undefined' && process.env) {
     if (process.env.NEXT_PUBLIC_SUPPORT_PHONE) return process.env.NEXT_PUBLIC_SUPPORT_PHONE.replace(/\D/g, '');
-    if (process.env.NEXT_PUBLIC_META_BOT_NUMBER) return process.env.NEXT_PUBLIC_META_BOT_NUMBER.replace(/\D/g, '');
+    if (process.env.NEXT_PUBLIC_BILLING_WHATSAPP) return process.env.NEXT_PUBLIC_BILLING_WHATSAPP.replace(/\D/g, '');
   }
-  return getTenantWhatsApp('growth') || '6281977655099';
+  return PLATFORM_BILLING_WHATSAPP;
 }
+
 

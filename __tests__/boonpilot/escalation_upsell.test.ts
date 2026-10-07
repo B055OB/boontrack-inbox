@@ -32,6 +32,8 @@ describe('BoonPilot Persona, Escalation & Upsell Engine', () => {
     expect(res.reply).toContain('Pro Scale');
     expect(res.reply).toContain('Team Scale');
     expect(res.reply).toContain('Multi-Seat');
+    expect(res.reply).toContain('Smart Chatbox');
+    expect(res.reply).toContain('https://wa.me/6281977655099');
   });
 
   it('guides non-merchants to trial registration at https://shop.boontrack.com with feature education', async () => {

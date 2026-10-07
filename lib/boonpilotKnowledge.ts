@@ -279,7 +279,7 @@ Bot AI akan langsung menyapa, menampilkan katalog, dan memandu checkout hingga Q
       'menu boontrack',
     ],
     title: '🧭 Tur Interaktif 10 Menu Utama BoonTrack',
-    text: `🎉 **Selamat! Setup Toko Anda Sudah 100% Siap Beroperasi!**\n\nUntuk membantu Anda memaksimalkan penjualan dan menguasai seluruh fitur, berikut adalah peta **10 Menu & Ekosistem Utama BoonTrack**:\n\n1. 📊 **Dashboard (Overview)**: Monitoring performa trafik etalase, sesi chat, dan transaksi harian secara realtime.\n2. 📦 **Produk & Jasa**: Manajemen katalog fisik, modul digital, layanan jasa, varian, dan stok otomatis.\n3. 🚚 **Pengiriman & Kurir**: Integrasi agregator kurir lincah dan setup titik gudang/dapur penjemputan (ongkir akurat otomatis).\n4. 🎨 **Tampilan & Tema**: 3 opsi gaya etalase depan (Katalog Standar, Microsite Bio-link ala Linktree modern, dan Personal Brand).\n5. 🧠 **AI Knowledge & Bot**: Pusat latihan otak bot toko (FAQ, SOP retur, knowledge produk, gaya bicara CS).\n6. 💬 **WhatsApp & Broadcast**: Dual-gateway WhatsApp (Direct Gateway vs Official Meta Centang Biru) serta Telegram Sales Bot di grup jualan.\n7. 📥 **BoonTrack Inbox**: Fitur balas pesan keroyokan oleh tim CS dan otomasi penembakan sinyal purchase event ke media iklan.\n8. 🎯 **Ads Tracking Pro**: Pelacak presisi multi-channel (Facebook CAPI, TikTok Pixel, Google Ads) lengkap dengan opsi dipandu step-by-step.\n9. 💰 **Laporan Keuangan**: Rekap pembukuan otomatis yang eksklusif mencatat transaksi berstatus PAID (lunas).\n10. 📝 **Daftar Pesanan Toko**: Mekanisme mutasi instan QRIS (otomatis berstatus PAID dalam 5-15 detik) vs penanganan status UNPAID beserta pesan follow-up otomatis.\n\n---\n💡 **Tahukah Anda?**\nDi luar sana, jika Anda berlangganan terpisah untuk tools website katalog, WhatsApp broadcast, AI CS bot, kurir otomatis, dan multi-channel ads tracking, biayanya bisa mencapai **Rp 1,5 jt – Rp 3 jt per bulan**! Di BoonTrack, seluruh senjata penjualan ini sudah **menyatu sempurna dalam 1 ekosistem** terpadu. 🚀\n\n👇 **Silakan pilih menu yang ingin Anda pelajari detailnya:**`,
+    text: `🎉 **Selamat! Setup Toko Anda Sudah 100% Siap Beroperasi!**\n\nUntuk membantu Anda memaksimalkan penjualan dan menguasai seluruh fitur, berikut adalah peta **10 Menu & Ekosistem Utama BoonTrack**:\n\n1. 📊 **Dashboard (Overview)**: Monitoring performa trafik etalase, sesi chat, dan transaksi harian secara realtime.\n2. 📦 **Produk & Jasa**: Manajemen katalog fisik, modul digital, layanan jasa, varian, dan stok otomatis.\n3. 🚚 **Pengiriman & Kurir**: Integrasi agregator kurir lincah dan setup titik gudang/dapur penjemputan (ongkir akurat otomatis).\n4. 🎨 **Tampilan & Tema**: 3 opsi gaya etalase depan (Katalog Standar, Microsite Bio-link ala Linktree modern, dan Personal Brand).\n5. 🧠 **AI Knowledge & Bot**: Pusat latihan otak bot toko (FAQ, SOP retur, knowledge produk, gaya bicara CS).\n6. 💬 **WhatsApp & Broadcast**: Dual-gateway WhatsApp (Direct Gateway vs Official Meta Centang Biru) serta Telegram Sales Bot di grup jualan.\n7. 💬 **Smart Chatbox**: Meja kerja 3-panel live CS omnichannel, otomasi penembakan sinyal purchase event CAPI, serta manajemen CRM pelanggan (Customer Memory & Lifecycle).\n8. 🎯 **Ads Tracking Pro**: Pelacak presisi multi-channel (Facebook CAPI, TikTok Pixel, Google Ads) lengkap dengan opsi dipandu step-by-step.\n9. 💰 **Laporan Keuangan**: Rekap pembukuan otomatis yang eksklusif mencatat transaksi berstatus PAID (lunas).\n10. 📝 **Daftar Pesanan Toko**: Mekanisme mutasi instan QRIS (otomatis berstatus PAID dalam 5-15 detik) vs penanganan status UNPAID beserta pesan follow-up otomatis.\n\n---\n💡 **Tahukah Anda?**\nDi luar sana, jika Anda berlangganan terpisah untuk tools website katalog, WhatsApp broadcast, AI CS bot, kurir otomatis, dan multi-channel ads tracking, biayanya bisa mencapai **Rp 1,5 jt – Rp 3 jt per bulan**! Di BoonTrack, seluruh senjata penjualan ini sudah **menyatu sempurna dalam 1 ekosistem** terpadu. 🚀\n\n👇 **Silakan pilih menu yang ingin Anda pelajari detailnya:**`,
     quick_actions: [
       '1. Dashboard Overview',
       '2. Produk & Jasa',
@@ -287,7 +287,7 @@ Bot AI akan langsung menyapa, menampilkan katalog, dan memandu checkout hingga Q
       '4. Tampilan & Tema',
       '5. AI Knowledge & Bot',
       '6. WhatsApp & Broadcast',
-      '7. BoonTrack Inbox',
+      '7. Smart Chatbox',
       '8. Ads Tracking Pro',
       '9. Laporan Keuangan',
       '10. Daftar Pesanan Toko',
@@ -331,7 +331,7 @@ Bot AI akan langsung menyapa, menampilkan katalog, dan memandu checkout hingga Q
     keywords: ['5. ai knowledge & bot', 'ai knowledge & bot', 'latih otak bot', 'otak bot', 'faq bot'],
     title: '🧠 5. AI Knowledge & Bot',
     text: `🧠 **Menu 5: AI Knowledge & Bot**\n\n- **Fungsi Utama:** Pusat pelatihan otak kecerdasan buatan (AI) yang menjadi asisten CS toko Anda.\n- **Fitur Kunci:**\n  1. **Knowledge Toko:** Tuliskan spesifikasi produk, bahan, ukuran, dan kebijakan retur agar bot **tidak halu**.\n  2. **Persona CS:** Tentukan nada bicara bot (ramah, formal, akrab, emoji-friendly).\n  3. **Aturan Handoff Manusia:** Bot otomatis menjeda diri saat CS admin mengambil alih obrolan secara manual.`,
-    quick_actions: ['6. WhatsApp & Broadcast', '🧭 Mulai Tur Menu', '7. BoonTrack Inbox'],
+    quick_actions: ['6. WhatsApp & Broadcast', '🧭 Mulai Tur Menu', '7. Smart Chatbox'],
   },
   {
     id: 'tour_menu_6',
@@ -339,14 +339,24 @@ Bot AI akan langsung menyapa, menampilkan katalog, dan memandu checkout hingga Q
     keywords: ['6. whatsapp & broadcast', 'whatsapp & broadcast', 'dual-gateway', 'telegram sales bot', 'waba'],
     title: '💬 6. WhatsApp & Broadcast',
     text: `💬 **Menu 6: WhatsApp & Broadcast Engine**\n\n- **Fungsi Utama:** Otomasi saluran komunikasi penjualan dan broadcast promosi.\n- **Fitur Kunci:**\n  1. **Dual-Gateway:** Pilihan koneksi via *BoonTrack Direct Connect* (scan QR instan) atau *Official Meta Cloud API (Centang Biru)*.\n  2. **Telegram Sales Bot:** Pasang bot perwakilan resmi di grup komunitas jualan Anda yang bisa dimention untuk melayani pertanyaan dan closing otomatis.\n  3. **Pesan Sapaan Otomatis:** Greeting hangat yang otomatis dikirim ke setiap chat baru.`,
-    quick_actions: ['7. BoonTrack Inbox', '🧭 Mulai Tur Menu', '8. Ads Tracking Pro'],
+    quick_actions: ['7. Smart Chatbox', '🧭 Mulai Tur Menu', '8. Ads Tracking Pro'],
   },
   {
     id: 'tour_menu_7',
     category: 'ONBOARDING_GUIDE',
-    keywords: ['7. boontrack inbox', 'boontrack inbox', 'inbox console', 'balas keroyokan', 'team chat'],
-    title: '📥 7. BoonTrack Inbox Console',
-    text: `📥 **Menu 7: BoonTrack Inbox Console**\n\n- **Fungsi Utama:** Meja kerja operasional tim CS untuk melayani chat pelanggan dari satu dashboard terpadu.\n- **Fitur Kunci:**\n  1. **Balas Chat Keroyokan:** Banyak CS/staf dapat membuka dan membalas nomor WhatsApp toko secara bersamaan tanpa logout.\n  2. **Sinyal Purchase Event Iklan:** Sistem otomatis menembakkan event konversi ke server iklan saat pesanan diselesaikan.\n  3. **Manajemen Label & Status:** Filter prospek hangat, order tertunda, dan pelanggan setia.`,
+    keywords: [
+      '7. smart chatbox',
+      'smart chatbox',
+      'chatbox',
+      'inbox console',
+      'balas keroyokan',
+      'team chat',
+      'crm pelanggan',
+      'customer memory',
+      'lifecycle',
+    ],
+    title: '💬 7. Smart Chatbox & CRM Tingkat Lanjut',
+    text: `💬 **Menu 7: Smart Chatbox & CRM Tingkat Lanjut**\n\n- **Fungsi Utama:** Meja kerja operasional live CS (3-Panel Live CS Workspace) terpadu untuk melayani chat pelanggan, mengelola data CRM pelanggan, dan menembakkan sinyal iklan Meta CAPI.\n- **Fitur Kunci:**\n  1. **3-Panel Live CS Console:** Antrean chat masuk di kiri, riwayat obrolan di tengah, dan profil CRM pelanggan di kanan.\n  2. **Fitur CRM Tingkat Lanjut (Eksklusif Pro Scale & Team Scale):**\n     • **Customer Memory Layer:** CS selalu tahu riwayat belanja, preferensi, dan catatan internal rahasia pelanggan tanpa perlu tanya berulang.\n     • **Lifecycle Engine:** Pantau tahapan prospek dari Lead Baru, Follow-up, Closing, hingga Pelanggan Loyal.\n     • **Inline Edit Nama Pelanggan:** Edit dan simpan nama pembeli langsung di panel CRM kanan.\n     • **Unduh Kontak HP (.vcf / vCard 3.0):** Simpan nomor WhatsApp pembeli langsung ke Google Contacts atau kontak smartphone iOS dengan 1 klik.\n  3. **Balas Chat Keroyokan Multi-CS:** Seluruh tim CS membalas satu nomor WhatsApp bersamaan tanpa bertabrakan (AI bot otomatis jeda saat CS membalas manual).\n  4. **Server-Side Meta CAPI Event:** Konversi transaksi lunas di chat otomatis terkirim sebagai Purchase event ke Meta Ads.\n\n💡 *Untuk upgrade paket tahunan atau unlock fitur CRM Pro/Scale, hubungi Tim Billing via WhatsApp: 081977655099.*`,
     quick_actions: ['8. Ads Tracking Pro', '🧭 Mulai Tur Menu', '9. Laporan Keuangan'],
   },
   {
@@ -466,6 +476,53 @@ Bot AI akan langsung menyapa, menampilkan katalog, dan memandu checkout hingga Q
     text: `🔍 **Panduan Fallback Manual Verifikasi Bukti Transfer:**\n\nJika bukti transfer buram atau nominal tidak sesuai, pesanan masuk ke antrean verifikasi manual di dashboard pesanan dan admin dapat menyetujui langsung.\n\nProsedur penanganan fallback manual:\n\n1. 📥 **Pesanan Ditandai untuk Review:**\n   - Status pesanan tetap **UNPAID / PENDING** dengan label butuh verifikasi manual.\n   - Hal ini melindungi merchant dari fraud atau pengiriman barang sebelum dana benar-benar masuk ke rekening.\n\n2. 🖥️ **Buka Menu Pesanan di Dashboard:**\n   - Navigasi ke menu **10. Daftar Pesanan Toko** (Tab Orders).\n   - Klik pesanan yang bersangkutan untuk memeriksa foto struk transfer yang dikirim pembeli berdampingan dengan mutasi rekening bank merchant.\n\n3. ✅ **Approval 1-Klik (God Button):**\n   - Jika mutasi di rekening merchant sudah sesuai, klik tombol **Konfirmasi Pembayaran (PAID)**.\n   - Sistem seketika mengaktifkan notifikasi WhatsApp konfirmasi pembayaran ke pembeli dan meneruskan pesanan ke proses pengiriman.`,
     quick_actions: ['10. Daftar Pesanan Toko', 'Cara Kerja Verifikasi Pembayaran', '🧭 Mulai Tur Menu'],
   },
+  {
+    id: 'smart_chatbox_crm_features',
+    category: 'COMMERCE',
+    keywords: [
+      'crm tingkat lanjut',
+      'customer memory layer',
+      'customer memory',
+      'lifecycle engine',
+      'lifecycle',
+      'inline edit nama pelanggan',
+      'edit nama pelanggan',
+      'unduh kontak vcard',
+      'unduh kontak',
+      'vcf',
+      'vcard',
+      'simpan kontak hp',
+      'fitur crm',
+      'smart chatbox crm',
+    ],
+    title: '👥 Fitur CRM Tingkat Lanjut di Smart Chatbox',
+    text: `👥 **Fitur CRM Tingkat Lanjut di Smart Chatbox (Eksklusif Tier Pro Scale & Team Scale):**\n\nSmart Chatbox dilengkapi rangkaian fitur CRM canggih tepat di samping jendela obrolan:\n\n1. 🧠 **Customer Memory Layer:**\n   Merekam interaksi, preferensi produk, histori transaksi, serta catatan internal rahasia antar-CS sehingga admin selalu mengenali pembeli tanpa tanya berulang.\n\n2. 🔄 **Lifecycle Engine:**\n   Menyematkan tahapan funnel pelanggan (Lead Baru, Prospek Hangat, Menunggu Transfer, Closing, Pelanggan Loyal) untuk mempermudah follow-up terarah.\n\n3. ✏️ **Inline Edit Nama Pelanggan:**\n   Admin dapat mengedit dan menyimpan nama pelanggan secara instan di panel kanan; nama otomatis tersinkronisasi ke daftar antrean chat kiri dan database CRM toko.\n\n4. 📥 **Unduh Kontak Smartphone (.vcf / vCard 3.0):**\n   Ekspor file kontak standar .vcf dalam 1-klik untuk langsung disimpan ke Google Contacts / iOS Contacts HP tanpa perlu mengetik manual.\n\n💡 *Fitur ini aktif otomatis untuk pengguna paket Pro Scale dan Team Scale.*`,
+    quick_actions: ['7. Smart Chatbox', '💎 Info Upgrade Paket', '🧭 Mulai Tur Menu'],
+  },
+  {
+    id: 'upgrade_paket_billing',
+    category: 'COMMERCE',
+    keywords: [
+      'upgrade paket',
+      'cara upgrade',
+      'paket tahunan',
+      'upgrade tahunan',
+      'unlock fitur',
+      'unlock crm',
+      'pro scale',
+      'team scale',
+      'tim billing',
+      'kontak billing',
+      'nomor billing',
+      'biaya paket',
+      'harga langganan',
+      'upgrade pro',
+      'upgrade scale',
+    ],
+    title: '💎 Panduan Upgrade Paket Tahunan & Unlock Fitur Pro/Scale',
+    text: `💎 **Panduan Upgrade Paket Tahunan & Unlock Fitur Pro/Scale:**\n\nUntuk upgrade ke **Paket Tahunan** atau membuka fitur tingkat lanjut seperti **Smart Chatbox CRM, Server-Side Meta CAPI, Multi-Seat CS, dan Official WhatsApp WABA**, proses upgrade saat ini diproses secara personal via chat WhatsApp agar Anda mendapatkan rekomendasi paket terbaik dan diskon tahunan eksklusif.\n\n📞 **Hubungi Tim Billing Resmi BoonTrack:**\n- **WhatsApp Billing:** [081977655099](https://wa.me/6281977655099?text=Halo%20Tim%20Billing%20BoonTrack%2C%20saya%20tertarik%20upgrade%20paket%20Pro%2FScale%20dan%20Paket%20Tahunan.%20Mohon%20info%20biaya%20dan%20panduan%20aktivasi)\n- **Format Pesan:** *"Halo Tim Billing BoonTrack, saya tertarik upgrade paket Pro/Scale untuk fitur [Nama Fitur] & Paket Tahunan toko [Nama Toko]. Mohon info biaya dan panduan aktivasi."*\n\n⚡ *Aktivasi cepat tanpa downtime dan seluruh data konfigurasi toko Anda tetap aman 100%!*`,
+    quick_actions: ['📞 Hubungi Tim Billing', '7. Smart Chatbox', '🧭 Mulai Tur Menu'],
+  },
 ];
 
 export function searchPlatformKnowledge(query: string): KnowledgeItem | null {
@@ -526,6 +583,8 @@ Jika pengguna menanyakan "notifikasi payment via apa aja", "notifikasi via apa s
 - Email Notifikasi (Resend / Cloudflare Inbound):
   * Mengirimkan email tanda terima transaksi & faktur resmi ke pembeli dan merchant.
   * Email alert mutasi bank otomatis untuk memverifikasi pembayaran.
-- Multi-CS Inbox Console:
-  * Console dashboard web terpadu untuk tim admin/CS memantau riwayat notifikasi, status pesanan, status pembayaran, serta membalas chat pembeli secara keroyokan tanpa bertabrakan (dengan auto-pause bot saat CS membalas manual).`;
+- Smart Chatbox Console (Multi-CS & CRM Tingkat Lanjut):
+  * Console dashboard web terpadu 3-panel untuk tim admin/CS memantau riwayat notifikasi, status pesanan, status pembayaran, serta membalas chat pembeli secara keroyokan tanpa bertabrakan (dengan auto-pause bot saat CS membalas manual).
+  * Pada tier Pro Scale dan Team Scale, dilengkapi Customer Memory Layer, Lifecycle Engine, Inline Edit Nama Pelanggan, dan tombol Unduh Kontak vCard (.vcf) langsung ke HP admin.
+  * Untuk upgrade ke paket tahunan atau unlock fitur Pro/Scale, hubungi Tim Billing via WhatsApp ke nomor 081977655099 (https://wa.me/6281977655099).`;
 }
