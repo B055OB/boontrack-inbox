@@ -1346,6 +1346,7 @@ export default function TenantStorefrontPage() {
         />
       );
 
+    case 'DROP_V1':
     case 'SHOP_V1': {
       const selectedSubVariant =
         tenantMetadata?.selected_template ||

@@ -86,7 +86,7 @@ export function ControlledProvisioningError({
               Tindakan Administrator:
             </span>
             <p className="text-slate-400 leading-relaxed text-[11px]">
-              Pastikan <code className="text-blue-300 font-mono">template_code</code> di database Supabase (tabel <code className="text-blue-300 font-mono">tenants</code>) disetel ke salah satu template kanonikal: <code className="text-emerald-300 font-mono">SHOP_V1</code>, <code className="text-emerald-300 font-mono">PUBLIC_SERVICE_V1</code>, atau <code className="text-emerald-300 font-mono">CORPORATE_V1</code>.
+              Pastikan <code className="text-blue-300 font-mono">template_code</code> di database Supabase (tabel <code className="text-blue-300 font-mono">tenants</code>) disetel ke salah satu template kanonikal: <code className="text-emerald-300 font-mono">DROP_V1</code>, <code className="text-emerald-300 font-mono">SHOP_V1</code>, <code className="text-emerald-300 font-mono">PUBLIC_SERVICE_V1</code>, atau <code className="text-emerald-300 font-mono">CORPORATE_V1</code>.
             </p>
           </div>
 

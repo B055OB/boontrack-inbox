@@ -338,5 +338,39 @@ describe('P0 Architectural Routing Boundary - CTO Mandate Acceptance Matrix', ()
       expect(runtime.isAllowedHost).toBe(true);
       expect(runtime.statusCode).toBe(200);
     });
+
+    it('resolves DROP_V1 template code with full commerce capabilities', () => {
+      const runtime = resolveTenantRuntime({
+        host: 'shop.boontrack.com',
+        tenant: {
+          slug: 'boon',
+          name: 'BoonTrack Official Shop',
+          template_code: 'DROP_V1',
+        },
+      });
+
+      expect(runtime.templateCode).toBe('DROP_V1');
+      expect(runtime.isAllowedHost).toBe(true);
+      expect(runtime.statusCode).toBe(200);
+      expect(runtime.capabilities.catalog).toBe(true);
+      expect(runtime.capabilities.checkout).toBe(true);
+    });
+
+    it('aliases legacy APP_SHOP template code to DROP_V1 seamlessly', () => {
+      const runtime = resolveTenantRuntime({
+        host: 'shop.boontrack.com',
+        tenant: {
+          slug: 'boon',
+          name: 'BoonTrack Official Shop',
+          template_code: 'APP_SHOP',
+        },
+      });
+
+      expect(runtime.templateCode).toBe('DROP_V1');
+      expect(runtime.isAllowedHost).toBe(true);
+      expect(runtime.statusCode).toBe(200);
+      expect(runtime.capabilities.catalog).toBe(true);
+      expect(runtime.capabilities.checkout).toBe(true);
+    });
   });
 });

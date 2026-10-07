@@ -32,7 +32,7 @@ export function StorefrontTemplate({
   // If children JSX is provided, wrap in runtime context container
   if (children) {
     return (
-      <div data-template="SHOP_V1" data-tenant-kind={context?.tenantKind || 'SAAS'} className="boontrack-storefront-runtime">
+      <div data-template={context?.templateCode || 'SHOP_V1'} data-tenant-kind={context?.tenantKind || 'SAAS'} className="boontrack-storefront-runtime">
         {children}
       </div>
     );
@@ -46,7 +46,7 @@ export function StorefrontTemplate({
   const meta = tenantMetadata || context?.tenant?.metadata || tenant?.metadata;
 
   return (
-    <div data-template="SHOP_V1" className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col justify-between">
+    <div data-template={context?.templateCode || 'SHOP_V1'} className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col justify-between">
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">

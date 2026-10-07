@@ -8,7 +8,7 @@ export type TenantKind = 'SAAS' | 'CUSTOM_APP' | 'INTERNAL';
 
 export type BusinessType = 'RETAIL' | 'FNB' | 'PUBLIC_SERVICE' | 'CORPORATE' | string;
 
-export type TemplateCode = 'SHOP_V1' | 'PUBLIC_SERVICE_V1' | 'CORPORATE_V1' | 'UNKNOWN_TEMPLATE';
+export type TemplateCode = 'SHOP_V1' | 'DROP_V1' | 'PUBLIC_SERVICE_V1' | 'CORPORATE_V1' | 'UNKNOWN_TEMPLATE';
 
 export interface TenantCapabilities {
   // Public Service & Civic Capabilities

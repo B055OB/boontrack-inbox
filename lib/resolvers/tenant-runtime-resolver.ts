@@ -90,6 +90,7 @@ export function getTemplateCapabilities(templateCode: TemplateCode): TenantCapab
         sales_rep: false,
       };
 
+    case 'DROP_V1':
     case 'SHOP_V1':
       return {
         catalog: true,
@@ -243,6 +244,11 @@ export function resolveTenantRuntime(
     const norm = String(rawTemplate).toUpperCase().trim();
     if (norm === 'PUBLIC_SERVICE_V1' || norm === 'PUBLIC_SERVICE') {
       templateCode = 'PUBLIC_SERVICE_V1';
+    } else if (norm === 'DROP_V1' || norm === 'DROP') {
+      templateCode = 'DROP_V1';
+    } else if (norm === 'APP_SHOP' || norm === 'APP_SHOP_V1') {
+      // Legacy APP_SHOP deprecated -> standardized to DROP_V1
+      templateCode = 'DROP_V1';
     } else if (norm === 'SHOP_V1' || norm === 'SHOP' || norm === 'STOREFRONT' || norm === 'DEFAULT') {
       templateCode = 'SHOP_V1';
     } else if (norm === 'CORPORATE_V1' || norm === 'CORPORATE') {
