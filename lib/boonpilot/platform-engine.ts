@@ -237,19 +237,28 @@ export function buildBoonPilotSystemPrompt(
   const paymentNotificationKb = getBoonPilotPaymentNotificationKnowledge();
 
   const signaturePersonaDirective = `GAYA PERSONA & PEMBUKAAN WAJIB (KONSULTAN EDUKATIF):
-- Anda adalah Konsultan E-Commerce Resmi dari BoonTrack (https://boontrack.com) yang ramah, cerdas, solutif, dan edukatif dalam Bahasa Indonesia.
+- Anda adalah Konsultan E-Commerce & Performa Iklan Digital Resmi dari BoonTrack (https://boontrack.com) yang ramah, cerdas, solutif, dan edukatif dalam Bahasa Indonesia.
 - Awali setiap balasan konsultasi atau edukasi Anda dengan pembukaan khas yang ramah: "Halo kak, bantu jawab ya!"
 - Format jawaban dengan Markdown yang rapi (gunakan bold untuk penekanan penting, bullet points terstruktur, bahasa santun ala rekan bisnis yang solutif).
-- ATURAN JAWABAN PADAT, TO THE POINT & TUNTAS (1 BALON CHAT WHATSAPP):
+- ATURAN BEBAS SPAM TAUTAN & DEMO:
+  * JANGAN menyemburkan tautan demo atau link pendaftaran secara sembarangan jika audiens tidak menanyakannya secara eksplisit.
+  * Fokuslah menjawab esensi pertanyaan audiens (misal: tanya pemahaman Meta Ads, strategi periklanan, automasi order) secara cerdas, berwawasan, dan tuntas.
+- ATURAN JAWABAN PADAT, TO THE POINT & TUNTAS (1 BALON CHAT):
   * Wajib menjawab secara ringkas, to the point, dan lugas tanpa bertele-tele.
-  * Hindari penjelasan teoritis yang terlalu panjang agar seluruh pesan selalu tuntas, lengkap, dan muat dalam 1 balon chat WhatsApp tanpa terpotong.
-  * Batasi respon maksimal 2-3 paragraf pendek atau 3-4 butir poin esensial beserta rekomendasi solusi/CTA singkat.`;
+  * Hindari penjelasan teoritis yang terlalu panjang agar seluruh pesan selalu tuntas, lengkap, dan muat dalam 1 balon chat tanpa terpotong.
+  * Batasi respon maksimal 2-3 paragraf pendek atau 3-4 butir poin esensial beserta rekomendasi solusi yang relevan.`;
 
-  const adsPixelCapiKnowledge = `PELACAKAN IKLAN, META PIXEL & SERVER-SIDE CAPI PURCHASE EVENT:
-- Otomasi Sinyal Purchase Event Server-Side: Saat pesanan diverifikasi berstatus PAID (Lunas), backend BoonTrack secara otomatis menembakkan event konversi 'Purchase' langsung ke server Meta Conversion API (CAPI) dan TikTok Ads secara server-side (bukan sekadar browser pixel).
-- Mengatasi Drop Sinyal iOS 14.5+ & Ad-Blocker: Mengatasi masalah kehilangan data 30-40% akibat Safari ITP, Apple Private Relay, dan ad-blocker pengguna, sehingga akurasi data belanja kembali hingga 95%+ dan algoritma iklan Meta dapat mengoptimalkan ROAS secara maksimal.
-- Deduplikasi Akurat: Dilengkapi Event ID unik yang seragam antara Browser Pixel dan Server CAPI untuk mencegah pembacaan data ganda.
-- Skema Paket: Pelacakan Browser Pixel dasar aktif mulai dari paket Checkout Lite (Rp 59.000/bln), sedangkan Server-Side CAPI penuh aktif mulai paket Pro Scale (Ads Performance - Rp 299.000/bln) dan Team Scale (Enterprise).`;
+  const adsPixelCapiKnowledge = `EKOSISTEM PERIKLANAN DIGITAL (META ADS, CTWA, PIXEL & SERVER-SIDE CAPI):
+- Pemahaman Mendalam Meta Ads: Sangat menguasai ekosistem periklanan Meta (Facebook Ads & Instagram Ads), termasuk objektif campaign, targeting ad sets, optimasi konversi, dan retargeting audiens.
+- Funnel CTWA (Click to WhatsApp) & Closing Otomatis 24 Jam:
+  * Menguasai alur iklan Click-to-WhatsApp (CTWA) di mana calon pembeli diarahkan langsung dari feed/story Meta ke WhatsApp toko.
+  * Masalah klasik CTWA biasa: Admin CS kewalahan balas chat satu-satu, slow response malam hari yang bikin biaya iklan terbuang sia-sia (boncos), dan rawan bukti transfer palsu.
+  * Solusi BoonTrack: Mengintegrasikan trafik CTWA dengan landing checkout instan & bot asisten 24 jam. Pembeli diarahkan langsung memilih produk, mengisi alamat pengiriman (cek ongkir otomatis), dan bayar via QRIS dinamis 0% MDR atau transfer bank manual — closing otomatis dalam hitungan detik tanpa perlu admin manual standby.
+- Otomasi Sinyal Purchase Event Server-Side (Meta Conversions API / CAPI):
+  * Saat pesanan diverifikasi berstatus PAID (Lunas), backend BoonTrack secara otomatis menembakkan event konversi 'Purchase' bernilai rupiah riil langsung ke server Meta CAPI dan TikTok Ads secara server-side.
+  * Mengatasi drop sinyal 30–40% akibat iOS 14.5+ (Safari ITP / Apple ATT) dan ad-blocker pengguna, sehingga data konversi kembali akurat hingga 95%+ dan algoritma Meta jauh lebih akurat mencari pembeli bernilai tinggi (Lookalike & Advantage+), melipatgandakan ROAS.
+- Deduplikasi Akurat: Event ID unik yang seragam antara Browser Pixel dan Server CAPI mencegah data ganda.
+- Skema Paket: Browser Pixel dasar aktif mulai paket Checkout Lite (Rp 59rb/bln), Server-Side CAPI penuh aktif mulai paket Pro Scale (Ads Performance - Rp 299rb/bln) dan Team Scale (Enterprise).`;
 
   const checkoutLiteKnowledge = `PAKET CHECKOUT LITE (RP 59.000 / BULAN):
 - Solusi super hemat untuk pebisnis pemula yang ingin langsung mulai jualan mandiri tanpa beban biaya besar.
@@ -422,6 +431,29 @@ function resolveBoonPilotFallbackReply(
     '🚚 Setup Pengiriman',
     '💳 Atur Rekening/QRIS',
   ];
+
+  // 0. Pertanyaan seputar Meta Ads, Facebook Ads, CTWA, Pixel, CAPI, dan Iklan Digital
+  if (/(meta ads|fb ads|facebook ads|instagram ads|ig ads|ctwa|click to whatsapp|pixel|capi|conversion api|iklan digital|periklanan|iklan|roas|cpm|cpa)/i.test(cleanMsg)) {
+    const reply =
+      `Halo kak, bantu jawab ya!\n\n` +
+      `Paham banget kak! BoonTrack dirancang khusus untuk memaksimalkan hasil iklan digital, terutama *Meta Ads (FB/IG Ads)* dan funnel *CTWA (Click to WhatsApp)*:\n\n` +
+      `🎯 *1. Funnel CTWA (Click to WhatsApp) Closing Otomatis:*\n` +
+      `Trafik dari iklan Meta diarahkan langsung ke WhatsApp toko. Alih-alih CS melayani manual satu per satu yang rawan lambat merespons (bikin biaya iklan boncos), BoonTrack mengotomasi alur order dengan single-page checkout instan dan QRIS dinamis 24 jam sehingga calon pembeli bisa langsung closing dalam hitungan detik.\n\n` +
+      `⚡ *2. Server-Side Meta Conversions API (CAPI):*\n` +
+      `Begitu pesanan diverifikasi berstatus *PAID (Lunas)*, sistem langsung menembakkan sinyal event *Purchase* dari server ke Meta CAPI. Ini mengatasi masalah kehilangan data 30–40% akibat proteksi iOS 14.5+ dan ad-blocker, membuat pelacakan kembali akurat hingga 95%+ dan membantu algoritma Meta mencari audiens pembeli dengan daya beli tinggi.\n\n` +
+      `📊 *3. Maksimalkan ROAS & Efisiensi Iklan:*\n` +
+      `Dengan verifikasi pembayaran otomatis dan integrasi kurir real-time, ad spend Anda benar-benar menghasilkan transaksi nyata tanpa risiko bukti transfer palsu.\n\n` +
+      `Ada strategi iklan Meta atau kebutuhan kampanye CTWA tertentu yang ingin didiskusikan Kak? 😊`;
+
+    return {
+      reply,
+      role: resolution.role,
+      activeEngine: resolution.role === 'MERCHANT' ? 'BOONPILOT_MERCHANT_COPILOT' : 'BOONPILOT_GUEST_ONBOARDING',
+      tenant: resolution.tenant,
+      quick_actions: ['🎯 Funnel CTWA', '⚡ Info Meta CAPI', '💡 Fitur Lainnya'],
+      isDeterministicMatch: true,
+    };
+  }
 
   // 1. Kesulitan setup / minta terima beres (DFY)
   if (/(dfy|terima beres|bantu setup|setupkan|bikinkan|jasa buat|it support|hubungi it|tim it|cs it)/i.test(cleanMsg)) {

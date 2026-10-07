@@ -12,7 +12,11 @@
  */
 
 import { isBoonPilotWakeWordTriggered } from '@/lib/boonpilot/wake-word';
-import { resolveCommunityContext } from '@/lib/boonpilot/platform-engine';
+import {
+  resolveCommunityContext,
+  processBoonPilotPlatformChat,
+  BoonPilotCommunityContext,
+} from '@/lib/boonpilot/platform-engine';
 import { ConversationEngine } from '@/lib/conversationEngine';
 import { getPlatformBaseUrl } from '@/lib/platform-urls';
 import { getSupabaseAdmin, getSupabase, isValidUuid } from '@/lib/supabaseClient';
@@ -39,6 +43,7 @@ export interface SendTelegramMessageOptions {
   replyToMessageId?: number;
   parseMode?: 'Markdown' | 'HTML';
   buttons?: TelegramButton[][];
+  disableWebPagePreview?: boolean;
 }
 
 /**
@@ -89,6 +94,8 @@ export async function sendTelegramMessage(
     const payload: Record<string, any> = {
       chat_id: chatId,
       text: chunk,
+      disable_web_page_preview:
+        options.disableWebPagePreview !== undefined ? options.disableWebPagePreview : true,
     };
 
     if (options.parseMode) {
@@ -263,117 +270,27 @@ export interface GenerateAffiliateSalesAiOptions {
 
 /**
  * Generate conversational AI sales representative response for affiliate community groups
- * Powered by Google Generative AI (gemini-3.8-flash).
+ * Powered by unified BoonPilot Platform Engine (identical to WhatsApp).
  */
 export async function generateAffiliateSalesAiReply(
   opts: GenerateAffiliateSalesAiOptions
 ): Promise<string> {
-  const geminiApiKey =
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_AI_API_KEY ||
-    '';
-  const aiModel = process.env.AI_MODEL_NAME || 'gemini-3.8-flash';
+  const commCtx: BoonPilotCommunityContext = {
+    demo_store_url: opts.demoUrl,
+    registration_url: opts.registerUrl,
+    affiliate_id: opts.affiliateId,
+    channel_name: opts.channelName,
+  };
 
-  const systemPrompt =
-    `Anda adalah "BoonTrack AI Sales Representative" resmi untuk mitra kami: ${opts.partnerName} (${opts.affiliateId}).\n` +
-    `Anda bertugas di grup komunitas Telegram "${opts.channelName || 'Komunitas'}" melayani calon pengguna dan anggota komunitas.\n\n` +
-    `Knowledge Base BoonTrack:\n` +
-    `1. BoonTrack adalah platform all-in-one order management & otomatisasi WhatsApp 24 jam untuk pebisnis online, UMKM, dan konten kreator.\n` +
-    `2. Keunggulan Utama:\n` +
-    `   - Checkout instan tanpa ribet rekap manual chat WhatsApp.\n` +
-    `   - Otomatisasi notifikasi order, status pembayaran, dan resi pengiriman ke WhatsApp pembeli secara real-time.\n` +
-    `   - Verifikasi pembayaran otomatis (QRIS 24 jam & transfer bank) sehingga aman dari risiko bukti transfer palsu.\n` +
-    `   - Database pelanggan dan riwayat transaksi tersimpan rapi & aman di dashboard web.\n` +
-    `   - Free Trial 7 hari penuh tanpa perlu kartu kredit.\n` +
-    `3. Tautan Resmi Komunitas Ini:\n` +
-    `   - Demo Toko / Produk: ${opts.demoUrl}\n` +
-    `   - Link Pendaftaran Akun Resmi: ${opts.registerUrl}\n\n` +
-    `Panduan Gaya Bahasa & Persona:\n` +
-    `- Gaya bahasa: Santai, solutif, membantu, dan persuasif (bahasa Indonesia percakapan yang akrab, ramah, dan solutif ala konsultan e-commerce, BUKAN bahasa robotik kaku).\n` +
-    `- Jawab pertanyaan anggota secara langsung, jelas, dan fokus pada solusi praktis untuk masalah jualan online mereka.\n` +
-    `- Selalu sertakan ajakan persuasif untuk mencoba Demo (${opts.demoUrl}) atau langsung Daftar Coba Gratis 7 Hari (${opts.registerUrl}) secara relevan dan natural.\n` +
-    `- DILARANG KERAS mengarahkan pengguna ke kontak/nomor HP lain atau URL selain demo dan registrasi di atas.\n` +
-    `- DILARANG menyebut diri sebagai bot notifikasi kaku atau "asisten notifikasi e-commerce". Anda adalah AI Sales Representative cerdas dari BoonTrack.\n` +
-    `- Format jawaban dengan Markdown Telegram yang rapi (gunakan *bold* untuk penekanan penting, bullet points rapi).`;
+  const result = await processBoonPilotPlatformChat({
+    senderPhone: opts.senderName || 'KomunitasMember',
+    message: opts.userQuestion,
+    sessionId: opts.affiliateId || 'comm_pool',
+    channel_type: 'TELEGRAM',
+    communityContext: commCtx,
+  });
 
-  if (geminiApiKey) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiApiKey}`;
-
-      const contents: any[] = [
-        {
-          role: 'user',
-          parts: [{ text: systemPrompt }],
-        },
-        {
-          role: 'model',
-          parts: [
-            {
-              text: `Halo! Saya BoonTrack AI Sales Representative resmi untuk mitra ${opts.partnerName}. Siap membantu teman-teman komunitas seputar otomasi checkout dan WhatsApp!`,
-            },
-          ],
-        },
-      ];
-
-      if (opts.repliedToText) {
-        contents.push({
-          role: 'user',
-          parts: [
-            {
-              text: `[Konteks: Anggota sedang me-reply pesan ini: "${opts.repliedToText.slice(0, 300)}"]\nPertanyaan anggota: ${opts.userQuestion || 'Tolong jelaskan lebih lanjut ya kak'}`,
-            },
-          ],
-        });
-      } else {
-        contents.push({
-          role: 'user',
-          parts: [
-            {
-              text: opts.userQuestion || 'Halo, boleh jelaskan apa itu BoonTrack dan apa manfaatnya untuk bisnis saya?',
-            },
-          ],
-        });
-      }
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1000,
-          },
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (candidateText && candidateText.trim().length > 0) {
-          return candidateText.trim();
-        }
-      } else {
-        const errText = await res.text().catch(() => '');
-        console.warn(`[TELEGRAM_AI_SALES] Gemini API returned ${res.status}:`, errText);
-      }
-    } catch (apiErr) {
-      console.warn('[TELEGRAM_AI_SALES] Gemini API call error:', apiErr);
-    }
-  }
-
-  // Conversational Fallback jika Gemini API tidak merespons
-  return (
-    `Halo! Saya BoonTrack AI Sales Representative untuk mitra *${opts.partnerName}* ✨\n\n` +
-    `BoonTrack adalah platform otomatisasi order management & integrasi WhatsApp 24 jam untuk pebisnis online dan kreator.\n\n` +
-    `🚀 *Fitur Unggulan:*\n` +
-    `• Halaman checkout instan tanpa ribet catat manual\n` +
-    `• Notifikasi WhatsApp otomatis ke pembeli & pemilik toko\n` +
-    `• Verifikasi pembayaran QRIS & bank real-time\n\n` +
-    `🛍️ *Cek Demo Langsung:*\n${opts.demoUrl}\n\n` +
-    `📝 *Daftar Akun Resmi (Coba Gratis 7 Hari):*\n${opts.registerUrl}\n\n` +
-    `Ada yang mau ditanyakan lagi seputar fiturnya? Saya siap bantu!`
-  );
+  return result.reply;
 }
 
 /**
@@ -593,8 +510,13 @@ export async function handleTelegramUpdate(
     }
 
     // §42.5 — Bot ID Validation:
-    // Drop jika chat_id tidak terdaftar di tenants maupun kolam affiliate di channel_bindings
-    if (!matchedTenant && !affiliateCommunityBinding && process.env.NODE_ENV !== 'test') {
+    // Drop jika chat_id tidak terdaftar di tenants maupun kolam affiliate di channel_bindings,
+    // KECUALI jika bot secara eksplisit di-mention (@boonshop_bot / @boontrack_bot) atau reply ke bot untuk melayani tanya jawab platform.
+    const isDirectBotMention =
+      /@(?:boonshop_bot|boontrack_bot)\b/i.test(rawText) ||
+      isReplyToBot;
+
+    if (!matchedTenant && !affiliateCommunityBinding && !isDirectBotMention && process.env.NODE_ENV !== 'test') {
       return {
         handled: false,
         reason: 'unregistered_group_chat_dropped',
@@ -611,7 +533,7 @@ export async function handleTelegramUpdate(
   const tTextTrim = rawText.trim().toLowerCase();
   if (tTextTrim === '@boon id' || tTextTrim.startsWith('@boon id')) {
     const idReply = `🆔 *ID Grup Telegram Ini:*\n\`${chatId}\`\n\nSalin ID di atas untuk dimasukkan ke dashboard affiliate.`;
-    await sendTelegramMessage(chatId, idReply, { parseMode: 'Markdown' });
+    await sendTelegramMessage(chatId, idReply, { parseMode: 'Markdown', disableWebPagePreview: true });
     return {
       handled: true,
       chatId,
@@ -622,26 +544,19 @@ export async function handleTelegramUpdate(
     };
   }
 
-  // ── AFFILIATE COMMUNITY POOL ROUTE (AI Sales Representative via Gemini 3.8 Flash) ──
+  // ── AFFILIATE COMMUNITY POOL ROUTE (BoonPilot Intelligent Conversation Engine) ──
   // Jika pesan berasal dari grup komunitas kolam affiliate (AFFILIATE_CONTEXT):
-  // Aktifkan AI Sales Representative cerdas berbasis Google Generative AI (gemini-3.8-flash)
-  // BUKAN bot notifikasi kaku!
+  // Alirkan ke BoonPilot Platform Engine resmi (sama persis dengan WhatsApp)
+  // BUKAN template sales kaku!
   if (isGroup && affiliateCommunityBinding) {
     sendTelegramChatAction(chatId, 'typing').catch(() => {});
 
     const commCtx = await resolveCommunityContext(String(chatId), supabase);
-    const affId = affiliateCommunityBinding.affiliate_id || 'buzzerukm';
-    const partnerName =
-      affId === 'buzzerukm'
-        ? 'Kang Sakti (buzzerukm)'
-        : (affiliateCommunityBinding.metadata as Record<string, any>)?.affiliate_name || affId;
     let demoUrl = affiliateCommunityBinding.demo_url || commCtx.demo_store_url;
     if (!demoUrl || demoUrl.includes('toko-demo')) {
       demoUrl = commCtx.demo_store_url;
     }
     const registerUrl = commCtx.registration_url;
-    const channelName =
-      affiliateCommunityBinding.channel_name || message.chat?.title || 'Komunitas';
 
     // Bersihkan token mention dari pertanyaan pengguna
     const wakeCheck = isBoonPilotWakeWordTriggered(rawText, true, 'TELEGRAM');
@@ -652,28 +567,36 @@ export async function handleTelegramUpdate(
       .replace(/@boon\b/gi, '')
       .trim();
 
-    const repliedToText = message.reply_to_message?.text;
+    // Teruskan ke BoonPilot Platform Engine yang terpadu (sama persis dengan WhatsApp)
+    const platformResult = await processBoonPilotPlatformChat(
+      {
+        senderPhone: String(fromId),
+        message: cleanPrompt,
+        sessionId: String(chatId),
+        channel_type: 'TELEGRAM',
+        community_source_id: String(chatId),
+        communityContext: commCtx,
+      },
+      supabase
+    );
 
-    const aiReply = await generateAffiliateSalesAiReply({
-      userQuestion: cleanPrompt,
-      senderName: fromUser?.first_name || fromUser?.username,
-      affiliateId: affId,
-      partnerName,
-      demoUrl,
-      registerUrl,
-      channelName,
-      repliedToText,
-    });
+    const aiReply = platformResult.reply;
 
-    const promoButtons: TelegramButton[][] = [
-      [{ text: '🛍️ Lihat Demo Sekarang', url: demoUrl }],
-      [{ text: '🚀 Daftar Akun Resmi', url: registerUrl }],
-    ];
+    // HANYA sematkan tombol demo/link jika pengguna secara eksplisit memintanya
+    const isExplicitLinkRequested = /(link demo|lihat demo|contoh toko|minta link|kirim link|daftar akun|link daftar|cara daftar|coba demo)/i.test(cleanPrompt);
+    let promoButtons: TelegramButton[][] | undefined;
+    if (isExplicitLinkRequested) {
+      promoButtons = [
+        [{ text: '🛍️ Lihat Demo Toko', url: demoUrl }],
+        [{ text: '🚀 Daftar Akun Resmi', url: registerUrl }],
+      ];
+    }
 
     await sendTelegramMessage(chatId, aiReply, {
       replyToMessageId: message.message_id,
       parseMode: 'Markdown',
       buttons: promoButtons,
+      disableWebPagePreview: true,
     });
 
     recordGroupTrigger(chatId, fromId);
@@ -682,15 +605,16 @@ export async function handleTelegramUpdate(
       chatId,
       senderPhone: String(fromId),
       reply: aiReply,
-      role: 'AFFILIATE_SALES_AI',
-      activeEngine: 'GEMINI_SALES_REPRESENTATIVE',
+      role: platformResult.role || 'GUEST',
+      activeEngine: platformResult.activeEngine,
     };
   }
 
   // ── §42.4 DUAL-TRIGGER PROTOCOL (STORE TENANT GROUPS) ─────────────────────
   if (isGroup) {
     // ── TRIGGER 1: @boon (Referral / Affiliate Engine) ──
-    const boonMatch = rawText.match(/(?:^|\s)@boon(?:\s+([a-zA-Z0-9_\-]+))?/i);
+    const isBotUsernameMention = /@(?:boonshop_bot|boontrack_bot)\b/i.test(rawText);
+    const boonMatch = !isBotUsernameMention && rawText.match(/(?:^|\s)@boon\b(?:\s+([a-zA-Z0-9_\-]+))?/i);
     if (boonMatch) {
 
       const targetSlug = (boonMatch[1] || matchedTenant?.slug || '').trim().toLowerCase();
@@ -966,6 +890,7 @@ export async function handleTelegramUpdate(
     replyToMessageId: isGroup ? message.message_id : undefined,
     parseMode: 'Markdown',
     buttons,
+    disableWebPagePreview: true,
   });
 
   if (isGroup) {
