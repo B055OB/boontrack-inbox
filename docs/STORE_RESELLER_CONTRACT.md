@@ -174,6 +174,11 @@ Sebelum merchant mengundang atau mengaktifkan reseller baru:
 2. **Kewajiban Tenant**:
    - Tenant bertanggung jawab penuh terhadap barang dagangan, perizinan edar (BPOM/PIRT jika makanan/kosmetik), kebenaran klaim produk, dan pemenuhan pembayaran hak komisi kepada resellernya.
    - BoonTrack bertindak murni sebagai penyedia teknologi SaaS dan platform infrastruktur sistem.
+3. **Modal Pop-Up Kepatuhan Wajib (`ResellerComplianceModal.tsx`)**:
+   - Sebelum merchant dapat mengaktifkan fitur reseller, sistem mewajibkan persetujuan eksplisit melalui dialog konfirmasi legalitas.
+   - Poin wajib: (a) Pernyataan kepatuhan anti-skema piramida/ponzi sesuai UU No. 7/2014 & Permendag No. 70/2019, (b) Penegasan non-custodial (tanggung jawab pembayaran 100% pada tenant).
+   - Checkbox persetujuan wajib dicentang untuk membuka tombol aktivasi.
+   - Sistem mencatat timestamp persetujuan secara permanen ke `tenants.reseller_tos_accepted_at` dan `tenants.metadata.reseller_settings.tos_accepted_at`.
 
 ---
 

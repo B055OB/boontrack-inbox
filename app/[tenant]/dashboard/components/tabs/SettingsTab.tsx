@@ -30,7 +30,9 @@ import {
   Trash2,
   Copy,
   Building2,
+  Users,
 } from 'lucide-react';
+import ResellerComplianceModal from '../ResellerComplianceModal';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface BankAccount {
@@ -134,10 +136,13 @@ export default function SettingsTab({
   isSubscriptionExpired = false,
   onUpgrade,
 }: SettingsTabProps) {
-  const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping' | 'security'>('profile');
+  const [activeSubMenu, setActiveSubMenu] = useState<'profile' | 'whatsapp' | 'payment' | 'shipping' | 'security' | 'reseller'>('profile');
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [localQrisPayload, setLocalQrisPayload] = useState(storeQrisPayload || '');
   const [localGreeting, setLocalGreeting] = useState<string>(storeGreetingMessage || '');
+  const [isComplianceModalOpen, setIsComplianceModalOpen] = useState(false);
+  const [isResellerEnabled, setIsResellerEnabled] = useState(false);
+  const [resellerTosAcceptedAt, setResellerTosAcceptedAt] = useState<string | null>(null);
 
   // Manual Bank Transfer state (bank_settings / metadata.bank_transfer)
   const [selectedBank, setSelectedBank] = useState<string>('BCA');
@@ -232,11 +237,23 @@ export default function SettingsTab({
         if (supabase) {
           const { data } = await supabase
             .from('tenants')
-            .select('metadata')
+            .select('metadata, reseller_tos_accepted_at, reseller_enabled')
             .eq('slug', tenantSlug)
             .maybeSingle();
 
-          if (isMounted && data?.metadata) {
+          if (isMounted && data) {
+            if ((data as any).reseller_enabled !== undefined) {
+              setIsResellerEnabled(Boolean((data as any).reseller_enabled));
+            } else if (data.metadata?.reseller_settings?.enabled !== undefined) {
+              setIsResellerEnabled(Boolean(data.metadata.reseller_settings.enabled));
+            }
+            if ((data as any).reseller_tos_accepted_at) {
+              setResellerTosAcceptedAt((data as any).reseller_tos_accepted_at);
+            } else if (data.metadata?.reseller_settings?.tos_accepted_at) {
+              setResellerTosAcceptedAt(data.metadata.reseller_settings.tos_accepted_at);
+            }
+
+            if (data.metadata) {
             // Shipping
             if (data.metadata.basic_shipping) {
               const bs = data.metadata.basic_shipping;
@@ -296,7 +313,8 @@ export default function SettingsTab({
             }
           }
         }
-      } catch (err) {
+      }
+    } catch (err) {
         console.debug('Error loading store metadata:', err);
       }
     }
@@ -1548,6 +1566,85 @@ export default function SettingsTab({
     </div>
   );
 
+  // 6. SUB-MENU: PROGRAM RESELLER TOKO
+  const resellerSubMenu = (
+    <div className="space-y-4 text-xs font-medium text-slate-600">
+      <div className="p-4 bg-gradient-to-br from-indigo-50/80 via-white to-slate-50 rounded-2xl border border-indigo-100 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-bold text-slate-800">
+            <Users className="w-4 h-4 text-indigo-600" />
+            <span>Program Reseller &amp; Distribusi Toko</span>
+          </div>
+          {isResellerEnabled ? (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              Aktif &amp; Terverifikasi
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+              <AlertCircle className="w-3.5 h-3.5" />
+              Belum Diaktifkan
+            </span>
+          )}
+        </div>
+
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          Bangun jaringan mitra reseller untuk memperluas distribusi produk toko Anda dengan pelacakan parameter <code className="text-indigo-600 font-mono">?r=[KODE]</code> secara non-kustodial.
+        </p>
+
+        {isResellerEnabled ? (
+          <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500">Status Kepatuhan Hukum:</span>
+              <span className="font-semibold text-emerald-600 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" /> ToS Disetujui
+              </span>
+            </div>
+            {resellerTosAcceptedAt && (
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>Waktu Persetujuan:</span>
+                <span className="font-mono text-slate-600">{new Date(resellerTosAcceptedAt).toLocaleString('id-ID')}</span>
+              </div>
+            )}
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">Prinsip Keuangan:</span>
+              <span className="text-[11px] font-medium text-slate-700">Non-Custodial (BoonTrack tidak menampung dana / no escrow)</span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
+              <div className="p-2.5 rounded-xl border border-slate-200 bg-white">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Starter</div>
+                <div className="text-xs font-bold text-slate-800 mt-0.5">Hingga 25 Reseller</div>
+                <div className="text-[11px] text-indigo-600 font-semibold mt-1">Rp 79.000 / bln</div>
+              </div>
+              <div className="p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/50">
+                <div className="text-[10px] text-indigo-600 font-bold uppercase">Scale</div>
+                <div className="text-xs font-bold text-slate-800 mt-0.5">Hingga 100 Reseller</div>
+                <div className="text-[11px] text-indigo-600 font-semibold mt-1">Rp 149.000 / bln</div>
+              </div>
+              <div className="p-2.5 rounded-xl border border-slate-200 bg-white">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Unlimited</div>
+                <div className="text-xs font-bold text-slate-800 mt-0.5">Reseller Tanpa Batas</div>
+                <div className="text-[11px] text-emerald-600 font-semibold mt-1">Rp 249.000 / bln</div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsComplianceModalOpen(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition cursor-pointer"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Verifikasi &amp; Buka Kepatuhan Hukum Reseller</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   // Active Sub-Menu Content Switcher
   const renderActiveSubMenuContent = () => {
     switch (activeSubMenu) {
@@ -1561,6 +1658,8 @@ export default function SettingsTab({
         return shippingSubMenu;
       case 'security':
         return securitySubMenu;
+      case 'reseller':
+        return resellerSubMenu;
       default:
         return profileSubMenu;
     }
@@ -1572,6 +1671,7 @@ export default function SettingsTab({
     { id: 'payment', label: '3. Payment / QRIS', icon: QrCode },
     { id: 'shipping', label: '4. Basic Shipping', icon: Truck },
     { id: 'security', label: '5. Keamanan & Akun', icon: KeyRound },
+    { id: 'reseller', label: '6. Program Reseller', icon: Users },
   ] as const;
 
   const subMenuNavigation = (
@@ -1762,6 +1862,16 @@ export default function SettingsTab({
           </button>
         </div>
       </div>
+
+      <ResellerComplianceModal
+        isOpen={isComplianceModalOpen}
+        onClose={() => setIsComplianceModalOpen(false)}
+        tenantSlug={tenantSlug}
+        onSuccess={(acceptedAt) => {
+          setIsResellerEnabled(true);
+          setResellerTosAcceptedAt(acceptedAt);
+        }}
+      />
     </div>
   );
 }

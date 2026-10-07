@@ -85,6 +85,10 @@ ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS reseller_attribution_id UUID 
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS reseller_id UUID REFERENCES public.store_resellers(id) ON DELETE SET NULL;
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS reseller_code TEXT;
 
+-- 5b. Kolom Status Aktivasi & Kepatuhan Legal ToS Reseller di Tabel tenants
+ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS reseller_tos_accepted_at TIMESTAMPTZ;
+ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS reseller_enabled BOOLEAN DEFAULT false;
+
 -- 6. Indexes untuk Performa Query Skala Tinggi & Multi-Tenant Filtering
 CREATE INDEX IF NOT EXISTS idx_store_resellers_tenant_code ON public.store_resellers (tenant_id, code);
 CREATE INDEX IF NOT EXISTS idx_store_resellers_tenant_status ON public.store_resellers (tenant_id, status);
