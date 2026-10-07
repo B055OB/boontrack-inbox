@@ -552,11 +552,11 @@ export default function ProductsTab({
                     <button
                       type="button"
                       onClick={() => openSinglePageBuilder(p)}
-                      className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition flex items-center gap-1.5 border border-blue-200 shadow-xs cursor-pointer"
-                      title="Atur Single Page Checkout untuk produk ini"
+                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-50 to-blue-50 hover:from-indigo-100 hover:to-blue-100 text-indigo-700 text-xs font-bold transition flex items-center gap-1.5 border border-indigo-200 shadow-2xs cursor-pointer group"
+                      title="🎨 Desain Halaman Produk (Landing Page & Penawaran)"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Atur Single Page Checkout</span>
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600 group-hover:rotate-12 transition-transform" />
+                      <span>🎨 Desain Halaman Produk (Landing Page)</span>
                     </button>
 
                     <div className="flex items-center gap-1.5">
@@ -640,14 +640,15 @@ export default function ProductsTab({
                           }
                           openEditProductModal(p);
                         }}
-                        className={`p-2 rounded-xl transition-colors ${
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold transition-colors ${
                           isSubscriptionExpired
-                            ? 'text-slate-300 cursor-not-allowed'
-                            : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50 cursor-pointer'
+                            ? 'text-slate-300 border-slate-100 cursor-not-allowed'
+                            : 'text-slate-700 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/70 bg-white shadow-2xs cursor-pointer'
                         }`}
-                        title={isSubscriptionExpired ? "Masa trial telah habis (Read-only)" : "Edit Produk"}
+                        title={isSubscriptionExpired ? "Masa trial telah habis (Read-only)" : "Ubah Info Dasar (Nama, Harga, Kategori, Stok)"}
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>Edit Info</span>
                       </button>
                       <button
                         type="button"

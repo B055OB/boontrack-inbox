@@ -410,7 +410,7 @@ export default function NavTabs({
             </span>
           </button>
 
-          {/* TAB 8: BOONTRACK INBOX (Live CS) — Paling Kanan */}
+          {/* TAB 8: SMART CHATBOX (Live CS) — Paling Kanan */}
           <button
             type="button"
             role="tab"
@@ -422,8 +422,8 @@ export default function NavTabs({
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            <MessageSquare className="w-4 h-4 text-blue-600 shrink-0" />
-            <span>BoonTrack Inbox (Live CS)</span>
+            <MessageSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Smart Chatbox</span>
             {inboxCount > 0 && (
               <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded-full text-[10px] font-black font-mono">
                 {inboxCount.toLocaleString('id-ID')}

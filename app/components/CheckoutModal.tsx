@@ -1532,8 +1532,8 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                 />
               </div>
 
-              {/* JIKA DIGITAL: Tampilkan Email, Sembunyikan Seluruh Bagian Pengiriman */}
-              {isDigital && (
+              {/* JIKA DIGITAL: Tampilkan Email Wajib, JIKA FISIK/KULINER: Tampilkan Email Opsional */}
+              {isDigital ? (
                 <div className="space-y-1">
                   <label className="text-slate-400 font-medium">Alamat Email * (Untuk Pengiriman Akses)</label>
                   <input
@@ -1543,6 +1543,19 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
                     onChange={(e) => setCustomerEmail(e.target.value)}
                     placeholder="nama@email.com"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-blue-500 text-sm md:text-xs"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-slate-400 font-medium">
+                    Alamat Email <span className="text-slate-500 font-normal text-[11px]">(Opsional - notifikasi order via WhatsApp)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="nama@email.com"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500 text-sm md:text-xs"
                   />
                 </div>
               )}

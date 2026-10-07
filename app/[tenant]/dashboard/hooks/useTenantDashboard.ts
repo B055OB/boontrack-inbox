@@ -1932,6 +1932,8 @@ export function useTenantDashboard() {
       enable_offer: cfg?.enable_offer ?? true,
       enable_faq: cfg?.enable_faq ?? false,
       enable_payment: cfg?.enable_payment ?? true,
+      enable_media_gallery: cfg?.enable_media_gallery ?? Boolean(cfg?.gallery_images && cfg.gallery_images.length > 0),
+      gallery_images: cfg?.gallery_images ? [...cfg.gallery_images] : [],
       headline: cfg?.headline || prod.name,
       subheadline: cfg?.subheadline || prod.description,
       banner_url: cfg?.banner_url || prod.image,

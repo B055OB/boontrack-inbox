@@ -69,3 +69,73 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: err?.message || 'Server error', conversations: [] }, { status: 500 });
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { conversationId, customerPhone, customerName, tenantSlug, tenantId } = body;
+
+    if (!customerName || !customerName.trim()) {
+      return NextResponse.json({ success: false, error: 'Nama pelanggan tidak boleh kosong' }, { status: 400 });
+    }
+
+    const trimmedName = customerName.trim();
+    const supabase = getSupabaseAdmin() || getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: 'Database client unavailable' }, { status: 500 });
+    }
+
+    const now = new Date().toISOString();
+
+    // 1. Update conversations table
+    if (conversationId) {
+      await supabase
+        .from('conversations')
+        .update({
+          customer_name: trimmedName,
+          updated_at: now,
+        })
+        .eq('id', conversationId);
+    } else if (customerPhone) {
+      await supabase
+        .from('conversations')
+        .update({
+          customer_name: trimmedName,
+          updated_at: now,
+        })
+        .eq('customer_phone', customerPhone);
+    }
+
+    // 2. Update CRM Contacts table (SSOT)
+    const targetTenant = tenantId || tenantSlug;
+    if (targetTenant && customerPhone) {
+      try {
+        const { ContactService } = await import('@/lib/crm/contact.service');
+        const { toE164 } = await import('@/lib/crm/phone-utils');
+        const tenantUuid = await ContactService.resolveTenantId(targetTenant);
+        const canonicalPhone = toE164(customerPhone);
+        if (tenantUuid && canonicalPhone) {
+          await ContactService.getOrCreateContactByPhone(tenantUuid, canonicalPhone, trimmedName);
+          await supabase
+            .from('contacts')
+            .update({
+              name: trimmedName,
+              updated_at: now,
+            })
+            .eq('tenant_id', tenantUuid)
+            .eq('phone_e164', canonicalPhone);
+        }
+      } catch (crmErr) {
+        console.warn('[PATCH /inbox/conversations] CRM contact update note:', crmErr);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      name: trimmedName,
+    });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err?.message || 'Server error' }, { status: 500 });
+  }
+}
+

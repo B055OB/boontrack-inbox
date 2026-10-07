@@ -33,6 +33,7 @@ import {
   CalendarCheck,
   FolderKey,
   Share2,
+  Settings,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { resolveDomainVertical, DomainVerticalKey } from '@/app/[tenant]/dashboard/components/modules';
@@ -344,86 +345,103 @@ export default function DashboardSidebar({
 
   return (
     <aside
-      className={`w-64 xl:w-72 bg-white border-r border-slate-200 h-screen sticky top-0 flex flex-col justify-between shrink-0 select-none z-40 ${className}`}
+      className={`w-64 xl:w-72 bg-white border-r border-slate-200 h-screen sticky top-0 self-start flex flex-col justify-between shrink-0 select-none z-40 overflow-hidden ${className}`}
     >
       {/* ======================================================== */}
       {/* 1. TOP SECTION: KARTU PROFIL TOKO & POPOVER (PALING ATAS) */}
       {/* ======================================================== */}
       <div className="p-3 border-b border-slate-100 relative bg-white" ref={popoverRef}>
-        <button
-          type="button"
-          onClick={() => setIsPopoverOpen((prev) => !prev)}
-          className={`w-full flex items-center justify-between p-2 rounded-2xl border transition cursor-pointer text-left ${
-            isPopoverOpen
-              ? 'bg-slate-50 border-indigo-400 shadow-sm ring-2 ring-indigo-500/10'
-              : 'bg-white hover:bg-slate-50/90 border-slate-200 shadow-2xs'
-          }`}
-          aria-expanded={isPopoverOpen}
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            {/* Store Logo / Avatar */}
-            {storeLogoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={storeLogoUrl}
-                alt={nameToShow}
-                className="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0"
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-700 text-white font-black text-xs flex items-center justify-center shrink-0 uppercase shadow-2xs">
-                {nameToShow.charAt(0)}
-              </div>
-            )}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setIsPopoverOpen((prev) => !prev)}
+            className={`flex-1 min-w-0 flex items-center justify-between p-2 rounded-2xl border transition cursor-pointer text-left ${
+              isPopoverOpen
+                ? 'bg-slate-50 border-indigo-400 shadow-sm ring-2 ring-indigo-500/10'
+                : 'bg-white hover:bg-slate-50/90 border-slate-200 shadow-2xs'
+            }`}
+            aria-expanded={isPopoverOpen}
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              {/* Store Logo / Avatar */}
+              {storeLogoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={storeLogoUrl}
+                  alt={nameToShow}
+                  className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-700 text-white font-black text-xs flex items-center justify-center shrink-0 uppercase shadow-2xs">
+                  {nameToShow.charAt(0)}
+                </div>
+              )}
 
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1">
-                <span className="text-xs font-black text-slate-900 truncate">
-                  {nameToShow}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                <span
-                  className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full border leading-tight ${
-                    isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))
-                      ? 'bg-amber-50 text-amber-900 border-amber-300 font-extrabold shadow-2xs'
-                      : isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
-                      ? 'bg-amber-50 text-amber-800 border-amber-200'
-                      : isTeamScale || (tierLabel && tierLabel.toLowerCase().includes('team'))
-                      ? 'bg-purple-50 text-purple-700 border-purple-200'
-                      : isAdsPerformance || (tierLabel && (tierLabel.toLowerCase().includes('ads') || tierLabel.toLowerCase().includes('performance')))
-                      ? 'bg-blue-50 text-blue-700 border-blue-200'
-                      : 'bg-slate-100 text-slate-600 border-slate-200'
-                  }`}
-                >
-                  {(isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))) && (
-                    <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-black text-slate-900 truncate">
+                    {nameToShow}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                  <span
+                    className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full border leading-tight ${
+                      isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))
+                        ? 'bg-amber-50 text-amber-900 border-amber-300 font-extrabold shadow-2xs'
+                        : isCheckoutLite || (tierLabel && tierLabel.toLowerCase().includes('checkout'))
+                        ? 'bg-amber-50 text-amber-800 border-amber-200'
+                        : isTeamScale || (tierLabel && tierLabel.toLowerCase().includes('team'))
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                        : isAdsPerformance || (tierLabel && (tierLabel.toLowerCase().includes('ads') || tierLabel.toLowerCase().includes('performance')))
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {(isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))) && (
+                      <Sparkles className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                    )}
+                    <span>
+                      {(tierLabel && tierLabel !== 'Paket Solo' && tierLabel !== 'Paket Checkout')
+                        ? tierLabel
+                        : (isCheckoutLite
+                          ? 'Checkout Lite'
+                          : isTeamScale
+                          ? 'Team Scale'
+                          : isAdsPerformance
+                          ? isTrialActive || trialDaysLeft !== null
+                            ? 'Ads Performance'
+                            : 'Ads Performance'
+                          : 'Paket Starter')}
+                    </span>
+                  </span>
+
+                  {(isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))) && grantDaysLeft !== null && (
+                    <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-100/70 px-1 py-0.2 rounded border border-amber-300">
+                      {grantDaysLeft > 0 ? `${grantDaysLeft}h` : 'Aktif'}
+                    </span>
                   )}
-                  <span>
-                    {(tierLabel && tierLabel !== 'Paket Solo' && tierLabel !== 'Paket Checkout')
-                      ? tierLabel
-                      : (isCheckoutLite
-                        ? 'Paket Checkout Lite'
-                        : isTeamScale
-                        ? 'Team Scale'
-                        : isAdsPerformance
-                        ? isTrialActive || trialDaysLeft !== null
-                          ? 'Ads Performance Trial'
-                          : 'Ads Performance'
-                        : 'Paket Starter')}
-                  </span>
-                </span>
-
-                {(isGrant || (tierLabel && tierLabel.toLowerCase().includes('grant'))) && grantDaysLeft !== null && (
-                  <span className="text-[9px] font-mono font-bold text-amber-800 bg-amber-100/70 px-1 py-0.2 rounded border border-amber-300">
-                    {grantDaysLeft > 0 ? `Sisa ${grantDaysLeft} hr` : 'Aktif'}
-                  </span>
-                )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <ChevronsUpDown className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
-        </button>
+            <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
+          </button>
+
+          {/* Shortcut Langsung ke Pengaturan Toko */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsPopoverOpen(false);
+              onOpenStoreSettings();
+              if (onCloseMobileDrawer) onCloseMobileDrawer();
+            }}
+            className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 transition shadow-2xs cursor-pointer shrink-0"
+            title="Buka Pengaturan Toko (Profil, Jam Buka, Domain, Pembayaran)"
+            aria-label="Pengaturan Toko"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
 
         {/* POPOVER MENU (Terbuka Presisi ke Bawah: side="bottom" align="start") */}
         {isPopoverOpen && (
@@ -665,7 +683,7 @@ export default function DashboardSidebar({
                 </span>
               </button>
 
-              {/* 6. BoonTrack Inbox (Live CS) - Gated Feature Teaser */}
+              {/* 6. Smart Chatbox (Live CS) - Gated Feature Teaser */}
               <button
                 type="button"
                 onClick={() => handleSelectTab('inbox')}
@@ -679,10 +697,10 @@ export default function DashboardSidebar({
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
                 )}
                 <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-500 text-white shadow-2xs">
                     <MessageSquare className="w-4 h-4" />
                   </div>
-                  <span className="truncate">BoonTrack Inbox (CS)</span>
+                  <span className="truncate">Smart Chatbox</span>
                 </div>
                 <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-0.5">
                   <Lock className="w-2.5 h-2.5 text-amber-600" />
@@ -929,7 +947,7 @@ export default function DashboardSidebar({
               </span>
 
               <div className="space-y-1">
-                {/* BoonTrack Inbox (Live CS) */}
+                {/* Smart Chatbox (Live CS) */}
                 <button
                   type="button"
                   onClick={() => handleSelectTab('inbox')}
@@ -943,10 +961,10 @@ export default function DashboardSidebar({
                     <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
                   )}
                   <div className="flex items-center gap-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-indigo-50 text-indigo-600">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-500 text-white shadow-2xs">
                       <MessageSquare className="w-4 h-4" />
                     </div>
-                    <span className="truncate">BoonTrack Inbox</span>
+                    <span className="truncate">Smart Chatbox</span>
                   </div>
                   {inboxCount && inboxCount > 0 ? (
                     <span className="px-2 py-0.5 text-[10px] font-black rounded-full bg-blue-100 text-blue-800 border border-blue-200 ml-auto">
@@ -1148,9 +1166,63 @@ export default function DashboardSidebar({
       </div>
 
       {/* ======================================================== */}
-      {/* 3. BOTTOM SECTION: BOONTRACK HUB LOGO & FOOTER (BAWAH)  */}
+      {/* 3. PINNED BOTTOM SECTION: PENGATURAN TOKO & AKUN SAYA    */}
       {/* ======================================================== */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2.5">
+      <div className="mt-auto p-3 border-t border-slate-200/80 bg-slate-50/90 space-y-2 shrink-0">
+        <div className="space-y-1">
+          {/* Pinned 1: Pengaturan Toko (Profil, Jam Buka, Domain, Rekening Pembayaran) */}
+          <button
+            type="button"
+            onClick={() => {
+              onOpenStoreSettings();
+              if (onCloseMobileDrawer) onCloseMobileDrawer();
+            }}
+            className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-slate-200 transition cursor-pointer group shadow-2xs"
+            title="Pengaturan Toko (Profil, Jam Buka, Domain, Rekening Pembayaran)"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 group-hover:bg-indigo-600 text-indigo-600 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                <Settings className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0 text-left">
+                <span className="block truncate text-xs font-bold text-slate-800 group-hover:text-indigo-600">
+                  Pengaturan Toko
+                </span>
+                <span className="block text-[10px] text-slate-400 font-normal truncate">
+                  Profil, Jam Buka, Domain &amp; Rekening
+                </span>
+              </div>
+            </div>
+            <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-black shrink-0">⚙️</span>
+          </button>
+
+          {/* Pinned 2: Akun Saya */}
+          <button
+            type="button"
+            onClick={() => {
+              onOpenStoreSettings();
+              if (onCloseMobileDrawer) onCloseMobileDrawer();
+            }}
+            className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-white border border-transparent hover:border-slate-200 transition cursor-pointer group shadow-2xs"
+            title="Akun Saya & Profil Pengguna"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-slate-100 group-hover:bg-slate-700 text-slate-600 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                <User className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0 text-left">
+                <span className="block truncate text-xs font-bold text-slate-800 group-hover:text-indigo-600">
+                  Akun Saya
+                </span>
+                <span className="block text-[10px] text-slate-400 font-normal truncate">
+                  Profil &amp; Keamanan Akun
+                </span>
+              </div>
+            </div>
+            <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-black shrink-0">👤</span>
+          </button>
+        </div>
+
         {/* Tombol Install App / PWA Selalu Tampil di Sidebar Mobile & Desktop */}
         <PwaInstallPrompt
           tenantSlug={tenantSlug}

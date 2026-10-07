@@ -337,7 +337,7 @@ function Sidebar({
           </span>
           <div className="space-y-0.5">
             <NavBtn tab="whatsapp"     label="WhatsApp & Broadcast" icon={Radio}       iconBg="bg-emerald-50" iconColor="text-emerald-600" badge="CONNECTED" badgeCls="bg-emerald-100 text-emerald-800 border border-emerald-200" />
-            <NavBtn tab="inbox"        label="BoonTrack Inbox"      icon={MessageSquare} iconBg="bg-indigo-50" iconColor="text-indigo-600" badge="10 Baru"   badgeCls="bg-blue-100 text-blue-800 border border-blue-200" />
+            <NavBtn tab="inbox"        label="Smart Chatbox"        icon={MessageSquare} iconBg="bg-indigo-50" iconColor="text-indigo-600" badge="10 Baru"   badgeCls="bg-blue-100 text-blue-800 border border-blue-200" />
             <NavBtn tab="ads_tracking" label="Ads Tracking Pro"     icon={Target}      iconBg="bg-amber-50"   iconColor="text-amber-600"   badge="CAPI"     badgeCls="bg-blue-50 text-blue-700 border border-blue-200 uppercase" />
             <NavBtn tab="finance"      label="Laporan Keuangan"     icon={CreditCard}  iconBg="bg-slate-100"  iconColor="text-slate-700" />
             <NavBtn tab="orders"       label="Pesanan & Order"      icon={ShoppingBag} iconBg="bg-emerald-50" iconColor="text-emerald-600" badge="2.940" badgeCls="bg-emerald-600 text-white" isOrders />
@@ -1715,7 +1715,7 @@ export default function ShowcaseDashboard() {
       case 'themes':       return <PlaceholderTab title="Tampilan & Tema" desc="5 tema visual storefront siap diaktifkan." icon={Palette} />;
       case 'ai_knowledge': return <PlaceholderTab title="AI Knowledge & Bot" desc="Bot WA aktif 24/7 dengan training product CTWA Mastery." icon={Brain} />;
       case 'whatsapp':     return <PlaceholderTab title="WhatsApp & Broadcast" desc="WABA + CAPI Server Container aktif & deduplicated." icon={Radio} />;
-      case 'inbox':        return <PlaceholderTab title="BoonTrack Inbox" desc="10 chat masuk baru menunggu — CS siap merespons." icon={MessageSquare} />;
+      case 'inbox':        return <PlaceholderTab title="Smart Chatbox" desc="10 chat masuk baru menunggu — CS siap merespons." icon={MessageSquare} />;
       case 'ads_tracking': return <AdsTrackingTab />;
       case 'finance':      return <FinanceTab />;
     }

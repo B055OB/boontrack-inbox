@@ -1078,7 +1078,7 @@ export default function CustomerDatabaseTab({
             className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            <span>Buka BoonTrack Inbox Lengkap</span>
+            <span>Buka Smart Chatbox Lengkap</span>
             <ArrowUpRight className="w-3 h-3" />
           </button>
         </div>

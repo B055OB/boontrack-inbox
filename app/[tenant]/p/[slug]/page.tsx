@@ -2244,7 +2244,7 @@ function SingleProductContent() {
         ) : (
           <div>
             <label className="font-bold text-slate-700 block mb-1">
-              Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional untuk backup)</span>
+              Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional - notifikasi order via WhatsApp)</span>
             </label>
             <input
               type="email"
@@ -2736,7 +2736,7 @@ function SingleProductContent() {
         ) : (
           <div>
             <label className="font-bold text-slate-700 block mb-1">
-              Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional untuk backup invoice)</span>
+              Alamat Email <span className="text-slate-400 font-normal text-[11px]">(Opsional - notifikasi order via WhatsApp)</span>
             </label>
             <input
               type="email"
@@ -4050,11 +4050,13 @@ function SingleProductContent() {
           </section>
         )}
 
-        {/* 1.5 Interactive Product Media Showcase (Khusus Silabus / Preview Materi Produk Digital & E-Course) */}
-        {!isFnbOrCulinary && !isPhysicalItem && isDigitalPreset && config.gallery_images && config.gallery_images.length > 0 && (
+        {/* 1.5 Interactive Product Media Showcase (Multi-Image Carousel / Slider) */}
+        {config.enable_media_gallery !== false && config.gallery_images && config.gallery_images.length > 0 && (
           <ProductMediaShowcase
             images={config.gallery_images}
             productName={product.name}
+            title={isFnbOrCulinary ? '📸 Galeri Menu & Pilihan Varian' : (isPhysicalItem ? '📸 Foto Detail & Pilihan Produk' : '📸 Dokumentasi & Preview Produk')}
+            subtitle={product.name ? `Galeri Foto ${product.name}` : 'Galeri Foto Produk'}
           />
         )}
 

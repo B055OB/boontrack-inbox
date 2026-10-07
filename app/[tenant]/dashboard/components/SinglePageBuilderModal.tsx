@@ -26,6 +26,7 @@ import { getProductPageUrl } from '@/lib/utils/storefrontUrl';
 
 export type BuilderTab =
   | 'hook'
+  | 'media_gallery'
   | 'client_logos'
   | 'problem_solution'
   | 'comparison'
@@ -35,14 +36,15 @@ export type BuilderTab =
   | 'payment_voucher';
 
 export const BUILDER_TABS = [
-  { id: 'hook', label: '1. Hook & Hero', icon: '🎯', toggleKey: 'enable_hero', defaultEnabled: true },
-  { id: 'client_logos', label: '2. Client Logos', icon: '🏢', toggleKey: 'enable_client_logos', defaultEnabled: false },
-  { id: 'problem_solution', label: '3. Problem & Solve', icon: '⚡', toggleKey: 'enable_problem_solution', defaultEnabled: true },
-  { id: 'comparison', label: '4. Us vs Them', icon: '⚖️', toggleKey: 'enable_us_vs_them', defaultEnabled: true },
-  { id: 'social_proof', label: '5. Testimonial', icon: '💬', toggleKey: 'enable_testimonials', defaultEnabled: true },
-  { id: 'offer_bonus', label: '6. Offer & Bonus', icon: '🎁', toggleKey: 'enable_offer', defaultEnabled: true },
-  { id: 'faq', label: '7. FAQ', icon: '❓', toggleKey: 'enable_faq', defaultEnabled: false },
-  { id: 'payment_voucher', label: '8. Bayar & Voucher', icon: '🎟️', toggleKey: 'enable_payment', defaultEnabled: true },
+  { id: 'hook', label: '1. Judul & Banner Utama', icon: '🎯', toggleKey: 'enable_hero', defaultEnabled: true },
+  { id: 'media_gallery', label: '2. Galeri Foto Produk', icon: '📸', toggleKey: 'enable_media_gallery', defaultEnabled: true },
+  { id: 'client_logos', label: '3. Logo Partner / Liputan', icon: '🏢', toggleKey: 'enable_client_logos', defaultEnabled: false },
+  { id: 'problem_solution', label: '4. Masalah & Solusi', icon: '⚡', toggleKey: 'enable_problem_solution', defaultEnabled: true },
+  { id: 'comparison', label: '5. Keunggulan Produk', icon: '⚖️', toggleKey: 'enable_us_vs_them', defaultEnabled: true },
+  { id: 'social_proof', label: '6. Testimoni Pelanggan', icon: '💬', toggleKey: 'enable_testimonials', defaultEnabled: true },
+  { id: 'offer_bonus', label: '7. Penawaran & Bonus', icon: '🎁', toggleKey: 'enable_offer', defaultEnabled: true },
+  { id: 'faq', label: '8. Tanya Jawab (FAQ)', icon: '❓', toggleKey: 'enable_faq', defaultEnabled: false },
+  { id: 'payment_voucher', label: '9. Checkout & Voucher', icon: '🎟️', toggleKey: 'enable_payment', defaultEnabled: true },
 ] as const;
 
 function SectionToggleHeader({
@@ -162,19 +164,20 @@ export default function SinglePageBuilderModal({
   if (!isOpen || !activeProduct) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] my-auto">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50 sticky top-0 z-10">
+    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-3xl max-w-5xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col h-[92vh] max-h-[850px] my-auto">
+        {/* MODAL HEADER */}
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/90 shrink-0">
           <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-blue-100 text-blue-600">
+            <span className="p-2 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white shadow-xs">
               <Sparkles className="w-5 h-5" />
             </span>
             <div>
-              <h3 className="text-sm font-black text-slate-900 leading-tight">
-                Builder Single Page Checkout
+              <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight">
+                🎨 Desain Halaman Produk (Landing Page)
               </h3>
               <p className="text-[11px] text-slate-500 font-medium">
-                Konfigurasi halaman penawaran untuk: <strong className="text-slate-800">{activeProduct.name}</strong>
+                Konfigurasi penawaran, copywriting, galeri foto, &amp; checkout: <strong className="text-slate-800">{activeProduct.name}</strong>
               </p>
             </div>
           </div>
@@ -182,109 +185,106 @@ export default function SinglePageBuilderModal({
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-200/60 transition cursor-pointer"
+            aria-label="Tutup Modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={onSave} className="p-6 overflow-y-auto space-y-4 text-xs flex-1">
-          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="font-bold text-slate-700 block">Tautan Halaman Publik (Public Slug URL) *</label>
-              <button
-                type="button"
-                onClick={() => {
-                  const targetTitle = singlePageForm.headline?.trim() || activeProduct.name;
-                  setSinglePageForm((p) => ({ ...p, slug: slugify(targetTitle) }));
-                }}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
-                title="Sinkronkan slug dengan judul/headline produk"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Sinkronkan URL dengan Judul Baru</span>
-              </button>
-            </div>
-            <div className="flex items-center gap-1 font-mono text-xs">
-              <span className="text-slate-400 shrink-0">/{tenantSlug}/p/</span>
+        <form onSubmit={onSave} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* SLUG & URL BAR */}
+          <div className="px-4 sm:px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0 text-xs">
+            <div className="flex items-center gap-1.5 flex-1 min-w-[280px]">
+              <span className="font-bold text-slate-700 shrink-0">Tautan Halaman:</span>
+              <span className="text-slate-400 font-mono text-[11px] shrink-0">/{tenantSlug}/p/</span>
               <input
                 type="text"
                 required
                 value={singlePageForm.slug || ''}
                 onChange={(e) => setSinglePageForm((p) => ({ ...p, slug: slugify(e.target.value) }))}
                 placeholder="nama-slug-produk"
-                className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold focus:outline-none focus:border-blue-600"
+                className="flex-1 max-w-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-900 font-bold font-mono text-xs focus:outline-none focus:border-blue-600"
               />
-            </div>
-            <span className="text-[10px] text-slate-400 block">
-              Akses langsung via browser: <code className="text-blue-600 font-bold">https://shop.boontrack.com/{tenantSlug}/p/{singlePageForm.slug || slugify(activeProduct.name)}</code>
-            </span>
-          </div>
-
-          <div className="relative flex items-center border-b border-slate-200 pb-1.5 isolate group">
-            {canScrollTabsLeft && (
               <button
                 type="button"
-                onClick={() => handleScrollBuilderTabs('left')}
-                aria-label="Scroll tab ke kiri"
-                className="absolute left-0 z-30 h-7 w-7 -ml-2 flex items-center justify-center rounded-full bg-white/95 border border-slate-300 text-slate-700 shadow-md hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all cursor-pointer"
+                onClick={() => {
+                  const targetTitle = singlePageForm.headline?.trim() || activeProduct.name;
+                  setSinglePageForm((p) => ({ ...p, slug: slugify(targetTitle) }));
+                }}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-100/60 px-2 py-1 rounded-lg transition cursor-pointer"
+                title="Sinkronkan slug dengan judul baru"
               >
-                <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                <RefreshCw className="w-3 h-3" />
+                <span>Sinkronkan</span>
               </button>
-            )}
+            </div>
+            <div className="text-[11px] text-slate-500 font-medium hidden sm:block">
+              <span>Status: </span>
+              <span className="text-emerald-700 font-bold">● Siap Publikasi</span>
+            </div>
+          </div>
 
-            <div
-              ref={builderTabsRef}
-              onScroll={checkBuilderTabsScroll}
-              className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth touch-pan-x overscroll-x-contain relative z-10 px-0.5"
-            >
+          {/* TWO-COLUMN LAYOUT: MINI-SIDEBAR & CONTENT EDITOR */}
+          <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+            {/* MINI-SIDEBAR VERTIKAL KIRI */}
+            <div className="w-full md:w-64 lg:w-72 shrink-0 border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50/70 p-2.5 md:p-3 overflow-x-auto md:overflow-y-auto space-x-1.5 md:space-x-0 md:space-y-1.5 flex md:flex-col shrink-0 no-scrollbar">
+              <span className="hidden md:block text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 pt-1 pb-1">
+                URUTAN SECTION (ATAS KE BAWAH)
+              </span>
               {BUILDER_TABS.map((tab) => {
                 const isEnabled = (singlePageForm as any)[tab.toggleKey] ?? tab.defaultEnabled;
+                const isActive = activeBuilderTab === tab.id;
                 return (
-                  <button
+                  <div
                     key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={activeBuilderTab === tab.id}
-                    onPointerDown={(e) => { e.preventDefault(); setActiveBuilderTab(tab.id as any); }}
                     onClick={() => setActiveBuilderTab(tab.id as any)}
-                    style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
-                    className={`select-none pointer-events-auto shrink-0 relative z-10 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer touch-manipulation ${
-                      activeBuilderTab === tab.id
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    className={`flex items-center justify-between p-2 md:p-2.5 rounded-xl md:rounded-2xl border transition-all cursor-pointer shrink-0 md:shrink select-none ${
+                      isActive
+                        ? 'bg-blue-50/90 border-blue-400 text-blue-950 shadow-xs ring-1 ring-blue-500/20'
+                        : 'bg-white hover:bg-slate-100/90 border-slate-200/80 text-slate-700'
                     }`}
                   >
-                    <span>{tab.icon}</span>
-                    <span>{tab.label}</span>
-                    {!isEnabled && (
-                      <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full ${
-                        activeBuilderTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="text-sm shrink-0">{tab.icon}</span>
+                      <span className={`truncate text-xs font-bold ${
+                        isActive ? 'text-blue-900 font-black' : 'text-slate-800'
                       }`}>
-                        Off
+                        {tab.label}
                       </span>
-                    )}
-                  </button>
+                    </div>
+
+                    {/* Status Badge + Inline Toggle */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSinglePageForm((p) => ({
+                          ...p,
+                          [tab.toggleKey]: !isEnabled,
+                        }));
+                      }}
+                      className={`ml-1.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border transition-all cursor-pointer ${
+                        isEnabled
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                          : 'bg-slate-200 text-slate-500 border-slate-300 hover:bg-slate-300'
+                      }`}
+                      title={`Klik untuk On/Off: ${isEnabled ? 'Aktif' : 'Nonaktif'}`}
+                    >
+                      {isEnabled ? 'Aktif' : 'Mati'}
+                    </button>
+                  </div>
                 );
               })}
             </div>
 
-            {canScrollTabsRight && (
-              <button
-                type="button"
-                onClick={() => handleScrollBuilderTabs('right')}
-                aria-label="Scroll tab ke kanan"
-                className="absolute right-0 z-30 h-7 w-7 -mr-2 flex items-center justify-center rounded-full bg-white/95 border border-slate-300 text-slate-700 shadow-md hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-all cursor-pointer"
-              >
-                <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-              </button>
-            )}
-          </div>
+            {/* CONTENT EDITOR RIGHT PANE */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-white space-y-4 text-xs">
 
           {/* TAB 1: HOOK & HERO */}
           {activeBuilderTab === 'hook' && (
             <div className="space-y-3.5 animate-fadeIn">
               <SectionToggleHeader
-                title="Section 1: Hook & Hero"
+                title="Section 1: Judul & Banner Utama"
                 description="Menampilkan headline utama, subheadline persuasif, badge promosi, dan banner gambar hero."
                 enabled={singlePageForm.enable_hero ?? true}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_hero: val }))}
@@ -358,11 +358,157 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 2: CLIENT LOGOS */}
+          {/* TAB 2: GALERI FOTO PRODUK (MULTI-IMAGE) */}
+          {activeBuilderTab === 'media_gallery' && (
+            <div className="space-y-4 animate-fadeIn">
+              <SectionToggleHeader
+                title="Section 2: Galeri Foto Produk (Multi-Image)"
+                description="Tampilkan 5–8 foto untuk visualisasi detail makanan penggugah selera, sudut produk fisik, atau materi penawaran. Di storefront publik ditampilkan sebagai slider/carousel interaktif dengan swipe di HP."
+                enabled={singlePageForm.enable_media_gallery ?? true}
+                onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_media_gallery: val }))}
+              />
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-xs">Koleksi Foto Produk &amp; Varian</h4>
+                  <p className="text-[10px] text-slate-500">Mendukung upload langsung atau paste link gambar JPG/PNG/WebP. Maksimal 8 foto.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = singlePageForm.gallery_images || [];
+                    if (current.length >= 8) {
+                      alert('Maksimal 8 foto galeri per produk.');
+                      return;
+                    }
+                    setSinglePageForm((p) => ({
+                      ...p,
+                      gallery_images: [
+                        ...(p.gallery_images || []),
+                        { url: '', title: `Foto ${current.length + 1}`, category: 'Varian' },
+                      ],
+                    }));
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Foto Galeri</span>
+                </button>
+              </div>
+
+              {/* Grid / List of gallery images */}
+              <div className="space-y-3">
+                {(!singlePageForm.gallery_images || singlePageForm.gallery_images.length === 0) ? (
+                  <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 space-y-2">
+                    <span className="text-2xl block">📸</span>
+                    <p className="text-xs text-slate-700 font-bold">Belum ada foto galeri tambahan</p>
+                    <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                      Tambahkan 5–8 foto untuk varian rasa makanan, sudut foto produk fisik, atau detail modul materi agar pembeli semakin tertarik &amp; percaya.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSinglePageForm((p) => ({
+                          ...p,
+                          gallery_images: [
+                            { url: '', title: 'Foto 1', category: 'Varian' }
+                          ],
+                        }));
+                      }}
+                      className="mt-2 px-3 py-1.5 bg-white border border-slate-300 hover:border-blue-500 hover:text-blue-600 rounded-xl text-xs font-bold transition cursor-pointer"
+                    >
+                      + Tambah Foto Pertama
+                    </button>
+                  </div>
+                ) : (
+                  singlePageForm.gallery_images.map((img, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center gap-3.5"
+                    >
+                      {/* Thumbnail Preview */}
+                      <div className="w-20 h-20 rounded-xl bg-white border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                        {img.url ? (
+                          <img src={img.url} alt={img.title || `Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-mono text-center px-1">Belum Ada URL</span>
+                        )}
+                      </div>
+
+                      {/* Inputs */}
+                      <div className="flex-1 min-w-0 space-y-2 w-full">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-0.5">URL Foto / Gambar *</label>
+                          <input
+                            type="url"
+                            value={img.url}
+                            onChange={(e) => {
+                              const list = [...(singlePageForm.gallery_images || [])];
+                              list[idx] = { ...list[idx], url: e.target.value };
+                              setSinglePageForm((p) => ({ ...p, gallery_images: list }));
+                            }}
+                            placeholder="https://... (masukkan URL gambar langsung)"
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 font-mono focus:outline-none focus:border-blue-600"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Keterangan / Judul Foto (Opsional)</label>
+                            <input
+                              type="text"
+                              value={img.title || ''}
+                              onChange={(e) => {
+                                const list = [...(singlePageForm.gallery_images || [])];
+                                list[idx] = { ...list[idx], title: e.target.value };
+                                setSinglePageForm((p) => ({ ...p, gallery_images: list }));
+                              }}
+                              placeholder="Contoh: Tampak Atas / Varian Cokelat"
+                              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Label Kategori (Opsional)</label>
+                            <input
+                              type="text"
+                              value={img.category || ''}
+                              onChange={(e) => {
+                                const list = [...(singlePageForm.gallery_images || [])];
+                                list[idx] = { ...list[idx], category: e.target.value };
+                                setSinglePageForm((p) => ({ ...p, gallery_images: list }));
+                              }}
+                              placeholder="Contoh: Varian / Detail / Menu"
+                              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-blue-600"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Delete button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const list = (singlePageForm.gallery_images || []).filter((_, i) => i !== idx);
+                          setSinglePageForm((p) => ({ ...p, gallery_images: list }));
+                        }}
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer self-end sm:self-center shrink-0"
+                        title="Hapus Foto Ini"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: CLIENT LOGOS */}
           {activeBuilderTab === 'client_logos' && (
             <div className="space-y-3.5 animate-fadeIn">
               <SectionToggleHeader
-                title="Section 2: Client Logos & Brand Social Proof"
+                title="Section 3: Logo Partner / Bukti Liputan"
                 description="Tampilkan grid logo brand/klien, mitra, atau portofolio untuk membangun trust & kredibilitas instan."
                 enabled={singlePageForm.enable_client_logos ?? false}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_client_logos: val }))}
@@ -487,11 +633,11 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 3: PROBLEM & SOLUTION */}
+          {/* TAB 4: PROBLEM & SOLUTION */}
           {activeBuilderTab === 'problem_solution' && (
             <div className="space-y-4 animate-fadeIn">
               <SectionToggleHeader
-                title="Section 3: Problem & Solve"
+                title="Section 4: Masalah & Solusi"
                 description="Eksplorasi poin masalah audiens (pain points) dan sajikan solusi serta fitur unggulan."
                 enabled={singlePageForm.enable_problem_solution ?? true}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_problem_solution: val }))}
@@ -625,11 +771,11 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 4: US VS THEM */}
+          {/* TAB 5: US VS THEM */}
           {activeBuilderTab === 'comparison' && (
             <div className="space-y-3.5 animate-fadeIn">
               <SectionToggleHeader
-                title="Section 4: Us vs Them"
+                title="Section 5: Keunggulan Produk"
                 description="Tabel komparasi yang memperlihatkan keunggulan produk Anda vs cara lama atau kompetitor."
                 enabled={singlePageForm.enable_us_vs_them ?? true}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_us_vs_them: val }))}
@@ -727,11 +873,11 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 5: TESTIMONIAL */}
+          {/* TAB 6: TESTIMONIAL */}
           {activeBuilderTab === 'social_proof' && (
             <div className="space-y-3.5 animate-fadeIn">
               <SectionToggleHeader
-                title="Section 5: Testimonial & Review"
+                title="Section 6: Testimoni Pelanggan"
                 description="Tampilkan bukti kepuasan pelanggan melalui screenshot testimoni nyata."
                 enabled={singlePageForm.enable_testimonials ?? true}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_testimonials: val }))}
@@ -765,11 +911,11 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 6: OFFER & BONUS */}
+          {/* TAB 7: OFFER & BONUS */}
           {activeBuilderTab === 'offer_bonus' && (
             <div className="space-y-3.5 animate-fadeIn">
               <SectionToggleHeader
-                title="Section 6: Offer & Bonus"
+                title="Section 7: Penawaran & Bonus"
                 description="Daftar item bonus gratis bernilai tinggi yang didapatkan pembeli saat transaksi hari ini."
                 enabled={singlePageForm.enable_offer ?? true}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_offer: val }))}
@@ -871,11 +1017,11 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 7: FAQ */}
+          {/* TAB 8: FAQ */}
           {activeBuilderTab === 'faq' && (
             <div className="space-y-3.5 animate-fadeIn">
               <SectionToggleHeader
-                title="Section 7: Frequently Asked Questions (FAQ)"
+                title="Section 8: Tanya Jawab (FAQ)"
                 description="Jawab pertanyaan umum dan hilangkan keraguan calon pembeli sebelum melakukan pembayaran."
                 enabled={singlePageForm.enable_faq ?? false}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_faq: val }))}
@@ -974,11 +1120,11 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          {/* TAB 8: BAYAR & VOUCHER */}
+          {/* TAB 9: BAYAR & VOUCHER */}
           {activeBuilderTab === 'payment_voucher' && (
             <div className="space-y-4 animate-fadeIn">
               <SectionToggleHeader
-                title="Section 8: Formulir Checkout & Pembayaran"
+                title="Section 9: Checkout & Voucher"
                 description="Formulir checkout data pembeli, pilihan metode bayar mandiri, dan aktivasi kupon promo."
                 enabled={singlePageForm.enable_payment ?? true}
                 onChange={(val) => setSinglePageForm((p) => ({ ...p, enable_payment: val }))}
@@ -1517,12 +1663,16 @@ export default function SinglePageBuilderModal({
             </div>
           )}
 
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+            </div>{/* Akhir Content Editor Right Pane */}
+          </div>{/* Akhir Two-Column Layout */}
+
+          {/* MODAL FOOTER ACTION BAR */}
+          <div className="p-4 bg-slate-50 border-t border-slate-200 shrink-0 flex items-center justify-between gap-3">
             <a
               href={getProductPageUrl(tenantSlug, singlePageForm.slug || slugify(activeProduct.name))}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 transition flex items-center gap-1.5"
+              className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-100 transition flex items-center gap-1.5"
             >
               <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
               <span>Preview Halaman</span>

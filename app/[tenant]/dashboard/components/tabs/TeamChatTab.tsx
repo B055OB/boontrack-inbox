@@ -37,6 +37,8 @@ import {
   FileText,
   Headphones,
   Zap,
+  Pencil,
+  Download,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useParams } from 'next/navigation';
@@ -894,6 +896,131 @@ export default function TeamChatTab({
       isMounted = false;
     };
   }, [currentConversation?.customerPhone, resolvedTenant]);
+
+  // Inline Edit Customer Name & vCard Management (Panel CRM Kanan)
+  const [isEditingCustomerName, setIsEditingCustomerName] = useState(false);
+  const [editedCustomerName, setEditedCustomerName] = useState('');
+  const [isSavingCustomerName, setIsSavingCustomerName] = useState(false);
+  const [contactFeedback, setContactFeedback] = useState<string | null>(null);
+
+  // Sync edited customer name when active conversation changes
+  useEffect(() => {
+    setIsEditingCustomerName(false);
+    setEditedCustomerName(currentConversation?.customerName || '');
+  }, [currentConversation?.id]);
+
+  const handleStartEditCustomerName = () => {
+    setEditedCustomerName(currentConversation?.customerName || '');
+    setIsEditingCustomerName(true);
+  };
+
+  const handleCancelEditCustomerName = () => {
+    setIsEditingCustomerName(false);
+    setEditedCustomerName(currentConversation?.customerName || '');
+  };
+
+  const handleSaveCustomerName = async () => {
+    if (!currentConversation || !editedCustomerName.trim() || isSavingCustomerName) return;
+    const trimmed = editedCustomerName.trim();
+    setIsSavingCustomerName(true);
+
+    try {
+      // 1. Optimistic update (seketika terefleksi di memori & daftar chat kiri)
+      currentConversation.customerName = trimmed;
+      currentConversation.avatarInitials = trimmed.slice(0, 2).toUpperCase();
+      inbox.updateConversationContactName(currentConversation.id, trimmed);
+
+      // 2. Persist to API route (updates conversations & contacts tables)
+      const res = await fetch('/api/inbox/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: currentConversation.id,
+          customerPhone: currentConversation.customerPhone,
+          customerName: trimmed,
+          tenantSlug: resolvedTenant || tenantSlug,
+          tenantId: tenantId || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const supabase = getSupabase();
+        if (supabase && currentConversation.id) {
+          await supabase
+            .from('conversations')
+            .update({ customer_name: trimmed, updated_at: new Date().toISOString() })
+            .eq('id', currentConversation.id);
+        }
+      }
+
+      setIsEditingCustomerName(false);
+      setContactFeedback(`Nama disimpan: "${trimmed}"`);
+      setTimeout(() => setContactFeedback(null), 3000);
+    } catch (err) {
+      console.error('Gagal memperbarui nama pelanggan:', err);
+      try {
+        const supabase = getSupabase();
+        if (supabase && currentConversation.id) {
+          await supabase
+            .from('conversations')
+            .update({ customer_name: trimmed, updated_at: new Date().toISOString() })
+            .eq('id', currentConversation.id);
+        }
+        setIsEditingCustomerName(false);
+        setContactFeedback(`Nama disimpan: "${trimmed}"`);
+        setTimeout(() => setContactFeedback(null), 3000);
+      } catch (innerErr) {
+        alert('Gagal menyimpan nama pelanggan. Silakan coba lagi.');
+      }
+    } finally {
+      setIsSavingCustomerName(false);
+    }
+  };
+
+  const handleDownloadVCard = () => {
+    if (!currentConversation || !currentConversation.customerPhone) return;
+
+    const rawPhone = currentConversation.customerPhone;
+    const canonicalPhone = toE164(rawPhone) || rawPhone;
+    const displayName = (currentConversation.customerName || 'Pelanggan WhatsApp').trim();
+    const cleanStoreName =
+      initialTenant?.name ||
+      initialTenant?.metadata?.store_name ||
+      resolvedTenant ||
+      tenantSlug ||
+      'BoonTrack Shop';
+
+    // Standar format vCard 3.0 (universal untuk Google Contacts / iOS Contacts / WhatsApp)
+    const vcardLines = [
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      `FN:${displayName}`,
+      `N:;${displayName};;;`,
+      `TEL;TYPE=CELL,VOICE:${canonicalPhone}`,
+      `NOTE:Pelanggan Toko ${cleanStoreName} - Disimpan via BoonTrack Smart Chatbox`,
+      'END:VCARD',
+    ];
+
+    const vcardContent = vcardLines.join('\r\n');
+    const blob = new Blob([vcardContent], { type: 'text/vcard;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeFilename =
+      displayName
+        .replace(/[^a-zA-Z0-9_\-\s]/g, '')
+        .trim()
+        .replace(/\s+/g, '_') || 'Kontak_Pelanggan';
+
+    link.href = url;
+    link.setAttribute('download', `${safeFilename}.vcf`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setContactFeedback(`Kontak "${displayName}" siap diunduh!`);
+    setTimeout(() => setContactFeedback(null), 3000);
+  };
 
   // Filtered conversation list
   const filteredConversations = useMemo(() => {
@@ -2019,7 +2146,7 @@ export default function TeamChatTab({
               <MessageSquare className="w-4 h-4" />
             </div>
             <h1 className="text-base sm:text-lg font-black text-slate-900">
-              BoonTrack Inbox Console (3-Panel Live CS Workspace)
+              Smart Chatbox Console (3-Panel Live CS Workspace)
             </h1>
             {isCheckoutLite ? (
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
@@ -3191,33 +3318,92 @@ export default function TeamChatTab({
                       {currentConversation.avatarInitials || currentConversation.customerName?.slice(0, 2) || 'WA'}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <p className="text-xs font-black text-slate-900 truncate">
-                          {currentConversation.customerName || 'Pelanggan'}
-                        </p>
-                        {onOpenCustomers && (
-                          <button
-                            type="button"
-                            id="open-customer-crm-profile"
-                            onClick={onOpenCustomers}
-                            title="Lihat Profil di CRM Pelanggan"
-                            className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 text-[9px] font-bold transition cursor-pointer border border-violet-100"
-                          >
-                            <Users className="w-2.5 h-2.5" />
-                            <span>Profil CRM</span>
-                            <ArrowUpRight className="w-2 h-2" />
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-500 font-mono">
-                        {currentConversation.customerPhone}
-                      </p>
-                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                        <span className="px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold flex items-center gap-1">
-                          <Tag className="w-2.5 h-2.5" />
-                          <span>{currentConversation.tag || 'Prospek'}</span>
-                        </span>
-                      </div>
+                      {isEditingCustomerName ? (
+                        <div className="space-y-1.5 py-0.5">
+                          <label className="text-[10px] font-bold text-slate-500 block">Edit Nama Pelanggan:</label>
+                          <input
+                            type="text"
+                            value={editedCustomerName}
+                            onChange={(e) => setEditedCustomerName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveCustomerName();
+                              if (e.key === 'Escape') handleCancelEditCustomerName();
+                            }}
+                            autoFocus
+                            placeholder="Contoh: Kak Budi - Donat Cokelat"
+                            className="w-full px-2.5 py-1 text-xs font-bold bg-white border border-indigo-400 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-2xs"
+                          />
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={handleSaveCustomerName}
+                              disabled={isSavingCustomerName || !editedCustomerName.trim()}
+                              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[10px] font-black rounded-lg flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>{isSavingCustomerName ? 'Menyimpan...' : 'Simpan'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCancelEditCustomerName}
+                              disabled={isSavingCustomerName}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg cursor-pointer transition"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p className="text-xs font-black text-slate-900 truncate" title={currentConversation.customerName || 'Pelanggan'}>
+                                {currentConversation.customerName || 'Pelanggan'}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={handleStartEditCustomerName}
+                                title="Edit nama pelanggan di CRM"
+                                className="p-0.5 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer shrink-0"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            </div>
+                            {onOpenCustomers && (
+                              <button
+                                type="button"
+                                id="open-customer-crm-profile"
+                                onClick={onOpenCustomers}
+                                title="Lihat Profil di CRM Pelanggan"
+                                className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-violet-50 text-violet-600 hover:bg-violet-100 text-[9px] font-bold transition cursor-pointer border border-violet-100"
+                              >
+                                <Users className="w-2.5 h-2.5" />
+                                <span>Profil CRM</span>
+                                <ArrowUpRight className="w-2 h-2" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <p className="text-[11px] text-slate-500 font-mono">
+                              {currentConversation.customerPhone}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={handleStartEditCustomerName}
+                              title="Ubah nama untuk nomor/JID ini"
+                              className="p-0.5 text-slate-400 hover:text-indigo-600 transition cursor-pointer shrink-0"
+                            >
+                              <Pencil className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span className="px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-bold flex items-center gap-1">
+                              <Tag className="w-2.5 h-2.5" />
+                              <span>{currentConversation.tag || 'Prospek'}</span>
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -3232,6 +3418,25 @@ export default function TeamChatTab({
                     <span>Buka di WhatsApp Web</span>
                     <ExternalLink className="w-2.5 h-2.5 ml-auto text-emerald-600" />
                   </a>
+
+                  {/* Tombol Unduh File Kontak (.vcf / vCard) */}
+                  <button
+                    type="button"
+                    onClick={handleDownloadVCard}
+                    className="w-full py-1.5 px-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    title="Simpan kontak langsung ke buku telepon HP (Google Contacts / iOS Contacts)"
+                  >
+                    <Download className="w-3 h-3 text-indigo-600" />
+                    <span>📥 Simpan ke Kontak HP (.vcf)</span>
+                  </button>
+
+                  {/* Feedback Notification */}
+                  {contactFeedback && (
+                    <div className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold flex items-center gap-1.5 animate-fadeIn">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>{contactFeedback}</span>
+                    </div>
+                  )}
 
                   {/* Metrik CRM Ringkas (Database-Driven, Zero Mock) */}
                   <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">

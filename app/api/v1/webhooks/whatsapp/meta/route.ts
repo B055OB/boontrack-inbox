@@ -1,6 +1,6 @@
 /**
  * app/api/v1/webhooks/whatsapp/meta/route.ts
- * Canonical Meta Cloud API Webhook Ingress Route for BoonTrack Inbox.
+ * Canonical Meta Cloud API Webhook Ingress Route for Smart Chatbox.
  *
  * GET: Handshake verification challenge (hub.mode, hub.verify_token, hub.challenge).
  * POST: Inbound message & delivery status processor with HMAC-SHA256 signature security.

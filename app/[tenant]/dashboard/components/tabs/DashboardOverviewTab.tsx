@@ -28,6 +28,7 @@ import {
   ShoppingBag,
   MessageCircle,
   Compass,
+  Rocket,
 } from 'lucide-react';
 import { ProductItem } from '@/lib/product-catalog';
 import { getStorefrontUrl } from '@/lib/utils/storefrontUrl';
@@ -389,6 +390,30 @@ Langkah pamungkas! Sambungkan bot Telegram **@boonshop_bot** agar notifikasi pes
     }
   };
 
+  const handleSelectBusinessCategoryOnboarding = (catTitle: string, catDesc: string) => {
+    const onboardingPrompt = `Halo BoonPilot, saya menjalankan bisnis ${catTitle} (${catDesc}). Tolong bantu dan tuntun saya setup toko dan produk saya langkah demi langkah sampai live di BoonTrack Shop!`;
+    const onboardingGuideMessage = `Halo! Saya **BoonPilot AI**, co-pilot resmi toko Anda di BoonTrack Shop. 🚀
+
+Senang sekali bisa mendampingi setup bisnis **${catTitle}** Anda! Untuk model bisnis ini, kita akan siapkan:
+1. 🏪 **Profil Toko & Kontak WhatsApp**: Agar calon pembeli atau klien langsung terhubung dengan CS Anda.
+2. 📦 **Katalog Produk & Penawaran**: Menambahkan produk / paket ${catTitle} dengan foto menarik dan harga promo.
+3. 💳 **Metode Pembayaran (BoonTrack Reader / QRIS)**: Otomasi deteksi bukti pembayaran 24/7 tanpa perlu cek rekening manual.
+4. 🎨 **Halaman Penawaran (Landing Page)**: Buat halaman penawaran yang meyakinkan pembeli dalam hitungan menit.
+
+Kira-kira kita mulai dari mana dulu? Apakah Anda sudah menyiapkan nama produk atau foto katalognya?`;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('open-boonpilot', {
+          detail: {
+            prompt: onboardingPrompt,
+            initialAssistantMessage: onboardingGuideMessage,
+          },
+        })
+      );
+    }
+  };
+
   const handleOpenSalesStrategy = () => {
     const prompt = `Halo BoonPilot, tolong berikan analisis dan saran strategi penjualan terbaik untuk toko saya (${activeStoreName}). Bantu rancang formula penawaran produk, promo menarik, dan copywriting closing yang efektif.`;
     const initialAssistantMessage = `Halo! Saya **BoonPilot AI Sales Strategist**. 🎯
@@ -451,7 +476,7 @@ Berikut adalah peta 10 menu & ekosistem utama toko Anda:
 4. 🎨 **Tampilan & Tema**: 3 opsi gaya etalase depan (Katalog Standar, Microsite Bio-link ala Linktree modern, dan Personal Brand).
 5. 🧠 **AI Knowledge & Bot**: Pusat latihan otak bot toko (FAQ, SOP retur, knowledge produk, gaya bicara CS).
 6. 💬 **WhatsApp & Broadcast**: Dual-gateway WhatsApp (Direct Gateway vs Official Meta Centang Biru) serta Telegram Sales Bot di grup jualan.
-7. 📥 **BoonTrack Inbox**: Fitur balas pesan keroyokan oleh tim CS dan otomasi penembakan sinyal purchase event ke media iklan.
+7. 📥 **Smart Chatbox**: Fitur balas pesan keroyokan oleh tim CS dan otomasi penembakan sinyal purchase event ke media iklan.
 8. 🎯 **Ads Tracking Pro**: Pelacak presisi multi-channel (Facebook CAPI, TikTok Pixel, Google Ads) lengkap dengan opsi dipandu step-by-step.
 9. 💰 **Laporan Keuangan**: Rekap pembukuan otomatis yang eksklusif mencatat transaksi berstatus PAID (lunas).
 10. 📝 **Daftar Pesanan Toko**: Mekanisme mutasi instan QRIS (otomatis berstatus PAID dalam 5-15 detik) vs penanganan status UNPAID beserta pesan follow-up otomatis.
@@ -571,15 +596,68 @@ Di luar sana, jika Anda berlangganan terpisah untuk tools website katalog, Whats
                 </div>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={handleOpenBoonPilotOnboarding}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:via-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-indigo-600/30 border border-indigo-400/40 hover:border-indigo-300 transition-all duration-200 cursor-pointer active:scale-98 group"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300 group-hover:rotate-12 transition-transform" />
-                <span>✨ Tanya BoonPilot: Saya siap bantu &amp; tuntun Anda dari awal buka toko sampai live di BoonTrack Shop!</span>
-                <ArrowRight className="w-4 h-4 text-indigo-200 group-hover:translate-x-1 transition-transform" />
-              </button>
+              <div className="bg-white/10 backdrop-blur-md border border-indigo-400/30 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl shadow-indigo-950/40">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="p-1 rounded-lg bg-amber-400/20 text-amber-300 text-xs">🚀</span>
+                      <span className="text-xs font-black tracking-wider uppercase text-amber-300">
+                        BoonPilot AI Onboarding Fast-Track
+                      </span>
+                    </div>
+                    <h3 className="text-sm sm:text-base font-black text-white">
+                      Pilih Kategori Bisnis Anda (Setup Instan Tanpa Ketik)
+                    </h3>
+                    <p className="text-xs text-indigo-200/90 leading-relaxed">
+                      Pilih salah satu kategori bisnis di bawah untuk panduan setup otomatis yang disesuaikan dengan jenis produk toko Anda:
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenBoonPilotOnboarding}
+                    className="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black text-xs shadow-md shadow-indigo-700/40 border border-indigo-300/30 hover:border-indigo-200 transition-all active:scale-95 cursor-pointer group"
+                  >
+                    <Rocket className="w-3.5 h-3.5 text-amber-300 group-hover:rotate-12 transition-transform" />
+                    <span>[ 🚀 Mulai Setup Toko Bareng BoonPilot (2 Menit) ]</span>
+                  </button>
+                </div>
+
+                {/* Zero-Typing Business Category Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-1">
+                  {[
+                    { id: 'fnb', icon: '🍜', title: 'Kuliner & F&B', desc: 'Resto, Makanan, Minuman, Frozen Food, Katering' },
+                    { id: 'retail', icon: '📦', title: 'Produk Fisik & Ritel', desc: 'Fashion, Skincare, Gadget, Kerajinan, Ritel' },
+                    { id: 'digital', icon: '💻', title: 'Digital & E-Course', desc: 'Video Kelas, E-Book, Template, Software/Tools' },
+                    { id: 'consulting', icon: '🩺', title: 'Jasa & Konsultasi', desc: 'Klinik, Terapi Anak, Coaching, Jasa Profesional' },
+                    { id: 'service', icon: '🔧', title: 'Servis Lapangan', desc: 'Bengkel, Reparasi, Cuci AC, Jasa Panggilan' },
+                    { id: 'creator', icon: '🎨', title: 'Kreator & Event', desc: 'Tiket Seminar, Komunitas, Merchandise, Seni' },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => handleSelectBusinessCategoryOnboarding(cat.title, cat.desc)}
+                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 hover:border-indigo-300/50 text-left transition-all duration-200 group cursor-pointer flex flex-col justify-between h-full"
+                    >
+                      <div className="space-y-1">
+                        <span className="text-xl block group-hover:scale-110 transition-transform">
+                          {cat.icon}
+                        </span>
+                        <h4 className="text-xs font-bold text-white group-hover:text-amber-200 transition-colors leading-tight">
+                          {cat.title}
+                        </h4>
+                        <p className="text-[10px] text-indigo-200/70 line-clamp-2 leading-snug">
+                          {cat.desc}
+                        </p>
+                      </div>
+                      <div className="mt-2 text-[10px] font-bold text-indigo-300 group-hover:text-white flex items-center gap-0.5">
+                        <span>Pilih</span>
+                        <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>

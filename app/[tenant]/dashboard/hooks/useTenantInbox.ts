@@ -565,8 +565,25 @@ export function useTenantInbox(tenantId?: string | null, tenantSlug?: string | n
     [replyText, activeConversation, effectiveTenantId, effectiveTenantSlug, fetchMessages, fetchConversations]
   );
 
+  const updateConversationContactName = useCallback((conversationId: string, newName: string) => {
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === conversationId) {
+          return {
+            ...c,
+            customerName: newName,
+            avatarInitials: getInitials(newName),
+          };
+        }
+        return c;
+      })
+    );
+  }, []);
+
   return {
     conversations,
+    setConversations,
+    updateConversationContactName,
     activeConversationId,
     activeConversation,
     setActiveConversationId,

@@ -117,7 +117,7 @@ export default function DirectCsLoginModal({
               </span>
             </div>
             <p className="text-[11px] text-slate-500">
-              Masuk langsung ke Inbox Console toko <strong>{tenantSlug}</strong> tanpa verifikasi email.
+              Masuk langsung ke Smart Chatbox Console toko <strong>{tenantSlug}</strong> tanpa verifikasi email.
             </p>
           </div>
         </div>
