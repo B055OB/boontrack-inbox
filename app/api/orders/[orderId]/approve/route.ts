@@ -6,6 +6,7 @@ import { enqueueCAPIOutboxEvent, processCAPIOutboxQueue } from '@/lib/capi-outbo
 import { sendOrderCommissionAlert } from '@/lib/affiliate-notification-service';
 import { sendOrderFulfillmentEmails } from '@/lib/email-service';
 import { dispatchOrderTelegramAlert } from '@/lib/telegram/telegram-dispatcher';
+import { recordResellerCommissionOnCanonicalEvent } from '@/lib/store-reseller';
 
 export const dynamic = 'force-dynamic';
 
@@ -280,7 +281,7 @@ export async function POST(
       console.error('[Approve Order API] Fatal exception during email fulfillment dispatch:', emailErr);
     }
 
-    // 5. Transactional Outbox Pattern: Enqueue Adtech CAPI Purchase Event (Hapus Fire-and-Forget)
+    // 5. Transactional Outbox Pattern: Enqueue Adtech CAPI Purchase Event (Single Purchase Event)
     await enqueueCAPIOutboxEvent({
       orderId: String(orderId),
       tenantId: order.tenant_id || tenantSlug,
@@ -293,8 +294,41 @@ export async function POST(
         customer_phone: customerPhone,
         customer_email: order.customer_email,
         product_title: order.product_title,
+        ...(order.reseller_code ? {
+          reseller_code: order.reseller_code,
+          reseller_id: order.reseller_id,
+          reseller_attribution_id: order.reseller_attribution_id,
+        } : {}),
       },
     }, supabase);
+
+    // 5b. Reseller Commission Snapshot on PAYMENT_CONFIRMED (Canonical Financial Event)
+    const effectiveResellerCode = order.reseller_code || order.metadata?.reseller_code;
+    if (effectiveResellerCode && order.tenant_id) {
+      try {
+        const { data: resellerData } = await supabase
+          .from('store_resellers')
+          .select('id, commission_type, commission_value')
+          .eq('tenant_id', order.tenant_id)
+          .ilike('code', effectiveResellerCode)
+          .eq('status', 'ACTIVE')
+          .maybeSingle();
+
+        if (resellerData) {
+          await recordResellerCommissionOnCanonicalEvent({
+            tenantId: order.tenant_id,
+            orderId: String(orderId),
+            resellerId: resellerData.id,
+            commissionBase: Number(order.net_product_price || order.gross_amount || 0),
+            commissionType: resellerData.commission_type || 'PERCENTAGE',
+            commissionValue: Number(resellerData.commission_value || 0),
+            supabaseClient: supabase,
+          });
+        }
+      } catch (resellerErr) {
+        console.warn('[Approve Order API] Reseller commission calculation note:', resellerErr);
+      }
+    }
 
     // Trigger durable background processing
     processCAPIOutboxQueue(5, supabase).catch((outboxErr) => {

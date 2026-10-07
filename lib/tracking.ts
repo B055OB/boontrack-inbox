@@ -13,6 +13,7 @@ export interface TrackingParams {
   ttclid?: string;
   ctwa_clid?: string;
   affiliate_code?: string;
+  reseller_code?: string;
 }
 
 // 1. Ekstraksi dan Penyimpanan Parameter URL (UTM & Click IDs Termasuk CTWA)
@@ -26,6 +27,17 @@ export function captureAffiliateReferral(): void {
     if (refCode) {
       try {
         localStorage.setItem("boontrack_affiliate_code", refCode.trim());
+      } catch {}
+    }
+
+    const resellerCode = urlParams.get("r") || urlParams.get("reseller");
+    if (resellerCode) {
+      try {
+        const clean = resellerCode.trim().replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase();
+        if (clean) {
+          localStorage.setItem("boontrack_reseller_code", clean);
+          sessionStorage.setItem("boontrack_reseller_code", clean);
+        }
       } catch {}
     }
 
@@ -73,6 +85,15 @@ export function getActiveAffiliateCode(): string | null {
   }
 }
 
+export function getActiveResellerCode(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return sessionStorage.getItem("boontrack_reseller_code") || localStorage.getItem("boontrack_reseller_code") || null;
+  } catch {
+    return null;
+  }
+}
+
 export function getTrackingParams(): TrackingParams {
   if (typeof window === "undefined") return {};
 
@@ -88,7 +109,8 @@ export function getTrackingParams(): TrackingParams {
     fbclid: getParam("fbclid"),
     ttclid: getParam("ttclid"),
     ctwa_clid: getParam("ctwa_clid") || (typeof window !== "undefined" ? sessionStorage.getItem("boontrack_ctwa_clid") || undefined : undefined),
-    affiliate_code: getActiveAffiliateCode() || undefined
+    affiliate_code: getActiveAffiliateCode() || undefined,
+    reseller_code: urlParams.get("r") || urlParams.get("reseller") || getActiveResellerCode() || undefined,
   };
 }
 
@@ -528,6 +550,7 @@ export function buildTrackedWhatsAppUrl(
     tracking.fbclid ? `fb:${tracking.fbclid}` : "",
     tracking.ttclid ? `tt:${tracking.ttclid}` : "",
     tracking.ctwa_clid ? `ctwa:${tracking.ctwa_clid}` : "",
+    tracking.reseller_code ? `res:${tracking.reseller_code}` : "",
     extraPayload?.productName ? `p:${extraPayload.productName.slice(0, 20)}` : ""
   ].filter(Boolean).join(";");
 

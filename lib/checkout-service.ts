@@ -65,6 +65,9 @@ export interface CreateOrderPayload {
   order_notes?: string;
   notes?: string;
   kitchen_notes?: string;
+  reseller_code?: string;
+  reseller_attribution_id?: string;
+  reseller_id?: string;
   items?: Array<{
     productId: string;
     productTitle: string;
@@ -259,6 +262,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     customer_email: payload.customerEmail || "",
     affiliate_code: payload.affiliateCode || null,
     manager_id: payload.managerId || null,
+    reseller_code: payload.reseller_code || null,
+    reseller_attribution_id: payload.reseller_attribution_id || null,
+    reseller_id: payload.reseller_id || null,
     utm_source: payload.tracking?.utm_source || null,
     utm_medium: payload.tracking?.utm_medium || null,
     utm_campaign: payload.tracking?.utm_campaign || null,
@@ -348,6 +354,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
     customer_email: payload.customerEmail || null,
     affiliate_code: payload.affiliateCode || null,
     manager_id: payload.managerId || null,
+    reseller_code: payload.reseller_code || null,
+    reseller_attribution_id: payload.reseller_attribution_id || null,
+    reseller_id: payload.reseller_id || null,
     utm_source: payload.tracking?.utm_source || null,
     utm_medium: payload.tracking?.utm_medium || null,
     utm_campaign: payload.tracking?.utm_campaign || null,
@@ -375,6 +384,9 @@ export async function createOrderAndInvoice(payload: CreateOrderPayload) {
       product_subtotal: unitPrice * orderQuantity,
       order_notes: payload.order_notes || payload.notes || payload.kitchen_notes || null,
       kitchen_notes: payload.kitchen_notes || payload.order_notes || null,
+      reseller_code: payload.reseller_code || undefined,
+      reseller_attribution_id: payload.reseller_attribution_id || undefined,
+      reseller_id: payload.reseller_id || undefined,
     },
     created_at: orderData.created_at,
     updated_at: orderData.created_at,

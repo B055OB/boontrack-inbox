@@ -60,6 +60,7 @@ import {
   formatIndonesianWhatsAppNumber
 } from '@/lib/tracking';
 import { createOrderAndInvoice } from '@/lib/checkout-service';
+import { captureStoreReseller, getActiveResellerCode } from '@/lib/store-reseller';
 import { 
   resolveSinglePageProduct, 
   SinglePageConfig, 
@@ -708,6 +709,7 @@ function SingleProductContent() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [affiliateCode, setAffiliateCode] = useState<string | undefined>(undefined);
+  const [resellerCode, setResellerCode] = useState<string | undefined>(undefined);
 
   // Resolusi Deterministik via Fulfillment Requirements (Boundary Strategy)
   const rawCategory = (product.category || '').toLowerCase();
@@ -1472,6 +1474,19 @@ function SingleProductContent() {
     } else {
       setAffiliateCode(undefined);
     }
+
+    // Resolusi Store Reseller (?r= atau ?reseller=) secara non-blocking
+    const resellerFromUrl = searchParams.get('r') || searchParams.get('reseller');
+    if (resellerFromUrl) {
+      const cleanReseller = resellerFromUrl.trim().replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase();
+      setResellerCode(cleanReseller || undefined);
+      captureStoreReseller(tenant, cleanReseller);
+    } else {
+      const savedReseller = getActiveResellerCode(tenant);
+      if (savedReseller) {
+        setResellerCode(savedReseller);
+      }
+    }
   }, [tenant, searchParams, slug, product.name, basePrice]);
 
   // 1. Pemicu browser event: InitiateCheckout saat halaman checkout terbuka / termuat
@@ -1717,6 +1732,7 @@ function SingleProductContent() {
         customerEmail: isDigitalPreset ? buyerEmail : (buyerEmail || undefined),
         reference_token: directRefToken,
         affiliateCode: undefined, // Murni direct store ke toko merchant
+        reseller_code: resellerCode || undefined,
         tracking: trackingParams,
         briefing_url: cleanBriefingUrl || undefined,
         customer_briefing: cleanBriefingUrl ? {
@@ -1858,6 +1874,7 @@ function SingleProductContent() {
         customerPhone: buyerPhone.trim(),
         customerEmail: isDigitalPreset ? buyerEmail.trim() : (buyerEmail.trim() || undefined),
         reference_token: refToken,
+        reseller_code: resellerCode || undefined,
         tracking: trackingParams,
         briefing_url: cleanBriefingUrl || undefined,
         customer_briefing: cleanBriefingUrl ? {
@@ -1935,6 +1952,7 @@ function SingleProductContent() {
           customerPhone: buyerPhone.trim(),
           customerEmail: buyerEmail.trim() || undefined,
           reference_token: refToken,
+          reseller_code: resellerCode || undefined,
           tracking: getTrackingData(),
           briefing_url: normalizeBriefingUrl(briefingUrl) || undefined,
           fulfillmentMetadata: {

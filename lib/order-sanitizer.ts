@@ -45,6 +45,9 @@ export const VALID_ORDER_COLUMNS = new Set<string>([
   'order_number',
   'download_url',
   'fulfillment_metadata',
+  'reseller_attribution_id',
+  'reseller_id',
+  'reseller_code',
   'created_at',
   'updated_at',
 ]);

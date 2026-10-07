@@ -737,6 +737,7 @@ export default function CheckoutModal({ isOpen, onClose, tenantSlug, product, ch
           ? (foodDiningOption === 'INSTANT' ? shippingCost : 0)
           : (isPhysical && !isPickup ? shippingCost : 0),
         affiliateCode: undefined, // Murni direct store ke toko merchant
+        reseller_code: (typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('r') || new URLSearchParams(window.location.search).get('reseller') || '').trim().toUpperCase() : '') || (trackingWithSlot as any)?.reseller_code || undefined,
         tracking: trackingWithSlot,
         tracking_context: clientTrackingContext,
         productType: resolvedProductType,
