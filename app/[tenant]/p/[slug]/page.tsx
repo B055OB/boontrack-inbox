@@ -504,7 +504,7 @@ function SingleProductContent() {
               whatsapp_cta_number: cfg.whatsapp_cta_number || match?.metadata?.whatsapp_cta_number || undefined,
               checkout_action_mode: cfg.checkout_action_mode || match?.metadata?.checkout_action_mode || (match?.fulfillment_metadata?.single_page_config?.checkout_action_mode) || 'DIRECT',
               whatsapp_custom_message: cfg.whatsapp_custom_message || match?.metadata?.whatsapp_custom_message || (match?.fulfillment_metadata?.single_page_config?.whatsapp_custom_message) || '',
-              gallery_images: cfg.gallery_images || (match?.fulfillment_metadata?.single_page_config?.gallery_images) || (cfg.testimonial_images && cfg.testimonial_images.length > 0 ? cfg.testimonial_images.map((im: string, i: number) => ({ url: im, title: `Bukti & Testimoni ${i + 1}`, category: 'Bukti Chat & Testimoni' })) : []),
+              gallery_images: cfg.gallery_images || (match?.fulfillment_metadata?.single_page_config?.gallery_images) || [],
               intake_form_config: cfg.intake_form_config || (match?.fulfillment_metadata?.single_page_config?.intake_form_config) || undefined,
             };
 
@@ -796,7 +796,10 @@ function SingleProductContent() {
     rawCategory.includes('food') ||
     rawCategory.includes('kuliner') ||
     rawCategory.includes('makanan') ||
-    rawCategory.includes('minuman')
+    rawCategory.includes('minuman') ||
+    ['donat', 'kue', 'roti', 'snack', 'kuliner', 'food', 'fnb', 'makanan', 'minuman', 'catering', 'dapur', 'resto', 'bakery'].some(k =>
+      rawCategory.includes(k) || String(product.name || '').toLowerCase().includes(k)
+    )
   );
 
   const isDigitalPreset = Boolean(
@@ -1048,13 +1051,60 @@ function SingleProductContent() {
         lower.includes('kuota terbatas') ||
         lower.includes('seat kuota') ||
         lower.includes('sisa seat') ||
-        lower.includes('kuota hanya')
+        lower.includes('kuota hanya') ||
+        lower.includes('sisa kursi') ||
+        lower.includes('sisa box') ||
+        lower.includes('sisa pcs') ||
+        lower.includes('stok terbatas')
       ) {
         return false;
       }
       return true;
     });
   }, [product.variants]);
+
+  // Deteksi komprehensif F&B vs Fisik vs Jasa vs Digital untuk Scarcity Copywriting
+  const isFnbOrCulinary = Boolean(
+    isFoodPreset ||
+    isFnbProduct ||
+    ['donat', 'kue', 'roti', 'snack', 'kuliner', 'food', 'fnb', 'makanan', 'minuman', 'catering', 'dapur', 'resto', 'bakery'].some(k =>
+      rawCategory.includes(k) || String(product.name || '').toLowerCase().includes(k) || storeCat.includes(k)
+    )
+  );
+
+  const isPhysicalItem = Boolean(
+    productType === 'PHYSICAL' ||
+    product.product_type === 'PHYSICAL' ||
+    rawProductType === 'PHYSICAL' ||
+    isPhysicalPreset ||
+    isStorePhysical ||
+    isPhysicalCategory ||
+    requiresShipping
+  );
+
+  const scarcityUnitLabel = isFnbOrCulinary
+    ? (String(product.name || '').toLowerCase().includes('box') || rawCategory.includes('donat') || String(product.name || '').toLowerCase().includes('donat') || rawCategory.includes('kue') ? 'Box' : 'Pcs')
+    : isPhysicalItem
+    ? 'Pcs'
+    : (productType === 'SERVICE' || productType === 'PROFESSIONAL_SERVICE' || productType === 'FIELD_SERVICE' ? 'Sesi' : 'Kursi');
+
+  const scarcityHeaderLabel = isFnbOrCulinary
+    ? `PERSEDIAAN TERBATAS: SISA ${product.stock} ${scarcityUnitLabel.toUpperCase()} SIAP SAJI`
+    : isPhysicalItem
+    ? `STOK TERBATAS: SISA ${product.stock} ${scarcityUnitLabel.toUpperCase()} SIAP KIRIM`
+    : (productType === 'SERVICE' || productType === 'PROFESSIONAL_SERVICE' || productType === 'FIELD_SERVICE')
+    ? `SLOT KONSULTASI: SISA ${product.stock} SESI`
+    : `BATCH INTENSIF: KUOTA HANYA ${product.stock} SEAT`;
+
+  const scarcityBadgeText = `Sisa ${product.stock} ${scarcityUnitLabel}`;
+
+  const scarcityFootnoteText = isFnbOrCulinary
+    ? `⚡ Pesanan kloter hari ini ditutup setelah stok ${product.stock} ${scarcityUnitLabel.toLowerCase()} habis.`
+    : isPhysicalItem
+    ? `⚡ Pengiriman kloter hari ini ditutup setelah stok ${product.stock} pcs habis terjual.`
+    : (productType === 'SERVICE' || productType === 'PROFESSIONAL_SERVICE' || productType === 'FIELD_SERVICE')
+    ? `⚡ Jadwal reservasi otomatis ditutup setelah ${product.stock} sesi terisi penuh.`
+    : `⚡ Pendaftaran otomatis ditutup setelah kuota ${product.stock} seat terpenuhi.`;
 
   // Resolusi Scarcity / Kuota Badge Dedikasi dari Metadata Produk atau SinglePageConfig
   const scarcityBadge = useMemo(() => {
@@ -1064,16 +1114,28 @@ function SingleProductContent() {
       (product as any)?.scarcity_badge ||
       (product?.fulfillment_metadata as any)?.scarcity_badge;
 
+    const sanitizeScarcityText = (txt: string) => {
+      let result = txt;
+      if (isFnbOrCulinary) {
+        result = result.replace(/\b(seat|kursi)\b/gi, scarcityUnitLabel);
+        result = result.replace(/batch intensif/gi, 'Persediaan Terbatas');
+      } else if (isPhysicalItem) {
+        result = result.replace(/\b(seat|kursi)\b/gi, 'Pcs');
+        result = result.replace(/batch intensif/gi, 'Stok Terbatas');
+      }
+      return result;
+    };
+
     if (raw) {
       if (typeof raw === 'string') {
         const trimmed = raw.trim();
-        return trimmed ? { enabled: true, text: trimmed } : null;
+        return trimmed ? { enabled: true, text: sanitizeScarcityText(trimmed) } : null;
       }
       if (typeof raw === 'object' && raw !== null) {
         if (raw.enabled === false) return null;
         const text = String(raw.text || '').trim();
         if (!text) return null;
-        return { enabled: true, text };
+        return { enabled: true, text: sanitizeScarcityText(text) };
       }
     }
 
@@ -1086,17 +1148,22 @@ function SingleProductContent() {
           l.includes('kuota terbatas') ||
           l.includes('seat kuota') ||
           l.includes('sisa seat') ||
-          l.includes('kuota hanya')
+          l.includes('kuota hanya') ||
+          l.includes('sisa kursi') ||
+          l.includes('sisa box') ||
+          l.includes('sisa pcs') ||
+          l.includes('stok terbatas')
         );
       });
       if (scarcityPart) {
-        const cleanText = scarcityPart.startsWith('🔥') ? scarcityPart : `🔥 ${scarcityPart}`;
+        let cleanText = scarcityPart.startsWith('🔥') ? scarcityPart : `🔥 ${scarcityPart}`;
+        cleanText = sanitizeScarcityText(cleanText);
         return { enabled: true, text: cleanText };
       }
     }
 
     return null;
-  }, [product.metadata, config, product]);
+  }, [product.metadata, config, product, isFnbOrCulinary, isPhysicalItem, scarcityUnitLabel]);
 
   const [selectedVariant, setSelectedVariant] = useState<string>('');
 
@@ -3897,20 +3964,16 @@ function SingleProductContent() {
                 {config.subheadline || product.description}
               </p>
 
-              {/* Visual Indikator Kuota Peserta (Khusus Batch / Kuota Terbatas) */}
+              {/* Visual Indikator Kuota Peserta / Stok Terbatas */}
               {(!product.is_unlimited && product.stock > 0 && product.stock <= 100) && (
                 <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl space-y-2 my-2">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5 font-bold text-amber-950">
                       <Flame className="w-4 h-4 text-amber-600 animate-bounce" />
-                      <span>
-                        {isFoodPreset
-                          ? `PERSEDIAAN TERBATAS: SISA ${product.stock} PORSI SIAP SAJI`
-                          : `BATCH INTENSIF: KUOTA HANYA ${product.stock} SEAT`}
-                      </span>
+                      <span>{scarcityHeaderLabel}</span>
                     </div>
                     <span className="font-extrabold text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-full border border-amber-300 text-[11px]">
-                      {isFoodPreset ? `Sisa ${product.stock} Porsi` : `Sisa ${product.stock} Kursi`}
+                      {scarcityBadgeText}
                     </span>
                   </div>
                   <div className="w-full bg-slate-200/80 rounded-full h-2.5 overflow-hidden">
@@ -3920,11 +3983,7 @@ function SingleProductContent() {
                     />
                   </div>
                   <p className="text-[10px] text-amber-800 font-medium flex items-center justify-between">
-                    <span>
-                      {isFoodPreset
-                        ? `⚡ Pesanan ditutup hari ini jika kuota ${product.stock} porsi habis terjual.`
-                        : `⚡ Pendaftaran otomatis ditutup setelah kuota ${product.stock} seat terpenuhi.`}
-                    </span>
+                    <span>{scarcityFootnoteText}</span>
                     <span className="font-bold text-rose-600">Sisa Sedikit</span>
                   </p>
                 </div>
@@ -3991,8 +4050,8 @@ function SingleProductContent() {
           </section>
         )}
 
-        {/* 1.5 Interactive Product Media Showcase (Silabus, Infografis Gizi/Stimulasi & Lightbox Zoom) */}
-        {config.gallery_images && config.gallery_images.length > 0 && (
+        {/* 1.5 Interactive Product Media Showcase (Khusus Silabus / Preview Materi Produk Digital & E-Course) */}
+        {!isFnbOrCulinary && !isPhysicalItem && isDigitalPreset && config.gallery_images && config.gallery_images.length > 0 && (
           <ProductMediaShowcase
             images={config.gallery_images}
             productName={product.name}

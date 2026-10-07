@@ -22,12 +22,16 @@ export interface MediaItem {
 interface ProductMediaShowcaseProps {
   images?: MediaItem[] | string[];
   productName?: string;
+  title?: string;
+  subtitle?: string;
   className?: string;
 }
 
 export default function ProductMediaShowcase({
   images = [],
   productName = 'Produk',
+  title,
+  subtitle,
   className = '',
 }: ProductMediaShowcaseProps) {
   // Normalize items
@@ -116,10 +120,10 @@ export default function ProductMediaShowcase({
         <div>
           <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-blue-600 mb-1">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Dokumentasi Materi & Bukti Nyata</span>
+            <span>{title || 'Dokumentasi Materi & Preview Modul'}</span>
           </div>
           <h2 className="text-base sm:text-lg font-black text-slate-900 leading-snug">
-            Galeri Silabus, Infografis Gizi, & Bukti Chat Bunda
+            {subtitle || (productName ? `Galeri Silabus & Preview ${productName}` : 'Galeri Silabus & Preview Modul')}
           </h2>
         </div>
         <div className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-3 py-1 rounded-full self-start sm:self-auto shadow-2xs">
