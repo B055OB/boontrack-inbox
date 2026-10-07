@@ -133,13 +133,34 @@ export async function generateMetadata({
       metaObj.tagline ||
       `Selamat datang di toko resmi ${storeName}. Pemesanan online praktis, konfirmasi instan via WhatsApp, dan pembayaran aman terverifikasi.`;
 
+    // ── Resolusi Domain Kanonikal (Custom Domain vs Subpath shop.boontrack.com) ──
+    const customDomain =
+      metaObj.custom_domain ||
+      (Array.isArray(metaObj.custom_domains) ? metaObj.custom_domains[0] : null) ||
+      (cleanTenant === 'tumbuh-kembang-anak' ? 'konsul.littlebitefeeding.com' : null);
+
+    const canonicalBaseUrl = customDomain
+      ? `https://${customDomain}`
+      : 'https://shop.boontrack.com';
+
+    const canonicalUrl = customDomain
+      ? `https://${customDomain}`
+      : `https://shop.boontrack.com/${cleanTenant}`;
+
     // =========================================================================
     // HIERARKI GAMBAR OPENGRAPH (og:image):
-    // 1. tenant.metadata.banner_url / cover_url
-    // 2. tenant.metadata.logo_url / store.logo_url
+    // 0. Dedicated OG image banner (metaObj.og_image / og_image_url) atau pilot banner
+    // 1. tenant.metadata.banner_url / cover_url / hero_image
+    // 2. tenant.metadata.logo_url / store.logo_url / store_logo_url / image
     // 3. Gambar produk pertama yang aktif
-    // 4. Fallback default branding resmi BoonTrack (bukan gambar demo)
+    // 4. Fallback default branding resmi BoonTrack 1200x630 (bukan gambar demo)
     // =========================================================================
+    const explicitOgImage =
+      metaObj.og_image ||
+      metaObj.og_image_url ||
+      metaObj.meta_image ||
+      (cleanTenant === 'tumbuh-kembang-anak' ? '/tenants/tumbuh-kembang-anak/og-image.png' : null);
+
     const bannerUrl =
       metaObj.banner_url ||
       metaObj.cover_url ||
@@ -149,6 +170,7 @@ export async function generateMetadata({
     const logoUrl =
       metaObj.logo_url ||
       store?.logo_url ||
+      metaObj.store_logo_url ||
       metaObj.image ||
       null;
 
@@ -164,13 +186,28 @@ export async function generateMetadata({
       }
     }
 
-    const BOONTRACK_OFFICIAL_LOGO = 'https://shop.boontrack.com/logo-master.png';
+    const BOONTRACK_OFFICIAL_OG = 'https://shop.boontrack.com/og-shop.png';
 
-    const resolvedOgImage =
+    const rawOgImage =
+      explicitOgImage ||
       bannerUrl ||
       logoUrl ||
       firstProductImage ||
-      BOONTRACK_OFFICIAL_LOGO;
+      BOONTRACK_OFFICIAL_OG;
+
+    // Normalisasi URL gambar ke Absolute URL kanonikal yang valid untuk bot crawler WhatsApp / Facebook
+    let resolvedOgImage = rawOgImage;
+    if (resolvedOgImage.startsWith('/')) {
+      resolvedOgImage = `${canonicalBaseUrl}${resolvedOgImage}`;
+    }
+
+    // Ekstraksi MIME type yang tepat untuk WhatsApp link preview
+    const cleanImageExt = resolvedOgImage.split('?')[0].toLowerCase();
+    const imageMimeType = cleanImageExt.endsWith('.jpg') || cleanImageExt.endsWith('.jpeg')
+      ? 'image/jpeg'
+      : cleanImageExt.endsWith('.webp')
+        ? 'image/webp'
+        : 'image/png';
 
     // Favicon dinamis per-tenant sesuai logo toko atau default shopping cart khas storefront
     const resolvedFavicon = logoUrl || '/shopping-cart.svg';
@@ -182,8 +219,11 @@ export async function generateMetadata({
       cleanTenant === 'margasari' ||
       cleanTenant === 'kelurahan-margasari';
 
+    const pageTitle = `${storeName} | ${isPublicService ? 'Portal Resmi' : 'Layanan Resmi'}`;
+
     return {
-      title: `${storeName} | ${isPublicService ? 'Portal Resmi' : 'Toko Resmi'}`,
+      metadataBase: new URL(canonicalBaseUrl),
+      title: pageTitle,
       description,
       icons: {
         icon: [
@@ -198,16 +238,17 @@ export async function generateMetadata({
       openGraph: {
         title: storeName,
         description,
-        url: `https://shop.boontrack.com/${cleanTenant}`,
+        url: canonicalUrl,
         siteName: storeName,
         locale: 'id_ID',
         type: 'website',
         images: [
           {
             url: resolvedOgImage,
-            width: 800,
-            height: 600,
-            alt: storeName,
+            width: 1200,
+            height: 630,
+            type: imageMimeType,
+            alt: `${storeName} - ${metaObj.tagline || 'Konsultasi & Layanan Resmi'}`,
           },
         ],
       },
