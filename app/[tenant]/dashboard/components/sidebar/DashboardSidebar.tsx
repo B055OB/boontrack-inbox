@@ -34,6 +34,7 @@ import {
   FolderKey,
   Share2,
   Settings,
+  Users,
 } from 'lucide-react';
 import { getSupabase } from '@/lib/supabaseClient';
 import { resolveDomainVertical, DomainVerticalKey } from '@/app/[tenant]/dashboard/components/modules';
@@ -332,6 +333,7 @@ export default function DashboardSidebar({
     if (tab === 'booking' && activeTab === 'booking') return true;
     if (tab === 'downloads' && activeTab === 'downloads') return true;
     if (tab === 'campaigns' && activeTab === 'campaigns') return true;
+    if (tab === 'reseller' && activeTab === 'reseller') return true;
     return false;
   };
 
@@ -1157,6 +1159,30 @@ export default function DashboardSidebar({
                       <Lock className="w-2.5 h-2.5" /> PRO
                     </span>
                   ) : null}
+                </button>
+
+                {/* Mitra Reseller Toko */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTab('reseller')}
+                  className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition cursor-pointer ${
+                    activeTab === 'reseller' || isPowerTabActive('reseller')
+                      ? 'bg-indigo-50/80 text-indigo-900 font-semibold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium'
+                  }`}
+                >
+                  {(activeTab === 'reseller' || isPowerTabActive('reseller')) && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-indigo-600 rounded-r" />
+                  )}
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 bg-emerald-50 text-emerald-600">
+                      <Users className="w-4 h-4" />
+                    </div>
+                    <span className="truncate">Mitra Reseller</span>
+                  </div>
+                  <span className="rounded-full px-1.5 py-0.2 text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    BARU
+                  </span>
                 </button>
               </div>
             </div>

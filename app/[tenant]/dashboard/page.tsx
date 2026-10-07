@@ -56,6 +56,7 @@ import UpsellModal from './components/modals/UpsellModal';
 import UpgradePaymentModal from './components/modals/UpgradePaymentModal';
 import OrdersTab from './components/tabs/OrdersTab';
 import CustomerDatabaseTab from './components/tabs/CustomerDatabaseTab';
+import ResellerTab from './components/tabs/ResellerTab';
 import {
   ModularVerticalTabDispatcher,
   FnbInstantCourier,
@@ -1243,6 +1244,11 @@ export default function TenantDashboardPage() {
       {/* TAB: MANAJEMEN KAMPANYE & UGC (CREATOR AGENCY) */}
       {activeTab === 'campaigns' && (
         <CreatorAgencyCampaignTab tenantSlug={tenantSlug} />
+      )}
+
+      {/* TAB: MITRA RESELLER & KOMISI (STORE RESELLER SYSTEM) */}
+      {activeTab === 'reseller' && (
+        <ResellerTab tenantSlug={tenantSlug} tenantData={tenantData} />
       )}
 
             {/* MOBILE LIVE PHONE PREVIEW (< lg, smartphone) */}

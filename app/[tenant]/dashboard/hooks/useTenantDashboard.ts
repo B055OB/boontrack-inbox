@@ -56,6 +56,7 @@ export type DashboardTab =
   | 'telegram_alerts'
   | 'crm'
   | 'customers'
+  | 'reseller'
   | 'settings';
 
 export interface ConversationMessage {
@@ -1222,8 +1223,8 @@ export function useTenantDashboard() {
         else if (tabParam === 'telegram' || tabParam === 'alerts' || tabParam === 'telegram_alerts') {
           setActiveTab('telegram_alerts');
         }
-        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'shipping', 'booking', 'downloads', 'campaigns', 'broadcast', 'whatsapp', 'auto_reply', 'rotator', 'microsite', 'themes', 'customers', 'crm', 'settings'].includes(tabParam)) {
-          setActiveTab(tabParam === 'biteship' ? 'shipping' : tabParam === 'crm' ? 'customers' : tabParam as DashboardTab);
+        else if (['inbox', 'ai_knowledge', 'ads_tracking', 'biteship', 'shipping', 'booking', 'downloads', 'campaigns', 'broadcast', 'whatsapp', 'auto_reply', 'rotator', 'microsite', 'themes', 'customers', 'crm', 'reseller', 'mitra', 'settings'].includes(tabParam)) {
+          setActiveTab(tabParam === 'biteship' ? 'shipping' : tabParam === 'crm' ? 'customers' : tabParam === 'mitra' ? 'reseller' : tabParam as DashboardTab);
         }
       }
     }
