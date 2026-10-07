@@ -4356,4 +4356,45 @@ When a merchant's plan expires:
 2. **Asterisk-Free URLs**: Markdown asterisks wrapping URLs (`*https://...*`) are strictly eliminated across both LLM generation and fallback templates via regex sanitizer:
    `cleanReply = cleanReply.replace(/\*(\s*https?:\/\/[^\s*]+)\*/g, '$1');`
 
+---
+
+## 50. Cloudflare for SaaS, Custom Hostnames & White-Glove Domain Routing (ADR 2026-10-07)
+
+> **Architectural Status**: 🔒 **PRODUCTION CONTRACT & MULTI-ORIGIN SAAS INVARIANT**  
+> **Core Principle**: *"Cloudflare for SaaS delegates transport & TLS; Tenant Resolver dynamically dispatches origin & presentation."*
+
+### 50.1 Cloudflare for SaaS & Error 1014 Mitigation
+1. **Mitigasi CNAME Cross-User Banned (Error 1014)**:
+   - Ketika domain klien (contoh: `littlebitefeeding.com` / `konsul.littlebitefeeding.com`) sama-sama dikelola di Cloudflare zona lain, pembuatan CNAME langsung ke `shop.boontrack.com` akan diblokir oleh sistem Cloudflare dengan Error 1014.
+   - **Solusi Standar**: Wajib didaftarkan melalui fitur **Cloudflare for SaaS (Custom Hostnames)** pada zona utama `boontrack.com`.
+2. **Protokol Validasi Sertifikat SSL (DCV)**:
+   - Klien menambahkan record verifikasi:
+     - **Type**: `TXT`
+     - **Name**: `_acme-challenge.[subdomain]`
+     - **Value**: Token acak yang diterbitkan oleh Certificate Authority Cloudflare (misal: SSL.com / Let's Encrypt).
+   - **DCV Delegation (Opsional / Enterprise)**:
+     - Klien mengarahkan CNAME `_acme-challenge.[subdomain]` ke target delegasi platform (`[hash].dcv.cloudflare.com`) untuk mendukung perpanjangan otomatis (*zero-touch auto-renewal*) tanpa perlu memasukkan token TXT baru di masa mendatang.
+
+---
+
+### 50.2 Origin Server Routing Contract: `shop` vs `app` vs `creator`
+Platform memisahkan secara tegas target origin di tingkat Cloudflare Custom Hostnames sesuai peruntukan domain tenant:
+
+| Kategori Domain Klien | Target CNAME Klien | Origin Server di Cloudflare Custom Hostnames | Karakteristik Vertikal & Layanan |
+| :--- | :--- | :--- | :--- |
+| **Storefront & Booking Publik** (contoh: `konsul.littlebitefeeding.com`) | `shop.boontrack.com` | `Default` (`shop.boontrack.com`) | Katalog layanan/produk, form intake ringan, checkout instan QRIS/Transfer, dan single-page booking pasien/pembeli. |
+| **Custom App & Civic Portal** (contoh: `layanan.margasari.id`, `gate.atmosfitnes.com`) | `app.boontrack.com` | `app.boontrack.com` (Override Origin) | Dashboard operasional custom, integrasi IoT/Gate RFID, agregasi kanal aduan publik (Citizen 360), multi-operator desk. |
+| **Creator UGC & Rate Card** (contoh: `creator.namakreator.id`) | `creator.boontrack.com` | `creator.boontrack.com` (Override Origin) | Showcase portofolio kreator, rate card kampanye endorse, intake brief brand. *(Status: Standby / Pre-start)*. |
+
+---
+
+### 50.3 White-Glove Onboarding Mandate (Prinsip "Terima Beres")
+1. **Sisi Klien (Low-Friction)**:
+   - Klien instansi, dinas, atau pemilik bisnis vertikal hanya diinstruksikan membuat 1 record CNAME ke target origin yang ditentukan (`shop.boontrack.com` atau `app.boontrack.com`).
+2. **Sisi Platform (Backend Engineering)**:
+   - Tim platform melakukan binding hostname di Cloudflare Custom Hostnames secara manual/API.
+   - Konfigurasi tenant di Supabase (`tenants.custom_domain` & `tenants.template_code`) dipetakan langsung oleh tim teknis.
+   - Integrasi WhatsApp (Evolution API / WABA) dan webhook routing dikonfigurasi penuh dari sisi backend tanpa membebani klien dengan setup token atau API keys.
+
+
 
