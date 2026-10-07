@@ -13,6 +13,7 @@ import {
   TransactionItem,
   slugify,
   resolveFulfillmentRequirements,
+  mapToDbProductType,
 } from '@/lib/product-catalog';
 import { mapBusinessCategoryToProductType } from '../components/ProductFormModal';
 import { getSupabase, isValidUuid } from '@/lib/supabaseClient';
@@ -1775,7 +1776,7 @@ export function useTenantDashboard() {
               is_unlimited_stock: fullProductItem.is_unlimited ?? true,
               asset_reference: `product:${finalSlug}`,
               license_status: 'UNVERIFIED',
-              product_type: fullProductItem.product_type || (isPhysicalStock ? 'PHYSICAL' : 'DIGITAL_FILE'),
+              product_type: mapToDbProductType(fullProductItem.product_type, fullProductItem.category),
               sku: fullProductItem.sku || `SKU-${finalSlug}`,
               is_active: isTargetActive,
               requires_shipping: Boolean(fullProductItem.requires_shipping),
@@ -1805,11 +1806,15 @@ export function useTenantDashboard() {
 
     // 2. Sync via API Route Gateway (forward ke core backend)
     try {
-      await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
+      const res = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantSlug)}/products`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(fullProductItem),
       });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        console.warn('[Dashboard] Gagal sync produk ke API route:', errJson);
+      }
     } catch (err) {
       console.warn('Gagal sync produk ke API route:', err);
     }

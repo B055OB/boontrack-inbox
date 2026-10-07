@@ -264,6 +264,44 @@ export function resolveFulfillmentRequirements(productType?: ProductType | strin
   }
 }
 
+export type DbProductType = 'DIGITAL_FILE' | 'PHYSICAL' | 'SERVICE' | 'FOOD' | 'URL_LINK' | 'BOOKING';
+
+/**
+ * Maps arbitrary product_type / category strings into strictly valid Postgres product_type_enum values:
+ * 'DIGITAL_FILE' | 'PHYSICAL' | 'SERVICE' | 'FOOD' | 'URL_LINK' | 'BOOKING'
+ */
+export function mapToDbProductType(rawProductType?: string, category?: string): DbProductType {
+  const normType = String(rawProductType || '').toUpperCase().trim();
+  const normCat = String(category || '').toLowerCase().trim();
+
+  if (normType === 'PHYSICAL' || normCat === 'fisik' || normCat === 'physical' || normCat === 'retail') {
+    return 'PHYSICAL';
+  }
+  if (normType === 'FOOD' || normCat === 'food' || normCat === 'fnb' || normCat === 'kuliner') {
+    return 'FOOD';
+  }
+  if (
+    normType === 'SERVICE' ||
+    normType === 'FIELD_SERVICE' ||
+    normType === 'LOCAL_SERVICE' ||
+    normType === 'PROFESSIONAL_SERVICE' ||
+    normType === 'AGENCY' ||
+    normType === 'CREATOR' ||
+    normCat === 'jasa' ||
+    normCat === 'service' ||
+    normCat === 'konsultasi'
+  ) {
+    return 'SERVICE';
+  }
+  if (normType === 'BOOKING') {
+    return 'BOOKING';
+  }
+  if (normType === 'URL_LINK') {
+    return 'URL_LINK';
+  }
+  return 'DIGITAL_FILE';
+}
+
 export interface ProductItem {
   id: number | string;
   name: string;

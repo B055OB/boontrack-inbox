@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabase } from './supabaseClient';
+import { getSupabase, getSupabaseAdmin } from './supabaseClient';
 import { normalizeTenantSlug } from './tenant-config';
 
 export const SUBSCRIPTION_MUTATION_RESTRICTED_PAYLOAD = {
@@ -39,7 +39,7 @@ export async function checkTenantMutationPermission(
   }
 
   try {
-    const supabase = getSupabase();
+    const supabase = getSupabaseAdmin() || getSupabase();
     if (!supabase) {
       return { allowed: true };
     }
@@ -66,7 +66,7 @@ export async function checkTenantMutationPermission(
       tStatus === 'pending_payment' ||
       metaSubStatus === 'pending_payment' ||
       meta.is_pending_payment === true ||
-      (!isActive && (tStatus === 'pending' || tStatus === 'unverified') && meta.plan_tier !== 'PRO_SCALE' && meta.tier !== 'PRO_SCALE')
+      (!isActive && (tStatus === 'pending' || tStatus === 'unverified') && meta.plan_tier !== 'PRO_SCALE' && meta.tier !== 'PRO_SCALE' && !meta.is_trial)
     );
 
     if (isPendingPayment) {

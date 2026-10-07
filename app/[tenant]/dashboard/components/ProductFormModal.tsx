@@ -565,16 +565,61 @@ export default function ProductFormModal({
     const isPhysical = currentPt === 'PHYSICAL';
     const isAffiliate = productForm.checkout_type === 'external';
 
+    // Sanitize order bump items gracefully: only keep items with non-empty name
+    const validBumpItems = (orderBumpItems || [])
+      .map((b) => ({
+        ...b,
+        name: (b.name || '').trim(),
+        price: Number(b.price) || 0,
+        original_price: b.original_price !== undefined && b.original_price !== null && String(b.original_price) !== '' ? Number(b.original_price) : undefined,
+        badge_text: (b.badge_text || '').trim() || 'Penawaran Spesial',
+        description: (b.description || '').trim(),
+        is_active: b.is_active !== false,
+      }))
+      .filter((b) => b.name.length > 0);
+
+    const cleanOrderBumps: OrderBumpConfig = {
+      enabled: orderBumpsEnabled && validBumpItems.length > 0,
+      items: validBumpItems,
+    };
+
+    // Sanitize facilities & features as clean array
+    const resolvedFacilities = Array.isArray(productForm.facilities)
+      ? productForm.facilities.map((s) => String(s).trim()).filter(Boolean)
+      : typeof productForm.facilities === 'string'
+      ? (productForm.facilities as string).split('\n').map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    const resolvedFeatures = Array.isArray(productForm.features)
+      ? productForm.features.map((s) => String(s).trim()).filter(Boolean)
+      : typeof productForm.features === 'string'
+      ? (productForm.features as string).split('\n').map((s) => s.trim()).filter(Boolean)
+      : resolvedFacilities;
+
     const cleanForm: ProductItem = {
       ...productForm,
+      price: typeof productForm.price === 'number' ? productForm.price : (Number(productForm.price) || 0),
+      promo_price: productForm.promo_price ? Number(productForm.promo_price) : undefined,
       is_unlimited: !isPhysical ? true : (productForm.is_unlimited ?? false),
       stock: !isPhysical ? 999999 : (productForm.stock ?? 100),
       weight_grams: isPhysical && !isAffiliate ? Number(productForm.weight_grams || 1000) : 0,
       requires_shipping: isPhysical && !isAffiliate,
       enable_cart: isCartEnabled,
+      facilities: resolvedFacilities,
+      features: resolvedFeatures,
+      order_bumps: cleanOrderBumps,
+      fulfillment_metadata: {
+        ...(productForm.fulfillment_metadata || {}),
+        order_bumps: cleanOrderBumps,
+        delivery_type: productForm.fulfillment_metadata?.delivery_type || (isPhysical ? 'PHYSICAL' : 'DOWNLOAD_LINK'),
+        access_url: productForm.download_url || productForm.fulfillment_metadata?.access_url || '',
+      },
       metadata: {
         ...(productForm.metadata || {}),
         enable_cart: isCartEnabled,
+        order_bumps: cleanOrderBumps,
+        facilities: resolvedFacilities,
+        features: resolvedFeatures,
       },
     };
 
@@ -1097,7 +1142,6 @@ export default function ProductFormModal({
                         </label>
                         <input
                           type="text"
-                          required={voucherEnabled}
                           value={voucherForm.code}
                           onChange={(e) => {
                             const code = e.target.value.toUpperCase().replace(/\s+/g, '');
@@ -1423,7 +1467,6 @@ export default function ProductFormModal({
                       </label>
                       <input
                         type="text"
-                        required={orderBumpsEnabled}
                         value={bump.name}
                         onChange={(e) => handleUpdateBumpItem(index, { name: e.target.value })}
                         placeholder="Contoh: Checklist & Template Copywriting Siap Pakai"
@@ -1453,7 +1496,6 @@ export default function ProductFormModal({
                         <input
                           type="number"
                           min="0"
-                          required={orderBumpsEnabled}
                           value={bump.price !== undefined && bump.price !== null ? bump.price : ''}
                           onChange={(e) => handleUpdateBumpItem(index, { price: Number(e.target.value) })}
                           placeholder="Bayar (mis: 49000)"

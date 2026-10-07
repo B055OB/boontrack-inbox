@@ -1,10 +1,10 @@
 import { checkTenantMutationPermission } from '@/lib/subscription-guard';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getSupabase } from '@/lib/supabaseClient';
+import { getSupabase, getSupabaseAdmin } from '@/lib/supabaseClient';
 import { normalizeTenantSlug } from '@/lib/tenant-config';
 import { getBackendApiUrl } from '@/lib/api-config';
-import { slugify } from '@/lib/product-catalog';
+import { slugify, mapToDbProductType, DbProductType } from '@/lib/product-catalog';
 
 export interface ProductItem {
   id: string | number;
@@ -64,25 +64,77 @@ export async function POST(
       type,
     } = body;
 
-    if (!name || price === undefined || isNaN(Number(price))) {
+    const trimmedName = String(name || '').trim();
+    if (!trimmedName) {
       return NextResponse.json(
-        { success: false, error: 'Nama produk dan harga wajib diisi.' },
+        { success: false, error: 'Nama produk wajib diisi.' },
         { status: 400 }
       );
     }
 
+    const rawPrice = price !== undefined ? price : body.price;
+    let sanitizedPrice: number = 0;
+    if (typeof rawPrice === 'number') {
+      sanitizedPrice = isNaN(rawPrice) ? 0 : rawPrice;
+    } else if (typeof rawPrice === 'string') {
+      const num = parseFloat(rawPrice.replace(/[^0-9.-]+/g, ''));
+      sanitizedPrice = isNaN(num) ? 0 : num;
+    }
+
+    let sanitizedPromoPrice: number | undefined = undefined;
+    if (promo_price !== undefined && promo_price !== null && String(promo_price) !== '') {
+      const pNum = typeof promo_price === 'number' ? promo_price : parseFloat(String(promo_price).replace(/[^0-9.-]+/g, ''));
+      if (!isNaN(pNum) && pNum > 0) sanitizedPromoPrice = pNum;
+    }
+
     const productId = id || `prod-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const finalSlug = body.slug ? slugify(body.slug) : slugify(name);
+    const finalSlug = body.slug ? slugify(body.slug) : slugify(trimmedName);
     const resolvedCategory = body.category || category || (body.product_type === 'PHYSICAL' ? 'Fisik' : (body.product_type === 'SERVICE' ? 'Jasa' : 'Digital'));
+
+    // Graceful sanitization of order_bumps so empty/malformed bump entries never crash save
+    const rawBumps = body.order_bumps || body.metadata?.order_bumps || body.fulfillment_metadata?.order_bumps;
+    let cleanOrderBumps: any = undefined;
+    if (rawBumps) {
+      if (Array.isArray(rawBumps)) {
+        const validItems = rawBumps.filter((b: any) => b && typeof b === 'object' && b.name && String(b.name).trim().length > 0);
+        cleanOrderBumps = {
+          enabled: validItems.length > 0,
+          items: validItems.map((b: any) => ({
+            ...b,
+            name: String(b.name).trim(),
+            price: Number(b.price) || 0,
+            original_price: b.original_price ? Number(b.original_price) : undefined,
+            badge_text: b.badge_text?.trim() || 'Penawaran Spesial',
+            description: b.description?.trim() || '',
+            is_active: b.is_active !== false,
+          })),
+        };
+      } else if (typeof rawBumps === 'object') {
+        const rawItems = Array.isArray(rawBumps.items) ? rawBumps.items : [];
+        const validItems = rawItems.filter((b: any) => b && typeof b === 'object' && b.name && String(b.name).trim().length > 0);
+        cleanOrderBumps = {
+          enabled: Boolean(rawBumps.enabled) && validItems.length > 0,
+          items: validItems.map((b: any) => ({
+            ...b,
+            name: String(b.name).trim(),
+            price: Number(b.price) || 0,
+            original_price: b.original_price ? Number(b.original_price) : undefined,
+            badge_text: b.badge_text?.trim() || 'Penawaran Spesial',
+            description: b.description?.trim() || '',
+            is_active: b.is_active !== false,
+          })),
+        };
+      }
+    }
 
     const newProduct: ProductItem = {
       ...body,
       id: productId,
-      name,
+      name: trimmedName,
       slug: finalSlug,
       category: resolvedCategory,
-      price: Number(price),
-      promo_price: promo_price ? Number(promo_price) : undefined,
+      price: sanitizedPrice,
+      promo_price: sanitizedPromoPrice,
       variants: variants || '',
       promo: promo || '',
       description: description || '',
@@ -91,6 +143,7 @@ export async function POST(
       product_type: body.product_type || (category === 'fisik' ? 'PHYSICAL' : (category === 'jasa' ? 'SERVICE' : 'DIGITAL')),
       sku: body.sku || `SKU-${finalSlug}`,
       is_active: body.is_active !== false,
+      order_bumps: cleanOrderBumps,
       single_page_config: body.single_page_config
         ? {
             ...body.single_page_config,
@@ -104,7 +157,7 @@ export async function POST(
     let updatedProducts: ProductItem[] = [];
 
     try {
-      const supabase = getSupabase();
+      const supabase = getSupabaseAdmin() || getSupabase();
       const { data: existing } = await supabase
         .from('tenants')
         .select('*')
@@ -249,29 +302,35 @@ export async function POST(
         // Coba sync juga ke tabel SQL `products` jika memungkinkan
         try {
           const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(productId));
+          const dbProductType = mapToDbProductType(body.product_type || type, resolvedCategory);
+
           const sqlProductPayload = {
             ...(isUuid ? { id: String(productId) } : {}),
             tenant_id: existing.id,
-            title: name,
+            title: trimmedName,
+            name: trimmedName,
             slug: finalSlug,
             description: description || '',
-            price: Number(price),
-            promo_price: promo_price ? Number(promo_price) : 0,
+            price: sanitizedPrice,
+            promo_price: sanitizedPromoPrice ? Number(sanitizedPromoPrice) : 0,
             image: body.image || body.image_url || '',
             image_url: body.image || body.image_url || '',
             category: resolvedCategory,
             stock: body.stock !== undefined ? Number(body.stock) : 999999,
             is_unlimited_stock: body.is_unlimited ?? true,
-            asset_reference: `product:${finalSlug}`,
+            asset_reference: body.asset_reference || `product:${finalSlug}`,
             license_status: 'UNVERIFIED',
-            product_type: body.product_type || (category === 'fisik' ? 'PHYSICAL' : 'DIGITAL_FILE'),
+            product_type: dbProductType,
             sku: productSku,
             is_active: body.is_active !== false,
-            requires_shipping: Boolean(body.requires_shipping ?? (body.product_type === 'PHYSICAL')),
+            requires_shipping: Boolean(body.requires_shipping ?? (dbProductType === 'PHYSICAL')),
+            is_digital: dbProductType === 'DIGITAL_FILE' || Boolean(body.is_digital),
             fulfillment_metadata: {
-              ...(body.fulfillment_metadata || {}),
-              ...(body.order_bumps || body.metadata?.order_bumps ? { order_bumps: body.order_bumps || body.metadata?.order_bumps } : {}),
+              ...(typeof body.fulfillment_metadata === 'object' && body.fulfillment_metadata !== null ? body.fulfillment_metadata : {}),
+              ...(cleanOrderBumps ? { order_bumps: cleanOrderBumps } : {}),
               ...(body.single_page_config ? { single_page_config: body.single_page_config } : {}),
+              ...(Array.isArray(body.facilities) ? { facilities: body.facilities } : {}),
+              ...(Array.isArray(body.features) ? { features: body.features } : {}),
             },
           };
 
@@ -358,7 +417,7 @@ export async function DELETE(
     let remainingProducts: ProductItem[] = [];
 
     try {
-      const supabase = getSupabase();
+      const supabase = getSupabaseAdmin() || getSupabase();
       const { data: existing } = await supabase
         .from('tenants')
         .select('*')
