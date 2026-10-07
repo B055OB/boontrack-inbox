@@ -178,6 +178,106 @@ export async function sendEvolutionTextMessage(
 }
 
 /**
+ * Sends presence status (composing / typing simulation) to Evolution API.
+ * Calls `POST /chat/sendPresence/{instance}`.
+ */
+export async function sendEvolutionPresence(
+  instanceName: string,
+  recipientPhone: string,
+  presence: 'composing' | 'recording' | 'paused' = 'composing',
+  customApiKey?: string
+): Promise<boolean> {
+  const baseUrl = EVOLUTION_API_URL.replace(/\/$/, '');
+  const apiKey = customApiKey || EVOLUTION_API_KEY;
+  const endpoint = `${baseUrl}/chat/sendPresence/${encodeURIComponent(instanceName)}`;
+
+  let cleanNumber = (recipientPhone || '').trim();
+  if (!cleanNumber.includes('@g.us')) {
+    cleanNumber = cleanNumber.replace(/\D/g, '');
+    if (cleanNumber.startsWith('0')) {
+      cleanNumber = '62' + cleanNumber.slice(1);
+    } else if (cleanNumber.startsWith('8')) {
+      cleanNumber = '62' + cleanNumber;
+    }
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: apiKey,
+      },
+      body: JSON.stringify({
+        number: cleanNumber,
+        presence,
+        delay: 3500,
+      }),
+      signal: AbortSignal.timeout(6000),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[Evolution Presence] Failed to set presence:', err);
+    return false;
+  }
+}
+
+/**
+ * Sends media (image / dynamic QRIS) message back to WhatsApp via Evolution API.
+ * Calls `POST /message/sendMedia/{instance}`.
+ */
+export async function sendEvolutionMediaMessage(
+  instanceName: string,
+  recipientPhone: string,
+  mediaUrlOrBase64: string,
+  caption?: string,
+  customApiKey?: string
+): Promise<boolean> {
+  const baseUrl = EVOLUTION_API_URL.replace(/\/$/, '');
+  const apiKey = customApiKey || EVOLUTION_API_KEY;
+  const endpoint = `${baseUrl}/message/sendMedia/${encodeURIComponent(instanceName)}`;
+
+  let cleanNumber = (recipientPhone || '').trim();
+  if (!cleanNumber.includes('@g.us')) {
+    cleanNumber = cleanNumber.replace(/\D/g, '');
+    if (cleanNumber.startsWith('0')) {
+      cleanNumber = '62' + cleanNumber.slice(1);
+    } else if (cleanNumber.startsWith('8')) {
+      cleanNumber = '62' + cleanNumber;
+    }
+  }
+
+  if (caption) {
+    registerBotOutbound({
+      recipientPhone: cleanNumber,
+      text: caption.trim(),
+    });
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: apiKey,
+      },
+      body: JSON.stringify({
+        number: cleanNumber,
+        mediatype: 'image',
+        media: mediaUrlOrBase64,
+        caption: caption ? caption.trim() : undefined,
+        fileName: 'qris-konsultasi.webp',
+      }),
+      signal: AbortSignal.timeout(12000),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[Evolution Send Media] Exception sending media:', err);
+    return false;
+  }
+}
+
+/**
  * Main Webhook Event Processor for Evolution API.
  */
 export async function processEvolutionWebhookEvent(
@@ -1345,6 +1445,43 @@ export async function processEvolutionWebhookEvent(
 
     // 8. Kirim Balasan AI ke Pelanggan via Evolution API
     if (aiResult.reply && aiResult.reply.trim()) {
+      // Simulasi Typing Alami (Human-like delay 3 - 5 detik) dengan composing presence
+      await sendEvolutionPresence(
+        instanceName,
+        senderPhone,
+        'composing',
+        resolvedApiKey
+      );
+
+      const naturalDelayMs = Math.floor(Math.random() * 2000) + 3000; // 3000ms - 5000ms
+      await new Promise((resolve) => setTimeout(resolve, naturalDelayMs));
+
+      // Jika ada media QRIS dinamis (Hybrid Checkout), kirim gambar QRIS terlebih dahulu
+      if (aiResult.media_url) {
+        await sendEvolutionMediaMessage(
+          instanceName,
+          senderPhone,
+          aiResult.media_url,
+          aiResult.media_caption || 'QRIS Pembayaran Konsultasi',
+          resolvedApiKey
+        );
+
+        await persistOutboundMessage({
+          tenantId: tenantId,
+          tenantSlug: tenantSlug || tenantId,
+          customerPhone: senderPhone,
+          senderType: 'bot',
+          senderName: 'Asisten Klinik',
+          messageBody: '[QRIS Dinamis Pembayaran Konsultasi]',
+          messageType: 'image',
+          externalId: item.key?.id ? `bot_qris_${item.key.id}` : undefined,
+          rawPayload: { trigger: 'qris_hybrid_dispatch', media_url: aiResult.media_url },
+        });
+
+        // Jeda alami 1.5 detik antara gambar QRIS dan rincian teks invoice
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+
       await sendEvolutionTextMessage(
         instanceName,
         senderPhone,
@@ -1358,7 +1495,7 @@ export async function processEvolutionWebhookEvent(
         tenantSlug: tenantSlug || tenantId,
         customerPhone: senderPhone,
         senderType: 'bot',
-        senderName: 'BoonPilot CS',
+        senderName: aiResult.media_url ? 'Asisten Klinik' : 'BoonPilot CS',
         messageBody: aiResult.reply.trim(),
         externalId: item.key?.id ? `bot_reply_${item.key.id}` : undefined,
         rawPayload: { trigger: 'gemini_multimodal' },

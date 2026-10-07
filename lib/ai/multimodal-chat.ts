@@ -79,6 +79,8 @@ export interface MultimodalChatResult {
   tenant_id: string;
   tenant_slug: string;
   checkout_url?: string;
+  media_url?: string;
+  media_caption?: string;
   type?: string;
   booking?: any;
   quick_actions?: string[];
@@ -582,6 +584,8 @@ export async function processMultimodalChat(
           tenant_id: t?.id || slug,
           tenant_slug: t?.slug || slug,
           checkout_url: consultFunnelRes.checkoutUrl || checkoutUrl,
+          media_url: consultFunnelRes.mediaUrl,
+          media_caption: consultFunnelRes.mediaCaption,
           type: consultFunnelRes.type,
           quick_actions: defaultQuickActions,
           active_engine: activeEngine,

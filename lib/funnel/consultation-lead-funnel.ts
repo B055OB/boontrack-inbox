@@ -10,6 +10,8 @@
  */
 
 import { getSupabaseAdmin, getSupabase } from '@/lib/supabaseClient';
+import { createOrderAndInvoice } from '@/lib/checkout-service';
+import { generateDynamicQRIS } from '@/lib/qris-dynamic';
 
 export interface ProcessConsultationFunnelParams {
   tenant?: any;
@@ -20,13 +22,24 @@ export interface ProcessConsultationFunnelParams {
   hasPreviousGreeting?: boolean;
 }
 
+export interface ClinicIntakeData {
+  parentName?: string;
+  childInfo?: string;
+  childName?: string;
+  childAge?: string;
+  complaint?: string;
+}
+
 export interface ConsultationFunnelResult {
   handled: boolean;
   reply: string;
-  type: 'LEAD_CAPTURED' | 'CONSULTATION_OFFER' | 'PRODUCT_DETAIL' | 'GREETING' | 'FAQ_ANSWER';
+  type: 'LEAD_CAPTURED' | 'CONSULTATION_OFFER' | 'PRODUCT_DETAIL' | 'GREETING' | 'FAQ_ANSWER' | 'HYBRID_CHECKOUT';
   nextState?: string;
   leadData?: Record<string, any>;
   checkoutUrl?: string;
+  mediaUrl?: string;
+  mediaCaption?: string;
+  orderId?: string;
 }
 
 /**
@@ -42,6 +55,142 @@ function normalizeText(text: string): string {
 }
 
 /**
+ * Detects whether a tenant operates as a clinic / medical pediatric consultation service.
+ * Dynamic and metadata-driven (Zero Hardcoding Policy).
+ */
+export function isClinicConsultationTenant(tenant: any, meta: any, products: any[]): boolean {
+  const category = String(tenant?.category || meta?.category || meta?.business_category || '').toUpperCase();
+  const businessType = String(tenant?.business_type || meta?.business_type || meta?.vertical_type || '').toUpperCase();
+  const customDomain = String(meta?.custom_domain || '').toLowerCase();
+  const hasClinicDoctor = Boolean(meta?.doctors?.length || meta?.dr_name || meta?.bot_persona?.doctor_name);
+  const hasGtmProduct = (products || []).some((p: any) => {
+    const pName = (p.name || p.title || '').toLowerCase();
+    return pName.includes('gtm') || pName.includes('konsultasi chat') || pName.includes('dokter anak');
+  });
+
+  return (
+    category.includes('KLINIK') ||
+    category.includes('KONSULTASI') ||
+    businessType.includes('CLINIC') ||
+    customDomain.includes('littlebitefeeding.com') ||
+    (hasClinicDoctor && hasGtmProduct) ||
+    hasGtmProduct
+  );
+}
+
+/**
+ * Resolves the primary locked consultation product for clinic tenants.
+ * Strictly locks focus to the GTM / clinical chat service.
+ */
+export function resolveLockedGtmProduct(products: any[], meta: any) {
+  const prods = Array.isArray(products) ? products : [];
+  const gtm = prods.find((p: any) => {
+    const pName = (p.name || p.title || '').toLowerCase();
+    return (
+      (pName.includes('gtm') && pName.includes('harys')) ||
+      (pName.includes('gtm') && pName.includes('konsultasi')) ||
+      pName.includes('eat and grow') ||
+      p.slug === meta?.primary_product_slug ||
+      p.id === meta?.primary_product_id
+    );
+  });
+  if (gtm) return gtm;
+
+  return prods.find((p: any) => (p.name || '').toLowerCase().includes('konsul')) || prods[0];
+}
+
+/**
+ * Checks and extracts progressive clinic intake data (Slot-filling).
+ * Extracts:
+ * - Nama Orang Tua
+ * - Nama & Usia Anak
+ * - Keluhan / Kondisi Utama
+ */
+export function extractClinicIntakeData(
+  message: string,
+  existing?: ClinicIntakeData | null
+): { data: ClinicIntakeData; isComplete: boolean } {
+  const data: ClinicIntakeData = { ...(existing || {}) };
+  const cleanMsg = (message || '').trim();
+
+  // 1. Key-value style regex
+  const parentMatch = /(?:nama\s*(?:orang\s*tua|ortu|ibu|ayah|bunda|mama|papa)|orang\s*tua|bunda|ayah|ibu|mama|papa)\s*[:=]\s*([^\n,;]+)/i.exec(cleanMsg);
+  if (parentMatch && !parentMatch[1].toLowerCase().includes('anak')) {
+    data.parentName = parentMatch[1].trim();
+  }
+
+  const childMatch = /(?:nama\s*(?:dan|&)?\s*usia\s*anak|nama\s*anak|data\s*anak|pasien\s*anak|anak|si\s*kecil)\s*[:=]\s*([^\n;]+)/i.exec(cleanMsg);
+  if (childMatch) {
+    data.childInfo = childMatch[1].trim();
+    const ageMatch = /([0-9]+[\s\w]*(?:tahun|thn|th|bulan|bln))/i.exec(childMatch[1]);
+    if (ageMatch) {
+      data.childAge = ageMatch[1].trim();
+      data.childName = childMatch[1].replace(ageMatch[0], '').replace(/[(),]/g, '').trim();
+    } else {
+      data.childName = childMatch[1].trim();
+    }
+  }
+
+  const complaintMatch = /(?:keluhan\s*(?:utama)?|kondisi\s*(?:utama)?|masalah|gejala|kendala|catatan)\s*[:=]\s*([^\n]+)/i.exec(cleanMsg);
+  if (complaintMatch) {
+    data.complaint = complaintMatch[1].trim();
+  }
+
+  // 2. Numbered list extraction:
+  // 1. [Nama Orang Tua]
+  // 2. [Nama & Usia Anak]
+  // 3. [Keluhan]
+  const numMatches = cleanMsg.match(/(?:^|\n)\s*([1-3])[.)\-:]\s*([^\n]+)/g);
+  if (numMatches && numMatches.length > 0) {
+    for (const m of numMatches) {
+      const parsed = /([1-3])[.)\-:]\s*(.+)/.exec(m.trim());
+      if (parsed) {
+        const num = parsed[1];
+        const val = parsed[2].trim();
+        if (num === '1' && !data.parentName) data.parentName = val;
+        if (num === '2' && !data.childInfo) {
+          data.childInfo = val;
+          const ageMatch = /([0-9]+[\s\w]*(?:tahun|thn|th|bulan|bln))/i.exec(val);
+          if (ageMatch) {
+            data.childAge = ageMatch[1].trim();
+            data.childName = val.replace(ageMatch[0], '').replace(/[(),]/g, '').trim();
+          } else {
+            data.childName = val;
+          }
+        }
+        if (num === '3' && !data.complaint) data.complaint = val;
+      }
+    }
+  }
+
+  // 3. Fallback narrative extraction if message talks about GTM / makan
+  if (!data.complaint) {
+    const lower = cleanMsg.toLowerCase();
+    if (
+      lower.includes('gtm') ||
+      lower.includes('susah makan') ||
+      lower.includes('sulit makan') ||
+      lower.includes('berat badan') ||
+      lower.includes('bb seret') ||
+      lower.includes('stunting') ||
+      lower.includes('muntah') ||
+      lower.includes('nutrisi')
+    ) {
+      if (cleanMsg.length > 20 && !parentMatch && !childMatch) {
+        data.complaint = cleanMsg;
+      }
+    }
+  }
+
+  const hasParent = Boolean(data.parentName);
+  const hasChild = Boolean(data.childInfo || data.childName);
+  const hasComplaint = Boolean(data.complaint);
+  const isComplete = hasParent && hasChild && hasComplaint;
+
+  return { data, isComplete };
+}
+
+/**
  * Checks whether an incoming message is submitting lead filtering form data.
  */
 export function extractLeadFormData(
@@ -50,9 +199,7 @@ export function extractLeadFormData(
 ): Record<string, string> | null {
   if (!message || typeof message !== 'string') return null;
 
-  const lines = message.split(/[\n,;]+/);
   const data: Record<string, string> = {};
-
   const cleanMsg = message.toLowerCase();
 
   // Pattern detection for key form components
@@ -147,6 +294,228 @@ export async function processConsultationLeadFunnel(
       : 'Toko Kami');
 
   const products: any[] = Array.isArray(meta.products) ? meta.products : [];
+
+  // =========================================================================
+  // SPECIALIZED FLOW: CLINIC & PEDIATRIC GTM CONSULTATION (dr. Harys)
+  // Warm empathetic tone, strict medical boundary (administrative triage),
+  // progressive slot filling (Parent, Child, Complaint), and hybrid QRIS checkout.
+  // =========================================================================
+  const isClinic = isClinicConsultationTenant(tenant, meta, products);
+  if (isClinic) {
+    const lockedProduct = resolveLockedGtmProduct(products, meta);
+    const domain = meta.custom_domain || 'konsul.littlebitefeeding.com';
+    const priceNumber = Number(lockedProduct.price || lockedProduct.promo_price || 150000);
+    const priceStr = `Rp ${priceNumber.toLocaleString('id-ID')}`;
+
+    // A. Check existing intake state from session
+    let existingIntake: ClinicIntakeData = {};
+    if (supabase && senderPhone) {
+      try {
+        const { data: sessRow } = await supabase
+          .from('conversation_sessions')
+          .select('metadata')
+          .eq('session_id', `wa_${tenant.slug || tenant.id}_${senderPhone}`)
+          .maybeSingle();
+        if (sessRow?.metadata?.clinic_intake) {
+          existingIntake = sessRow.metadata.clinic_intake;
+        }
+      } catch (_) {}
+    }
+
+    // Check short greeting
+    const isShortGreeting = /^(halo|hai|hi|hello|p|ping|selamat\s+(?:pagi|siang|sore|malam)|assalamu\w*|permisi|tes|test)\b/i.test(normalizedMsg);
+    const hasStructuredData = rawMsg.includes(':') || rawMsg.includes('=') || /(?:^|\n)\s*[1-3][.)\-:]/.test(rawMsg);
+
+    // Initial greeting definition
+    const initialGreeting =
+      `Halo Ayah/Bunda! Selamat datang di layanan *Konsultasi Chat GTM Anak bersama dr. Harys Maulana* (Klinik Tumbuh Kembang Anak). 👋\n\n` +
+      `Kami sangat memahami kekhawatiran dan rasa lelah Ayah/Bunda saat si kecil sedang mengalami fase GTM (Gerakan Tutup Mulut), berat badan seret, atau sulit menerima makanan. InsyaAllah tim kami siap mendampingi secara suportif.\n\n` +
+      `👩‍⚕️ *Informasi & Alur Layanan:*\n` +
+      `Peran saya sebagai asisten klinik adalah mendata kondisi si kecil untuk rekam medis awal dan menyiapkan reservasi jadwal. Seluruh evaluasi klinis nutrisi mendalam, analisis akar masalah makan, serta rekomendasi penanganan akan diberikan langsung oleh dr. Harys pada sesi konsultasi chat resmi.\n\n` +
+      `📌 *Layanan:* ${lockedProduct.name || 'Konsultasi Chat GTM Anak (dr. Harys)'}\n` +
+      `💰 *Investasi:* ${priceStr}\n\n` +
+      `Boleh kami bantu catat data awal si kecil terlebih dahulu ya Bun/Yah:\n` +
+      `1. *Nama Orang Tua*:\n` +
+      `2. *Nama & Usia Anak*:\n` +
+      `3. *Keluhan / Kondisi Utama*: (misal: sudah berapa lama GTM, apakah ada riwayat muntah/pilih tekstur, dsb.)\n\n` +
+      `Ayah/Bunda cukup membalas pesan ini dengan 3 poin data di atas ya. Terima kasih! 🙏`;
+
+    if (isShortGreeting && !hasStructuredData && rawMsg.length < 35) {
+      return {
+        handled: true,
+        reply: initialGreeting,
+        type: 'GREETING',
+        nextState: 'CLINIC_INTAKE_ASKED',
+        checkoutUrl: `https://${domain}/checkout`,
+      };
+    }
+
+    const clinicIntake = extractClinicIntakeData(rawMsg, existingIntake);
+
+    // Save progressive intake to session
+    if (supabase && senderPhone && (clinicIntake.data.parentName || clinicIntake.data.childInfo || clinicIntake.data.complaint)) {
+      try {
+        const nowIso = new Date().toISOString();
+        const targetTenantId = tenant.slug || tenant.id;
+        await supabase.from('conversation_sessions').upsert(
+          {
+            tenant_id: targetTenantId,
+            session_id: `wa_${targetTenantId}_${senderPhone}`,
+            channel: 'WHATSAPP',
+            user_identifier: senderPhone,
+            current_state: clinicIntake.isComplete ? 'CLINIC_INTAKE_COMPLETED' : 'CLINIC_INTAKE_IN_PROGRESS',
+            metadata: {
+              clinic_intake: clinicIntake.data,
+              updated_at: nowIso,
+            },
+            updated_at: nowIso,
+          },
+          { onConflict: 'tenant_id,user_identifier' }
+        );
+      } catch (saveErr) {
+        console.warn('[ConsultationFunnel] Error saving clinic intake progress:', saveErr);
+      }
+    }
+
+    // CASE 1: All 3 fields are collected -> HYBRID CHECKOUT DISPATCH
+    if (clinicIntake.isComplete) {
+      let orderId = `ORD-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
+      let qrCodeUrl = '';
+
+      try {
+        const orderRes = await createOrderAndInvoice({
+          tenantSlug: tenant.slug,
+          productId: String(lockedProduct.id || 'konsultasi-gtm'),
+          productTitle: lockedProduct.name || 'Konsultasi Chat GTM Anak (dr. Harys)',
+          amount: priceNumber,
+          customerName: clinicIntake.data.parentName || 'Ayah/Bunda',
+          customerPhone: senderPhone || '08123456789',
+          paymentMethod: 'qris',
+          customer_briefing: {
+            parent_name: clinicIntake.data.parentName,
+            child_info: clinicIntake.data.childInfo || `${clinicIntake.data.childName || ''} (${clinicIntake.data.childAge || ''})`.trim(),
+            child_name: clinicIntake.data.childName,
+            child_age: clinicIntake.data.childAge,
+            complaint: clinicIntake.data.complaint,
+            intake_source: 'whatsapp_bot_clinic',
+          },
+        });
+
+        if (orderRes?.orderId) {
+          orderId = orderRes.orderId;
+        }
+
+        const staticQris = meta.qris_payload || meta.qris_static_string || '';
+        if (staticQris) {
+          const dynamicQris = generateDynamicQRIS(staticQris, priceNumber);
+          qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(dynamicQris)}&size=400&ecLevel=H`;
+        } else if (orderRes?.qrCodeUrl) {
+          qrCodeUrl = orderRes.qrCodeUrl;
+        }
+      } catch (orderErr) {
+        console.warn('[ConsultationFunnel] Order creation fallback:', orderErr);
+        const staticQris = meta.qris_payload || meta.qris_static_string || '';
+        if (staticQris) {
+          const dynamicQris = generateDynamicQRIS(staticQris, priceNumber);
+          qrCodeUrl = `https://quickchart.io/qr?text=${encodeURIComponent(dynamicQris)}&size=400&ecLevel=H`;
+        }
+      }
+
+      const encodedParent = encodeURIComponent(clinicIntake.data.parentName || '');
+      const encodedPhone = encodeURIComponent(senderPhone || '');
+      const fullCheckoutUrl = `https://${domain}/checkout/${orderId}?name=${encodedParent}&phone=${encodedPhone}`;
+      const childDisplay = clinicIntake.data.childInfo || `${clinicIntake.data.childName || 'Anak'} (${clinicIntake.data.childAge || 'Balita'})`.trim();
+
+      const companionReply =
+        `📋 *INVOICE REGISTRASI KONSULTASI GTM*\n` +
+        `No. Pesanan: #${orderId}\n` +
+        `Layanan: *${lockedProduct.name || 'Konsultasi Chat GTM Anak (dr. Harys)'}*\n` +
+        `Biaya Konsultasi: *${priceStr}*\n\n` +
+        `*Data Pasien Terdaftar:*\n` +
+        `• Orang Tua: ${clinicIntake.data.parentName}\n` +
+        `• Pasien Anak: ${childDisplay}\n` +
+        `• Keluhan Utama: ${clinicIntake.data.complaint}\n\n` +
+        `✨ *Instruksi Pembayaran (QRIS Otomatis):*\n` +
+        `1. Scan kode QRIS yang kami kirimkan di atas menggunakan aplikasi m-Banking (BCA, Mandiri, BRI, BNI) atau e-Wallet (GoPay, OVO, Dana, ShopeePay).\n` +
+        `2. Pembayaran terverifikasi otomatis dalam 1–2 menit 24 jam.\n` +
+        `3. Setelah pembayaran selesai, dr. Harys Maulana & asisten klinik akan langsung membuka sesi konsultasi chat ini untuk mengevaluasi kondisi nutrisi si kecil.\n\n` +
+        `🔗 *Tautan Checkout Web Resmi:*\n` +
+        `${fullCheckoutUrl}\n\n` +
+        `Mohon konfirmasi jika ada data yang perlu diperbarui ya Bun/Yah. Terima kasih! 🙏`;
+
+      if (supabase && senderPhone) {
+        try {
+          const nowIso = new Date().toISOString();
+          const targetTenantId = tenant.slug || tenant.id;
+          await supabase.from('conversation_sessions').upsert(
+            {
+              tenant_id: targetTenantId,
+              session_id: `wa_${targetTenantId}_${senderPhone}`,
+              channel: 'WHATSAPP',
+              user_identifier: senderPhone,
+              current_state: 'WAITING_PAYMENT',
+              metadata: {
+                order_id: orderId,
+                clinic_intake: clinicIntake.data,
+                invoice_url: fullCheckoutUrl,
+                order_created_at: nowIso,
+              },
+              updated_at: nowIso,
+            },
+            { onConflict: 'tenant_id,user_identifier' }
+          );
+        } catch (_) {}
+      }
+
+      return {
+        handled: true,
+        reply: companionReply,
+        type: 'HYBRID_CHECKOUT',
+        nextState: 'WAITING_PAYMENT',
+        mediaUrl: qrCodeUrl,
+        mediaCaption: `QRIS Pembayaran Konsultasi Chat GTM Anak (dr. Harys) - ${priceStr}`,
+        checkoutUrl: fullCheckoutUrl,
+        leadData: clinicIntake.data,
+        orderId,
+      };
+    }
+
+    // CASE 2: Partial data submitted
+    if (clinicIntake.data.parentName || clinicIntake.data.childInfo || clinicIntake.data.complaint) {
+      const missing: string[] = [];
+      if (!clinicIntake.data.parentName) missing.push('Nama Orang Tua');
+      if (!clinicIntake.data.childInfo && !clinicIntake.data.childName) missing.push('Nama & Usia Anak');
+      if (!clinicIntake.data.complaint) missing.push('Keluhan / Kondisi Utama si kecil (misal: sudah berapa lama GTM atau makanan apa saja yang ditolak)');
+
+      const reply =
+        `Terima kasih banyak Ayah/Bunda! Sebagian data si kecil sudah kami catat dengan baik. 🙏\n\n` +
+        `Agar berkas rekam medis awal si kecil lengkap sebelum kami buatkan invoice & jadwal sesi dr. Harys, mohon bantu lengkapi:\n` +
+        missing.map((m, idx) => `${idx + 1}. *${m}*`).join('\n') +
+        `\n\nAyah/Bunda cukup membalas pesan ini ya. Kami siap membantu. 😊`;
+
+      return {
+        handled: true,
+        reply,
+        type: 'CONSULTATION_OFFER',
+        nextState: 'CLINIC_INTAKE_IN_PROGRESS',
+        leadData: clinicIntake.data,
+        checkoutUrl: `https://${domain}/checkout`,
+      };
+    }
+
+    // CASE 3: Initial greeting / inquiry
+    return {
+      handled: true,
+      reply: initialGreeting,
+      type: 'GREETING',
+      nextState: 'CLINIC_INTAKE_ASKED',
+      checkoutUrl: `https://${domain}/checkout`,
+    };
+  }
+
+  // =========================================================================
+  // STANDARD COMMERCE / AGENCY / E-COMMERCE CONSULTATION FUNNEL
+  // =========================================================================
   const leadForm = meta.lead_filtering_form || meta.consultation_form || null;
   const leadFields = Array.isArray(leadForm?.fields) ? leadForm.fields : [];
 
@@ -201,7 +570,6 @@ export async function processConsultationLeadFunnel(
     if (supabase && senderPhone) {
       try {
         const nowIso = new Date().toISOString();
-        const tenantTokens = Array.from(new Set([tenant.id, tenant.slug].filter(Boolean)));
         await supabase.from('conversation_sessions').upsert(
           {
             tenant_id: tenant.slug || tenant.id,
@@ -367,7 +735,6 @@ export async function processConsultationLeadFunnel(
   }
 
   // 5. GREETING LOOPING SUPPRESSION
-  // If greeting has already been given (or history contains a bot message), do NOT send initial greeting again!
   const hasPriorBot =
     Boolean(hasPreviousGreeting) ||
     (Array.isArray(conversationHistory) &&
@@ -382,7 +749,6 @@ export async function processConsultationLeadFunnel(
     const cleanCheckoutUrl = !isSlugUuid && checkoutUrl ? checkoutUrl : '';
 
     if (hasPriorBot) {
-      // Return a consultative follow-up instead of restarting the initial greeting template
       const reply =
         `Halo Kak! Ada yang bisa kami bantu seputar kebutuhan toko atau layanan di *${storeName}*? 😊` +
         (cleanCheckoutUrl
@@ -397,7 +763,6 @@ export async function processConsultationLeadFunnel(
       };
     }
 
-    // First greeting: return the configured custom greeting message asking for the lead fields
     const greetingMsg =
       meta.custom_greeting_message ||
       meta.greeting_message ||
